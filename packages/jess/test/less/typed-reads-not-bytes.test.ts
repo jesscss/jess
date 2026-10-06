@@ -44,6 +44,14 @@ describe('typed reads, not byte scans', () => {
       .toBe('.x { v: (10px); } @media (min-width: 640px) { .y { w: 1; } }');
   });
 
+  /* A splice writes a value as a declaration writes it, its comments and line breaks included (SEMANTIC-INVARIANTS 2). */
+  it('splices a value with the layout a declaration writes', async () => {
+    const raw = async (source: string): Promise<string> =>
+      new Compiler().renderString(source, { language: 'less', extension: '.less' });
+    expect(await raw('@x: a /* c */ b; @y: a, /* c */ b; @z: a,\n    b; .s-@{x} { a: @x; b: ~"@{x}"; c: @{x}; d: "@{x}"; e: ~"@{y}"; f: ~"@{z}"; }'))
+      .toBe('.s-a /* c */ b {\n  a: a /* c */ b;\n  b: a /* c */ b;\n  c: a /* c */ b;\n  d: "a /* c */ b";\n  e: a, /* c */ b;\n  f: a,\n    b;\n}\n');
+  });
+
   it('spreads one value that is not a list as one argument', async () => {
     expect(await render('.m(@x; @y: none) { x: @x; y: @y; } @a: ~"1px 2px"; @l: 1px 2px; .c { .m(@a...); } .d { .m(@l...); }'))
       .toBe('.c { x: 1px 2px; y: none; } .d { x: 1px; y: 2px; }');
@@ -66,6 +74,16 @@ describe('typed reads, not byte scans', () => {
       .toBe('.x { a: url(a.png); a: url(b.png); n: 2; } .y { a: url(a.png); a: url(b.png); n: 2; }');
   });
 
+  /* A list's separator is the walker's glue, so compress tightens a ratio however the list gets there. */
+  it('compresses a ratio in a query prelude, written directly or through a variable or argument', async () => {
+    const source = '@r: 16/9; .m(@q) { @container (aspect-ratio: @q) { .b { c: d; } } } '
+      + '@media (aspect-ratio: 16/9) { .a { b: c; } } @media (aspect-ratio: @r) { .a { b: c; } } .k { .m(16/9); }';
+    expect(await new Compiler({ output: { compress: true } }).renderString(source, { language: 'less', extension: '.less' }))
+      .toBe('@media(aspect-ratio:16/9){.a{b:c}}@media(aspect-ratio:16/9){.a{b:c}}.k{@container(aspect-ratio:16/9){.b{c:d}}}');
+    expect(await render(source)).toBe('@media (aspect-ratio: 16 / 9) { .a { b: c; } } @media (aspect-ratio: 16 / 9) { .a { b: c; } } '
+      + '.k { @container (aspect-ratio: 16 / 9) { .b { c: d; } } }');
+  });
+
   it('writes an escaped string in a query prelude as written, however it gets there', async () => {
     expect(await render('@r: ~"16/9"; .m(@x) { @media (aspect-ratio: @x) { .b { c: d; } } } @media (aspect-ratio: @r) { .a { b: c; } } .k { .m(@r); }'))
       .toBe('@media (aspect-ratio: 16/9) { .a { b: c; } } .k { @media (aspect-ratio: 16/9) { .b { c: d; } } }');
@@ -83,5 +101,14 @@ describe('typed reads, not byte scans', () => {
       .toBe('.d { --x: 3; --y: ~"a/b"; --z: ~\'a b\'; }');
     expect(await render('@a: 3; @container style(--x: @a) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }'))
       .toBe('@container style(--x: 3) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }');
+  });
+
+  /* A condition call's feature is walked as the feature in parens is, so a value spliced into it is never re-spaced. */
+  it('writes a value spliced into a style() query as it evaluated', async () => {
+    const source = '@v: ~\'a:b\'; @w: ~\'a  /  b\'; @container style(--x: @{v}) and style(--y:1) and style(--z: @{w}) { .a { b: c; } }';
+    expect(await new Compiler().renderString(source, { language: 'less', extension: '.less' }))
+      .toBe('@container style(--x: a:b) and style(--y: 1) and style(--z: a  /  b) {\n  .a {\n    b: c;\n  }\n}\n');
+    expect(await new Compiler({ output: { compress: true } }).renderString(source, { language: 'less', extension: '.less' }))
+      .toBe('@container style(--x:a:b) and style(--y:1) and style(--z:a  /  b){.a{b:c}}');
   });
 });

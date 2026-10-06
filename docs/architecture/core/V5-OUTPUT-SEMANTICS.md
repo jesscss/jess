@@ -103,12 +103,19 @@ Corollary for `ast/`: a **space** before `(` must stay grouping — `solid (x)`
 must **not** collapse into the no-space function shape `solid(x)` (A4).
 **Why.** Grouping-parens exist only to control evaluation order; they are not
 part of the computed result's spelling. Symmetric with the plain
-`(2px+3px) → 5px` case. "Computes" covers math, a call a callable runs
-(`(percentage(0.5))` → `50%`), and a variable bound to either. A group around
-something that computes nothing — one value (`(10vh)`), a call written out as-is
-(`(var(--a))`), math kept as written — keeps its parens in every dialect, as css
+`(2px+3px) → 5px` case. "Computes" covers math, a comparison at a `.jess`
+`$( … )` boundary (`$((1 > 0))` → `true`), a call a callable runs
+(`(percentage(0.5))` → `50%`, `.jess` `($percentage(0.5))` too), and anything a
+reference names that is one of those, however it is read — a variable, an
+`@@name`, a mixin parameter, a property (`$w`), a member (`@m[v]`, `#ns[@v]`,
+`.m()[@r]`). A group around something that computes nothing — one value
+(`(10vh)`, `($(10px))`), a call written out as-is (`(var(--a))`), math kept as
+written — keeps its parens in every dialect, as css
 does (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
 2026-10-06); inside a math function every authored paren is kept (DD `P35`).
+A kept group is spelling, not a new value: math, a comparison or a callable
+reads the value inside it, so SCSS `@return ($x)` computes `f(1px) * 2` →
+`2px` and writes `c: f(1px)` as `(1px)`.
 **Status.** SETTLED — owner-confirmed (2026-07-18), demonstrated by operation
 tests + `.less` fixtures. Distinct from A4.
 **Ref.** DD `F4`

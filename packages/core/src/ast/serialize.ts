@@ -445,8 +445,8 @@ function importHasOption(options: string | null, option: string): boolean {
  * dropped, so the sheet is placed once and stays as visible as it was. A plain import after
  * a `(reference)` one is not a re-import: it renders the sheet the author asked to see. A
  * `(multiple)` import, or one inside a `(multiple)` sheet, places its own copy and is never
- * dropped. The import planner and the render walk both ask this, so they agree on which
- * imports place a sheet.
+ * dropped. The import planner and the render walk both ask this, in document order, an
+ * import inside a ruleset included, so they agree on which imports place a sheet.
  */
 function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, placed: boolean): boolean {
   return placed && !inMultiple && node.mode !== 'compose'
@@ -4152,11 +4152,11 @@ function evalTypedSlot(
     return evalTyped(slot, frame, e, projectMixinValues, argument);
   }
   const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, argument));
-  if (argument !== ARG_BINDING) {
+  if (!replaysLayout(argument)) {
     return combineAll(values, resolved => resolved);
   }
 
-  /* A binding's authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
+  /* The authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
   const layout = replayedLayoutOf(slot);
   return combineAll(values, resolved => layout === undefined ? resolved : withValueLayout(resolved, layout));
 }
@@ -4398,22 +4398,29 @@ const ARG_WRITTEN = 2;
 /**
  * A mixin argument evaluated for its binding: no function argument, but the
  * authored line breaks and comments between its items ride on the groups it
- * builds, so the bound bytes keep them ({@link writtenBytes}). Only this mode
- * reads the layout table, so no other typed evaluation pays for it.
+ * builds, so the bound bytes keep them ({@link writtenBytes}).
  */
 const ARG_BINDING = 3;
 
 /**
  * A value an interpolation splices ({@link unquotedRef}): written as a
- * declaration writes it — a group keeps its parens and an F5 color call its
- * authored bytes, as in {@link ARG_WRITTEN}, while a ruleset writes nothing — but
- * typed, so a string is read by its content.
+ * declaration writes it — a group keeps its parens, an F5 color call its
+ * authored bytes, as in {@link ARG_WRITTEN}, and the line breaks and comments
+ * between its items ride along, as in {@link ARG_BINDING}, while a ruleset
+ * writes nothing — but typed, so a string is read by its content.
  */
 const ARG_SPLICE = 4;
 type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE;
 
 /** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}). */
 const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE;
+
+/**
+ * Whether the authored layout between a group's items rides on the value
+ * ({@link ARG_BINDING}, {@link ARG_SPLICE}): only these modes write the value
+ * out as bytes, so no other typed evaluation reads the layout table.
+ */
+const replaysLayout = (argument: ArgumentMode): boolean => argument === ARG_BINDING || argument === ARG_SPLICE;
 
 function evalTyped(
   node: ValueNode,
@@ -4623,7 +4630,7 @@ function evalTyped(
        * is handed to the value layer directly — no re-splitting a joined string.
        */
       const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, argument));
-      const layout = argument === ARG_BINDING ? replayedLayoutOf(node) : undefined;
+      const layout = replaysLayout(argument) ? replayedLayoutOf(node) : undefined;
       return combineAll(typed, vals => layout === undefined ? makeList(vals, node.sep) : withValueLayout(makeList(vals, node.sep), layout));
     }
     case 'Branch':
@@ -4732,9 +4739,13 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
 
 /*
  * A paren group is consumed when what it holds computes — math (`(1px + 2px)` is
- * `3px`), a `.jess` `$( … )`, a call a callable computes (`(percentage(0.5))` is
- * `50%`), or a variable or mixin parameter bound to one of those (ledger F4:
- * once computed, the parens do not survive). Every other group keeps its parens
+ * `3px`), a comparison (`.jess` `$((1 > 0))` is `true`), a call a callable
+ * computes (`(percentage(0.5))` is `50%`, `.jess` `($percentage(0.5))` too), or
+ * anything a reference names that is one of those: a variable (`@a`, `@@name`),
+ * a mixin parameter, a property (`$w`) or a member (`@m[v]`, `#ns[@v]`,
+ * `.m()[@r]`) (ledger F4: once computed, the parens do not survive). A `.jess`
+ * `$( … )` computes when what it holds does, so `($(10px))` keeps its parens as
+ * `(10px)` does. Every other group keeps its parens
  * wherever it is written — around one value (`c: (10vh)`, `(@w)` with `@w:
  * 10px`), around a call written out as-is (`(var(--a))`) or a CSS colour call
  * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
@@ -4748,16 +4759,27 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  */
 
 /**
- * What computes in the group (see above), or `null`: the operation, `$( … )`,
- * call or conditional it holds, directly or through the variables it names. A
- * call counts here, and one no callable computed comes back marked as written
- * out as-is, which {@link keepAuthoredGroup} keeps in its parens.
+ * What computes in the group (see above), or `null`: the operation, comparison,
+ * `$( … )`, call or conditional it holds, directly or through what its
+ * references name. A call counts here, and one no callable computed comes back
+ * marked as written out as-is, which {@link keepAuthoredGroup} keeps in its
+ * parens.
  */
 function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNode | null {
-  if ((e.calcDepth ?? 0) > 0) {
-    return null;
-  }
-  let inner: ValueSlot = node.value;
+  return (e.calcDepth ?? 0) > 0 ? null : slotComputation(node.value, frame, e);
+}
+
+const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
+
+/**
+ * What computes in `slot` (see {@link groupComputation}), past its parens and
+ * through the references it reads. A reference is resolved by the resolver its
+ * evaluation uses, so every way of reading a value classifies it alike. A
+ * `$( … )` or authored group expression stands for what it holds, and is
+ * returned when that computes, so the group reads the splice typed.
+ */
+function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx): ValueNode | null {
+  let inner = slot;
   let scope = frame;
 
   /* ponytail: a reference cycle raises when the group evaluates; the cap only bounds this walk. */
@@ -4765,23 +4787,67 @@ function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNo
     while (isParenGroup(inner)) {
       inner = inner.value;
     }
-    if (isValueSlotArray(inner) || inner.type !== 'Lookup') {
-      return computationIn(inner);
-    }
-    if (inner.kind !== 'var' || typeof inner.name !== 'string') {
+    if (isValueSlotArray(inner)) {
       return null;
     }
-    const hit = resolveVarRef(scope, inner.name, inner.scope, e);
-    if (hit === undefined || isMixinCallValue(hit.value)) {
+    let named: { value: Binding; frame: Frame | null } | null | undefined;
+    switch (inner.type) {
+      case 'Lookup':
+        named = lookupBinding(inner, scope, e);
+        break;
+      case 'Reference':
+        /* A reference ending in a call (`.jess` `$fn()`) is a call. */
+        if (inner.steps[inner.steps.length - 1]?.type === 'Call') {
+          return inner;
+        }
+        named = resolveReferenceResult(inner, scope, e);
+        break;
+      case 'Expression':
+        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }) === null ? null : inner;
+
+      /* A comparison computes where a value-position one is evaluated: at a `.jess` `$( … )` boundary (§7.1). */
+      case 'Condition':
+        return e.exprBoundary === true ? inner : null;
+      case 'Interpolation': {
+        const first = inner.parts[0];
+        return isComputationSplice(inner) && first !== undefined && 'ref' in first
+          && slotComputation(first.ref, scope, e) !== null
+          ? inner
+          : null;
+      }
+      default:
+        return computationIn(inner);
+    }
+    if (named === null || named === undefined || isMixinCallValue(named.value)) {
       return null;
     }
-    inner = hit.value;
-    scope = hit.frame;
+    inner = named.value;
+    scope = named.frame;
   }
   return null;
 }
 
-const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
+/**
+ * What a lookup names — a variable, an `@@name` one included, or a property —
+ * by the resolvers its evaluation uses, or `undefined`. A merged property is
+ * the bytes of its members, and an `@@name` whose name awaits a plugin is read
+ * only when it evaluates.
+ */
+function lookupBinding(node: Lookup, frame: Frame | null, e: EvalCtx): { value: Binding; frame: Frame | null } | undefined {
+  if (node.kind === 'var') {
+    const name = lookupName(node, frame, e);
+    if (isThenable(name)) {
+      observeRejectedThenable(name);
+      return undefined;
+    }
+    return resolveVarRef(frame, name, node.scope, e);
+  }
+  if (node.kind === 'prop' && typeof node.name === 'string') {
+    const hit = resolvePropRef(frame, node.name, e);
+    return hit === undefined || hit.merged !== undefined ? undefined : hit;
+  }
+  return undefined;
+}
 
 /**
  * The mixin arguments whose authored value computed ({@link eagerSnapshot}): a
@@ -4790,25 +4856,19 @@ const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean =>
  */
 const computedArguments = new WeakSet<Any>();
 
-/** The node in `slot`, past its parens, that computes when it is evaluated, or `null` (see {@link groupComputation}). */
-function computationIn(slot: ValueSlot): ValueNode | null {
-  let inner = slot;
-  while (isParenGroup(inner)) {
-    inner = inner.value;
-  }
-  if (isValueSlotArray(inner)) {
-    return null;
-  }
+/** `inner` when it computes as it is evaluated, or `null` (see {@link groupComputation}); no reference or wrapper reaches here ({@link slotComputation}). */
+function computationIn(inner: ValueNode): ValueNode | null {
   switch (inner.type) {
     case 'Operation':
-      /* A query relation (`min-width: 640px`, `width < 500px`) is a feature, not math. */
+      /*
+       * A query relation (`min-width: 640px`, `width < 500px`) is a feature, not
+       * math: only a query grammar builds one as an `Operation`, and it is
+       * written as is. A value comparison is a `Condition`.
+       */
       return inner.inMathFunction || isQueryRelation(inner.operator) ? null : inner;
-    case 'Interpolation':
-      return isComputationSplice(inner) ? inner : null;
     case 'FunctionCall':
       /* A CSS colour written as a call is one CSS value in every dialect (ledger F5, SEMANTIC-INVARIANTS 4). */
       return isCssColorCall(inner) ? null : inner;
-    case 'Expression':
     case 'IfValue':
       return inner;
     case 'Any':
@@ -5638,7 +5698,7 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
       if (!isLiteral(value)) {
         validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
       }
-      bytes += emitValue(value);
+      bytes += emitSplice(value);
     }
     return elided && values.length > 0
       ? NULL
@@ -5703,7 +5763,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           if (hit && bound !== undefined && !isMixinCallValue(bound)) {
             const val = hit.evaluated ?? withExcluded(e, bound, () => evalTypedSlot(bound, hit.frame, e, false, ARG_SPLICE));
             if (!isThenable(val)) {
-              out += !isValueGroupArray(val) && val.type === 'Quoted' ? val.value : emitValue(val);
+              out += !isValueGroupArray(val) && val.type === 'Quoted' ? val.value : emitAsWritten(val);
               i = j + 1;
               changed = true;
               continue;
@@ -5732,6 +5792,9 @@ function unquotedRef(ref: ValueNode, frame: Frame | null, e: EvalCtx): MaybeProm
   return mapMaybe(evalTyped(ref, frame, e, false, ARG_SPLICE), value =>
     !isValueGroupArray(value) && value.type === 'Quoted' ? literal(value.value) : value);
 }
+
+/** A spliced value's bytes: the declaration's, the authored layout between its items included ({@link ARG_SPLICE}). */
+const emitSplice = (value: EvalValue): string => isLiteral(value) ? value : emitAsWritten(value);
 
 /* --------------------------------------------------- map / namespace */
 
@@ -7244,7 +7307,7 @@ function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: F
     return any(bytes);
   }
   const bound = any(wrapParens(bytes, writtenParens(source, frame, e)));
-  if (computationIn(source) !== null) {
+  if (slotComputation(source, frame, e) !== null) {
     computedArguments.add(bound);
   }
   return bound;
@@ -7980,7 +8043,8 @@ function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null
 function evalLambdaCall(
   node: FunctionCall,
   frame: Frame | null,
-  e: EvalCtx
+  e: EvalCtx,
+  demanded: boolean
 ): MaybePromise<EvalValue> | undefined {
   const hit = resolveVarRef(frame, node.name, 'live', e);
   if (!hit || isValueSlotArray(hit.value) || hit.value.type !== 'AnonymousMixin') {
@@ -7991,7 +8055,17 @@ function evalLambdaCall(
     return undefined;
   }
   const invoked = invokeValueLambda(lambda, node.args, hit.frame, frame, e);
-  return invoked === null ? undefined : evalValueSlot(invoked.value, invoked.frame, e);
+  if (invoked === null) {
+    return undefined;
+  }
+
+  /*
+   * A typed consumer reads the result typed, as it reads any value: a result
+   * written as a paren group around one value (`@return ($x)`) is that value
+   * to math, a comparison or a callable, and keeps its parens only where it is
+   * written out.
+   */
+  return demanded ? evalTypedSlot(invoked.value, invoked.frame, e) : evalValueSlot(invoked.value, invoked.frame, e);
 }
 
 function evalCall(
@@ -8008,7 +8082,7 @@ function evalCall(
    * pays one `Set.has` and never walks a frame.
    */
   if (e.lambdaFunctionNames?.has(node.name)) {
-    const invoked = evalLambdaCall(node, frame, e);
+    const invoked = evalLambdaCall(node, frame, e, demanded);
     if (invoked !== undefined) {
       return invoked;
     }
@@ -8750,7 +8824,7 @@ function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: EvalCtx): Gr
  * a public async plugin can resolve one slot before the next slot is evaluated in
  * the SAME lexical frame. */
 function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitValue) : evalBytesInterp(part.ref, frame, e);
+  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitSplice) : evalBytesInterp(part.ref, frame, e);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
@@ -12371,6 +12445,57 @@ function planImportedFacts(
 
   /* Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
   const placed = new Set<string>();
+
+  /*
+   * The sheets an `@import` nested in a ruleset places, and everything they import, are
+   * loaded only where the walk renders that ruleset, but they count toward import-once
+   * here in document order too (ledgers J14, X18): a later `@import` of a sheet one of
+   * them placed is dropped here as the walk drops it, so it publishes no facts the walk
+   * never renders. A guarded ruleset may never render, and a path the walk interpolates
+   * is known only there, so neither counts.
+   *
+   * ponytail: a guard that holds still leaves a later import of the same sheet dropped
+   * by the walk with its facts published here; evaluating the guard here would close it.
+   */
+  const countRulesetImports = async (rules: readonly Statement[], multiple: boolean): Promise<void> => {
+    for (const st of rules) {
+      if (st.type === 'Ruleset' || st.type === 'AtRuleBlock') {
+        if (st.type === 'AtRuleBlock' || st.guard === undefined) {
+          await countRulesetImports(st.rules, multiple);
+        }
+        continue;
+      }
+      if (st.type !== 'StyleImport' || st.mode === 'compose') {
+        continue;
+      }
+      const target = st.target.type === 'Url' ? st.target.value : st.target;
+      const options = importRequestOptions(st.options);
+      if (!isStaticQuoted(target) || importHasOption(options, 'inline')) {
+        continue;
+      }
+      const prepared = e.plannedImportDocuments?.get(st);
+      const request: ImportDocumentRequest = prepared?.request ?? { node: st, specifier: target.value, options };
+      const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
+      if (prepared === undefined) {
+        e.plannedImportDocuments?.set(st, { request, loaded });
+      }
+      if (loaded === undefined || 'inline' in loaded || loaded.document === null || loaded.key === undefined) {
+        continue;
+      }
+      if (options === null && !multiple) {
+        if (seen.has(loaded.key)) {
+          continue;
+        }
+        seen.set(loaded.key, true);
+      } else if (isReferenceReimport(st, options, multiple, placed.has(loaded.key))) {
+        continue;
+      }
+      placed.add(loaded.key);
+      const sheet = loaded.document.rules;
+      const count = (): Promise<void> => countRulesetImports(sheet, multiple || importHasOption(options, 'multiple'));
+      await (loaded.withinDocument ? loaded.withinDocument(count) : count());
+    }
+  };
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
@@ -12690,6 +12815,8 @@ function planImportedFacts(
             (deferredAnchors ??= []).push(anchor);
           }
         }
+      } else if (st.type === 'Ruleset' && st.guard === undefined) {
+        await countRulesetImports(st.rules, multipleImportDepth);
       } else if (st.type === 'ModuleImport' && e.context) {
         const { module } = await e.context.getModule(st.path.value).catch(moduleLoadFailed(st, e));
         e.plannedModuleImports?.set(st, module);
@@ -20616,23 +20743,66 @@ type SupportsPreludePart = { bytes: string; protected: boolean };
 
 /*
  * A value the prelude walker evaluated is written as evaluated: a string, a
- * resolved variable, a list's authored separators and their comments are
- * protected parts, never scanned for the quotes or comments they hold. The
- * normalizers below space only the walker's own glue (parens, a feature colon,
- * an operator, a sequence space), the bytes of a condition call the walker
- * writes whole (`style(--x: @{v})`), and a raw fragment ({@link preludeLeaf}).
+ * resolved variable, a splice, an authored run between list items are protected
+ * parts, never scanned for the quotes or comments they hold. The normalizers
+ * below space the walker's own glue (parens, a feature colon, an operator, a
+ * list separator, a sequence space) and two inputs the grammar leaves
+ * unstructured, which they scan for quotes and comments:
+ * - a raw fragment ({@link preludeLeaf}): css builds a `style()` query's
+ *   argument as one (`--responsive: true`, where Less builds a feature), and
+ *   every dialect a custom-property value in a `style()` feature;
+ * - a call other than a condition call ({@link conditionFeature}), written as
+ *   its evaluated bytes: a value call in a feature value (`calc()`, `env()`) and
+ *   a `style()` whose argument is not one feature (`style((--a: 1) and (--b:
+ *   2))`), which the grammar does not mark as query syntax.
  */
 const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true }];
 
 /**
+ * The separator before a list's item `index` in a prelude: the walker's own
+ * glue, spaced as glue is (a ratio's `/` tightens under compress), or the
+ * authored run written there, as written.
+ */
+function listBoundaryPart(authored: readonly (string | undefined)[] | undefined, index: number, glue: string, compress: boolean): SupportsPreludePart[] {
+  const run = itemBoundary(authored?.[index - 1], glue, compress);
+  return [{ bytes: run, protected: run !== glue }];
+}
+
+/** A value evaluated before the walk reached it: a list's items as written, joined as an authored list is ({@link listBoundaryPart}). */
+function typedPreludeParts(value: ValueGroup, compress: boolean): SupportsPreludePart[] {
+  if (isValueGroupArray(value) || value.type !== 'List') {
+    return leaf(emitValue(value));
+  }
+  const glue = sepGlue(value.sep, compress);
+  const authored = valueLayoutOf(value);
+  const parts: SupportsPreludePart[] = [];
+  for (let index = 0; index < value.value.length; index += 1) {
+    if (index > 0) {
+      parts.push(...listBoundaryPart(authored, index, glue, compress));
+    }
+    parts.push(...leaf(emitValue(value.value[index]!)));
+  }
+  return parts;
+}
+
+/**
  * One leaf of a prelude. An `Any` the parser left as a raw prelude fragment is
  * source text nothing structured, so it is spaced like glue; an `Any` that is a
- * mixin argument's snapshot, a list included, holds the value the argument was
- * evaluated to ({@link carrySnapshot}).
+ * mixin argument's snapshot holds the value the argument was evaluated to
+ * ({@link carrySnapshot}), and a list it bound as written is joined as the
+ * list written directly is.
  */
 function preludeLeaf(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
-  const raw = !isValueSlotArray(node) && node.type === 'Any' && e.snapshotValues?.has(node) !== true;
-  return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: !raw }]);
+  if (!isValueSlotArray(node) && node.type === 'Any') {
+    const carried = e.snapshotValues?.get(node);
+    if (carried === undefined) {
+      return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: false }]);
+    }
+    if (!isValueGroupArray(carried) && carried.type === 'List' && emitAsWritten(carried) === node.src) {
+      return typedPreludeParts(carried, e.compress === true);
+    }
+  }
+  return mapMaybe(evalBytes(node, frame, e), leaf);
 }
 
 /**
@@ -20660,9 +20830,8 @@ function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolat
  * `(` nor right before `)` stays). All other corpus `@supports` preludes are
  * already compact, so this is a no-op there.
  *
- * A string or comment it meets is copied as written. Only a condition call the
- * walker writes as bytes (it does not descend into a call's arguments) or a raw
- * fragment can still hold one ({@link preludeLeaf}).
+ * A string or comment it meets is copied as written. Only a call the walker
+ * writes as bytes or a raw fragment can still hold one ({@link leaf}).
  */
 function normalizeSupportsBytes(p: string, compress = false): string {
   let out = '';
@@ -20872,11 +21041,16 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
      */
     case 'FunctionCall': {
       const payload = isGeneralEnclosedTemplate(node) ? generalEnclosedPayload(node.args) : null;
-      if (payload === null) {
-        return mapMaybe(evalBytes(node, frame, e), plain);
+      if (payload !== null) {
+        return mapMaybe(evalBytes(payload, frame, e), content =>
+          [{ bytes: `${node.name}(${content})`, protected: true }]);
       }
-      return mapMaybe(evalBytes(payload, frame, e), content =>
-        [{ bytes: `${node.name}(${content})`, protected: true }]);
+
+      /* A condition call (`style(--x: @v)`) holds a feature: it is walked as the feature in parens is. */
+      const feature = conditionFeature(node);
+      return feature === null
+        ? mapMaybe(evalBytes(node, frame, e), plain)
+        : concatPreludeParts([plain(`${node.name}(`), evalQueryPreludeParts(feature, frame, e), plain(')')]);
     }
     case 'Block': {
       const open = delimiterOpen(node.delimiter);
@@ -20915,7 +21089,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
-          parts.push(leaf(itemBoundary(authored?.[index - 1], glue, compress)));
+          parts.push(listBoundaryPart(authored, index, glue, compress));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
@@ -20939,7 +21113,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         if (hit.evaluated !== null) {
-          return leaf(emitValue(hit.evaluated));
+          return typedPreludeParts(hit.evaluated, e.compress === true);
         }
         return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
       });
@@ -20949,7 +21123,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
         return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return resolved.evaluated !== null
-        ? leaf(emitValue(resolved.evaluated))
+        ? typedPreludeParts(resolved.evaluated, e.compress === true)
         : evalQueryPreludeParts(resolved.value, resolved.frame, e);
     }
     default:
@@ -20961,6 +21135,17 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
        */
       return preludeLeaf(node, frame, e);
   }
+}
+
+/**
+ * The feature a condition call holds — `style(--x: @v)`, `scroll-state(stuck:
+ * top)` — when the grammar built it as one query relation, or `null`.
+ */
+function conditionFeature(node: FunctionCall): Operation | null {
+  const only = node.args.length === 1 && !node.args[0]!.spread ? node.args[0]!.value : undefined;
+  return only !== undefined && !isValueSlotArray(only) && only.type === 'Operation' && !only.inMathFunction && isQueryRelation(only.operator)
+    ? only
+    : null;
 }
 
 /**
@@ -20979,9 +21164,9 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
  *   - a logical `and` / `or` / `not` keeps a space before its `(` (`and(…)` →
  *     `and (…)`).
  * A quoted run (`"…"`, `'…'`) or a `/* … *\/` comment passes through untouched.
- * Only a condition call the walker writes as bytes or a raw fragment can still
- * hold one ({@link preludeLeaf}): a string, a resolved variable and a list's
- * authored separators reach here as protected parts. Every transform is idempotent on an already-canonical
+ * Only a call the walker writes as bytes or a raw fragment can still hold one
+ * ({@link leaf}): a string, a resolved variable, a splice and an authored run
+ * between list items reach here as protected parts. Every transform is idempotent on an already-canonical
  * prelude (`(min-width: 1024px)`, `screen, print, handheld`, `(a) or (b)`), so
  * already-matching goldens are unaffected.
  */
