@@ -9483,7 +9483,7 @@ interface Emit extends EvalCtx {
   loadedImports: Map<string, Frame | null> | null;
 
   /** Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
-  placedImports: Set<string> | null;
+  placedDocuments: Set<string> | null;
 
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
@@ -9604,7 +9604,7 @@ function scratchEmit(e: EvalCtx): Emit {
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
-    placedImports: null,
+    placedDocuments: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12656,7 +12656,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
-    placedImports: null,
+    placedDocuments: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12757,7 +12757,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
-    placedImports: null,
+    placedDocuments: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -19951,12 +19951,12 @@ function expandStyleImport(
           seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         } else if (isReferenceReimport(
           node, request.options, e.multipleImportDepth !== 0,
-          loaded.key !== undefined && e.placedImports?.has(loaded.key) === true
+          loaded.key !== undefined && e.placedDocuments?.has(loaded.key) === true
         )) {
           return;
         }
         if (!isCompose && loaded.key !== undefined) {
-          (e.placedImports ??= new Set()).add(loaded.key);
+          (e.placedDocuments ??= new Set()).add(loaded.key);
         }
         const publishChildren = mapMaybe(configured, () => isCompose || hasPrepublishedImportFact(e, node)
           || e.prepublishedModuleImports?.get(frame)?.has(node) === true
