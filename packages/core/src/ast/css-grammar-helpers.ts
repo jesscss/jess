@@ -992,11 +992,13 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
  */
 function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
   /*
-   * Contents that carry the dialect's interpolation (SCSS `(#{$q})`) have no
-   * authored bytes to print: P16 evaluates the interpolation, so the value
-   * stays structured and the emitter substitutes it.
+   * Contents that read a binding — the dialect's interpolation (SCSS `(#{$q})`,
+   * Less `(foo: @{x} baz)`) or a variable reference (SCSS `(foo: $bar baz)`) —
+   * have no authored bytes to print: the binding is evaluated (P16), so the
+   * value stays structured and the emitter substitutes it, as dart-sass and
+   * lessc 4.9.1 write `(foo: 1px baz)`.
    */
-  if (hasInterpolationRef(value)) {
+  if (readsBinding(value)) {
     return value;
   }
   return withGeneralEnclosedSource(value, authoredSource(span, state, 'A general-enclosed query group'));
@@ -1014,21 +1016,37 @@ export function authoredSource(span: AstSourceSpan, state: unknown, what: string
   return state.source.slice(span.start, span.end);
 }
 
-/** Whether general-enclosed contents hold an interpolation that reads a binding. */
-function hasInterpolationRef(value: unknown): boolean {
+/**
+ * Whether general-enclosed contents read a binding: an interpolation that
+ * references one, or a variable or property reference, at any depth of the
+ * group's sequences, lists, blocks, operations and function arguments.
+ */
+function readsBinding(value: unknown): boolean {
+  if (isValueSlotArray(value)) {
+    return value.some(readsBinding);
+  }
   if (isInterpolation(value)) {
     return value.parts.some(part => 'ref' in part);
   }
   if (isQuoted(value)) {
-    return value.interp !== null && hasInterpolationRef(value.interp);
+    return value.interp !== null && readsBinding(value.interp);
+  }
+  if (isNodeType(value, 'Lookup') || isNodeType(value, 'Reference')) {
+    return true;
   }
   if (isNodeType(value, 'Sequence') && 'parts' in value && Array.isArray(value.parts)) {
-    return value.parts.some(hasInterpolationRef);
+    return value.parts.some(readsBinding);
   }
   if (isList(value)) {
-    return value.value.some(hasInterpolationRef);
+    return value.value.some(readsBinding);
   }
-  return isNodeType(value, 'Block') && 'value' in value && hasInterpolationRef(value.value);
+  if (isNodeType(value, 'Operation') && 'left' in value && 'right' in value) {
+    return readsBinding(value.left) || readsBinding(value.right);
+  }
+  if (isNodeType(value, 'FunctionCall') && 'args' in value && Array.isArray(value.args)) {
+    return value.args.some((arg: unknown) => typeof arg === 'object' && arg !== null && 'value' in arg && readsBinding(arg.value));
+  }
+  return isNodeType(value, 'Block') && 'value' in value && readsBinding(value.value);
 }
 
 /*
