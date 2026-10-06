@@ -130,8 +130,7 @@ describe('root parentless ampersand', () => {
  * composed selector, never a one-arm `:is(parent)` wrap.
  */
 describe('fused ampersand under a multi-compound parent', () => {
-  const renderLess = (src: string): string | undefined =>
-    serialize(parseLess(src), { evaluator, collapseNesting: true }).css;
+  const renderLess = (src: string): string | undefined => flat(parseLess(src));
 
   it('is matched as the composed selector', () => {
     expect(renderLess('.b { .p { &.q { m: 1 } } } .x:extend(.b .p.q) {}'))

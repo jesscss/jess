@@ -187,8 +187,7 @@ describe('extend element/id conflict guard', () => {
    * its LAST. So the guard checks each side against the compound it lands in.
    */
   it('checks a complex extender\'s first compound against the simples before the match', () => {
-    const renderLess = (src: string): string | undefined =>
-      serialize(parseLess(src), { evaluator, collapseNesting: true }).css;
+    const renderLess = (src: string): string | undefined => render(parseLess(src));
 
     // `div` joins `.p`: lessc 4.9.1 writes `div.p span`, a valid selector.
     expect(renderLess('div.c { m: 1 } .p span:extend(.c all) {}'))

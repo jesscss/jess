@@ -823,7 +823,6 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
   return withSegments(b, segments);
 }
 
-
 /* ------------------------------------------------- relative extender folding */
 
 /** Number of leading ancestor levels two paths share BY REFERENCE (the plan walk
