@@ -100,6 +100,15 @@ describe('CSS declaration source spans', () => {
     expect(css(source)).toBe(expected);
   });
 
+  /* A final `\` keeps the whitespace after it: trimmed, it would escape the `;` (css-syntax-3 §4.3.7). */
+  it.each([
+    ['a { --x: a\\\n; }', 'a {\n  --x: a\\\n    ;\n}\n'],
+    ['a { --x: a\\ ; }', 'a {\n  --x: a\\ ;\n}\n'],
+    ['a { --x: a\\;b; }', 'a {\n  --x: a\\;b;\n}\n']
+  ])('keeps an escape at the end of a custom-property value whole: %j', (source, expected) => {
+    expect(css(source)).toBe(expected);
+  });
+
   /*
    * A comment inside the SELECTOR is still dropped. Less keeps it
    * (`s0/*test*\/,`), so this is a real divergence — but it is the selector's

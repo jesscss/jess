@@ -738,7 +738,9 @@ const customImportantTail = regex(/[ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!
  * The value's trailing whitespace is not value text (css-syntax-3 §5.5.6 trims
  * a declaration value's edges), so the scan also stops before a whitespace run
  * that the declaration's end follows. A comment is not whitespace: one written
- * last stays in the value, in place.
+ * last stays in the value, in place. A backslash takes the code point after it
+ * (§4.3.7), so the whitespace after a final `\` is kept: trimmed, the `\` would
+ * escape the `;` written after the value.
  */
 const customValue = scanTo(
   choice(
@@ -747,6 +749,7 @@ const customValue = scanTo(
   ),
   {
     skip: [
+      regex(/\\[\s\S]/),
       balancedParens,
       balancedBrackets,
       balancedBraces
