@@ -3,7 +3,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CompletionItemKind, Position, SymbolKind } from 'vscode-languageserver-types';
+import {
+  CompletionItemKind,
+  DiagnosticSeverity,
+  Position,
+  SymbolKind
+} from 'vscode-languageserver-types';
 import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
 
@@ -310,6 +315,272 @@ describe('JessLanguageServiceEngine', () => {
 
       const diagnostics = engine.getDiagnostics(doc.uri);
       expect(diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it('underlines removed Less backtick values without losing the remaining document', () => {
+      const engine = createEngine();
+      const input = '.legacy { value: `1 + 1`; }\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(diagnostic).toMatchObject({
+        source: 'jess',
+        message:
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
+        severity: DiagnosticSeverity.Error
+      });
+      expect(diagnostic).toBeDefined();
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe('`1 + 1`');
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('recovers an unfinished Less backtick value at the declaration boundary', () => {
+      const engine = createEngine();
+      const input = '.legacy { value: `1 + 1; }\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(diagnostic).toBeDefined();
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe('`1 + 1');
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('recovers unfinished Less backticks at nested value boundaries', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  function-value: fn(`function);',
+        '  calc-value: calc(`calc);',
+        '  --custom-group: fn(`custom);',
+        '}',
+        '@legacy foo`header { color: red; }',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`function', '`calc', '`custom', '`header ']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('underlines a complete multiline Less backtick as one construct', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  value: `(function(){var x = 1 + 1;',
+        '    return x})()`;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`(function(){var x = 1 + 1;\n    return x})()`']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('underlines an interpolation-bearing Less backtick without losing later symbols', () => {
+      const engine = createEngine();
+      const input = '@a: `@{b}`;\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`@{b}`']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('underlines complete Less JavaScript units without losing later symbols', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  escaped: `1 + \\`tick\\``;',
+        '  statements: `let x = 1; x`;',
+        '  label: `let x = 1; label: x`;',
+        '  object-label: `let x = 1; obj: {a: 1}`;',
+        '  function-label: fn(`let x = 1; label: x`);',
+        '  calc-label: calc(`let x = 1; label: x`);',
+        '  --custom-label: `let x = 1; label: x`;',
+        '  object: `{a: 1, b: 2}`;',
+        '  comma: `a, b`;',
+        '  regex: `/[;})]/.test(value)`;',
+        '  division: `a / b`;',
+        '  continued-string: `"a\\',
+        'b"`;',
+        '}',
+        '@legacy `{a: 1}` { color: red; }',
+        '@legacy-label `let x = 1; label: x` { color: blue; }',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual([
+        '`1 + \\`tick\\``',
+        '`let x = 1; x`',
+        '`let x = 1; label: x`',
+        '`let x = 1; obj: {a: 1}`',
+        '`let x = 1; label: x`',
+        '`let x = 1; label: x`',
+        '`let x = 1; label: x`',
+        '`{a: 1, b: 2}`',
+        '`a, b`',
+        '`/[;})]/.test(value)`',
+        '`a / b`',
+        '`"a\\\nb"`',
+        '`{a: 1}`',
+        '`let x = 1; label: x`'
+      ]);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('keeps an unfinished backtick separate from the next declaration', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  first: `bad;',
+        '  second: `good`;',
+        '  color: red;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`bad', '`good`']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('keeps unfinished backticks separate across Less declaration heads', () => {
+      const engine = createEngine();
+      const input = [
+        '@first: `bad;',
+        '@second: /* comment */ `also bad;',
+        '@{third}: `dynamic bad;',
+        '@map: {',
+        '  first: `map bad;',
+        '  <: `punctuation bad;',
+        '};',
+        '.legacy {',
+        '  first: `nested bad;',
+        '  1: `numeric bad;',
+        '  \\63 olor: `escaped bad;',
+        '  foo-@{third}: `interpolated bad;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual([
+        '`bad',
+        '`also bad',
+        '`dynamic bad',
+        '`map bad',
+        '`punctuation bad',
+        '`nested bad',
+        '`numeric bad',
+        '`escaped bad',
+        '`interpolated bad'
+      ]);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('keeps an escaped unfinished line separate from a later backtick', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  escaped: `slash\\',
+        '  ;',
+        '  next: `next;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`slash\\', '`next']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
     it('uses the full saved span for unsupported SCSS @forward diagnostics', () => {

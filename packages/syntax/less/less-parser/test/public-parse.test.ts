@@ -1240,12 +1240,17 @@ describe('public Less parse()', () => {
       ]
     });
 
+    /*
+     * `@name: value;` is a variable declaration, and a variable name is a css
+     * ident, so its escapes decode (css-syntax-3 §4.3.11): `@\63 olor` is the
+     * variable `color` (P40).
+     */
+    expect(parse('@\\63 olor: red;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'color' }]
+    });
+
     for (const invalid of [
-      /*
-       * Less variable names do not admit escapes; a backslash before a newline
-       * is not a valid escape.
-       */
-      '@\\63 olor: red;',
+      /* A backslash before a newline is not a valid escape. */
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
     ]) {
@@ -2872,6 +2877,73 @@ describe('public Less parse()', () => {
         LessUnsupportedVariableNameError
       );
     }
+  });
+
+  /*
+   * A Less variable name is a css ident, so every variable-name position
+   * decodes its escapes (css-syntax-3 §4.3.11) to the plain name (P40). An
+   * escaped at-keyword that is not in a variable shape stays the css at-rule.
+   */
+  it('decodes escaped Less variable names in every variable-name position', () => {
+    const lookup = { type: 'Lookup', kind: 'var', name: 'vara' };
+    expect(parse('@var\\61: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'vara', value: { type: 'Dimension' } }]
+    });
+
+    /* A literal escape is its character; a zero code point is U+FFFD (§4.3.7). */
+    expect(parse('@a\\.b\\0 c: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'a.b\uFFFDc' }]
+    });
+    expect(parse('a { @var\\61: red; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [{ type: 'VariableDeclaration', name: 'vara' }] }]
+    });
+    expect(parse('a { b: @var\\61; }')).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: lookup }] }]
+    });
+    expect(parse('a { b: @@var\\61; }')).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: { type: 'Lookup', name: lookup } }] }]
+    });
+    expect(parse('.@{var\\61} { b: c; }')).toMatchObject({
+      rules: [{ selector: { selectors: [{ interp: { parts: [{ lit: '.' }, { ref: lookup }] } }] } }]
+    });
+    expect(parse('@var\\61();')).toMatchObject({
+      rules: [{ type: 'Reference', base: lookup, steps: [{ type: 'Call' }] }]
+    });
+
+    expect(parse('@\\63 olor x;')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@\\63 olor' }]
+    });
+    expect(parse('@var\\61 {}')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@var\\61 ' }]
+    });
+
+    /* A decoded name obeys the plain-name rules: `@\31 x` is `@1x`, `@\2d` is `@-`. */
+    for (const source of ['@\\31 x: 1;', '@\\2d: 1;', 'a { b: @\\31 x; }']) {
+      expect(() => parse(source), source).toThrow(LessUnsupportedVariableNameError);
+    }
+    expect(parse('@\\2d foo: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: '-foo' }]
+    });
+    for (const [source, name] of [
+      ['@-f\\6fo: 1;', '-foo'],
+      ['@-\\61: 1;', '-a'],
+      ['@--\\61: 1;', '--a']
+    ] as const) {
+      expect(parse(source), source).toMatchObject({
+        rules: [{ type: 'VariableDeclaration', name }]
+      });
+    }
+    expect(parse('@-\\66 oo: red; .entry { color: @-\\66 oo; }')).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: '-foo' },
+        { type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'Lookup', name: '-foo' } }] }
+      ]
+    });
+    expect(
+      serialize(parse('@-foo: red; .entry { color: @-\\66 oo; }'), {
+        evaluator: buildEvaluator(makeLessRegistry())
+      }).css
+    ).toBe('.entry {\n  color: red;\n}\n');
   });
 
   it('keeps interpolated Less media-query terms structural in a multi-term header', () => {

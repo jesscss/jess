@@ -32,7 +32,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * 2. `.js` specifiers that name a `.ts` source. Node's native type stripping
  *    does not rewrite extensions, so `import … from './parse-error.js'` inside
  *    `src/` fails. Resolve to the sibling `.ts` when it exists on disk.
- * 3. Dialect grammars import `@jesscss/css-parser/grammar`. Package resolution
+ * 3. Dialect grammars import `@jesscss/css-parser/grammar/base`. Package resolution
  *    finds the macro-built table artifact, whose serialized builders cannot be
  *    runtime-composed for inspection. Redirect that one edge to the source
  *    grammar so every composed piece remains inspectable by `parseman/spec`.
@@ -50,7 +50,7 @@ const strip = (context) => {
 export async function resolve(specifier, context, nextResolve) {
   const ctx = strip(context)
   // Keep the inspected dialect and its composed CSS base on the same source path.
-  if (specifier === '@jesscss/css-parser/grammar') {
+  if (specifier === '@jesscss/css-parser/grammar/base') {
     return {
       url: ${JSON.stringify(pathToFileURL(join(ROOT, 'packages/syntax/css/css-parser/src/grammar.ts')).href)},
       shortCircuit: true

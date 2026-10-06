@@ -325,7 +325,9 @@ const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'PseudoSelectorComplex']
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
-const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
+
+/* The css CST node holding a query feature's name (`Property`) and value (`QueryValue`) children. */
+const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryFeatureContents']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const ANB_PSEUDO_CLASSES = new Set([
   'nth-child',
@@ -5105,33 +5107,41 @@ function impossibleScssIfConditionSpans(source: string): DiagnosticSpan[] {
   return spans;
 }
 
+type DiagnosticDetails = {
+  readonly filePath?: string;
+  readonly qualifiers?: readonly string[];
+  readonly phase?: Phase;
+  readonly reason?: string;
+  readonly fix?: string;
+};
+
+type EmittedDiagnosticDetails = Omit<DiagnosticDetails, 'filePath'>;
+
 function diagnostic(
   code: string,
   defaultSeverity: DiagnosticSeverityName,
   message: string,
   span: DiagnosticSpan,
-  filePath?: string,
-  qualifiers?: readonly string[],
-  phase?: Phase
+  details?: DiagnosticDetails
 ): SourceDiagnostic {
   const start = Number(span.start);
   const end = Number(span.end);
   return {
     code,
-    phase: phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
+    phase: details?.phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
     source: 'jess',
     message,
-    reason: '',
-    fix: '',
+    reason: details?.reason ?? '',
+    fix: details?.fix ?? '',
     defaultSeverity,
-    filePath,
+    filePath: details?.filePath,
     start,
     end: Math.max(start, end),
     line: span.startLine,
     column: span.startColumn,
     endLine: span.endLine,
     endColumn: span.endColumn,
-    qualifiers
+    qualifiers: details?.qualifiers
   };
 }
 
@@ -5210,7 +5220,7 @@ function tolerantSourceScanDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
+    out.push(diagnostic(code, severity, message, span, { filePath, qualifiers }));
   };
   pushTolerantSourceScanDiagnostics(source, language, push);
   return out;
@@ -5345,7 +5355,7 @@ export function parseDiagnosticsForDoc(doc: ParseDiagnosticSource, filePath?: st
       'error',
       message,
       span,
-      filePath
+      { filePath }
     ));
   };
   for (const error of doc.errors) {
@@ -5406,8 +5416,7 @@ export function cstLintDiagnostics(
     severity: DiagnosticSeverityName,
     message: string,
     span: DiagnosticSpan,
-    qualifiers?: readonly string[],
-    phase?: Phase
+    details?: EmittedDiagnosticDetails
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
@@ -5416,7 +5425,7 @@ export function cstLintDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers, phase));
+    out.push(diagnostic(code, severity, message, span, { ...details, filePath }));
   };
   const push = (
     code: string,
@@ -5425,7 +5434,7 @@ export function cstLintDiagnostics(
     span: DiagnosticSpan,
     qualifiers?: readonly string[]
   ) => {
-    pushDiagnostic(code, severity, message, span, qualifiers);
+    pushDiagnostic(code, severity, message, span, { qualifiers });
   };
 
   const visit = (node: CssCstNode, context: VisitContext) => {
@@ -5441,6 +5450,27 @@ export function cstLintDiagnostics(
       : null;
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
+
+    /*
+     * Less v5 removes executable backtick values, but the tolerant CST keeps the
+     * complete legacy construct as one node. Report from that node so editors
+     * underline exactly the removed expression and retain the rest of the tree.
+     * The compiler's strict AST entry throws the matching parser error before
+     * evaluation; this path is the non-halting editor/diagnostic twin.
+     */
+    if (language === 'less' && gt === 'BacktickJavaScript') {
+      pushDiagnostic(
+        'parse/unsupported-inline-javascript',
+        'error',
+        'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
+        node.span,
+        {
+          phase: 'parse',
+          reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+          fix: 'Move it to a module loaded with @use.'
+        }
+      );
+    }
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
     const pageDescriptorContext = gt === 'MarginAtRule' && context.pageDescriptorContext === 'page'

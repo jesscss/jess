@@ -90,13 +90,16 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `@<ns>` — or merges them unqualified for `as *` — instead of flat-splicing them, which
     // is what `@import` still does). No new Map/Set: the namespace binding reuses the
     // existing declIndex/detached-binding records.
-    // +13 functions (`ModuleImport` load/bind/eval, #182): module export
+    // +15 functions (`ModuleImport` load/bind/eval, #182): module export
     // conversion, namespace/selected binding, and the two existing Reference
     // shapes that dispatch namespaced module functions directly, without a
-    // temporary Reference node. +3 `new Set`: render-local imported-function
-    // and namespace-value identity plus one lazy JSON cycle guard. +2 `new Map`:
-    // document-scoped module facts in the compile plan and direct-serialize
-    // fallback; strong ownership avoids per-node ephemeron tables.
+    // temporary Reference node. The two added helpers keep imported callables
+    // out of CSS-call lookup and bind explicit `$name(…)` references. +2
+    // `new Set`: the SCSS qualified-call raw-ABI guard and one lazy JSON cycle
+    // guard. +5 `new Map`: document-scoped module facts in the compile plan and
+    // direct-serialize fallback, the per-frame module-function table, and the
+    // two lazy allocation sites for one render-local reference-identity map.
+    // Strong ownership avoids per-node ephemeron tables.
     // +9 functions and +2 `new Map` (`@import` is a SOURCE FOLD, jess#229): an
     // imported fact used to be APPENDED to whichever index it landed in, so it
     // outranked every local fact however early its `@import` was written. A
@@ -135,9 +138,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions (`writtenBlockBody`, `rejectRulesetArgument`, ledger P37): a
     // ruleset argument's nested rules, at-rules and mixin calls are evaluated and
     // written inside its braces, one body at a time.
-    expect(occurrences(/^function |^async function /gmu)).toBe(471);
-    expect(occurrences(/new Map/gu)).toBe(68);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    // +1 function (`evalQueryPreludeParts`): a media/container prelude is built as
+    // fragments so a [general-enclosed] group passes the normalizer as written;
+    // the supports normalizer became the shared `normalizePreludeParts`.
+    expect(occurrences(/^function |^async function /gmu)).toBe(474);
+    expect(occurrences(/new Map/gu)).toBe(71);
+    expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

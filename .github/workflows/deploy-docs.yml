@@ -1,0 +1,96 @@
+name: Deploy Jess docs
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-jess-docs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and publish jesscss.github.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: https://jesscss.github.io/
+    steps:
+      - name: Checkout Jess source
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: source/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: source/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: source
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate canonical docs content
+        working-directory: source
+        run: pnpm run docs:content:validate
+
+      - name: Build Jess docs
+        working-directory: source
+        run: pnpm run docs:jess:build
+
+      - name: Record source revision
+        run: printf '%s\n' "$GITHUB_SHA" > source/packages/docs/docs-jess/build/deploy-revision.txt
+
+      - name: Checkout Pages repository
+        uses: actions/checkout@v4
+        with:
+          repository: jesscss/jesscss.github.io
+          ref: master
+          path: site
+          ssh-key: ${{ secrets.JESS_DOCS_DEPLOY_KEY }}
+
+      - name: Publish generated site
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          rsync -a --delete --exclude='.git/' source/packages/docs/docs-jess/build/ site/
+          cd site
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          if git diff --cached --quiet; then
+            echo "The public site already contains ${SOURCE_SHA}"
+          else
+            git commit -m "Deploy website - based on ${SOURCE_SHA}"
+            git push origin HEAD:master
+          fi
+
+      - name: Verify public revision
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          for attempt in {1..30}; do
+            published_sha="$(curl --fail --silent --show-error --max-time 10 \
+              https://jesscss.github.io/deploy-revision.txt || true)"
+            if [[ "$published_sha" == "$SOURCE_SHA" ]]; then
+              echo "Published ${SOURCE_SHA}"
+              exit 0
+            fi
+            echo "Waiting for GitHub Pages (${attempt}/30)"
+            sleep 10
+          done
+          echo "GitHub Pages did not publish ${SOURCE_SHA} within five minutes" >&2
+          exit 1

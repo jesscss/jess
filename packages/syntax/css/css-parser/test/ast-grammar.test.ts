@@ -21,6 +21,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
 function parseAst(input: string): Stylesheet {
   const result = run(cssGrammar.Stylesheet, input, {
     trivia: cssGrammar.whitespace,
+    state: { source: input },
     rootTrivia: { select: commentTriviaLabels }
   });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
@@ -898,6 +899,94 @@ describe('CSS canonical-AST grammar', () => {
     ]) {
       expect(() => parseAst(malformed), malformed).toThrow('CSS AST grammar did not consume the document');
     }
+  });
+
+  it('reads each first-token arm of a query feature once, with a structured general-enclosed after a routed bound', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const call = (name: string, arg: unknown) => ({ type: 'FunctionCall', name, args: [{ value: arg }] });
+    const kw = (src: string) => ({ type: 'Keyword', src });
+
+    /*
+     * A function or unicode-range first bound that is not a range is
+     * `<general-enclosed>` (media-queries-4 §3.1): the bound as parsed, then
+     * the rest of the contents as values.
+     */
+    for (const prelude of ['@supports', '@container', '@media']) {
+      expect(preludeOf(`${prelude} (foo(x) bar) { a { b: c } }`), prelude).toMatchObject(
+        paren({ type: 'Sequence', parts: [call('foo', kw('x')), kw('bar')] })
+      );
+    }
+    expect(preludeOf('@supports (U+0-7F) { a { b: c } }')).toMatchObject(paren({ type: 'Any', src: 'U+0-7F' }));
+    expect(preludeOf('@supports (foo(x) < 5px) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [call('foo', kw('x')), { type: 'Any', src: '<' }, { type: 'Dimension', src: '5px' }] })
+    );
+
+    /* Contents the value grammar does not read stay the raw general-enclosed text. */
+    expect(preludeOf('@supports (foo(x) {a}) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Interpolation', parts: [{ lit: 'foo(x) {a}' }] })
+    );
+
+    expect(preludeOf('@media (U+0-7F < width) { a { b: c } }')).toMatchObject({
+      type: 'Block', delimiter: 'paren',
+      value: { type: 'Operation', operator: '<', left: { type: 'Any', src: 'U+0-7F' }, right: { type: 'Keyword', src: 'width' } }
+    });
+
+    /* An escaped `\(` ends a name, not a function opener. */
+    expect(preludeOf('@media (a\\(: 1) { a { b: c } }')).toMatchObject({
+      type: 'Block', delimiter: 'paren',
+      value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'a\\(' }, right: { type: 'Dimension', src: '1' } }
+    });
+  });
+
+  /*
+   * media-queries-4 §3: `<media-in-parens> = ( <media-condition> ) | <media-feature> | <general-enclosed>`,
+   * and `<media-condition> = <media-not> | <media-in-parens> [ <media-and>* | <media-or>* ]`.
+   */
+  it('parses a parenthesized media condition inside a media query', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const kw = (src: string) => ({ type: 'Keyword', src });
+    const feature = (name: string, src: string) => paren({ type: 'Operation', operator: ':', left: kw(name), right: { type: 'Dimension', src } });
+
+    expect(preludeOf('@media ((min-width: 1px) and (max-width: 2px)) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [feature('min-width', '1px'), kw('and'), feature('max-width', '2px')] })
+    );
+    expect(preludeOf('@media screen and ((color) or (hover)) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [kw('screen'), kw('and'), paren({ type: 'Sequence', parts: [paren(kw('color')), kw('or'), paren(kw('hover'))] })]
+    });
+    expect(preludeOf('@media (not (color)) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [kw('not'), paren(kw('color'))] })
+    );
+    expect(preludeOf('@media (((color))) { a { b: c } }')).toMatchObject(paren(paren(paren(kw('color')))));
+
+    /* `not` is still a feature name where no parenthesized condition follows it. */
+    expect(preludeOf('@media (not) { a { b: c } }')).toMatchObject(paren(kw('not')));
+
+    /* `not(` glued is a function token (css-syntax-3 §4.3.4), not a negation. */
+    expect(preludeOf('@media (not(a)) { a { b: c } }')).toMatchObject(paren({ type: 'FunctionCall', name: 'not' }));
+
+    /*
+     * A container or supports condition keeps its own owner for a nested group:
+     * the media condition does not take `(not (style(…)))` from
+     * `ContainerQueryInParens`, whose atoms read `style()` as general-enclosed.
+     */
+    const styleQuery = paren({ type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Interpolation', parts: [{ lit: '--x: 1' }] } }] });
+    expect(preludeOf('@container (width > 1px) and (not (style(--x: 1))) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block' }, kw('and'), paren({ type: 'Sequence', parts: [kw('not'), styleQuery] })]
+    });
+    expect(preludeOf('@container (a) and ((style(--x: 1)) or (b)) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block' }, kw('and'), paren({ type: 'Sequence', parts: [styleQuery, kw('or'), paren(kw('b'))] })]
+    });
   });
 
   it('keeps public supports-condition comments local to the typed condition grammar', () => {

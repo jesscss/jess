@@ -103,6 +103,26 @@ describe('@jesscss/less-parser/cst', () => {
     }
   });
 
+  it('keeps plain and escaped variable names as one authored-source leaf', () => {
+    for (const [input, name] of [
+      ['@foo: red;', 'foo'],
+      ['@f\\6fo: red;', 'f\\6fo'],
+      ['@-f\\6fo: red;', '-f\\6fo'],
+      ['@-\\61: red;', '-\\61'],
+      ['@--\\61: red;', '--\\61'],
+      ['@-\\66 oo: red;', '-\\66 oo'],
+      ['@\\31 foo: red;', '\\31 foo']
+    ] as const) {
+      const result = parseLessCst(input);
+      const variable = findNode(result.tree, 'VariableName');
+
+      expect(variable, input).toBeDefined();
+      expect(variable?.rules, input).toHaveLength(2);
+      expect(variable?.rules.every(child => child._tag === 'leaf'), input).toBe(true);
+      expect(variable === undefined ? [] : leafValues(variable), input).toEqual(['@', name]);
+    }
+  });
+
   it('ignores trailing Less trivia but reports a non-trivia tail', () => {
     const trailingTrivia = parseLessCst('@color: red; .x { color: @color; }\n// trailing\n');
     const trailingJunk = parseLessCst('@color: red; .x { color: @color; } ???');
@@ -522,8 +542,12 @@ describe('Less direct-AST closure CST contract', () => {
       ['@media (min-width: 1px) { .card { color: red; } }', 'QueryColonFeature'],
       ['@media (width >= 1px) { .card { color: red; } }', 'QueryComparisonFeature'],
       ['@media (1px <= width) { .card { color: red; } }', 'QueryRangeFeature'],
-      ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
-      ['@container (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature']
+      ['@media ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
+      ['@media (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature'],
+
+      /* A container group is the css base's `( <container-condition> )`. */
+      ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'ContainerQueryCondition'],
+      ['@container (not (height > 670px)) { .card { color: red; } }', 'ContainerQueryInParens']
     ];
 
     for (const [source, grammarType] of cases) {

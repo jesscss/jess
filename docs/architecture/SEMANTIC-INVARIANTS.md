@@ -126,7 +126,10 @@ divergences. This is roughly one fixture and one test file. Today the repo has
 **no test asserting anything about value-vs-position byte behavior** — the only
 one that ever existed asserted the divergence and was deleted.
 **STATUS: BUILDABLE.** Known violations: 1 documented (S1) + 2 undocumented
-riders on it + 1 cross-dialect (S3).
+riders on it + 1 cross-dialect (S3), plus one at-rule split that predates
+ledger N14: a lone general-enclosed bound keeps its padding in `@media ( foo(x) )`
+(the whole `<media-in-parens>` is the group) but is normalized to `(foo(x))` in
+`@container`, whose `ContainerQueryInParens` wraps it in an unmarked block.
 
 ## 3. A policy has one owner
 
@@ -192,7 +195,11 @@ recorded as unimplemented. There is no cross-dialect harness in the repo today:
 of the three test files importing more than one parser, none feeds one input to
 all four, and `test/ast-shape/shape-stability.test.ts` — the closest thing —
 imports only three parsers and uses **per-dialect disjoint corpora**.
-**STATUS: BUILDABLE.** Known violations: 2 (S3, S4).
+**STATUS: BUILDABLE.** Known violations: 3 (S3, S4, and jess#315: css reads a
+`@media`/`@container`/`@supports` `<general-enclosed>` group as structure,
+accepts general-enclosed `@media` features and prints a function-form one as
+written (`@media foo(x:y)`), while SCSS, `.jess` and non-converged Less read
+or reject them as text and SCSS still spaces `foo(x: y)` — ledger N14, P39).
 
 ## 5. Divergence is licensed by the dialect's own definition, and recorded where it is introduced
 

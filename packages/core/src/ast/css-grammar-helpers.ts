@@ -19,20 +19,33 @@
  */
 import {
   any,
+  block,
   cssBaseMathOutsideParens,
+  interpolation,
+  keyword,
   operation,
   selectorBranchCanonical,
+  spaced,
   selectorTermOf,
   selist
 } from './nodes.js';
-import { withValueLayout } from './provenance.js';
-import { semanticGapText } from './grammar-helpers.js';
+import { generalEnclosedSourceOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
+import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
+  AnonymousMixin,
   CompoundSelector,
   Declaration,
+  ExtendInstruction,
+  For,
+  ForBinding,
+  If,
   Interpolation,
   Keyword,
+  MixinCall,
+  MixinDefinition,
+  Param,
   Quoted,
+  Reference,
   Ruleset,
   SelectorBranch,
   SelectorList,
@@ -40,10 +53,15 @@ import type {
   SimpleSelector,
   SimpleToken,
   Statement,
+  StyleImport,
   ValueNode,
-  ValueSlot
+  ValueSlot,
+  While
 } from './nodes.js';
-import type { AtRuleBlock, UnknownAtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock } from './at-rule.js';
+import type { AstSourceSpan } from './provenance.js';
+import type { Token } from './grammar-helpers.js';
+import type { GuardNode } from './guard.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
 type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
@@ -339,6 +357,153 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
   return result;
 }
 
+/** A `<mf-value>`: one value, or a `<ratio>` (`16/9`) as the `/` Operation. */
+export function queryValueRatio(children: readonly unknown[]): ValueNode {
+  const values = valueChildren(children);
+  const numerator = values[0]!;
+  const denominator = values[1];
+  return denominator === undefined
+    ? numerator
+    : operation('/', numerator, denominator, false, cssBaseMathOutsideParens('/'));
+}
+
+/**
+ * A query feature's contents (`QueryFeatureContents`): a name alone, a name
+ * with `:` and a value, a name compared with one or two values, or a value
+ * compared with the name — the same Operations the four feature forms built.
+ */
+export function queryFeatureContents(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  const head = children[0];
+  if (isValue(head)) {
+    /* A lone value is no `<mf-plain>`/`<mf-range>`: the feature is general-enclosed. */
+    if (children.length === 1) {
+      return withAuthoredGeneralEnclosed(head, span, state);
+    }
+    if (children.length < 3 || isValueSlotValue(children[2])) {
+      return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
+    }
+
+    /* A value-first range: `value op name [op value]`. */
+    const property = keyword(tokenText(children[2]));
+    const operators = queryComparisonOperators(children);
+    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
+    if (operators.length > 1) {
+      const right = children[4];
+      if (!isValue(right)) {
+        throw new Error('CSS AST query range lost its trailing value');
+      }
+      result = operation(operators[1]!, result, right, false, cssBaseMathOutsideParens(operators[1]!));
+    }
+    return result;
+  }
+  const name = keyword(tokenText(head));
+  if (children.length === 1) {
+    return name;
+  }
+
+  /* `not <media-in-parens>`: the routed `not` and its parenthesized operand. */
+  if (isValue(children[1])) {
+    return spaced([name, children[1]]);
+  }
+  if (tokenText(children[1]) === ':') {
+    return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
+  }
+  return chainedQueryComparison(name, children);
+}
+
+/*
+ * A query feature's parenthesized group. When its contents are a structured
+ * `<general-enclosed>`, the whole group — parentheses and padding included —
+ * records its source bytes, so the emitter prints it as written.
+ */
+export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  const value = firstValue(children);
+  const group = block(value);
+
+  /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
+  return generalEnclosedSourceOf(value) === undefined || value.type === 'Block'
+    ? group
+    : withAuthoredGeneralEnclosed(group, span, state);
+}
+
+/*
+ * Condition functions a spec defines, which are therefore not
+ * `<general-enclosed>`: css-contain-3/5 `style()` and `scroll-state()`,
+ * css-conditional-4/5 `selector()`, `font-tech()` and `font-format()`.
+ * Each is defined for one at-rule only (`style()` in `@container`,
+ * `selector()` in `@supports`), but the exemption is by name in every
+ * query prelude: the reducers are shared across at-rules, so `@media
+ * style(--x:1)` is normalized too. Ledger N14 records this as an owner-pending
+ * scope choice.
+ */
+const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector', 'font-tech', 'font-format']);
+
+/*
+ * A function-form or parenthesized `<general-enclosed>` read as a template
+ * (`Enclosed`, a query function's scanned payload): it records its source
+ * bytes so the emitter prints it as written — unless it is a defined condition
+ * function. A template carrying the dialect's interpolation, which P16
+ * evaluates, is marked a template instead: substituted, then printed as written.
+ */
+export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
+  if (value.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(value.name.toLowerCase())) {
+    return value;
+  }
+  const payload = value.type === 'FunctionCall' ? value.args[0]?.value : value.type === 'Block' ? value.value : undefined;
+  if (isInterpolation(payload) && payload.parts.some(part => 'ref' in part)) {
+    return withGeneralEnclosedTemplate(value);
+  }
+  return withAuthoredGeneralEnclosed(value, span, state);
+}
+
+/*
+ * Record a structured `<general-enclosed>` value's source bytes: the slice of
+ * the parse input its span covers. The parse state carries the input; a run
+ * without it is a grammar wiring defect, so it throws rather than falling back
+ * to normalized, evaluated output.
+ */
+function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+  if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
+    throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
+  }
+  return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
+}
+
+/*
+ * `<general-enclosed>` after a routed bound (media-queries-4 §3.1): the bound,
+ * then whatever followed it, in order, as one sequence; a comparison token
+ * stays the authored delimiter. The query-prelude emitter joins it with single
+ * spaces, as it does every structured query feature.
+ */
+function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
+  return spaced(children.flatMap(child => isValueSlotValue(child) ? slotParts(child) : [any(tokenText(child))]));
+}
+
+/** The values of a component-value slot, in order: a multi-part slot is its parts. */
+function slotParts(slot: ValueSlot): ValueNode[] {
+  return isValueSlotArray(slot) ? slot.flatMap(slotParts) : [slot];
+}
+
+/**
+ * A `not`/`and`/`or` chain of parenthesized query operands (media-queries-4
+ * `<media-condition>`, css-contain-3 `<container-condition>`): the operands,
+ * with each combinator word kept as a keyword. One operand is itself.
+ */
+export function queryConditionChain(children: readonly unknown[]): ValueNode {
+  const values: ValueNode[] = [];
+  for (const child of children) {
+    if (isValue(child)) {
+      values.push(child);
+    } else {
+      const normalized = tokenText(child).toLowerCase();
+      if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
+        values.push(keyword(tokenText(child)));
+      }
+    }
+  }
+  return values.length === 1 ? values[0]! : spaced(values);
+}
+
 export function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {
   return isNodeType(
     value,
@@ -576,4 +741,308 @@ export function blockStatements(children: readonly unknown[]): Statement[] {
 export function keyframeSelectorList(children: readonly unknown[]): SelectorList {
   const selectors = children.filter(isSimple);
   return selist(...selectors);
+}
+
+/*
+ * Reducer helpers the preprocessor dialects share. Each was written once per
+ * dialect in that dialect's own `grammar-helpers.ts`.
+ *
+ * - A helper that differed only in the dialect name inside its error message
+ *   takes that name as `dialect`, so the message an author sees is unchanged.
+ * - A helper that differed only in the value predicate it recurses into takes
+ *   that predicate as `isOperand`: the dialects' value sets genuinely differ,
+ *   so the predicate stays theirs and only the structure is shared.
+ * - A type guard checks the node's tag. The dialect copies also re-checked
+ *   fields that every core constructor always sets; on the scss and jess
+ *   corpora and suites the two checks never disagreed.
+ */
+
+export function isAtRuleStatement(value: unknown): value is AtRuleStatement {
+  return isNodeType(
+    value,
+    'AtRuleStatement'
+  );
+}
+
+export function isMixinDefinition(value: unknown): value is MixinDefinition {
+  return isNodeType(
+    value,
+    'MixinDefinition'
+  );
+}
+
+export function isMixinCall(value: unknown): value is MixinCall {
+  return isNodeType(
+    value,
+    'MixinCall'
+  );
+}
+
+export function isStyleImport(value: unknown): value is StyleImport {
+  return isNodeType(
+    value,
+    'StyleImport'
+  );
+}
+
+export function isAnonymousMixin(value: unknown): value is AnonymousMixin {
+  return isNodeType(
+    value,
+    'AnonymousMixin'
+  );
+}
+
+export function isReference(value: unknown): value is Reference {
+  return isNodeType(
+    value,
+    'Reference'
+  );
+}
+
+export function isQuoted(value: unknown): value is Quoted {
+  return isNodeType(
+    value,
+    'Quoted'
+  );
+}
+
+export function isFor(value: unknown): value is For {
+  return isNodeType(
+    value,
+    'For'
+  );
+}
+
+export function isIf(value: unknown): value is If {
+  return isNodeType(
+    value,
+    'If'
+  );
+}
+
+export function isWhile(value: unknown): value is While {
+  return isNodeType(
+    value,
+    'While'
+  );
+}
+
+/*
+ * A mixin parameter is the one param-shaped reduction a grammar produces: it
+ * carries no `type` tag, which is what tells it apart from every AST node, and
+ * it has at least one of the three fields a `Param` is made of.
+ */
+export function isParam(value: unknown): value is Param {
+  return typeof value === 'object'
+    && value !== null
+    && !('type' in value)
+    && ('name' in value || 'pattern' in value || 'rest' in value);
+}
+
+/** A parameter list; an empty list is still one. */
+export function isParamArray(value: unknown): value is Param[] {
+  return Array.isArray(value) && value.every(isParam);
+}
+
+export function isExtendInstruction(value: unknown): value is ExtendInstruction {
+  return typeof value === 'object'
+    && value !== null
+    && 'target' in value
+    && isSelectorList(value.target)
+    && 'partial' in value
+    && typeof value.partial === 'boolean';
+}
+
+export function requireToken(value: unknown, dialect: string): Token {
+  if (!isToken(value)) {
+    throw new TypeError(`${dialect} grammar produced a non-token child.`);
+  }
+  return { value: value.value };
+}
+
+export function requireString(value: unknown, dialect: string): string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`${dialect} grammar produced a non-string child.`);
+  }
+  return value;
+}
+
+export function requireForBinding(value: unknown, dialect: string): ForBinding {
+  if (!isForBinding(value)) {
+    throw new TypeError(`${dialect} grammar produced an invalid for binding.`);
+  }
+  return value;
+}
+
+export function requireInterpolation(value: unknown, dialect: string): Interpolation {
+  if (!isInterpolation(value)) {
+    throw new TypeError(`${dialect} grammar produced a non-interpolation child.`);
+  }
+  return value;
+}
+
+export function requireSelectorList(value: unknown, dialect: string): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError(`${dialect} grammar produced a non-selector-list child.`);
+  }
+  return value;
+}
+
+/** A value slot: one value, or an authored array of slots, each accepted by `isOperand`. */
+export function isValueSlotOf(value: unknown, isOperand: (value: unknown) => value is ValueNode): value is ValueSlot {
+  if (!Array.isArray(value)) {
+    return isOperand(value);
+  }
+  for (const item of value) {
+    if (!isValueSlotOf(
+      item,
+      isOperand
+    )) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** A guard tree whose operands `isOperand` accepts. */
+export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => value is ValueNode): value is GuardNode {
+  if (typeof value !== 'object' || value === null || !('g' in value)) {
+    return false;
+  }
+  switch (value.g) {
+    case 'default':
+      return true;
+    case 'truth':
+      return 'value' in value && isOperand(value.value);
+    case 'cmp':
+    case 'match':
+      return 'op' in value && typeof value.op === 'string'
+        && 'left' in value && isOperand(value.left)
+        && 'right' in value && isOperand(value.right);
+    case 'call':
+      return 'name' in value && typeof value.name === 'string'
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isOperand);
+    case 'not':
+      return 'inner' in value && isGuardNodeOf(
+        value.inner,
+        isOperand
+      );
+    case 'and':
+    case 'or':
+      return 'left' in value && isGuardNodeOf(
+        value.left,
+        isOperand
+      )
+      && 'right' in value && isGuardNodeOf(
+        value.right,
+        isOperand
+      );
+    default:
+      return false;
+  }
+}
+
+export function requireGuardNodeOf(value: unknown, isOperand: (value: unknown) => value is ValueNode, dialect: string): GuardNode {
+  if (!isGuardNodeOf(
+    value,
+    isOperand
+  )) {
+    throw new TypeError(`${dialect} grammar produced a non-guard child.`);
+  }
+  return value;
+}
+
+/** Append literal text, merging it into a trailing literal part. */
+export function appendInterpolationLiteral(parts: Interpolation['parts'], text: string): void {
+  const previous = parts[parts.length - 1];
+  if (previous !== undefined && 'lit' in previous) {
+    parts[parts.length - 1] = { lit: previous.lit + text };
+  } else {
+    parts.push({ lit: text });
+  }
+}
+
+/** Flatten a grammar-owned raw template without ever reparsing its bytes. */
+export function interpolationFromTemplateChildren(children: readonly unknown[], dialect: string): Interpolation {
+  const parts: Interpolation['parts'] = [];
+  for (const child of children) {
+    if (isInterpolation(child)) {
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendInterpolationLiteral(
+            parts,
+            part.lit
+          );
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendInterpolationLiteral(
+        parts,
+        requireToken(
+          child,
+          dialect
+        ).value
+      );
+    }
+  }
+  return interpolation(parts);
+}
+
+/**
+ * Flatten the grammar-owned parts of a custom-property value. Custom-property
+ * values are never evaluated, so every byte outside a typed interpolation stays
+ * literal `<declaration-value>` text and the reduction only joins grammar
+ * children — it never rescans source. Nested balanced groups arrive as nested
+ * arrays from the paren/square/curly productions.
+ */
+export function appendCustomValueParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }, dialect: string): void {
+  for (const child of children) {
+    if (Array.isArray(child)) {
+      appendCustomValueParts(
+        child,
+        parts,
+        seen,
+        dialect
+      );
+    } else if (isInterpolation(child)) {
+      seen.interpolated = true;
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendInterpolationLiteral(
+            parts,
+            part.lit
+          );
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendInterpolationLiteral(
+        parts,
+        requireToken(
+          child,
+          dialect
+        ).value
+      );
+    }
+  }
+}
+
+/** Reduce a whole custom-property value to `Interpolation` (when it carries an
+ * interpolation) or to verbatim `Any` text. */
+export function customValueFromChildren(children: readonly unknown[], dialect: string): ValueNode {
+  const parts: Interpolation['parts'] = [];
+  const seen = { interpolated: false };
+  appendCustomValueParts(
+    children,
+    parts,
+    seen,
+    dialect
+  );
+  if (seen.interpolated) {
+    return interpolation(parts);
+  }
+  return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
 }
