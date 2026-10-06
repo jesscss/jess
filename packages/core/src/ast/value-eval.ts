@@ -385,10 +385,15 @@ export const delimiterClose = (delimiter: Block['delimiter']): string =>
  * always takes the glue. A `;` group the author left empty
  * (`if(media(print): 1px;)`) keeps its delimiter but not the space that would
  * only precede a value, so `next` (the following item's bytes) is consulted
- * when the caller has it.
+ * when the caller has it. Between the members of a space-separated group, a run
+ * with no whitespace in it (a glued `/`, SCSS `local(Foo/Bar)`) is the value's
+ * own spelling, not layout, so it is written as authored in every mode, as
+ * {@link authoredSpace} writes it in a declaration.
  */
 export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean, next?: string): string =>
-  !compress && authored !== undefined && runReplays(authored) ? replayedRun(authored, glue) : next === '' && glue === '; ' ? ';' : glue;
+  authored !== undefined && glue === ' ' && !/\s/u.test(authored)
+    ? authored
+    : !compress && authored !== undefined && runReplays(authored) ? replayedRun(authored, glue) : next === '' && glue === '; ' ? ';' : glue;
 
 /** Whether pretty output replays an authored run between two items: it carries a line break or a block comment. */
 export const runReplays = (authored: string): boolean => /[\r\n]|\/\*/u.test(authored);

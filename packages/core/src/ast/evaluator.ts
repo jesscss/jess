@@ -46,7 +46,7 @@ function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly A
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
     const argument = authored[index];
-    const members = compress || argument === undefined || !Array.isArray(argument.value) ? undefined : valueLayoutOf(argument.value);
+    const members = argument === undefined || !Array.isArray(argument.value) ? undefined : valueLayoutOf(argument.value);
     const bytes = members !== undefined && isValueGroupArray(item)
       ? joinGroup(item, ' ', emit, members, compress)
       : emit(item);

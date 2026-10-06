@@ -65,6 +65,16 @@ describe('scss plugin render-through', () => {
     expect(css.slice(0, css.indexOf(' {'))).toBe(prelude);
   });
 
+  /*
+   * A glued `/` between words in a function argument is part of the value, as in a
+   * declaration (`b: c/d`): a call written out as-is keeps it (dart-sass writes
+   * `local(Foo/Bar/Baz)`); it used to become a space.
+   */
+  it('keeps a glued slash between words in a written-out call', async () => {
+    const css = await new Compiler().renderString('@font-face { src: local(Foo/Bar/Baz); } a { b: foo(c/d) e/f; }', { extension: '.scss' });
+    expect(css).toBe('@font-face {\n  src: local(Foo/Bar/Baz);\n}\na {\n  b: foo(c/d) e/f;\n}\n');
+  });
+
   it('honors an explicitly configured scss plugin', async () => {
     const compiler = new Compiler({
       compile: { plugins: [scssPlugin()] }
