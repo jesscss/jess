@@ -1738,6 +1738,23 @@ function isBodyExtendFact(value: unknown): value is BodyExtendFact {
     && value.bodyExtensions.every(isExtendInstruction);
 }
 
+const NO_BODY_EXTENSIONS: readonly ExtendInstruction[] = [];
+
+/**
+ * The body-form `&:extend()`s among a ruleset or mixin-definition body's reduced
+ * children, in source order; the shared empty list when the body has none, so a body
+ * without one allocates nothing.
+ */
+function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruction[] {
+  let out: ExtendInstruction[] | undefined;
+  for (const child of children) {
+    if (isBodyExtendFact(child) && child.bodyExtensions.length !== 0) {
+      (out ??= []).push(...child.bodyExtensions);
+    }
+  }
+  return out ?? NO_BODY_EXTENSIONS;
+}
+
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
   return typeof value === 'object' && value !== null
     && 'selector' in value && isLessSelectorBranch(value.selector)
@@ -1759,7 +1776,8 @@ function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWit
 function isMixinDefinitionFact(value: unknown): value is MixinDefinitionFact {
   return typeof value === 'object' && value !== null
     && 'params' in value && Array.isArray(value.params) && value.params.every(isParam)
-    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement);
+    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement)
+    && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
 }
 
 function isMixinCallFact(value: unknown): value is MixinCallFact {
@@ -2381,6 +2399,7 @@ export {
   isAtRuleBlock,
   isAtRuleStatement,
   isBareMixinCallFact,
+  bodyExtensionsOf,
   isBodyExtendFact,
   isComplex,
   isComplexTailFact,
