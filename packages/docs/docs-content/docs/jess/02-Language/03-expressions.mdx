@@ -71,3 +71,20 @@ width: $($w + 1px);
 
 Use a variable reference inside the expression. Do not write unwrapped arithmetic
 such as `$w + 1px`.
+
+## Units
+
+An expression computes with units. A unitless number added to or subtracted
+from a dimension takes the dimension's unit, and like units cancel:
+
+```less
+value: $(1 + 2px);       // 3px
+value: $(2px * 3);       // 6px
+value: $(2px / 1px);     // 2
+value: $(1px * 1px / 1px); // 1px
+```
+
+A result whose unit CSS cannot express — an area such as `$(1px * 2px)` or a
+reciprocal such as `$(1 / 2px)` — is an error. `.jess` has one behaviour here:
+the `unitMode` compile option is a Less compatibility setting and does not
+change `.jess` output.

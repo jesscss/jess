@@ -15,7 +15,9 @@
  * name the mode they assert rather than assuming one answer.
  */
 import { describe, expect, it } from 'vitest';
-import { operate, validateFinalUnits } from '../value-operate.js';
+import { groupAsWritten, operate, preservedUnitClashes, validateFinalUnits } from '../value-operate.js';
+import { buildEvaluator } from '../evaluator.js';
+import { createFnRegistry } from '../value-dispatch.js';
 import { makeBlock, makeDimension, makeList } from '../value-factory.js';
 import { UnitArithmeticError } from '../value-eval.js';
 import type { EvalModes, Value } from '../value-eval.js';
@@ -226,5 +228,67 @@ describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7;
     const squared = operate('*', dim(1, 'px'), dim(2, 'px'), STRICT);
     const mixed = operate('*', dim(3, 'em'), dim(3, 'px'), STRICT);
     expect(() => operate('+', squared, mixed, STRICT)).toThrow('Bad units: \'px*px\' and \'em*px\'.');
+  });
+});
+
+/*
+ * Owner 2026-10-06 (ledger P35): a unitless number added to or subtracted from a
+ * dimension with a unit computes ONLY under `loose`. `preserve` keeps the math
+ * as written, and not as `calc(…)`: css-values-4 §10.9 rejects
+ * `<number> + <length>` inside calc() too.
+ */
+describe('a unitless number ± a dimension with a unit', () => {
+  it('computes only under loose; preserve keeps it as written, outside calc(), and registers the clash', () => {
+    expect(bytesOf('+', dim(4), dim(3, 'px'), LOOSE)).toBe('7px');
+    expect(bytesOf('-', dim(3, 'px'), dim(1), LOOSE)).toBe('2px');
+
+    expect(bytesOf('+', dim(4), dim(3, 'px'))).toBe('4 + 3px');
+    expect(bytesOf('-', dim(3, 'px'), dim(1))).toBe('3px - 1');
+    expect(bytesOf('+', dim(0), dim(10, 'px'))).toBe('0 + 10px');
+    expect(bytesOf('+', dim(10), dim(5, '%'))).toBe('10 + 5%');
+    expect(preservedUnitClashes.has(operate('+', dim(4), dim(3, 'px'), PRESERVE))).toBe(true);
+  });
+
+  it('strict raises it', () => {
+    expect(() => operate('+', dim(4), dim(3, 'px'), STRICT)).toThrow(UnitArithmeticError);
+    expect(() => operate('-', dim(3, 'px'), dim(1), STRICT)).toThrow(UnitArithmeticError);
+  });
+
+  it('two unitless numbers, and * or / by one, are not affected', () => {
+    for (const m of [LOOSE, PRESERVE, STRICT]) {
+      expect(bytesOf('+', dim(4), dim(3), m)).toBe('7');
+      expect(bytesOf('*', dim(2, 'px'), dim(3), m)).toBe('6px');
+      expect(bytesOf('/', dim(6, 'px'), dim(2), m)).toBe('3px');
+    }
+  });
+
+  it('a compound operand has no CSS unit to adopt and keeps the V18 calc() spelling', () => {
+    const ratio = operate('/', dim(2, 'em'), dim(1, 'px'), PRESERVE);
+    expect(bytesOf('+', ratio, dim(20))).toBe('calc(2em / 1px + 20)');
+  });
+
+  it('a dialect whose unitless operand adopts the unit computes it in every mode', () => {
+    const sass = buildEvaluator(createFnRegistry(), { unitlessAdoptsUnit: true });
+    for (const m of [LOOSE, PRESERVE, STRICT]) {
+      expect(sass.operate('+', dim(4), dim(3, 'px'), m).bytes).toBe('7px');
+    }
+    expect(buildEvaluator(createFnRegistry()).operate('+', dim(4), dim(3, 'px'), PRESERVE).bytes).toBe('4 + 3px');
+  });
+
+  it('an authored paren group keeps its parens around the kept math, and only there', () => {
+    const kept = operate('+', dim(4), dim(3, 'px'), PRESERVE);
+    const grouped = groupAsWritten(kept);
+    expect(grouped.bytes).toBe('(4 + 3px)');
+
+    // The chain stays one clash, so the boundary still warns about it.
+    const scaled = operate('*', grouped, dim(2), PRESERVE);
+    expect(scaled.bytes).toBe('(4 + 3px) * 2');
+    expect(preservedUnitClashes.has(scaled)).toBe(true);
+
+    // A computed value and a self-delimiting calc() spelling are one value.
+    const computed = dim(7, 'px');
+    expect(groupAsWritten(computed)).toBe(computed);
+    const calc = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE);
+    expect(groupAsWritten(calc)).toBe(calc);
   });
 });

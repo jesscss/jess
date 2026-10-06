@@ -318,7 +318,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function: a paren group around kept math or raw bytes keeps its own
     // parens in both value lanes (`isInertGroup`), so a group that is a whole
     // function argument inside a math function is no longer dropped.
-    expect(occurrences(/^function |^async function /gmu)).toBe(539);
+    // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
+    // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
+    // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
+    expect(occurrences(/^function |^async function /gmu)).toBe(540);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
