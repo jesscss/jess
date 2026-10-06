@@ -1418,6 +1418,12 @@ export interface For extends AuthoredCallSlot, BodySpanSlots {
   readonly iterable: ValueSlot | MixinCall;
   readonly rules: Statement[];
   readonly binding: ForBinding;
+
+  /**
+   * The body-form `&:extend()`s of a Less `each()` callback: each iteration's body
+   * extends the rule it lands in, as a detached ruleset's does (ledger X19).
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
 }
 
 /** One ordered arm of a Jess `$if` chain. A null guard is the final `$else`. */
@@ -1689,8 +1695,18 @@ export const forNode = (
   iterable: ValueSlot | MixinCall,
   rules: Statement[],
   binding: ForBinding,
-  asCall: FunctionCall | null = null
-): For => ({ type: 'For', iterable, rules, binding, _asCall: asCall, _bs: NO_SPAN, _be: NO_SPAN });
+  asCall: FunctionCall | null = null,
+  extendInstructions?: readonly ExtendInstruction[]
+): For => ({
+  type: 'For',
+  iterable,
+  rules,
+  binding,
+  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
+  _asCall: asCall,
+  _bs: NO_SPAN,
+  _be: NO_SPAN
+});
 export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]], asCall: FunctionCall | null = null): If =>
   ({ type: 'If', branches, _asCall: asCall });
 export const whileNode = (guard: GuardNode, rules: Statement[]): While => ({ type: 'While', guard, rules });

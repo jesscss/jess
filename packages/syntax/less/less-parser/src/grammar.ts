@@ -3460,12 +3460,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // with a combinator (`> td { … }`). Only `Stylesheet` keeps the absolute
   // `guardedRuleset`, where a leading combinator stays an error.
   const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.FunctionStatement, declarationItem, literal(';'));
+  // A body-form `&:extend()` in either container extends the rule each call or
+  // iteration lands in (ledger X19).
+  const detachedBody = many(choice(g.BodyStatement, g.ExtendStatement));
   const ValueBlock = node(
     'ValueBlock',
-    sequence(literal('{'), many(choice(g.BodyStatement, g.ExtendStatement)), optional(g.Call), literal('}')),
+    sequence(literal('{'), detachedBody, optional(g.Call), literal('}')),
     /* The braces are the node's first and last tokens, so its own span gives the
-     * body span (where its comments are) with no raw-children capture. A body-form
-     * `&:extend()` extends the rule each call lands in (ledger X19). */
+     * body span (where its comments are) with no raw-children capture. */
     (children, _fields, span) => {
       const extensions = bodyExtensionsOf(children);
       const body = extensions.length === 0 ? children : children.filter(child => !isBodyExtendFact(child));
@@ -3491,7 +3493,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       sequence(
         literal('{'),
-        many(g.BodyStatement),
+        detachedBody,
         optional(g.Call),
         literal('}')
       ),
@@ -3501,7 +3503,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         eachCallbackSigil, literal('('), g.EachName,
         optional(sequence(commaOrSemicolon, g.EachName, optional(sequence(commaOrSemicolon, g.EachName)))),
         literal(')'), literal('{'),
-        many(g.BodyStatement),
+        detachedBody,
         optional(g.Call),
         literal('}')
       )
@@ -3509,10 +3511,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     /* The body span, inside the callback's own braces, is where its comments are. */
     (children, _fields, _span, rawChildren): LessEachCallback => {
       const bodySpan = bodySpanFromRaw(rawChildren);
+      const extensions = bodyExtensionsOf(children);
+      const statements = (from: number): Statement[] => requireCallbackStatements(
+        extensions.length === 0 ? children.slice(from, -1) : children.slice(from, -1).filter(child => !isBodyExtendFact(child))
+      );
       if (requireToken(children[0]).value === '{') {
         return {
           binding: { kind: 'comma', names: ['value', 'key', 'index'] },
-          rules: requireCallbackStatements(children.slice(1, -1)),
+          rules: statements(1),
+          extensions,
           bodySpan
         };
       }
@@ -3521,14 +3528,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (bodyStart < 0) {
         throw new TypeError('Less grammar produced a named each() callback without a body.');
       }
-      const body = requireCallbackStatements(children.slice(bodyStart + 1, -1));
+      const body = statements(bodyStart + 1);
       if (names.length === 1) {
-        return { binding: { kind: 'single', name: names[0]! }, rules: body, bodySpan };
+        return { binding: { kind: 'single', name: names[0]! }, rules: body, extensions, bodySpan };
       }
       if (names.length === 2 || names.length === 3) {
         return {
           binding: { kind: 'comma', names: [names[0]!, names[1]!, names[2]] },
           rules: body,
+          extensions,
           bodySpan
         };
       }
@@ -3575,12 +3583,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const close = rawChildren.findLast(child => isSpannedToken(child) && child.value === ')');
       const asCall = withSourceSpan(
         withFunctionScope(
-          funcCall(functionNameFromOpener(children[0]), [iterable, classifyValueBlock(callback.rules)].filter(isLessValueSlotValue)),
+          funcCall(functionNameFromOpener(children[0]), [iterable, classifyValueBlock(callback.rules, callback.extensions)].filter(isLessValueSlotValue)),
           functionScopeOf(state)
         ),
         { start: span.start, end: isSpannedToken(close) ? close.span.end : span.end }
       );
-      const loop = forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall);
+      const loop = forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall, callback.extensions);
       return callback.bodySpan === undefined ? loop : withBodySpan(loop, callback.bodySpan);
     }
   );

@@ -205,6 +205,23 @@ describe('Less mixin semantic contracts through the public AST route', () => {
   });
 
   /*
+   * An `each()` callback is a detached ruleset each iteration places, so its
+   * body-form extend extends the rule the iteration lands in (X19), once however many
+   * items there are (lessc 4.9.1 repeats the selector per pass: `.z, .y, .y`).
+   * Outside every rule it extends nothing.
+   */
+  it('applies a body-form extend in an each() callback (X19)', async () => {
+    for (const collapseNesting of [false, true]) {
+      await expect(parseAndRender('@l: a, b;\n.y { each(@l, { &:extend(.z); }); }\n.z { c: 3; }', collapseNesting))
+        .resolves.toBe('.z,\n.y {\n  c: 3;\n}\n');
+      await expect(parseAndRender('@l: a;\n.y { each(@l, .(@v) { &:extend(.z); w-@{v}: 1; }); }\n.z { c: 3; }', collapseNesting))
+        .resolves.toBe('.y {\n  w-a: 1;\n}\n.z,\n.y {\n  c: 3;\n}\n');
+      await expect(parseAndRender('@l: a;\neach(@l, { &:extend(.z); });\n.z { c: 3; }', collapseNesting))
+        .resolves.toBe('.z {\n  c: 3;\n}\n');
+    }
+  });
+
+  /*
    * A detached ruleset passed to a mixin — as an argument or a parameter's default —
    * is placed wherever the mixin calls it, so the extends in it apply there too (X19),
    * with nothing else in the sheet extending. lessc 4.9.1 gives the same output.

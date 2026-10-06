@@ -11754,14 +11754,15 @@ interface ExtendClass {
 
 /**
  * The body-form `&:extend()`s a statement carries for the render walk to apply wherever
- * its body lands (see {@link recordBodyExtends}): a mixin definition's (ledger X16) or
- * an at-rule block's (X19). A detached ruleset's are its own
+ * its body lands (see {@link recordBodyExtends}): a mixin definition's (ledger X16), an
+ * at-rule block's or an `each()` callback's (X19). A detached ruleset's are its own
  * ({@link heldAnonymousMixin}). Undefined for every other statement.
  */
 function walkAppliedExtends(st: Statement): readonly ExtendInstruction[] | undefined {
   switch (st.type) {
     case 'MixinDefinition':
     case 'AtRuleBlock':
+    case 'For':
       return st.extendInstructions;
     default:
       return undefined;
@@ -17695,6 +17696,9 @@ function expandFor(
         };
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
+        }
+        if (e.dynamicExtend !== null && node.extendInstructions !== undefined) {
+          recordBodyExtends(e.dynamicExtend, node.extendInstructions, e);
         }
         const bodyTrivia = bodySpan === undefined ? undefined : bodyTriviaReplay(node, e, bodySpan);
         const walked = mapMaybe(

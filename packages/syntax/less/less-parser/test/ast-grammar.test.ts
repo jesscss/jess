@@ -2998,23 +2998,26 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  /* A detached ruleset carries its body-form extend (ledger X19, above); an `each()` callback has no fact for one. */
-  it('keeps a standalone extend statement out of an each() callback body', () => {
+  /* An `each()` callback is a detached ruleset each iteration places: it carries its body-form extend as one does (ledger X19). */
+  it('carries a body-form extend in an each() callback on the loop', () => {
     for (const source of [
-      'each(1, { &:extend(.target); });'
+      'each(1, { &:extend(.target); c: d; });',
+      'each(1, .(@v) { c: d; &:extend(.target); });'
     ]) {
-      const cst = parseLessCst(source);
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
 
-      expect(cstIssueCount(cst), source).toBeGreaterThan(0);
-      expect(
-        result.ok
-        && result.unconsumedFrom === null
-        && isStylesheet(result.value),
-        source
-      ).toBe(false);
+      expect(cstIssueCount(parseLessCst(source)), source).toBe(0);
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      expect(result.value, source).toMatchObject({
+        type: 'Stylesheet',
+        rules: [{
+          type: 'For',
+          rules: [{ type: 'Declaration', name: 'c' }],
+          extendInstructions: [{ target: { selectors: [{ text: '.target' }] }, partial: false }]
+        }]
+      });
     }
   });
 

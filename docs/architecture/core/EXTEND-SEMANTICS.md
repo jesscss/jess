@@ -115,7 +115,9 @@ A body-form `&:extend()` parses in every braced Less statement body. One written
 in a mixin definition, a detached ruleset or an at-rule block is applied by the render walk
 where that body lands — the innermost open rule extends, at the walk's scope — so
 `@r: { &:extend(.sm); }; .x { @r(); }` gives `.sm, .x`, as does a detached ruleset passed
-to a mixin as an argument or a parameter default and called inside `.x`. For a detached
+to a mixin as an argument or a parameter default and called inside `.x`. An `each()`
+callback is a detached ruleset each iteration places: `.y { each(@l, { &:extend(.z); }); }`
+gives `.z, .y` (lessc 4.9.1 writes `.y` once per item). For a detached
 ruleset this is lessc 4.9.1's output (ledger X19). An at-rule block's extend is scoped to the
 block (§8): `.a { @media print { &:extend(.a .b); .b { c: 3; } } }` gives
 `@media print { .a .b, .a { … } }` while a top-level `.sm` stays unextended. lessc 4.9.1

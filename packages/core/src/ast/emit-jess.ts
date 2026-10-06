@@ -313,6 +313,9 @@ class JessPrinter {
       case 'Comment': return `${indent}${node.text}\n`;
       case 'Reference': return `${indent}${this.referenceCall(node)};\n`;
       case 'For': {
+        if (node.extendInstructions !== undefined) {
+          gap('ExtendInstruction', 'a body-form extend in an `each()` callback (ledger X19) has no `.jess` spelling yet');
+        }
         const b = node.binding;
 
         // `ForBinding`: `[$a, $b]`, or one to three comma names.
