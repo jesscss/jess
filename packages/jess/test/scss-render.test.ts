@@ -40,6 +40,10 @@ describe('scss plugin render-through', () => {
       .resolves.toBe('@media ((a) and (b)) {\n  x {\n    y: z;\n  }\n}\n');
     await expect(compiler.renderString('$q: "not (a)"; @media (#{$q}) { x { y: z; } }', { extension: '.scss' }))
       .resolves.toBe('@media (not (a)) {\n  x {\n    y: z;\n  }\n}\n');
+
+    // A string that interpolates is one `Quoted`, substituted the same way.
+    await expect(compiler.renderString('$q: x; @media (a "#{$q}") { x { y: z; } }', { extension: '.scss' }))
+      .resolves.toBe('@media (a "x") {\n  x {\n    y: z;\n  }\n}\n');
   });
 
   it('honors an explicitly configured scss plugin', async () => {

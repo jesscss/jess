@@ -531,23 +531,23 @@ export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaL
  * value from its flag only where trivia does, so no space is ever invented.
  */
 export function attributeSelectorFrom(children: readonly unknown[], triviaLog: readonly number[]): SimpleSelector {
-  if (!children.some(child => attributeTemplate(child) !== null)) {
+  if (!children.some(child => selectorTemplate(child) !== null)) {
     return simpleSelector(textWithTriviaGaps(children, triviaLog));
   }
 
   // A dialect's interpolating slot (SCSS `#{…}`): the rest stays literal text.
   return interpolatedSimpleSelector(interpolationFromTemplateChildren(
-    withTriviaGaps(children, triviaLog).map(part => attributeTemplate(part) ?? { value: sourceText(part) }),
+    withTriviaGaps(children, triviaLog).map(part => selectorTemplate(part) ?? { value: sourceText(part) }),
     'CSS'
   ));
 }
 
 /**
- * The template an attribute-selector child splices: an interpolation, or an
- * interpolating string (SCSS `[a="#{$x}"]`), whose quotes are attribute-value
+ * The template a selector child splices: an interpolation, or an interpolating
+ * string (SCSS `[a="#{$x}"]`, Less `:lang("@{l}")`), whose quotes are selector
  * syntax and so splice around its content.
  */
-function attributeTemplate(child: unknown): Interpolation | null {
+function selectorTemplate(child: unknown): Interpolation | null {
   if (isInterpolation(child)) {
     return child;
   }
@@ -665,9 +665,10 @@ export function languageRangeList(fields: ReducerFields | undefined): List | Int
   const ranges: Array<Keyword | Quoted | Interpolation> = [];
   let interpolated = false;
   for (const { value } of captures) {
-    if (isInterpolation(value)) {
+    const template = selectorTemplate(value);
+    if (template !== null) {
       interpolated = true;
-      ranges.push(value);
+      ranges.push(template);
     } else {
       ranges.push(isQuoted(value) ? value : keyword(tokenText(value)));
     }
@@ -1017,6 +1018,9 @@ export function authoredSource(span: AstSourceSpan, state: unknown, what: string
 function hasInterpolationRef(value: unknown): boolean {
   if (isInterpolation(value)) {
     return value.parts.some(part => 'ref' in part);
+  }
+  if (isQuoted(value)) {
+    return value.interp !== null && hasInterpolationRef(value.interp);
   }
   if (isNodeType(value, 'Sequence') && 'parts' in value && Array.isArray(value.parts)) {
     return value.parts.some(hasInterpolationRef);

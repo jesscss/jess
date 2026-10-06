@@ -4097,7 +4097,7 @@ involved.
   source-fact holes `ExpressionDollarBrace` / `ExpressionInterpolation`), the
   SCSS `Quoted` (`LiteralQuoted` | `InterpolatedQuoted`; the latter reads the
   parse input, now in SCSS parse state, through `authoredSource`) and
-  `ScssParseError` (an expected set names each token once); `css-grammar-helpers.ts` (`attributeTemplate`, `authoredSource`);
+  `ScssParseError` (an expected set names each token once); `css-grammar-helpers.ts` (`selectorTemplate`, `authoredSource`);
   `serialize.ts` (`evalTyped` `Quoted` / `Interpolation` / `Lookup` `prop` /
   `Any`, `evalValue` `Quoted` / `Url`, the query-prelude `Quoted`, the CSS
   import writer, `refGroupInterp`, `mergedPropertyValue`, `quotedContentSync`,
@@ -4127,8 +4127,9 @@ involved.
   once. No new walk on the render path.
 - New node/materialization: [materialized array/object] the typed merged
   property builds one list of its members (`eval-to-immediate-value`, consumed
-  by the typed position); `attributeTemplate` builds one template with the quote
-  literals at parse time (SCSS attribute selectors only); the jess reducer
+  by the typed position); `selectorTemplate` builds one template with the quote
+  literals at parse time (an attribute selector or a `:lang()` range whose
+  string interpolates); the jess reducer
   builds a template's parts with `flatMap` once at parse time. [side map/set]
   `snapshotValues` is one `WeakMap` per render entry (`semantic placement
   state`): it replaces the sniff of every typed snapshot read — 745 sniffs per
@@ -4138,7 +4139,7 @@ involved.
   typed, and spelled from that value (the compressed route's existing shape).
 - Helper/API surface: added `quotedFromChildren` (Less, jess — replaces two
   reducers each), `authoredSource` (shared with general-enclosed),
-  `attributeTemplate`, `templateLiteralText`, `mergedPropertyValue`,
+  `selectorTemplate`, `templateLiteralText`, `mergedPropertyValue`,
   `quotedContentSync`, `carrySnapshot`; deleted `escapedTemplate`,
   `materializeAny`, `ValueEvaluator.materialize`, `resolveEagerBytes`,
   `quotedInterpolationFromChildren`, `escapedInterpolationFromChildren`,

@@ -11591,7 +11591,7 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
     } else if (st.type === 'StyleImport') {
       if (placed) {
         out.places = true;
-        if (st.target.type === 'Quoted' || (st.target.type === 'Url' && st.target.value.type === 'Quoted')) {
+        if (isStaticQuoted(st.target) || (st.target.type === 'Url' && isStaticQuoted(st.target.value))) {
           (out.placedImports ??= []).push(st);
         } else {
           out.placesUnaddressedImport = true;
