@@ -1006,6 +1006,17 @@ describe('collectTolerantDiagnostics', () => {
       'Duplicate collection key "null"; the later value wins'
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+
+    /* Each key is read from the typed node the grammar built, never re-classified from its text. */
+    expect(collectTolerantDiagnostics({
+      source: '$m: { [1px]: 1; [-1px]: 2; [1PX]: 3; [50%]: 4; [50%]: 5; [1e3]: 6; [1000]: 7; [a b]: 8; [a b]: 9; };',
+      language: 'jess'
+    }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Duplicate collection key "50%"; the later value wins',
+      'Duplicate collection key "1000"; the later value wins'
+    ]);
     expect(collectTolerantDiagnostics({ source: '$m: (a: 1, a: 2);', language: 'scss' }).diagnostics
       .some(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)).toBe(false);
     expect(collectTolerantDiagnostics({
