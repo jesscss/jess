@@ -4078,6 +4078,11 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
   if (node.type === 'Keyword' && (src === 'true' || src === 'false')) {
     return makeBool(src === 'true');
   }
+
+  /* Likewise a string is a string, so an interpolation unquotes it by its content ({@link unquotedRef}). */
+  if (node.type === 'Quoted') {
+    return quotedFromFields(node.value, node.quote, node.escaped, node.src);
+  }
   if (!e.ev) {
     return { type: 'Keyword', text: src, bytes: src };
   }
@@ -4085,7 +4090,6 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src };
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
-    case 'Quoted': return quotedFromFields(node.value, node.quote, node.escaped, node.src);
     case 'Any': return makeAny(node.src);
     case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text };
   }
@@ -4398,7 +4402,18 @@ const ARG_WRITTEN = 2;
  * reads the layout table, so no other typed evaluation pays for it.
  */
 const ARG_BINDING = 3;
-type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING;
+
+/**
+ * A value an interpolation splices ({@link unquotedRef}): written as a
+ * declaration writes it — a group keeps its parens and an F5 color call its
+ * authored bytes, as in {@link ARG_WRITTEN}, while a ruleset writes nothing — but
+ * typed, so a string is read by its content.
+ */
+const ARG_SPLICE = 4;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE;
+
+/** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}). */
+const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE;
 
 function evalTyped(
   node: ValueNode,
@@ -4578,7 +4593,7 @@ function evalTyped(
        * the written-out policy inside a group that computes, so an F5 color
        * call there is still written as authored.
        */
-      if (isInertGroup(node) || (argument === ARG_WRITTEN && !groupComputes(node, frame, e))) {
+      if (isInertGroup(node) || (writtenAsAuthored(argument) && !groupComputes(node, frame, e))) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`));
       }
       return mapMaybe(evalTypedSlot(
@@ -4586,7 +4601,7 @@ function evalTyped(
         frame,
         { ...e, parenFrames: pushParenFrame(e, true) },
         projectMixinValues,
-        argument === ARG_WRITTEN ? ARG_WRITTEN : ARG_NONE
+        writtenAsAuthored(argument) ? argument : ARG_NONE
       ), keepAuthoredGroup);
     case 'Collection':
       /*
@@ -4645,7 +4660,7 @@ function evalTyped(
        * comes back as the bytes it was written with is kept as written, so a
        * group around it keeps its parens ({@link groupComputation}).
        */
-      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => isLiteral(v) ? keepAsWritten(makeKeyword(v)) : v);
+      return mapMaybe(evalCall(node, frame, e, !writtenAsAuthored(argument)), v => isLiteral(v) ? keepAsWritten(makeKeyword(v)) : v);
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
     case 'IfValue': {
@@ -4786,7 +4801,8 @@ function computationIn(slot: ValueSlot): ValueNode | null {
   }
   switch (inner.type) {
     case 'Operation':
-      return inner.inMathFunction ? null : inner;
+      /* A query relation (`min-width: 640px`, `width < 500px`) is a feature, not math. */
+      return inner.inMathFunction || isQueryRelation(inner.operator) ? null : inner;
     case 'Interpolation':
       return isComputationSplice(inner) ? inner : null;
     case 'FunctionCall':
@@ -5685,7 +5701,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           const hit = resolveVarRef(frame, name, 'scoped', e);
           const bound = hit?.value;
           if (hit && bound !== undefined && !isMixinCallValue(bound)) {
-            const val = hit.evaluated ?? withExcluded(e, bound, () => evalTypedSlot(bound, hit.frame, e));
+            const val = hit.evaluated ?? withExcluded(e, bound, () => evalTypedSlot(bound, hit.frame, e, false, ARG_SPLICE));
             if (!isThenable(val)) {
               out += !isValueGroupArray(val) && val.type === 'Quoted' ? val.value : emitValue(val);
               i = j + 1;
@@ -5710,10 +5726,10 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
  * A ref an interpolation splices UNQUOTED (Less `@{name}`): a string is its
  * content, read from the typed string, and an escaped string already is its
  * content, which is never re-read for a quote (ledger V22). Any other value is
- * spliced as it emits.
+ * spliced as it is written in a declaration ({@link ARG_SPLICE}).
  */
 function unquotedRef(ref: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
-  return mapMaybe(evalTyped(ref, frame, e), value =>
+  return mapMaybe(evalTyped(ref, frame, e, false, ARG_SPLICE), value =>
     !isValueGroupArray(value) && value.type === 'Quoted' ? literal(value.value) : value);
 }
 

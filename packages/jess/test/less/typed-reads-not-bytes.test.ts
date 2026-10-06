@@ -40,6 +40,8 @@ describe('typed reads, not byte scans', () => {
     expect(await render('@a: ~"@{"; @b: ~"}"; @q: "x"; @e: ~\'"y"\'; .x { v: ~"@{a}q@{b}"; w: ~"@{a}e@{b}"; }'))
       .toBe('.x { v: x; w: "y"; }');
     expect(await render('@m: { @k: 1px; }; @n: "k"; @o: ~"k"; .x { a: @m[@@n]; b: @m[@@o]; }')).toBe('.x { a: 1px; b: 1px; }');
+    expect(await render('@g: (10px); @f: (min-width: 640px); .x { v: ~"@{g}"; } @media @{f} { .y { w: 1; } }'))
+      .toBe('.x { v: (10px); } @media (min-width: 640px) { .y { w: 1; } }');
   });
 
   it('spreads one value that is not a list as one argument', async () => {
