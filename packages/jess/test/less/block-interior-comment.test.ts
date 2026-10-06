@@ -308,6 +308,29 @@ describe('Less block comments at a statement boundary inside a block', () => {
     );
   });
 
+  /*
+   * Ledger F12: a comment at either edge of a custom property's value stays in
+   * place when the value reads a variable too, so is written out evaluated.
+   */
+  it('keeps the edge comments of a custom property value that reads a variable', async () => {
+    await bothEmitters(
+      '@c: red; a { --a: @c /* k */; --b: @c/* k */; --c: a @c /* k */; --d: @c b /* k */; --e: (@c) /* k */; z: 1; }',
+      'a { --a: red /* k */; --b: red/* k */; --c: a red /* k */; --d: red b /* k */; --e: (red) /* k */; z: 1; }'
+    );
+    await bothEmitters(
+      '@c: red; a { --f: @c /* k */ !important; --g: /* k */ @c; --h: /* j */ @c /* k */; z: 1; }',
+      'a { --f: red /* k */ !important; --g: /* k */ red; --h: /* j */ red /* k */; z: 1; }'
+    );
+  });
+
+  it('keeps the edge comments of an interpolating SCSS custom property value', async () => {
+    for (const collapseNesting of [false, true]) {
+      const css = await new Compiler({ output: { collapseNesting }, compile: { plugins: [scssPlugin()] } })
+        .renderString('$c: red; a { --x: #{$c} /* k */; --y: /* k */ #{$c}; z: 1; }', { language: 'scss', extension: '.scss' });
+      expect(css.replace(/\s+/g, ' ').trim()).toBe('a { --x: red /* k */; --y: /* k */ red; z: 1; }');
+    }
+  });
+
   it('reads a nested rule\'s comments from the file the rule is written in', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'jess-imported-mixin-comment-'));
     writeFileSync(join(dir, 'lib.less'), '/* padding padding padding */\n.m() { v: 1;\n  .n { /* lib-n */ q: 1; } }\n');

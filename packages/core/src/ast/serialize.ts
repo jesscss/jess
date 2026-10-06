@@ -10562,6 +10562,30 @@ function markCustomValueBlockTrivia(source: string, span: AstSourceSpan, e: Emit
   }
 }
 
+/*
+ * Where a custom value's reference was written. A bare reference (Less `@c`,
+ * not unquoted) is its own source span. An interpolation's span is not kept,
+ * so its hole is the next `@{…}` / `${…}` / `#{…}` the authored bytes hold.
+ */
+function customValueHole(source: string, part: { ref: ValueNode; unquote: boolean }, cursor: number, end: number): AstSourceSpan | null {
+  if (!part.unquote) {
+    const start = sourceStartOf(part.ref);
+    const stop = sourceEndOf(part.ref);
+    return start >= cursor && stop <= end ? { start, end: stop } : null;
+  }
+  let open = -1;
+  for (const opener of CUSTOM_VALUE_HOLE_OPENERS) {
+    const at = source.indexOf(opener, cursor);
+    if (at >= 0 && (open < 0 || at < open)) {
+      open = at;
+    }
+  }
+  const close = open < 0 || open >= end ? -1 : source.indexOf('}', open + 2);
+  return close < 0 || close >= end ? null : { start: open, end: close + 1 };
+}
+
+const CUSTOM_VALUE_HOLE_OPENERS = ['@{', '${', '#{'] as const;
+
 function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e: Emit): MaybePromise<string> | null {
   if (isValueSlotArray(value)) {
     return null;
@@ -10612,23 +10636,13 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
       cursor = nextCursor;
       continue;
     }
-    const variableOpen = source.indexOf('@{', cursor);
-    const propertyOpen = source.indexOf('${', cursor);
-    const open = variableOpen < 0
-      ? propertyOpen
-      : propertyOpen < 0
-        ? variableOpen
-        : Math.min(variableOpen, propertyOpen);
-    if (open < cursor || open >= span.end) {
+    const hole = customValueHole(source, part, cursor, span.end);
+    if (hole === null) {
       return null;
     }
-    const close = source.indexOf('}', open + 2);
-    if (close < 0 || close >= span.end) {
-      return null;
-    }
-    pieces.push(source.slice(chunkStart, open));
+    pieces.push(source.slice(chunkStart, hole.start));
     pieces.push(resolveRefBytes(part, frame, e));
-    cursor = close + 1;
+    cursor = hole.end;
     chunkStart = cursor;
   }
   pieces.push(source.slice(chunkStart, span.end));
