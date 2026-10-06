@@ -46,7 +46,7 @@ const body = async (src: string) => {
  */
 type UnitMode = 'loose' | 'preserve' | 'strict';
 
-const valueIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.less' = '.jess') => {
+const valueIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.less' | '.scss' = '.jess') => {
   const out = await new Compiler({ compile: { unitMode }, quiet: true })
     .renderString(`.a { k: ${expr}; }`, { filePath: `entry${extension}`, extension });
   return out.replace(/\s+/g, ' ').trim().replace(/^\.a \{ k: /, '').replace(/; \}$/, '');
@@ -57,7 +57,7 @@ const valueIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.
  * for eval-time diagnostics on a source string (`safeRender` is the same channel
  * for a file); nothing new is introduced here.
  */
-const warningsIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.less' = '.jess') => {
+const warningsIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.less' | '.scss' = '.jess') => {
   const { warnings } = await new Compiler({ compile: { unitMode }, quiet: true })
     .renderToResult(
       { source: `.a { k: ${expr}; }`, filePath: `entry${extension}`, extension },
@@ -173,7 +173,16 @@ describe('OPERATIONS §4.7 — `.jess` has ONE behaviour; `unitMode` is Less-com
      * unit, but `/ 1px` brings it back to an honest `1px`. Erroring on the
      * intermediate would break an expression the author got right.
      */
-    ['$(1px * 1px / 1px)', '1px']
+    ['$(1px * 1px / 1px)', '1px'],
+
+    /*
+     * §4 rows b, c: a unitless operand of `+`/`-` takes the other side's unit.
+     * The 2026-10-06 ruling that keeps `4 + 3px` as written outside
+     * `unitMode: 'loose'` is stated over the Less-compat ladder, which `.jess`
+     * is not on; whether it reaches `.jess` is an open owner question.
+     */
+    ['$(1 + 2px)', '3px'],
+    ['$(3px - 1)', '2px']
   ];
 
   it('an unexpressible unit is an ERROR — on `*` and `/`, not just `+`/`-`', async () => {
@@ -291,6 +300,30 @@ describe('OPERATIONS §4.7 — the `unitMode` ladder, in `.less`, where it is li
     for (const mode of UNIT_MODES) {
       await expect(valueIn('(2px / 1px)', mode, '.less')).resolves.toBe('2');
       await expect(warningsIn('(2px / 1px)', mode, '.less')).resolves.toEqual([]);
+    }
+  });
+});
+
+describe('OPERATIONS — a unitless number ± a dimension with a unit, per dialect', () => {
+  /*
+   * Owner 2026-10-06 (ledger P35): `.less` computes `4 + 3px` only under
+   * `unitMode: 'loose'`, keeps it as written under `preserve`, and raises under
+   * `strict`. `.scss` keeps Sass's own arithmetic — dart-sass 1.101.7 answers
+   * `1 + 1px` with `2px` and no warning — in every mode; whether it should take
+   * the Less ruling instead is an open owner question.
+   */
+  it('`.less` follows the unitMode ladder', async () => {
+    await expect(valueIn('4 + 3px', 'loose', '.less')).resolves.toBe('7px');
+    await expect(valueIn('4 + 3px', 'preserve', '.less')).resolves.toBe('4 + 3px');
+    await expect(warningsIn('4 + 3px', 'preserve', '.less')).resolves.toEqual(['eval/unexpressible-unit']);
+    await expect(valueIn('4 + 3px', 'strict', '.less')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+  });
+
+  it('`.scss` adds a unitless number to a dimension in every mode, as Sass does', async () => {
+    for (const mode of UNIT_MODES) {
+      await expect(valueIn('4 + 3px', mode, '.scss'), mode).resolves.toBe('7px');
+      await expect(valueIn('3px - 1', mode, '.scss'), mode).resolves.toBe('2px');
+      await expect(warningsIn('4 + 3px', mode, '.scss'), mode).resolves.toEqual([]);
     }
   });
 });

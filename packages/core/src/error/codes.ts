@@ -388,7 +388,7 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Unit has no CSS spelling',
       reason:
         '${expr} composes a unit CSS cannot express, so no result can carry it honestly.',
-      fix: 'Cancel the units, drop one side\'s unit, or wrap the expression in calc() to keep it as authored.'
+      fix: 'Cancel the units, give a unitless operand of + or - its unit, or drop one side\'s unit. An expression calc() accepts can be wrapped in calc() to keep it as authored.'
     }
   ],
   [

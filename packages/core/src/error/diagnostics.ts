@@ -5,7 +5,7 @@ import {
 } from 'chevrotain';
 import type { Deprecation } from '../deprecation.js';
 import { type JessErrorCode, type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
-import { lineColAt, extractRelevantLines } from './code-frame.js';
+import { authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
 import {
   JessError,
   inlineSpanEnd,
@@ -31,6 +31,10 @@ export interface ErrorDiagnostic {
     path: string;
     fullPath: string;
     source?: string;
+
+    /** Where the authored file sits in a host-prepared `source` (see {@link SourceOwner}). */
+    sourceOffset?: number;
+    sourceEnd?: number;
   };
   filePath?: string;
   line: number;
@@ -524,6 +528,32 @@ export function parserDiagnostic({
     endLine: endLoc?.line,
     endColumn: endLoc?.column,
     lines: extractRelevantLines(source, startLoc.line)
+  };
+}
+
+/**
+ * A diagnostic a parser reported against host-prepared text (Less `banner` /
+ * `globalVars` written ahead of the file), re-positioned in the file as authored
+ * (ledger O16): its line, column and code frame count from where the file
+ * starts, and its file carries that start so a later frame does too.
+ */
+export function inAuthoredFile<T extends ErrorDiagnostic | WarningDiagnostic>(
+  diagnostic: T,
+  source: string,
+  owner: SourceOwner
+): T {
+  const start = authoredLineCol(source, diagnostic.line, diagnostic.column, owner);
+  const end = diagnostic.endLine === undefined || diagnostic.endColumn === undefined
+    ? undefined
+    : authoredLineCol(source, diagnostic.endLine, diagnostic.endColumn, owner);
+  return {
+    ...diagnostic,
+    file: diagnostic.file === undefined ? undefined : { ...diagnostic.file, ...owner },
+    line: start.line,
+    column: start.column,
+    endLine: end?.line,
+    endColumn: end?.column,
+    lines: diagnostic.lines === undefined ? undefined : extractRelevantLines(source, start.line, 1, owner)
   };
 }
 

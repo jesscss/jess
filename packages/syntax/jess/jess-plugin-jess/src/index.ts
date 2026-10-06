@@ -45,8 +45,14 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  * verbatim, the same bytes `.jess` produced with no evaluator at all. A
  * `@-use`/`@-compose` function is resolved lexically (`scopedFn`), never from
  * this table, so the module route is served without a global namespace.
+ *
+ * `.jess` has no unit modes (RESOLVED-SEMANTICS §4.7), and its target table
+ * (§4 rows b, c) computes `$(1 + 2px)` → `3px`, so a unitless `+`/`-` operand
+ * adopts the other side's unit in every `unitMode`. Whether the 2026-10-06
+ * unitless ruling (ledger P35), stated over `unitMode`, reaches `.jess` is an
+ * open owner question.
  */
-const jessValueEvaluator = buildEvaluator(createFnRegistry());
+const jessValueEvaluator = buildEvaluator(createFnRegistry(), { unitlessAdoptsUnit: true });
 
 /** Parses `.jess` source into the canonical AST-v2 `Stylesheet` document. */
 export class JessPlugin extends AbstractPlugin {

@@ -146,6 +146,21 @@ describe('extend across @import', () => {
     });
 
     /*
+     * Ledger X18 (orchestrator judgment under owner delegation 2026-10-06): a `(reference)`
+     * import of a sheet any `@import` already loaded is a no-op, as J14 has after a plain one;
+     * a plain import after a `(reference)` one renders the sheet, which the author asked to see.
+     */
+    it('a (reference) import of a sheet already loaded is a no-op, after any import', async () => {
+      expect(await renderFile('multiple-and-ref-main.less')).toBe(smX);
+      expect(await renderFile('ref-and-ref-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
+    });
+
+    it('a plain import after a (reference) one renders the sheet', async () => {
+      expect(await renderFile('ref-and-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX].join('\n'));
+      expect(await renderFile('multiple-and-plain-main.less')).toBe(`${smX}\n${smX}`);
+    });
+
+    /*
      * Each copy of a `(multiple)` sheet places the `(reference)` import inside it on its own,
      * so the extend in `@media print` reveals only the print copy.
      */

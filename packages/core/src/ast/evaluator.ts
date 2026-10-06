@@ -110,8 +110,14 @@ const stringify = (v: ValueGroup): string =>
  * `registry` (populate it from a DIALECT INDEX — `makeLessRegistry()` /
  * `makeSassRegistry()` in `@jesscss/fns`), so registration stays outside core.
  * Core imports no fn bodies here.
+ *
+ * `unitlessAdoptsUnit` is the dialect's arithmetic for a unitless `+`/`-`
+ * operand against a united one (`4 + 3px`). Absent, the `unitMode` rule holds
+ * (owner 2026-10-06, ledger P35): only `loose` computes it. A dialect whose own
+ * semantics coerce (Sass: dart-sass `1 + 1px` → `2px`) passes `true`, and the
+ * unitless side adopts the other's unit in every mode.
  */
-export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
+export function buildEvaluator(registry: FnRegistry, options?: { readonly unitlessAdoptsUnit?: boolean }): ValueEvaluator {
   const call = (
     name: string,
     args: ValueGroup,
@@ -188,5 +194,9 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { operate, call, paramNames, has: name => registry.has(name), compare, compareMatch, typeCheck };
+  const dialectOperate = options?.unitlessAdoptsUnit === true
+    ? (op: string, left: Value, right: Value, modes: EvalModes): Value => operate(op, left, right, modes, true)
+    : operate;
+
+  return { operate: dialectOperate, call, paramNames, has: name => registry.has(name), compare, compareMatch, typeCheck };
 }

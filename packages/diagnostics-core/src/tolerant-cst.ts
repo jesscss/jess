@@ -8,11 +8,14 @@ import { type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDo
 import { parseCssCst as parseCssDiagnosticCst, parseCssDoc as parseCssDiagnosticDoc } from '@jesscss/css-parser/cst/positions';
 import {
   CollectionOverlay,
+  HEX,
+  makeColorRgb,
+  makeDimension,
   makeKeyword,
   makeNull,
   makeQuoted,
   namedColor,
-  sniffLiteral,
+  parseHex,
   type Phase,
   type ValueGroup
 } from '@jesscss/core';
@@ -2929,55 +2932,59 @@ type StaticCollectionKey = {
   readonly span: DiagnosticSpan;
 };
 
-function staticJessCollectionKey(source: string, entry: CssCstNode): StaticCollectionKey | null {
+/**
+ * The static key of a Jess collection entry, read from the grammar's own
+ * classification: a bare key is an `Identifier`, and a computed `[…]` key is one
+ * typed value node (`Keyword`, `Num`, `Dimension`, `Percentage`, `Color`,
+ * `Quoted`). A key only evaluation can give — a variable, an interpolated string,
+ * more than one term — has none.
+ */
+function staticJessCollectionKey(entry: CssCstNode): StaticCollectionKey | null {
   const direct = cstChildrenOf(entry);
-  const computed = direct.some(child => child._tag === 'leaf' && child.value === '[');
-  let raw: string;
-  let span: DiagnosticSpan;
-  if (computed) {
-    const key = firstChildNodeOf(entry, 'Value');
-    if (key === undefined) {
-      return null;
-    }
-    raw = source.slice(absoluteStart(key), absoluteEnd(key)).trim();
-    span = key.span;
-  } else {
+  if (!direct.some(child => child._tag === 'leaf' && child.value === '[')) {
     const key = direct.find(child => child._tag === 'leaf' && child.value !== ':' && child.value !== ';');
-    if (key?._tag !== 'leaf') {
+    return key?._tag === 'leaf' ? { value: makeKeyword(key.value), display: key.value, span: key.span } : null;
+  }
+  let atom = firstChildNodeOf(entry, 'Value');
+  for (const wrapper of ['ValueSpaceGroup', 'ValueTerm', 'ValueAtom']) {
+    const only: CssCstNode[] = atom === undefined ? [] : childNodesOf(atom);
+    atom = only.length === 1 && only[0]!.grammarType === wrapper && cstChildrenOf(atom!).length === 1 ? only[0] : undefined;
+  }
+  const typed = atom === undefined ? [] : childNodesOf(atom);
+  return typed.length === 1 ? typedCollectionKey(typed[0]!) : null;
+}
+
+/** One typed key node's value; its token texts are the values the grammar lexed. */
+function typedCollectionKey(node: CssCstNode): StaticCollectionKey | null {
+  const parts: string[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag !== 'leaf') {
       return null;
     }
-    raw = key.value;
-    span = key.span;
+    parts.push(child.value);
   }
-
-  if (hasDynamicSyntax(raw)) {
-    return null;
+  const text = parts.join('');
+  const key = (value: ValueGroup, display = text): StaticCollectionKey => ({ value, display, span: node.span });
+  switch (node.grammarType) {
+    case 'Keyword':
+      return key(text === 'null' ? makeNull(true) : makeKeyword(text));
+    case 'Num':
+      return key(makeDimension(Number(text)));
+    case 'Dimension':
+    case 'Percentage':
+      return parts.length === 2 ? key(makeDimension(Number(parts[0]), parts[1])) : null;
+    case 'Color': {
+      const { rgb, alpha } = parseHex(text);
+      return key(makeColorRgb(rgb, alpha, HEX, { src: text }));
+    }
+    case 'Quoted': {
+      /* A string keyed by its content; an escape would need decoding, so it is not static. */
+      const content = parts.length === 3 ? parts[1]! : parts.length === 2 ? '' : null;
+      return content === null || content.includes('\\') ? null : key(makeQuoted(content, parts[0]!, false), content);
+    }
+    default:
+      return null;
   }
-  if (computed && raw === 'null') {
-    return { value: makeNull(true), display: raw, span };
-  }
-  if (isCssIdentifier(raw)) {
-    return { value: makeKeyword(raw), display: raw, span };
-  }
-  const quoted = quotedStringInnerText(raw);
-  if (quoted !== null && !quoted.includes('\\')) {
-    return { value: makeQuoted(quoted, raw[0]!, false), display: quoted, span };
-  }
-  if (isValidHexColor(raw)
-    || cssNumberValue(raw) !== null
-    || cssPercentageValue(raw) !== null
-    || cssDimensionUnit(raw) !== null) {
-    /*
-     * ESCALATED, not a kept site: this text IS parser output — a slice of the
-     * tolerant CST key's span — classified here by scanning it, because a CST
-     * leaf carries no typed value and this path may have no AST. The fix is a
-     * value-typed CST leaf (the grammar's own classification), a language-
-     * tooling change outside this sniff audit. Diagnostics only; CSS output
-     * never reaches here.
-     */
-    return { value: sniffLiteral(raw), display: raw, span };
-  }
-  return null;
 }
 
 function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
@@ -5652,7 +5659,7 @@ export function cstLintDiagnostics(
           continue;
         }
         const entry = child;
-        const key = staticJessCollectionKey(source, entry);
+        const key = staticJessCollectionKey(entry);
         if (key === null) {
           continue;
         }

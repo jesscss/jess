@@ -52,8 +52,10 @@ describe('Operations', () => {
       `;
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('width: 15px');
-      expect(css).toContain('height: 30px');
+      expect(css).toContain('width: 15px;');
+
+      // A unitless addend is kept as written under the default unitMode (owner 2026-10-06).
+      expect(css).toContain('height: 20px + 10;');
     });
 
     it('should handle subtraction', async () => {
@@ -65,8 +67,8 @@ describe('Operations', () => {
       `;
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('width: 15px');
-      expect(css).toContain('height: 20px');
+      expect(css).toContain('width: 15px;');
+      expect(css).toContain('height: 30px - 10;');
     });
 
     it('should handle multiplication', async () => {
@@ -369,9 +371,11 @@ describe('Operations', () => {
       `;
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('width: 10px');
-      expect(css).toContain('height: 0px');
-      expect(css).toContain('margin: 5px');
+
+      // Zero is a unitless number like any other: `+ 0` is kept as written.
+      expect(css).toContain('width: 10px + 0;');
+      expect(css).toContain('height: 0px;');
+      expect(css).toContain('margin: 0 + 5px;');
     });
 
     it('should handle operations with negative values', async () => {
@@ -386,5 +390,79 @@ describe('Operations', () => {
       expect(css).toContain('width: 5px');
       expect(css).toContain('height: 30px');
     });
+  });
+});
+
+/*
+ * Owner 2026-10-06 (ledger P35): a unitless number added to or subtracted from a
+ * dimension with a unit computes ONLY under `unitMode: 'loose'`. The default
+ * `preserve` keeps it as written — never as `calc(…)`, which rejects
+ * `<number> + <length>` too — and warns; `strict` raises. `*` and `/` by a
+ * unitless number are unaffected.
+ */
+describe('Operations — a unitless number ± a dimension with a unit', () => {
+  const render = async (unitMode: 'loose' | 'preserve' | 'strict', body: string, mathMode?: 'always' | 'parens-division') => {
+    const options = { unitMode, ...(mathMode ? { mathMode } : {}) };
+    const result = await new Compiler({ compile: { ...options, plugins: [lessPlugin(options)] }, quiet: true })
+      .renderToResult({ source: `.a { ${body} }`, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+    return {
+      css: result.css.replace(/\s+/g, ' ').trim(),
+      warnings: result.warnings.map(w => w.code),
+      errors: result.errors.map(w => w.code)
+    };
+  };
+
+  it('preserve keeps it as written, without calc(), and warns', async () => {
+    const { css, warnings } = await render('preserve', 'a: 4 + 3px; b: 3px - 1;');
+    expect(css).toBe('.a { a: 4 + 3px; b: 3px - 1; }');
+    expect(warnings).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
+  });
+
+  it('loose computes it, the Less 4.x coercion', async () => {
+    const { css, warnings } = await render('loose', 'a: 4 + 3px; b: 3px - 1;');
+    expect(css).toBe('.a { a: 7px; b: 2px; }');
+    expect(warnings).toEqual([]);
+  });
+
+  it('strict raises the structured unit error', async () => {
+    expect((await render('strict', 'a: 4 + 3px;')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect((await render('strict', 'a: 3px - 1;')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+
+  it('multiplication and division by a unitless number compute in every mode', async () => {
+    for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
+      const { css, warnings } = await render(unitMode, 'a: 2px * 3; b: (6px / 2);');
+      expect(css, unitMode).toBe('.a { a: 6px; b: 3px; }');
+      expect(warnings, unitMode).toEqual([]);
+    }
+  });
+
+  it('an authored paren group around the kept math keeps its parens, so precedence survives', async () => {
+    const { css, warnings } = await render('preserve', '@w: 4; a: (@w + 3px); b: (@w + 3px) * 2; c: 1px (@w + 3px) 2; d: (10px / 2px + 6px - 1px * 2);');
+
+    // The parts that do compute still compute: `10px / 2px` is 5 and `1px * 2` is 2px.
+    expect(css).toBe('.a { a: (4 + 3px); b: (4 + 3px) * 2; c: 1px (4 + 3px) 2; d: (5 + 6px - 2px); }');
+
+    // The kept math warns through the chain, not only at its first link.
+    expect(warnings.slice(0, 2)).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
+  });
+
+  it('a non-dividing slash keeps each side as written: `4 / 2 + 5em` (P35)', async () => {
+    expect((await render('preserve', 'a: 4 / 2 + 5em;', 'parens-division')).css).toBe('.a { a: 4 / 2 + 5em; }');
+    expect((await render('loose', 'a: 4 / 2 + 5em;', 'parens-division')).css).toBe('.a { a: 4 / 7em; }');
+    expect((await render('preserve', 'a: 4 / 2 + 5em;', 'always')).css).toBe('.a { a: 2 + 5em; }');
+    expect((await render('loose', 'a: 4 / 2 + 5em;', 'always')).css).toBe('.a { a: 7em; }');
+  });
+
+  it('a compound operand stays on the V18 calc() spelling', async () => {
+    const { css } = await render('preserve', 'a: (2em / 1px) + 20;');
+    expect(css).toBe('.a { a: calc(2em / 1px + 20); }');
+  });
+
+  it('comparison is not arithmetic: a unitless side stays a wildcard (V21)', async () => {
+    for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
+      const { css } = await render(unitMode, 'a: if((4 = 4px), y, n); b: if((4 < 5px), y, n);');
+      expect(css, unitMode).toBe('.a { a: y; b: y; }');
+    }
   });
 });

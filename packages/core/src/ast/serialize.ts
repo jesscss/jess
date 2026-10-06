@@ -175,7 +175,7 @@ import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, groupAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -192,7 +192,7 @@ import { DocumentContext, documentTriviaOf, type Context, type SourceContext } f
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
-import { JessError } from '../error/jess-error.js';
+import { JessError, type TreeContextLike } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
@@ -440,14 +440,16 @@ function importHasOption(options: string | null, option: string): boolean {
 }
 
 /**
- * Import-once covers a `(reference)` re-import (orchestrator judgment 2026-10-05,
- * jess#359): a `(reference)` import of a document an `@import` already loaded is dropped,
- * as Less 4.x does, so the sheet is placed once and stays visible. A `(multiple)` import,
- * or one inside a `(multiple)` sheet, places its own copy and is never dropped. The import
- * planner and the render walk both ask this, so they agree on which imports place a sheet.
+ * Import-once covers a `(reference)` re-import (ledger J14, X18): a `(reference)` import of
+ * a document any `@import` already placed — plain, `(multiple)` or `(reference)` — is
+ * dropped, so the sheet is placed once and stays as visible as it was. A plain import after
+ * a `(reference)` one is not a re-import: it renders the sheet the author asked to see. A
+ * `(multiple)` import, or one inside a `(multiple)` sheet, places its own copy and is never
+ * dropped. The import planner and the render walk both ask this, so they agree on which
+ * imports place a sheet.
  */
-function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, importedPlainly: boolean): boolean {
-  return importedPlainly && !inMultiple && node.mode !== 'compose'
+function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, placed: boolean): boolean {
+  return placed && !inMultiple && node.mode !== 'compose'
     && importHasOption(options, 'reference') && !importHasOption(options, 'multiple');
 }
 
@@ -461,29 +463,20 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     if (error instanceof JessError && error.code !== 'import/not-found') {
       throw error;
     }
-    const file = context.sourceContext?.file;
-    const source = file?.source;
-    const span = source === undefined ? undefined : sourceSpanOf(request.node);
-    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
+    const location = callSiteLocation(request.node, { context });
     if (error instanceof JessError && error.code === 'import/not-found') {
       throw ERR.importNotFound({
         node: request.node,
-        filePath: file?.fullPath,
-        source,
-        line: location?.line,
-        column: location?.column,
+        ...location,
         meta: {
           specifier: request.specifier,
-          from: file?.path ?? process.cwd()
+          from: location.ctx.file?.path ?? process.cwd()
         }
       });
     }
     throw ERR.importLoadFailed({
       node: request.node,
-      filePath: file?.fullPath,
-      source,
-      line: location?.line,
-      column: location?.column,
+      ...location,
       meta: {
         specifier: request.specifier,
         reason: error instanceof Error ? error.message : String(error)
@@ -3746,37 +3739,11 @@ function evalBinding(
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
-  const file = e.context?.sourceContext?.file;
-  const source = file?.source;
-  const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined
-    ? undefined
-    : lineColAt(source, span.start, file);
-  throw ERR.nameNotFound({
-    node,
-    filePath: file?.fullPath,
-    source,
-    line: location?.line,
-    column: location?.column,
-    meta: { symbol }
-  });
+  throw ERR.nameNotFound({ node, ...callSiteLocation(node, e), meta: { symbol } });
 }
 
 function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Property', e: EvalCtx): never {
-  const file = e.context?.sourceContext?.file;
-  const source = file?.source;
-  const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined
-    ? undefined
-    : lineColAt(source, span.start, file);
-  throw ERR.recursiveReference({
-    node,
-    filePath: file?.fullPath,
-    source,
-    line: location?.line,
-    column: location?.column,
-    meta: { kind, symbol }
-  });
+  throw ERR.recursiveReference({ node, ...callSiteLocation(node, e), meta: { kind, symbol } });
 }
 
 /**
@@ -3786,9 +3753,13 @@ function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Pr
  * so every caller reads one name and never re-derives the distinction.
  */
 function lookupName(node: Lookup, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return typeof node.name === 'string'
-    ? node.name
-    : mapMaybe(evalBytes(node.name, frame, e), raw => stripOuterQuotes(raw));
+  if (typeof node.name === 'string') {
+    return node.name;
+  }
+
+  /* A string names by its content, read from the typed string, never by stripping quotes. */
+  return mapMaybe(evalTyped(node.name, frame, e), value =>
+    !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value));
 }
 
 /**
@@ -4265,14 +4236,12 @@ const operationSignGlued = (node: Operation): boolean => {
   return opEnd - opStart === leftWidth + 1 + node.operator.length + rightWidth;
 };
 
-function arithmeticSiteLocation(node: object, e: EvalCtx): {
-  filePath?: string; source?: string; line?: number; column?: number;
-} {
+function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof callSiteLocation> {
   const location = callSiteLocation(node, e);
   if (!isOperationNode(node)) {
     return location;
   }
-  const source = location.source;
+  const source = location.ctx.file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
   if (source === undefined || span === undefined) {
     return location;
@@ -4287,7 +4256,7 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): {
   if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
     return location;
   }
-  const operatorLocation = lineColAt(source, operatorOffset, e.context?.sourceContext?.file);
+  const operatorLocation = lineColAt(source, operatorOffset, location.ctx.file);
   return { ...location, line: operatorLocation.line, column: operatorLocation.column };
 }
 
@@ -4599,16 +4568,18 @@ function evalTyped(
        * product is merely the one preserve already produced.
        *
        * An inert group has nothing for the frame to compute, so it is not
-       * consumed and keeps its parens ({@link isInertGroup}).
+       * consumed and keeps its parens ({@link isInertGroup}); nor is a group in
+       * an argument of a call written out as-is, which no callable reads, unless
+       * math in it computes ({@link groupComputes}).
        */
-      return isInertGroup(node)
-        ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues), v => makeKeyword(`(${emitValue(v)})`))
-        : evalTypedSlot(
+      return isInertGroup(node) || (argument === ARG_WRITTEN && !groupComputes(node))
+        ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`))
+        : mapMaybe(evalTypedSlot(
             node.value,
             frame,
             { ...e, parenFrames: pushParenFrame(e, true) },
             projectMixinValues
-          );
+          ), keepAuthoredGroup);
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -4698,7 +4669,8 @@ function evalTyped(
       if (!e.ev) {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
-      return evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Interpolation': {
       /*
@@ -4734,23 +4706,26 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
   !isValueSlotArray(slot) && slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true;
 
 /*
- * Every paren authored inside a math function is kept as written, redundant or
- * not (ledger P35, owner 2026-10-06: "no reason to drop parens. the user wanted
- * to write it that way for a reason."). Nothing computes there, so nothing
- * consumes a group. Two facts carry the rule:
- *
- * - a group around content nothing computes — math kept as written, or raw
- *   bytes — keeps its own parens wherever it is evaluated ({@link isInertGroup});
- * - a group around one value is consumed by evaluation like any paren, so the
- *   positions inside a math function write its levels back: an operand of kept
- *   math and the argument of `calc()` ({@link unconsumedParens}).
- *
- * Not yet covered: a group around one value that is a whole argument of a call
- * written out as-is (`calc(var(--a, (10px)))`, `.jess` `min((10px), 1px)`) is
- * consumed by the typed argument lane, where css keeps it.
+ * A paren group is consumed only by math that computes inside it: `(1px + 2px)`
+ * is `3px`. Every other group keeps its parens wherever it is written — around
+ * one value (`c: (10vh)`, `var(--a, (10px))`), around math kept as written, or
+ * around raw bytes — in every dialect, so valid CSS emits the bytes css does
+ * (SEMANTIC-INVARIANTS 4; ledger P35, owner 2026-10-06: "no reason to drop
+ * parens. the user wanted to write it that way for a reason."). A computing
+ * consumer — an operand of math that operates, an argument a callable reads —
+ * still reads the value inside the group, through the typed lane.
  */
 
-/** A paren group around math kept as written or around raw bytes (see above). */
+/** Whether math inside the group computes, which consumes its parens (see above). */
+function groupComputes(node: Block): boolean {
+  let inner: ValueSlot = node.value;
+  while (isParenGroup(inner)) {
+    inner = inner.value;
+  }
+  return !isValueSlotArray(inner) && inner.type === 'Operation' && !inner.inMathFunction;
+}
+
+/** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 function isInertGroup(node: Block): boolean {
   let inner: ValueSlot = node.value;
   while (isParenGroup(inner)) {
@@ -4760,9 +4735,10 @@ function isInertGroup(node: Block): boolean {
 }
 
 /**
- * How many paren levels the author wrote around `slot` that evaluation drops,
- * or 0 when `slot` is not a group around one value. A group whose operation
- * computes is consumed by it, and an inert group writes its own parens.
+ * How many paren levels the author wrote around `calc()`'s argument that its
+ * typed evaluation drops, or 0 when the argument is not a group around one
+ * value. A group whose operation computes is consumed by it, and an inert group
+ * writes its own parens.
  */
 function unconsumedParens(slot: ValueSlot): number {
   let depth = 0;
@@ -4777,17 +4753,6 @@ function unconsumedParens(slot: ValueSlot): number {
 const wrapParens = (bytes: string, depth: number): string => depth === 0 ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
 
 /**
- * The bytes of one operand of an operation that is kept as written: a group
- * around one value gets its authored levels back ({@link unconsumedParens}).
- * Outside a math function a paren group's operation computed, and the group is
- * one value with no precedence left to protect.
- */
-function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
-  const bytes = emitValue(value);
-  return isLiteral(value) || !parent.inMathFunction ? bytes : wrapParens(bytes, unconsumedParens(child));
-}
-
-/**
  * An `Expression` the author spelled as a paren group — its span opens at the
  * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
  * bare Less computation starts where its value starts, so neither prints parens.
@@ -4795,6 +4760,16 @@ function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue)
 function isAuthoredGroupExpression(node: Expression): boolean {
   const start = sourceStartOf(node);
   return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
+}
+
+/**
+ * An authored paren group's value once its math has run. A computed inner is
+ * one value and sheds the parens; an operation `operate` kept as written
+ * (`4 + 3px` under `preserve`, `foo + 1`) is still an expression and keeps
+ * them, or `(4 + 3px) * 2` would print as `4 + 3px * 2`.
+ */
+function keepAuthoredGroup<T extends EvalValue>(v: T): T | Value {
+  return isLiteral(v) || isValueGroupArray(v) ? v : groupAsWritten(v);
 }
 
 /** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
@@ -4940,23 +4915,20 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const target = e.context?.transformUrl(body.src, false) ?? body.src;
         return literal(`url(${target})`);
       }
-      return mapMaybe(evalValue(body, frame, e), (value) => {
+      return mapMaybe(evalTyped(body, frame, e), (value) => {
         /*
-         * Dynamic URL content — `url(@var)` / any non-literal — resolves at eval
-         * time to fully-emitted bytes, so the authored node is neither Quoted nor
-         * Any. Apply the same URL transform (rootpath/rewriteUrls/urlArgs) an
-         * authored `url("…")` gets: a wrapping quote is syntax, so transform the
-         * inner target and keep the quote around it; otherwise transform the whole.
+         * Dynamic URL content — `url(@var)` / any non-literal — gets the same URL
+         * transform (rootpath/rewriteUrls/urlArgs) an authored `url("…")` gets. A
+         * string's quote is syntax, read from the typed string: transform its
+         * content and keep the quote around it. Anything else, an escaped string
+         * included (ledger V3: opaque, as `url(~"…")` written directly is), is
+         * transformed whole.
          */
-        const raw = emitValue(value);
-        const quote = raw.length >= 2 && (raw[0] === '"' || raw[0] === '\'') && raw[raw.length - 1] === raw[0]
-          ? raw[0]
-          : '';
-        if (quote) {
-          const inner = raw.slice(1, -1);
-          const target = e.context?.transformUrl(inner, true) ?? inner;
-          return literal(`url(${quote}${target}${quote})`);
+        if (!isValueGroupArray(value) && value.type === 'Quoted' && !value.escaped) {
+          const target = e.context?.transformUrl(value.value, true) ?? value.value;
+          return literal(`url(${value.quote}${target}${value.quote})`);
         }
+        const raw = emitValue(value);
         const target = e.context?.transformUrl(raw, false) ?? raw;
         return literal(`url(${target})`);
       });
@@ -5084,10 +5056,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         : e);
 
       /*
-       * Transparent to computed bytes: a materialized (operated) inner strips the
-       * paren (matching the legacy oracle); an un-forced literal keeps its parens,
-       * and so does an inert group ({@link isInertGroup}), whose kept math is
-       * still one expression.
+       * A group is consumed only by math that computes inside it: `(1px + 2px)`
+       * is `3px`, while math `operate` kept as written keeps them
+       * ({@link keepAuthoredGroup}). Every other group keeps its parens — around
+       * one value, kept math, or raw bytes ({@link groupComputes}).
        */
       /*
        * §12.6c: a bracketed value emits VERBATIM. Balanced `[ … ]` is a valid
@@ -5104,7 +5076,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         if (node.delimiter !== 'paren') {
           return makeBlock(v, node.delimiter, node.escaped);
         }
-        return isInertGroup(node) ? makeKeyword(`(${emitValue(v)})`) : v;
+        return groupComputes(node) ? keepAuthoredGroup(v) : makeKeyword(`(${emitValue(v)})`);
       });
     }
     case 'Expression': {
@@ -5129,7 +5101,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          */
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
-      return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Condition':
       /*
@@ -5240,9 +5213,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const left = preservedOperand(node, node.left, values[0]!);
-          const right = preservedOperand(node, node.right, values[1]!);
-          const bytes = `${left} ${node.operator} ${right}`;
+          const bytes = `${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`;
 
           /*
            * An operation preserved because it was authored inside a math
@@ -5569,6 +5540,13 @@ function isInterpNameByte(c: number): boolean {
  * scan repeats until the string stops changing. A token whose variable is NOT in
  * scope (or resolves asynchronously) is left literal — a non-resolving emergent
  * token never turns a value into an error. Short-circuits when no `@{` remains.
+ *
+ * Why this reads bytes: its input is not parser output. An emergent token is
+ * spliced together from evaluated values — `@box: ~"@{box"` + `-large}` in the
+ * `strings` fixture's `weird` case — so no parse of the authored source holds
+ * it; the parser's own `@{…}` parts were already resolved structurally above.
+ * The nested authored form `@{box-@{suffix}}` could parse as a computed name,
+ * but the spliced form would still need this pass.
  */
 function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): string {
   let cur = input;
@@ -7780,15 +7758,17 @@ function moduleLoadFailed(statement: ModuleImport, e: EvalCtx): (error: unknown)
   };
 }
 
-/** Source position of a call node, for a diagnostic that points at the call site. */
-function callSiteLocation(node: object, e: EvalCtx): {
-  filePath?: string; source?: string; line?: number; column?: number;
-} {
+/**
+ * Source position of a node, for a diagnostic that points at it. The diagnostic
+ * keeps the file object, which says where the authored file sits in the parsed
+ * text, so its code frame counts lines as `lineColAt` does (ledger O16).
+ */
+function callSiteLocation(node: object, e: Pick<EvalCtx, 'context'>): { ctx: TreeContextLike; line?: number; column?: number } {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
-  return { filePath: file?.fullPath, source, line: location?.line, column: location?.column };
+  return { ctx: { file }, line: location?.line, column: location?.column };
 }
 
 /**
@@ -9037,7 +9017,8 @@ function wrapIsList(branches: string[]): string {
  *   invalid-selector behaviour: `.t` + `th, .x, td, thead th` →
  *   `.t :is(th, td), .t .x, .t thead th`.
  * - `'compact'` puts every descendant branch in one group (group-max
- *   specificity).
+ *   specificity), except a branch carrying a pseudo-element, which `:is()`
+ *   cannot hold (ledger O14).
  *
  * A branch that LEADS WITH A COMBINATOR is never grouped; it is emitted as its
  * own header branch with the combinator hoisted out — `.no-gutters` +
@@ -9370,6 +9351,9 @@ interface Emit extends EvalCtx {
    */
   loadedImports: Map<string, Frame | null> | null;
 
+  /** Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
+  placedImports: Set<string> | null;
+
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
 
@@ -9489,6 +9473,7 @@ function scratchEmit(e: EvalCtx): Emit {
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
+    placedImports: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12127,6 +12112,9 @@ function planImportedFacts(
 
   /* Each document loaded once, by identity: true when an `@import` loaded it. */
   const seen = new Map<string, boolean>();
+
+  /* Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
+  const placed = new Set<string>();
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
@@ -12292,8 +12280,11 @@ function planImportedFacts(
           return;
         }
         seen.set(loaded.key, !isCompose);
-      } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && seen.get(loaded.key) === true)) {
+      } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && placed.has(loaded.key))) {
         return;
+      }
+      if (!isCompose && loaded.key !== undefined) {
+        placed.add(loaded.key);
       }
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
@@ -12570,6 +12561,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
+    placedImports: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12670,6 +12662,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
+    placedImports: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -17215,7 +17208,12 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     if (carried !== undefined) {
       return { evaluatedItems: groupItems(carried) };
     }
-    return splitListBytes(base.src).map(b => ({ value: any(b), key: null }));
+
+    /*
+     * Anything else is one value: a list reaches here as the List or Sequence the
+     * parser built, so an opaque value's bytes are never split to find items.
+     */
+    return [{ value: base, key: null }];
   }
 
   /*
@@ -17836,19 +17834,9 @@ function pushTypedSpread(
     }
     return state;
   }
-  if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, call, value, e, state, bearing);
-  }
 
-  /*
-   * One value that is not a list. A value compress folds (a dimension, a
-   * color) is one piece; anything else splits as its bytes always have.
-   */
-  if (e.compressedBindings !== undefined && emitCompressed(value) !== emitValue(value)) {
-    return pushTypedSpreadItem(args, call, value, e, state, bearing);
-  }
-  pushSpread(args, emitValue(value));
-  return state;
+  /* One value that is not a list is one argument: an escaped string is never split (ledger V3). */
+  return pushTypedSpreadItem(args, call, value, e, state, bearing);
 }
 
 /** Append one structural spread item as one eager snapshot. */
@@ -17880,17 +17868,6 @@ function pushTypedSpreadItem(
     return bindings;
   }
   return state;
-}
-
-/** Split one resolved spread argument into the positional args it splats to. */
-function pushSpread(args: CallArg[], rawBytes: string): void {
-  const bytes = rawBytes.trim();
-  if (bytes === '') {
-    return;
-  }
-  for (const piece of splitListBytes(bytes)) {
-    args.push(callArg(any(piece)));
-  }
 }
 
 /** Replace `@rs` args (a VariableReference bound to a detached ruleset) with the
@@ -19885,9 +19862,12 @@ function expandStyleImport(
           seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         } else if (isReferenceReimport(
           node, request.options, e.multipleImportDepth !== 0,
-          loaded.key !== undefined && e.loadedImports?.get(loaded.key) === null
+          loaded.key !== undefined && e.placedImports?.has(loaded.key) === true
         )) {
           return;
+        }
+        if (!isCompose && loaded.key !== undefined) {
+          (e.placedImports ??= new Set()).add(loaded.key);
         }
         const publishChildren = mapMaybe(configured, () => isCompose || hasPrepublishedImportFact(e, node)
           || e.prepublishedModuleImports?.get(frame)?.has(node) === true
@@ -20366,19 +20346,28 @@ function staysNested(name: string): boolean {
   return !BUBBLEABLE_ATRULES.has(n) && !DIRECTIVE_ATRULES.has(n);
 }
 
-/**
- * [atrule-supports] v5 NORMALIZES an `@supports` condition's prelude to the
- * compact single-line form, diverging from 4.x (which preserves source spacing).
- * Collapse whitespace runs (incl. authored newlines/indent) to a single space,
- * then strip the padding immediately inside each condition's parens:
- *   `( box-shadow: … ) or\n   ( -moz-box-shadow: … )`
- *     → `(box-shadow: …) or (-moz-box-shadow: …)`
- * `not (…)` / operator spacing is preserved (a space that is neither right after
- * `(` nor right before `)` stays). All other corpus `@supports` preludes are
- * already compact, so this is a no-op there.
- */
 /** A prelude fragment whose grammar owns its bytes (not merely their values). */
 type SupportsPreludePart = { bytes: string; protected: boolean };
+
+/*
+ * A value the prelude walker evaluated is written as evaluated: a string, a
+ * resolved variable, a list's authored separators and their comments are
+ * protected parts, never scanned for the quotes or comments they hold. The
+ * normalizers below space only the walker's own glue (parens, a feature colon,
+ * an operator, a sequence space), the bytes of a condition call the walker
+ * writes whole (`style(--x: @{v})`), and a raw fragment ({@link preludeLeaf}).
+ */
+const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true }];
+
+/**
+ * One leaf of a prelude. An `Any` the parser left as a raw prelude fragment is
+ * source text nothing structured, so it is spaced like glue; an `Any` that is a
+ * mixin argument's snapshot holds the value the argument was evaluated to.
+ */
+function preludeLeaf(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
+  const raw = !isValueSlotArray(node) && node.type === 'Any' && e.snapshotValues?.has(node) !== true;
+  return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: !raw }]);
+}
 
 /**
  * The grammar-owned template of a general-enclosed function form, or `null` when
@@ -20394,6 +20383,21 @@ function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolat
   return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
 }
 
+/**
+ * [atrule-supports] v5 NORMALIZES an `@supports` condition's prelude to the
+ * compact single-line form, diverging from 4.x (which preserves source spacing).
+ * Collapse whitespace runs (incl. authored newlines/indent) to a single space,
+ * then strip the padding immediately inside each condition's parens:
+ *   `( box-shadow: … ) or\n   ( -moz-box-shadow: … )`
+ *     → `(box-shadow: …) or (-moz-box-shadow: …)`
+ * `not (…)` / operator spacing is preserved (a space that is neither right after
+ * `(` nor right before `)` stays). All other corpus `@supports` preludes are
+ * already compact, so this is a no-op there.
+ *
+ * A string or comment it meets is copied as written. Only a condition call the
+ * walker writes as bytes (it does not descend into a call's arguments) or a raw
+ * fragment can still hold one ({@link preludeLeaf}).
+ */
 function normalizeSupportsBytes(p: string, compress = false): string {
   let out = '';
   let plainStart = 0;
@@ -20536,7 +20540,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
       return concatPreludeParts(parts);
     }
     default:
-      return mapMaybe(evalBytes(node, frame, e), plain);
+      return preludeLeaf(node, frame, e);
   }
 }
 
@@ -20636,7 +20640,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
-          parts.push(plain(itemBoundary(authored?.[index - 1], glue, compress)));
+          parts.push(leaf(itemBoundary(authored?.[index - 1], glue, compress)));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
@@ -20645,7 +20649,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     case 'Lookup':
       /* Var only — see the typed lane above. */
       if (node.kind !== 'var') {
-        return mapMaybe(evalBytes(node, frame, e), plain);
+        return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return mapMaybe(lookupName(node, frame, e), (nm): MaybePromise<SupportsPreludePart[]> => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -20653,40 +20657,34 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
           }
-          return mapMaybe(evalBytes(node, frame, e), plain);
+          return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         const value = hit.value;
         if (isMixinCallValue(value)) {
-          return mapMaybe(evalBytes(node, frame, e), plain);
+          return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         if (hit.evaluated !== null) {
-          return plain(emitValue(hit.evaluated));
+          return leaf(emitValue(hit.evaluated));
         }
         return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
       });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null || isMixinCallValue(resolved.value)) {
-        return mapMaybe(evalBytes(node, frame, e), plain);
+        return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return resolved.evaluated !== null
-        ? plain(emitValue(resolved.evaluated))
+        ? leaf(emitValue(resolved.evaluated))
         : evalQueryPreludeParts(resolved.value, resolved.frame, e);
     }
-    case 'Quoted':
-      /*
-       * An escaped string (`~"…"` / `~'…'`, interpolating or not) is one OPAQUE
-       * run: its content is a protected part, so a ratio `~"2/1"` stays tight
-       * (`2/1`) rather than ` / `-spaced by the plain-run rules, and spliced
-       * content is never scanned again for a closing quote. A plain quoted
-       * string keeps its quotes through `evalBytes`, which `normalizeQueryPrelude`
-       * already passes through verbatim.
-       */
-      return node.escaped
-        ? mapMaybe(evalBytes(node, frame, e), content => [{ bytes: content, protected: true }])
-        : mapMaybe(evalBytes(node, frame, e), plain);
     default:
-      return mapMaybe(evalBytes(node, frame, e), plain);
+      /*
+       * A string is one protected run, its quotes kept and an escaped one's
+       * dropped, so a ratio `~"2/1"` stays tight (`2/1`) rather than ` / `-spaced
+       * by the plain-run rules, and spliced content is never scanned for a
+       * closing quote ({@link preludeLeaf}).
+       */
+      return preludeLeaf(node, frame, e);
   }
 }
 
@@ -20705,12 +20703,12 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
  *     → `(width < 500px)`);
  *   - a logical `and` / `or` / `not` keeps a space before its `(` (`and(…)` →
  *     `and (…)`).
- * Quoted runs (`"…"`, `'…'`, `~"…"`, `~'…'`) and `/* … *\/` comments are OPAQUE:
- * their bytes pass through untouched, so an escaped `~"2/1"` is never mistaken for
- * a ratio operator and a `/* … *\/` keyword comment survives verbatim. Every
- * transform is idempotent on an already-canonical prelude (`(min-width: 1024px)`,
- * `screen, print, handheld`, `(a) or (b)`), so already-matching goldens are
- * unaffected.
+ * A quoted run (`"…"`, `'…'`) or a `/* … *\/` comment passes through untouched.
+ * Only a condition call the walker writes as bytes or a raw fragment can still
+ * hold one ({@link preludeLeaf}): a string, a resolved variable and a list's
+ * authored separators reach here as protected parts. Every transform is idempotent on an already-canonical
+ * prelude (`(min-width: 1024px)`, `screen, print, handheld`, `(a) or (b)`), so
+ * already-matching goldens are unaffected.
  */
 function normalizeQueryPrelude(p: string, compress = false): string {
   let out = '';
@@ -20728,24 +20726,14 @@ function normalizeQueryPrelude(p: string, compress = false): string {
       continue;
     }
 
-    // OPAQUE — a quoted string, optionally escaped (`~"…"` / `~'…'`).
-    const esc = c === '~' && (p[i + 1] === '"' || p[i + 1] === '\'');
-    if (c === '"' || c === '\'' || esc) {
-      const q = esc ? p[i + 1]! : c;
-      let j = esc ? i + 2 : i + 1;
-      while (j < n && p[j] !== q) {
+    // OPAQUE — a quoted string.
+    if (c === '"' || c === '\'') {
+      let j = i + 1;
+      while (j < n && p[j] !== c) {
         j++;
       }
       const stop = j < n ? j + 1 : n;
-
-      /*
-       * Less UNQUOTES an escaped string `~"…"` / `~'…'`: emit its inner bytes VERBATIM
-       * (its `@{…}` interpolation is already resolved upstream at eval), dropping the
-       * `~` + quotes. The inner run stays OPAQUE to the plain-run spacing rules, so a
-       * ratio like `~"2/1"` prints tight (`2/1`), NOT ` / `-spaced. A plain (un-escaped)
-       * quoted string keeps its quotes and passes through verbatim.
-       */
-      out += esc ? p.slice(i + 2, j) : p.slice(i, stop);
+      out += p.slice(i, stop);
       i = stop;
       continue;
     }
@@ -20755,9 +20743,6 @@ function normalizeQueryPrelude(p: string, compress = false): string {
     while (j < n) {
       const d = p[j]!;
       if (d === '"' || d === '\'') {
-        break;
-      }
-      if (d === '~' && (p[j + 1] === '"' || p[j + 1] === '\'')) {
         break;
       }
       if (d === '/' && p[j + 1] === '*') {

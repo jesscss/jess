@@ -140,8 +140,24 @@ describe('collapseNesting native vs compact', () => {
   it(`'compact' folds every descendant branch regardless of specificity`, async () => {
     await expect(header('.a, .b { .c, .d { x: 1 } }', 'compact')).resolves.toBe(':is(.a, .b) :is(.c, .d)');
     await expect(header('.tb { th, td, thead th { x: 1 } }', 'compact')).resolves.toBe('.tb :is(th, td, thead th)');
-    await expect(header('.t { .a::before, #b { x: 1 } }', 'compact')).resolves.toBe('.t :is(.a::before, #b)');
+    await expect(header('.t { .a::before, #b, .c { x: 1 } }', 'compact')).resolves.toBe('.t .a::before, .t :is(#b, .c)');
     await expect(header('.t { > .a, .b, > .c, #d { x: 1 } }', 'compact')).resolves.toBe('.t > .a, .t :is(.b, #d), .t > .c');
+  });
+
+  /*
+   * A pseudo-element is invalid inside `:is()`, so a fold over one matches
+   * nothing; no fold mode puts it there (DESIGN-DECISIONS O14, orchestrator
+   * judgment under owner delegation 2026-10-06). An extended header folds by the
+   * same key.
+   */
+  it(`a pseudo-element blocks the 'compact' fold too`, async () => {
+    await expect(header('.t { .a::before, .b::before { x: 1 } }', 'compact')).resolves.toBe('.t .a::before, .t .b::before');
+    await expect(header('.t { .a:before, .b:AFTER, .c:first-line { x: 1 } }', 'compact'))
+      .resolves.toBe('.t .a:before, .t .b:AFTER, .t .c:first-line');
+    await expect(header('.t { .a > .b::part(x), .c::slotted(p), .d { x: 1 } }', 'compact'))
+      .resolves.toBe('.t .a > .b::part(x), .t .c::slotted(p), .t .d');
+    await expect(header('.t { .a::before, .b::before { x: 1 } } .foo:extend(.t .a::before) {}', 'compact'))
+      .resolves.toBe('.t .a::before, .t .b::before, .foo');
   });
 
   /*

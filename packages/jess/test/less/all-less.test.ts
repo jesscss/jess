@@ -387,7 +387,6 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
-  ['tests-config/math-parens-division/parens.less', 'jess#351: `border-radius-keep: 4px * (1 + 1) / @var + 3px` (`@var` is a unitless 4) renders `8px / 7px` where the golden has `8px / 4 + 3px`. The slash does not divide, so each side is its own math (P35), but `4 + 3px` computes to 7px in every unitMode today. Owner 2026-10-06 (P35): a unitless number added to a length computes only under `unitMode: loose`; under the default `preserve` it is kept as written with the V18 warning, which is the golden\'s `8px / 4 + 3px`'],
   ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 
   /*

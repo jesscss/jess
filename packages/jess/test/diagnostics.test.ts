@@ -194,6 +194,34 @@ describe('Eval error source location', () => {
   });
 });
 
+/*
+ * Less `banner` and `globalVars` are written ahead of the entry file before it
+ * is parsed. A diagnostic still reports the line and column in the file as the
+ * author wrote it, and frames that file's lines (DESIGN-DECISIONS O16,
+ * orchestrator judgment under owner delegation 2026-10-06).
+ */
+describe('Diagnostic positions under injected source', () => {
+  const injected = (extra: Record<string, unknown> = {}) => new Compiler({
+    compile: { plugins: [lessPlugin()] },
+    language: { less: { banner: '/* one */\n/* two */', globalVars: { a: '1px', b: 'red' }, ...extra } }
+  });
+
+  it('reports a parse error, an eval error and a warning in the authored file', async () => {
+    const parse = await injected().renderToResult({ source: '.a {\n  b: 1;\n}\n!broken', filePath: '/proj/p.less' }, {});
+    expect(parse.errors.map(e => [e.phase, e.line, e.column])).toEqual([['parse', 4, 1]]);
+    expect(parse.errors[0]!.lines?.[4]).toBe('!broken');
+    expect(parse.errors[0]!.lines?.[3]).toBe('}');
+
+    const evaluated = await injected().renderToResult({ source: '.a {\n  width: @nope;\n}', filePath: '/proj/e.less' }, { suppressWarnings: true });
+    expect(evaluated.errors.map(e => [e.line, e.column])).toEqual([[2, 10]]);
+    expect(evaluated.errors[0]!.lines).toEqual({ 1: '.a {', 2: '  width: @nope;', 3: '}' });
+
+    const warned = await injected().renderToResult({ source: '.a { w: @a; }\n.b { width: 1px + 3em; }', filePath: '/proj/w.less' }, {});
+    const warning = warned.warnings.find(w => w.code === 'eval/unexpressible-unit')!;
+    expect([warning.line, warning.column]).toEqual([2, 17]);
+  });
+});
+
 describe('Public parser diagnostic provenance', () => {
   const cases = [
     { dialect: 'Less', extension: '.less', source: '.ok { color: red; }\n!broken' },
