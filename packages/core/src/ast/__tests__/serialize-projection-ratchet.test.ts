@@ -321,9 +321,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // ±0 functions: `groupComputes` (a group keeps its parens unless math in it
     // computes, in every position) replaces `preservedOperand`, whose write-back
     // the value lane now does itself.
+    // +2 `new Set` (ledger X18): the import planner and the render walk each record
+    // every document an `@import` of any kind placed, created on the first import,
+    // so a `(reference)` import of a sheet already loaded is dropped after a
+    // `(multiple)` or `(reference)` import as J14 drops it after a plain one.
     expect(occurrences(/^function |^async function /gmu)).toBe(539);
     expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

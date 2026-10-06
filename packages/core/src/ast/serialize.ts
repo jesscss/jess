@@ -440,14 +440,16 @@ function importHasOption(options: string | null, option: string): boolean {
 }
 
 /**
- * Import-once covers a `(reference)` re-import (orchestrator judgment 2026-10-05,
- * jess#359): a `(reference)` import of a document an `@import` already loaded is dropped,
- * as Less 4.x does, so the sheet is placed once and stays visible. A `(multiple)` import,
- * or one inside a `(multiple)` sheet, places its own copy and is never dropped. The import
- * planner and the render walk both ask this, so they agree on which imports place a sheet.
+ * Import-once covers a `(reference)` re-import (ledger J14, X18): a `(reference)` import of
+ * a document any `@import` already placed — plain, `(multiple)` or `(reference)` — is
+ * dropped, so the sheet is placed once and stays as visible as it was. A plain import after
+ * a `(reference)` one is not a re-import: it renders the sheet the author asked to see. A
+ * `(multiple)` import, or one inside a `(multiple)` sheet, places its own copy and is never
+ * dropped. The import planner and the render walk both ask this, so they agree on which
+ * imports place a sheet.
  */
-function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, importedPlainly: boolean): boolean {
-  return importedPlainly && !inMultiple && node.mode !== 'compose'
+function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, placed: boolean): boolean {
+  return placed && !inMultiple && node.mode !== 'compose'
     && importHasOption(options, 'reference') && !importHasOption(options, 'multiple');
 }
 
@@ -9328,6 +9330,9 @@ interface Emit extends EvalCtx {
    */
   loadedImports: Map<string, Frame | null> | null;
 
+  /** Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
+  placedImports: Set<string> | null;
+
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
 
@@ -9447,6 +9452,7 @@ function scratchEmit(e: EvalCtx): Emit {
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
+    placedImports: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12049,6 +12055,9 @@ function planImportedFacts(
 
   /* Each document loaded once, by identity: true when an `@import` loaded it. */
   const seen = new Map<string, boolean>();
+
+  /* Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
+  const placed = new Set<string>();
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
@@ -12214,8 +12223,11 @@ function planImportedFacts(
           return;
         }
         seen.set(loaded.key, !isCompose);
-      } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && seen.get(loaded.key) === true)) {
+      } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && placed.has(loaded.key))) {
         return;
+      }
+      if (!isCompose && loaded.key !== undefined) {
+        placed.add(loaded.key);
       }
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
@@ -12492,6 +12504,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
+    placedImports: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12592,6 +12605,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
+    placedImports: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -19800,9 +19814,12 @@ function expandStyleImport(
           seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         } else if (isReferenceReimport(
           node, request.options, e.multipleImportDepth !== 0,
-          loaded.key !== undefined && e.loadedImports?.get(loaded.key) === null
+          loaded.key !== undefined && e.placedImports?.has(loaded.key) === true
         )) {
           return;
+        }
+        if (!isCompose && loaded.key !== undefined) {
+          (e.placedImports ??= new Set()).add(loaded.key);
         }
         const publishChildren = mapMaybe(configured, () => isCompose || hasPrepublishedImportFact(e, node)
           || e.prepublishedModuleImports?.get(frame)?.has(node) === true

@@ -644,11 +644,13 @@ EXTENDER's selector only — the referenced target header never surfaces on its 
 Hiding follows the import placement, not the rule. Each `(reference)` or `(multiple)`
 import is its own placement of the sheet's rules, so an extend inside one `@media` block
 reaches only that block's copy — a `(reference)` import inside a sheet imported
-`(multiple)` twice is placed once per copy. Import-once drops a `(reference)` re-import
-of a sheet an `@import` already loaded, as Less 4.x does (orchestrator judgment
-2026-10-05, jess#359): `@import "t.less"; @import (reference) "t.less";` places the
-sheet once, visibly. A `(reference)` import that comes first does not stop a later
-plain import, which places its own visible copy. A sheet a `(reference)` sheet imports is
+`(multiple)` twice is placed once per copy. Import-once drops a `(reference)` import
+of a sheet any `@import` already loaded — plain, `(multiple)` or `(reference)` — (ledger
+J14, jess#359; X18, orchestrator judgment under owner delegation 2026-10-06):
+`@import "t.less"; @import (reference) "t.less";` places the sheet once, visibly, and
+`@import (multiple) "t.less"; @import (reference) "t.less";` places only the `(multiple)`
+copy. A `(reference)` import that comes first does not stop a later plain import, which
+renders the sheet the author asked to see as its own visible copy. A sheet a `(reference)` sheet imports is
 referenced too, and a reference sheet's rule called as a mixin from outside the import
 renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the
 render walk) may still reveal renders as a reserved block, which the deferred fold
