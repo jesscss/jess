@@ -9755,7 +9755,8 @@ describe('Less AST grammar facts', () => {
       ['a:nth-col( 2n + 1 ) { x: y; }', 'a:nth-col(2n+1)'],
       ['a:is( .b ) { x: y; }', 'a:is(.b)'],
       [':host-context( .b .c ) { x: y; }', ':host-context(.b .c)'],
-      ['@l: en; a:lang("@{l}", fr) { x: y; }', 'a:lang("en", fr)']
+      ['@l: en; a:lang("@{l}", fr) { x: y; }', 'a:lang("en", fr)'],
+      ['@n: 3; b:nth-child(@{n} of .a) { x: y; }', 'b:nth-child(3 of .a)']
     ]) {
       expect(parseLessCst(source).errors, source).toHaveLength(0);
       expect(serialize(parse(source)).css, source).toBe(`${css} {\n  x: y;\n}\n`);

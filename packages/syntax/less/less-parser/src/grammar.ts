@@ -4579,17 +4579,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     { trivia: staticSelectorTrivia },
     token(noTrivia(sequence(lessCaseWord('extend'), literal('('))))
   );
-  // A functional pseudo's ARGUMENT may be interpolated (`:lang(@{lang})`,
-  // `:dir(@{d})`), which no static argument grammar can recognize because the
-  // argument's bytes do not exist until evaluation. Keep it structural: the
-  // whole atom becomes one Interpolation-backed SimpleSelector holding typed
-  // literal/ref parts, exactly like the interpolated nth and name pseudos. The
-  // parser never joins it into text and never re-scans the span.
-  // At least one interpolation is required, so a fully static argument stays on
-  // the PseudoSelector route it already had.
+  /*
+   * A functional pseudo's ARGUMENT may be interpolated (`:lang(@{lang})`,
+   * `:nth-child(@{n} of .a)`), which no static argument grammar can recognize
+   * because the argument's bytes do not exist until evaluation. Keep it
+   * structural: the whole atom becomes one Interpolation-backed SimpleSelector
+   * holding typed literal/ref parts, exactly like the interpolated nth and name
+   * pseudos. The parser never joins it into text and never re-scans the span.
+   * At least one interpolation is required, so a fully static argument stays on
+   * the PseudoSelector route it already had. Whitespace is part of the literal
+   * chunks, as in its routed twin, so `@{n} of` keeps its space.
+   */
   const InterpolatedArgumentPseudo = node(
     'InterpolatedArgumentPseudo',
-    parser({ trivia: staticSelectorTrivia }, sequence(
+    sequence(
       token(noTrivia(sequence(
         pseudoDelimiter,
         not(extendPseudoNameOpen),
@@ -4600,7 +4603,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.VariableInterpolation,
       many(choice(g.VariableInterpolation, staticPseudoChunk)),
       literal(')')
-    )),
+    ),
     (children) => {
       const open = requireTerminalText(children[0]);
       const parts = interpolationPartsFrom(children.slice(1, -1), true, open);
