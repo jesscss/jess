@@ -5,6 +5,7 @@ import {
   compoundSelectorOf, complexSelector, decl, keyword, stylesheet, rule, sel, selist, simpleSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
 /**
  * NESTED-mode (`collapseNesting: false`, Jess's DEFAULT output) acceptance tests for
@@ -259,5 +260,28 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
 
     // The nested projection must equal the flat solve (the semantic oracle).
     expect(nested(document())).toBe(flat(document()));
+  });
+});
+
+/*
+ * A match of a nested rule's whole composed selector by an extender nested under the
+ * same parent folds in as the extender's own-local remainder: `.y` beside `.k`, both
+ * under `.w` (the flat output is `.w .k, .w .y`). An exact one splits when the rule
+ * has children of its own.
+ */
+describe('nested-mode whole-selector extend from a sibling under the same parent', () => {
+  const nestedLess = (src: string): string | undefined =>
+    serialize(parseLess(src), { evaluator, collapseNesting: false }).css;
+
+  it('folds the sibling extender into the local header, exact or all', () => {
+    expect(nestedLess('.w { .y { &:extend(.w .k); } .k { k: 1; } }'))
+      .toBe('.w {\n  .k,\n  .y {\n    k: 1;\n  }\n}\n');
+    expect(nestedLess('.w { .y { &:extend(.w .k all); } .k { k: 1; } }'))
+      .toBe('.w {\n  .k,\n  .y {\n    k: 1;\n  }\n}\n');
+  });
+
+  it('splits an exact sibling extender off a rule with children', () => {
+    expect(nestedLess('.w { .y { &:extend(.w .k); } .k { k: 1; .c { c: 1; } } }'))
+      .toBe('.w {\n  .k {\n    k: 1;\n    .c {\n      c: 1;\n    }\n  }\n  .y {\n    k: 1;\n  }\n}\n');
   });
 });

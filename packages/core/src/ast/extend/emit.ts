@@ -1456,6 +1456,28 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
          */
         .map(inst => relativizeExtender(inst, s));
       header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
+
+      /*
+       * A match of the rule's whole composed selector by an extender nested under the
+       * same parent (`.w { .y { &:extend(.w .k); } .k {} }`; trigger X kept it here,
+       * since it descends from the parent) folds in as that extender's own-local
+       * remainder, `.y` beside `.k` (an exact one SPLITS when the rule has children).
+       * An extender that shares no parent level is not foldable here.
+       */
+      const raw = rawOf(s);
+      for (const inst of reaching) {
+        if (!raw.some(b => branchWholeMatches(b, inst.target, inst.partial))) {
+          continue;
+        }
+        const rel = relativizeExtender(inst, s);
+        if (rel === inst) {
+          continue;
+        }
+        const into = !inst.partial && survivors ? splits : header;
+        for (const e of composePath(rel.extenderPath)) {
+          into.push(e);
+        }
+      }
     }
     projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,
