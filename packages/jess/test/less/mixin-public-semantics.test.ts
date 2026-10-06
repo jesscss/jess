@@ -117,6 +117,22 @@ describe('Less mixin semantic contracts through the public AST route', () => {
   });
 
   /*
+   * A group holding a condition is that condition's truth as an operand, in a
+   * guard as in an `if()` (ledger P42: the parser keeps the shape, which was a
+   * located-nowhere parse error). What the operand then does is evaluation's
+   * call: compared, it compares; in math it is not a number, so the run is not
+   * `true` and the condition does not hold.
+   */
+  it('reads a condition group as an operand alike in a guard and in if()', async () => {
+    await expect(parseAndRender(`
+      .m() when ((1 = 1) = true) { a: 1 }
+      .m() when ((1 = 2) = true) { b: 2 }
+      .m() when ((1 = 1) + 1) { c: 3 }
+      .x { .m(); d: if(((1 = 1) = true), y, n); e: if(((1 = 1) + 1), y, n); }
+    `)).resolves.toBe('.x {\n  a: 1;\n  d: y;\n  e: n;\n}\n');
+  });
+
+  /*
    * jess#356: a body-form `&:extend()` written directly in a mixin definition
    * extends the rule the mixin is called into, in the default nested output as
    * in collapsed output. It is not parsed yet: the mixin body has no extend

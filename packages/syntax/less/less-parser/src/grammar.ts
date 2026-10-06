@@ -1725,6 +1725,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, span, _rawChildren, _triviaLog, state) => functionConditionParenFrom(children, span, state)
   );
   /*
+   * The `<operator> <operand>` pairs after a math run's first operand: `MathSum`'s
+   * tail, and the rest of a run a condition or guard group heads.
+   */
+  const mathRunTail = many(sequence(choice(productOperator, sumOperator), g.MathAtom));
+
+  /*
    * A group is read once, as a condition; the token after its `)` decides what
    * it was, as in `MixinGuardTerm`: the rest of a math run makes it an operand
    * (`if(((1 + 1) * 2 = 4), …)`), and a comparison compares the value it holds.
@@ -1734,7 +1740,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       optional(functionConditionNot),
       choice(
-        sequence(g.FunctionConditionParen, noTrivia(many(sequence(choice(productOperator, sumOperator), g.MathAtom)))),
+        sequence(g.FunctionConditionParen, noTrivia(mathRunTail)),
         g.FunctionConditionOperand
       ),
       optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)))
@@ -2307,7 +2313,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // one way and a later step re-reading the result.
   const MathSum = node(
     'MathSum',
-    noTrivia(sequence(g.MathAtom, many(sequence(choice(productOperator, sumOperator), g.MathAtom)))),
+    noTrivia(sequence(g.MathAtom, mathRunTail)),
     lessMathRun,
     { collapse: true }
   );
@@ -3203,7 +3209,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * makes it a grouped guard. The operand arm never starts with `(`.
    */
   const mixinGuardGroupTail = sequence(
-    noTrivia(many(sequence(choice(productOperator, sumOperator), g.MathAtom))),
+    noTrivia(mathRunTail),
     optional(sequence(mixinGuardOperator, g.MixinGuardOperand))
   );
   const MixinGuardTerm = node(
@@ -5405,12 +5411,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           span
         );
       }
+      /* A call's selector path is a committed selector too: a `/word/` in it is G37's error. */
       const call = children.find(isMixinCallFact);
       if (call !== undefined) {
+        rejectHeldSlashedCombinator(state, span.start, span.end);
         return mixinCallFromSelectorBranch(prefix.selector, call.args, call.important, span);
       }
       const bare = children.find(isBareMixinCallFact);
       if (bare !== undefined) {
+        rejectHeldSlashedCombinator(state, span.start, span.end);
         return mixinCallFromSelectorBranch(prefix.selector, [], bare.important, span);
       }
       const ruleset = children.find(isRulesetTailFact);

@@ -103,7 +103,10 @@ describe('slashed combinators are rejected by name', () => {
     ['a nested ruleset', '.x { .y:is(.a /deep/ .b) { c: d; } }', 14, '/deep/'],
     ['a ruleset after a held declaration', '.x { a:is(b /c/ d); }\n:is(.a /deep/ .b) { c: d; }', 29, '/deep/'],
     ['a pseudo inside an inline :extend() target', '.x:extend(:is(.a /deep/ .b)) { c: d; }', 17, '/deep/'],
-    ['a pseudo inside a body :extend() target', '.x { &:extend(:is(.a /deep/ .b)); }', 21, '/deep/']
+    ['a pseudo inside a body :extend() target', '.x { &:extend(:is(.a /deep/ .b)); }', 21, '/deep/'],
+    ['a mixin call\'s selector path', '.a:is(b /c/ d);', 8, '/c/'],
+    ['an outer ruleset whose body committed first', '.o:is(.a /deep/ .b) { .i { c: d; } }', 9, '/deep/'],
+    ['a nested ruleset after a held declaration', '.o { a:is(b /c/ d); .i:is(.x /deep/ .y) { e: f; } }', 29, '/deep/']
   ])('still rejects a held combinator once %s commits', (_label, source, offset, combinator) => {
     const failure = failureOf(source);
     expect(failure).toBeInstanceOf(LessSlashedCombinatorError);

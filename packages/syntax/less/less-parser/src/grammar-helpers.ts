@@ -1112,6 +1112,13 @@ function pseudoArgumentSegmentsFrom(
  * A selector committed from `start` to `end` — a ruleset at its `{` (the end
  * is read off the raw children only when something is held), a body
  * `&:extend()` — rejects the first held `/word/` combinator inside it.
+ *
+ * A commit runs once its statement is complete, so every fact from `start` on
+ * is now settled: inside the selector it is rejected here, and after it (in a
+ * ruleset's body) it belonged to a nested selector that already committed or to
+ * a declaration that never was a selector. Only the facts before `start` — an
+ * enclosing selector's, still uncommitted — are kept, so the held list stays as
+ * short as the open selectors and a commit never rescans settled facts.
  */
 function rejectHeldSlashedCombinator(state: unknown, start: number, end: number | readonly unknown[]): void {
   const held = heldSlashedCombinatorsOf(state);
@@ -1122,14 +1129,18 @@ function rejectHeldSlashedCombinator(state: unknown, start: number, end: number 
     end = requiredTokenStart(end, '{');
   }
   let first: SlashedCombinatorFact | undefined;
+  let kept = 0;
   for (const fact of held) {
-    if (fact.start >= start && fact.end <= end && (first === undefined || fact.start < first.start)) {
+    if (fact.start < start) {
+      held[kept++] = fact;
+    } else if (fact.end <= end && (first === undefined || fact.start < first.start)) {
       first = fact;
     }
   }
   if (first !== undefined) {
     throw new LessSlashedCombinatorError(first.start, first.end, first.slashedCombinator);
   }
+  held.length = kept;
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -2060,14 +2071,21 @@ function requireGuardTerm(value: unknown, state: unknown): MixinGuard {
 }
 
 /**
- * A guard group read as an operand: its content must be one value, and it is
- * folded as a math group (`( <run> )`), exactly as a value-position `Paren`.
+ * A guard group read as an operand. One value is folded as a math group
+ * (`( <run> )`), exactly as a value-position `Paren`; a condition
+ * (`((1 = 1) = true)`) is the condition's truth, as the `if()` twin reads it.
+ * The parser keeps the shape and evaluation decides whether the operand
+ * compares or computes (ledger P42).
  */
 function guardGroupValue(inner: unknown, span: SourceSpan, state: unknown): ValueNode {
-  if (!isLessGuardOperand(inner)) {
-    throw new SyntaxError('A Less condition group used as an operand must hold one value.');
+  if (isLessGuardOperand(inner)) {
+    return withSourceSpan(block(lessMathInGroup(inner.run, state)), span);
   }
-  return withSourceSpan(block(lessMathInGroup(inner.run, state)), span);
+  const source = sourceFromState(state);
+  if (source === undefined) {
+    throw new TypeError('Less guard group lost its source.');
+  }
+  return withSourceSpan(condition(requireGuardTerm(inner, state), source.slice(span.start, span.end)), span);
 }
 
 /**
@@ -2082,18 +2100,13 @@ function continueGuardMathRun(
   from: number
 ): { readonly run: ValueNode | LessMathRun; readonly next: number } {
   let next = from;
-  const operands: ValueNode[] = [head];
-  const operators: string[] = [];
-  const spans: Array<SourceSpan | undefined> = [sourceSpanOf(head)];
   while (next < children.length && guardOperatorText(children[next]) === null) {
-    operators.push(requireTerminalText(children[next]).trim());
-    const operand = requireValueNode(children[next + 1]);
-    const raw = rawChildren[next + 1];
-    operands.push(operand);
-    spans.push(isSpannedToken(raw) ? raw.span : sourceSpanOf(operand));
     next += 2;
   }
-  return { run: operators.length === 0 ? head : { kind: 'less-math-run', operands, operators, spans }, next };
+  if (next === from) {
+    return { run: head, next };
+  }
+  return { run: mathRunFrom(head, sourceSpanOf(head), children, rawChildren, from, next), next };
 }
 
 /**
@@ -2280,10 +2293,9 @@ function functionConditionTermFrom(
   const groupLed = left.grouped;
   index += 1;
   if (groupLed && index < children.length && guardOperatorText(children[index]) === null) {
-    if (left.raw === undefined || left.hasComparison) {
-      throw new SyntaxError('A Less condition group used as an operand must hold one value.');
-    }
-    const operand = continueGuardMathRun(requireValueNode(left.raw), children, rawChildren, index);
+    /* A group holding a condition heads the run as the condition's truth (ledger P42). */
+    const head = left.raw === undefined || left.hasComparison ? condition(left.guard, left.src) : requireValueNode(left.raw);
+    const operand = continueGuardMathRun(head, children, rawChildren, index);
     let src = left.src;
     for (let at = index; at < operand.next; at += 2) {
       src += ` ${requireTerminalText(children[at]).trim()} ${functionConditionSource(requireValueNode(children[at + 1]))}`;
@@ -2480,23 +2492,36 @@ function lessMathRun(
   _span: Span,
   rawChildren: readonly unknown[]
 ): ValueNode | LessMathRun {
+  const head = requireValueNode(children[0]);
   if (children.length === 1) {
-    return requireValueNode(children[0]);
+    return head;
   }
-  const operands: ValueNode[] = [];
+  const raw = rawChildren[0];
+  return mathRunFrom(head, isSpannedToken(raw) ? raw.span : sourceSpanOf(head), children, rawChildren, 1, children.length);
+}
+
+/**
+ * A math run from its first operand and the `<operator> <operand>` pairs
+ * `children[from..to)` — the ONE assembly of a run, for a `MathSum` and for the
+ * run a guard group heads. In AST mode Parseman supplies the original spanned
+ * children in `rawChildren`, which gives each folded operation its authored
+ * range without retaining one span per standalone dimension.
+ */
+function mathRunFrom(
+  head: ValueNode,
+  headSpan: SourceSpan | undefined,
+  children: readonly unknown[],
+  rawChildren: readonly unknown[],
+  from: number,
+  to: number
+): LessMathRun {
+  const operands: ValueNode[] = [head];
   const operators: string[] = [];
-  const spans: Array<SourceSpan | undefined> = [];
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    if (index % 2 === 1) {
-      operators.push(requireTerminalText(child).trim());
-      continue;
-    }
-    const operand = requireValueNode(child);
-    const raw = rawChildren[index];
-    // In AST mode Parseman supplies the original spanned children here, which
-    // gives each folded operation its authored range without retaining one span
-    // per standalone dimension.
+  const spans: Array<SourceSpan | undefined> = [headSpan];
+  for (let index = from; index < to; index += 2) {
+    operators.push(requireTerminalText(children[index]).trim());
+    const operand = requireValueNode(children[index + 1]);
+    const raw = rawChildren[index + 1];
     operands.push(operand);
     spans.push(isSpannedToken(raw) ? raw.span : sourceSpanOf(operand));
   }
