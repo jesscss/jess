@@ -142,6 +142,19 @@ describe('fused ampersand under a multi-compound parent', () => {
       .toBe('.b .p-foo,\n.z {\n  m: 1;\n}\n');
   });
 
+  /*
+   * An `all` match of a target of several compounds keeps the simples the span's first
+   * compound has beyond the target before it and those its last compound has after it,
+   * for the extender as for the matched selector (lessc 4.9.1 writes the same).
+   */
+  it('keeps the simples around a multi-compound all match on the extender', () => {
+    expect(renderLess('.header { .header-nav { a: 1; &:before { b: 2; } } } .footer { .footer-nav { &:extend(.header .header-nav all); } }'))
+      .toBe('.header .header-nav,\n.footer .footer-nav {\n  a: 1;\n}\n.header .header-nav:before,\n.footer .footer-nav:before {\n  b: 2;\n}\n');
+    expect(renderLess('div.a .b { m: 1 } .x:extend(.a .b all) {}')).toBe('div.a .b,\ndiv.x {\n  m: 1;\n}\n');
+    expect(renderLess('.q .a.k .b.m .z { m: 1 } .x .y:extend(.a .b all) {}'))
+      .toBe('.q .a.k .b.m .z,\n.q .k.x .y.m .z {\n  m: 1;\n}\n');
+  });
+
   it('carries an all graft without a one-arm :is() around the parent', () => {
     expect(renderLess('.x { .arrow { &::before { m: 1 } } } .y:extend(.x all) {}'))
       .toBe(':is(.x, .y) .arrow::before {\n  m: 1;\n}\n');

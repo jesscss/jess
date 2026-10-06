@@ -46,7 +46,7 @@ import {
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import { branchHasAmp, composePath } from './compose.js';
-import { isTypeSelector } from './conflict.js';
+import { mergeCompound, NO_SIMPLES } from './conflict.js';
 import { extendBranchSpecificity, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
@@ -798,43 +798,6 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
   return withSegments(b, segments);
 }
 
-/** True for a text token that must lead its compound: a type or universal selector. */
-function leadsCompound(text: string): boolean {
-  return text.charCodeAt(0) === 0x2A /* * */ || isTypeSelector(text);
-}
-
-const NO_SIMPLES: readonly Simple[] = [];
-
-/**
- * `before`, `member` and `after` as one valid compound: the type (or universal)
- * selector leads, and a repeated type or a universal beside a type is dropped
- * (`div` + `div.b` → `div.b`, never 4.x's `divdiv.b`). Null when two different
- * element types meet.
- */
-function mergeCompound(before: readonly Simple[], member: readonly Simple[], after: readonly Simple[]): Simple[] | null {
-  const merged = [...before, ...member, ...after];
-  let lead: Extract<Simple, { t: 'text' }> | null = null;
-  for (const s of merged) {
-    if (s.t !== 'text' || !leadsCompound(s.text)) {
-      continue;
-    }
-    if (lead === null || lead.text === '*') {
-      lead = s;
-    } else if (s.text !== '*' && s.text.toLowerCase() !== lead.text.toLowerCase()) {
-      return null;
-    }
-  }
-  if (lead === null) {
-    return merged;
-  }
-  const out: Simple[] = [lead];
-  for (const s of merged) {
-    if (s.t !== 'text' || !leadsCompound(s.text)) {
-      out.push(s);
-    }
-  }
-  return out;
-}
 
 /* ------------------------------------------------- relative extender folding */
 

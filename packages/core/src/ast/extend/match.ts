@@ -23,7 +23,7 @@ import {
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, SelectorPart, Simple } from './ir.js';
-import { wouldConflict } from './conflict.js';
+import { mergeCompound, NO_SIMPLES, wouldConflict } from './conflict.js';
 import { recordAstExtendProfile } from './plan.js';
 
 /**
@@ -117,15 +117,15 @@ export function applyInstruction(
      */
     if (partial && !extenderKeys.has(bKey) && branchSharesAtom(b, targetAtoms)) {
       /*
-       * `all` whole-branch SUBSET match: a multi-segment target whose every segment
-       * compound-subsets the aligned branch segment across the WHOLE span (each
-       * pattern compound ⊆ its branch compound, combinators aligned — e.g.
-       * `.a > .c` vs `.a.b > .c.d`). The matched span is the entire selector, so it
-       * degenerates to a plain comma-append (`.a.b > .c.d, .x`), NOT an
-       * `:is()`-wrap of the whole branch — the sub-span `:is()` wrap is reserved for
-       * matches with surrounding combinator context (see `substituteMultiCompound`).
+       * `all` whole-branch match: a multi-segment target whose every segment matches the
+       * aligned branch compound across the WHOLE span with nothing left over (the
+       * leading combinator aside). The matched span is the entire selector, so it
+       * degenerates to a plain comma-append, NOT an `:is()`-wrap of the whole branch.
+       * A compound with simples beyond the target's (`.a.b > .c.d` for `.a > .c`) is a
+       * span substitution instead, which keeps those simples on the extender
+       * (`substituteMultiCompound`).
        */
-      if (branchWholeMatch(b, target, true)) {
+      if (branchWholeMatch(b, target, true) && sameCompoundSizes(b, target)) {
         out.push(b);
         for (const e of appendExtenders) {
           pushExtender(appends, e, chainHidden);
@@ -193,6 +193,19 @@ export function applyInstruction(
     }
   }
   return changed ? out : null;
+}
+
+/** True when `b` and `target` have compounds of the same sizes, segment by segment. */
+function sameCompoundSizes(b: Branch, target: Branch): boolean {
+  if (b.segments.length !== target.segments.length) {
+    return false;
+  }
+  for (let k = 0; k < b.segments.length; k++) {
+    if (b.segments[k]!.compound.value.length !== target.segments[k]!.compound.value.length) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -950,6 +963,14 @@ function collapseMatchedAtoms(
  * Substitute a multi-compound (P>1) target span in place. Finds a contiguous
  * segment run whose compounds each superset the target compounds and whose
  * internal combinators align; collapses the span into one `:is(span, ext)`.
+ *
+ * The span keeps its authored compounds as the matched member. The simples its first
+ * compound has beyond the target join each extender's first compound, and those its
+ * last compound has join the extender's last (the Less 4.x replacement:
+ * `.header .header-nav:before` + `.footer .footer-nav:extend(.header .header-nav all)`
+ * gives `.footer .footer-nav:before`); an extender they would give two element types or
+ * two ids is dropped. An inner compound of the span must hold exactly the target's
+ * simples, since an extra simple there has no place on the extender.
  */
 function substituteMultiCompound(
   b: Branch,
@@ -964,7 +985,8 @@ function substituteMultiCompound(
     for (let k = 0; k < P; k++) {
       const ts = target.segments[k]!;
       const bs = segments[start + k]!;
-      if (!multisetSubset(textSimpleTokens(ts.compound), textSimpleTokens(bs.compound))) {
+      if (!multisetSubset(textSimpleTokens(ts.compound), textSimpleTokens(bs.compound))
+        || (k > 0 && k < P - 1 && bs.compound.value.length !== ts.compound.value.length)) {
         ok = false;
         break;
       }
@@ -976,6 +998,21 @@ function substituteMultiCompound(
     if (!ok) {
       continue;
     }
+    const before = extraSimples(segments[start]!.compound, target.segments[0]!.compound);
+    const after = extraSimples(segments[start + P - 1]!.compound, target.segments[P - 1]!.compound);
+    let placed = extenders;
+    if (before.length > 0 || after.length > 0) {
+      placed = [];
+      for (const e of extenders) {
+        const p = placeAroundExtender(e, before, after);
+        if (p !== null) {
+          placed.push(p);
+        }
+      }
+      if (placed.length === 0) {
+        return b;
+      }
+    }
 
     // Build the matched span text (segments start..start+P-1, internal combinators).
     const spanSegs: SelectorPart[] = [];
@@ -986,7 +1023,7 @@ function substituteMultiCompound(
     const isSeg: SelectorPart = {
       combinator: start === 0 ? ' ' : segments[start]!.combinator,
       compound: {
-        value: isOrPlainSimpleTokens(retainMatched ? [mkBranch(spanSegs), ...extenders] : extenders)
+        value: isOrPlainSimpleTokens(retainMatched ? [mkBranch(spanSegs), ...placed] : placed)
       }
     };
     const outSegs: SelectorPart[] = [];
@@ -1000,4 +1037,62 @@ function substituteMultiCompound(
     return mkBranch(outSegs);
   }
   return b;
+}
+
+/** The simples of `base` beyond the plain-text simples `target` names (one each). */
+function extraSimples(base: Compound, target: Compound): Simple[] {
+  const need = textSimpleTokens(target);
+  const out: Simple[] = [];
+  for (const s of base.value) {
+    const at = s.t === 'text' ? need.indexOf(s.text) : -1;
+    if (at === -1) {
+      out.push(cloneSimple(s));
+    } else {
+      need[at] = need[need.length - 1]!;
+      need.length--;
+    }
+  }
+  return out;
+}
+
+/** Extender `e` with `before` joined to its first compound and `after` to its last, or
+ * null when either would hold two element types or two ids. Keeps `e`'s provenance. */
+function placeAroundExtender(e: Branch, before: readonly Simple[], after: readonly Simple[]): Branch | null {
+  const n = e.segments.length;
+  const first = e.segments[0]!;
+  const last = e.segments[n - 1]!;
+  if (wouldConflict(textOfSimples(before), textSimpleTokens(first.compound))
+    || wouldConflict(textOfSimples(after), textSimpleTokens(last.compound))) {
+    return null;
+  }
+  const head = mergeCompound(before, first.compound.value, n === 1 ? after : NO_SIMPLES);
+  const tail = n === 1 ? head : mergeCompound(NO_SIMPLES, last.compound.value, after);
+  if (head === null || tail === null) {
+    return null;
+  }
+  const segments: SelectorPart[] = [{ combinator: first.combinator, compound: { value: head } }];
+  for (let k = 1; k < n - 1; k++) {
+    segments.push(cloneSeg(e.segments[k]!));
+  }
+  if (n > 1) {
+    segments.push({ combinator: last.combinator, compound: { value: tail } });
+  }
+  const out = mkBranch(segments);
+  if (e.ext) {
+    out.ext = true;
+  }
+  if (e.hidden) {
+    out.hidden = true;
+  }
+  return out;
+}
+
+function textOfSimples(simples: readonly Simple[]): string[] {
+  const out: string[] = [];
+  for (const s of simples) {
+    if (s.t === 'text') {
+      out.push(s.text);
+    }
+  }
+  return out;
 }
