@@ -13,6 +13,11 @@ async function render(source: string, less: Record<string, unknown> = {}): Promi
 }
 
 describe('typed reads, not byte scans', () => {
+  /*
+   * A quoted string's quote is syntax, so its content is the path. An escaped
+   * string is opaque (V22): its content is never re-read for a quote, so
+   * `url(~"'b.png'")` is transformed whole, directly or through a variable.
+   */
   it('transforms url(@var) by the string the variable holds', async () => {
     expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); }', { rootpath: 'root/' }))
       .toBe('.x { q: url("root/a.png"); e: url(root/\'b.png\'); d: url(root/\'b.png\'); }');
@@ -32,6 +37,18 @@ describe('typed reads, not byte scans', () => {
   it('iterates an opaque value as one item', async () => {
     expect(await render('.x { each(true, { a: @value; }); each(~"a, b", { b: @value; }); each(a, b, { c: @value; }); }'))
       .toBe('.x { a: true; b: a, b; c: a; c: b; }');
+  });
+
+  /* One item keeps the type the parser gave it: a keyword is a keyword, `true` is truthy. */
+  it('iterates a single keyword as a keyword', async () => {
+    expect(await render('@k: abc; .x { each(a, { v: iskeyword(@value); }); each(@k, { w: iskeyword(@value); }); each(true, { t: if(@value, 1, 2); }); }'))
+      .toBe('.x { v: true; w: true; t: 1; }');
+  });
+
+  /* A url-bearing list passed through a mixin keeps its items, as `length()` reads them. */
+  it('iterates a url-bearing list passed through a mixin argument by its items', async () => {
+    expect(await render('.m(@l) { each(@l, { a: @value; }); n: length(@l); } @u: url(a.png), url(b.png); .x { .m(url(a.png) url(b.png)); } .y { .m(@u); }'))
+      .toBe('.x { a: url(a.png); a: url(b.png); n: 2; } .y { a: url(a.png); a: url(b.png); n: 2; }');
   });
 
   it('writes an escaped string in a query prelude as written, however it gets there', async () => {

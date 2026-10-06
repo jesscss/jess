@@ -17270,12 +17270,11 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
   }
 
   /*
-   * A list iterable. A LITERAL word — an authored list (`1 2 3`, `a, b`) or a var
-   * bound to one — is byte-split into its top-level items (Less's Expression/Value
-   * list model, which the flattened value domain does not preserve structurally). A
-   * COMPUTED value evaluates: a genuine `List` (`range(…)`) iterates its typed
-   * items; any other single value (an escaped `e("…")`, a scalar) is ONE item — it
-   * is not a list, so it is never split.
+   * A list iterable. An authored list (`1 2 3`, `a, b`), or a var bound to one,
+   * iterates the List or Sequence the parser built. A COMPUTED value evaluates: a
+   * genuine `List` (`range(…)`) iterates its typed items; any other single value
+   * (a keyword, an escaped `e("…")`, a scalar) is ONE item of the type the parser
+   * gave it — it is not a list, so it is never split.
    */
   const { node: base, frame: baseFrame } = resolvedIterable;
   if (isValueSlotArray(base)) {
@@ -17294,11 +17293,13 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     /*
      * A snapshot that kept the value it was evaluated to (a mixin argument,
      * ledger O3) iterates that value's items in every output mode, as the same
-     * value reaching `each()` directly does; only a bare snapshot splits.
+     * value reaching `each()` directly does — a url-bearing list included, which
+     * keeps its value beside the snapshot as `mixinUrlBindings` (V15).
      */
-    const carried = base.type === 'Any'
-      ? baseFrame?.mixinValueBindings?.get(base) ?? e.mixinValueBindings?.get(base) ?? e.compressedBindings?.get(base)
-      : undefined;
+    const carried = base.type !== 'Any'
+      ? undefined
+      : baseFrame?.mixinValueBindings?.get(base) ?? e.mixinValueBindings?.get(base) ?? baseFrame?.mixinUrlBindings?.get(base)
+        ?? e.mixinUrlBindings?.get(base) ?? e.compressedBindings?.get(base);
     if (carried !== undefined) {
       return { evaluatedItems: groupItems(carried) };
     }
