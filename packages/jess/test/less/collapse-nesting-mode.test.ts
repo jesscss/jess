@@ -160,6 +160,16 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe('.t .a::before, .t .b::before, .foo');
   });
 
+  /* An interpolated branch may resolve to a pseudo-element, so it stays out of the fold, as 'native' keeps it. */
+  it(`an interpolated branch stays out of the 'compact' fold`, async () => {
+    await expect(header('@pe: ~"::before"; .t { .a@{pe}, .b@{pe} { x: 1 } }', 'compact')).resolves.toBe('.t .a::before, .t .b::before');
+    await expect(header('@pe: before; .t { .a::@{pe}, .b::@{pe} { x: 1 } }', 'compact')).resolves.toBe('.t .a::before, .t .b::before');
+    await expect(header('@s: ~".a::before"; .t { @{s}, .b { x: 1 } }', 'compact')).resolves.toBe('.t .a::before, .t .b');
+    const scss = await new Compiler({ output: { collapseNesting: 'compact' } })
+      .renderString('$pe: "::before"; .t { .a#{$pe}, .b#{$pe} { x: 1 } }', { extension: '.scss' });
+    expect(String(scss)).toBe('.t .a::before,\n.t .b::before {\n  x: 1;\n}\n');
+  });
+
   /*
    * A child under a NESTED multi-branch rule keeps every branch of that rule as
    * its ancestor. It used to keep only the first, silently dropping selectors

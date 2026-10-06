@@ -20,7 +20,7 @@
  * was built from, never from serialized text.
  */
 
-import type { SelectorBranch, SimpleToken } from './nodes.js';
+import { selectorBranchHasInterp, type SelectorBranch, type SimpleToken } from './nodes.js';
 import type { Branch, Compound, Simple } from './extend/ir.js';
 
 /*
@@ -229,18 +229,20 @@ function hasPseudoElement(branch: SelectorBranch): boolean {
  * (`'compact'`, group-max specificity) gives every descendant branch one key.
  * In both, a branch `:is()` cannot hold joins `A` on its own: one that leads
  * with a combinator (`> .col`) is a relative selector, and one that carries a
- * pseudo-element would match nothing (ledger O14). The namespace pipe (`|h1`) is
- * part of the compound, not a combinator.
+ * pseudo-element would match nothing (ledger O14). An interpolated branch may
+ * resolve to a pseudo-element (`.a@{pe}`, `@{s}`), so it joins `A` on its own
+ * too, as the guarded fold already has it. The namespace pipe (`|h1`) is part
+ * of the compound, not a combinator.
  *
- * ponytail: an interpolated token is read as no pseudo-element under `'compact'`;
- * its kind is known only once it resolves, and the guarded fold keeps it out.
+ * ponytail: an interpolated branch that resolves to no pseudo-element loses the
+ * `'compact'` fold; keying on the resolved branch would keep it.
  */
 export function nestingGroupKey(branch: SelectorBranch, guarded: boolean): number {
   if (guarded) {
     return astBranchSpecificity(branch, true, false);
   }
   const comb = branch.type === 'RelativeSelector' ? branch.value[0] : undefined;
-  return (comb !== undefined && comb !== ' ' && comb !== '|') || hasPseudoElement(branch) ? -1 : 0;
+  return (comb !== undefined && comb !== ' ' && comb !== '|') || hasPseudoElement(branch) || selectorBranchHasInterp(branch) ? -1 : 0;
 }
 
 function irCompoundSpecificity(compound: Compound, compoundOnly: boolean): number {
