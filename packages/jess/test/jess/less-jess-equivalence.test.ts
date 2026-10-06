@@ -568,21 +568,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
-  ['all-less:tests-unit/color-functions/modern-syntax.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`rgb(0 128 255)`) converts to a call through its imported binding (`$rgb(…)`), which ruling J1 makes an eval error'
-  }],
-  ['all-less:tests-unit/color-functions/modern.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'a built-in call Less writes out as CSS when it cannot compute it converts to a call through its imported binding, which ruling J1 makes an eval error'
-  }],
-  ['all-less:tests-unit/color-functions/operations.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'the `.jess` arm clamps rgba() channels the Less arm keeps out of range (`rgba(-99.9, 31.4159, 321, 0.42)` vs `rgba(0, 31, 255, 0.42)`)'
-  }],
   ['all-less:tests-unit/color-functions/rgba.less', {
     cause: 'lost-info',
     outcome: 'arm-b-error',
@@ -958,12 +943,23 @@ for (const corpus of CORPORA) {
 
 describe('converted function imports', () => {
   it('imports exactly the Less built-ins a file calls, under their call names', () => {
-    const printed = emitJess(parseLess('@charset "utf-8";\n.a { b: lighten(#00f, 10%); c: data-uri("x.png"); d: rgba(1, 2, 3, 0.5); e: unknown(1); }'), { functions: LESS_FUNCTIONS });
+    const printed = emitJess(parseLess('@charset "utf-8";\n.a { b: lighten(#00f, 10%); c: data-uri("x.png"); d: rgba(1, 2, 3, 0.5); e: unknown(1); f: fade(rgba(1, 2, 3, 0.5), 10%); }'), { functions: LESS_FUNCTIONS });
     expect(printed.split('\n').slice(0, 2)).toEqual([
       '@charset "utf-8";',
-      '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
+      '@-from "#less" import (dataUri as data-uri, fade, lighten, rgba);'
     ]);
-    expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: $rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n}');
+    expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n  f: $fade($rgba(1, 2, 3, 0.5), 10%);\n}');
+  });
+
+  /*
+   * Ledger F5: Less writes a CSS-shaped color call in a property's value out as
+   * authored and never dispatches it, so the converter prints it as a plain CSS
+   * call. A variable's value, which a callable may read, keeps the binding.
+   */
+  it('prints a CSS-shaped color call a property writes out as a plain call', () => {
+    const printed = emitJess(parseLess('@c: rgba(1, 2, 3, 0.5);\n.a { b: rgb(0 128 255); c: hsl(198deg 28% 50% / 50%); d: alpha(@c); }'), { functions: LESS_FUNCTIONS });
+    expect(printed).toContain('$c: $rgba(1, 2, 3, 0.5);');
+    expect(printed).toContain('.a {\n  b: rgb(0 128 255);\n  c: hsl(198deg 28% 50% / 50%);\n  d: $alpha($^c);\n}');
   });
 });
 

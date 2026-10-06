@@ -376,13 +376,64 @@ export const delimiterClose = (delimiter: Block['delimiter']): string =>
 /**
  * The bytes between two items of a list or call: the canonical `glue`, except
  * that pretty output replays an authored run carrying a line break (with its
- * indentation) or a block comment. Compressed output always takes the glue. A
- * `;` group the author left empty (`if(media(print): 1px;)`) keeps its
- * delimiter but not the space that would only precede a value, so `next` (the
- * following item's bytes) is consulted when the caller has it.
+ * indentation) or a block comment ({@link replayedRun}). Compressed output
+ * always takes the glue. A `;` group the author left empty
+ * (`if(media(print): 1px;)`) keeps its delimiter but not the space that would
+ * only precede a value, so `next` (the following item's bytes) is consulted
+ * when the caller has it.
  */
 export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean, next?: string): string =>
-  !compress && authored !== undefined && /[\r\n]|\/\*/u.test(authored) ? authored : next === '' && glue === '; ' ? ';' : glue;
+  !compress && authored !== undefined && runReplays(authored) ? replayedRun(authored, glue) : next === '' && glue === '; ' ? ';' : glue;
+
+/** Whether pretty output replays an authored run between two items: it carries a line break or a block comment. */
+export const runReplays = (authored: string): boolean => /[\r\n]|\/\*/u.test(authored);
+
+/**
+ * The authored run between two members of a space-separated group, as CSS
+ * output replays it ({@link replayedRun}); one space when nothing was recorded.
+ * A glued (`''`) or single-character run cannot hold a comment.
+ */
+export const authoredSpace = (authored: string | undefined): string =>
+  authored === undefined ? ' ' : authored.length > 1 ? replayedRun(authored, ' ') : authored;
+
+/**
+ * An authored run as CSS output replays it: its block comments and line breaks
+ * stay, a `//` line comment (Less, SCSS and .jess source only) is dropped with
+ * the blanks before it, and a Less `;` argument separator is spelled as the
+ * list's own `,`. A block comment is copied whole, so a `//` or `;` inside it
+ * is text. A run without either character is returned as it is.
+ */
+function replayedRun(run: string, glue: string): string {
+  if (!run.includes('//') && !run.includes(';')) {
+    return run;
+  }
+  const comma = glue.trim() === ',';
+  let out = '';
+  let inComment = false;
+  for (let index = 0; index < run.length; index++) {
+    const char = run[index]!;
+    if (inComment) {
+      out += char;
+      if (char === '*' && run[index + 1] === '/') {
+        out += '/';
+        index++;
+        inComment = false;
+      }
+    } else if (char === '/' && run[index + 1] === '*') {
+      out += '/*';
+      index++;
+      inComment = true;
+    } else if (char === '/' && run[index + 1] === '/') {
+      out = out.replace(/[ \t]+$/u, '');
+      while (index + 1 < run.length && run[index + 1] !== '\n' && run[index + 1] !== '\r') {
+        index++;
+      }
+    } else {
+      out += char === ';' && comma ? ',' : char;
+    }
+  }
+  return out;
+}
 
 /** Whether a value is an internal bare-byte literal leaf. */
 export const isLiteral = (v: EvalValue): v is string => typeof v === 'string';
@@ -640,30 +691,25 @@ export interface PluginHost {
 }
 
 /**
- * An argument's keyword as the parser recorded it — the `name`/`sigil` pair of a
- * `CallArg`, which satisfies this shape structurally. `name` is `undefined` for a
- * positional argument.
+ * An argument as the parser recorded it — the `name`/`sigil`/`value` of a
+ * `CallArg`, which satisfies this shape structurally. `name` is `undefined` for
+ * a positional argument. `value` is the authored argument, read only as the key
+ * its recorded layout is stored under.
  */
 export interface ArgumentKeyword {
   readonly name: string | undefined;
   readonly sigil: string | undefined;
+  readonly value: object;
 }
 
 /**
  * A call's arguments in AUTHORED order, each paired with its keyword at the same
  * index: `keywords` is the call's own argument list, so building one allocates
  * nothing per argument.
- *
- * A call written out keeps the comments and line breaks written between its
- * arguments (ledger F11): `separators` holds the run before each argument after
- * the first, `memberSeparators` the runs inside each space-separated argument.
- * Both replay in pretty output only ({@link itemBoundary}).
  */
 export interface WrittenArguments {
   readonly args: ValueGroup;
   readonly keywords: readonly ArgumentKeyword[];
-  readonly separators?: readonly (string | undefined)[];
-  readonly memberSeparators?: readonly ((readonly (string | undefined)[]) | undefined)[];
 }
 
 /**
@@ -716,15 +762,22 @@ export interface ValueEvaluator {
     ambient?: boolean,
 
     /**
-     * The arguments as written, for a call that names any of them or writes a
-     * comment or line break between them. A call that is written out as-is — an
-     * unknown name, or a function that could not produce a value — is written
-     * from these, so `darken(@color: red)` keeps its keyword and
-     * `radial-gradient(#333 /*c*&#47;, #111)` its comment. Omitted otherwise, when
-     * `args` are already as written. Only read on that write-out; a call that
-     * produces a value never touches it.
+     * The arguments as written, for a call that names any of them. A call that
+     * is written out as-is — an unknown name, or a function that could not
+     * produce a value — is written from these, so `darken(@color: red)` keeps
+     * its keyword. Omitted for a positional call, whose `args` are already as
+     * written. Only read on that write-out; a call that produces a value never
+     * touches it.
      */
     written?: WrittenArguments,
+
+    /**
+     * The call's own authored arguments. A call written out as-is keeps the
+     * comments and line breaks the parser recorded between and inside them
+     * (ledger F11), so `radial-gradient(#333 /*c*&#47;, #111)` keeps its
+     * comment; they are looked up only on that write-out, in pretty output.
+     */
+    authored?: readonly ArgumentKeyword[],
   ): MaybePromise<ValueGroup>;
 
   /**

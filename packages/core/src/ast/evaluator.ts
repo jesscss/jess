@@ -8,10 +8,13 @@
  * Named calls dispatch through a caller-populated {@link FnRegistry}; every other
  * named call is treated as an unknown function emitted verbatim.
  *
- * HARD MODULE BOUNDARY: imports only the engine value modules.
+ * HARD MODULE BOUNDARY: imports only the engine value modules, and the
+ * provenance side table only to read the authored layout of a call it writes
+ * out as-is.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, itemBoundary, joinGroup, writtenArgument, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { emitValue, isValueGroupArray, itemBoundary, joinGroup, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { valueLayoutOf } from './provenance.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
@@ -28,36 +31,35 @@ import { emitCompressed } from './compress.js';
  *  other value position; space and `/` separators are significant and kept
  *  (v5 keeps `/` spaced). A keyword argument keeps its keyword
  *  ({@link writtenArgument}), and pretty output keeps the comments and line
- *  breaks written between the arguments (ledger F11). */
-function verbatimArgs(args: ValueGroup, modes?: EvalModes, written?: WrittenArguments): string {
+ *  breaks the parser recorded between and inside the `authored` arguments
+ *  (ledger F11). */
+function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly ArgumentKeyword[]): string {
   const separator = groupSeparator(args);
   const compress = modes?.compress === true;
   const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
   const emit = compress ? emitCompressed : emitValue;
   const items = groupItems(args);
-  if (written === undefined) {
+  if (authored === undefined) {
     return items.map(emit).join(glue);
   }
-  const members = written.memberSeparators;
+  const separators = compress ? undefined : valueLayoutOf(authored);
   let out = '';
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
-    const authored = members?.[index];
-    const bytes = authored !== undefined && isValueGroupArray(item)
-      ? joinGroup(item, ' ', emit, authored, compress)
+    const argument = authored[index];
+    const members = compress || argument === undefined || !Array.isArray(argument.value) ? undefined : valueLayoutOf(argument.value);
+    const bytes = members !== undefined && isValueGroupArray(item)
+      ? joinGroup(item, ' ', emit, members, compress)
       : emit(item);
-    out += index === 0
-      ? writtenArgument(written.keywords[index]!, bytes, compress)
-      : itemBoundary(written.separators?.[index - 1], glue, compress) + writtenArgument(written.keywords[index]!, bytes, compress);
+    const spelled = argument === undefined ? bytes : writtenArgument(argument, bytes, compress);
+    out += index === 0 ? spelled : itemBoundary(separators?.[index - 1], glue, compress) + spelled;
   }
   return out;
 }
 
 /** Preserve an optional CSS call, as written, after name resolution or invocation failed. */
-function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments): Value {
-  return makeKeyword(`${name}(${written === undefined
-    ? verbatimArgs(args, modes)
-    : verbatimArgs(written.args, modes, written)})`);
+function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments, authored?: readonly ArgumentKeyword[]): Value {
+  return makeKeyword(`${name}(${verbatimArgs(written?.args ?? args, modes, written?.keywords ?? authored)})`);
 }
 
 /**
@@ -70,12 +72,13 @@ function recoverCallFailure(
   name: string,
   args: ValueGroup,
   modes: EvalModes,
-  written?: WrittenArguments
+  written?: WrittenArguments,
+  authored?: readonly ArgumentKeyword[]
 ): Value {
   if (modes.functionMode === 'error' && !(error instanceof FunctionDeclined)) {
     throw error;
   }
-  return fallbackCall(name, args, modes, written);
+  return fallbackCall(name, args, modes, written, authored);
 }
 
 /** Keep the ordinary synchronous path allocation-free; attach recovery only to an async result. */
@@ -84,12 +87,13 @@ function recoverAsyncCall(
   name: string,
   args: ValueGroup,
   modes: EvalModes,
-  written?: WrittenArguments
+  written?: WrittenArguments,
+  authored?: readonly ArgumentKeyword[]
 ): MaybePromise<ValueGroup> {
   if (!isThenable(result)) {
     return result;
   }
-  return result.catch(error => recoverCallFailure(error, name, args, modes, written));
+  return result.catch(error => recoverCallFailure(error, name, args, modes, written, authored));
 }
 
 /**
@@ -119,7 +123,8 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     io?: FnIo,
     scopedFn?: Fn,
     ambient = true,
-    written?: WrittenArguments
+    written?: WrittenArguments,
+    authored?: readonly ArgumentKeyword[]
   ): MaybePromise<ValueGroup> => {
     /*
      * [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
@@ -130,14 +135,14 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     const scoped = scopedFn ?? scope?.lookup(name);
     if (scoped) {
       try {
-        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, written);
+        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, written, authored);
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes, written);
+        return recoverCallFailure(err, name, args, modes, written, authored);
       }
     }
     if (ambient && registry.has(name)) {
       try {
-        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, written);
+        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, written, authored);
       } catch (err) {
         /*
          * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
@@ -149,12 +154,12 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
          * caught here; variable-resolution / mixin-recursion errors are thrown
          * outside `dispatch` and still propagate.)
          */
-        return recoverCallFailure(err, name, args, modes, written);
+        return recoverCallFailure(err, name, args, modes, written, authored);
       }
     }
 
     // Unknown function: emit verbatim.
-    return fallbackCall(name, args, modes, written);
+    return fallbackCall(name, args, modes, written, authored);
   };
 
   /* The callee's declared parameter names — the binding surface a keyword

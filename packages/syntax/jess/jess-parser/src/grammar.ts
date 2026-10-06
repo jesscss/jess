@@ -54,6 +54,7 @@ import {
   isJessValueSlotValue,
   requireValueSlot,
   isJessMixinCallArgument,
+  isJessCallArgument,
   requireValueNode,
   requireGuardNode,
   isInterpolationLiteral,
@@ -113,7 +114,8 @@ import type {
   JessComplexTail,
   JessQueryFeatureName,
   JessAtRuleHeader,
-  JessMixinCallArgument
+  JessMixinCallArgument,
+  JessCallArgument
 } from './grammar-helpers.js';
 
 type JessRules = {
@@ -163,7 +165,7 @@ type JessRules = {
   UnquotedUrlText: Combinator<string>;
   UrlInterpolatedValue: Combinator<Interpolation>;
   CallComponent: Combinator<ValueSlot>;
-  CallArgument: Combinator<ValueSlot>;
+  CallArgument: Combinator<JessCallArgument>;
   KeywordValue: Combinator<Keyword | Null>;
   NullLiteral: Combinator<Null>;
   VarCall: Combinator<FunctionCall>;
@@ -2421,22 +2423,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * An argument comma admits padding on BOTH sides. Unlike a value-list comma
    * there is no competing punctuation reading inside an argument list, so
-   * `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators.
+   * `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators. The padded
+   * comma is the argument's authored separator, which a call written out as-is
+   * replays (ledger F11), as the other three dialects record it.
    */
-  const CallArgument = node<ValueSlot>(
+  const CallArgument = node<JessCallArgument>(
     'CallArgument',
     sequence(
-      optional(valueTrivia),
-      literal(','),
-      optional(valueTrivia),
+      noTrivia(sequence(
+        optional(valueTrivia),
+        literal(','),
+        optional(valueTrivia)
+      )),
       g.CallComponent
     ),
     (children) => {
-      if (!children.some(child => isToken(child) && child.value === ',')) {
+      let separator = '';
+      for (let index = 0; index < children.length - 1; index++) {
+        separator += requireToken(children[index]).value;
+      }
+      if (!separator.includes(',')) {
         throw new TypeError('Jess call argument lost its comma.');
       }
       const value = children.at(-1);
-      return Array.isArray(value) ? value : requireValueNode(value);
+      return { separator, value: Array.isArray(value) ? value : requireValueNode(value) };
     }
   );
 
@@ -2497,10 +2507,24 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       optional(valueTrivia),
       literal(')')
     ),
-    children => funcCall(
-      jessFunctionOpenName(children[0]),
-      children.slice(1, -1).filter(isJessValueSlotValue)
-    )
+    (children) => {
+      const args: ValueSlot[] = [];
+      const separators: string[] = [];
+      for (let index = 1; index < children.length - 1; index++) {
+        const child = children[index];
+        if (isJessValueSlotValue(child)) {
+          args.push(child);
+        } else if (isJessCallArgument(child)) {
+          separators.push(child.separator);
+          args.push(child.value);
+        }
+      }
+      const call = funcCall(jessFunctionOpenName(children[0]), args);
+      if (separators.length > 0) {
+        withValueLayout(call.args, separators);
+      }
+      return call;
+    }
   );
   const UrlFunction = node<Url>(
     'Url',

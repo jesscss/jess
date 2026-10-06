@@ -174,9 +174,19 @@ describe('output.compress — value folds (must fold)', () => {
     )).toBe('a{transition:transform .15s ease-in-out, background-color .15s ease-in-out,border-color .15s ease-in-out}');
   });
 
-  /* Compress takes an argument apart where the pretty output does (`w: a, b c`). */
-  it('splits the argument each() iterates as the pretty output does', async () => {
-    expect(await min('@l: ~"a,b" c; .e(@v) { each(@v, { w+: @value; }); } a { .e(@l); }')).toBe('a{w:a, b c}');
+  /*
+   * each() takes a mixin argument apart by the value's items, in both output
+   * modes, exactly as it takes the same value passed directly: the escaped
+   * `a,b` is one item, never re-split at its comma.
+   */
+  it('iterates the items of a mixin argument as the same value passed directly, in both modes', async () => {
+    const viaMixin = '@l: ~"a,b" #FFFFFF; .e(@v) { each(@v, { w+: @value; }); } a { .e(@l); }';
+    const direct = '@l: ~"a,b" #FFFFFF; a { each(@l, { w+: @value; }); }';
+    expect(await min(viaMixin)).toBe('a{w:a,b, #fff}');
+    expect(await min(viaMixin)).toBe(await min(direct));
+    expect(await pretty(viaMixin)).toBe('a {\n  w: a,b, #FFFFFF;\n}\n');
+    expect(await pretty(viaMixin)).toBe(await pretty(direct));
+    expect(await min('@l: ~"a,b" 0.50px; .e(@v) { each(@v, { w+: @value; }); } a { .e(@l); }')).toBe('a{w:a,b, .5px}');
   });
 
   /*

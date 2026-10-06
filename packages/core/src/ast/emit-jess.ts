@@ -40,7 +40,7 @@ import type {
   MixinDefinition, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
-import { selectorBranchCanonical } from './nodes.js';
+import { isCssColorCall, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import { renderCombinator } from './node.js';
@@ -180,6 +180,9 @@ class JessPrinter {
   /** Call name → export name of every module function this file calls. */
   readonly calledFunctions = new Map<string, string>();
 
+  /** Set while a property's value prints: a value written to the output, not one a callable reads. */
+  #propertyValue = false;
+
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
     this.#importPath = options.importPath ?? (path => path);
@@ -227,15 +230,31 @@ class JessPrinter {
       return '';
     }
     let out = '';
-    for (const run of this.#comments) {
+    for (let index = this.firstRunFrom(from); index < this.#comments.length; index++) {
+      const run = this.#comments[index]!;
       if (run.start >= to) {
         break;
       }
-      if (run.start >= from && run.end <= to && !this.#printed.has(run)) {
+      if (run.end <= to && !this.#printed.has(run)) {
         out += `${indent}${run.src.slice(run.start, run.end).trim()}\n`;
       }
     }
     return out;
+  }
+
+  /** Index of the first comment run that starts at or after `offset`; the runs are in source order. */
+  firstRunFrom(offset: number): number {
+    let low = 0;
+    let high = this.#comments.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.#comments[middle]!.start < offset) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
   }
 
   block(rules: readonly Statement[], where: Body, owner: object, indent: string): string {
@@ -390,7 +409,17 @@ class JessPrinter {
     if (!custom && !isSlotArray(node.value) && node.value.type === 'Any' && node.value.src === '') {
       gap('Declaration', 'an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value');
     }
-    const value = custom ? this.customValue(node.value) : this.value(node.value, At.Value);
+    let value: string;
+    if (custom) {
+      value = this.customValue(node.value);
+    } else {
+      this.#propertyValue = true;
+      try {
+        value = this.value(node.value, At.Value);
+      } finally {
+        this.#propertyValue = false;
+      }
+    }
     return `${name}: ${value}${node.important ? ' !important' : ''}`;
   }
 
@@ -410,11 +439,12 @@ class JessPrinter {
       const start = sourceStartOf(value);
       const end = sourceEndOf(value);
       let src: string | undefined;
-      for (const run of this.#comments) {
+      for (let index = this.firstRunFrom(start); index < this.#comments.length; index++) {
+        const run = this.#comments[index]!;
         if (run.start >= end) {
           break;
         }
-        if (run.start >= start && run.end <= end) {
+        if (run.end <= end) {
           this.#printed.add(run);
           src = run.src;
         }
@@ -864,7 +894,13 @@ class JessPrinter {
       return gap('FunctionCall', 'a function name that is not an identifier (Less `%()`)');
     }
     const lower = node.name.toLowerCase();
-    const exported = this.#functions?.names.get(lower);
+
+    /*
+     * A CSS-shaped color call a property's value writes out is never dispatched
+     * (ledger F5), so it stays a plain CSS call. Anywhere a callable or a
+     * variable can read it, it computes, and goes through its binding.
+     */
+    const exported = this.#propertyValue && at === At.Value && isCssColorCall(node) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }

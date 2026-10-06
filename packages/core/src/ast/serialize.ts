@@ -63,7 +63,8 @@ import {
   selectorTermCanonical,
   selectorTermHasInterp,
   simpleSelector,
-  branchTextIsPlaceholder
+  branchTextIsPlaceholder,
+  isCssColorCall
 } from './nodes.js';
 import type {
   Any,
@@ -133,11 +134,13 @@ import {
   delimiterOpen,
   isValueGroup,
   isValueGroupArray,
+  authoredSpace,
   isElided,
   isLiteral,
   itemBoundary,
   joinGroup,
   literal,
+  runReplays,
   sepGlue,
   writtenArgument,
   type EvalModes,
@@ -4015,7 +4018,7 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
       }
       if (!empty) {
         /* [compress] one space; the authored (possibly multi-line) run is pretty-only. */
-        bytes += e.compress === true ? ' ' : separators?.[index - 1] ?? ' ';
+        bytes += e.compress === true ? ' ' : authoredSpace(separators?.[index - 1]);
       }
       bytes += emitValueC(item, e);
       empty = false;
@@ -4041,10 +4044,30 @@ function evalTypedSlot(
     return evalTyped(slot, frame, e, projectMixinValues, argument);
   }
   const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, argument));
+  if (argument !== ARG_BINDING) {
+    return combineAll(values, resolved => resolved);
+  }
 
-  /* The authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
-  const layout = valueLayoutOf(slot);
+  /* A binding's authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
+  const layout = replayedLayoutOf(slot);
   return combineAll(values, resolved => layout === undefined ? resolved : withValueLayout(resolved, layout));
+}
+
+/**
+ * The authored layout of a group when pretty output replays a run of it (a
+ * line break or a block comment), else `undefined`: a binding carries only the
+ * layout that changes its written bytes ({@link emitAsWritten}).
+ */
+function replayedLayoutOf(node: object): readonly string[] | undefined {
+  const layout = valueLayoutOf(node);
+  if (layout !== undefined) {
+    for (const run of layout) {
+      if (runReplays(run)) {
+        return layout;
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -4265,7 +4288,15 @@ const ARG_INPUT = 1;
  * an F5 color call in it keeps its authored bytes.
  */
 const ARG_WRITTEN = 2;
-type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN;
+
+/**
+ * A mixin argument evaluated for its binding: no function argument, but the
+ * authored line breaks and comments between its items ride on the groups it
+ * builds, so the bound bytes keep them ({@link writtenBytes}). Only this mode
+ * reads the layout table, so no other typed evaluation pays for it.
+ */
+const ARG_BINDING = 3;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING;
 
 function evalTyped(
   node: ValueNode,
@@ -4282,7 +4313,7 @@ function evalTyped(
        * as-is (unknown, not in scope, or failed and preserved) never loses it.
        * Anywhere else it has no value, exactly as before.
        */
-      return argument !== ARG_NONE
+      return argument === ARG_INPUT || argument === ARG_WRITTEN
         ? writtenRulesetArgument(node, frame, e)
         : mapMaybe(evalValue(node, frame, e), v => force(e, v));
 
@@ -4441,7 +4472,7 @@ function evalTyped(
        * is handed to the value layer directly — no re-splitting a joined string.
        */
       const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, argument));
-      const layout = valueLayoutOf(node);
+      const layout = argument === ARG_BINDING ? replayedLayoutOf(node) : undefined;
       return combineAll(typed, vals => layout === undefined ? makeList(vals, node.sep) : withValueLayout(makeList(vals, node.sep), layout));
     }
     case 'Branch':
@@ -6597,32 +6628,8 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   });
 }
 
-/** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
-const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
-
-/**
- * Recognize the CSS-shaped arities that are safe to leave as authored bytes.
- *
- * Less overloads the rgb-family names: one- and two-slot calls are color/
- * alpha conveniences (`rgba(#fff)`, `rgba(#fff, .5)`), while malformed
- * one-/two-slot numeric calls must still reach the selected Less callable so
- * its normal functionMode policy can reject or preserve them. Modern CSS
- * syntax arrives as one nested slot, so inspect that typed structure as well;
- * a three-or-more item nested slot is the equivalent CSS channel shape.
- */
-function hasCssColorCallShape(node: FunctionCall): boolean {
-  if (node.args.length >= 3) {
-    return true;
-  }
-  if (node.args.length !== 1) {
-    return false;
-  }
-  const slot = node.args[0]!.value;
-  return isValueSlotArray(slot) && slot.length >= 3;
-}
-
 function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean): boolean {
-  return lessDocument && DEFERRED_COLOR_CALLS.has(node.name.toLowerCase()) && hasCssColorCallShape(node);
+  return lessDocument && isCssColorCall(node);
 }
 
 /**
@@ -6981,8 +6988,8 @@ function snapshotEvaluatedMixinValue(
 /**
  * The bytes an authored structural argument binds as, from its one typed
  * evaluation: its items as {@link emitValue} spells them, joined with the line
- * breaks and comments written between them, which the typed lane records on the
- * groups it builds ({@link evalTypedSlot}). Its units are checked as a
+ * breaks and comments written between them, which its typed evaluation records
+ * on the groups it builds ({@link ARG_BINDING}). Its units are checked as a
  * declaration's would be.
  */
 function writtenBytes(value: ValueGroup, source: CallValue, e: EvalCtx): string {
@@ -7004,7 +7011,7 @@ function resolveAuthoredMixinValue(
   e: EvalCtx,
   retain: (key: Binding) => void
 ): MaybePromise<CallValue> {
-  return mapMaybe(evalTypedSlot(source, frame, e, true), (value) => {
+  return mapMaybe(evalTypedSlot(source, frame, e, true, ARG_BINDING), (value) => {
     const mode = mixinGroupMode(value);
     return snapshotPreparedMixinValue(value, mode, mode === MIXIN_GROUP_VALUE ? writtenBytes(value, source, e) : emitValue(value), e, retain);
   });
@@ -7192,14 +7199,20 @@ function boundSourceTracker(
   const retain = (key: Binding): void => {
     (candidateKeys ??= []).push(key);
   };
+
+  /*
+   * A source's mode is fixed, so its one evaluation is shared: an authored
+   * source is evaluated as a binding, whose written bytes keep its layout.
+   */
   const evaluatedValue = trackValue
-    ? (source: ValueSlot): MaybePromise<ValueGroup> => {
+    ? (source: ValueSlot, mode: MixinValueSourceMode): MaybePromise<ValueGroup> => {
+        const argument = mode === MIXIN_VALUE_AUTHORED ? ARG_BINDING : ARG_NONE;
         if (source === valueSources?.valueSource) {
-          return primaryValue ??= evalTypedSlot(source, frame, e, true);
+          return primaryValue ??= evalTypedSlot(source, frame, e, true, argument);
         }
         let value = additionalValues?.get(source);
         if (value === undefined) {
-          value = evalTypedSlot(source, frame, e, true);
+          value = evalTypedSlot(source, frame, e, true, argument);
           (additionalValues ??= new Map()).set(source, value);
         }
         return value;
@@ -7278,7 +7291,7 @@ function boundSourceTracker(
           retain
         );
       }
-      const evaluated = evaluatedValue!(value);
+      const evaluated = evaluatedValue!(value, mode);
       return mapMaybe(evaluated, (group) => {
         const groupMode = preparedMode!(group);
         const bytes = mode === MIXIN_VALUE_AUTHORED && groupMode === MIXIN_GROUP_VALUE
@@ -7318,7 +7331,7 @@ function boundSourceTracker(
         if (spreadValue === undefined && mode === MIXIN_VALUE_NONE) {
           return undefined;
         }
-        const evaluated = spreadValue ?? evaluatedValue!(value);
+        const evaluated = spreadValue ?? evaluatedValue!(value, mode);
         return mapMaybe(evaluated, (group) => {
           const members = isValueGroupArray(group)
             ? group
@@ -7778,34 +7791,18 @@ function dispatchCall(
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
     /*
-     * A call that names an argument, or writes a comment or line break between
-     * them, also hands over its arguments as written, read only if the call is
-     * written out as-is (P23, F11). The keywords are the call's own arguments;
-     * when nothing was rebound, the order is the authored one already. Authored
-     * runs replay in pretty output only, so compress never looks them up.
+     * A call that names an argument also hands over its arguments as written,
+     * read only if the call is written out as-is (P23). The keywords are the
+     * call's own arguments; when nothing was rebound, the order is the authored
+     * one already. The authored arguments themselves ride along for the
+     * comments and line breaks a written-out call keeps (F11); nothing is
+     * looked up unless the call is written out.
      */
-    let separators: readonly (string | undefined)[] | undefined;
-    let memberSeparators: Array<readonly (string | undefined)[] | undefined> | undefined;
-    if (e.compress !== true) {
-      separators = valueLayoutOf(node.args);
-      for (let i = 0; i < node.args.length; i++) {
-        const slot = node.args[i]!.value;
-        const layout = isValueSlotArray(slot) ? valueLayoutOf(slot) : undefined;
-        if (layout !== undefined) {
-          (memberSeparators ??= new Array<readonly (string | undefined)[] | undefined>(node.args.length))[i] = layout;
-        }
-      }
-    }
-    const written: WrittenArguments | undefined = named || separators !== undefined || memberSeparators !== undefined
-      ? {
-          args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals),
-          keywords: node.args,
-          separators,
-          memberSeparators
-        }
+    const written: WrittenArguments | undefined = named
+      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written);
+      const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written, node.args);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -8175,7 +8172,7 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
        * [compress] a space list keeps ONE space; the authored (possibly multi-line)
        * boundary run is replayed only in pretty output.
        */
-      out += e.compress === true ? ' ' : authored?.[index - 1] ?? ' ';
+      out += e.compress === true ? ' ' : authoredSpace(authored?.[index - 1]);
       out += emitValueC(values[index]!, e);
     }
     return literal(out);
@@ -8332,7 +8329,8 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
     return { branches, multi: branches.length > 1, capture: true };
   }
   if (bound.type === 'Quoted' && bound.escaped && hasTopLevelComma(bound.value)) {
-    return { branches: [bound.value], multi: true, capture: false };
+    /* The whitespace an escaped selector opens or closes with is canonicalized away (ledger O8(b)). */
+    return { branches: [bound.value.trim()], multi: true, capture: false };
   }
   return null;
 }
@@ -8378,13 +8376,14 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
  *  A lone whole-selector `*[…]` capture EXPANDS to one branch per captured
- *  selector; a lone quoted group stays a single verbatim branch. Every other
- *  complex resolves to exactly one string (a compound-embedded group compacts to
- *  `:is(…)` inside `resolveComplex`). */
-function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+ *  selector. A lone quoted group stays a single verbatim branch at a root
+ *  header, and contributes its branches one per line to a `nested` header
+ *  (ledger O8(a)). Every other complex resolves to exactly one string (a
+ *  compound-embedded group compacts to `:is(…)` inside `resolveComplex`). */
+function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx, nested = false): MaybePromise<string[]> {
   const g = loneGroupInterp(c, frame, e);
   if (g !== null) {
-    return g.capture ? g.branches : [g.branches.join(', ')];
+    return g.capture ? g.branches : nested ? splitListBytes(g.branches[0]!) : g.branches;
   }
 
   return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
@@ -8827,7 +8826,7 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
 }
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e)), values => values.flat());
+  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e, true)), values => values.flat());
 }
 
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -8852,7 +8851,7 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
   for (const c of list.selectors) {
     const g = loneGroupInterp(c, frame, e);
     if (g !== null) {
-      parts.push(g.capture ? g.branches : [g.branches.join(', ')]);
+      parts.push(g.branches);
       continue;
     }
     parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
@@ -9201,6 +9200,7 @@ function scratchEmit(e: EvalCtx): Emit {
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,
     compressedBindings: e.compressedBindings,
+    writtenFrom: undefined,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     positions: null,
@@ -12027,6 +12027,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     mixinUrlBindings: null,
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
+    writtenFrom: undefined,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -12130,6 +12131,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     mixinUrlBindings: null,
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
+    writtenFrom: undefined, // set only on an F5 call's written lane (one shape for every spread)
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -16463,16 +16465,17 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
   }
   if (base.type === 'Any' || base.type === 'Keyword') {
     /*
-     * [compress] A snapshot that carries its value splits as the pretty output
-     * does, and iterates the carried items where they spell that split.
+     * A snapshot that kept the value it was evaluated to (a mixin argument,
+     * ledger O3) iterates that value's items in every output mode, as the same
+     * value reaching `each()` directly does; only a bare snapshot splits.
      */
-    const pieces = splitListBytes(base.src);
-    const carried = base.type === 'Any' ? e.compressedBindings?.get(base) : undefined;
-    const items = carried === undefined ? undefined : alignedItems(carried, pieces);
-    if (items !== undefined) {
-      return { evaluatedItems: items };
+    const carried = base.type === 'Any'
+      ? baseFrame?.mixinValueBindings?.get(base) ?? e.mixinValueBindings?.get(base) ?? e.compressedBindings?.get(base)
+      : undefined;
+    if (carried !== undefined) {
+      return { evaluatedItems: groupItems(carried) };
     }
-    return pieces.map(b => ({ value: any(b), key: null }));
+    return splitListBytes(base.src).map(b => ({ value: any(b), key: null }));
   }
 
   /*
@@ -16836,7 +16839,7 @@ function dispatch(
     if (mode === MIXIN_VALUE_AUTHORED) {
       if (hitValue !== undefined && !isMixinCallValue(hitValue)) {
         const evaluated = withExcluded(e, hitValue, () =>
-          evalTypedSlot(hitValue, hit!.frame, e, true));
+          evalTypedSlot(hitValue, hit!.frame, e, true, ARG_BINDING));
         return mapMaybe(evaluated, (group) => {
           const groupMode = mixinGroupMode(group);
           const bytes = groupMode === MIXIN_GROUP_VALUE ? writtenBytes(group, hitValue, e) : emitValue(group);
@@ -17022,7 +17025,9 @@ function expandSpreadArgs(
         /* [compress] Evaluated once, typed, so each piece carries the item it folds from. */
         const resolved = e.compressedBindings === undefined
           ? mapMaybe(resolveCaller(source), bytes => pushSpread(args, bytes))
-          : mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), value => pushSpread(args, emitValue(value), value, e));
+          : mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+              pushTypedSpread(args, expanded, value, e, undefined, false);
+            });
         if (isThenable(resolved)) {
           const at = index;
           return resolved.then(() => step(at + 1));
@@ -17066,13 +17071,18 @@ function evalTypedSpread(
   return evalTypedSlot(value, frame, e, true);
 }
 
-/** Append one evaluated spread group, retaining typed positional items. */
+/**
+ * Append one evaluated spread group, retaining typed positional items. With
+ * `bearing` off (a plain spread under compress) the items only carry the value
+ * a declaration folds; the call stays an ordinary one.
+ */
 function pushTypedSpread(
   args: CallArg[],
   call: MixinCall,
   value: ValueGroup,
   e: EvalCtx,
-  state?: ValueBearingSpreadCall
+  state?: ValueBearingSpreadCall,
+  bearing = true
 ): ValueBearingSpreadCall | undefined {
   const items = isValueGroupArray(value)
     ? value
@@ -17084,12 +17094,12 @@ function pushTypedSpread(
       if (!isValueGroupArray(value) && value.type === 'List' && value.sep === '/' && index !== 0) {
         args.push(callArg(any('/')));
       }
-      state = pushTypedSpreadItem(args, call, items[index]!, e, state);
+      state = pushTypedSpreadItem(args, call, items[index]!, e, state, bearing);
     }
     return state;
   }
   if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, call, value, e, state);
+    return pushTypedSpreadItem(args, call, value, e, state, bearing);
   }
 
   /*
@@ -17097,7 +17107,7 @@ function pushTypedSpread(
    * color) is one piece; anything else splits as its bytes always have.
    */
   if (e.compressedBindings !== undefined && emitCompressed(value) !== emitValue(value)) {
-    return pushTypedSpreadItem(args, call, value, e, state);
+    return pushTypedSpreadItem(args, call, value, e, state, bearing);
   }
   pushSpread(args, emitValue(value));
   return state;
@@ -17109,7 +17119,8 @@ function pushTypedSpreadItem(
   call: MixinCall,
   value: ValueGroup,
   e: EvalCtx,
-  state?: ValueBearingSpreadCall
+  state?: ValueBearingSpreadCall,
+  bearing = true
 ): ValueBearingSpreadCall | undefined {
   const bytes = emitValue(value).trim();
   if (bytes === '') {
@@ -17120,7 +17131,7 @@ function pushTypedSpreadItem(
   if (e.compressedBindings !== undefined) {
     carryCompressed(snapshot, value, e);
   }
-  if (valueGroupNeedsMixinCarrier(value)) {
+  if (bearing && valueGroupNeedsMixinCarrier(value)) {
     const bindings = state ?? {
       call,
       valueBindings: new Map<Any, ValueGroup>(),
@@ -17135,44 +17146,15 @@ function pushTypedSpreadItem(
   return state;
 }
 
-/**
- * Split one resolved spread argument into the positional args it splats to.
- * [compress] `value` is the argument evaluated once, typed. It splits exactly
- * as the pretty output does, by its bytes, and a piece carries the item it
- * spells ({@link alignedItems}) so a declaration still folds it.
- */
-function pushSpread(args: CallArg[], rawBytes: string, value?: ValueGroup, e?: EvalCtx): void {
+/** Split one resolved spread argument into the positional args it splats to. */
+function pushSpread(args: CallArg[], rawBytes: string): void {
   const bytes = rawBytes.trim();
   if (bytes === '') {
     return;
   }
-  const pieces = splitListBytes(bytes);
-  const items = value === undefined ? undefined : alignedItems(value, pieces);
-  for (let index = 0; index < pieces.length; index++) {
-    const snapshot = any(pieces[index]!);
-    args.push(callArg(snapshot));
-    if (items !== undefined) {
-      carryCompressed(snapshot, items[index]!, e!);
-    }
+  for (const piece of splitListBytes(bytes)) {
+    args.push(callArg(any(piece)));
   }
-}
-
-/**
- * [compress] The items of an evaluated value when they spell its byte split one
- * for one, else `undefined`: a piece carries a typed item only where the value's
- * own structure agrees with the split the pretty output makes.
- */
-function alignedItems(value: ValueGroup, pieces: readonly string[]): readonly ValueGroup[] | undefined {
-  const items = groupItems(value);
-  if (items.length !== pieces.length) {
-    return undefined;
-  }
-  for (let index = 0; index < items.length; index++) {
-    if (emitValue(items[index]!).trim() !== pieces[index]) {
-      return undefined;
-    }
-  }
-  return items;
 }
 
 /** Replace `@rs` args (a VariableReference bound to a detached ruleset) with the
@@ -18489,7 +18471,7 @@ function emitImportPrelude(
     if (index === 1 && between !== null) {
       putValueBoundaryTrivia(e, between, ' ');
     } else {
-      put(e, separators?.[index - 1] ?? ' ');
+      put(e, authoredSpace(separators?.[index - 1]));
     }
     putImportTail(prelude.parts[index]!, frame, e);
   }
@@ -19036,9 +19018,17 @@ function activateComposeEdge(
     : { frame, emitOnceKey, config: null, importerFrame: null };
 }
 
-/** Whether a module activation is one the planner made for a compose that execution has not reached. */
+/**
+ * Whether a module activation is one the planner made for a compose that
+ * execution has not reached. Only a configuring `set` edge asks, so the pending
+ * planned composes are scanned rather than indexed by frame.
+ */
 function plannedAhead(frame: Frame, e: Emit): boolean {
-  for (const activation of e.composeActivations?.values() ?? []) {
+  const pending = e.composeActivations?.values();
+  if (pending === undefined) {
+    return false;
+  }
+  for (const activation of pending) {
     if (activation.frame === frame) {
       return true;
     }
@@ -19764,7 +19754,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
     const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
-        parts.push(plain(authored?.[index - 1] ?? ' '));
+        parts.push(plain(authoredSpace(authored?.[index - 1])));
       }
       parts.push(evalSupportsPrelude(node[index]!, frame, e));
     }

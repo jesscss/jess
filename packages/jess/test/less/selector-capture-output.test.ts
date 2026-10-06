@@ -75,6 +75,39 @@ describe('Less selector-capture output boundaries', () => {
     ].join('\n'));
   });
 
+  /*
+   * Ledger O8: a quoted multi-branch selector supplied to a nested header prints
+   * one branch per line (a), and the whitespace it opens with is dropped there
+   * and inside the collapsed `:is()` (b).
+   */
+  it('prints a quoted selector group one branch per line in a nested header', async () => {
+    const source = [
+      '@g: ~\' .e, .f\';',
+      '.a {',
+      '  @{g} {',
+      '    foo: baz;',
+      '  }',
+      '}'
+    ].join('\n');
+
+    await expect(render(source, false)).resolves.toBe([
+      '.a {',
+      '  .e,',
+      '  .f {',
+      '    foo: baz;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    await expect(render(source, true)).resolves.toBe([
+      '.a :is(.e, .f) {',
+      '  foo: baz;',
+      '}',
+      ''
+    ].join('\n'));
+    await expect(render('@g: ~\' .e, .f\';\n@{g} { foo: baz; }', false)).resolves.toBe('.e, .f {\n  foo: baz;\n}\n');
+  });
+
   it('uses Less each() for explicit rule multiplication without enabling global collapse', async () => {
     const source = [
       '@fruits: apple, satsuma;',

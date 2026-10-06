@@ -139,6 +139,24 @@ describe('Less built-in argument errors through the public AST route', () => {
       .resolves.toBe('.entry{a:radial-gradient(#333,#111)}');
   });
 
+  /*
+   * The replayed run between written-out arguments is CSS: a Less `//` line
+   * comment never renders, and a `;` argument separator is spelled `,`.
+   */
+  it('writes neither a line comment nor a `;` separator into a written-out call', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
+    await expect(render('.x { a: foo(a, // c\n  b); b: darken(foo, // c\n  10%); c: foo(a /* 1 */; b); d: foo(@a: 1 /*c*/; @b: 2); e: 1px // c\n  2px; f: foo(a, /* x // y; */ b); }'))
+      .resolves.toBe('.x {\n  a: foo(a,\n    b);\n  b: darken(foo,\n    10%);\n  c: foo(a /* 1 */, b);\n  d: foo(@a: 1 /*c*/, @b: 2);\n  e: 1px\n    2px;\n  f: foo(a, /* x // y; */ b);\n}\n');
+  });
+
+  /* A call is written out the same way in every dialect, comments kept (ledger F11, invariant 4). */
+  it('keeps the argument comments of a written-out call in .jess', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('.e { a: radial-gradient(#333 /*c*/, #111); b: foo(a, /*c*/ b); c: foo(a,\n    b); }', { filePath: 'entry.jess', extension: '.jess' }))
+      .resolves.toBe('.e {\n  a: radial-gradient(#333 /*c*/, #111);\n  b: foo(a, /*c*/ b);\n  c: foo(a,\n    b);\n}\n');
+  });
+
   it('decides a condition written in an F5 color call', async () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
