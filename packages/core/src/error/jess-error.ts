@@ -1,7 +1,7 @@
 import { type IRecognitionException, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from '../context.js';
 import { type JessErrorCode, type Phase, type Severity, resolveTemplate } from './codes.js';
-import { lineColAt } from './code-frame.js';
+import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from './code-frame.js';
 
 type JessFile = TreeContext['file'];
 
@@ -101,11 +101,14 @@ export class JessError {
 
   constructor(init: JessErrorInit) {
     // Resolve context from ctx/node first, else from explicit fields.
-    const fileObj = init.ctx?.file;
-    const source = fileObj?.source ?? init.source;
+    const authored = init.ctx?.file;
+    const source = authored?.source ?? init.source;
 
     // Line/col derive from the node's source offset + source (not stored on nodes).
     const nodeOffset = inlineSpanStart(init.node);
+    const fileObj = authored !== undefined && nodeOffset !== undefined && source !== undefined
+      ? fileAt(authored, source, nodeOffset)
+      : authored;
     const derived = nodeOffset !== undefined && source !== undefined
       ? lineColAt(source, nodeOffset, fileObj)
       : undefined;
@@ -127,7 +130,7 @@ export class JessError {
 
     this.reason = init.reason ?? t.reason;
     this.fix = init.fix ?? t.fix;
-    this.note = init.note;
+    this.note = init.note ?? (fileObj === authored ? undefined : INJECTED_TEXT_NOTE);
 
     this.errors = init.errors;
     this.lexerErrors = init.lexerErrors;

@@ -7,6 +7,7 @@ import { readEvalErrorLocation } from './eval-error-location.js';
  * at `sourceEnd`.
  */
 export interface SourceOwner {
+  readonly source?: string;
   readonly sourceOffset?: number;
   readonly sourceEnd?: number;
 }
@@ -77,10 +78,33 @@ function lineIndexAt(lineStarts: readonly number[], offset: number): number {
   return low;
 }
 
+/** The note a diagnostic in host-injected text carries (see {@link fileAt}). */
+export const INJECTED_TEXT_NOTE = 'This is in text the compiler added around the file (Less `banner`, `globalVars` or `modifyVars`), not in the file as written.';
+
+/**
+ * The file a position at `offset` is counted in. A position in the authored
+ * file is counted in `file` itself. One in text the host injected around it
+ * (Less `banner`/`globalVars` ahead, `modifyVars` after) has no line in the
+ * authored file, so it is counted in the same file read as the whole prepared
+ * text: its line and frame show the injected line it is on, never a line before
+ * 1 or past the authored end (ledger O16), and the diagnostic says so
+ * ({@link INJECTED_TEXT_NOTE}).
+ */
+export function fileAt<F extends SourceOwner>(file: F, source: string, offset: number): F {
+  const start = file.sourceOffset ?? 0;
+  const end = file.sourceEnd ?? source.length;
+  if (offset >= start && offset <= end) {
+    return file;
+  }
+
+  /* ponytail: a fresh view per diagnostic re-indexes the text; only a diagnostic in injected text pays it. */
+  return { ...file, sourceOffset: undefined, sourceEnd: undefined };
+}
+
 /**
  * Derive 1-based line/column at a source offset, counted in the file as the
- * author wrote it: text a host prepared ahead of it is not counted (ledger O16),
- * so that text sits on line 0 and before. The first diagnostic for a file
+ * author wrote it: text a host prepared ahead of it is not counted (ledger O16);
+ * a position in that text is counted by {@link fileAt}. The first diagnostic for a file
  * builds the same line-start index / binary-search shape Parseman uses; later
  * diagnostics use its O(log n) lookup. `owner` should be the stable source-file
  * object when one is available.
@@ -98,10 +122,16 @@ export function lineColAt(source: string, offset: number, owner?: SourceOwner): 
 
 /**
  * Re-count a line/column a parser reported in the text it was given — the
- * prepared text — in the authored file, as {@link lineColAt} counts.
+ * prepared text — in the authored file, as {@link lineColAt} counts, or
+ * `undefined` for a position in text the host injected around the file, which
+ * stays counted in the prepared text ({@link fileAt}).
  */
-export function authoredLineCol(source: string, line: number, column: number, owner: SourceOwner): { line: number; column: number } {
-  const { originLine, originColumn } = sourceIndex(source, owner);
+export function authoredLineCol(source: string, line: number, column: number, owner: SourceOwner): { line: number; column: number } | undefined {
+  const { lineStarts, originLine, originColumn } = sourceIndex(source, owner);
+  const offset = (lineStarts[line - 1] ?? source.length) + column - 1;
+  if (fileAt(owner, source, offset) !== owner) {
+    return undefined;
+  }
   return { line: line - originLine, column: line - 1 === originLine ? column - originColumn : column };
 }
 

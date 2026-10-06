@@ -193,7 +193,7 @@ import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError, type TreeContextLike } from '../error/jess-error.js';
-import { lineColAt } from '../error/code-frame.js';
+import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
@@ -7896,14 +7896,22 @@ function moduleLoadFailed(statement: ModuleImport, e: EvalCtx): (error: unknown)
 /**
  * Source position of a node, for a diagnostic that points at it. The diagnostic
  * keeps the file object, which says where the authored file sits in the parsed
- * text, so its code frame counts lines as `lineColAt` does (ledger O16).
+ * text, so its code frame counts lines as `lineColAt` does (ledger O16). A node
+ * in text the host injected around the file is counted in the prepared text and
+ * says so ({@link fileAt}).
  */
-function callSiteLocation(node: object, e: Pick<EvalCtx, 'context'>): { ctx: TreeContextLike; line?: number; column?: number } {
-  const file = e.context?.sourceContext?.file;
-  const source = file?.source;
+function callSiteLocation(node: object, e: Pick<EvalCtx, 'context'>): { ctx: TreeContextLike; line?: number; column?: number; note?: string } {
+  const authored = e.context?.sourceContext?.file;
+  const source = authored?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
-  return { ctx: { file }, line: location?.line, column: location?.column };
+  if (source === undefined || span === undefined) {
+    return { ctx: { file: authored } };
+  }
+  const file = fileAt(authored!, source, span.start);
+  const location = lineColAt(source, span.start, file);
+  return file === authored
+    ? { ctx: { file }, line: location.line, column: location.column }
+    : { ctx: { file }, line: location.line, column: location.column, note: INJECTED_TEXT_NOTE };
 }
 
 /**

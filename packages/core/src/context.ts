@@ -23,7 +23,7 @@ import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
 import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
-import { extractRelevantLines, lineColAt } from './error/code-frame.js';
+import { INJECTED_TEXT_NOTE, extractRelevantLines, fileAt, lineColAt } from './error/code-frame.js';
 import { inAuthoredFile } from './error/diagnostics.js';
 import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
@@ -678,8 +678,9 @@ export class Context {
       const rows: WarningDiagnostic[] = [];
       for (let index = 0; index < this._warningCodes.length; index++) {
         const source = this._warningSources[index];
-        const file = this._warningFiles[index];
+        const authored = this._warningFiles[index];
         const offset = this._warningOffsets[index]!;
+        const file = authored !== undefined && source !== undefined && offset >= 0 ? fileAt(authored, source, offset) : authored;
         const location = source !== undefined && offset >= 0
           ? lineColAt(source, offset, file)
           : undefined;
@@ -691,7 +692,7 @@ export class Context {
           message: this._warningMessages[index]!,
           reason: this._warningReasons[index]!,
           fix: this._warningFixes[index]!,
-          note: this._warningNotes[index],
+          note: this._warningNotes[index] ?? (file === authored ? undefined : INJECTED_TEXT_NOTE),
           file: file === undefined
             ? undefined
             : {
@@ -1833,7 +1834,7 @@ export class Context {
     const result = this.parseSource(plugin, virtualPath, content, {
       compilerOptions: this.opts
     });
-    if (sourceOffset) {
+    if (sourceOffset || sourceEnd !== undefined) {
       const owner = { sourceOffset, sourceEnd };
       result.errors = result.errors.map(error => inAuthoredFile(error, content, owner));
       result.warnings = result.warnings.map(warning => inAuthoredFile(warning, content, owner));

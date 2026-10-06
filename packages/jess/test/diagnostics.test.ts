@@ -220,6 +220,38 @@ describe('Diagnostic positions under injected source', () => {
     const warning = warned.warnings.find(w => w.code === 'eval/unexpressible-unit')!;
     expect([warning.line, warning.column]).toEqual([2, 17]);
   });
+
+  /*
+   * Text the compiler added around the file has no line in it: a diagnostic
+   * there is counted in the text as prepared and says where it is, never at a
+   * line before 1 or past the file's end (DESIGN-DECISIONS O16).
+   */
+  it('reports a diagnostic in injected text where it is, and says so', async () => {
+    const less = (options: Record<string, unknown>) => new Compiler({
+      compile: { plugins: [lessPlugin()] },
+      language: { less: options }
+    });
+    const ahead = await less({ globalVars: { a: '@nope', b: 'red' } })
+      .renderToResult({ source: '.x { c: @a; }', filePath: '/proj/g.less' }, { suppressWarnings: true });
+    expect(ahead.errors.map(e => [e.code, e.line, e.column])).toEqual([['resolve/name-not-found', 1, 5]]);
+    expect(ahead.errors[0]!.lines).toEqual({ 1: '@a: @nope;', 2: '@b: red;' });
+    expect(ahead.errors[0]!.note).toContain('globalVars');
+
+    const parse = await less({ globalVars: { a: '(' } })
+      .renderToResult({ source: '.x { c: @a; }', filePath: '/proj/p.less' }, { suppressWarnings: true });
+    expect(parse.errors.map(e => e.line >= 1)).toEqual([true]);
+    expect(parse.errors[0]!.note).toContain('globalVars');
+
+    const after = await less({ modifyVars: { a: '@nope' } })
+      .renderToResult({ source: '.x { c: @a; }\n.y { d: 1; }', filePath: '/proj/m.less' }, { suppressWarnings: true });
+    expect(after.errors.map(e => [e.code, e.line, e.column])).toEqual([['resolve/name-not-found', 3, 5]]);
+    expect(after.errors[0]!.lines?.[3]).toBe('@a: @nope;');
+    expect(after.errors[0]!.note).toContain('modifyVars');
+
+    const authored = await less({ globalVars: { a: '1px' } })
+      .renderToResult({ source: '.x { c: @nope; }', filePath: '/proj/a.less' }, { suppressWarnings: true });
+    expect(authored.errors.map(e => [e.line, e.column, e.note])).toEqual([[1, 9, undefined]]);
+  });
 });
 
 describe('Public parser diagnostic provenance', () => {

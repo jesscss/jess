@@ -5,7 +5,7 @@ import {
 } from 'chevrotain';
 import type { Deprecation } from '../deprecation.js';
 import { type JessErrorCode, type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
-import { authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
+import { INJECTED_TEXT_NOTE, authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
 import {
   JessError,
   inlineSpanEnd,
@@ -535,7 +535,9 @@ export function parserDiagnostic({
  * A diagnostic a parser reported against host-prepared text (Less `banner` /
  * `globalVars` written ahead of the file), re-positioned in the file as authored
  * (ledger O16): its line, column and code frame count from where the file
- * starts, and its file carries that start so a later frame does too.
+ * starts, and its file carries that start so a later frame does too. One in the
+ * injected text keeps the prepared text's lines and says where it is
+ * ({@link fileAt}).
  */
 export function inAuthoredFile<T extends ErrorDiagnostic | WarningDiagnostic>(
   diagnostic: T,
@@ -543,6 +545,9 @@ export function inAuthoredFile<T extends ErrorDiagnostic | WarningDiagnostic>(
   owner: SourceOwner
 ): T {
   const start = authoredLineCol(source, diagnostic.line, diagnostic.column, owner);
+  if (start === undefined) {
+    return { ...diagnostic, note: diagnostic.note ?? INJECTED_TEXT_NOTE };
+  }
   const end = diagnostic.endLine === undefined || diagnostic.endColumn === undefined
     ? undefined
     : authoredLineCol(source, diagnostic.endLine, diagnostic.endColumn, owner);
