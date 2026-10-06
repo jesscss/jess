@@ -30,6 +30,18 @@ describe('scss plugin render-through', () => {
     expect(css).toContain('font-weight: bold');
   });
 
+  /*
+   * A media query group whose contents are an interpolation is substituted
+   * (P16), not printed as its authored `#{…}` bytes, as dart-sass does.
+   */
+  it('substitutes an interpolation that is a media query group', async () => {
+    const compiler = new Compiler();
+    await expect(compiler.renderString('@media (#{"(a) and (b)"}) { x { y: z; } }', { extension: '.scss' }))
+      .resolves.toBe('@media ((a) and (b)) {\n  x {\n    y: z;\n  }\n}\n');
+    await expect(compiler.renderString('$q: "not (a)"; @media (#{$q}) { x { y: z; } }', { extension: '.scss' }))
+      .resolves.toBe('@media (not (a)) {\n  x {\n    y: z;\n  }\n}\n');
+  });
+
   it('honors an explicitly configured scss plugin', async () => {
     const compiler = new Compiler({
       compile: { plugins: [scssPlugin()] }

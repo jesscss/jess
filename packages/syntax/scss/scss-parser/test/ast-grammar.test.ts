@@ -826,7 +826,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { value: -- theme; }',
       '@media (width: --#{$value}) { .bad { color: red; } }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace, state: { source: malformed } });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), malformed).toBe(false);
     }
   });

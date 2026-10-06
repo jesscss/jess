@@ -102,10 +102,6 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
-  QueryInParens: Combinator<ValueNode>;
-  QueryCondition: Combinator<ValueNode>;
-  QueryClause: Combinator<ValueNode>;
-  QueryPrelude: Combinator<ValueNode>;
   SupportsAtom: Combinator<ValueNode>;
   GeneralTemplate: Combinator<Interpolation>;
   GeneralTemplateGroup: Combinator<Interpolation>;
@@ -117,7 +113,6 @@ type ScssRules = {
   SupportsAndOrKeyword: Combinator<Keyword>;
   SupportsCondition: Combinator<ValueNode>;
   SupportsPrelude: Combinator<ValueNode>;
-  MediaPrelude: Combinator<ValueNode>;
 
   /** CSS-compatible generic header capture for known passthrough blocks. */
   AtRulePrelude: Combinator<ValueNode | null>;
@@ -181,6 +176,10 @@ type ScssRules = {
  * here, mirroring less-parser's `SharedSyntax`.
  */
 type ScssSharedSyntax = {
+  /* Inherited from the CSS base: the media query list and the container prelude. */
+  QueryPrelude: Combinator<ValueNode>;
+  ContainerPrelude: Combinator<ValueNode>;
+
   /*
    * Inherited from the CSS base: the typed `An+B` arguments of the `:nth-*()`
    * pseudos (their `of S` list reads this dialect's `SelectorList`) and
@@ -1885,7 +1884,10 @@ const scssFactory = (g: ScssInputRules) => {
         g.Keyword,
         literal(')')
       )),
-      noTrivia(caseInsensitiveWord('layer'))
+      noTrivia(sequence(
+        caseInsensitiveWord('layer'),
+        not(literal('('))
+      ))
     ),
     children => children.length === 1
       ? keyword(requireToken(children[0]).value)
@@ -1996,11 +1998,22 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitiveWord('supports'),
     literal('(')
   ));
+
+  /*
+   * The same positional fact for `layer(`: css-cascade-5 §3.1 puts the
+   * `layer()` slot before `<media-query-list>` too, so a `layer(` whose name
+   * `ImportLayer` rejects (`layer(#{$name})`, `layer(a b)`) fails rather than
+   * being recovered as a `<general-enclosed>` media query term.
+   */
+  const importLayerOpen = noTrivia(sequence(
+    caseInsensitiveWord('layer'),
+    literal('(')
+  ));
   const ImportTail = node<ValueNode>(
     'ImportTail',
     choice(
       sequence(g.ImportQualifier, optional(g.QueryPrelude)),
-      sequence(not(importSupportsOpen), g.QueryPrelude)
+      sequence(not(importSupportsOpen), not(importLayerOpen), g.QueryPrelude)
     ),
     (children) => {
       const values = children.filter(isScssValue).flatMap(value =>
@@ -2901,25 +2914,13 @@ const scssFactory = (g: ScssInputRules) => {
         g.IfBody
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
+        g.MediaAtKeyword,
         g.QueryPrelude,
         g.IfBody
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
-        g.MediaPrelude,
+        g.ContainerAtKeyword,
+        g.ContainerPrelude,
         g.IfBody
       ),
       sequence(
@@ -3205,123 +3206,15 @@ const scssFactory = (g: ScssInputRules) => {
       [any(children.length > 2 ? requireToken(children[2]).value : '')]
     )
   );
-  const QueryInParens = node<ValueNode>(
-    'QueryInParens',
-    choice(
-      sequence(
-        literal('('),
-        g.QueryCondition,
-        literal(')')
-      ),
-      g.QueryFeature,
-      g.QueryFunction
-    ),
-    children => children.length === 1
-      ? requireValue(children[0])
-      : block(requireValue(children[1]))
-  );
-  const QueryCondition = node<ValueNode>(
-    'QueryCondition',
-    choice(
-      sequence(
-        g.QueryNot,
-        g.QueryInParens
-      ),
-      sequence(
-        g.QueryInParens,
-        many(sequence(
-          g.QueryAndOr,
-          g.QueryInParens
-        ))
-      )
-    ),
-    (children) => {
-      const values = keywordizeValues(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
 
   /*
-   * `only` modifies a media type; it cannot introduce a parenthesized query
-   * condition. Keep `not (...)` in QueryCondition, where that form
-   * is structurally valid.
+   * `@media` and `@container` read the CSS base's preludes: its media query
+   * list (`QueryPrelude`: the `and`/`or` connective read with the term it
+   * introduces, a glued `and(` a `<general-enclosed>` term) and its container
+   * prelude. SCSS overrides only their leaves (`QueryValue`, `QueryFeature`,
+   * `QueryFunction`), so a dangling connective (`screen and {`, `and (a)`) is
+   * the same parse error it is in CSS.
    */
-  const QueryNonOnlyKeyword = node<Keyword>(
-    'QueryNonOnlyKeyword',
-    sequence(
-      not(g.QueryOnly),
-      g.Keyword
-    ),
-    children => requireKeyword(children.at(-1))
-  );
-  const QueryOnlyClause = node<ValueNode>(
-    'QueryOnlyClause',
-    sequence(
-      g.QueryOnly,
-      QueryNonOnlyKeyword,
-      many(sequence(
-        g.QueryAndOr,
-        g.QueryInParens
-      ))
-    ),
-    children => spaced(keywordizeValues(children))
-  );
-  const QueryClause = node<ValueNode>(
-    'QueryClause',
-    choice(
-      QueryOnlyClause,
-
-      /*
-       * A leading `<general-enclosed>` function term — media-queries-5 §2.1/§3.1
-       * (`<function-token> <any-value> )`), e.g. `@media foo(bar)`. This reuses
-       * the SAME general-enclosed node `QueryInParens` already carries; the
-       * arm only has to move earlier. Without it the media-type arm below reads
-       * `foo` as a keyword and `(bar)` as a separate feature, rendering
-       * `foo (bar)` with a stray space while css/less/jess render `foo(bar)`.
-       * `QueryFunction` opens on `QueryFunctionName`, whose `(?=\()` lookahead
-       * matches only a name glued to `(`, so a bare `( … )` group still falls
-       * through to the media-type / QueryCondition arms.
-       */
-      g.QueryFunction,
-
-      /*
-       * `[ not ]? <media-type> [ and <media-in-parens> ]*` (media-queries-4
-       * §2.1; `or` is admitted as CSS's clause admits it). Every step reads its
-       * own connective, so `screen and (a) and (b)` and
-       * `not all and (monochrome)` parse; the CSS clause also tolerates a
-       * step with no connective. A `not (…)` condition fails this arm at its
-       * `(` and is the QueryCondition below.
-       */
-      sequence(
-        optional(g.QueryNot),
-        QueryNonOnlyKeyword,
-        many(sequence(
-          optional(g.QueryAndOr),
-          g.QueryInParens
-        ))
-      ),
-      g.QueryCondition
-    ),
-    (children) => {
-      const values = keywordizeValues(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
-
-  /* CSS owns this unchanged comma-separated query-list frame. */
-  const QueryPrelude = node<ValueNode>(
-    'QueryPrelude',
-    oneOrMoreSep(g.QueryClause, literal(',')),
-    (children) => {
-      const values = children.filter(isScssValue);
-      return values.length === 1
-        ? values[0]!
-        : list(
-            values,
-            ','
-          );
-    }
-  );
 
   /*
    * `@supports` is not the media/container query grammar: a general-enclosed
@@ -3481,11 +3374,6 @@ const scssFactory = (g: ScssInputRules) => {
     'SupportsPrelude',
     g.SupportsCondition,
     children => requireValue(children[0])
-  );
-  const MediaPrelude = node<ValueNode>(
-    'MediaPrelude',
-    noTrivia(oneOrMore(g.MediaModifier)),
-    children => any(children.map(requireToken).map(token => token.value).join('').trim())
   );
 
   /*
@@ -3758,27 +3646,15 @@ const scssFactory = (g: ScssInputRules) => {
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
+        g.MediaAtKeyword,
         g.QueryPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
-        g.MediaPrelude,
+        g.ContainerAtKeyword,
+        g.ContainerPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
@@ -3990,27 +3866,15 @@ const scssFactory = (g: ScssInputRules) => {
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
+        g.MediaAtKeyword,
         g.QueryPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
-        g.MediaPrelude,
+        g.ContainerAtKeyword,
+        g.ContainerPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
@@ -4940,10 +4804,6 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeature,
     QueryFunction,
-    QueryInParens,
-    QueryCondition,
-    QueryClause,
-    QueryPrelude,
     SupportsAtom,
     GeneralTemplate,
     GeneralTemplateGroup,
@@ -4955,7 +4815,6 @@ const scssFactory = (g: ScssInputRules) => {
     SupportsAndOrKeyword,
     SupportsCondition,
     SupportsPrelude,
-    MediaPrelude,
     AtRulePrelude,
     AtRulePreludeAtom,
     AtRulePreludeGroup,

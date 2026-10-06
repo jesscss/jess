@@ -872,9 +872,13 @@ export function queryFeatureBlock(children: readonly unknown[], span: AstSourceS
   }
   const group = block(generalEnclosedArgument(children) ?? []);
 
-  /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
+  /*
+   * Only the group whose own contents are general-enclosed; a group around a
+   * marked group is a condition. One whose contents are the dialect's
+   * interpolation (SCSS `(#{$q})`) is a template, substituted then printed.
+   */
   const isQuery = count === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
-  return isQuery ? group : withAuthoredGeneralEnclosed(group, span, state);
+  return isQuery ? group : generalEnclosedGroup(group, span, state);
 }
 
 /*
@@ -914,10 +918,32 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
  * to normalized, evaluated output.
  */
 function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+  /*
+   * Contents that carry the dialect's interpolation (SCSS `(#{$q})`) have no
+   * authored bytes to print: P16 evaluates the interpolation, so the value
+   * stays structured and the emitter substitutes it.
+   */
+  if (hasInterpolationRef(value)) {
+    return value;
+  }
   if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
     throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
   }
   return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
+}
+
+/** Whether general-enclosed contents hold an interpolation that reads a binding. */
+function hasInterpolationRef(value: unknown): boolean {
+  if (isInterpolation(value)) {
+    return value.parts.some(part => 'ref' in part);
+  }
+  if (isNodeType(value, 'Sequence') && 'parts' in value && Array.isArray(value.parts)) {
+    return value.parts.some(hasInterpolationRef);
+  }
+  if (isList(value)) {
+    return value.value.some(hasInterpolationRef);
+  }
+  return isNodeType(value, 'Block') && 'value' in value && hasInterpolationRef(value.value);
 }
 
 /*

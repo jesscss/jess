@@ -254,8 +254,8 @@ type JessRules = {
   QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
-  QueryClause: Combinator<ValueNode>;
-  QueryPrelude: Combinator<ValueNode>;
+  AtRulePreludeClause: Combinator<ValueNode>;
+  MediaGeneralValue: Combinator<ValueNode>;
   DottedAtRuleKeyword: Combinator<Keyword>;
   AtRulePrelude: Combinator<ValueNode | null>;
   ContainerStyleQuery: Combinator<FunctionCall>;
@@ -301,6 +301,12 @@ type JessRules = {
 type SharedSyntax = {
   /* Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal. */
   AttributeNamespace: Combinator<unknown>;
+
+  /*
+   * Inherited from the CSS base: the media query list `@media` reads, its
+   * `and`/`or` connective read with the term it introduces.
+   */
+  QueryPrelude: Combinator<ValueNode>;
 
   /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments. */
   LangPseudoArgument: Combinator<List>;
@@ -3587,10 +3593,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * This is the CSS media-query clause shape, named identically so the AST and
-   * CST retain the shared semantic concept. It stays local only because direct
-   * cross-artifact CSS AST builders cannot macro-fuse; Jess changes the term
-   * leaf, not the clause/list structure.
+   * A media `<general-enclosed>` group's component values, read as header
+   * terms rather than values: an at-rule prelude is an identifier position at
+   * every depth (ledger P13/P16), where `${…}` is the only `$` form, so a bare
+   * `$name` there is rejected as it is in the rest of the header.
+   */
+  const MediaGeneralValue = node<ValueNode>(
+    'MediaGeneralValue',
+    g.QueryTerm,
+    children => requireValueNode(children[0])
+  );
+
+  /*
+   * One clause of a generic at-rule header: whitespace-joined header terms,
+   * optionally led by `only <keyword>`. It is NOT the media query clause:
+   * `@media` reads the CSS base's media query list (`QueryPrelude`), whose
+   * `and`/`or` connective is read with the term it introduces. A generic
+   * header has no connectives to read, so this clause keeps its own name.
    */
   const queryClause = noTrivia(sequence(choice(
     sequence(
@@ -3610,21 +3629,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ))
     )
   )));
-  const QueryClause = node<ValueNode>(
-    'QueryClause',
+  const AtRulePreludeClause = node<ValueNode>(
+    'AtRulePreludeClause',
     queryClause,
     (children) => {
       const values = children.filter(isValueNode);
       const startsWithOnly = children.some(child => isToken(child) && requireToken(child).value.toLowerCase() === 'only');
       return startsWithOnly ? spaced([keyword('only'), ...values]) : values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
-  const QueryPrelude = node<ValueNode>(
-    'QueryPrelude',
-    oneOrMoreSep(g.QueryClause, literal(',')),
-    (children) => {
-      const values = children.filter(isValueNode);
-      return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
 
@@ -3649,12 +3660,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A generic at-rule prelude is a comma-separated `<media-query-list>` that
-   * may also be absent, so its clause is `QueryClause` exactly as `QueryPrelude`'s
-   * is. It carried a second name for its CALLER, `AtRulePreludeTerm`, and that
-   * is what kept a byte-identical copy alive. Each clause first admits a dotted
-   * `<layer-name>` (`@layer a, b.c`), which `QueryClause` alone reads as a bare
-   * `b` and abandons at the `.`.
+   * A generic at-rule prelude is a comma-separated list of header clauses that
+   * may also be absent. Each clause first admits a dotted `<layer-name>`
+   * (`@layer a, b.c`), which `AtRulePreludeClause` alone reads as a bare `b`
+   * and abandons at the `.`.
    */
   /*
    * A `@page` header is an optional page name followed by one or more
@@ -3681,7 +3690,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       .map(value => value.type === 'Keyword' || value.type === 'Any' ? value.src : '')
       .join(''))
   );
-  const atRulePreludeClause = choice(g.DottedAtRuleKeyword, pageHeader, g.QueryClause);
+  const atRulePreludeClause = choice(g.DottedAtRuleKeyword, pageHeader, g.AtRulePreludeClause);
   const AtRulePrelude = node<ValueNode | null>(
     'AtRulePrelude',
     sequence(
@@ -5889,8 +5898,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryTerm,
     QueryFeature,
     QueryDashedIdentifier,
-    QueryClause,
-    QueryPrelude,
+    AtRulePreludeClause,
+    MediaGeneralValue,
     DottedAtRuleKeyword,
     AtRulePrelude,
     ContainerStyleQuery,

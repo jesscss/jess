@@ -210,6 +210,7 @@ type GrammarRuleName =
   | 'LeadingDashPseudoArgument'
   | 'LeadingDashRawPseudoArgument'
   | 'LangPseudoArgument'
+  | 'MediaGeneralValue'
   | 'DirPseudoArgument'
   | 'LiteralQuoted'
   | 'MarginAtRule'
@@ -3672,6 +3673,21 @@ const cssFactory = (g: GrammarSelf) => {
    * `routed()`, so a group that fails after its `(` fails the parse: no
    * enclosing value run reads the same `(` again.
    */
+  /*
+   * A media group's `<general-enclosed>` component values. In css they are the
+   * value runs every general rest reads; `MediaGeneralValue` names that slot so
+   * a superset whose prelude is an identifier position — `.jess`, where a
+   * prelude takes `${…}` only (ledger P13/P16) — reads it with its own header
+   * terms instead of its value reader.
+   */
+  const mediaGeneralRest = many(choice(
+    literal(','),
+    g.MediaGeneralValue,
+    literal('/'),
+    literal('!'),
+    literal(';'),
+    g.CurlyValue
+  ));
   const RoutedMediaInParens = node(
     'QueryFeature',
     sequence(
@@ -3680,7 +3696,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.MediaCondition,
         g.MediaFeatureContents
       )),
-      generalRest,
+      mediaGeneralRest,
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
@@ -5076,6 +5092,7 @@ const cssFactory = (g: GrammarSelf) => {
     MediaInParens,
     MediaCondition,
     MediaFeatureContents,
+    MediaGeneralValue: g.ValueSequence,
     queryUrlBound,
     queryMathBound,
     queryVarBound,

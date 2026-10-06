@@ -70,10 +70,15 @@ export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('SCSS AST grammar is missing its public document entry.');
   }
+
+  /*
+   * `state.source` lets the CSS base's media reducers keep a
+   * `<general-enclosed>` query group as written (ledger N14).
+   */
   const result = run(
     entry,
     input,
-    { trivia, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*
