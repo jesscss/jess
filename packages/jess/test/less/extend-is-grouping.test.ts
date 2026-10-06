@@ -152,6 +152,23 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
     expect(headerOf(css, 'm: 1')).toBe(':is(.error, .worse).intrusion, #bad.intrusion');
   });
 
+  it('folds an extended header\'s nesting branches by the nesting mode and its extenders by the guard', async () => {
+    // Orchestrator judgment 2026-10-05: `'compact'` folds the child list unguarded.
+    const mixed = '.t { th, .x { m: 1 } } .foo:extend(.t th) {}';
+    expect(headerOf(await render(mixed, 'compact'), 'm: 1')).toBe('.t :is(th, .x), .foo');
+    expect(headerOf(await render(mixed, 'native'), 'm: 1')).toBe('.t th, .t .x, .foo');
+    for (const mode of MODES) {
+      expect(headerOf(await render('.t { th, td { m: 1 } } .foo:extend(.t th) {}', mode), 'm: 1'))
+        .toBe('.t :is(th, td), .foo');
+    }
+
+    // What the extend adds keeps to the guard under `'compact'` too.
+    expect(headerOf(await render('.t { th, .x { m: 1 } } #y:extend(.x all) {}', 'compact'), 'm: 1'))
+      .toBe('.t :is(th, .x), .t #y');
+    expect(headerOf(await render('.t { th, .x { m: 1 } } #y:extend(.x all) {}', 'native'), 'm: 1'))
+      .toBe('.t th, .t .x, .t #y');
+  });
+
   it('keeps a pseudo-element out of a sibling group', async () => {
     const css = await render('.p { .arrow::before, .arrow::after { m: 1 } } .q:extend(.p all) {}', false);
     expect(headerOf(css, 'm: 1')).toBe(':is(.p, .q) .arrow::before, :is(.p, .q) .arrow::after');

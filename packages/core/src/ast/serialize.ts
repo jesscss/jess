@@ -12140,7 +12140,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     if (extendClass.static) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
-    e.extends = computeExtends(plannedRoot, planned.overlay); // [extend] null when no `:extend()` anywhere
+    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact'); // [extend] null when no `:extend()` anywhere
     e.importPlacements = planned.imports?.importPlacements ?? null;
 
     /*
@@ -13249,7 +13249,7 @@ function recordNestedDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, chunkIn
  * argument), so it is left out; with none left and no recorded extend, the static
  * results already stand and nothing is re-solved.
  */
-function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | null): ExtendResults | null {
+function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | null, guardedNesting: boolean): ExtendResults | null {
   const atoms = new Set<string>(base?.targetAtoms);
   for (const inst of dyn.instructions) {
     collectBranchAtoms(inst.target, atoms);
@@ -13265,7 +13265,7 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
     instructions: [...dyn.baseOverlay.instructions, ...dyn.instructions],
     atRuleScopes: dyn.atRuleScopes
   };
-  return computeExtends(dyn.root, overlay);
+  return computeExtends(dyn.root, overlay, guardedNesting);
 }
 
 /**
@@ -13281,7 +13281,7 @@ function foldDynamicExtends(e: Emit): void {
   if (!dyn) {
     return;
   }
-  const resolved = resolveDynamicExtends(dyn, e.extends);
+  const resolved = resolveDynamicExtends(dyn, e.extends, e.collapseMode !== 'compact');
   if (resolved !== null) {
     e.extends = resolved;
   }

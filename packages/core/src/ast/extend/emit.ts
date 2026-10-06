@@ -45,9 +45,9 @@ import {
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
-import { composePath } from './compose.js';
+import { branchHasAmp, composePath } from './compose.js';
 import { isTypeSelector } from './conflict.js';
-import { extendBranchSpecificity, partitionGroups } from '../is-grouping.js';
+import { extendBranchSpecificity, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
@@ -386,6 +386,98 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
   const isGroup = isSimple(members, true);
   const suffixTokens = as.slice(as.length - suffix).map(cloneSimple);
   return { value: [isGroup, ...suffixTokens] };
+}
+
+/* ------------------------------------------------- nesting fold of a header */
+
+/**
+ * [O10, orchestrator judgment 2026-10-05] Fold the branches NESTING produced in a nested
+ * rule's extended, flattened header by the nesting mode, exactly as the serializer folds
+ * the child list of an unextended rule (`opaqueJoin`, keyed by {@link nestingGroupKey}):
+ * `'compact'` folds every descendant child branch unguarded, `'native'` (and the nested
+ * output's flattened headers) only equal-specificity ones. The branches the extend added
+ * are left to extend's guarded grouping. `.t { th, .x {} }` + `.foo:extend(.t th)` under
+ * `'compact'` is `.t :is(th, .x), .foo`.
+ *
+ * The fixpoint rewrites each seed in place and appends extenders after them, so the
+ * first `raw.length` branches are the seeds in authored order; a seed whose segments no
+ * longer line up with its raw composition (a span collapsed across the parent) joins no
+ * group. Returns `list` itself when nothing folds.
+ */
+function nestingFold(list: Branch[], s: PlanSubject, raw: Branch[], guarded: boolean): Branch[] {
+  const own = s.ownLocal;
+  const authored = s.rule.selector.selectors;
+  if (own.length < 2 || raw.length !== own.length || authored.length !== own.length || list.length < raw.length) {
+    return list;
+  }
+  const keys: number[] = [];
+  let first: Branch | undefined;
+  let groupable = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const seed = list[i]!;
+    const cut = raw[i]!.segments.length - own[i]!.segments.length;
+    if (seed.ext === true || seed.hidden === true || branchHasAmp(own[i]!)) {
+      return list;
+    }
+    let key = -1;
+    if (cut > 0 && seed.segments.length === raw[i]!.segments.length && seed.segments[cut]!.combinator === ' '
+      && (first === undefined || samePrefix(first, seed, cut))) {
+      first ??= seed;
+      key = nestingGroupKey(authored[i]!, guarded);
+    }
+    keys.push(key);
+    if (key >= 0) {
+      groupable++;
+    }
+  }
+  if (groupable < 2) {
+    return list;
+  }
+  const sizes = partitionGroups(keys);
+  if (sizes.length === raw.length) {
+    return list;
+  }
+  const out: Branch[] = [];
+  for (let i = 0; out.length < sizes.length; i++) {
+    const group = keys[i]!;
+    if (group !== out.length) {
+      continue;
+    }
+    if (sizes[group] === 1) {
+      out.push(list[i]!);
+      continue;
+    }
+    const cut = raw[i]!.segments.length - own[i]!.segments.length;
+    const members: Branch[] = [];
+    for (let j = i; members.length < sizes[group]!; j++) {
+      if (keys[j] === group) {
+        members.push(mkBranch(list[j]!.segments.slice(cut)));
+      }
+    }
+    const segments = list[i]!.segments.slice(0, cut);
+    segments.push({ combinator: ' ', compound: { value: [{ t: 'is', branches: members, fold: false }] } });
+    out.push(mkBranch(segments));
+  }
+  for (let i = raw.length; i < list.length; i++) {
+    out.push(list[i]!);
+  }
+  return out;
+}
+
+/** True when `a` and `b` agree on their first `cut` segments (the parent they nest in;
+ * `a` is at least that long). */
+function samePrefix(a: Branch, b: Branch, cut: number): boolean {
+  if (a.segments.length < cut) {
+    return false;
+  }
+  for (let k = 0; k < cut; k++) {
+    const as = a.segments[k]!;
+    const bs = b.segments[k]!;
+    if (as.combinator !== bs.combinator || compoundText(as.compound) !== compoundText(bs.compound)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /* --------------------------------------------- guarded `:is()` group emission */
@@ -780,8 +872,11 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanIn
 /**
  * Compute extend results for a parsed AST root. Returns `null` when the
  * document has NO `:extend()` at all (the serializer's zero-cost gate).
+ * `guardedNesting` is false under `collapseNesting: 'compact'`, whose nesting fold
+ * an extended header keeps ({@link nestingFold}); extend's own groups are guarded in
+ * every mode.
  */
-export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendResults | null {
+export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true): ExtendResults | null {
   /*
    * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
    * `:extend()` anywhere) before any subject/instruction plan is built.
@@ -990,7 +1085,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendR
      * nested rules render through `nestedPlan`/`hoistHeader`.
      */
     if (changed) {
-      const compacted = groupedBranches(siblingCompact(flat, false), true);
+      const compacted = groupedBranches(siblingCompact(nestingFold(flat, s, rawOf(s), guardedNesting), false), true);
       const projection = projectionFor(s);
 
       /*
@@ -1257,7 +1352,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendR
        * prefix, so a child comma-list under one parent DOES compact across segments
        * (extend-exact `:is(<parent>) :is(.replace, .c)`).
        */
-      const hoisted = groupedBranches(siblingCompact(flatBySubject.get(s)!, true), true).map(branchOut);
+      const hoisted = groupedBranches(siblingCompact(nestingFold(flatBySubject.get(s)!, s, rawOf(s), guardedNesting), true), true).map(branchOut);
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
 
       /*

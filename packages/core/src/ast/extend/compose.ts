@@ -27,7 +27,7 @@ import {
 } from './ir.js';
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
 
-function branchHasAmp(b: Branch): boolean {
+export function branchHasAmp(b: Branch): boolean {
   for (const seg of b.segments) {
     for (const s of seg.compound.value) {
       if (s.t === 'text') {

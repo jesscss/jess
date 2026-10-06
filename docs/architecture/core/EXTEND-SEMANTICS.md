@@ -469,6 +469,16 @@ Compaction is not mode-coupled either: a top-level rule the extend changed compa
 its header the same way in nested output (its `nestedPlan` header) as in flat
 output (`flatByRule`).
 
+The NESTING fold is mode-coupled, and an extended header keeps it (orchestrator
+judgment 2026-10-05): in a nested rule's extended, flattened header the branches its
+own child list produced fold by `collapseNesting` exactly as the serializer folds the
+unextended rule (ledger O10; `'compact'` unguarded, `'native'` and the nested output's
+hoisted headers by specificity), while the branches the extend added keep to the
+guarded grouping above. `.t { th, .x {} }` + `.foo:extend(.t th)` is
+`.t :is(th, .x), .foo` under `'compact'` and `.t th, .t .x, .foo` under `'native'`;
+`#y:extend(.x all)` on the same rule gives `.t :is(th, .x), .t #y` under `'compact'`
+(`emit.ts` `nestingFold`).
+
 ## 8. `@media` scoping — v5 does NOT merge media
 
 An extend inside `@media` only matches selectors in the SAME (or a descendant)
