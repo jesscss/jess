@@ -345,7 +345,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // emergent `@{…}` — and `[@@name]` names a member by `lookupName`, so
     // `stripOuterQuotes` is gone; the synchronous positions share one guard
     // (`syncValue`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(547);
+    // +2 functions (ledger F4; SEMANTIC-INVARIANTS 2): a group around a reference
+    // is classified by what the reference names, through the resolvers its
+    // evaluation uses — a variable, an `@@name`, a property, a member — so every
+    // way of reading a value consumes the group alike (`slotComputation`,
+    // `lookupBinding`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(549);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

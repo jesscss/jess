@@ -4732,9 +4732,13 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
 
 /*
  * A paren group is consumed when what it holds computes — math (`(1px + 2px)` is
- * `3px`), a `.jess` `$( … )`, a call a callable computes (`(percentage(0.5))` is
- * `50%`), or a variable or mixin parameter bound to one of those (ledger F4:
- * once computed, the parens do not survive). Every other group keeps its parens
+ * `3px`), a comparison (`.jess` `$((1 > 0))` is `true`), a call a callable
+ * computes (`(percentage(0.5))` is `50%`, `.jess` `($percentage(0.5))` too), or
+ * anything a reference names that is one of those: a variable (`@a`, `@@name`),
+ * a mixin parameter, a property (`$w`) or a member (`@m[v]`, `#ns[@v]`,
+ * `.m()[@r]`) (ledger F4: once computed, the parens do not survive). A `.jess`
+ * `$( … )` computes when what it holds does, so `($(10px))` keeps its parens as
+ * `(10px)` does. Every other group keeps its parens
  * wherever it is written — around one value (`c: (10vh)`, `(@w)` with `@w:
  * 10px`), around a call written out as-is (`(var(--a))`) or a CSS colour call
  * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
@@ -4748,16 +4752,27 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  */
 
 /**
- * What computes in the group (see above), or `null`: the operation, `$( … )`,
- * call or conditional it holds, directly or through the variables it names. A
- * call counts here, and one no callable computed comes back marked as written
- * out as-is, which {@link keepAuthoredGroup} keeps in its parens.
+ * What computes in the group (see above), or `null`: the operation, comparison,
+ * `$( … )`, call or conditional it holds, directly or through what its
+ * references name. A call counts here, and one no callable computed comes back
+ * marked as written out as-is, which {@link keepAuthoredGroup} keeps in its
+ * parens.
  */
 function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNode | null {
-  if ((e.calcDepth ?? 0) > 0) {
-    return null;
-  }
-  let inner: ValueSlot = node.value;
+  return (e.calcDepth ?? 0) > 0 ? null : slotComputation(node.value, frame, e);
+}
+
+const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
+
+/**
+ * What computes in `slot` (see {@link groupComputation}), past its parens and
+ * through the references it reads. A reference is resolved by the resolver its
+ * evaluation uses, so every way of reading a value classifies it alike. A
+ * `$( … )` or authored group expression stands for what it holds, and is
+ * returned when that computes, so the group reads the splice typed.
+ */
+function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx): ValueNode | null {
+  let inner = slot;
   let scope = frame;
 
   /* ponytail: a reference cycle raises when the group evaluates; the cap only bounds this walk. */
@@ -4765,23 +4780,67 @@ function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNo
     while (isParenGroup(inner)) {
       inner = inner.value;
     }
-    if (isValueSlotArray(inner) || inner.type !== 'Lookup') {
-      return computationIn(inner);
-    }
-    if (inner.kind !== 'var' || typeof inner.name !== 'string') {
+    if (isValueSlotArray(inner)) {
       return null;
     }
-    const hit = resolveVarRef(scope, inner.name, inner.scope, e);
-    if (hit === undefined || isMixinCallValue(hit.value)) {
+    let named: { value: Binding; frame: Frame | null } | null | undefined;
+    switch (inner.type) {
+      case 'Lookup':
+        named = lookupBinding(inner, scope, e);
+        break;
+      case 'Reference':
+        /* A reference ending in a call (`.jess` `$fn()`) is a call. */
+        if (inner.steps[inner.steps.length - 1]?.type === 'Call') {
+          return inner;
+        }
+        named = resolveReferenceResult(inner, scope, e);
+        break;
+      case 'Expression':
+        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }) === null ? null : inner;
+
+      /* A comparison computes where a value-position one is evaluated: at a `.jess` `$( … )` boundary (§7.1). */
+      case 'Condition':
+        return e.exprBoundary === true ? inner : null;
+      case 'Interpolation': {
+        const first = inner.parts[0];
+        return isComputationSplice(inner) && first !== undefined && 'ref' in first
+          && slotComputation(first.ref, scope, e) !== null
+          ? inner
+          : null;
+      }
+      default:
+        return computationIn(inner);
+    }
+    if (named === null || named === undefined || isMixinCallValue(named.value)) {
       return null;
     }
-    inner = hit.value;
-    scope = hit.frame;
+    inner = named.value;
+    scope = named.frame;
   }
   return null;
 }
 
-const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
+/**
+ * What a lookup names — a variable, an `@@name` one included, or a property —
+ * by the resolvers its evaluation uses, or `undefined`. A merged property is
+ * the bytes of its members, and an `@@name` whose name awaits a plugin is read
+ * only when it evaluates.
+ */
+function lookupBinding(node: Lookup, frame: Frame | null, e: EvalCtx): { value: Binding; frame: Frame | null } | undefined {
+  if (node.kind === 'var') {
+    const name = lookupName(node, frame, e);
+    if (isThenable(name)) {
+      observeRejectedThenable(name);
+      return undefined;
+    }
+    return resolveVarRef(frame, name, node.scope, e);
+  }
+  if (node.kind === 'prop' && typeof node.name === 'string') {
+    const hit = resolvePropRef(frame, node.name, e);
+    return hit === undefined || hit.merged !== undefined ? undefined : hit;
+  }
+  return undefined;
+}
 
 /**
  * The mixin arguments whose authored value computed ({@link eagerSnapshot}): a
@@ -4790,25 +4849,19 @@ const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean =>
  */
 const computedArguments = new WeakSet<Any>();
 
-/** The node in `slot`, past its parens, that computes when it is evaluated, or `null` (see {@link groupComputation}). */
-function computationIn(slot: ValueSlot): ValueNode | null {
-  let inner = slot;
-  while (isParenGroup(inner)) {
-    inner = inner.value;
-  }
-  if (isValueSlotArray(inner)) {
-    return null;
-  }
+/** `inner` when it computes as it is evaluated, or `null` (see {@link groupComputation}); no reference or wrapper reaches here ({@link slotComputation}). */
+function computationIn(inner: ValueNode): ValueNode | null {
   switch (inner.type) {
     case 'Operation':
-      /* A query relation (`min-width: 640px`, `width < 500px`) is a feature, not math. */
+      /*
+       * A query relation (`min-width: 640px`, `width < 500px`) is a feature, not
+       * math: only a query grammar builds one as an `Operation`, and it is
+       * written as is. A value comparison is a `Condition`.
+       */
       return inner.inMathFunction || isQueryRelation(inner.operator) ? null : inner;
-    case 'Interpolation':
-      return isComputationSplice(inner) ? inner : null;
     case 'FunctionCall':
       /* A CSS colour written as a call is one CSS value in every dialect (ledger F5, SEMANTIC-INVARIANTS 4). */
       return isCssColorCall(inner) ? null : inner;
-    case 'Expression':
     case 'IfValue':
       return inner;
     case 'Any':
@@ -7244,7 +7297,7 @@ function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: F
     return any(bytes);
   }
   const bound = any(wrapParens(bytes, writtenParens(source, frame, e)));
-  if (computationIn(source) !== null) {
+  if (slotComputation(source, frame, e) !== null) {
     computedArguments.add(bound);
   }
   return bound;
@@ -7980,7 +8033,8 @@ function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null
 function evalLambdaCall(
   node: FunctionCall,
   frame: Frame | null,
-  e: EvalCtx
+  e: EvalCtx,
+  demanded: boolean
 ): MaybePromise<EvalValue> | undefined {
   const hit = resolveVarRef(frame, node.name, 'live', e);
   if (!hit || isValueSlotArray(hit.value) || hit.value.type !== 'AnonymousMixin') {
@@ -7991,7 +8045,17 @@ function evalLambdaCall(
     return undefined;
   }
   const invoked = invokeValueLambda(lambda, node.args, hit.frame, frame, e);
-  return invoked === null ? undefined : evalValueSlot(invoked.value, invoked.frame, e);
+  if (invoked === null) {
+    return undefined;
+  }
+
+  /*
+   * A typed consumer reads the result typed, as it reads any value: a result
+   * written as a paren group around one value (`@return ($x)`) is that value
+   * to math, a comparison or a callable, and keeps its parens only where it is
+   * written out.
+   */
+  return demanded ? evalTypedSlot(invoked.value, invoked.frame, e) : evalValueSlot(invoked.value, invoked.frame, e);
 }
 
 function evalCall(
@@ -8008,7 +8072,7 @@ function evalCall(
    * pays one `Set.has` and never walks a frame.
    */
   if (e.lambdaFunctionNames?.has(node.name)) {
-    const invoked = evalLambdaCall(node, frame, e);
+    const invoked = evalLambdaCall(node, frame, e, demanded);
     if (invoked !== undefined) {
       return invoked;
     }

@@ -155,6 +155,41 @@ describe('Less math boundaries', () => {
   });
 
   /*
+   * Every way of reading a value names the same value (SEMANTIC-INVARIANTS 2): a
+   * group around a property, a member, an `@@name` or a `.jess` function call
+   * is consumed exactly when the group around the value it reads would be.
+   */
+  it('consumes a group around a computed value however it is read', async () => {
+    const less = '@n: v; @v: 1px + 2px; @m: { v: 1px + 2px; k: 10px; }; #ns { @v: 1px + 2px; } .mx() { @r: 1px + 2px; } '
+      + '.x { w: 1px + 2px; a: ($w); b: (@m[v]); c: (#ns[@v]); d: (@@n); e: (.mx()[@r]); f: (@m[k]); }';
+    expect(await render(less)).toBe('.x { w: 3px; a: 3px; b: 3px; c: 3px; d: 3px; e: 3px; f: (10px); }');
+    const jess = '@-from "#less" import (percentage); $p: $percentage(0.5); $f: @($x) { result: $x; }; '
+      + '.x { a: ($percentage(0.5)); b: ($p); c: ($f(10px)); }';
+    expect(await renderJess(jess)).toBe('.x { a: 50%; b: 50%; c: 10px; }');
+  });
+
+  /*
+   * A comparison computes a boolean, so a group around one at a `$( … )`
+   * boundary is consumed; a `$( … )` around one value computes nothing, so a
+   * group around it keeps its parens as a group around the value does.
+   */
+  it('consumes a group around a comparison, not around a $( … ) of one value', async () => {
+    expect(await renderJess('.x { a: $((1 > 0)); b: $((2 = 2)); c: $((1px < 2px)); d: $((1 + 1 > 0)); e: ($(10px)); f: ($(1px + 2px)); }'))
+      .toBe('.x { a: true; b: true; c: true; d: true; e: (10px); f: 3px; }');
+  });
+
+  /*
+   * A function's result is a value like any other: a computing consumer reads
+   * the value inside a group it returns, and only a declaration writing the
+   * result out keeps the parens.
+   */
+  it('computes with a function result written as a group around one value', async () => {
+    const src = '@function f($x) { @return ($x); } @function g() { @return (1px); } '
+      + '.x { a: f(1px) * 2; b: percentage(f(0.5)); c: f(1px); d: max(f(1px), 2px); e: if(f(1px) == 1px, y, n); h: g() + g(); }';
+    expect(await renderIn('.scss', src)).toBe('.x { a: 2px; b: 50%; c: (1px); d: 2px; e: y; h: 2px; }');
+  });
+
+  /*
    * Math kept as written computes nothing, so a group written as one of its
    * operands keeps its parens (DESIGN-DECISIONS P35, unitless ± unit, owner
    * 2026-10-06), while math that computes reads the value inside.
