@@ -222,7 +222,20 @@ In this case, things are clearly not right - a length multiplied by a length giv
 
 - `loose` — this guessing behavior (the Less 1.x–4.x default).
 - `strict` — assume this is a bug in the calculation and throw an error.
-- `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing; anything `strict` computes, `preserve` computes identically.
+- `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing, with an `eval/unexpressible-unit` warning; anything `strict` computes, `preserve` computes identically.
+
+A unitless number added to or subtracted from a dimension with a unit is one of the cases only `loose` guesses at. `4 + 3px` is `7px` under `loose` and an error under `strict`; under `preserve` it is kept as written, with the warning. It is not wrapped in `calc()`, because `calc()` rejects a number plus a length too:
+
+```less
+@w: 4;
+.class {
+  a: @w + 3px;        // preserve: 4 + 3px     loose: 7px
+  b: (@w + 3px) * 2;  // preserve: (4 + 3px) * 2
+  c: @w * 3px;        // 12px in every mode
+}
+```
+
+The parts of the expression that do compute are computed, and your parentheses are kept, so the kept expression means what you wrote. Multiplying or dividing by a unitless number (`2px * 3`, `6px / 2`) is unaffected.
 
 #### Strict Units (deprecated)
 

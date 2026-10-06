@@ -332,6 +332,26 @@ looks fine and you never learn the expression was meaningless.
 The canonical statement of this rule is §4.7 of
 `docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` in the repository.
 
+### A unitless number plus a unit is kept as written
+
+Less 4 added a unitless number to a dimension by giving the number the
+dimension's unit: `4 + 3px` was `7px`, and `2 + 5em` was `7em`. Less 5 does
+that only under `unitMode: 'loose'`. Under the default `preserve` the
+expression is kept as written and warns (`eval/unexpressible-unit`); under
+`strict` it is an error.
+
+| expression | Less 4 | Less 5 (`preserve`) |
+| --- | --- | --- |
+| `(@w + 3px)` with `@w: 4` | `7px` | `(4 + 3px)` |
+| `(10px / 2px + 6px - 1px * 2)` | `9px` | `(5 + 6px - 2px)` |
+| `4 / 2 + 5em` (`math: always`) | `7em` | `2 + 5em` |
+| `(2px * 3)` | `6px` | `6px` |
+
+It is not wrapped in `calc()`: `calc()` rejects a number plus a length too. The
+parts that compute are computed, and your parentheses are kept. If the number
+was meant to carry the unit, write the unit (`4px + 3px`) or multiply
+(`@w * 1px + 3px`); `unitMode: 'loose'` restores the Less 4 answer.
+
 ### A guard *selects*; it does not assert
 
 The `1px > red` row above is about a **value**: `@x: (1px > red)` has no answer,

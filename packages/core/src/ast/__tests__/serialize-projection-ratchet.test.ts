@@ -325,7 +325,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // every document an `@import` of any kind placed, created on the first import,
     // so a `(reference)` import of a sheet already loaded is dropped after a
     // `(multiple)` or `(reference)` import as J14 drops it after a plain one.
-    expect(occurrences(/^function |^async function /gmu)).toBe(539);
+    // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
+    // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
+    // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
+    expect(occurrences(/^function |^async function /gmu)).toBe(540);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

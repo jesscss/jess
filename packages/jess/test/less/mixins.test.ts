@@ -614,7 +614,7 @@ describe('Mixins', () => {
         color: black;
       }
       .button {
-        padding-left: 44px;
+        padding-left: ((10px + 12) * 2);
       }
       .button.large {
         padding-left: 40em;
