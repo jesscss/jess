@@ -21,7 +21,7 @@ const mixin = (
   params: MixinDefinition['params'],
   rules: Statement[],
   guard?: MixinDefinition['guard']
-): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard ? { guard } : {}) });
+): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, extendInstructions: undefined, ...(guard ? { guard } : {}) });
 
 describe('Mixin canonical AST emission', () => {
   it('errors for an unresolved mixin independently of functionMode', () => {

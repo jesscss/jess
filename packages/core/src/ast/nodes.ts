@@ -830,12 +830,25 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
   return c._hasInterp;
 };
 
-/** True iff a leaf token's retained text or interpolation template carries `&`. */
+/**
+ * Whether a selector token's text holds a parent reference `&`. The parser builds an
+ * attribute selector as one token from its `[` to its `]`, so a `&` in it is attribute
+ * text (`[title="&"]`), never a parent reference: the token's kind decides, not the
+ * character (SEMANTIC-INVARIANTS S5).
+ */
+export const textHoldsParentRef = (text: string): boolean =>
+  text.charCodeAt(0) !== 0x5B /* [ */ && text.includes('&');
+
+/** True iff a leaf token's retained text or interpolation template carries a parent `&`. */
 const leafHasAmpersand = (sim: SimpleToken): boolean => {
-  if (sim.text?.includes('&') === true) {
+  if (sim.text && textHoldsParentRef(sim.text)) {
     return true;
   }
   if (sim.interp !== null) {
+    const head = sim.interp.parts[0];
+    if (head !== undefined && 'lit' in head && head.lit.charCodeAt(0) === 0x5B /* [ */) {
+      return false;
+    }
     for (const part of sim.interp.parts) {
       if ('lit' in part && part.lit.includes('&')) {
         return true;
@@ -1236,6 +1249,17 @@ export interface MixinDefinition extends SpanSlots, BodySpanSlots {
    * identical ruleset-mixin output, so the serializer must tell them apart.
    */
   readonly ruleMixin?: boolean;
+
+  /*
+   * A body-form `&:extend()` written directly in the definition's body (ledger X16):
+   * the rule each call's body lands in extends, as if the extend were written in that
+   * rule's own body. Undefined when the body has none, but always DECLARED, right after
+   * `rules`, by every constructor, so a definition with one shares the hidden class of
+   * one without (V8 invariant 1). A ruleset called as a mixin carries its own
+   * `extendInstructions` here; its inline ones (with a `subject`) bind to its own
+   * selector and do not travel with the call.
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
 }
 
 /**
@@ -1776,8 +1800,20 @@ export const mixinDef = (
   name: string,
   params: Param[],
   rules: Statement[],
-  guard?: GuardNode // [guards]
-): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
+  guard?: GuardNode, // [guards]
+  extendInstructions?: readonly ExtendInstruction[]
+): MixinDefinition => ({
+  type: 'MixinDefinition',
+  name,
+  params,
+  rules,
+  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
+  ...(guard !== undefined ? { guard } : {}),
+  _s: NO_SPAN,
+  _e: NO_SPAN,
+  _bs: NO_SPAN,
+  _be: NO_SPAN
+});
 
 /** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */

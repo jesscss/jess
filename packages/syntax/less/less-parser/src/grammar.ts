@@ -57,7 +57,7 @@ import {
   interpolationPartsFrom,
   isAny,
   isBareMixinCallFact,
-  isBodyExtendFact,
+  bodyExtensionsOf,
   isComplexTailFact,
   isLessDeclaration,
   isDefaultGuardCall,
@@ -5250,7 +5250,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions);
+      const bodyExtensions = bodyExtensionsOf(children);
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
       const node = withBlockBody(
         rule(
@@ -5271,7 +5271,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions);
+      const bodyExtensions = bodyExtensionsOf(children);
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
       const node = withBlockBody(
         rule(
@@ -5285,6 +5285,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
     }
   );
+  /**
+   * A parametric mixin definition after its `(` … interior: `)`, an optional guard, and
+   * a ruleset body. The body is the ruleset's own (`rulesetBody`), so a body-form
+   * `&:extend()` is as legal here as in the rule the mixin is called into; the
+   * definition carries it to each call site (ledger X16).
+   */
   const MixinDefinitionContinuation = node(
     'MixinDefinition',
     parser({ trivia: mixinSignatureTrivia }, sequence(
@@ -5293,7 +5299,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
       ),
-      g.blockBody,
+      rulesetBody,
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
@@ -5304,6 +5310,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         params: [],
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
         rules: children.filter(isStatement),
+        extensions: bodyExtensionsOf(children),
         ...(bodySpan === undefined ? {} : { bodySpan })
       };
     }
@@ -5369,7 +5376,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         selectorEnd: requiredTokenStart(rawChildren, '{'),
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
         rules: children.filter(isStatement),
-        extensions: children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions),
+        extensions: bodyExtensionsOf(children),
         ...(bodySpan === undefined ? {} : { bodySpan }),
         ...(hasRulesetTerminator(rawChildren) ? { terminated: true } : {})
       };
@@ -5396,7 +5403,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           mixinDefinitionNameFromSelectorBranch(prefix.selector),
           [...definition.params],
           [...definition.rules],
-          definition.guard
+          definition.guard,
+          definition.extensions
         );
         return withSourceSpan(
           definition.bodySpan === undefined ? node : withBodySpan(node, definition.bodySpan),

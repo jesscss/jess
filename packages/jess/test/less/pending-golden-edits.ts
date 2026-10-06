@@ -122,7 +122,12 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
         const afterOffset = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }[side];
         return [
           [`${grouped(tooltip, ' .arrow')} {`, `${split(tooltip, ' .arrow')} {`],
-          [`:is(${grouped(tooltip, ' .arrow')})::before {`, `${tooltip.map(owner => `:is(${owner} .arrow)::before`).join(',\n')} {`],
+
+          /*
+           * A `&` fused under the two-compound parent `<owner> .arrow` is that parent
+           * spliced in place, never a one-arm `:is()` (orchestrator judgment 2026-10-05).
+           */
+          [`:is(${grouped(tooltip, ' .arrow')})::before {`, `${split(tooltip, ' .arrow::before')} {`],
           [`${grouped(popover, ' .arrow')} {`, `${split(popover, ' .arrow')} {`],
           [
             `${grouped(popover, ' .arrow::before')},\n${grouped(popover, ' .arrow::after')} {`,
@@ -152,6 +157,23 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
     [
       ':is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box {',
       ':is(.sidebar, .sidebar2) .box,\n:is(.type1 .sidebar3, .type2.sidebar4) .box {'
+    ],
+
+    /*
+     * A `&` fused under a parent of several compounds is that parent spliced in place,
+     * as the rule's own selector composes, never a one-arm `:is()` (orchestrator
+     * judgment 2026-10-05).
+     */
+    ((parent: string): readonly [string, string] => [
+      `.amp-test-f:is(${parent}) + :is(${parent}).amp-test-g {`,
+      `.amp-test-f${parent} + ${parent}.amp-test-g {`
+    ])('.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e')
+  ]],
+  ['tests-unit/selectors/selectors.less', [
+    // As in extend-nest: `.active&` and `&.active2` under `.first-level .second-level`.
+    [
+      '.active:is(.first-level .second-level),\n:is(.first-level .second-level).active2 {',
+      '.active.first-level .second-level,\n.first-level .second-level.active2 {'
     ]
   ]],
   ['tests-unit/extend-selector/extend-selector.less', [

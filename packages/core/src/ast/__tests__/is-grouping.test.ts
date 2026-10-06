@@ -43,6 +43,17 @@ describe('the shared :is() grouping', () => {
     expect(extendBranchSpecificity(descendantBranch([textSimple('.parent .col')]), false)).toBe(-1);
   });
 
+  // css-syntax-3 §4.3.7: a hex escape takes one whitespace after it (`.\31 0` is the class `10`).
+  it('scores an escaped name as the one name it is, and a multi-simple token as none', () => {
+    expect(nestingGroupKey(sel('.\\31 0'), true)).toBe(spec(0, 1, 0));
+    expect(nestingGroupKey(sel('#\\31 a'), true)).toBe(spec(1, 0, 0));
+    expect(nestingGroupKey(sel('.a\\.b'), true)).toBe(spec(0, 1, 0));
+
+    // A resolved interpolation's token (`@v: ~"x.y"; .@{v}`) holds two simples.
+    expect(nestingGroupKey(sel('.x.y'), true)).toBe(-1);
+    expect(nestingGroupKey(sel('.\\31 .y'), true)).toBe(-1);
+  });
+
   it('holds a nested extend group to the position of the group around it', () => {
     // `:is(.p .q, .r .s).k` spliced after a combinator would let `.p` sit above it.
     const inner = (fold: boolean) => descendantBranch([

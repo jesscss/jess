@@ -418,7 +418,8 @@ describe('direct canonical value access', () => {
       type: 'MixinDefinition' as const,
       name: '.set-late-color',
       params: [],
-      rules: [decl('color', keyword('yellow'))]
+      rules: [decl('color', keyword('yellow'))],
+      extendInstructions: undefined
     };
     const document = stylesheet([
       setLateColor,
@@ -447,7 +448,8 @@ describe('direct canonical value access', () => {
       type: 'MixinDefinition' as const,
       name: '.read-color',
       params: [],
-      rules: [decl('from-mixin', propertyReference('color'))]
+      rules: [decl('from-mixin', propertyReference('color'))],
+      extendInstructions: undefined
     };
     const document = stylesheet([
       readColor,

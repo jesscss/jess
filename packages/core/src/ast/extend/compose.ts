@@ -22,15 +22,54 @@ import {
   descendantBranch,
   isSimple,
   mkBranch,
+  simpleText,
   textSimple
 } from './ir.js';
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
+import { textHoldsParentRef } from '../nodes.js';
+import type { SimpleToken } from '../nodes.js';
 
-function branchHasAmp(b: Branch): boolean {
+/**
+ * The parser token a name continuation of `s` stands for: `s` is a text token the
+ * parser built as a class, id or type name, so `&-x` glued onto it (`.btn` → `.btn-x`)
+ * is still one simple of that kind. Undefined for any other token.
+ */
+function continuedName(s: Simple): SimpleToken | undefined {
+  if (s.t !== 'text' || s.src === undefined || 'value' in s.src || s.src.type !== 'SimpleSelector') {
+    return undefined;
+  }
+  const first = s.text.charCodeAt(0);
+  return first === 0x2E /* . */ || first === 0x23 /* # */ || first === 0x2D /* - */ || first === 0x5F /* _ */
+    || first >= 0x80 || ((first | 32) >= 0x61 && (first | 32) <= 0x7A)
+    ? s.src
+    : undefined;
+}
+
+/**
+ * The token an `&` concatenation composes. A parser token that opens with its one `&`
+ * (`&-x`) continues the name before it, so under a one-simple class, id or type parent
+ * (`.btn`) the join (`.btn-x`) is one simple of that kind and stands for the parent's
+ * token, which the `:is()` grouping scores (`../is-grouping.ts`). Any other join
+ * (`.x&`, `&-x` under `.a.b`) has no parser token for its kind and stays out of every
+ * group.
+ */
+function joinedSimple(text: string, ampToken: string, tail: Simple | undefined): Simple {
+  const src = tail !== undefined && ampToken.charCodeAt(0) === 0x26 /* & */ && ampToken.indexOf('&', 1) === -1
+    ? continuedName(tail)
+    : undefined;
+  return textSimple(text, undefined, src);
+}
+
+/** A text token holding a parent reference (its kind decides, `../nodes.ts`). */
+function holdsAmp(s: Simple): boolean {
+  return s.t === 'text' && textHoldsParentRef(s.text);
+}
+
+export function branchHasAmp(b: Branch): boolean {
   for (const seg of b.segments) {
     for (const s of seg.compound.value) {
       if (s.t === 'text') {
-        if (s.text.includes('&')) {
+        if (textHoldsParentRef(s.text)) {
           return true;
         }
       } else if (s.branches.some(branchHasAmp)) {
@@ -87,12 +126,11 @@ function structuredParentValue(parent: Branch): Simple[] | null {
  * whose `bnd` records each output segment's origin. A STANDALONE `&` (its own
  * segment) splices the parent's SEGMENTS in place — separate `SelectorPart`s carrying
  * `bnd = parentBnd + 1` — so a multi-segment parent (`.outer .mid`) stays matchable
- * per segment. A `&` FUSED into a compound alongside other value keeps the prior
- * behavior: under a MULTI-segment parent it wraps in `:is(...)` so the compound
- * stays one element target (`.f&` → `.f:is(.outer .mid)`). A single-compound
+ * per segment. A `&` FUSED into a compound under a MULTI-segment parent splices it
+ * too, as the serializer composes it ({@link spliceFusedAmp}). A single-compound
  * structured parent keeps its `:is()` graft typed so the extend matcher can still
  * cross its arms; an ordinary text-only parent keeps the direct string substitution.
- * Fused/own segments are `bnd = 0`.
+ * Own segments are `bnd = 0`.
  */
 function substituteAmp(child: Branch, parent: Branch): Branch {
   const parentMultiSeg = parent.segments.length > 1;
@@ -114,15 +152,17 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       }
       continue;
     }
-    const fused = seg.compound.value.length > 1;
-    const wrap = parentMultiSeg && fused;
+    if (parentMultiSeg && compoundHasAmp(seg.compound.value)) {
+      spliceFusedAmp(seg, parent, outSegs, outBnd);
+      continue;
+    }
     const value: Simple[] = [];
     for (const s of seg.compound.value) {
-      if (s.t !== 'text' || !s.text.includes('&')) {
+      if (s.t !== 'text' || !textHoldsParentRef(s.text)) {
         value.push(cloneSimple(s));
         continue;
       }
-      if (!wrap && s.text === '&') {
+      if (s.text === '&') {
         if (structuredParent === undefined) {
           structuredParent = structuredParentValue(parent);
         }
@@ -133,37 +173,82 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
           continue;
         }
       }
-      if (!wrap) {
-        parentStr ??= branchText(parent);
+      parentStr ??= branchText(parent);
 
-        /* A lone `&` under a one-compound parent stands for that compound. */
-        value.push(s.text === '&' && !parentMultiSeg
-          ? textSimple(parentStr, undefined, parent.segments[0]!.compound)
-          : textSimple(s.text.split('&').join(parentStr)));
-        continue;
-      }
-
-      // Splice the multi-segment parent in place of each `&`, preserving fused text.
-      const parts = s.text.split('&');
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i]!.length > 0) {
-          value.push(textSimple(parts[i]!));
-        }
-        if (i === parts.length - 1) {
-          continue;
-        }
-        value.push(isSimple([parent], false));
-      }
+      /* A lone `&` under a one-compound parent stands for that compound. */
+      const parentValue = parent.segments[0]!.compound.value;
+      value.push(s.text === '&'
+        ? textSimple(parentStr, undefined, parent.segments[0]!.compound)
+        : joinedSimple(s.text.split('&').join(parentStr), s.text, parentValue.length === 1 ? parentValue[0] : undefined));
     }
 
-    /*
-     * A fused/own segment is the ruleset's own element target (the parent is sealed
-     * inside an `:is()` when wrapped), so it is own-local (`bnd = 0`).
-     */
+    /* A fused/own segment is the ruleset's own element target, own-local (`bnd = 0`). */
     outSegs.push({ combinator: seg.combinator, compound: { value } });
     outBnd.push(0);
   }
   return withBnd(mkBranch(outSegs), outBnd);
+}
+
+function compoundHasAmp(value: readonly Simple[]): boolean {
+  for (const s of value) {
+    if (holdsAmp(s)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A `&` fused into `seg`'s compound under a parent of several compounds, spliced the
+ * way the serializer composes it (and Less 4.x writes it): the simples before the `&`
+ * join the parent's first compound, the parent's inner compounds follow, and the simples
+ * after it join the parent's last compound — `&.q` under `.b .p` is `.b .p.q`, `.q&` is
+ * `.q.b .p`. A suffix glued to the `&` token (`&-foo`) continues the parent's last
+ * simple (`.b .p-foo`, {@link joinedSimple}). A segment holding any
+ * of the child's own simples is own-local (`bnd = 0`); a parent compound spliced alone
+ * keeps the parent's origin + 1.
+ */
+function spliceFusedAmp(seg: SelectorPart, parent: Branch, outSegs: SelectorPart[], outBnd: number[]): void {
+  const ps = parent.segments;
+  const last = ps.length - 1;
+  let combinator = seg.combinator;
+  let value: Simple[] = [];
+  let own = false;
+  for (const s of seg.compound.value) {
+    if (!holdsAmp(s)) {
+      value.push(cloneSimple(s));
+      own = true;
+      continue;
+    }
+    const text = simpleText(s);
+    const parts = text.split('&');
+    if (parts[0]!.length > 0) {
+      value.push(textSimple(parts[0]!));
+      own = true;
+    }
+    for (let i = 1; i < parts.length; i++) {
+      for (const p of ps[0]!.compound.value) {
+        value.push(cloneSimple(p));
+      }
+      outSegs.push({ combinator, compound: { value } });
+      outBnd.push(own ? 0 : bndAt(parent, 0) + 1);
+      for (let k = 1; k < last; k++) {
+        outSegs.push(cloneSeg(ps[k]!));
+        outBnd.push(bndAt(parent, k) + 1);
+      }
+      combinator = ps[last]!.combinator;
+      value = ps[last]!.compound.value.map(cloneSimple);
+      own = false;
+      const suffix = parts[i]!;
+      if (suffix.length > 0) {
+        const tail = value[value.length - 1]!;
+        value[value.length - 1] = joinedSimple(simpleText(tail) + suffix, text, tail);
+        own = true;
+      }
+    }
+  }
+  outSegs.push({ combinator, compound: { value } });
+  outBnd.push(own || value.length === 0 ? 0 : bndAt(parent, last) + 1);
 }
 
 /** The parent token for composing a child under a multi-branch parent. */
@@ -231,7 +316,7 @@ function stripRootAmp(b: Branch): Branch | null {
         value.push(cloneSimple(s));
         continue;
       }
-      const text = s.text.split('&').join('');
+      const text = textHoldsParentRef(s.text) ? s.text.split('&').join('') : s.text;
       if (text.length > 0) {
         value.push(text === s.text ? cloneSimple(s) : textSimple(text));
       }
