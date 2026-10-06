@@ -3753,9 +3753,13 @@ function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Pr
  * so every caller reads one name and never re-derives the distinction.
  */
 function lookupName(node: Lookup, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return typeof node.name === 'string'
-    ? node.name
-    : mapMaybe(evalBytes(node.name, frame, e), raw => stripOuterQuotes(raw));
+  if (typeof node.name === 'string') {
+    return node.name;
+  }
+
+  /* A string names by its content, read from the typed string, never by stripping quotes. */
+  return mapMaybe(evalTyped(node.name, frame, e), value =>
+    !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value));
 }
 
 /**
@@ -4900,23 +4904,20 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const target = e.context?.transformUrl(body.src, false) ?? body.src;
         return literal(`url(${target})`);
       }
-      return mapMaybe(evalValue(body, frame, e), (value) => {
+      return mapMaybe(evalTyped(body, frame, e), (value) => {
         /*
-         * Dynamic URL content — `url(@var)` / any non-literal — resolves at eval
-         * time to fully-emitted bytes, so the authored node is neither Quoted nor
-         * Any. Apply the same URL transform (rootpath/rewriteUrls/urlArgs) an
-         * authored `url("…")` gets: a wrapping quote is syntax, so transform the
-         * inner target and keep the quote around it; otherwise transform the whole.
+         * Dynamic URL content — `url(@var)` / any non-literal — gets the same URL
+         * transform (rootpath/rewriteUrls/urlArgs) an authored `url("…")` gets. A
+         * string's quote is syntax, read from the typed string: transform its
+         * content and keep the quote around it. Anything else, an escaped string
+         * included (ledger V3: opaque, as `url(~"…")` written directly is), is
+         * transformed whole.
          */
-        const raw = emitValue(value);
-        const quote = raw.length >= 2 && (raw[0] === '"' || raw[0] === '\'') && raw[raw.length - 1] === raw[0]
-          ? raw[0]
-          : '';
-        if (quote) {
-          const inner = raw.slice(1, -1);
-          const target = e.context?.transformUrl(inner, true) ?? inner;
-          return literal(`url(${quote}${target}${quote})`);
+        if (!isValueGroupArray(value) && value.type === 'Quoted' && !value.escaped) {
+          const target = e.context?.transformUrl(value.value, true) ?? value.value;
+          return literal(`url(${value.quote}${target}${value.quote})`);
         }
+        const raw = emitValue(value);
         const target = e.context?.transformUrl(raw, false) ?? raw;
         return literal(`url(${target})`);
       });
@@ -5526,6 +5527,13 @@ function isInterpNameByte(c: number): boolean {
  * scan repeats until the string stops changing. A token whose variable is NOT in
  * scope (or resolves asynchronously) is left literal — a non-resolving emergent
  * token never turns a value into an error. Short-circuits when no `@{` remains.
+ *
+ * Why this reads bytes: its input is not parser output. An emergent token is
+ * spliced together from evaluated values — `@box: ~"@{box"` + `-large}` in the
+ * `strings` fixture's `weird` case — so no parse of the authored source holds
+ * it; the parser's own `@{…}` parts were already resolved structurally above.
+ * The nested authored form `@{box-@{suffix}}` could parse as a computed name,
+ * but the spliced form would still need this pass.
  */
 function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): string {
   let cur = input;
@@ -17146,7 +17154,12 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     if (carried !== undefined) {
       return { evaluatedItems: groupItems(carried) };
     }
-    return splitListBytes(base.src).map(b => ({ value: any(b), key: null }));
+
+    /*
+     * Anything else is one value: a list reaches here as the List or Sequence the
+     * parser built, so an opaque value's bytes are never split to find items.
+     */
+    return [{ value: base, key: null }];
   }
 
   /*
@@ -17767,19 +17780,9 @@ function pushTypedSpread(
     }
     return state;
   }
-  if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, call, value, e, state, bearing);
-  }
 
-  /*
-   * One value that is not a list. A value compress folds (a dimension, a
-   * color) is one piece; anything else splits as its bytes always have.
-   */
-  if (e.compressedBindings !== undefined && emitCompressed(value) !== emitValue(value)) {
-    return pushTypedSpreadItem(args, call, value, e, state, bearing);
-  }
-  pushSpread(args, emitValue(value));
-  return state;
+  /* One value that is not a list is one argument: an escaped string is never split (ledger V3). */
+  return pushTypedSpreadItem(args, call, value, e, state, bearing);
 }
 
 /** Append one structural spread item as one eager snapshot. */
@@ -17811,17 +17814,6 @@ function pushTypedSpreadItem(
     return bindings;
   }
   return state;
-}
-
-/** Split one resolved spread argument into the positional args it splats to. */
-function pushSpread(args: CallArg[], rawBytes: string): void {
-  const bytes = rawBytes.trim();
-  if (bytes === '') {
-    return;
-  }
-  for (const piece of splitListBytes(bytes)) {
-    args.push(callArg(any(piece)));
-  }
 }
 
 /** Replace `@rs` args (a VariableReference bound to a detached ruleset) with the
@@ -20298,19 +20290,28 @@ function staysNested(name: string): boolean {
   return !BUBBLEABLE_ATRULES.has(n) && !DIRECTIVE_ATRULES.has(n);
 }
 
-/**
- * [atrule-supports] v5 NORMALIZES an `@supports` condition's prelude to the
- * compact single-line form, diverging from 4.x (which preserves source spacing).
- * Collapse whitespace runs (incl. authored newlines/indent) to a single space,
- * then strip the padding immediately inside each condition's parens:
- *   `( box-shadow: … ) or\n   ( -moz-box-shadow: … )`
- *     → `(box-shadow: …) or (-moz-box-shadow: …)`
- * `not (…)` / operator spacing is preserved (a space that is neither right after
- * `(` nor right before `)` stays). All other corpus `@supports` preludes are
- * already compact, so this is a no-op there.
- */
 /** A prelude fragment whose grammar owns its bytes (not merely their values). */
 type SupportsPreludePart = { bytes: string; protected: boolean };
+
+/*
+ * A value the prelude walker evaluated is written as evaluated: a string, a
+ * resolved variable, a list's authored separators and their comments are
+ * protected parts, never scanned for the quotes or comments they hold. The
+ * normalizers below space only the walker's own glue (parens, a feature colon,
+ * an operator, a sequence space), the bytes of a condition call the walker
+ * writes whole (`style(--x: @{v})`), and a raw fragment ({@link preludeLeaf}).
+ */
+const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true }];
+
+/**
+ * One leaf of a prelude. An `Any` the parser left as a raw prelude fragment is
+ * source text nothing structured, so it is spaced like glue; an `Any` that is a
+ * mixin argument's snapshot holds the value the argument was evaluated to.
+ */
+function preludeLeaf(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
+  const raw = !isValueSlotArray(node) && node.type === 'Any' && e.snapshotValues?.has(node) !== true;
+  return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: !raw }]);
+}
 
 /**
  * The grammar-owned template of a general-enclosed function form, or `null` when
@@ -20326,6 +20327,21 @@ function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolat
   return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
 }
 
+/**
+ * [atrule-supports] v5 NORMALIZES an `@supports` condition's prelude to the
+ * compact single-line form, diverging from 4.x (which preserves source spacing).
+ * Collapse whitespace runs (incl. authored newlines/indent) to a single space,
+ * then strip the padding immediately inside each condition's parens:
+ *   `( box-shadow: … ) or\n   ( -moz-box-shadow: … )`
+ *     → `(box-shadow: …) or (-moz-box-shadow: …)`
+ * `not (…)` / operator spacing is preserved (a space that is neither right after
+ * `(` nor right before `)` stays). All other corpus `@supports` preludes are
+ * already compact, so this is a no-op there.
+ *
+ * A string or comment it meets is copied as written. Only a condition call the
+ * walker writes as bytes (it does not descend into a call's arguments) or a raw
+ * fragment can still hold one ({@link preludeLeaf}).
+ */
 function normalizeSupportsBytes(p: string, compress = false): string {
   let out = '';
   let plainStart = 0;
@@ -20468,7 +20484,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
       return concatPreludeParts(parts);
     }
     default:
-      return mapMaybe(evalBytes(node, frame, e), plain);
+      return preludeLeaf(node, frame, e);
   }
 }
 
@@ -20568,7 +20584,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
-          parts.push(plain(itemBoundary(authored?.[index - 1], glue, compress)));
+          parts.push(leaf(itemBoundary(authored?.[index - 1], glue, compress)));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
@@ -20577,7 +20593,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     case 'Lookup':
       /* Var only — see the typed lane above. */
       if (node.kind !== 'var') {
-        return mapMaybe(evalBytes(node, frame, e), plain);
+        return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return mapMaybe(lookupName(node, frame, e), (nm): MaybePromise<SupportsPreludePart[]> => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -20585,40 +20601,34 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
           }
-          return mapMaybe(evalBytes(node, frame, e), plain);
+          return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         const value = hit.value;
         if (isMixinCallValue(value)) {
-          return mapMaybe(evalBytes(node, frame, e), plain);
+          return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         if (hit.evaluated !== null) {
-          return plain(emitValue(hit.evaluated));
+          return leaf(emitValue(hit.evaluated));
         }
         return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
       });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null || isMixinCallValue(resolved.value)) {
-        return mapMaybe(evalBytes(node, frame, e), plain);
+        return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return resolved.evaluated !== null
-        ? plain(emitValue(resolved.evaluated))
+        ? leaf(emitValue(resolved.evaluated))
         : evalQueryPreludeParts(resolved.value, resolved.frame, e);
     }
-    case 'Quoted':
-      /*
-       * An escaped string (`~"…"` / `~'…'`, interpolating or not) is one OPAQUE
-       * run: its content is a protected part, so a ratio `~"2/1"` stays tight
-       * (`2/1`) rather than ` / `-spaced by the plain-run rules, and spliced
-       * content is never scanned again for a closing quote. A plain quoted
-       * string keeps its quotes through `evalBytes`, which `normalizeQueryPrelude`
-       * already passes through verbatim.
-       */
-      return node.escaped
-        ? mapMaybe(evalBytes(node, frame, e), content => [{ bytes: content, protected: true }])
-        : mapMaybe(evalBytes(node, frame, e), plain);
     default:
-      return mapMaybe(evalBytes(node, frame, e), plain);
+      /*
+       * A string is one protected run, its quotes kept and an escaped one's
+       * dropped, so a ratio `~"2/1"` stays tight (`2/1`) rather than ` / `-spaced
+       * by the plain-run rules, and spliced content is never scanned for a
+       * closing quote ({@link preludeLeaf}).
+       */
+      return preludeLeaf(node, frame, e);
   }
 }
 
@@ -20637,12 +20647,12 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
  *     → `(width < 500px)`);
  *   - a logical `and` / `or` / `not` keeps a space before its `(` (`and(…)` →
  *     `and (…)`).
- * Quoted runs (`"…"`, `'…'`, `~"…"`, `~'…'`) and `/* … *\/` comments are OPAQUE:
- * their bytes pass through untouched, so an escaped `~"2/1"` is never mistaken for
- * a ratio operator and a `/* … *\/` keyword comment survives verbatim. Every
- * transform is idempotent on an already-canonical prelude (`(min-width: 1024px)`,
- * `screen, print, handheld`, `(a) or (b)`), so already-matching goldens are
- * unaffected.
+ * A quoted run (`"…"`, `'…'`) or a `/* … *\/` comment passes through untouched.
+ * Only a condition call the walker writes as bytes or a raw fragment can still
+ * hold one ({@link preludeLeaf}): a string, a resolved variable and a list's
+ * authored separators reach here as protected parts. Every transform is idempotent on an already-canonical
+ * prelude (`(min-width: 1024px)`, `screen, print, handheld`, `(a) or (b)`), so
+ * already-matching goldens are unaffected.
  */
 function normalizeQueryPrelude(p: string, compress = false): string {
   let out = '';
@@ -20660,24 +20670,14 @@ function normalizeQueryPrelude(p: string, compress = false): string {
       continue;
     }
 
-    // OPAQUE — a quoted string, optionally escaped (`~"…"` / `~'…'`).
-    const esc = c === '~' && (p[i + 1] === '"' || p[i + 1] === '\'');
-    if (c === '"' || c === '\'' || esc) {
-      const q = esc ? p[i + 1]! : c;
-      let j = esc ? i + 2 : i + 1;
-      while (j < n && p[j] !== q) {
+    // OPAQUE — a quoted string.
+    if (c === '"' || c === '\'') {
+      let j = i + 1;
+      while (j < n && p[j] !== c) {
         j++;
       }
       const stop = j < n ? j + 1 : n;
-
-      /*
-       * Less UNQUOTES an escaped string `~"…"` / `~'…'`: emit its inner bytes VERBATIM
-       * (its `@{…}` interpolation is already resolved upstream at eval), dropping the
-       * `~` + quotes. The inner run stays OPAQUE to the plain-run spacing rules, so a
-       * ratio like `~"2/1"` prints tight (`2/1`), NOT ` / `-spaced. A plain (un-escaped)
-       * quoted string keeps its quotes and passes through verbatim.
-       */
-      out += esc ? p.slice(i + 2, j) : p.slice(i, stop);
+      out += p.slice(i, stop);
       i = stop;
       continue;
     }
@@ -20687,9 +20687,6 @@ function normalizeQueryPrelude(p: string, compress = false): string {
     while (j < n) {
       const d = p[j]!;
       if (d === '"' || d === '\'') {
-        break;
-      }
-      if (d === '~' && (p[j + 1] === '"' || p[j + 1] === '\'')) {
         break;
       }
       if (d === '/' && p[j + 1] === '*') {
