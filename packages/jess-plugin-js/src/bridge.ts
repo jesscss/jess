@@ -179,10 +179,10 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
     case 'quoted': return value.escaped === true ? makeAny(value.value, value.quote ?? '"') : makeQuoted(value.value, value.quote ?? '"', false);
 
     /*
-     * A Less `Anonymous`/`Keyword` result is BYTES. Sniffing them back into a
-     * typed literal is what lets `darken(theme-color(primary), 15%)` see a
-     * colour instead of an opaque keyword — the same materialization the engine
-     * performs on any other computed byte string.
+     * A Less `Anonymous`/`Keyword` result is BYTES a JS function produced — text
+     * no parser typed, so its text is its only fact. Sniffing it into a typed
+     * literal is what lets `darken(theme-color(primary), 15%)` see a colour
+     * instead of an opaque keyword. (Text the parser produced is never sniffed.)
      */
     case 'keyword':
     case 'anonymous': return sniffLiteral(value.value);

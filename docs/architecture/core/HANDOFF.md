@@ -4073,6 +4073,139 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-06 an escaped string is one string, and text the parser
+  typed is never re-read from its bytes (owner ruling 2026-10-06, ledger D22 /
+  V3). An escaped string that interpolates (`~"@{x}"`, `.jess` `~"x$(1 + 1)y"`)
+  is the same `Quoted` as one that does not: every `Quoted` carries
+  `interp: Interpolation | null`, the template lands as the same `Any` (with its
+  quote) in every typed position, and it binds across a mixin argument as the
+  escaped string it spells, as the literal does. The evaluator's byte-sniffing
+  seam (`ValueEvaluator.materialize`) is deleted: a bare string forced into a
+  typed position is a keyword of the bytes it was kept as; a template is typed
+  by what the grammar built (`.jess` `$( … )` by its computed value, a quoted
+  template from its delimiter literal parts, any other template as opaque bytes,
+  its `.jess` spelling); a `$name` accessor reads its declaration's parsed
+  value; loose member lookup compares member names as names.
+- Architecture surface: `nodes.ts` (`Quoted.interp`, `quoted()`'s fifth
+  parameter, `escapedTemplate`, `isStaticQuoted`; `isLiteralNode` excludes a
+  template); the Less `EscapedQuoted` and jess `escapedInterpolationFromChildren`
+  reducers; `serialize.ts` `evalValue`/`evalTyped` `Quoted`, `Url`, the
+  query-prelude `Quoted`, the import/plugin static-target checks,
+  `eagerSnapshot`, `force`, `evalTyped` `Interpolation`/`Expression`/`Lookup`
+  (`prop`), `resolvePropAccessor`, `mergedPropertyBytes`, `looseMemberLookup`;
+  `mixin-dispatch.ts` `resolveEagerBytes`; `traversal.ts` walks a template;
+  `emit-jess.ts` prints one; `evaluator.ts`/`value-eval.ts` lose `materialize`.
+- Separation/duplication: an escaped and a plain string share one node kind and
+  one factory. The property-accessor resolution and the merged-property join
+  moved out of `evalValue` into one helper each, shared by the byte and typed
+  lanes, so neither lane restates them.
+- Cumulative node weight: one field on `Quoted`, set by its one factory, so every
+  `Quoted` has one shape (`type,src,value,quote,escaped,interp`): 1,343 `Quoted`
+  nodes over the 827-entry Less oracle corpus, 119 per `benchmark.less` parse.
+  No new node kind; an escaped template is now one `Quoted` around its template
+  instead of a bare top-level `Interpolation` (14 in the corpus).
+- New traversal: [loop/traversal] `escapedTemplate` reads its template's parts
+  once to build the literal text (parse time, escaped templates only); the
+  `for` in `mergedPropertyBytes` is the existing merged-property join, moved.
+  No new walk on the render path.
+- New node/materialization: an interpolating escaped mixin argument binds as one
+  static `Quoted` (the escaped string it spells), where it bound as one `Any`;
+  [materialized array/object] `mergedPropertyBytes` keeps the existing
+  merged-member array; [array spread/materialization] the typed `$( … )` boundary
+  builds the same `{ ...e, parenFrames, exprBoundary }` context `evalValue`
+  already builds for it.
+- Render path: still stringify-only. A static `url()` body is no longer
+  evaluated before its own `value`/`src` is read.
+- Helper/API surface: `ValueEvaluator.materialize` is deleted (its only body was
+  the byte sniff, and no caller remains); `escapedTemplate` and `isStaticQuoted`
+  are exported from `@jesscss/core/ast`; `sniffLiteral` stays exported for the
+  plugin, module-function and host boundaries whose strings no parser typed.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] as above; [array helper]
+  `merged.map` (moved), `bytes.slice(1, -1)` (a quoted template's content
+  between the grammar's delimiter parts), `children.slice(1, -1)` (the existing
+  reducer shape); [array spread/materialization] the `$( … )` frame;
+  [materialized array/object] the `mergedPropertyBytes` member array.
+- Behavior evidence: `packages/core/src/ast/__tests__/escaped-string-one-shape.test.ts`
+  (14 tests: both forms opaque in values, functions, operations, mixin
+  arguments, `.jess`, and compressed at-rule preludes; each removed sniff site);
+  the Less/jess parser shape tests; the flipped D22 pins (jess
+  `discovered-constructs.test.ts`, compat `escaped-strings.test.ts`). Core suite
+  3,399 passed / 12 skipped; Less fixture lane 151 passed / 28 skipped with the
+  `functions.less` edit registered in `pending-golden-edits.ts`.
+- Build evidence: serial `pnpm --filter <pkg> build` over core, parser-shared and
+  the four parsers, then the workspace; `check:macro` and
+  `verify:compose-integrity` pass.
+- Boundary evidence: the Less byte-identity oracle against the base def29ef87
+  leaves the CST surface byte-identical (aggregate `1e282ab4c77b9a66…`); the AST
+  moves in 325 of 827 entries, and folding the lane's `Quoted` back to the old
+  shape (drop `interp: null`, an escaped template back to its bare
+  `Interpolation`) makes all 714 parsing entries identical (113 reject
+  identically). Corpus renders (212 fixtures × nested/flat × compress) change
+  in six renders: `functions.less` `length($list-1)` 1 → 3 (proposal) and
+  `media.less` compressed `~'@{a} / @{b}'` prelude, now opaque like its literal.
+- Evidence: `benchmark.less` (collapseNesting true) SHA-256
+  `11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8` (123,571
+  bytes), identical before and after. Byte-sniff calls: 424 → 390 over the
+  corpus renders, 745 → 745 per `benchmark.less` render (all eager mixin-snapshot
+  `Any` reads, the one evaluator reader kept), 2 → 0 for `functions.less`.
+  `measure:less:hotpath` on `benchmark.less`: median 55.19 ms, signal unstable;
+  no speed or neutrality claim.
+- Verdict: accepted as a semantic change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "An escaped string that interpolates is the same Quoted node and the same Any value as its literal form (owner ruling 2026-10-06, D22/V3), and the evaluator no longer types parser-produced text by sniffing it: forced bytes are keywords, templates and property accessors are typed by what the parser built. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "One field on Quoted set by its one factory keeps the node monomorphic; the typed lanes reuse the frames and joins the byte lane already builds (the $( … ) paren frame, the merged-property member array), add no render-path walk, and remove the regex sniff from every forced literal.",
+    "behaviorEvidence": "packages/core/src/ast/__tests__/escaped-string-one-shape.test.ts, the Less/jess parser shape tests and the flipped D22 pins pass; the core suite and the all-Less lane pass with the functions.less edit registered.",
+    "buildEvidence": "Serial core, parser-shared and four-parser builds pass; check:macro and verify:compose-integrity pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.19,
+      "outputSha256": "11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8",
+      "outputBytes": 123571
+    }
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
+    "why": "The evaluator loses its materialize member, whose only body was the byte sniff of a computed string; the call path, registry lookup, optional-call bytes and synchronous/asynchronous recovery are untouched, so the boundary's three cases behave as before.",
+    "dangerTokensJustification": "The change only deletes a closure and its import from buildEvaluator; it adds no allocation, Error construction, recovery path or lookup to the call path, and async recovery still attaches only to a genuine thenable.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.19,
+      "outputSha256": "11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8",
+      "outputBytes": 123571
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05:
   extend's own `:is()` groups follow the same keep-native-specificity rule as
   the `'native'` nesting fold, in every output mode; a member that cannot fold

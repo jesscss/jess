@@ -167,6 +167,18 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       ':is(.foo, .ext1 .ext2, .ext3, .ext4) :is(.bar, .ext3, .ext4),\n:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {',
       ':is(.foo, .ext3, .ext4) :is(.bar, .ext3, .ext4),\n.ext1 .ext2 :is(.bar, .ext3, .ext4),\n:is(.foo, .ext3, .ext4) .baz,\n.ext1 .ext2 .baz {'
     ]
+  ]],
+
+  /*
+   * A `$name` property accessor reads the declaration's parsed value, as a
+   * variable does, instead of re-reading its joined bytes (owner ruling
+   * 2026-10-06, ledger D22/V3: parser-typed text is never re-read). `list-1:
+   * ~(1, 2, 3)` is a three-item list — `length(@v)` of the same value and the
+   * `legacy/functions` golden's `~(1; 2; 3)` both answer 3 — so `length($list-1)`
+   * is 3; the golden's 1 was the joined bytes read back as one keyword.
+   */
+  ['tests-unit/functions/functions.less', [
+    ['  length-1: 1;\n', '  length-1: 3;\n']
   ]]
 ]);
 

@@ -65,3 +65,45 @@ describe('an escaped string is one string, interpolating or not', () => {
   });
 });
 
+/*
+ * Text the parser produced is typed from the parse, never by sniffing its
+ * bytes back (SEMANTIC-INVARIANTS P0). Each case below used to type joined or
+ * spliced bytes by reading them; each now reads the parser's own typing.
+ */
+describe('typed positions read the parser\'s typing, not the bytes', () => {
+  it('types an unquoted value template as opaque text, as its .jess spelling ~"…" is', () => {
+    // Was `50%`: the spliced `0.5` was read back as a number.
+    expect(less('@x: 0.5;\n.a { u: percentage(@{x}); }')).toBe('.a {\n  u: percentage(0.5);\n}\n');
+  });
+
+  it('types a quoted template as a string from the delimiters the grammar built', () => {
+    expect(less('@x: 0.5;\n.a { q: percentage("@{x}"); e: percentage(e("@{x}")); }'))
+      .toBe('.a {\n  q: percentage("0.5");\n  e: percentage(0.5);\n}\n');
+  });
+
+  it('types a .jess `$( … )` by its computed value; an unquoted string result stays opaque', () => {
+    // `$("0.5")` was `50%`: its unquoted bytes were read back as a number.
+    expect(jess('.a { n: percentage($(0.25 + 0.25)); s: percentage($("0.5")); }'))
+      .toBe('.a {\n  n: 50%;\n  s: percentage(0.5);\n}\n');
+  });
+
+  it('types a property accessor by its declaration\'s parsed value, as a variable', () => {
+    // A `~(…)` escaped paren list read through `$name` was its joined bytes, one keyword.
+    expect(less('.a { l: ~(1, 2, 3); n: length($l); v: length(@v); @v: ~(1, 2, 3); }'))
+      .toBe('.a {\n  l: 1, 2, 3;\n  n: 3;\n  v: 3;\n}\n');
+  });
+
+  it('keeps a kept computation\'s bytes a keyword rather than re-reading them', () => {
+    // A merged property joins its members to bytes; those bytes are not re-read as a number.
+    expect(less('.a { m+: 0.25; p: percentage($m); }')).toBe('.a {\n  m: 0.25;\n  p: percentage(0.25);\n}\n');
+  });
+
+  it('compares map member names as names against a quoted key', () => {
+    // `"true"` names no member by its bytes, so the lookup compares by value; the member `true` is a name, not a boolean.
+    expect(jess('$m: @{ red: 1; true: 2; };\n.a { a: $m["red"]; b: $m["true"]; }')).toBe('.a {\n  a: 1;\n  b: 2;\n}\n');
+  });
+
+  it('has no byte-sniffing seam on the evaluator', () => {
+    expect('materialize' in evaluator).toBe(false);
+  });
+});

@@ -1092,6 +1092,7 @@ function moduleFunctionResult(value: unknown, name: string): ValueGroup {
     return makeDimension(value);
   }
   if (typeof value === 'string') {
+    // A JS module function's plain string never passed through a parser; its text is its only fact.
     return sniffLiteral(value);
   }
   if (typeof value === 'boolean') {
@@ -3501,6 +3502,47 @@ function recordPropertyDeclaration(scope: Frame, node: Declaration, frame: Frame
   return fact;
 }
 
+/**
+ * A `$name` property accessor resolves the winning declaration. Its
+ * declaration-level `!important` is carried through the caller's existing
+ * importance sink, so `$color` of `color: red !important` yields
+ * `red !important` only at a declaration emission site. A miss is a Less
+ * semantic error. `functionMode` applies only after a registered function has
+ * actually been invoked and failed.
+ */
+function resolvePropAccessor(node: Lookup, frame: Frame | null, e: EvalCtx): NonNullable<ReturnType<typeof resolvePropRef>> {
+  const propName = typeof node.name === 'string' ? node.name : '';
+  const hit = resolvePropRef(frame, propName, e);
+  if (!hit) {
+    if (hasExcludedPropRef(frame, propName, e)) {
+      recursiveReference(node, `$${propName}`, 'Property', e);
+    }
+    unresolvedSymbol(node, `$${propName}`, e);
+  }
+  if (hit.important) {
+    if (e.importantSink) {
+      e.importantSink.hit = true;
+    } else if (e.mergeImportant !== undefined) {
+      e.mergeImportant = true;
+    }
+  }
+  return hit;
+}
+
+/** The bytes of a merged (`+:` / `+_:`) property: its members joined by their merge separators. */
+function mergedPropertyBytes(merged: readonly PropertyDeclarationFact[], e: EvalCtx): MaybePromise<EvalValue> {
+  const values = merged.map(member =>
+    withExcluded(e, member.node.value, () => evalValueSlot(member.node.value, member.frame, e)));
+  return combineAll(values, (resolved) => {
+    let bytes = emitValueC(resolved[0]!, e);
+    for (let i = 1; i < resolved.length; i++) {
+      const separator = merged[i]!.node.merge === ',' ? sepGlue(',', e.compress === true) : ' ';
+      bytes += separator + emitValueC(resolved[i]!, e);
+    }
+    return literal(bytes);
+  });
+}
+
 function resolvePropRef(
   frame: Frame | null,
   name: string,
@@ -3938,16 +3980,17 @@ interface EvalCtx {
 
 }
 
-/** Force an internal eval value to a typed value node/group. A computed STRING carries no parse
- * tag → the evaluator sniffs (untagged fallback); an already-typed value passes through. */
-function force(e: EvalCtx, v: EvalValue): ValueGroup {
-  if (!isLiteral(v)) {
-    return v;
-  }
-  if (!e.ev) {
-    return { type: 'Keyword', text: v, bytes: v };
-  }
-  return e.ev.materialize(v);
+/**
+ * Force an internal eval value to a typed value node/group; an already-typed
+ * value passes through. A bare string here is bytes something was KEPT as —
+ * a preserved call or computation, a joined property value, an unresolved
+ * reference's spelling — so it is a keyword of those bytes. It is never re-read
+ * as a number, colour or boolean: whatever the parser typed was typed through
+ * {@link evalTyped}, and reading the bytes again would re-derive it (ledger V3;
+ * SEMANTIC-INVARIANTS P0).
+ */
+function force(_e: EvalCtx, v: EvalValue): ValueGroup {
+  return isLiteral(v) ? makeKeyword(v) : v;
 }
 
 function requireScalarValue(value: ValueGroup, reason: string): Value {
@@ -3960,9 +4003,11 @@ function requireScalarValue(value: ValueGroup, reason: string): Value {
 /**
  * Materialize a value-literal LEAF node to a typed value node, driven by the node
  * `type` (task #44 — no side-car tag). Each typed leaf builds from its own fields
- * (`Color`/`Dimension`/`Quoted`), never re-classifying `src`; the opaque `Any` leaf
- * (alone) sniffs its bytes. When no evaluator is injected every leaf degrades to a
- * bare keyword of its `src` (the former `forceLiteral` no-`ev` behavior).
+ * (`Color`/`Dimension`/`Quoted`), never re-classifying `src`; the `Any` leaf
+ * (alone) sniffs its bytes, kept for the eager mixin-argument snapshot that
+ * binds an argument as its evaluated bytes ({@link materializeAny}). When no
+ * evaluator is injected every leaf degrades to a bare keyword of its `src` (the
+ * former `forceLiteral` no-`ev` behavior).
  */
 function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comment, e: EvalCtx): Value {
   const src = node.type === 'Comment' ? node.text : node.src;
@@ -4341,10 +4386,17 @@ function evalTyped(
       return mapMaybe(evalValue(node, frame, e), v => makeUrlValue(emitValue(v)));
     case 'Lookup':
       /*
-       * Only a VAR lookup resolves here. A `prop`/`entry` lookup falls through
-       * to the default byte path, exactly as `PropertyReference` and
-       * `DeclarationReference` did before they shared this kind.
+       * A `$name` property accessor is the declaration's own value, typed as the
+       * parser typed it — the same reading a variable gets — not its joined
+       * bytes read back. A merged (`+:`) property is the bytes its members join
+       * to. An `entry` lookup keeps its authored spelling.
        */
+      if (node.kind === 'prop') {
+        const hit = resolvePropAccessor(node, frame, e);
+        return hit.merged
+          ? mapMaybe(mergedPropertyBytes(hit.merged, e), v => force(e, v))
+          : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, writeRulesets));
+      }
       if (node.kind !== 'var') {
         return mapMaybe(evalValue(node, frame, e), v => force(e, v));
       }
@@ -4498,11 +4550,59 @@ function evalTyped(
        * retains authored range syntax rather than inventing a flattened list.
        */
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+    case 'Expression': {
+      /*
+       * A computation boundary opens the math context and hands on its value as
+       * the parser typed it — `$(#fff)` is a colour, `$("a")` a string — the same
+       * frame `evalValue` opens, without folding the value to bytes first.
+       */
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(e, v));
+      }
+      if (!e.ev) {
+        return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      }
+      return evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, writeRulesets);
+    }
+    case 'Interpolation': {
+      /*
+       * A template in a typed position is typed by what the parser built, never
+       * by re-reading the bytes it splices to:
+       * - `.jess` `$( … )` (a lone `Expression` ref) is the computation's own
+       *   value — unquoted, as the splice is, so a string result is opaque text
+       *   (ledger V3);
+       * - a quoted template, whose delimiters the grammar bakes in as its outer
+       *   literal parts, is a quoted string of the spliced content;
+       * - any other template (Less `@{n}px`, an interpolated custom-property
+       *   value) is opaque bytes, exactly as its `.jess` spelling `~"…"` is (V3).
+       */
+      const parts = node.parts;
+      const first = parts[0];
+      if (parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
+        const ref = first.ref;
+        return mapMaybe(evalTyped(ref, frame, e), (value) => {
+          validateValueGroupUnits(value, e.modes, ref, e, true);
+          return first.unquote && !isValueGroupArray(value) && value.type === 'Quoted' ? makeAny(value.value) : value;
+        });
+      }
+      const last = parts[parts.length - 1];
+      const open = first !== undefined && 'lit' in first ? first.lit[0] : undefined;
+      const quote = (open === '"' || open === '\'') && parts.length > 1
+        && last !== undefined && 'lit' in last && last.lit.endsWith(open)
+        ? open
+        : null;
+      return mapMaybe(evalInterp(node, frame, e), (bytes) => {
+        if (!isLiteral(bytes)) {
+          return bytes;
+        }
+        return quote === null ? makeAny(bytes) : makeQuoted(bytes.slice(1, -1), quote, false);
+      });
+    }
     default:
       /*
-       * Computed / joined shapes (Operation, FunctionCall, Sequence,
-       * Interpolation, VarIndirect, Reference, …): fold to a Value then force. A
-       * computed string has no parse tag → the evaluator sniffs.
+       * Computed / joined shapes (Operation, Expression, …): fold to a Value,
+       * then force the bytes a preserved computation was kept as (see `force`).
        */
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
   }
@@ -4747,42 +4847,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         });
       }
 
-      /*
-       * A `$name` property accessor resolves the winning declaration and folds
-       * its value. Its declaration-level `!important` is carried through the
-       * caller's existing importance sink, so `$color` of `color: red !important`
-       * yields `red !important` only at a declaration emission site.
-       * A miss is a Less semantic error. `functionMode` applies only after a
-       * registered function has actually been invoked and failed.
-       */
-      const propName = typeof node.name === 'string' ? node.name : '';
-      const hit = resolvePropRef(frame, propName, e);
-      if (!hit) {
-        if (hasExcludedPropRef(frame, propName, e)) {
-          recursiveReference(node, `$${propName}`, 'Property', e);
-        }
-        unresolvedSymbol(node, `$${propName}`, e);
-      }
-      if (hit.important) {
-        if (e.importantSink) {
-          e.importantSink.hit = true;
-        } else if (e.mergeImportant !== undefined) {
-          e.mergeImportant = true;
-        }
-      }
-      if (hit.merged) {
-        const values = hit.merged.map(member =>
-          withExcluded(e, member.node.value, () => evalValueSlot(member.node.value, member.frame, e)));
-        return combineAll(values, (resolved) => {
-          let bytes = emitValueC(resolved[0]!, e);
-          for (let i = 1; i < resolved.length; i++) {
-            const separator = hit.merged![i]!.node.merge === ',' ? sepGlue(',', e.compress === true) : ' ';
-            bytes += separator + emitValueC(resolved[i]!, e);
-          }
-          return literal(bytes);
-        });
-      }
-      return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+      const hit = resolvePropAccessor(node, frame, e);
+      return hit.merged
+        ? mergedPropertyBytes(hit.merged, e)
+        : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
     case 'Important':
       /*
@@ -5539,18 +5607,21 @@ function looseMemberLookup(
   e: EvalCtx,
   valueKey?: ValueGroup
 ): DeclEntry | undefined {
+  /*
+   * The key is the caller's typed key; a member NAME is an identifier the
+   * parser read as a name. Neither is re-read from its bytes.
+   */
+  const wanted = valueKey ?? makeKeyword(key);
   if (map.valueEntries !== null) {
-    const wanted = valueKey ?? (e.ev?.materialize(key) ?? makeKeyword(key));
     return map.valueEntries.get(wanted);
   }
   const ev = e.ev;
   if (!ev) {
     return undefined;
   }
-  const wanted = ev.materialize(key);
   const scan = (candidates: Map<string, DeclEntry>): DeclEntry | undefined => {
     for (const [name, entry] of candidates) {
-      if (name !== key && ev.compare('=', ev.materialize(name), wanted, e.modes)) {
+      if (name !== key && ev.compare('=', makeKeyword(name), wanted, e.modes)) {
         return entry;
       }
     }

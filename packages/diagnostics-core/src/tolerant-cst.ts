@@ -2967,6 +2967,11 @@ function staticJessCollectionKey(source: string, entry: CssCstNode): StaticColle
     || cssNumberValue(raw) !== null
     || cssPercentageValue(raw) !== null
     || cssDimensionUnit(raw) !== null) {
+    /*
+     * A tolerant CST leaf carries no typed value (there may be no AST at all on
+     * this path), so the key's text is its only fact. A value-typed CST leaf
+     * would let this read the grammar's classification instead.
+     */
     return { value: sniffLiteral(raw), display: raw, span };
   }
   return null;

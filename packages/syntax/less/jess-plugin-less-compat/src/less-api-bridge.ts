@@ -389,6 +389,11 @@ function isAnonymousResult(value: unknown): value is { readonly type: 'Anonymous
 }
 
 export function fromNativeLessValue(value: unknown): ValueGroup {
+  /*
+   * A legacy plugin's return value never passed through a parser: a plain
+   * string, or a tree node's string payload, is typed by its text (`sniffLiteral`)
+   * because that text is its only fact.
+   */
   if (isNativeValue(value)) {
     return value;
   }

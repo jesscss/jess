@@ -256,7 +256,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions: a nested rule hoisted out of an enclosing rule re-opens the
     // at-rules it rose out of (`emitHoistEntry`), through the nested at-rule
     // writer's shell (`nestedAtRuleShell`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(515);
+    // +2 functions (owner ruling 2026-10-06, ledger D22/V3): a `$name` property
+    // accessor in a typed position reads the declaration's parsed value, as a
+    // variable does, instead of re-reading its bytes, so its resolution
+    // (`resolvePropAccessor`) and a merged property's join
+    // (`mergedPropertyBytes`) are shared by the byte and typed lanes.
+    expect(occurrences(/^function |^async function /gmu)).toBe(517);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(8);

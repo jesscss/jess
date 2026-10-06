@@ -21,7 +21,7 @@
  * value nodes with semantic payload fields. Adjacent value terms are the raw
  * recursive array shape, not a space-separator List.
  *
- * Sync by default: `operate`/`compare`/`typeCheck`/`materialize` are synchronous;
+ * Sync by default: `operate`/`compare`/`typeCheck` are synchronous;
  * only `call` returns `MaybePromise` (a genuinely async built-in — `data-uri`, or
  * an async color-format fn — forces the enclosing declaration's emit onto the
  * async branch, scoped to that leaf).
@@ -662,15 +662,6 @@ export const writtenArgument = (keyword: ArgumentKeyword, bytes: string, compres
     : `${keyword.sigil ?? ''}${keyword.name}${compress === true ? ':' : ': '}${bytes}`;
 
 export interface ValueEvaluator {
-  /**
-   * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interpolation` result,
-   * or an opaque fragment) into a typed value by sniffing its bytes. A PARSED typed
-   * literal never reaches here — the serializer builds its value from the node's own
-   * fields (`evalTyped`). Only OPERATED literals are materialized at all; the inert
-   * majority emit their verbatim bytes and never touch this seam.
-   */
-  materialize(bytes: string): Value;
-
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
 

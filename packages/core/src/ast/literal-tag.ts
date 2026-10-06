@@ -9,11 +9,14 @@
  * bodies (`colorFromSrc`, `dimensionFromFields`, `quotedFromFields`) live here; the
  * serializer's `evalTyped` switch calls them by node type.
  *
- * The ONLY node that sniffs is the opaque `Any` leaf (and a genuinely-synthetic /
- * computed string with no parse origin): its value type is honestly unknown, so
- * `materializeAny` / `sniffLiteral` classify the bytes. A PARSED typed literal never
- * touches the sniff. The former `LiteralTag` enum / `LitFields` / packed-tag
- * contract are gone — the node type IS the classification.
+ * The byte sniff (`sniffLiteral`) types text the parser never saw: a plain
+ * string a JS/legacy plugin or module function returns, a host value, or a
+ * tolerant CST leaf that has no AST. Text the parser produced is typed from the
+ * parse, never through here. One evaluator reader remains, `materializeAny`:
+ * the `Any` leaf, whose typed position is reached by the eager mixin-argument
+ * snapshot (the bytes core evaluated an argument to). The former `LiteralTag`
+ * enum / `LitFields` / packed-tag contract are gone — the node type IS the
+ * classification.
  */
 import type { Value } from './value-eval.js';
 import { HEX } from './color.js';
@@ -21,10 +24,8 @@ import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
 
 /*
- * SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
- * PARSED literal reaches materialize already typed (its node), so it never touches
- * these; classifying a genuinely-synthetic string here is not re-deriving parser
- * output (the parser never saw it).
+ * SYNTHETIC-ONLY classifiers, used solely by the sniff below. A PARSED literal is
+ * typed by its node, so it never touches these.
  */
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
@@ -145,11 +146,10 @@ export function quotedFromFields(value: string, quote: string, escaped: boolean,
 /* --------------------------------------------------------------- sniff path */
 
 /**
- * Classify + build a SYNTHETIC / opaque string (the `Any` leaf, or a computed /
- * joined fragment forced onto the typed path) by sniffing its bytes. A quoted-
- * looking string materializes as a quoted value; `true`/`false` as a value-domain
- * `Bool` (guard booleanness — no AST `Bool` node exists); a numeric / hex / named-
- * color shape as its typed value; else a keyword. This is the ONLY byte sniff.
+ * Classify + build a string the parser never typed by sniffing its bytes. A
+ * quoted-looking string materializes as a quoted value; `true`/`false` as a
+ * value-domain `Bool` (guard booleanness — no AST `Bool` node exists); a numeric /
+ * hex / named-color shape as its typed value; else a keyword.
  */
 function sniffBuild(text: string): Value {
   const c0 = text.charCodeAt(0);
@@ -179,17 +179,21 @@ function sniffBuild(text: string): Value {
 }
 
 /**
- * Materialize an opaque `Any` leaf: sniff its verbatim `src` with NO trim (byte-
- * identical to the former untagged-literal typed path).
+ * Materialize an `Any` leaf in a typed position: sniff its verbatim `src` with NO
+ * trim. KEPT for the eager mixin-argument snapshot, which binds an argument as the
+ * bytes core evaluated it to (an `Any`) and so carries no type of its own; it is
+ * the snapshot that loses the type, and the snapshot is where it should be kept.
+ * The parser's own opaque `Any` leaves (`\9`, `opacity=50`, `[name]`, …) reach
+ * here only as keywords.
  */
 export function materializeAny(src: string): Value {
   return sniffBuild(src);
 }
 
 /**
- * Materialize a SYNTHETIC / COMPUTED string that carries no node type (a joined
- * `Sequence`/`Interpolation` result forced in a typed position): trim, then sniff. This is
- * the `ValueEvaluator.materialize` seam body.
+ * Type a string the parser never saw — a JS/legacy plugin or module function's
+ * plain string result, a host value, a tolerant-CST leaf with no AST: trim, then
+ * sniff.
  */
 export function sniffLiteral(str: string): Value {
   return sniffBuild(str.trim());

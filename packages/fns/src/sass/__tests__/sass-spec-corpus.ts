@@ -304,6 +304,7 @@ function readSingle(text: string): Value {
     return result;
   }
   if (/^-?[\d.]/.test(text) || text.startsWith('#') || namedColor(text.toLowerCase()) !== undefined) {
+    // A sass-spec fixture literal: external test data, not parser output.
     const value = sniffLiteral(text);
     if (isValueGroupArray(value)) {
       throw new Error(`literal did not materialize to a single value: ${text}`);
