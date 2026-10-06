@@ -52,8 +52,8 @@ export interface CssConstruct {
 }
 
 /*
- * Shared by the glued `b:is(…)` / `src:local(…)` pins: one cause, two spellings.
- * The spaced forms parse in all four.
+ * Shared by the glued `b:is(…)` / `src:local(…)` / `a:not(…)` pins: one cause,
+ * three spellings. The spaced forms parse in all four.
  */
 const GLUED_SELECTOR_FUNCTION_DEFECT =
   'css-syntax-3 reads a block item that starts `<ident>:` as a declaration '
@@ -61,8 +61,12 @@ const GLUED_SELECTOR_FUNCTION_DEFECT =
   + 'rule first: `b:is(` reads as a type selector with a `:is()` pseudo, the '
   + 'argument fails as a selector, and a failed known case of the pseudo '
   + '`dispatch()` is a committed failure in parseman, so the declaration arm '
-  + 'never runs. Nothing here is specific to the slashes: `a { b:is(c % d) }` '
-  + 'and `@font-face{src:local("Foo")}` fail the same way.';
+  + 'never runs. REGRESSION for the `/word/` spellings: until the G37 ruling '
+  + 'removed slashed-combinator recognition (37d92989a), a `/word/` in the '
+  + 'argument was held as a fact rather than failing it, so these three parsed. '
+  + 'Spellings with no `/word/` never did: `a { b:is(c % d) }` and '
+  + '`@font-face{src:local("Foo")}` fail the same way before and after. '
+  + 'Needs an owner decision on the fix (escalated).';
 
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
@@ -739,6 +743,13 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: 'glued colon before local() with slashes',
     group: 'value',
     source: '@font-face { src:local(Foo/Bar/Baz) }',
+    brokenIn: ['less'],
+    defect: GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'glued colon before a selector-named function with a selector list',
+    group: 'value',
+    source: '.x { a:not(b, c /d/ e); f: g; }',
     brokenIn: ['less'],
     defect: GLUED_SELECTOR_FUNCTION_DEFECT
   },
