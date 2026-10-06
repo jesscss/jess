@@ -1240,11 +1240,13 @@ export interface MixinDefinition extends SpanSlots, BodySpanSlots {
   /*
    * A body-form `&:extend()` written directly in the definition's body (ledger X16):
    * the rule each call's body lands in extends, as if the extend were written in that
-   * rule's own body. Set only when the body has one. A ruleset called as a mixin
-   * carries its own `extendInstructions` here; its inline ones (with a `subject`) bind
-   * to its own selector and do not travel with the call.
+   * rule's own body. Undefined when the body has none, but always DECLARED, right after
+   * `rules`, by every constructor, so a definition with one shares the hidden class of
+   * one without (V8 invariant 1). A ruleset called as a mixin carries its own
+   * `extendInstructions` here; its inline ones (with a `subject`) bind to its own
+   * selector and do not travel with the call.
    */
-  readonly extendInstructions?: ExtendInstruction[];
+  readonly extendInstructions: ExtendInstruction[] | undefined;
 }
 
 /**
@@ -1786,14 +1788,14 @@ export const mixinDef = (
   params: Param[],
   rules: Statement[],
   guard?: GuardNode, // [guards]
-  extendInstructions?: ExtendInstruction[]
+  extendInstructions?: readonly ExtendInstruction[]
 ): MixinDefinition => ({
   type: 'MixinDefinition',
   name,
   params,
   rules,
+  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
   ...(guard !== undefined ? { guard } : {}),
-  ...(extendInstructions !== undefined && extendInstructions.length > 0 ? { extendInstructions } : {}),
   _s: NO_SPAN,
   _e: NO_SPAN,
   _bs: NO_SPAN,

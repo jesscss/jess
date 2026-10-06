@@ -410,6 +410,8 @@ describe('Less direct-AST closure CST contract', () => {
     ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinDefinition'],
     ['nested mixin call', '.a { .m(1); }', 'MixinCall'],
     ['nested extend instruction', '.a { &:extend(.b); }', 'ExtendStatement'],
+    ['mixin-definition extend instruction', '.m() { &:extend(.b); }', 'ExtendStatement'],
+    ['guarded mixin-definition extend instruction', '.m() when (@a = 1) { &:extend(.b); c: d; }', 'ExtendStatement'],
     ['static pseudo selector', '.a:hover, .b::before { color: red; }', 'Ruleset'],
     ['static An+B pseudo selector', '.a:nth-child(odd), .b:nth-last-child(2n + 1) { color: red; }', 'Ruleset'],
     ['static attribute selector', '.a[data-state][role=button][title="Save" i] { color: red; }', 'Ruleset'],

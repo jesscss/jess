@@ -1821,9 +1821,9 @@ function orderedMixinsForStatements(
        * [guards] a guarded ruleset called as a zero-arg mixin filters on its guard.
        */
       const rm: MixinDefinition = {
-        type: 'MixinDefinition', name: key, params: [], rules: rule.rules, ruleMixin: true,
+        type: 'MixinDefinition', name: key, params: [], rules: rule.rules,
+        extendInstructions: rule.extendInstructions, ruleMixin: true,
         ...(rule.guard !== undefined ? { guard: rule.guard } : {}),
-        ...(rule.extendInstructions !== undefined ? { extendInstructions: rule.extendInstructions } : {}),
 
         /* the synthesized ruleset-mixin stands for the same source as its rule */
         _s: rule._s, _e: rule._e, _bs: rule._bs, _be: rule._be
@@ -2845,9 +2845,8 @@ function findPathInScope(
           const rm: MixinDefinition = {
             type: 'MixinDefinition',
             name: selectorBranchHasInterp(c) ? resolveSelectorBranchSync(c, selectorFrame, e) : selectorBranchCanonical(c),
-            params: [], rules: s.rules, ruleMixin: true,
+            params: [], rules: s.rules, extendInstructions: s.extendInstructions, ruleMixin: true,
             ...(s.guard !== undefined ? { guard: s.guard } : {}),
-            ...(s.extendInstructions !== undefined ? { extendInstructions: s.extendInstructions } : {}),
 
             /* the synthesized ruleset-mixin stands for the same source as its rule */
             _s: s._s, _e: s._e, _bs: s._bs, _be: s._be
@@ -5929,7 +5928,7 @@ function invokeValueLambda(
   e: EvalCtx
 ): { value: ValueSlot; frame: Frame } | null {
   const syntheticDef: MixinDefinition = {
-    type: 'MixinDefinition', name: '', params: lambda.params ?? [], rules: lambda.rules,
+    type: 'MixinDefinition', name: '', params: lambda.params ?? [], rules: lambda.rules, extendInstructions: undefined,
 
     /* a synthetic lambda wrapper carries no source position of its own */
     _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
@@ -15760,7 +15759,7 @@ function expandCall(
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
-          if (def.extendInstructions !== undefined && e.dynamicExtend !== null) {
+          if (e.dynamicExtend !== null && def.extendInstructions !== undefined) {
             recordCalledExtends(e.dynamicExtend, def, e);
           }
 
@@ -16574,7 +16573,7 @@ function bindContentArgs(
   e: EvalCtx
 ): MaybePromise<Map<string, CallValue> | null> {
   const syntheticDef: MixinDefinition = {
-    type: 'MixinDefinition', name: '', params: block.params ?? [], rules: valueBlockBody(block),
+    type: 'MixinDefinition', name: '', params: block.params ?? [], rules: valueBlockBody(block), extendInstructions: undefined,
     _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
   };
   const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
