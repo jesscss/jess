@@ -570,6 +570,31 @@ const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minifi
 const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
 const VALUES_ONLY = 'A Less v5 function plugin returns a value (a dimension, color, string, keyword, list or declaration list): write the rest in the stylesheet.';
 
+/*
+ * Less 4 tree nodes beyond the function-plugin value surface, each with the
+ * reason it is not provided. Both plugin runtimes refuse `tree.<Name>` and its
+ * 4.x factory `less.<name>()` (A12).
+ */
+const UNSUPPORTED_TREE_NODE_REASONS: ReadonlyArray<readonly [string, string]> = [
+  ['AtRule', `At-rules are statements, not values. ${VALUES_ONLY}`],
+  ['Attribute', `Attribute selectors are selector structure. ${VALUES_ONLY}`],
+  ['Combinator', `Combinators are selector structure. ${VALUES_ONLY}`],
+  ['Condition', `Guard conditions are evaluated by the compiler. ${VALUES_ONLY}`],
+  ['Element', `Selector elements are selector structure. ${VALUES_ONLY}`],
+  ['Extend', `:extend is resolved by the compiler. ${VALUES_ONLY}`],
+  ['Import', `@import is resolved while documents load, before plugin functions run. ${VALUES_ONLY}`],
+  ['JavaScript', 'Inline JavaScript evaluation was removed: write the expression as a function plugin.'],
+  ['Media', `@media is a statement, not a value. ${VALUES_ONLY}`],
+  ['MixinCall', `Mixin calls are dispatched by the compiler. ${VALUES_ONLY}`],
+  ['MixinDefinition', `Mixin definitions are statements, not values. ${VALUES_ONLY}`],
+  ['NamespaceValue', `Namespace lookups are resolved by the compiler. ${VALUES_ONLY}`],
+  ['Selector', `Selectors are statement structure. ${VALUES_ONLY}`],
+  ['VariableCall', `Detached-ruleset calls are dispatched by the compiler. ${VALUES_ONLY}`]
+];
+
+/** The Less 4 `tree` constructors a Less v5 plugin runtime refuses (A12). */
+export const UNSUPPORTED_LESS_TREE_NODES: readonly string[] = UNSUPPORTED_TREE_NODE_REASONS.map(([name]) => name);
+
 /**
  * The Less 4 plugin-manager API that Less v5 deliberately does not run, keyed
  * by the member a plugin reaches for, with the replacement its refusal names.
@@ -600,26 +625,7 @@ const UNSUPPORTED_PLUGIN_API_REPLACEMENTS: ReadonlyMap<string, string> = new Map
   ['less.visitors', NO_VISITORS],
   ['less.FileManager', NO_FILE_MANAGERS],
   ['less.environment', NO_FILE_MANAGERS],
-
-  /*
-   * Tree nodes beyond the function-plugin value surface (`tree.AtRule`, and its
-   * 4.x factory `less.atrule()`): a function plugin returns a value, and the rest
-   * of the tree API is not provided.
-   */
-  ['tree.AtRule', `At-rules are statements, not values. ${VALUES_ONLY}`],
-  ['tree.Attribute', `Attribute selectors are selector structure. ${VALUES_ONLY}`],
-  ['tree.Combinator', `Combinators are selector structure. ${VALUES_ONLY}`],
-  ['tree.Condition', `Guard conditions are evaluated by the compiler. ${VALUES_ONLY}`],
-  ['tree.Element', `Selector elements are selector structure. ${VALUES_ONLY}`],
-  ['tree.Extend', `:extend is resolved by the compiler. ${VALUES_ONLY}`],
-  ['tree.Import', `@import is resolved while documents load, before plugin functions run. ${VALUES_ONLY}`],
-  ['tree.JavaScript', 'Inline JavaScript evaluation was removed: write the expression as a function plugin.'],
-  ['tree.Media', `@media is a statement, not a value. ${VALUES_ONLY}`],
-  ['tree.MixinCall', `Mixin calls are dispatched by the compiler. ${VALUES_ONLY}`],
-  ['tree.MixinDefinition', `Mixin definitions are statements, not values. ${VALUES_ONLY}`],
-  ['tree.NamespaceValue', `Namespace lookups are resolved by the compiler. ${VALUES_ONLY}`],
-  ['tree.Selector', `Selectors are statement structure. ${VALUES_ONLY}`],
-  ['tree.VariableCall', `Detached-ruleset calls are dispatched by the compiler. ${VALUES_ONLY}`],
+  ...UNSUPPORTED_TREE_NODE_REASONS.map(([name, reason]): [string, string] => [`tree.${name}`, reason]),
   ['tree.Ruleset with selectors', `Only an anonymous declaration list crosses the plugin value boundary. ${VALUES_ONLY}`]
 ]);
 
