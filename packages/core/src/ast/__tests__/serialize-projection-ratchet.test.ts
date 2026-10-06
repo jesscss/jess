@@ -256,9 +256,15 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions: a nested rule hoisted out of an enclosing rule re-opens the
     // at-rules it rose out of (`emitHoistEntry`), through the nested at-rule
     // writer's shell (`nestedAtRuleShell`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(515);
-    expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    // +2 functions, +1 `new Map`, -1 `new Set` (jess#359, ledger J14): the
+    // planner and the render walk share the import-once test for a `(reference)`
+    // re-import (`isReferenceReimport`); a planned import placement is keyed by
+    // the placement its statement is reached in (`plannedImportPlacement`, one
+    // map per placement); the planner's import-once identities became a map that
+    // records whether an `@import` loaded the document.
+    expect(occurrences(/^function |^async function /gmu)).toBe(517);
+    expect(occurrences(/new Map/gu)).toBe(86);
+    expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

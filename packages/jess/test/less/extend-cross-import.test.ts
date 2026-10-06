@@ -116,13 +116,21 @@ describe('extend across @import', () => {
     });
 
     /*
-     * Hiding follows the import, not the shared rule (jess#359): the plain copy keeps its
-     * selector, and the extend reaches the hidden copy as it reaches any referenced rule
-     * (ledger X13). less 4.x renders only `smX`: its import-once also swallows an import
-     * that carries options, which jess's does not — a ruling there shows up here.
+     * Import-once drops a `(reference)` re-import of a sheet already imported plainly, as
+     * Less 4.x does (orchestrator judgment 2026-10-05, jess#359): the sheet is placed once.
      */
-    it('plain and (reference) import of one sheet keep the plain copy visible', async () => {
-      expect(await renderFile('plain-and-ref-main.less')).toBe(`${smX}\n.x {\n  b: 2;\n}`);
+    it('a (reference) re-import of a sheet imported plainly is dropped', async () => {
+      expect(await renderFile('plain-and-ref-main.less')).toBe(smX);
+    });
+
+    /*
+     * Each copy of a `(multiple)` sheet places the `(reference)` import inside it on its own,
+     * so the extend in `@media print` reveals only the print copy.
+     */
+    it('a (reference) import inside a sheet imported (multiple) twice is placed per copy', async () => {
+      expect(await renderFile('multiple-ref-media-main.less')).toBe(
+        ['@media print {', '  .x {', '    b: 2;', '  }', '}', '@media screen {', '  .y {', '    c: 1;', '  }', '}'].join('\n')
+      );
     });
 
     // A referenced rule an extend reaches surfaces under the extender only (ledger X13, jess#355).

@@ -424,6 +424,18 @@ function importHasOption(options: string | null, option: string): boolean {
 }
 
 /**
+ * Import-once covers a `(reference)` re-import (orchestrator judgment 2026-10-05,
+ * jess#359): a `(reference)` import of a document an `@import` already loaded is dropped,
+ * as Less 4.x does, so the sheet is placed once and stays visible. A `(multiple)` import,
+ * or one inside a `(multiple)` sheet, places its own copy and is never dropped. The import
+ * planner and the render walk both ask this, so they agree on which imports place a sheet.
+ */
+function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, importedPlainly: boolean): boolean {
+  return importedPlainly && !inMultiple && node.mode !== 'compose'
+    && importHasOption(options, 'reference') && !importHasOption(options, 'multiple');
+}
+
+/**
  * The public path deliberately calls Context itself: there is no Jess-side
  * resolver callback, secondary cache, or AST import bridge. The optional
  * `importDocument` option remains a narrow context-free test seam.
@@ -8913,10 +8925,9 @@ interface DynamicExtendState {
   scope: number[];
 
   /** The sheet boundary the walk is currently emitting (a composed module or a
-   * `(reference)` sheet): the import planner's, by import statement for a
-   * `(reference)` placement and by module identity for a `@compose`. */
+   * `(reference)` sheet): the import planner's, by import placement (`Emit.importPlacements`)
+   * for a `(reference)` sheet and by module identity for a `@compose`. */
   boundary: ExtendBoundary | null;
-  importBoundaries: ReadonlyMap<StyleImport, ExtendBoundary> | null;
   moduleBoundaries: Map<string, ExtendBoundary>;
 
   /**
@@ -9034,12 +9045,12 @@ interface Emit extends EvalCtx {
   importedWalkPlacement: boolean;
 
   /*
-   * [extend] The planner's render placement token for each `(reference)` or
-   * `(multiple)` import it planned, and the token of the import placement being
-   * emitted (undefined in the static placement). Extend projections are looked up
-   * by placement, so two copies of one canonical rule never share one (#359).
+   * [extend] The planner's placement for each `(reference)` or `(multiple)` import it
+   * planned (see {@link ImportPlacements}), and the token of the import placement being
+   * emitted (undefined in the static placement). Extend projections are looked up by
+   * placement, so two copies of one canonical rule never share one (#359).
    */
-  importPlacements: ReadonlyMap<StyleImport, object> | null;
+  importPlacements: ImportPlacements | null;
   importPlacement: object | undefined;
 
   /*
@@ -11296,20 +11307,40 @@ interface ImportPlanOverlay {
   instructions: PlanInstruction[];
   atRuleScopes: AtRuleScopes;
 
-  /** The boundary of each `(reference)` import placement, by its import statement. */
-  importBoundaries: Map<StyleImport, ExtendBoundary> | null;
-
   /** The ONE boundary of each composed module, by module identity (ledger X14). */
   moduleBoundaries: Map<string, ExtendBoundary>;
 
-  /** The render placement token of each `(reference)` or `(multiple)` import. */
-  importPlacements: Map<StyleImport, object> | null;
+  /** The render placement of each `(reference)` or `(multiple)` import. */
+  importPlacements: ImportPlacements | null;
 
   /** Target atoms of the extends in imported placing bodies. */
   dynamicTargetAtoms: Set<string> | null;
 
   /** Hidden `(reference)` rules whose body holds an `@import` the walk places. */
   importingRules: Set<Ruleset> | null;
+}
+
+/**
+ * The render placement the import planner gave each `(reference)` or `(multiple)` import
+ * — its token, and for a `(reference)` sheet its extend boundary — keyed by the placement
+ * the import statement is reached in, then by the statement. A statement inside a sheet
+ * imported `(multiple)` twice is reached once per copy, and each copy is its own
+ * placement (#359). The render walk reads it with the placement it is emitting.
+ */
+type ImportPlacements = Map<object | undefined, Map<StyleImport, ImportPlacement>>;
+
+interface ImportPlacement {
+  token: object;
+  boundary: ExtendBoundary | null;
+}
+
+/** The planner's placement of import `node` reached in placement `within`, if any. */
+function plannedImportPlacement(
+  placements: ImportPlacements | null,
+  within: object | undefined,
+  node: StyleImport
+): ImportPlacement | undefined {
+  return placements?.get(within)?.get(node);
 }
 
 /**
@@ -11588,12 +11619,13 @@ function planImportedFacts(
       cssImports: undefined
     };
   }
-  const seen = new Set<string>();
+
+  /* Each document loaded once, by identity: true when an `@import` loaded it. */
+  const seen = new Map<string, boolean>();
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
     atRuleScopes: new Map(),
-    importBoundaries: null,
     moduleBoundaries: new Map(),
     importPlacements: null,
     dynamicTargetAtoms: null,
@@ -11738,7 +11770,9 @@ function planImportedFacts(
           }
           return;
         }
-        seen.add(loaded.key);
+        seen.set(loaded.key, !isCompose);
+      } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && seen.get(loaded.key) === true)) {
+        return;
       }
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
@@ -11793,16 +11827,16 @@ function planImportedFacts(
         }
         if (reference) {
           sheetBoundary = { parents: [sheetBoundary] };
-          (overlay.importBoundaries ??= new Map()).set(st, sheetBoundary);
         }
         if (reference || importHasOption(options, 'multiple')) {
-          /*
-           * ponytail: keyed by the import statement, so one statement the planner
-           * reaches twice (inside a sheet imported `(multiple)` twice) keeps its last
-           * token. Key by the visit path if such nested copies must project apart.
-           */
           sheetPlacement = {};
-          (overlay.importPlacements ??= new Map()).set(st, sheetPlacement);
+          const placements = overlay.importPlacements ??= new Map();
+          let byStatement = placements.get(placement);
+          if (byStatement === undefined) {
+            byStatement = new Map();
+            placements.set(placement, byStatement);
+          }
+          byStatement.set(st, { token: sheetPlacement, boundary: reference ? sheetBoundary : null });
         }
       }
 
@@ -12168,7 +12202,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         atRuleScopes: planned.overlay.atRuleScopes ?? new Map(),
         scope: EMPTY_SCOPE,
         boundary: null,
-        importBoundaries: planned.imports?.importBoundaries ?? null,
         moduleBoundaries: planned.imports?.moduleBoundaries ?? new Map(),
         pathRules: [],
         pathHeaders: [],
@@ -19086,6 +19119,11 @@ function expandStyleImport(
             return;
           }
           seen.set(emitOnceKey, isCompose ? bodyFrame : null);
+        } else if (isReferenceReimport(
+          node, request.options, e.multipleImportDepth !== 0,
+          loaded.key !== undefined && e.loadedImports?.get(loaded.key) === null
+        )) {
+          return;
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           || e.prepublishedModuleImports?.get(frame)?.has(node) === true
@@ -19121,7 +19159,8 @@ function expandStyleImport(
            * records its walk facts inside its own extend boundary (ledger X14).
            */
           const ownReference = importHasOption(request.options, 'reference');
-          const placement = e.importPlacements?.get(node)
+          const planned = plannedImportPlacement(e.importPlacements, e.importPlacement, node);
+          const placement = planned?.token
             ?? (ownReference || importHasOption(request.options, 'multiple') ? {} : e.importPlacement);
           const dyn = e.dynamicExtend;
           let boundary = dyn?.boundary ?? null;
@@ -19129,7 +19168,7 @@ function expandStyleImport(
             boundary = composedModuleBoundary(dyn.moduleBoundaries, loaded.key, boundary);
           }
           if (dyn !== null && ownReference) {
-            boundary = dyn.importBoundaries?.get(node) ?? { parents: [boundary] };
+            boundary = planned?.boundary ?? { parents: [boundary] };
           }
           const emit = (): MaybePromise<void> => {
             const outerPlacement = e.importPlacement;
