@@ -345,9 +345,20 @@ describe('V19 one-evaluator projection ratchet', () => {
     // emergent `@{…}` — and `[@@name]` names a member by `lookupName`, so
     // `stripOuterQuotes` is gone; the synchronous positions share one guard
     // (`syncValue`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(547);
+    // +1 function (ledger F12): a custom value's comment replay places a bare
+    // variable or an interpolation by its own source span (`customValueHole`),
+    // so a value that reads a variable keeps its edge comments.
+    // +1 function, +2 `new Set` (ledger X19): every detached ruleset a statement
+    // holds — a variable's, a mixin call's argument or content block, a parameter
+    // default — is read by the five extend classifiers as a placing body
+    // (`heldAnonymousMixin`); the import admission and atom collectors create their
+    // target-atom set on the first such ruleset with an extend.
+    // +1 function (ledger F12): a custom value's trailing comments are the comment
+    // run that starts where the value ends (`customValueTrailingRun`), read from the
+    // document's comment table rather than taken into the value node's span.
+    expect(occurrences(/^function |^async function /gmu)).toBe(550);
     expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(1);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
