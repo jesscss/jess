@@ -1356,6 +1356,16 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  /*
+   * A `:lang()` range is an `<ident>` or a CSS `<string>`. A .jess escaped string
+   * (`~"en"`) is neither, so it is rejected there, as in css, less and scss
+   * (ledger G39).
+   */
+  it('rejects an escaped string as a :lang() range', () => {
+    expect(() => parse(':lang(~"en") { a: b; }')).toThrow();
+    expect(serialize(parse(':lang("en") { a: b; }')).css).toBe(':lang("en") {\n  a: b;\n}\n');
+  });
+
   it('restricts `<An+B> of S` to the nth-child index, rejecting it on nth-of-type (Selectors-4 §6.6.2)', () => {
     /*
      * `of S` is defined ONLY for `:nth-child()`/`:nth-last-child()`; the

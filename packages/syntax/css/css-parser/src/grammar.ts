@@ -1274,7 +1274,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `Keyword` or the dialect's own `Quoted` (a string that interpolates leaves
    * the argument a template). Any other argument shape fails the pseudo, as a
    * malformed `An+B` does. The padding inside the parens is the argument's
-   * own, as `TypedNthPseudoArgument` spells it.
+   * own, as `TypedNthPseudoArgument` spells it. A dialect's escaped string
+   * (`~"en"`, Less and .jess) is not a `<string>`: the `~` never opens a range.
    */
   const LangPseudoArgument = node(
     'LangPseudoArgument',
@@ -1283,11 +1284,14 @@ const cssFactory = (g: GrammarSelf) => {
       parser(
         { trivia: whitespace },
         oneOrMoreSep(
-          field(
-            'range',
-            choice(
-              token(genericIdentifier),
-              g.Quoted
+          sequence(
+            not(literal('~')),
+            field(
+              'range',
+              choice(
+                token(genericIdentifier),
+                g.Quoted
+              )
             )
           ),
           literal(',')
