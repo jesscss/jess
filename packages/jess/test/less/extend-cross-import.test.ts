@@ -343,6 +343,17 @@ describe('extend across @import', () => {
       expect(await renderFile('ruleset-import-extender-main.less', false)).toBe(expected);
     });
 
+    /*
+     * The sheet's path is interpolated, so it is known only where the walk resolves it:
+     * the walk records what it places. (Nested output does not yet rewrite a target
+     * inside a parent block, EXTEND-SEMANTICS §6.)
+     */
+    it('carries an extend that is only in a sheet imported through an interpolated path', async () => {
+      const expected = ['.w .k,', '.w .y {', '  k: 1;', '}'].join('\n');
+      expect(await renderFile('ruleset-interp-path-main.less')).toBe(expected);
+      expect(await renderFile('ruleset-local-interp-path-main.less')).toBe(expected);
+    });
+
     it('inside a (reference) sheet, is an extend target at its nested placement', async () => {
       expect(await renderFile('ref-ruleset-import-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
     });

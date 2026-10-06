@@ -92,6 +92,36 @@ describe('AST extend preflight cost contract', () => {
     expect(counters['astExtend.fold.recordedSubjects']).toBeUndefined();
   });
 
+  /*
+   * An extend-free document whose only import sits inside a ruleset: the sheet may hold
+   * the graph's only extend, so the planner loads it before the walk and scans it once
+   * (the walk reuses the loaded document). That one admission scan is the whole cost:
+   * nothing is planned, the walk records nothing, and the import loads once.
+   */
+  it('scans a ruleset-placed sheet once, and plans and records nothing, when no sheet extends', async () => {
+    const small = ast.stylesheet([ast.rule('.sm', [ast.decl('b', ast.color('red'))])]);
+    const document = ast.stylesheet([
+      ast.rule('.wrap', [ast.styleImport('@import', ast.quoted('"t.less"', 't.less', '"', false), { mode: 'import' })]),
+      ast.rule('.a', [ast.decl('c', ast.color('red'))])
+    ]);
+    let loads = 0;
+
+    const { css } = await serialize(document, {
+      importDocument: ({ specifier }) => {
+        loads++;
+        return { document: small, key: specifier };
+      }
+    });
+    expect(css).toBe('.wrap .sm {\n  b: red;\n}\n.a {\n  c: red;\n}\n');
+    expect(loads).toBe(1);
+    expect(counters['astExtend.preflight.noFeatureBypasses'] ?? 0).toBe(0);
+    expect(counters['astExtend.preflight.bodyAdmissions']).toBe(1);
+    expect(counters['astExtend.preflight.bodyNoFeatureMisses']).toBe(1);
+    expect(counters['astExtend.preflight.importsFeatureBearing'] ?? 0).toBe(0);
+    expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
+    expect(counters['astExtend.fold.recordedSubjects']).toBeUndefined();
+  });
+
   it('re-solves nothing when no rule a mixin call places can meet an extend target', () => {
     /*
      * The call arms the walk recorder (a placed rule could be a target), but `.p`

@@ -11326,6 +11326,12 @@ interface ExtendClass {
    * walk recorder must then be armed for.
    */
   placedImports: StyleImport[] | null;
+
+  /**
+   * The walk places an `@import` whose path is interpolated. Its sheet is known only
+   * where the walk resolves the path, so the walk recorder is armed for it outright.
+   */
+  placesUnaddressedImport: boolean;
 }
 
 /**
@@ -11382,6 +11388,8 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
         out.places = true;
         if (st.target.type === 'Quoted' || (st.target.type === 'Url' && st.target.value.type === 'Quoted')) {
           (out.placedImports ??= []).push(st);
+        } else {
+          out.placesUnaddressedImport = true;
         }
       }
     } else if (st.type === 'MixinCall' || st.type === 'Apply') {
@@ -11816,8 +11824,16 @@ function planImportedFacts(
    * synchronous callable-body ownership, while actual import/extend facts opt
    * into planning.
    */
-  const extendClass: ExtendClass = { static: false, dynamic: false, places: false, placedImports: null };
+  const extendClass: ExtendClass = { static: false, dynamic: false, places: false, placedImports: null, placesUnaddressedImport: false };
   classifyExtend(root.rules, false, extendClass);
+
+  /*
+   * A sheet the walk places through an interpolated path may carry the graph's only
+   * extend, and no pre-walk load can address it: the walk records what it places.
+   */
+  if (extendClass.placesUnaddressedImport && mode !== IMPORT_PLAN_PREPARE) {
+    e.importedWalkPlacement = true;
+  }
   const plansImports = e.context?.options.processImports !== false && importDocument !== undefined;
   const probesPlacedImports = mode !== IMPORT_PLAN_PREPARE && extendClass.placedImports !== null && !extendClass.dynamic;
   if (!plansImports || (!extendClass.static && !probesPlacedImports && !bodyHasPlannedImport(root.rules))) {
