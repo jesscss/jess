@@ -106,6 +106,27 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
       .resolves.toBe(':is(.c.k, .z) .d, .p .q.k .d');
   });
 
+  it('appends an extender that matches a whole authored :is() arm only under the guard', async () => {
+    // `#b` would raise `.c .d` and `.z .d` to (1,0,1): the authored list keeps (0,1,1).
+    await expect(extendHeader(':is(.c, .z) .d { m: 1 } #b:extend(.c all) {}'))
+      .resolves.toBe(':is(.c, .z) .d, #b .d');
+    await expect(extendHeader(':is(.c, .z) .d { m: 1 } .y:extend(.c all) {}'))
+      .resolves.toBe(':is(.c, .z, .y) .d');
+
+    // `.a :is(.c, .z, .p .q)` would let `.p` sit above `.a`.
+    await expect(extendHeader('.a :is(.c, .z) { m: 1 } .p .q:extend(.c all) {}'))
+      .resolves.toBe('.a :is(.c, .z), .a .p .q');
+  });
+
+  it('appends to the nesting :is(parents) under the guard too', async () => {
+    for (const mode of ['native', 'compact'] as const) {
+      expect(headerOf(await render('.b, .c { .p { m: 1 } } #x:extend(.b all) {}', mode), 'm: 1'))
+        .toBe(':is(.b, .c) .p, #x .p');
+      expect(headerOf(await render('.b, .c { .p { m: 1 } } .x:extend(.b all) {}', mode), 'm: 1'))
+        .toBe(':is(.b, .c, .x) .p');
+    }
+  });
+
   it('compacts a changed top-level rule\'s siblings in nested output too, each member once', async () => {
     await expect(extendHeader('.button:hover { m: 1 } .submit:hover:extend(.button:hover) {}'))
       .resolves.toBe(':is(.button, .submit):hover');

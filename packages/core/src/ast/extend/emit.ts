@@ -577,19 +577,34 @@ function splitGroup(b: Branch, k: number, p: number, group: Simple & { t: 'is' }
 
 /**
  * An authored or nesting `:is()` at `b.segments[k]`, simple `p`, with an extend group
- * inside an arm that splits; null when none does. The arms stay one list, each taking
- * its first alternative — the group holding the matched selector, at the arm's own
- * specificity. Every other alternative replaces the whole `:is()` on its own: put back
- * among the other arms it would raise the specificity of elements the extend never
- * touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
+ * inside an arm that splits, or an arm an `all` extend appended; null when neither. The
+ * arms stay one list, each taking its first alternative — the group holding the matched
+ * selector, at the arm's own specificity. Every other alternative replaces the whole
+ * `:is()` on its own: put back among the other arms it would raise the specificity of
+ * elements the extend never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` →
+ * `:is(.c.k, .z) .d, #b.k .d`).
+ *
+ * An arm an extend appended (an extender matched a whole arm: `ext`) is extend's own
+ * grouping, so it follows the same guard (orchestrator judgment 2026-10-05): it joins the
+ * list only at the list's specificity, where its shape may sit in the `:is()`, and
+ * otherwise replaces the whole `:is()` on its own (`:is(.c, .z) .d` +
+ * `#b:extend(.c all)` → `:is(.c, .z) .d, #b .d`), so the authored list keeps its
+ * specificity and the extender keeps its own.
  */
 function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolean): Branch[] | null {
   let kept: Branch[] | null = null;
   let alone: Branch[] | null = null;
+  let added: Branch[] | null = null;
   for (let a = 0; a < arms.length; a++) {
-    const alternatives = regroupBranch(arms[a]!, true, 0, 0);
+    const arm = arms[a]!;
+    if (arm.ext === true) {
+      kept ??= arms.slice(0, a);
+      (added ??= []).push(arm);
+      continue;
+    }
+    const alternatives = regroupBranch(arm, true, 0, 0);
     if (alternatives === null) {
-      kept?.push(arms[a]!);
+      kept?.push(arm);
       continue;
     }
     kept ??= arms.slice(0, a);
@@ -600,6 +615,28 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   }
   if (kept === null) {
     return null;
+  }
+  if (added !== null) {
+    let listSpecificity = 0;
+    for (const arm of kept) {
+      const s = extendBranchSpecificity(arm, false);
+      if (s < 0) {
+        listSpecificity = -1;
+        break;
+      }
+      listSpecificity = Math.max(listSpecificity, s);
+    }
+    const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
+    for (const arm of added) {
+      for (const alternative of regroupBranch(arm, true, 0, 0) ?? [arm]) {
+        recordAstExtendProfile?.('astExtend.emit.groupMemberScores');
+        if (listSpecificity >= 0 && extendBranchSpecificity(alternative, compoundOnly) === listSpecificity) {
+          kept.push(alternative);
+        } else {
+          (alone ??= []).push(alternative);
+        }
+      }
+    }
   }
   const out: Branch[] = [];
   pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: kept, fold: false }), root, k, p + 1);

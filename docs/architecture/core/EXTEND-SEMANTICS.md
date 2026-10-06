@@ -245,13 +245,16 @@ the extend engine both call it.
   composed selector: `.x:extend(.b .p.q)` reaches it, and an `all` graft on `.x` in
   `.x { .arrow { &::before {} } }` gives `:is(.x, .y) .arrow::before`, never a one-arm
   `:is(:is(.x, .y) .arrow)::before`.
-- KNOWN GAPS: an `all` match of a whole authored `:is()` arm still appends the
-  extender to the authored list (`:is(.c, .z) .d` + `#b:extend(.c all)` →
-  `:is(.c, .z, #b) .d`, raising `.c .d`/`.z .d`); orchestrator judgment
-  2026-10-05 treats that append as extend's own grouping under the same guard
-  (`:is(.c, .z) .d, #b .d`), not yet implemented. A pseudo-element member written
-  as its own branch makes the whole rule invalid, as in 4.x (the forgiving `:is()`
-  kept the other branches). SCSS `@extend` uses the same Less 4.x expansion, not
+- An `all` match of a whole authored or nesting `:is()` arm appends the extender to
+  that list; the append is extend's own grouping and follows the same guard
+  (orchestrator judgment 2026-10-05). The extender joins the list only at the list's
+  specificity and where its shape may sit in the `:is()`; otherwise it replaces the
+  whole `:is()` on its own, so the authored list keeps its specificity
+  (`:is(.c, .z) .d` + `#b:extend(.c all)` → `:is(.c, .z) .d, #b .d`; `.y` joins:
+  `:is(.c, .z, .y) .d`; `.a :is(.c, .z)` + `.p .q:extend(.c all)` →
+  `.a :is(.c, .z), .a .p .q`).
+- KNOWN GAPS: a pseudo-element member written as its own branch makes the whole
+  rule invalid, as in 4.x (the forgiving `:is()` kept the other branches). SCSS `@extend` uses the same Less 4.x expansion, not
   dart-sass's weave — deferred Sass-parity work, tracked with its repro in
   `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not pinned").
 
