@@ -1138,11 +1138,11 @@ describe('StyleImport', () => {
     const entry = stylesheet([
       authoredImport(
         '@import',
-        interpolation([
-          { lit: '"target-' },
+        quoted('"target-@{segment}.less"', 'target-@{segment}.less', '"', false, interpolation([
+          { lit: 'target-' },
           { ref: variableReference('segment', 'scoped'), unquote: true },
-          { lit: '.less"' }
-        ])
+          { lit: '.less' }
+        ]))
       ),
       authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false))
     ]);
@@ -1228,11 +1228,11 @@ describe('StyleImport', () => {
       variableDeclaration('theme', keyword('night'), { mode: 'declare' }),
       styleImport(
         '@-export',
-        url(interpolation([
-          { lit: '"themes/' },
+        url(quoted('"themes/@{theme}.less"', 'themes/@{theme}.less', '"', false, interpolation([
+          { lit: 'themes/' },
           { ref: variableReference('theme', 'scoped'), unquote: true },
-          { lit: '.less"' }
-        ])),
+          { lit: '.less' }
+        ]))),
         {
           options: list([keyword('less'), keyword('reference')], ','),
           alias: keyword('tokens'),
@@ -1878,11 +1878,11 @@ describe('StyleImport', () => {
     const document = stylesheet([
       authoredImport(
         '@import',
-        interpolation([
-          { lit: '"target-' },
+        quoted('"target-@{segment}.less"', 'target-@{segment}.less', '"', false, interpolation([
+          { lit: 'target-' },
           { ref: variableReference('segment', 'scoped'), unquote: true },
-          { lit: '.less"' }
-        ])
+          { lit: '.less' }
+        ]))
       ),
       authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false)),
       rule('.card', [decl('color', variableReference('answer', 'scoped'))])
@@ -1903,11 +1903,11 @@ describe('StyleImport', () => {
 
   it('reports a structured unresolved-target diagnostic after its one retry without loading it', async () => {
     const document = stylesheet([
-      authoredImport('@import', interpolation([
-        { lit: '"target-' },
+      authoredImport('@import', quoted('"target-@{never}.less"', 'target-@{never}.less', '"', false, interpolation([
+        { lit: 'target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
-        { lit: '.less"' }
-      ]))
+        { lit: '.less' }
+      ])))
     ]);
     let loads = 0;
 
@@ -1925,11 +1925,11 @@ describe('StyleImport', () => {
 
   it('leaves unresolved dynamic import targets for render-time handling during static prep', async () => {
     const document = stylesheet([
-      authoredImport('@import', interpolation([
-        { lit: '"target-' },
+      authoredImport('@import', quoted('"target-@{never}.less"', 'target-@{never}.less', '"', false, interpolation([
+        { lit: 'target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
-        { lit: '.less"' }
-      ]))
+        { lit: '.less' }
+      ])))
     ]);
     let loads = 0;
 

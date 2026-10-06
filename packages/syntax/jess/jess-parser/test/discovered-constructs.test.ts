@@ -315,9 +315,10 @@ describe('Jess constructs discovered outside the parser suites', () => {
   ])('records an escaped INTERPOLATED string as the same escaped Quoted node, carrying its template (%s)', (_label, source, quote) => {
     /*
      * An escaped string is a string whether or not it interpolates (owner
-     * 2026-10-06, ledger D22/V3): `~"x$(…)y"` is the `Quoted` the static arms
-     * produce, with `escaped` and its quote, and its content template — whose
-     * parts carry no quote literals, since the quotes are the node's — in `interp`.
+     * 2026-10-06, ledger V3): `~"x$(…)y"` is the `Quoted` the static arms
+     * produce, with `escaped` and its quote, its authored content in `value`,
+     * and its content template — whose parts carry no quote literals, since the
+     * quotes are the node's — in `interp`.
      */
     expect(firstRule(source)).toMatchObject({
       rules: [{
@@ -325,7 +326,8 @@ describe('Jess constructs discovered outside the parser suites', () => {
           type: 'Quoted',
           quote,
           escaped: true,
-          value: 'xy',
+          src: `~${quote}x$(1 + 1)y${quote}`,
+          value: 'x$(1 + 1)y',
           interp: { type: 'Interpolation', parts: [{ lit: 'x' }, { ref: { type: 'Expression' }, unquote: true }, { lit: 'y' }] }
         }
       }]
@@ -335,11 +337,47 @@ describe('Jess constructs discovered outside the parser suites', () => {
   it.each([
     ['double quotes', 'a { b: "x$(1 + 1)y" }', '"'],
     ['single quotes', 'a { b: \'x$(1 + 1)y\' }', '\'']
-  ])('keeps the quote literals of an UNESCAPED interpolated string (%s)', (_label, source, quote) => {
-    const value = (firstRule(source) as { rules: Array<{ value: { type: string; parts: Array<{ lit?: string }> } }> }).rules[0]!.value;
+  ])('records an UNESCAPED interpolated string as the same Quoted node, carrying its template (%s)', (_label, source, quote) => {
+    /* The same node with `escaped: false` (ledger C2): the quotes are the node's, not literal parts. */
+    expect(firstRule(source)).toMatchObject({
+      rules: [{
+        value: {
+          type: 'Quoted',
+          quote,
+          escaped: false,
+          src: `${quote}x$(1 + 1)y${quote}`,
+          interp: { type: 'Interpolation', parts: [{ lit: 'x' }, { ref: { type: 'Expression' }, unquote: true }, { lit: 'y' }] }
+        }
+      }]
+    });
+  });
 
-    expect(value.type).toBe('Interpolation');
-    expect(value.parts[0]).toMatchObject({ lit: expect.stringContaining(quote) });
+  it('replays an interpolating string key and argument by their authored spelling', () => {
+    // Was `$m(~"ab")[r]` / `$m[~"a"]`: the string's src held its literal text with every hole emptied.
+    expect(firstRule('a { b: $m(~"a${x}b")[r] }')).toMatchObject({ rules: [{ value: { type: 'Reference', raw: '$m(~"a${x}b")[r]' } }] });
+    expect(firstRule('a { b: $m[~"a${x}"] }')).toMatchObject({ rules: [{ value: { type: 'Reference', raw: '$m[~"a${x}"]' } }] });
+    expect(firstRule('a { b: $m["a${x}"] }')).toMatchObject({ rules: [{ value: { type: 'Reference', raw: '$m["a${x}"]' } }] });
+  });
+
+  it.each([
+    ['double quotes', 'a { b: "x$(1 + 1)y" }', '"'],
+    ['single quotes', 'a { b: \'x$(1 + 1)y\' }', '\'']
+  ])('builds the same Quoted inside a `$( … )` computation (%s)', (_label, source, quote) => {
+    /* The expression family's string is the value family's node, not a second shape. */
+    const inner = source.replace(/: (.*) \}$/u, ': $($1) }');
+    expect(firstRule(inner)).toMatchObject({
+      rules: [{
+        value: {
+          type: 'Interpolation',
+          parts: [{
+            ref: {
+              type: 'Expression',
+              value: { type: 'Quoted', quote, escaped: false, src: `${quote}x$(1 + 1)y${quote}`, interp: { type: 'Interpolation' } }
+            }
+          }]
+        }
+      }]
+    });
   });
 
   it.each([

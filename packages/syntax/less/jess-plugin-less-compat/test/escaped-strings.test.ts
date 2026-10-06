@@ -51,7 +51,7 @@ describe('escaped strings at the Less plugin boundary', () => {
 
   /*
    * An escaped string that interpolates is the same escaped string (owner
-   * 2026-10-06, D22): its content is never read back from its text as a
+   * 2026-10-06, ledger V3): its content is never read back from its text as a
    * Dimension, a Color or a Keyword.
    */
   it('hands a plugin an interpolated escaped string as an escaped tree.Quoted', async () => {
@@ -65,6 +65,25 @@ describe('escaped strings at the Less plugin boundary', () => {
       }
     });
     expect(seen).toEqual(['Quoted("4px", escaped=true)', 'Quoted("red", escaped=true)', 'Quoted(\'a q\', escaped=true)']);
+  });
+
+  /*
+   * A mixin argument keeps the value it was evaluated to, so an escaped string
+   * forwarded through a variable and a mixin parameter is still the escaped
+   * string — it was a Dimension / Color / Keyword when the argument's bytes
+   * were read back.
+   */
+  it('hands a plugin an escaped string forwarded through a mixin parameter as an escaped tree.Quoted', async () => {
+    const seen: string[] = [];
+    await render('@n: 4; @a: ~"@{n}px"; @b: ~"red";\n.m(@p, @q) { a: probe(@p, @q); }\n.x { .m(@a, @b); }', {
+      install(_less, _manager, functions) {
+        functions.add('probe', (...args: unknown[]) => {
+          seen.push(...args.map(describeArg));
+          return 'ok';
+        });
+      }
+    });
+    expect(seen).toEqual(['Quoted("4px", escaped=true)', 'Quoted("red", escaped=true)']);
   });
 
   it('writes an escaped tree.Quoted result unquoted, as Less does', async () => {

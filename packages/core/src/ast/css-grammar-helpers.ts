@@ -528,15 +528,29 @@ export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaL
  * value from its flag only where trivia does, so no space is ever invented.
  */
 export function attributeSelectorFrom(children: readonly unknown[], triviaLog: readonly number[]): SimpleSelector {
-  if (!children.some(isInterpolation)) {
+  if (!children.some(child => attributeTemplate(child) !== null)) {
     return simpleSelector(textWithTriviaGaps(children, triviaLog));
   }
 
   // A dialect's interpolating slot (SCSS `#{…}`): the rest stays literal text.
   return interpolatedSimpleSelector(interpolationFromTemplateChildren(
-    withTriviaGaps(children, triviaLog).map(part => isInterpolation(part) ? part : { value: sourceText(part) }),
+    withTriviaGaps(children, triviaLog).map(part => attributeTemplate(part) ?? { value: sourceText(part) }),
     'CSS'
   ));
+}
+
+/**
+ * The template an attribute-selector child splices: an interpolation, or an
+ * interpolating string (SCSS `[a="#{$x}"]`), whose quotes are attribute-value
+ * syntax and so splice around its content.
+ */
+function attributeTemplate(child: unknown): Interpolation | null {
+  if (isInterpolation(child)) {
+    return child;
+  }
+  return isQuoted(child) && child.interp !== null
+    ? interpolation([{ lit: child.quote }, ...child.interp.parts, { lit: child.quote }])
+    : null;
 }
 
 export function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {
@@ -860,10 +874,19 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
  * to normalized, evaluated output.
  */
 function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+  return withGeneralEnclosedSource(value, authoredSource(span, state, 'A general-enclosed query group'));
+}
+
+/**
+ * The bytes of the parse input a reducer's span covers, read from the parse
+ * state. A run without the input in its state is a grammar wiring defect, so
+ * this throws rather than inventing a spelling.
+ */
+export function authoredSource(span: AstSourceSpan, state: unknown, what: string): string {
   if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
-    throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
+    throw new TypeError(`${what} needs the parse input in its parse state to keep its authored spelling.`);
   }
-  return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
+  return state.source.slice(span.start, span.end);
 }
 
 /*

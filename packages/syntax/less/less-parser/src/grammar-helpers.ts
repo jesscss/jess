@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -293,6 +293,9 @@ function staticText(value: unknown): string {
     return value;
   }
   if (isQuoted(value)) {
+    if (value.interp !== null) {
+      throw new TypeError('Less grammar produced a non-static import fragment.');
+    }
     return value.src;
   }
   // Parseman may retain a terminal capture as its token object when a
@@ -631,6 +634,36 @@ function interpolationFactFromChildren(children: readonly unknown[], span: Sourc
     children.slice(2, -1)
   );
   return { ref, src: `${src}}` };
+}
+
+/**
+ * One Less string — `"…"`, `'…'`, `~"…"`, `~'…'` — whether or not it
+ * interpolates: the opener at `children[0]`, the closing quote last, and the
+ * content between. `src`/`value` are the authored bytes (an `@{…}` hole is its
+ * own authored spelling); an interpolating string also carries its content as
+ * a template, the delimiters left on the node rather than in the parts.
+ */
+function quotedFromChildren(children: readonly unknown[], escaped: boolean): Quoted {
+  const opener = requireToken(children[0]).value;
+  const quote = requireToken(children[children.length - 1]).value;
+  const content = children.slice(1, -1);
+  let value = '';
+  let interpolates = false;
+  for (const child of content) {
+    if (isInterpolationFact(child)) {
+      value += child.src;
+      interpolates = true;
+    } else {
+      value += requireToken(child).value;
+    }
+  }
+  return quoted(
+    `${opener}${value}${quote}`,
+    value,
+    quote,
+    escaped,
+    interpolates ? interpolation(interpolationPartsFrom(content, true)) : null
+  );
 }
 
 function appendInterpolationLiteral(parts: Interpolation['parts'], lit: string): void {
@@ -2457,6 +2490,7 @@ export {
   mixinPrefixFromSelectorBranch,
   pseudoNameFromHead,
   queryClauseReducer,
+  quotedFromChildren,
   lessQueryComparisonOperators,
   rawLeafText,
   referenceWithBracketLookups,

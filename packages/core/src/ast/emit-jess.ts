@@ -564,7 +564,7 @@ class JessPrinter {
      * so it prints as the plain quoted path the `.jess` rule takes.
      */
     const target = node.target.type === 'Url' ? node.target.value : node.target;
-    if ((target.type !== 'Quoted' && target.type !== 'Any') || (target.type === 'Quoted' && target.escaped)) {
+    if ((target.type !== 'Quoted' && target.type !== 'Any') || (target.type === 'Quoted' && (target.escaped || target.interp !== null))) {
       return gap('StyleImport', 'an interpolated or escaped import target: `.jess` imports take a plain quoted path');
     }
     const quote = target.type === 'Quoted' ? target.quote : '"';
@@ -679,14 +679,19 @@ class JessPrinter {
         return node.src;
       case 'Null':
         return 'null';
-      case 'Quoted':
-        // A template's `value` is its literal text, so this one check covers both forms.
-        if (/\$[[({]/u.test(node.value)) {
+      case 'Quoted': {
+        /*
+         * A template's holes print as `.jess` holes; only its literal text can
+         * hold a `$` that `.jess` would read as one.
+         */
+        const text = node.interp === null ? node.value : node.interp.parts.map(part => 'lit' in part ? part.lit : '').join('');
+        if (/\$[[({]/u.test(text)) {
           return gap('Quoted', 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
         }
         return node.interp === null
           ? node.src
           : `${node.escaped ? '~' : ''}${node.quote}${this.template(node.interp, 'string')}${node.quote}`;
+      }
       case 'Any':
         if (node.src.includes('$')) {
           return gap('Any', 'opaque bytes containing `$`, which `.jess` reads as a sigil');
@@ -827,8 +832,11 @@ class JessPrinter {
       if (typeof name === 'number') {
         return gap('LookupStep', 'numeric member step');
       }
-      if (name.type === 'Keyword' || name.type === 'Quoted') {
+      if (name.type === 'Keyword') {
         return `[${name.src}]`;
+      }
+      if (name.type === 'Quoted') {
+        return `[${this.value(name, At.Value)}]`;
       }
     }
     if (step.kind === 'index' && typeof name === 'number' && step.indexBase === 0) {
@@ -899,9 +907,10 @@ class JessPrinter {
   }
 
   /**
-   * An `Interpolation` in value position: a quoted template (`"a${b}"`), an
-   * escaped one (`~"a${b}"`), or `$( … )`-headed parts with literal tails
-   * (`InterpolatedValue`).
+   * An `Interpolation` in value position: `$( … )`-headed parts with literal
+   * tails (`InterpolatedValue`), or an unquoted template (Less `@{n}px`), which
+   * `.jess` spells as the escaped string it is (`~"${n}px"`). A quoted template
+   * is a `Quoted`.
    */
   valueInterpolation(node: Interpolation, at: At): string {
     const first = node.parts[0];
@@ -917,9 +926,6 @@ class JessPrinter {
         }
       }
       return out;
-    }
-    if (first !== undefined && 'lit' in first && (first.lit.startsWith('"') || first.lit.startsWith('\''))) {
-      return this.template(node, 'string');
     }
     const body = this.template(node, 'string');
     if (body.includes('"')) {
@@ -974,9 +980,13 @@ class JessPrinter {
       if (entry.merge !== null || entry.valueOnNewLine === true) {
         return gap('CollectionEntry', 'merge marker or value-on-new-line layout on a collection entry');
       }
-      const key = !isSlotArray(entry.key) && (entry.key.type === 'Keyword' || entry.key.type === 'Quoted')
-        ? entry.key.src
-        : `[${this.value(entry.key, At.Value, inner)}]`;
+      const key = isSlotArray(entry.key)
+        ? `[${this.value(entry.key, At.Value, inner)}]`
+        : entry.key.type === 'Keyword'
+          ? entry.key.src
+          : entry.key.type === 'Quoted'
+            ? this.value(entry.key, At.Value, inner)
+            : `[${this.value(entry.key, At.Value, inner)}]`;
       const value = !isSlotArray(entry.value) && entry.value.type === 'Collection'
         ? this.collection(entry.value, inner)
         : this.value(entry.value, At.Value, inner);

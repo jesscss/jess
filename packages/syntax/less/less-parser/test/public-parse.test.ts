@@ -654,7 +654,7 @@ describe('public Less parse()', () => {
       rules: [
         {
           type: 'Plugin',
-          target: { type: 'Interpolation' },
+          target: { type: 'Quoted', src: '"./plugin-@{name}.js"', interp: { type: 'Interpolation' } },
           options: { type: 'Interpolation' }
         }
       ]
@@ -1273,15 +1273,21 @@ describe('public Less parse()', () => {
         {
           type: 'StyleImport',
           target: {
-            type: 'Interpolation',
-            parts: [
-              { lit: '"theme-' },
-              {
-                ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
-                unquote: true
-              },
-              { lit: '.css"' }
-            ]
+            type: 'Quoted',
+            src: '"theme-@{name}.css"',
+            quote: '"',
+            escaped: false,
+            interp: {
+              type: 'Interpolation',
+              parts: [
+                { lit: 'theme-' },
+                {
+                  ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
+                  unquote: true
+                },
+                { lit: '.css' }
+              ]
+            }
           }
         }
       ]
@@ -1313,6 +1319,54 @@ describe('public Less parse()', () => {
       .toThrow(LessImportPostludeError);
     expect(() => parse('@import (less) "theme.less" layer;'))
       .toThrow(LessImportPostludeError);
+  });
+
+  /*
+   * A string that interpolates is one `Quoted` whose `src` is what the author
+   * wrote, so a source replay built from it reads the author's text — never
+   * the literal text with every hole emptied (`~"@{x}"` as `~""`).
+   */
+  it('replays an interpolating string by its authored spelling', () => {
+    const reference = parse('.a { b: .m(~"@{x}")[@r]; }').rules[0];
+    expect(reference).toMatchObject({ rules: [{ value: { type: 'Reference', raw: '.m(~"@{x}")[@r]' } }] });
+
+    // The Condition's replay (written verbatim when no evaluator is injected).
+    expect(JSON.stringify(parse('.a { c: if((~"@{x}" = 0.5), y, n); }'))).toContain('"src":"(~\\"@{x}\\" = 0.5)"');
+    expect(parse('.a { b: ~"a@{x}b"; c: "a@{x}b"; }').rules[0]).toMatchObject({
+      rules: [
+        { value: { type: 'Quoted', src: '~"a@{x}b"', value: 'a@{x}b', escaped: true } },
+        { value: { type: 'Quoted', src: '"a@{x}b"', value: 'a@{x}b', escaped: false } }
+      ]
+    });
+  });
+
+  it('keeps a static-only string slot static: @use, @charset', () => {
+    expect(() => parse('@use "a-@{x}.js";')).toThrow();
+    expect(() => parse('@x: 8; @charset "UTF-@{x}";')).toThrow(/@charset/u);
+  });
+
+  /*
+   * Every slot that takes a string takes the one `Quoted`, interpolating or
+   * not: a `url()` body, an import target, a `calc()` operand and a keyframes
+   * name each receive it and write its spliced content.
+   */
+  it('reads an interpolating string the same in every slot that takes one', () => {
+    const source = '@a: x; @n: kf; @w: 1px;\n'
+      + '.u { b: url(~"@{a}/y.png"); c: url(\'@{a}/z.png\'); d: calc(~"@{w}" + 1px); }\n'
+      + '@keyframes ~\'@{n}-x\' { from { a: b; } }\n'
+      + '@import (css) url("@{a}.css");\n';
+    const document = parse(source);
+    expect(document.rules[3]).toMatchObject({
+      rules: [
+        { value: { type: 'Url', value: { type: 'Quoted', escaped: true, interp: { type: 'Interpolation' } } } },
+        { value: { type: 'Url', value: { type: 'Quoted', escaped: false, quote: '\'', interp: { type: 'Interpolation' } } } },
+        { value: { type: 'FunctionCall', name: 'calc' } }
+      ]
+    });
+    expect(document.rules[4]).toMatchObject({ type: 'AtRuleBlock', prelude: { type: 'Quoted', escaped: true, interp: { type: 'Interpolation' } } });
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '@import url("x.css");\n.u {\n  b: url(x/y.png);\n  c: url(\'x/z.png\');\n  d: calc(1px + 1px);\n}\n@keyframes kf-x {\n  from {\n    a: b;\n  }\n}\n'
+    );
   });
 
   it('retains CSS import boundary comments outside the public AST shape', () => {
@@ -3560,7 +3614,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'error',
-                args: [{ value: { type: 'Interpolation' } }]
+                args: [{ value: { type: 'Quoted', interp: { type: 'Interpolation' } } }]
               }
             }
           ]

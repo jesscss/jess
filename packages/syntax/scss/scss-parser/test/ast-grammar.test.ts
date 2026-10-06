@@ -539,14 +539,15 @@ describe('SCSS canonical-AST grammar', () => {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
+      const target = { type: 'Quoted', src: '"theme-#{$mode}.css"', value: 'theme-#{$mode}.css', quote: '"', escaped: false, interp: { type: 'Interpolation', parts: [{ lit: 'theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css' }] } };
       expect(result.value).toMatchObject({
         type: 'Stylesheet',
         rules: [{ type: 'AtRuleStatement', name: '@import', prelude: source.includes('url(')
-          ? { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] } }
-          : { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] }
+          ? { type: 'Url', value: target }
+          : target
         }]
       });
     }
@@ -1023,7 +1024,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('constructs structural interpolation in quoted strings and ordinary values directly', () => {
     const source = '$tone: blue; .card { content: "tone-#{$tone}"; color: shade-#{$tone}-strong; }';
     expect(parseScssCst(source).errors).toHaveLength(0);
-    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -1032,7 +1033,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'tone' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: 'content', value: { type: 'Interpolation', parts: [{ lit: '"tone-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }, { lit: '"' }] } },
+          { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"tone-#{$tone}"', interp: { type: 'Interpolation', parts: [{ lit: 'tone-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }] } } },
           { type: 'Declaration', name: 'color', value: { type: 'Interpolation', parts: [{ lit: 'shade-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }, { lit: '-strong' }] } }
         ] }
       ]
@@ -1724,7 +1725,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({

@@ -73,8 +73,7 @@ import {
   referenceArgSource,
   tokenSource,
   sourceFromState,
-  quotedInterpolationFromChildren,
-  escapedInterpolationFromChildren,
+  quotedFromChildren,
   quotedExpressionFact,
   reduceColonFeature,
   jessFunctionOpenName,
@@ -156,7 +155,7 @@ type JessRules = {
   GuardAnd: Combinator<GuardNode>;
   GuardOr: Combinator<GuardNode>;
   MixinGuard: Combinator<GuardNode>;
-  Quoted: Combinator<Quoted | Interpolation>;
+  Quoted: Combinator<Quoted>;
   LiteralQuoted: Combinator<Quoted>;
   Url: Combinator<Url>;
   PlainUrlInner: Combinator<string>;
@@ -1404,14 +1403,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * from every `$( … )` in the document and `$( 1px + 1px )` stops parsing.
    * These two re-enter the ambient trivia for the nested expression only.
    */
-  const quotedExpressionParser = parser(
-    { trivia: whitespace },
-    g.Expression
-  );
   const quotedExpressionInterpolationParser = parser(
     { trivia: whitespace },
     g.ExpressionInterpolation
   );
+
+  /*
+   * An interpolating string's content: text and `${…}` / `$( … )` holes, each
+   * hole reduced to a fact carrying its source spelling. Shared by the value
+   * and expression quoted families, which differ only in the escape they allow.
+   */
+  const interpolatedDoubleQuotedContent = many(choice(
+    g.ExpressionDollarBrace,
+    quotedExpressionInterpolationParser,
+    interpolatedDoubleQuotedText
+  ));
+  const interpolatedSingleQuotedContent = many(choice(
+    g.ExpressionDollarBrace,
+    quotedExpressionInterpolationParser,
+    interpolatedSingleQuotedText
+  ));
 
   /*
    * The escape is an OPTIONAL PREFIX on the quoted body, not a second spelling
@@ -1436,7 +1447,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     plainSingleQuotedText,
     literal('\'')
   ));
-  const Quoted = node<Quoted | Interpolation>(
+  const Quoted = node<Quoted>(
     'Quoted',
     choice(
       staticDoubleQuoted,
@@ -1444,48 +1455,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
       /*
        * The same optional `~` leads the interp-bearing arms, so the escape is
-       * written once per quote character rather than once per arm. An escaped
-       * string reduces to one escaped `Quoted` whether or not it interpolates
+       * written once per quote character rather than once per arm. A string
+       * reduces to one `Quoted` whether or not it interpolates or is escaped
        * (`~"a$(b)"` carries its content template in `interp`), so what the
        * escape means stays an eval-time decision over the same node as `~"a"`.
        */
       noTrivia(sequence(
         optional(literal('~')),
         literal('"'),
-        many(choice(
-          g.DollarBrace,
-          quotedExpressionParser,
-          interpolatedDoubleQuotedText
-        )),
+        interpolatedDoubleQuotedContent,
         literal('"')
       )),
       noTrivia(sequence(
         optional(literal('~')),
         literal('\''),
-        many(choice(
-          g.DollarBrace,
-          quotedExpressionParser,
-          interpolatedSingleQuotedText
-        )),
+        interpolatedSingleQuotedContent,
         literal('\'')
       ))
     ),
-    (children) => {
-      if (requireToken(children[0]).value !== '~') {
-        return quotedInterpolationFromChildren(children);
-      }
-      if (children.some(isInterpolation)) {
-        return escapedInterpolationFromChildren(children);
-      }
-      const quote = requireToken(children[1]).value;
-      const content = requireToken(children[2]).value;
-      return quoted(
-        `~${quote}${content}${quote}`,
-        content,
-        quote,
-        true
-      );
-    }
+    quotedFromChildren
   );
 
   /*
@@ -1753,37 +1741,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       staticSingleQuoted,
       noTrivia(sequence(
         literal('"'),
-        many(choice(
-          g.ExpressionDollarBrace,
-          quotedExpressionInterpolationParser,
-          interpolatedDoubleQuotedText
-        )),
+        interpolatedDoubleQuotedContent,
         literal('"')
       )),
       noTrivia(sequence(
         literal('\''),
-        many(choice(
-          g.ExpressionDollarBrace,
-          quotedExpressionInterpolationParser,
-          interpolatedSingleQuotedText
-        )),
+        interpolatedSingleQuotedContent,
         literal('\'')
       ))
     ),
-    (children) => {
-      if (requireToken(children[0]).value !== '~') {
-        return quotedExpressionFact(children);
-      }
-      const quote = requireToken(children[1]).value;
-      const content = requireToken(children[2]).value;
-      const value = quoted(
-        `~${quote}${content}${quote}`,
-        content,
-        quote,
-        true
-      );
-      return { value, src: value.src };
-    }
+    quotedExpressionFact
   );
 
   /*

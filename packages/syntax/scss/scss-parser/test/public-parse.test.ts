@@ -333,8 +333,8 @@ describe('@jesscss/scss-parser public parse API', () => {
       expect(parse(source)).toMatchObject({
         type: 'Stylesheet',
         rules: [{ type: 'AtRuleStatement', name: '@import', prelude: source.includes('url(')
-          ? { type: 'Url', value: { type: 'Interpolation' } }
-          : { type: 'Interpolation' } }]
+          ? { type: 'Url', value: { type: 'Quoted', interp: { type: 'Interpolation' } } }
+          : { type: 'Quoted', interp: { type: 'Interpolation' } } }]
       });
     }
   });

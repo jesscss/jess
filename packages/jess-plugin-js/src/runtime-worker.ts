@@ -619,6 +619,9 @@ const isBridgeValue = value =>
   && value.__jessBridge === true
   && typeof value.kind === 'string';
 
+/** A map declaration's `Anonymous` reading aid → the bridge value it stands for. */
+const facadeValues = new WeakMap();
+
 const decodeBridgeValue = (value) => {
   if (!isBridgeValue(value)) {
     return value;
@@ -647,10 +650,15 @@ const decodeBridgeValue = (value) => {
         /*
          * Legacy Less @plugin map helpers read the declaration's `.value.value`
          * as the raw CSS string (e.g. "576px"), then parseFloat it. Mirror the
-         * less.js Anonymous shape so that access pattern keeps working.
+         * less.js Anonymous shape so that access pattern keeps working. The
+         * shape is a reading aid, not the value: one a plugin returns
+         * unchanged (`theme-color` handing back a map colour) crosses back as
+         * the typed value it carried (`facadeValues`), not as raw text.
          */
         const cssText = decoded?.toCSS ? decoded.toCSS() : String(decoded);
-        return new Declaration(decl.name, new Anonymous(cssText));
+        const carrier = new Anonymous(cssText);
+        facadeValues.set(carrier, decl.value);
+        return new Declaration(decl.name, carrier);
       });
       return new Mixin(rules);
     }
@@ -705,6 +713,10 @@ const encodeBridgeValue = (value) => {
           quote: value.quote,
           escaped: value.escaped
         };
+  }
+  const carried = facadeValues.get(value);
+  if (carried !== undefined) {
+    return carried;
   }
   if (value instanceof Keyword || value instanceof Anonymous) {
     /*

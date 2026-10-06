@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, escapedTemplate, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -112,6 +112,7 @@ import {
   mixinDefinitionNameFromSelectorBranch,
   mixinParamsFromInterior,
   queryClauseReducer,
+  quotedFromChildren,
   lessQueryComparisonOperators,
   referenceWithTails,
   requireCallbackStatements,
@@ -341,7 +342,7 @@ type LessRules = {
   ExtendStatement: Combinator<BodyExtendFact>;
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
-  Quoted: Combinator<Quoted | Interpolation>;
+  Quoted: Combinator<Quoted>;
   LiteralQuoted: Combinator<Quoted>;
   EscapedQuoted: Combinator<Quoted>;
   PlainUrl: Combinator<Url>;
@@ -1079,25 +1080,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )),
     children => interpolation(interpolationPartsFrom(children, true))
   );
+  /** A double-quoted string's content: text, `@{…}` / `${…}` holes, and a lone `@` / `$`. */
+  const doubleQuotedContent = many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$')));
+  /** A single-quoted string's content, as {@link doubleQuotedContent}. */
+  const singleQuotedContent = many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$')));
+  /**
+   * A Less string, `"…"` / `'…'`: one `Quoted` whether or not it interpolates
+   * (ledger C2 — that it is a string is the parser's fact, not a reading of
+   * its delimiters later).
+   */
   const Quoted = node(
     'Quoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('"'), doubleQuotedContent, literal('"'))),
+      noTrivia(sequence(literal('\''), singleQuotedContent, literal('\'')))
     ),
-    (children) => {
-      const open = requireToken(children[0]);
-      if (!children.some(isInterpolationFact)) {
-        const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
-        return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
-      }
-      const parts = interpolationPartsFrom(children.slice(1, -1), true, open.value);
-      appendInterpolationLiteral(parts, open.value);
-      return interpolation(parts);
-    }
+    children => quotedFromChildren(children, false)
   );
-  // Plain (interpolation-free) single/double-quoted body shared by the quoted
-  // value, functional-pseudo, and attribute-selector static grammars.
+  /*
+   * Plain (interpolation-free) single/double-quoted body shared by the quoted
+   * value, functional-pseudo, and attribute-selector static grammars.
+   */
   const staticQuotedBody = choice(
     noTrivia(sequence(literal('"'), many(choice(g.QuotedDoubleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
     noTrivia(sequence(literal('\''), many(choice(g.QuotedSingleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
@@ -1105,33 +1108,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const LiteralQuoted = node(
     'Quoted',
     staticQuotedBody,
-    (children) => {
-      const open = requireToken(children[0]);
-      const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
-      return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
-    }
+    children => quotedFromChildren(children, false)
   );
-  // A Less `~"…"` / `~'…'` is one escaped `Quoted`, whether or not it
-  // interpolates (ledger V3): the interpolating form carries its content as a
-  // structural template beside the same quote and escaped facts.
+  /**
+   * A Less escaped string, `~"…"` / `~'…'`: the {@link Quoted} body with its
+   * escaped fact set — one `Quoted` whether or not it interpolates (ledger V3).
+   */
   const EscapedQuoted = node(
     'Quoted',
     choice(
-      noTrivia(sequence(literal('~"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('~\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('~"'), doubleQuotedContent, literal('"'))),
+      noTrivia(sequence(literal('~\''), singleQuotedContent, literal('\'')))
     ),
-    (children) => {
-      const opener = requireToken(children[0]).value;
-      const quote = opener[1];
-      if (quote !== '"' && quote !== '\'') {
-        throw new TypeError('Less escaped quote lost its quote delimiter.');
-      }
-      if (children.some(isInterpolationFact)) {
-        return escapedTemplate(interpolation(interpolationPartsFrom(children.slice(1, -1), true)), quote);
-      }
-      const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
-      return quoted(`${opener}${value}${quote}`, value, quote, true);
-    }
+    children => quotedFromChildren(children, true)
   );
   const PlainUrl = node(
     'Url',
@@ -1384,7 +1373,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(useKeyword, g.Quoted, optional(literal(';'))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const path = children[1];
-      if (!isQuoted(path)) {
+      if (!isQuoted(path) || path.interp !== null) {
         throw new TypeError('Less @use requires a quoted module path.');
       }
       closeAmbientFunctions(state);
@@ -1440,9 +1429,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // Upgrade path: a typed `ImportTail` split (media-query vs
           // supports/layer), the same gap the tail comment above records; then
           // this branches on `.type`. A typed Block tail bypasses it.
+          const tailTemplate = isInterp(tail) ? tail : isQuoted(tail) ? tail.interp : null;
           const tailText = isAny(tail)
             ? tail.src.toLowerCase()
-            : isInterp(tail) ? tail.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
+            : tailTemplate !== null ? tailTemplate.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
           const tailHasSupportsOrLayer = tailText.includes('supports') || tailText.includes('layer');
           if (!isLegacyImport || tailHasSupportsOrLayer) {
             throw new LessImportPostludeError(span.start, span.end);
@@ -4498,7 +4488,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span) => {
       const prelude = children.find(isValueNode);
-      if (prelude?.type === 'Interpolation') {
+      if (prelude?.type === 'Interpolation' || (prelude?.type === 'Quoted' && prelude.interp !== null)) {
         throw new LessDynamicCharsetError(span.start, span.end);
       }
       return atRuleStatement(requireToken(children[0]).value, prelude ?? null);

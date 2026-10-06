@@ -731,7 +731,7 @@ describe('Jess AST grammar facts', () => {
 
     /*
      * An escaped string that carries interpolation is the same escaped
-     * `Quoted`, its content template in `interp` (owner 2026-10-06, D22).
+     * `Quoted`, its content template in `interp` (owner 2026-10-06, ledger V3).
      */
     expect(parse('$theme: dark; .asset { value: ~"${theme}"; }')).toMatchObject({
       rules: [
@@ -741,8 +741,8 @@ describe('Jess AST grammar facts', () => {
           name: 'value',
           value: {
             type: 'Quoted',
-            src: '~""',
-            value: '',
+            src: '~"${theme}"',
+            value: '${theme}',
             quote: '"',
             escaped: true,
             interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
@@ -2361,7 +2361,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'path', raw: '@path' }, unquote: true }] } } },
           { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } },
-          { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Interpolation' } } }
+          { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Quoted', src: '"assets/${file}.svg"', interp: { type: 'Interpolation', parts: [{ lit: 'assets/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } } }
         ] }
       ]
     });
@@ -2447,7 +2447,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Ruleset',
       rules: [{
         type: 'Declaration', name: 'image',
-        value: { type: 'Url', value: { type: 'Interpolation' } }
+        value: { type: 'Url', value: { type: 'Quoted', src: '"${file}/$(.path).svg"', interp: { type: 'Interpolation' } } }
       }]
     });
     for (const [source, urlText] of [
@@ -2786,7 +2786,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"tone-${tone}-$(1 + 2)"', interp: { type: 'Interpolation' } } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
       ]
     });
   });

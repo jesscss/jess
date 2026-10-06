@@ -22,7 +22,7 @@
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
-import { any, isLiteralNode, isTypedLiteral, isValueBlock, quoted } from './nodes.js';
+import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -420,20 +420,12 @@ function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<
   if (isTypedCallValue(v)) {
     return v;
   }
-  return resolveEagerBytes(v, resolveCaller);
-}
 
-/**
- * An escaped string that interpolates (`~"@{x}"`) binds as the escaped string it
- * spells in the caller frame — the typed literal `~"0.5"` itself binds as (ledger
- * V3) — so its content is never re-read as a number or colour across the
- * boundary. Every other computed value binds as its evaluated bytes.
- */
-function resolveEagerBytes(v: ValueSlot, resolveCaller: ValueResolver): MaybePromise<CallValue> {
-  if ('type' in v && v.type === 'Quoted' && v.escaped) {
-    const quote = v.quote;
-    return mapMaybe(resolveCaller(v), content => quoted(`~${quote}${content}${quote}`, content, quote, true));
-  }
+  /*
+   * The bytes-only fallback for a caller that supplies no source resolver. The
+   * serializer always supplies one (its typed eager snapshot), so an argument
+   * keeps its type across the boundary there.
+   */
   return mapMaybe(resolveCaller(v), any);
 }
 
@@ -473,7 +465,7 @@ function resolveEagerDefault(
   }
   return resolveDefault
     ? resolveDefault(v, boundSoFar, def)
-    : resolveEagerBytes(v, resolveCaller);
+    : mapMaybe(resolveCaller(v), any);
 }
 
 function valueBytes(v: CallValue): string {
@@ -504,7 +496,8 @@ export function selectDefinitions(
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
   onNoViable?: () => void,
-  boundSources?: BoundSourceTracker
+  boundSources?: BoundSourceTracker,
+  untrackedSources?: BoundSourceResolvers
 ): MaybePromise<Selection[]> {
   type Viable = {
     def: MixinDefinition;
@@ -570,7 +563,7 @@ export function selectDefinitions(
     if (boundSources === undefined) {
       for (; index < candidates.length; index++) {
         const def = candidates[index]!;
-        const bound = bindArgs(def, call, resolveCaller, resolveDefault);
+        const bound = bindArgs(def, call, resolveCaller, resolveDefault, untrackedSources);
         if (isThenable(bound)) {
           const at = index;
           return bound.then((bindings) => {

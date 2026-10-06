@@ -70,10 +70,17 @@ export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('SCSS AST grammar is missing its public document entry.');
   }
+
+  /*
+   * The input rides the parse state, as it does for CSS, so a reducer can
+   * record the source bytes it covers — an interpolated string (`Quoted`)
+   * keeps its authored spelling. A reducer that does not read the state never
+   * copies it.
+   */
   const result = run(
     entry,
     input,
-    { trivia, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*

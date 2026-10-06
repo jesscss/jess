@@ -3376,15 +3376,22 @@ describe('Less AST grammar facts', () => {
             ]
           },
           target: {
-            type: 'Interpolation',
-            parts: [
-              { lit: '"theme-' },
-              {
-                ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
-                unquote: true
-              },
-              { lit: '.css"' }
-            ]
+            type: 'Quoted',
+            src: '"theme-@{name}.css"',
+            value: 'theme-@{name}.css',
+            quote: '"',
+            escaped: false,
+            interp: {
+              type: 'Interpolation',
+              parts: [
+                { lit: 'theme-' },
+                {
+                  ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
+                  unquote: true
+                },
+                { lit: '.css' }
+              ]
+            }
           }
         }
       ]
@@ -4474,15 +4481,20 @@ describe('Less AST grammar facts', () => {
               value: {
                 type: 'Url',
                 value: {
-                  type: 'Interpolation',
-                  parts: [
-                    { lit: '"' },
-                    {
-                      ref: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' },
-                      unquote: true
-                    },
-                    { lit: '/icon.svg"' }
-                  ]
+                  type: 'Quoted',
+                  src: '"@{base}/icon.svg"',
+                  quote: '"',
+                  escaped: false,
+                  interp: {
+                    type: 'Interpolation',
+                    parts: [
+                      {
+                        ref: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' },
+                        unquote: true
+                      },
+                      { lit: '/icon.svg' }
+                    ]
+                  }
                 }
               }
             }
@@ -8045,24 +8057,30 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'content',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: '"pre-' },
-                  {
-                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
-                    unquote: true
-                  },
-                  { lit: '-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'prop',
-                      name: 'tone',
-                      raw: '$tone'
+                type: 'Quoted',
+                src: '"pre-@{theme}-${tone}"',
+                value: 'pre-@{theme}-${tone}',
+                quote: '"',
+                escaped: false,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: 'pre-' },
+                    {
+                      ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
+                      unquote: true
                     },
-                    unquote: true
-                  },
-                  { lit: '"' }
-                ]
+                    { lit: '-' },
+                    {
+                      ref: {
+                        type: 'Lookup', kind: 'prop',
+                        name: 'tone',
+                        raw: '$tone'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             },
             {
@@ -8438,43 +8456,53 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'plain',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: '"a\\"b\\@{literal}-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'prop',
-                      name: 'tone',
-                      raw: '$tone'
-                    },
-                    unquote: true
-                  },
-                  { lit: '"' }
-                ]
+                type: 'Quoted',
+                src: '"a\\"b\\@{literal}-${tone}"',
+                quote: '"',
+                escaped: false,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: 'a\\"b\\@{literal}-' },
+                    {
+                      ref: {
+                        type: 'Lookup', kind: 'prop',
+                        name: 'tone',
+                        raw: '$tone'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             },
             {
               type: 'Declaration',
               name: 'interpolated',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: '"a\\"b\\@{literal}-' },
-                  {
-                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
-                    unquote: true
-                  },
-                  { lit: '-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'prop',
-                      name: 'tone',
-                      raw: '$tone'
+                type: 'Quoted',
+                src: '"a\\"b\\@{literal}-@{theme}-${tone}"',
+                quote: '"',
+                escaped: false,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: 'a\\"b\\@{literal}-' },
+                    {
+                      ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
+                      unquote: true
                     },
-                    unquote: true
-                  },
-                  { lit: '"' }
-                ]
+                    { lit: '-' },
+                    {
+                      ref: {
+                        type: 'Lookup', kind: 'prop',
+                        name: 'tone',
+                        raw: '$tone'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             }
           ]
@@ -8539,13 +8567,14 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('constructs an interpolating escaped Less string as the same escaped Quoted, carrying its template', () => {
+  it('constructs an interpolating string as the same Quoted, carrying its template', () => {
     /*
      * `~"pre-@{tone}"` is one escaped `Quoted`, exactly the node `~"pre-red"`
-     * is (owner 2026-10-06, ledger D22/V3): same `escaped`, same `quote`, with
-     * its content template in `interp` and its literal text in `value`/`src`.
+     * is (owner 2026-10-06, ledger V3), and `"pre-@{tone}"` the same unescaped
+     * one (C2): same `escaped`, same `quote`, with its content template in
+     * `interp` and its authored spelling in `src`/`value`.
      */
-    const source = '@tone: red; .x { color: ~"pre-@{tone}"; b: ~\'@{tone}\'; }';
+    const source = '@tone: red; .x { color: ~"pre-@{tone}"; b: ~\'@{tone}\'; c: "pre-@{tone}"; }';
     const result = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
@@ -8565,8 +8594,8 @@ describe('Less AST grammar facts', () => {
               name: 'color',
               value: {
                 type: 'Quoted',
-                src: '~"pre-"',
-                value: 'pre-',
+                src: '~"pre-@{tone}"',
+                value: 'pre-@{tone}',
                 quote: '"',
                 escaped: true,
                 interp: { type: 'Interpolation', parts: [{ lit: 'pre-' }, { ref: tone, unquote: true }] }
@@ -8577,9 +8606,22 @@ describe('Less AST grammar facts', () => {
               name: 'b',
               value: {
                 type: 'Quoted',
+                src: '~\'@{tone}\'',
                 quote: '\'',
                 escaped: true,
                 interp: { type: 'Interpolation', parts: [{ ref: tone, unquote: true }] }
+              }
+            },
+            {
+              type: 'Declaration',
+              name: 'c',
+              value: {
+                type: 'Quoted',
+                src: '"pre-@{tone}"',
+                value: 'pre-@{tone}',
+                quote: '"',
+                escaped: false,
+                interp: { type: 'Interpolation', parts: [{ lit: 'pre-' }, { ref: tone, unquote: true }] }
               }
             }
           ]
@@ -8588,10 +8630,11 @@ describe('Less AST grammar facts', () => {
     });
 
     /* One shape (V8-ARCHITECTURE invariant 1): the same fields, in the same order, as `~"x"`. */
-    const template = ((result.value as Stylesheet).rules[1] as Ruleset).rules[0] as Declaration;
-    expect(Object.keys(template.value)).toEqual(Object.keys(quoted('~"x"', 'x', '"', true)));
+    const rules = ((result.value as Stylesheet).rules[1] as Ruleset).rules as Declaration[];
+    expect(Object.keys(rules[0]!.value)).toEqual(Object.keys(quoted('~"x"', 'x', '"', true)));
+    expect(Object.keys(rules[2]!.value)).toEqual(Object.keys(quoted('"x"', 'x', '"', false)));
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '.x {\n  color: pre-red;\n  b: red;\n}\n'
+      '.x {\n  color: pre-red;\n  b: red;\n  c: "pre-red";\n}\n'
     );
   });
 

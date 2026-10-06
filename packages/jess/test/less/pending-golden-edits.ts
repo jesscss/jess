@@ -172,10 +172,11 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
   /*
    * A `$name` property accessor reads the declaration's parsed value, as a
    * variable does, instead of re-reading its joined bytes (owner ruling
-   * 2026-10-06, ledger D22/V3: parser-typed text is never re-read). `list-1:
-   * ~(1, 2, 3)` is a three-item list — `length(@v)` of the same value and the
-   * `legacy/functions` golden's `~(1; 2; 3)` both answer 3 — so `length($list-1)`
-   * is 3; the golden's 1 was the joined bytes read back as one keyword.
+   * 2026-10-06, ledger V3 and C2: parser-typed text is never re-read). `list-1:
+   * ~(1, 2, 3)` is the three-item list `length(@v)` of the same value already
+   * answers 3 for, so `length($list-1)` is 3; the golden's 1 was the joined
+   * bytes read back as one keyword. `~(…)` is v5 syntax with no 4.x oracle: this
+   * edit is a proposal awaiting the owner's sign-off.
    */
   ['tests-unit/functions/functions.less', [
     ['  length-1: 1;\n', '  length-1: 3;\n']

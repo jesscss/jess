@@ -88,14 +88,15 @@ export interface Color {
  * Pre-split fields ride so a forced literal materializes by reading them, never
  * re-scanning `src`.
  *
- * An escaped string that interpolates (`~"@{x}"`, `~"x$(1 + 1)y"`) is the SAME
- * node as one that does not (`~"0.5"`), so it carries the same `escaped` /
- * `quote` facts and evaluates to the same kind of value (ledger V3): `interp`
- * holds its content template, and evaluation splices it. `value` and `src` then
- * hold only the string's literal text, each hole read as empty (the reading
- * {@link importTargetSpelling} gives an interpolated path); anything that needs
- * the string's content evaluates `interp`. `interp` is `null` for every other
- * string, and is always present so the node keeps one shape.
+ * A string that interpolates (`"a@{x}"`, `~"@{x}"`, `.jess` `"x$(1 + 1)y"`,
+ * SCSS `"#{$x}"`) is the SAME node as one that does not, carrying the same
+ * `quote` / `escaped` facts (ledger V3, C2): `interp` holds its content
+ * template, without the delimiters, and evaluation splices it. `src` and
+ * `value` stay the authored spelling and the authored content (holes as
+ * written), so a source replay reads what the author wrote; anything that needs
+ * the string's CONTENT evaluates `interp` ({@link isStaticQuoted} tells the two
+ * apart). `interp` is `null` for a string that does not interpolate, and is
+ * always present so the node keeps one shape.
  */
 export interface Quoted {
   readonly type: 'Quoted';
@@ -1503,20 +1504,6 @@ export const quoted = (src: string, value: string, quote: string, escaped: boole
 
 /** A string whose content is its authored `value` — one that does not interpolate. */
 export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;
-
-/**
- * An escaped string whose content interpolates (`~"a @{v}"`): one {@link Quoted}
- * with its template. `value`/`src` are built from the template's literal parts.
- */
-export const escapedTemplate = (interp: Interpolation, quote: string): Quoted => {
-  let value = '';
-  for (const part of interp.parts) {
-    if ('lit' in part) {
-      value += part.lit;
-    }
-  }
-  return quoted(`~${quote}${value}${quote}`, value, quote, true, interp);
-};
 export const dimension = (number: number, unit = '', src = `${number}${unit}`): Dimension =>
   ({ type: 'Dimension', number, unit, src });
 
@@ -1864,30 +1851,22 @@ export const rule = (
  * of it, because the extension is authored plainly and only the stem substitutes.
  */
 export const importTargetSpelling = (target: Quoted | Url | Interpolation): string => {
-  if (target.type === 'Quoted') {
-    return target.value;
-  }
   const inner = target.type === 'Url' ? target.value : target;
   if (inner.type === 'Quoted') {
-    return inner.value;
+    return inner.interp === null ? inner.value : templateLiteralText(inner.interp);
   }
   if (inner.type === 'Any') {
     return inner.src;
   }
-  if (inner.type !== 'Interpolation') {
-    return '';
-  }
+  return inner.type === 'Interpolation' ? templateLiteralText(inner) : '';
+};
+
+/** A template's literal text, every hole read as empty. */
+const templateLiteralText = (interp: Interpolation): string => {
   let bytes = '';
-  for (const part of inner.parts) {
+  for (const part of interp.parts) {
     if ('lit' in part) {
       bytes += part.lit;
-    }
-  }
-  const quote = bytes[0];
-  if (quote === '"' || quote === '\'') {
-    bytes = bytes.slice(1);
-    if (bytes.endsWith(quote)) {
-      bytes = bytes.slice(0, -1);
     }
   }
   return bytes;

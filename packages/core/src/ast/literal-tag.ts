@@ -11,12 +11,13 @@
  *
  * The byte sniff (`sniffLiteral`) types text the parser never saw: a plain
  * string a JS/legacy plugin or module function returns, a host value, or a
- * tolerant CST leaf that has no AST. Text the parser produced is typed from the
- * parse, never through here. One evaluator reader remains, `materializeAny`:
- * the `Any` leaf, whose typed position is reached by the eager mixin-argument
- * snapshot (the bytes core evaluated an argument to). The former `LiteralTag`
- * enum / `LitFields` / packed-tag contract are gone — the node type IS the
- * classification.
+ * sass-spec fixture literal. Text the parser produced is typed from the parse,
+ * never through here — including an opaque `Any` leaf, which is opaque bytes
+ * (ledger V3), and an eager mixin-argument snapshot, which carries the value it
+ * was evaluated to. The tolerant-CST collection-key reader is the one parser
+ * reader left, escalated (a CST leaf carries no typed value). The former
+ * `LiteralTag` enum / `LitFields` / packed-tag contract are gone — the node type
+ * IS the classification.
  */
 import type { Value } from './value-eval.js';
 import { HEX } from './color.js';
@@ -176,18 +177,6 @@ function sniffBuild(text: string): Value {
     }
   }
   return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);
-}
-
-/**
- * Materialize an `Any` leaf in a typed position: sniff its verbatim `src` with NO
- * trim. KEPT for the eager mixin-argument snapshot, which binds an argument as the
- * bytes core evaluated it to (an `Any`) and so carries no type of its own; it is
- * the snapshot that loses the type, and the snapshot is where it should be kept.
- * The parser's own opaque `Any` leaves (`\9`, `opacity=50`, `[name]`, …) reach
- * here only as keywords.
- */
-export function materializeAny(src: string): Value {
-  return sniffBuild(src);
 }
 
 /**
