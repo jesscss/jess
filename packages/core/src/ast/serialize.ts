@@ -10546,7 +10546,19 @@ function cursorAfterLiteralWithTrivia(source: string, start: number, end: number
   return cursor;
 }
 
-function markCustomValueBlockTrivia(source: string, span: AstSourceSpan, e: Emit): void {
+/*
+ * Ledger F12: the comments written after a custom value's last part — the comment
+ * run that starts where the value ends, before its `;` or `!important` — are its
+ * trailing edge and stay in place: the value is written up to the last of them,
+ * and the block's comment replay does not write them again. -1 when there is none.
+ */
+function customValueTrailingRun(table: CommentTable, valueEnd: number): number {
+  const at = commentRunStartingAt(table, valueEnd);
+  return at >= 0 && runHasBlockComment(table, at) ? at : -1;
+}
+
+/** Mark the comment runs a custom value writes in place: those inside it, and its trailing run (or -1). */
+function markCustomValueBlockTrivia(source: string, span: AstSourceSpan, trailing: number, e: Emit): void {
   const trivia = e.trivia;
   if (trivia === undefined) {
     return;
@@ -10556,7 +10568,7 @@ function markCustomValueBlockTrivia(source: string, span: AstSourceSpan, e: Emit
     if (table.runStart[i]! > span.end) {
       break;
     }
-    if (table.runs[i]!.src === source && table.runEnd[i]! <= span.end && runHasBlockComment(table, i)) {
+    if (table.runs[i]!.src === source && (i === trailing || table.runEnd[i]! <= span.end) && runHasBlockComment(table, i)) {
       e.emittedBlockTrivia.addIndex(table, i);
     }
   }
@@ -10598,10 +10610,14 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
   if (spanStart === NO_SPAN) {
     return null;
   }
-  const span = { start: spanStart, end: sourceEndOf(value) };
-  let source: string | undefined;
-  let sawComment = false;
   const valueTable = commentTableOf(trivia);
+
+  const valueEnd = sourceEndOf(value);
+  const trailing = customValueTrailingRun(valueTable, valueEnd);
+  const hasTrailing = trailing >= 0;
+  const span = { start: spanStart, end: hasTrailing ? valueTable.commentEnd[valueTable.commentAt[trailing + 1]! - 1]! : valueEnd };
+  let source: string | undefined = hasTrailing ? valueTable.runs[trailing]!.src : undefined;
+  let sawComment = hasTrailing;
   for (let i = firstRunAtOrAfter(valueTable, span.start); i < valueTable.runs.length; i++) {
     const run = valueTable.runs[i]!;
     if (valueTable.runStart[i]! > span.end) {
@@ -10617,7 +10633,7 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
     return null;
   }
   if (value.type === 'Any') {
-    markCustomValueBlockTrivia(source, span, e);
+    markCustomValueBlockTrivia(source, span, hasTrailing ? trailing : -1, e);
     return source.slice(span.start, span.end);
   }
   if (value.type !== 'Interpolation') {
@@ -10646,7 +10662,7 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
     chunkStart = cursor;
   }
   pieces.push(source.slice(chunkStart, span.end));
-  markCustomValueBlockTrivia(source, span, e);
+  markCustomValueBlockTrivia(source, span, hasTrailing ? trailing : -1, e);
   return combineAll(pieces, values => values.join(''));
 }
 
@@ -14947,9 +14963,10 @@ function skipBodyTrivia(replay: BodyTriviaReplay | undefined, statement: Stateme
   if (end === undefined) {
     /*
      * A custom property is unspanned (its value keeps its comments, and a span
-     * would claim the run after it). The comments inside its value are the
-     * value's own (customPropertyValueWithTrivia): claimed, not stepped over,
-     * so the comments before them stay in place for the next statement.
+     * would claim the run after it). The comments inside its value, and its
+     * trailing edge, are the value's own (customPropertyValueWithTrivia):
+     * claimed, not stepped over, so the comments before them stay in place for
+     * the next statement.
      */
     const value = statement.type === 'Declaration' && !isValueSlotArray(statement.value) ? statement.value : undefined;
     const valueStart = value === undefined ? NO_SPAN : sourceStartOf(value);
@@ -14959,6 +14976,10 @@ function skipBodyTrivia(replay: BodyTriviaReplay | undefined, statement: Stateme
         if (table.runEnd[i]! <= valueEnd) {
           e.emittedBlockTrivia.addIndex(table, i);
         }
+      }
+      const trailing = customValueTrailingRun(table, valueEnd);
+      if (trailing >= 0) {
+        e.emittedBlockTrivia.addIndex(table, trailing);
       }
     }
     return;

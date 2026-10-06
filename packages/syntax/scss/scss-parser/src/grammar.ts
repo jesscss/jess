@@ -1550,7 +1550,8 @@ const scssFactory = (g: ScssInputRules) => {
    * The value runs under comment-only trivia, and its node takes the comments
    * written after its last part as trailing trivia: a comment written last
    * (`--x: red /* c *\/;`, `--x: /* c *\/;`) is inside the value's span and is
-   * replayed in place (ledger F12), as a comment written first is.
+   * replayed in place (ledger F12), as a comment written first is. SCSS block
+   * comments are not ambient trivia, so the value claims them itself.
    */
   const CustomValue = parser(
     { trivia: customValueCommentTrivia },

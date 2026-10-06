@@ -4747,19 +4747,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * The value runs under comment-only trivia, and its node takes the comments
-   * written after its last part as trailing trivia: a comment written last
-   * (`--x: red /* c *\/;`, `--x: /* c *\/;`) is inside the value's span and is
-   * replayed in place (ledger F12), as a comment written first is.
+   * The value runs under comment-only trivia, so a comment written before its
+   * first part is inside its span. One written after its last part
+   * (`--x: red /* c *\/;`) is the comment run its span ends at; the writer
+   * keeps both in place (ledger F12).
    */
-  const CustomValue = parser(
-    { trivia: customValueCommentTrivia },
-    node<ValueNode>(
-      'CustomValue',
-      many(g.CustomPart),
-      (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span),
-      { trailingTrivia: true }
-    )
+  const CustomValue = node<ValueNode>(
+    'CustomValue',
+    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
+    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
