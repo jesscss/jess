@@ -192,7 +192,7 @@ import { DocumentContext, documentTriviaOf, type Context, type SourceContext } f
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
-import { JessError } from '../error/jess-error.js';
+import { JessError, type TreeContextLike } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
@@ -461,29 +461,20 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     if (error instanceof JessError && error.code !== 'import/not-found') {
       throw error;
     }
-    const file = context.sourceContext?.file;
-    const source = file?.source;
-    const span = source === undefined ? undefined : sourceSpanOf(request.node);
-    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
+    const location = callSiteLocation(request.node, { context });
     if (error instanceof JessError && error.code === 'import/not-found') {
       throw ERR.importNotFound({
         node: request.node,
-        filePath: file?.fullPath,
-        source,
-        line: location?.line,
-        column: location?.column,
+        ...location,
         meta: {
           specifier: request.specifier,
-          from: file?.path ?? process.cwd()
+          from: location.ctx.file?.path ?? process.cwd()
         }
       });
     }
     throw ERR.importLoadFailed({
       node: request.node,
-      filePath: file?.fullPath,
-      source,
-      line: location?.line,
-      column: location?.column,
+      ...location,
       meta: {
         specifier: request.specifier,
         reason: error instanceof Error ? error.message : String(error)
@@ -3746,37 +3737,11 @@ function evalBinding(
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
-  const file = e.context?.sourceContext?.file;
-  const source = file?.source;
-  const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined
-    ? undefined
-    : lineColAt(source, span.start, file);
-  throw ERR.nameNotFound({
-    node,
-    filePath: file?.fullPath,
-    source,
-    line: location?.line,
-    column: location?.column,
-    meta: { symbol }
-  });
+  throw ERR.nameNotFound({ node, ...callSiteLocation(node, e), meta: { symbol } });
 }
 
 function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Property', e: EvalCtx): never {
-  const file = e.context?.sourceContext?.file;
-  const source = file?.source;
-  const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined
-    ? undefined
-    : lineColAt(source, span.start, file);
-  throw ERR.recursiveReference({
-    node,
-    filePath: file?.fullPath,
-    source,
-    line: location?.line,
-    column: location?.column,
-    meta: { kind, symbol }
-  });
+  throw ERR.recursiveReference({ node, ...callSiteLocation(node, e), meta: { kind, symbol } });
 }
 
 /**
@@ -4265,14 +4230,12 @@ const operationSignGlued = (node: Operation): boolean => {
   return opEnd - opStart === leftWidth + 1 + node.operator.length + rightWidth;
 };
 
-function arithmeticSiteLocation(node: object, e: EvalCtx): {
-  filePath?: string; source?: string; line?: number; column?: number;
-} {
+function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof callSiteLocation> {
   const location = callSiteLocation(node, e);
   if (!isOperationNode(node)) {
     return location;
   }
-  const source = location.source;
+  const source = location.ctx.file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
   if (source === undefined || span === undefined) {
     return location;
@@ -4287,7 +4250,7 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): {
   if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
     return location;
   }
-  const operatorLocation = lineColAt(source, operatorOffset, e.context?.sourceContext?.file);
+  const operatorLocation = lineColAt(source, operatorOffset, location.ctx.file);
   return { ...location, line: operatorLocation.line, column: operatorLocation.column };
 }
 
@@ -7772,15 +7735,17 @@ function moduleLoadFailed(statement: ModuleImport, e: EvalCtx): (error: unknown)
   };
 }
 
-/** Source position of a call node, for a diagnostic that points at the call site. */
-function callSiteLocation(node: object, e: EvalCtx): {
-  filePath?: string; source?: string; line?: number; column?: number;
-} {
+/**
+ * Source position of a node, for a diagnostic that points at it. The diagnostic
+ * keeps the file object, which says where the authored file sits in the parsed
+ * text, so its code frame counts lines as `lineColAt` does (ledger O16).
+ */
+function callSiteLocation(node: object, e: Pick<EvalCtx, 'context'>): { ctx: TreeContextLike; line?: number; column?: number } {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
-  return { filePath: file?.fullPath, source, line: location?.line, column: location?.column };
+  return { ctx: { file }, line: location?.line, column: location?.column };
 }
 
 /**

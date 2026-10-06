@@ -24,6 +24,7 @@ import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
 import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
 import { extractRelevantLines, lineColAt } from './error/code-frame.js';
+import { inAuthoredFile } from './error/diagnostics.js';
 import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
 import {
@@ -1832,6 +1833,11 @@ export class Context {
     const result = this.parseSource(plugin, virtualPath, content, {
       compilerOptions: this.opts
     });
+    if (sourceOffset) {
+      const owner = { sourceOffset, sourceEnd };
+      result.errors = result.errors.map(error => inAuthoredFile(error, content, owner));
+      result.warnings = result.warnings.map(warning => inAuthoredFile(warning, content, owner));
+    }
     this.errors.push(...result.errors);
     for (const warning of result.warnings) {
       this.warn(warning);

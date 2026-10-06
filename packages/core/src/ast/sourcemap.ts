@@ -143,18 +143,13 @@ export function buildAstSourceMap(
       continue;
     }
     const generated = lineColFromIndex(genLineStarts, position.start);
+
+    /* Counted in the file as authored: `lineColAt` skips the injected text. */
     const original = lineColAt(sourceText, sourceOffset, file);
-    let line = original.line;
-    let column = original.column - 1;
-    if (injected > 0) {
-      const origin = lineColAt(sourceText, injected, file);
-      line -= origin.line - 1;
-      column -= original.line === origin.line ? origin.column - 1 : 0;
-    }
     const source = normalizeFilename(filename, rootpath, basepath);
     maybeAddMapping(map, {
       generated: { line: generated.line, column: generated.column },
-      original: { line, column },
+      original: { line: original.line, column: original.column - 1 },
       source
     });
     if (options.outputSourceFiles === true && !contentAdded.has(source)) {
