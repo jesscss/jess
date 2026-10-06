@@ -754,7 +754,7 @@ const corpusCssThatIsNotAGolden = new Map<string, string>([
   ['tests-unit/urls/css/background.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
   ['tests-unit/urls/import/import-test-d.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
   ['tests-unit/urls/actual.css', 'a stray render of urls.less committed with the corpus; urls.css is the golden'],
-  ['tests-unit/directives-bubbling/directives-bubbling.css', 'left behind when less.js 937d1e44 deleted directives-bubbling.less']
+  ['tests-unit/directives-bubbling/directives-bubbling.css', 'byte-identical to tests-unit/at-rules-bubbling/at-rules-bubbling.css: less.js 937d1e44 moved directives-bubbling.less to at-rules-bubbling/ and left this copy behind. Restored as a fixture on less.js branch lane/v5-directives-bubbling']
 ]);
 
 describe('Less fixture discovery', () => {
@@ -767,6 +767,8 @@ describe('Less fixture discovery', () => {
       .filter(css => !claimedGoldens.has(css) && !corpusCssThatIsNotAGolden.has(css) && !isLegacyOracle(css))
       .sort();
     expect(unclaimed, 'corpus goldens that no Less fixture test claims').toEqual([]);
+    const claimedAnyway = [...corpusCssThatIsNotAGolden.keys()].filter(css => claimedGoldens.has(css));
+    expect(claimedAnyway, 'listed in corpusCssThatIsNotAGolden, but a fixture now claims it: remove the entry').toEqual([]);
   });
 });
 
