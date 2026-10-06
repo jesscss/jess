@@ -11,8 +11,8 @@
  *   - a bubbled `@media` (nested in source, emitted at root);
  *   - nested selectors, audited in BOTH `collapseNesting` modes (flattened vs
  *     nested output — different generated positions, same source tokens);
- *   - text a host injects ahead of the entry file, and output blanked after
- *     the walk.
+ *   - text a host injects ahead of and after the entry file, and output
+ *     blanked after the walk.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
@@ -118,14 +118,27 @@ describe('source map round-trip is mathematically correct', () => {
     });
 
     /*
-     * Less `globalVars` and `banner` are injected ahead of the entry source; the
-     * map must still point into the file as authored. The banner is emitted but
-     * has no authored home, so it is left unmapped rather than pointed at line 1.
+     * Less `globalVars` and `banner` are injected ahead of the entry source and
+     * `modifyVars` after it; the map must still point into the file as authored,
+     * and embed it as authored. Output written from injected text (the banner, a
+     * `modifyVars` ruleset) has no authored home, so it is left unmapped rather
+     * than pointed at line 1 or past the end of the file.
      */
-    it(`injected globalVars and banner do not shift entry-file mappings (collapseNesting=${collapseNesting})`, async () => {
+    it(`injected globalVars, modifyVars and banner do not shift entry-file mappings (collapseNesting=${collapseNesting})`, async () => {
       const entry = path.join(fixtures, 'reorder.less');
-      const vars = await auditRoundTrip(entry, collapseNesting, false, { globalVars: { injectedA: '1px', injectedB: 'red' } });
+      const vars = await auditRoundTrip(entry, collapseNesting, false, {
+        globalVars: { injectedA: '1px', injectedB: 'red' },
+        modifyVars: { injectedC: '2px' }
+      });
       expect(vars.count).toBeGreaterThanOrEqual(6);
+      const used = await auditRoundTrip(path.join(fixtures, 'injected.less'), collapseNesting, false, {
+        globalVars: { fromGlobal: '3px' },
+        modifyVars: { color: 'blue', block: '{ height: 2px; }' }
+      });
+      expect(used.css).toContain('width: 3px');
+      expect(used.css).toContain('color: blue');
+      expect(used.css).toContain('height: 2px');
+      expect(used.count).toBeGreaterThanOrEqual(3);
       for (const compress of [false, true]) {
         const banner = await auditRoundTrip(entry, collapseNesting, compress, { banner: '/*! injected banner */', globalVars: { injectedA: '1px' } });
         expect(banner.css).toContain('/*! injected banner */');

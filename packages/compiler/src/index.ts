@@ -277,9 +277,10 @@ export type CompilerHooks = {
   normalizeConfiguredPlugin?(plugin: PluginInterface, context: CompilerPluginContext): PluginInterface;
 
   /**
-   * Rewrite the entry source before it is parsed. Text injected AHEAD of the
-   * authored source is reported as `sourceOffset` so source maps still point
-   * into the file as written.
+   * Rewrite the entry source before it is parsed. The object form keeps the
+   * authored source unchanged at `sourceOffset`, with any injected text ahead
+   * of it and after it, so source maps still point into, and embed, the file as
+   * written.
    */
   prepareSource?(
     source: string,
@@ -311,10 +312,14 @@ type ResolvedRenderConfig = {
 const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
   typeof value === 'boolean' || (typeof value === 'object' && value !== null);
 
+/** The prepared entry source, and where the authored source sits in it. */
 const preparedSourceOf = (
-  prepared: string | { source: string; sourceOffset: number }
-): { source: string; sourceOffset: number } =>
-  typeof prepared === 'string' ? { source: prepared, sourceOffset: 0 } : prepared;
+  prepared: string | { source: string; sourceOffset: number },
+  authored: string
+): { source: string; sourceOffset: number; sourceEnd?: number } =>
+  typeof prepared === 'string'
+    ? { source: prepared, sourceOffset: 0 }
+    : { ...prepared, sourceEnd: prepared.sourceOffset + authored.length };
 
 /**
  * Serialize accepts only `false | 'native' | 'compact'`; `collapseNesting: true`
@@ -1173,13 +1178,14 @@ export class Compiler {
     await measureProfileAsync(profile, 'prewarmPlugins', () => this.prewarmPlugins(context));
 
     if (source != null) {
-      const prepared = preparedSourceOf(this.hooks.prepareSource?.(source, pluginContext) ?? source);
+      const prepared = preparedSourceOf(this.hooks.prepareSource?.(source, pluginContext) ?? source, source);
       const parsed = await measureProfileAsync(profile, 'parseString', () =>
         context.parseString(prepared.source, {
           filePath,
           type: language,
           extension,
-          sourceOffset: prepared.sourceOffset
+          sourceOffset: prepared.sourceOffset,
+          sourceEnd: prepared.sourceEnd
         }));
       return parsed.node;
     }
@@ -1194,12 +1200,13 @@ export class Compiler {
           const prepared = preparedSourceOf(this.hooks.prepareSource?.(rootSource, {
             ...pluginContext,
             filePath: resolvedPath
-          }) ?? rootSource);
+          }) ?? rootSource, rootSource);
           const parsed = await context.parseString(prepared.source, {
             filePath: resolvedPath,
             type: language,
             extension,
-            sourceOffset: prepared.sourceOffset
+            sourceOffset: prepared.sourceOffset,
+            sourceEnd: prepared.sourceEnd
           });
           if (parsed.node) {
             context.sourceTrees.set(resolvedPath, parsed.node);

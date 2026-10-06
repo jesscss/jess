@@ -1,0 +1,7 @@
+.injected {
+  width: @fromGlobal;
+  color: @color;
+  @block();
+}
+@color: red;
+@block: { height: 1px; };

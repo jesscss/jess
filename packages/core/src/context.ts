@@ -347,6 +347,12 @@ export interface DocumentContextOptions extends ContextOptions {
      * `banner`/`globalVars`). Source maps subtract it; absent means none.
      */
     sourceOffset?: number;
+
+    /**
+     * End of the authored file in `source` when text is injected after it (Less
+     * `modifyVars`). Source maps stop there; absent means the end of `source`.
+     */
+    sourceEnd?: number;
   };
 
   /**
@@ -1308,7 +1314,8 @@ export class Context {
     source: string | undefined,
     plugin: PluginInterface,
     dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined,
-    sourceOffset?: number
+    sourceOffset?: number,
+    sourceEnd?: number
   ): void {
     this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
     const documentContext = new DocumentContext(this.sessionOptions, {
@@ -1317,7 +1324,8 @@ export class Context {
         path: path.dirname(filePath),
         fullPath: filePath,
         ...(source === undefined ? {} : { source }),
-        ...(sourceOffset ? { sourceOffset } : {})
+        ...(sourceOffset ? { sourceOffset } : {}),
+        ...(sourceEnd === undefined ? {} : { sourceEnd })
       },
       plugin
     });
@@ -1810,9 +1818,14 @@ export class Context {
 
     /** See `DocumentContextOptions.file.sourceOffset`. */
     sourceOffset?: number;
+
+    /** See `DocumentContextOptions.file.sourceEnd`. */
+    sourceEnd?: number;
   } = {}) {
-    const { filePath, type, extension, sourceOffset } = options;
-    const virtualPath = filePath || `virtual.${extension || 'jess'}`;
+    const { filePath, type, extension, sourceOffset, sourceEnd } = options;
+
+    /* `extension` comes with or without its dot ('.less' or 'less'). */
+    const virtualPath = filePath || `virtual${extension?.startsWith('.') ? extension : `.${extension || 'jess'}`}`;
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
@@ -1841,7 +1854,7 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults, sourceOffset);
+    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults, sourceOffset, sourceEnd);
 
     return {
       node: document,
