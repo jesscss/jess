@@ -2275,21 +2275,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
   // is glued to a variable or grouping (`-@x`, `-(...)`); `- @x` is instead a
   // preserved space-list. The grammar keeps that source-order/spacing
-  // distinction rather than normalizing both spellings to negation.
+  // distinction rather than normalizing both spellings to negation. A sign is
+  // not an operator the `math` mode governs, so the negation computes in every
+  // mode: `-@x` with `@x: 1` is `-1` under `math: parens` too, never `-1 * 1`.
   const MathUnary = node(
     'MathUnary',
     sequence(
       optional(noTrivia(regex(/-(?=[(@])/))),
       g.Value
     ),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => children.length === 1
+    children => children.length === 1
       ? requireValueNode(children[0])
       : operation(
           '*',
           dimension(-1, '', '-1'),
           requireValueNode(children[1]),
           false,
-          lessMathOutsideParens(state, '*')
+          true
         ),
     { collapse: true }
   );

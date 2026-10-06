@@ -445,8 +445,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
-  ['tests-config/math-parens-division/parens.less', 'jess#351: `border-radius-keep: 4px * (1 + 1) / @var + 3px` (`@var` is a unitless 4) renders `8px / 7px` where the golden has `8px / 4 + 3px`; whether a unitless number may be added to a length outside `unitMode: loose` (the side `4 + 3px`) is an open owner question'],
-  ['tests-config/math-strict/parens.less', 'untriaged (jess#351): under `math: parens` the negations `-@var` and `-(@var)` render `-1 * 1` where the golden has `-1`'],
+  ['tests-config/math-parens-division/parens.less', 'jess#351: `border-radius-keep: 4px * (1 + 1) / @var + 3px` (`@var` is a unitless 4) renders `8px / 7px` where the golden has `8px / 4 + 3px`. The slash does not divide, so each side computes (P35), and `4 + 3px` is 7px in every unitMode today, as P35\'s owner-confirmed `4 / 2 + 5em` -> `4 / 7em` requires. Pending the owner\'s answer on whether a unitless number may be added to a length outside `unitMode: loose`; neither answer gives the golden\'s uncomputed `4 + 3px`'],
   ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 
   /*

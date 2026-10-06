@@ -109,6 +109,14 @@ describe('Less math boundaries', () => {
     }
   });
 
+  /* A sign is not an operator the math mode governs (tests-config/math/strict/parens.css). */
+  it('negates a variable or group in every math mode', async () => {
+    for (const mathMode of ['always', 'parens-division', 'parens'] as const) {
+      expect(await render('@var: 1; @w: 2px; .x { a: -@var; b: -(@var); c: -@w; d: -(@w * 2); }', { mathMode }), mathMode)
+        .toBe('.x { a: -1; b: -1; c: -2px; d: -4px; }');
+    }
+  });
+
   it('still consumes the parens of Less math outside a math function', async () => {
     expect(await render('@v: 1; .x { a: (1px + 2px) 3px; b: -(@v); c: (10vh); }'))
       .toBe('.x { a: 3px 3px; b: -1; c: 10vh; }');
