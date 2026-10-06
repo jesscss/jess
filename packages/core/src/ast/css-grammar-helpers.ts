@@ -1024,15 +1024,16 @@ export function authoredSource(span: AstSourceSpan, state: unknown, what: string
 }
 
 /**
- * Whether general-enclosed contents read a binding — a variable or property
- * reference, bare or inside an interpolation — anywhere the authored value
- * walker reaches (math, negation, `if()`, function arguments, groups).
+ * Whether general-enclosed contents read a binding — the dialect's
+ * interpolation, which P16 evaluates whatever its hole holds, or a variable or
+ * property reference — anywhere the authored value walker reaches (math,
+ * negation, `if()`, function arguments, groups).
  */
 function readsBinding(value: ValueNode): boolean {
   let reads = false;
   walkAuthoredValue(value, {
     enterNode(node) {
-      if (node.type === 'Lookup' || node.type === 'Reference') {
+      if (node.type === 'Lookup' || node.type === 'Reference' || (node.type === 'Interpolation' && node.parts.some(part => 'ref' in part))) {
         reads = true;
       }
       return reads ? 'skip-children' : undefined;
