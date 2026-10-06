@@ -1634,6 +1634,11 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
+
+  /*
+   * `<string>` (css-syntax-3 §4.3.5). An escaped string (`~"…"`) is Less syntax,
+   * not CSS: the dialects that have one override this rule (hard rule 1).
+   */
   const Quoted = node(
     'Quoted',
     choice(
@@ -1646,34 +1651,12 @@ const cssFactory = (g: GrammarSelf) => {
         literal('\''),
         g.SingleQuotedText,
         literal('\'')
-      )),
-
-      /*
-       * The public CST already recognizes this static escaped-string spelling.
-       * Reduce it to the existing `Quoted.escaped` fact, never an opaque value.
-       */
-      noTrivia(sequence(
-        literal('~"'),
-        g.DoubleQuotedText,
-        literal('"')
-      )),
-      noTrivia(sequence(
-        literal('~\''),
-        g.SingleQuotedText,
-        literal('\'')
       ))
     ),
     (children) => {
-      const opener = tokenText(children[0]);
-      const escaped = opener.startsWith('~');
-      const quote = escaped ? opener[1]! : opener;
+      const quote = tokenText(children[0]);
       const value = tokenText(children[1]);
-      return quoted(
-        `${escaped ? '~' : ''}${quote}${value}${quote}`,
-        value,
-        quote,
-        escaped
-      );
+      return quoted(`${quote}${value}${quote}`, value, quote, false);
     }
   );
   const UrlUnquoted = node(

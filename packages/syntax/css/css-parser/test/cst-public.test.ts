@@ -134,7 +134,7 @@ describe('@jesscss/css-parser/cst', () => {
     expectNoModeLabels(collapsed.tree);
   });
 
-  it('keeps CSS static escaped strings as a sigil plus a normal Quoted CST node', () => {
+  it('keeps a `~` before a string as a delimiter plus a normal Quoted CST node', () => {
     const result = parseCssCst('.asset { theme: ~"dark"; }');
 
     expect(result.errors).toHaveLength(0);

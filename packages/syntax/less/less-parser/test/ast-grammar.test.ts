@@ -9867,6 +9867,17 @@ describe('Less AST grammar facts', () => {
   });
 
   /*
+   * A `:lang()` range is an `<ident>` or a CSS `<string>`. A Less escaped string is
+   * neither, so `:lang(~"en")` stays an error, as in css and scss (ledger G39).
+   */
+  it('rejects an escaped string as a :lang() range', () => {
+    const result = run(lessGrammar.Document, ':lang(~"en") { a: b; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+  });
+
+  /*
    * Whitespace and comments inside a `:lang()` / `:dir()` / `:nth-*()` paren are
    * insignificant in CSS, so valid CSS stays valid here although Less selector
    * whitespace is a combinator: the CSS base's arguments own that padding. A

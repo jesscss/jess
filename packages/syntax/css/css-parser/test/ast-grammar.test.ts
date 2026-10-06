@@ -201,7 +201,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(serialize(parseAst(':nth-child(2n - 1 of .a,.b), :lang( en ,"fr" ), :dir( ltr ) { color: red; }')).css)
       .toBe(':nth-child(2n-1 of .a, .b),\n:lang(en, "fr"),\n:dir(ltr) {\n  color: red;\n}\n');
 
-    for (const source of [':lang(1.5)', ':lang(*-CH)', ':lang()', ':dir(foo bar)', ':dir("rtl")', ':dir()', ':nth-col(2n of .a)', ':nth-col']) {
+    for (const source of [':lang(1.5)', ':lang(*-CH)', ':lang(~"en")', ':lang()', ':dir(foo bar)', ':dir("rtl")', ':dir()', ':nth-col(2n of .a)', ':nth-col']) {
       expect(() => parseAst(`${source} { color: red; }`), source).toThrow();
     }
   });
