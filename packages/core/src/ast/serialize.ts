@@ -11552,9 +11552,10 @@ function planImportedStaticExtend(
   for (const statement of statements) {
     if (statement.type === 'Ruleset' && statement.selector.selectors.some(selectorBranchHasInterp)) {
       /*
-       * An interpolated selector resolves only in the frame the walk emits it in, so
-       * the rule and every rule nested in it are left to the walk recorder, which reads
-       * the walk's one resolution of it (ledger X7 as amended 2026-10-05).
+       * A selector the planner could not resolve (see `planImported`) resolves only in
+       * the frame the walk emits it in, so the rule and every rule nested in it are left
+       * to the walk recorder, which reads the walk's one resolution of it (ledger X7 as
+       * amended 2026-10-05).
        */
       e.importedWalkPlacement = true;
       collectBodyExtendAtoms([statement], overlay.dynamicTargetAtoms ??= new Set());
@@ -11621,6 +11622,24 @@ function planImportedStaticExtend(
 }
 
 const NO_AT_RULES: readonly AtRuleBlock[] = [];
+
+/**
+ * Whether the rules the import planner plans — the Ruleset and at-rule spine of a
+ * sheet — hold an interpolated rule selector. A boolean walk over the memoized
+ * per-branch flag; it allocates nothing.
+ */
+function bodyHasInterpRule(statements: readonly Statement[]): boolean {
+  for (const statement of statements) {
+    if (statement.type === 'Ruleset') {
+      if (statement.selector.selectors.some(selectorBranchHasInterp) || bodyHasInterpRule(statement.rules)) {
+        return true;
+      }
+    } else if (statement.type === 'AtRuleBlock' && bodyHasInterpRule(statement.rules)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Whether the import planner's walk reaches an `@import`/`@use`: at document level or
@@ -11824,16 +11843,32 @@ function planImportedFacts(
   let graphHasExtend = extendClass.static || extendClass.dynamic;
   let pendingPlans: Array<() => void> | null = null;
   const planImported = (
-    rules: readonly Statement[],
+    rules: Statement[],
     reference: boolean,
     atRules: readonly AtRuleBlock[],
     boundary: ExtendBoundary | null,
-    placement: object | undefined
+    placement: object | undefined,
+    importer: Frame
   ): void => {
     recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
     let scope = EMPTY_SCOPE;
     for (const atRule of atRules) {
       scope = atRuleScope(scope, atRule, overlay.atRuleScopes);
+    }
+
+    /*
+     * An interpolated rule selector is resolved before it is planned, as the root's are
+     * (ledger X7 as amended): in the sheet's own frame under its importer's, which is
+     * where the walk resolves it, and in place, so the walk writes that same
+     * resolution and nothing is resolved twice (ledger X12).
+     */
+    if (bodyHasInterpRule(rules)) {
+      resolveSelectorInterpForExtend(rules, {
+        parent: importer,
+        mixins: collectMixins(rules),
+        declIndex: collectDeclIndex(rules), cells: null, reassign: null,
+        statements: rules
+      }, e);
     }
     planImportedStaticExtend(rules, e, overlay, [], scope, null, reference, boundary, null, placement);
   };
@@ -12035,10 +12070,10 @@ function planImportedFacts(
           }
         }
         if (graphHasExtend) {
-          planImported(loaded.document.rules, sheetHidden, atRules, sheetBoundary, sheetPlacement);
+          planImported(loaded.document.rules, sheetHidden, atRules, sheetBoundary, sheetPlacement, scope);
         } else {
           const rules = loaded.document.rules;
-          (pendingPlans ??= []).push(() => planImported(rules, sheetHidden, atRules, sheetBoundary, sheetPlacement));
+          (pendingPlans ??= []).push(() => planImported(rules, sheetHidden, atRules, sheetBoundary, sheetPlacement, scope));
         }
       }
       const collect = async (): Promise<void> => {

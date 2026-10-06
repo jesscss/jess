@@ -117,6 +117,18 @@ describe('extend across @import', () => {
       );
     });
 
+    // Rules nested in an interpolated rule, and an interpolated rule nested in a static one.
+    it('rules nested in and around interpolated rules of an imported sheet', async () => {
+      const expected = [
+        '.foo :is(.c, .x),', '.z {', '  a: 1;', '}', '.p .foo.k,', '.y.k {', '  b: 2;', '}'
+      ].join('\n');
+      expect(await renderFile('interp-nested-main.less')).toBe(expected);
+      expect(await renderFile('interp-nested-main.less', false)).toBe(expected);
+      expect(await renderFile('interp-child-main.less', false)).toBe(
+        ['.foo {', '  .c,', '  .x {', '    a: 1;', '  }', '}'].join('\n')
+      );
+    });
+
     it('nested import chain', async () => {
       expect(await renderFile('chain-main.less')).toBe(smX);
     });

@@ -583,11 +583,16 @@ adjacent/child targets each match their respective combinator form.
   `.c-@{n} {}`) IS an extend target once resolved, at the root, in imported sheets and
   in mixin/loop bodies alike (ledger X7, amended by the owner 2026-10-05, as lessc 4.9.1
   behaves; it closes X15). 4.x `extend.md`'s "Extend is not able to match selectors
-  with variables" is superseded. The root's rules are resolved before planning whenever
-  the import graph has an extend; an imported sheet's interpolated rule, and the rules
-  nested in it, are recorded by the render walk where they land. An interpolation glued
-  onto a class or id name continues that name: `.c-@{n}` with `@n: 1` is the one class
-  `.c-1`, as the parser keeps `.a.c-@{n}`'s `.c-@{n}` one token.
+  with variables" is superseded. Whenever the import graph has an extend, the root's
+  rules and a planned imported sheet's are resolved before planning (the sheet's in its
+  own frame under its importer's) and written as resolved, so both output modes see the
+  resolved rule, nested targets included; a selector that does not resolve there, and
+  every rule of a sheet the walk places (inside a ruleset or a placing body), is recorded
+  by the render walk where it lands. An interpolation glued onto a class or id name
+  continues that name when the value starts as a name: `.c-@{n}` with `@n: 1` is the one
+  class `.c-1`, as the parser keeps `.a.c-@{n}`'s `.c-@{n}` one token, while a value that
+  opens with a delimiter starts a simple of its own (`@v: ~".b"` makes `.a@{v}` the two
+  simples `.a.b`).
   KNOWN GAPS: a resolved interpolation is one token, so a simple the parser folded into
   the interpolation is not a part of its own — `.c-@{n}.k` and `@{n}.k` at the head of a
   rule's selector resolve to the one token `.c-1.k` (mid-compound `.a.c-@{n}.k` keeps
