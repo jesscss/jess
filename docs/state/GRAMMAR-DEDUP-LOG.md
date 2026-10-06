@@ -760,13 +760,13 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
 - #52 node-shape survey hole · #54 collectTolerantDiagnostics ignores rule config
 - #55 oracle byte-identity blind to wrong-but-round-trippable trees
 - #56 Opaque* family removal (`docs/design/OPAQUE-FAMILY-REMOVAL.md`) — depends on lane 5
-- #59 less ruleset-body tail: `literal('{'), rulesetBody, optional(g.Call), literal('}'),
+- #59 less ruleset-body tail: `literal('{'), blockBody, optional(g.Call), literal('}'),
   optional(literal(';'))` is spelled in four rules (RulesetWithExtends,
   NestedRulesetWithExtends, MixinDefinitionContinuation, RulesetTail; the reducers already
   share `bodyExtensionsOf`, 2026-10-05). Hoisting the tail into one parameterless const
-  changes CST nesting, so it needs its own before/after oracle. Also: `blockBody` and
-  `rulesetBody` differ by the one `ExtendStatement` arm — do not unify until ledger X19
-  rules where a detached-ruleset or nested at-rule extend attaches.
+  changes CST nesting, so it needs its own before/after oracle. The former `rulesetBody`
+  is now `blockBody` itself: every braced body takes the `ExtendStatement` arm since
+  ledger X19 was ruled (2026-10-06).
 - #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
   dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
   and it is in the alpha release preflight (PR CI deliberately skips it — see

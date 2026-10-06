@@ -62,6 +62,7 @@ import {
   isAny,
   isBareMixinCallFact,
   bodyExtensionsOf,
+  isBodyExtendFact,
   isComplexTailFact,
   isLessDeclaration,
   isExtendTargetFact,
@@ -296,7 +297,7 @@ type LessRules = {
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
   ContainerCondition: Combinator<ValueNode>;
-  MediaContainerBody: Combinator<readonly Statement[]>;
+  MediaContainerBody: Combinator<readonly (Statement | BodyExtendFact)[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -3430,14 +3431,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     { collapse: true }
   );
   const blockItem = choice(atStatement, mixinStatement, g.FunctionStatement, nestedGuardedRuleset, declarationItem, literal(';'));
-  const blockBody = many(blockItem);
-  // The ruleset body adds one extra arm (`ExtendStatement`) after the
-  // shared arms. Nesting the shared choice ahead of it preserves the original
-  // precedence: the shared arms (including the empty `;`) are tried in the same
-  // order first, then the extend statement — behaviourally identical to the
-  // former flat `choice(<shared arms>, ExtendStatement, ';')` because
-  // an extend head never matches `;` or any shared arm the flat list did not.
-  const rulesetBody = many(choice(blockItem, g.ExtendStatement));
+  // Every braced statement body — a ruleset's, a mixin definition's, an
+  // at-rule block's — takes a body-form `&:extend()` after the shared arms
+  // (ledgers X16, X19). An extend head never matches `;` or a shared arm, so the
+  // shared arms keep their precedence. The reducer of the node that owns the
+  // body hoists the extends; a body with no rule to land in extends nothing.
+  const blockBody = many(choice(blockItem, g.ExtendStatement));
   const EachName = node(
     'EachName',
     sequence(literal('@'), lessVariableName),
@@ -3459,11 +3458,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.FunctionStatement, declarationItem, literal(';'));
   const ValueBlock = node(
     'ValueBlock',
-    sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
+    sequence(literal('{'), many(choice(g.BodyStatement, g.ExtendStatement)), optional(g.Call), literal('}')),
     /* The braces are the node's first and last tokens, so its own span gives the
-     * body span (where its comments are) with no raw-children capture. */
+     * body span (where its comments are) with no raw-children capture. A body-form
+     * `&:extend()` extends the rule each call lands in (ledger X19). */
     (children, _fields, span) => withBodySpan(
-      classifyValueBlock(requireValueBlockBody(children)),
+      classifyValueBlock(requireValueBlockBody(children.filter(child => !isBodyExtendFact(child))), bodyExtensionsOf(children)),
       { start: span.start + 1, end: span.end - 1 }
     )
   );
@@ -3677,7 +3677,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(
       withBlockBody(
-        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), children.filter(isStatement)),
+        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), children.filter(isStatement), bodyExtensionsOf(children)),
         rawChildren
       ),
       span
@@ -4055,7 +4055,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}')
     ),
-    children => children.filter(isStatement)
+    children => children.filter(child => isStatement(child) || isBodyExtendFact(child))
   );
   const MediaContainerBlock = node(
     'QueryAtRuleBlock',
@@ -4076,7 +4076,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         throw new TypeError('Less conditional at-rule lost its body facts.');
       }
       return withSourceSpan(
-        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), requireStatementArray(body)),
+        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), requireStatementArray(body.filter(isStatement)), bodyExtensionsOf(body)),
         span
       );
     }
@@ -4335,7 +4335,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // component. Exclude the exact selected prelude object rather than
       // reclassifying it through text or weakening the statement grammar.
       const body = children.filter(isStatement).filter(statement => statement !== prelude);
-      return withSourceSpan(withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body), rawChildren), span);
+      return withSourceSpan(withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), rawChildren), span);
     }
   );
   const UnknownAtPrelude = node(
@@ -5223,7 +5223,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const RulesetWithExtends = node(
     'Ruleset',
-    sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const bodyExtensions = bodyExtensionsOf(children);
@@ -5244,7 +5244,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const NestedRulesetWithExtends = node(
     'Ruleset',
-    sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const bodyExtensions = bodyExtensionsOf(children);
@@ -5263,7 +5263,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   /**
    * A parametric mixin definition after its `(` … interior: `)`, an optional guard, and
-   * a ruleset body. The body is the ruleset's own (`rulesetBody`), so a body-form
+   * a ruleset body. The body is the ruleset's own (`blockBody`), so a body-form
    * `&:extend()` is as legal here as in the rule the mixin is called into; the
    * definition carries it to each call site (ledger X16).
    */
@@ -5275,7 +5275,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
       ),
-      rulesetBody,
+      blockBody,
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
@@ -5337,7 +5337,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       many(g.SelectorBranchTail),
       optional(g.MixinGuard),
       literal('{'),
-      rulesetBody,
+      blockBody,
       optional(g.Call),
       literal('}'),
       optional(literal(';'))

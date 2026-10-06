@@ -499,6 +499,14 @@ export interface Interpolation extends SpanSlots {
 export interface AnonymousMixin extends BodySpanSlots {
   readonly type: 'AnonymousMixin';
   readonly rules: Statement[];
+
+  /*
+   * A body-form `&:extend()` written directly in a detached ruleset (ledger X19):
+   * each call's body lands in a rule, and that rule extends, as a mixin
+   * definition's does (X16). Undefined when the body has none, but always
+   * DECLARED, so a block with one shares the hidden class of one without.
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
   readonly params?: Param[];
 }
 
@@ -1661,15 +1669,21 @@ export const pseudoSelector = (
  */
 export const anPlusB = (text: string): AnPlusB => ({ type: 'AnPlusB', src: text.replace(/[ \t\n\r\f]+/g, '') });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
-export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
-  params === undefined
-    ? { type: 'AnonymousMixin', rules, _bs: NO_SPAN, _be: NO_SPAN }
-    : { type: 'AnonymousMixin', rules, params, _bs: NO_SPAN, _be: NO_SPAN };
+export const anonymousMixin = (
+  rules: Statement[],
+  params?: Param[],
+  extendInstructions?: readonly ExtendInstruction[]
+): AnonymousMixin => {
+  const extend = extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined;
+  return params === undefined
+    ? { type: 'AnonymousMixin', rules, extendInstructions: extend, _bs: NO_SPAN, _be: NO_SPAN }
+    : { type: 'AnonymousMixin', rules, extendInstructions: extend, params, _bs: NO_SPAN, _be: NO_SPAN };
+};
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
  * data collections are constructed by their dedicated collection grammars. */
-export const classifyValueBlock = (rules: Statement[]): AnonymousMixin => {
-  return anonymousMixin(rules);
+export const classifyValueBlock = (rules: Statement[], extendInstructions?: readonly ExtendInstruction[]): AnonymousMixin => {
+  return anonymousMixin(rules, undefined, extendInstructions);
 };
 export const forNode = (
   iterable: ValueSlot | MixinCall,

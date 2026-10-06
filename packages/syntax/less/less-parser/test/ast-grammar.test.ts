@@ -2432,6 +2432,35 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  /*
+   * Ledger X19: a body-form `&:extend()` in an at-rule block or a detached ruleset is
+   * carried on that block, with no subject, for the render walk to apply where it
+   * lands. The body keeps only its statements, and the field is declared either way.
+   */
+  it.each([
+    ['a @media block in a rule', '.a { @media print { c: d; &:extend(.sm all); } }', (rules: readonly unknown[]) => (rules[0] as { rules: unknown[] }).rules[0]],
+    ['a @supports block in a mixin', '.m() { @supports (display: grid) { &:extend(.sm); c: d; } }', (rules: readonly unknown[]) => (rules[0] as { rules: unknown[] }).rules[0]],
+    ['a generic at-rule block in a rule', '.a { @layer x { &:extend(.sm); c: d; } }', (rules: readonly unknown[]) => (rules[0] as { rules: unknown[] }).rules[0]],
+    ['a detached ruleset', '@r: { c: d; &:extend(.sm); };', (rules: readonly unknown[]) => (rules[0] as { value: unknown }).value]
+  ])('carries a body-form extend written in %s on the block', (_label, source, blockOf) => {
+    const result = run(lessGrammar.Document!, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const block = blockOf(stylesheet(result.value).rules) as { rules: unknown[]; extendInstructions: Array<{ subject?: unknown }> | undefined };
+    expect(block.rules).toEqual([expect.objectContaining({ type: 'Declaration' })]);
+    expect(block.extendInstructions).toEqual([expect.objectContaining({ target: expect.objectContaining({ type: 'SelectorList' }) })]);
+    expect(block.extendInstructions![0]!.subject).toBeUndefined();
+
+    const plain = blockOf(stylesheet(run(lessGrammar.Document!, source.replace(/&:extend\([^)]*\); ?/, ''), {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    }).value).rules) as object;
+    expect(Object.keys(plain)).toEqual(Object.keys(block));
+    expect(plain).toMatchObject({ extendInstructions: undefined });
+  });
+
   it('parses a leading-combinator nested rule inside a detached ruleset body', () => {
     const source = '@r: { ~ .a { x: 1; } };';
     const result = run(lessGrammar.Document, source, {
@@ -2969,9 +2998,9 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('keeps standalone extend statements out of direct detached and callback bodies until they have a statement fact', () => {
+  /* A detached ruleset carries its body-form extend (ledger X19, above); an `each()` callback has no fact for one. */
+  it('keeps a standalone extend statement out of an each() callback body', () => {
     for (const source of [
-      '@theme: { &:extend(.target); };',
       'each(1, { &:extend(.target); });'
     ]) {
       const cst = parseLessCst(source);

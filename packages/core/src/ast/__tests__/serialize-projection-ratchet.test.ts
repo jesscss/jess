@@ -318,7 +318,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function: a paren group around kept math or raw bytes keeps its own
     // parens in both value lanes (`isInertGroup`), so a group that is a whole
     // function argument inside a math function is no longer dropped.
-    expect(occurrences(/^function |^async function /gmu)).toBe(539);
+    // +1 function (ledger X19): the body-form extends the walk applies where a body
+    // lands — a mixin definition's, an at-rule block's, a detached ruleset's — are
+    // read in one place (`walkAppliedExtends`) by the five extend classifiers.
+    expect(occurrences(/^function |^async function /gmu)).toBe(540);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

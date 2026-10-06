@@ -155,6 +155,35 @@ describe('Less mixin semantic contracts through the public AST route', () => {
   });
 
   /*
+   * Ledger X19: a body-form `&:extend()` in a detached ruleset extends the rule each
+   * call lands in, as a mixin definition's does (X16); one in an at-rule block extends
+   * the rule the block lands in, within the block's scope (EXTEND-SEMANTICS §8), as if
+   * written in that rule's body inside the block. Outside every rule it extends
+   * nothing. Expected output is lessc 4.9.1's.
+   */
+  it('applies a body-form extend in a detached ruleset or a nested at-rule block (X19)', async () => {
+    for (const collapseNesting of [false, true]) {
+      await expect(parseAndRender('@r: { &:extend(.sm); };\n.x { @r(); }\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.sm,\n.x {\n  b: 2;\n}\n');
+      await expect(parseAndRender('@r: { &:extend(.sm); };\n@r();\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.sm {\n  b: 2;\n}\n');
+      await expect(parseAndRender('.a { @media print { &:extend(.sm); } }\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.sm {\n  b: 2;\n}\n');
+      await expect(parseAndRender('@media print { &:extend(.sm); .sm { c: 3; } }', collapseNesting))
+        .resolves.toBe('@media print {\n  .sm {\n    c: 3;\n  }\n}\n');
+    }
+    const extendedInPrint = (rule: string): string => `@media print {\n  ${rule} .z,\n  ${rule} {\n    c: 3;\n  }\n}\n`;
+    await expect(parseAndRender('.y { @media print { &:extend(.y .z); .z { c: 3; } } }'))
+      .resolves.toBe(extendedInPrint('.y'));
+    await expect(parseAndRender('.y { @supports (display: grid) { &:extend(.y .z); .z { c: 3; } } }'))
+      .resolves.toBe(extendedInPrint('.y').replace('@media print', '@supports (display: grid)'));
+    await expect(parseAndRender('.m() { @media print { &:extend(.y .z); .z { c: 3; } } }\n.y { .m(); }'))
+      .resolves.toBe(extendedInPrint('.y'));
+    await expect(parseAndRender('@r: { @media print { &:extend(.y .z); .z { c: 3; } } };\n.y { @r(); }'))
+      .resolves.toBe(extendedInPrint('.y'));
+  });
+
+  /*
    * A ruleset called as a mixin, with or without parentheses, carries its body-form
    * extend into the caller the same way; an inline `:extend()` on its selector stays
    * its own (lessc 4.9.1 gives the same output).
