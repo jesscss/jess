@@ -200,20 +200,47 @@ function astBranchSpecificity(branch: SelectorBranch, compoundOnly: boolean, inH
   return sum;
 }
 
+/* The pseudo-elements CSS 2 spelled with one colon, which keep that spelling (css-pseudo-4 §2). */
+const LEGACY_PSEUDO_ELEMENTS = new Set([':before', ':after', ':first-line', ':first-letter']);
+
+/** Whether a parsed simple token is a pseudo-element, read from the parser token. */
+function isPseudoElement(sim: SimpleToken): boolean {
+  const text = sim.type === 'PseudoSelector' ? sim.name : sim.text;
+  return text !== null && text.charCodeAt(0) === 58 /* : */
+    && (text.charCodeAt(1) === 58 || LEGACY_PSEUDO_ELEMENTS.has(text.toLowerCase()));
+}
+
+/** Whether a parsed branch carries a pseudo-element in one of its own compounds. */
+function hasPseudoElement(branch: SelectorBranch): boolean {
+  if (branch.type === 'SimpleSelector' || branch.type === 'PseudoSelector') {
+    return isPseudoElement(branch);
+  }
+  for (const part of branch.value) {
+    if (typeof part !== 'string' && hasPseudoElement(part)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * The nesting fold's group key for one child branch of `A <child list>`. The
  * guarded fold (`'native'`) keys on specificity; the unguarded fold
  * (`'compact'`, group-max specificity) gives every descendant branch one key.
- * Either way a branch that leads with a combinator (`> .col`) is a relative
- * selector, invalid inside `:is()`, and joins `A` on its own. The namespace pipe
- * (`|h1`) is part of the compound, not a combinator.
+ * In both, a branch `:is()` cannot hold joins `A` on its own: one that leads
+ * with a combinator (`> .col`) is a relative selector, and one that carries a
+ * pseudo-element would match nothing (ledger O14). The namespace pipe (`|h1`) is
+ * part of the compound, not a combinator.
+ *
+ * ponytail: an interpolated token is read as no pseudo-element under `'compact'`;
+ * its kind is known only once it resolves, and the guarded fold keeps it out.
  */
 export function nestingGroupKey(branch: SelectorBranch, guarded: boolean): number {
   if (guarded) {
     return astBranchSpecificity(branch, true, false);
   }
   const comb = branch.type === 'RelativeSelector' ? branch.value[0] : undefined;
-  return comb !== undefined && comb !== ' ' && comb !== '|' ? -1 : 0;
+  return (comb !== undefined && comb !== ' ' && comb !== '|') || hasPseudoElement(branch) ? -1 : 0;
 }
 
 function irCompoundSpecificity(compound: Compound, compoundOnly: boolean): number {

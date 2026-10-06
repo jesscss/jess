@@ -9029,7 +9029,8 @@ function wrapIsList(branches: string[]): string {
  *   invalid-selector behaviour: `.t` + `th, .x, td, thead th` →
  *   `.t :is(th, td), .t .x, .t thead th`.
  * - `'compact'` puts every descendant branch in one group (group-max
- *   specificity).
+ *   specificity), except a branch carrying a pseudo-element, which `:is()`
+ *   cannot hold (ledger O14).
  *
  * A branch that LEADS WITH A COMBINATOR is never grouped; it is emitted as its
  * own header branch with the combinator hoisted out — `.no-gutters` +
