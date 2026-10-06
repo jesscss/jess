@@ -4152,11 +4152,11 @@ function evalTypedSlot(
     return evalTyped(slot, frame, e, projectMixinValues, argument);
   }
   const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, argument));
-  if (argument !== ARG_BINDING) {
+  if (!replaysLayout(argument)) {
     return combineAll(values, resolved => resolved);
   }
 
-  /* A binding's authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
+  /* The authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
   const layout = replayedLayoutOf(slot);
   return combineAll(values, resolved => layout === undefined ? resolved : withValueLayout(resolved, layout));
 }
@@ -4398,22 +4398,29 @@ const ARG_WRITTEN = 2;
 /**
  * A mixin argument evaluated for its binding: no function argument, but the
  * authored line breaks and comments between its items ride on the groups it
- * builds, so the bound bytes keep them ({@link writtenBytes}). Only this mode
- * reads the layout table, so no other typed evaluation pays for it.
+ * builds, so the bound bytes keep them ({@link writtenBytes}).
  */
 const ARG_BINDING = 3;
 
 /**
  * A value an interpolation splices ({@link unquotedRef}): written as a
- * declaration writes it — a group keeps its parens and an F5 color call its
- * authored bytes, as in {@link ARG_WRITTEN}, while a ruleset writes nothing — but
- * typed, so a string is read by its content.
+ * declaration writes it — a group keeps its parens, an F5 color call its
+ * authored bytes, as in {@link ARG_WRITTEN}, and the line breaks and comments
+ * between its items ride along, as in {@link ARG_BINDING}, while a ruleset
+ * writes nothing — but typed, so a string is read by its content.
  */
 const ARG_SPLICE = 4;
 type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE;
 
 /** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}). */
 const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE;
+
+/**
+ * Whether the authored layout between a group's items rides on the value
+ * ({@link ARG_BINDING}, {@link ARG_SPLICE}): only these modes write the value
+ * out as bytes, so no other typed evaluation reads the layout table.
+ */
+const replaysLayout = (argument: ArgumentMode): boolean => argument === ARG_BINDING || argument === ARG_SPLICE;
 
 function evalTyped(
   node: ValueNode,
@@ -4623,7 +4630,7 @@ function evalTyped(
        * is handed to the value layer directly — no re-splitting a joined string.
        */
       const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, argument));
-      const layout = argument === ARG_BINDING ? replayedLayoutOf(node) : undefined;
+      const layout = replaysLayout(argument) ? replayedLayoutOf(node) : undefined;
       return combineAll(typed, vals => layout === undefined ? makeList(vals, node.sep) : withValueLayout(makeList(vals, node.sep), layout));
     }
     case 'Branch':
@@ -5691,7 +5698,7 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
       if (!isLiteral(value)) {
         validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
       }
-      bytes += emitValue(value);
+      bytes += emitSplice(value);
     }
     return elided && values.length > 0
       ? NULL
@@ -5756,7 +5763,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           if (hit && bound !== undefined && !isMixinCallValue(bound)) {
             const val = hit.evaluated ?? withExcluded(e, bound, () => evalTypedSlot(bound, hit.frame, e, false, ARG_SPLICE));
             if (!isThenable(val)) {
-              out += !isValueGroupArray(val) && val.type === 'Quoted' ? val.value : emitValue(val);
+              out += !isValueGroupArray(val) && val.type === 'Quoted' ? val.value : emitAsWritten(val);
               i = j + 1;
               changed = true;
               continue;
@@ -5785,6 +5792,9 @@ function unquotedRef(ref: ValueNode, frame: Frame | null, e: EvalCtx): MaybeProm
   return mapMaybe(evalTyped(ref, frame, e, false, ARG_SPLICE), value =>
     !isValueGroupArray(value) && value.type === 'Quoted' ? literal(value.value) : value);
 }
+
+/** A spliced value's bytes: the declaration's, the authored layout between its items included ({@link ARG_SPLICE}). */
+const emitSplice = (value: EvalValue): string => isLiteral(value) ? value : emitAsWritten(value);
 
 /* --------------------------------------------------- map / namespace */
 
@@ -8814,7 +8824,7 @@ function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: EvalCtx): Gr
  * a public async plugin can resolve one slot before the next slot is evaluated in
  * the SAME lexical frame. */
 function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitValue) : evalBytesInterp(part.ref, frame, e);
+  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitSplice) : evalBytesInterp(part.ref, frame, e);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.

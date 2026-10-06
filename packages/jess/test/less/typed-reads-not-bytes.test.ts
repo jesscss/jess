@@ -44,6 +44,14 @@ describe('typed reads, not byte scans', () => {
       .toBe('.x { v: (10px); } @media (min-width: 640px) { .y { w: 1; } }');
   });
 
+  /* A splice writes a value as a declaration writes it, its comments and line breaks included (SEMANTIC-INVARIANTS 2). */
+  it('splices a value with the layout a declaration writes', async () => {
+    const raw = async (source: string): Promise<string> =>
+      new Compiler().renderString(source, { language: 'less', extension: '.less' });
+    expect(await raw('@x: a /* c */ b; @y: a, /* c */ b; @z: a,\n    b; .s-@{x} { a: @x; b: ~"@{x}"; c: @{x}; d: "@{x}"; e: ~"@{y}"; f: ~"@{z}"; }'))
+      .toBe('.s-a /* c */ b {\n  a: a /* c */ b;\n  b: a /* c */ b;\n  c: a /* c */ b;\n  d: "a /* c */ b";\n  e: a, /* c */ b;\n  f: a,\n    b;\n}\n');
+  });
+
   it('spreads one value that is not a list as one argument', async () => {
     expect(await render('.m(@x; @y: none) { x: @x; y: @y; } @a: ~"1px 2px"; @l: 1px 2px; .c { .m(@a...); } .d { .m(@l...); }'))
       .toBe('.c { x: 1px 2px; y: none; } .d { x: 1px; y: 2px; }');
