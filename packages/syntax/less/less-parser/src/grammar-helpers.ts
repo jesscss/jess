@@ -22,8 +22,8 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, block, callArg, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { functionScopeOf, heldSlashedCombinatorsOf, requireLessParseState } from './parse-state.js';
-import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { functionScopeOf, requireLessParseState } from './parse-state.js';
+import { LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -57,12 +57,9 @@ type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string }
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
-/** A removed `/word/` combinator, carried until a ruleset commits at its `{`. */
-type SlashedCombinatorFact = { readonly slashedCombinator: string; readonly start: number; readonly end: number };
 type SelectorListWithExtendsFact = {
   readonly selector: SelectorList;
   readonly extensions: readonly ExtendInstruction[];
-  readonly slashed: SlashedCombinatorFact | undefined;
 };
 type MixinDefinitionFact = {
   readonly params: readonly Param[];
@@ -995,6 +992,32 @@ function commaListWithTriviaFromChildren<T extends ValueSlot>(
   return withValueLayout(result, separators);
 }
 
+/**
+ * Whether a typed import media list holds a `supports()` or `layer()` term. CSS
+ * places those conditions before the list (`[ layer ]? [ supports() ]?
+ * <media-query-list>`), so one written after it is a misplaced condition, not a
+ * query a compile-time import could wrap in `@media`. Reads the list's own terms
+ * — clause, then term — never its bytes.
+ */
+function queryListHasImportCondition(value: ValueNode): boolean {
+  const clauses = value.type === 'List' ? value.value : [value];
+  for (const clause of clauses) {
+    if (!('type' in clause)) {
+      continue;
+    }
+    const terms = clause.type === 'Sequence' ? clause.parts : [clause];
+    for (const term of terms) {
+      if (term.type === 'FunctionCall') {
+        const name = term.name.toLowerCase();
+        if (name === 'supports' || name === 'layer') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 function isGluedValueBoundary(child: unknown): boolean {
   return typeof child === 'object'
     && child !== null
@@ -1107,76 +1130,11 @@ function complexSegmentsFrom(
     if (isSelectorTerm(child)) {
       segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
       combinator = ' ';
-    } else if (isSlashedCombinatorFact(child)) {
-      /* A removed slashed combinator (ledger G37) inside an `:extend()` target. */
-      throw new LessSlashedCombinatorError(child.start, child.end, child.slashedCombinator);
     } else {
       combinator = requireCombinator(child);
     }
   }
   return [segments[0]!, ...segments.slice(1)];
-}
-
-/**
- * {@link complexSegmentsFrom} for a functional pseudo's argument, where a
- * removed `/word/` combinator is HELD in the parse state rather than rejected:
- * the selector may still turn out to be a glued declaration's value
- * (`a:is(b /c/ d);`). The selector that commits reads it back with
- * {@link rejectHeldSlashedCombinator}. With no holder (a raw `run()`), it is
- * rejected here.
- */
-function pseudoArgumentSegmentsFrom(
-  children: readonly unknown[],
-  state: unknown
-): ReturnType<typeof complexSegmentsFrom> {
-  const held = heldSlashedCombinatorsOf(state);
-  if (held === null || !children.some(isSlashedCombinatorFact)) {
-    return complexSegmentsFrom(children);
-  }
-  const rest: unknown[] = [];
-  for (const child of children) {
-    if (isSlashedCombinatorFact(child)) {
-      held.push(child);
-    } else {
-      rest.push(child);
-    }
-  }
-  return complexSegmentsFrom(rest);
-}
-
-/**
- * A selector committed from `start` to `end` — a ruleset at its `{` (the end
- * is read off the raw children only when something is held), a body
- * `&:extend()` — rejects the first held `/word/` combinator inside it.
- *
- * A commit runs once its statement is complete, so every fact from `start` on
- * is now settled: inside the selector it is rejected here, and after it (in a
- * ruleset's body) it belonged to a nested selector that already committed or to
- * a declaration that never was a selector. Only the facts before `start` — an
- * enclosing selector's, still uncommitted — are kept, so the held list stays as
- * short as the open selectors and a commit never rescans settled facts.
- */
-function rejectHeldSlashedCombinator(state: unknown, start: number, end: number | readonly unknown[]): void {
-  const held = heldSlashedCombinatorsOf(state);
-  if (held === null || held.length === 0) {
-    return;
-  }
-  if (typeof end !== 'number') {
-    end = requiredTokenStart(end, '{');
-  }
-  let first: SlashedCombinatorFact | undefined;
-  let kept = 0;
-  for (const fact of held) {
-    if (fact.start < start) {
-      held[kept++] = fact;
-    } else if (fact.end <= end && (first === undefined || fact.start < first.start)) {
-      first = fact;
-    }
-  }
-  if (first !== undefined) {
-    throw new LessSlashedCombinatorError(first.start, first.end, first.slashedCombinator);
-  }
-  held.length = kept;
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -1884,10 +1842,6 @@ function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
     && value.extensions.every(isExtendInstruction);
 }
 
-function isSlashedCombinatorFact(value: unknown): value is SlashedCombinatorFact {
-  return typeof value === 'object' && value !== null && 'slashedCombinator' in value;
-}
-
 function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWithExtendsFact {
   return typeof value === 'object' && value !== null
     && 'selector' in value && isLessSelectorList(value.selector)
@@ -1921,18 +1875,9 @@ function isRulesetTailFact(value: unknown): value is RulesetTailFact {
     && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
 }
 
-/**
- * A committed ruleset's selector list. Called once the ruleset's `{` has
- * committed, so this is where a removed slashed combinator in the list is
- * rejected (ledger G37).
- */
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
   if (!isSelectorListWithExtendsFact(value)) {
     throw new TypeError('Less grammar produced a ruleset selector without selector facts.');
-  }
-  const slashed = value.slashed;
-  if (slashed !== undefined) {
-    throw new LessSlashedCombinatorError(slashed.start, slashed.end, slashed.slashedCombinator);
   }
   return value;
 }
@@ -2766,6 +2711,7 @@ export {
   callWithLayout,
   combinatorTailReducer,
   commaListWithTriviaFromChildren,
+  queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
   customValueFromParts,
@@ -2835,7 +2781,6 @@ export {
   isSelectorBranchFact,
   isLessSelectorList,
   isSelectorListWithExtendsFact,
-  isSlashedCombinatorFact,
   isSelectorTerm,
   isSequence,
   isSimpleSelector,
@@ -2872,7 +2817,6 @@ export {
   mixinDefinitionNameFromSelectorBranch,
   mixinParamsFromInterior,
   mixinPrefixFromSelectorBranch,
-  pseudoArgumentSegmentsFrom,
   pseudoNameFromHead,
   queryClauseReducer,
   quotedFromChildren,
@@ -2897,7 +2841,6 @@ export {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
-  rejectHeldSlashedCombinator,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,
@@ -2957,7 +2900,6 @@ export type {
   RulesetTailFact,
   SelectorBranchFact,
   SelectorListWithExtendsFact,
-  SlashedCombinatorFact,
   LessGuardOperand,
   LessMathRun,
   UnsupportedVariableNameFact,

@@ -144,11 +144,6 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
           expect.objectContaining({ phase: 'eval', code: expect.any(String) })
         ]));
       }
-      if (file === 'tests-error/parse/parser-slashed-combinator.less') {
-        expect(errors, `${file} should name the removed combinator (jess#247)`).toEqual(expect.arrayContaining([
-          expect.objectContaining({ phase: 'parse', code: 'parse/unsupported-slashed-combinator' })
-        ]));
-      }
       if (rootCallFunctionFixtures.has(file)) {
         expect(errors, `${file} should reject value results in root statement position`).toEqual(expect.arrayContaining([
           expect.objectContaining({ phase: 'eval', code: 'eval/invalid-statement' })

@@ -131,8 +131,11 @@ public lane. Some are intentionally rejected syntax; others are fixture-policy
 or maintained-output mismatches and must not be presented as parser gaps:
 
 - `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less` (contains
-  only comments; `/deep/` and `/shadow/` examples are commented out. This is not
-  an outstanding parser feature. It stays excluded because Jess's empty output is
+  only comments; `/deep/` and `/shadow/` examples are commented out. A slashed
+  combinator is not a selector and has no dedicated support or recognition
+  (ledger G37); its cases fail like any other invalid selector. The fixture is
+  deleted on the less.js fork branch `lane/v5-5-fixture-deletions`; until the
+  corpus carries the deletion it stays excluded, because Jess's empty output is
   `""` while the maintained empty golden contains one newline.)
 - `tests-unit/permissive-parse/permissive-parse.less` (P2 permissive custom-property
   values and selector capture are implemented. The fixture is intentionally

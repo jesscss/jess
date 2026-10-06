@@ -328,6 +328,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
     // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
     // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
+    // +1 function (ledger X19): the body-form extends the walk applies where a body
+    // lands — a mixin definition's, an at-rule block's, a detached ruleset's — are
+    // read in one place (`walkAppliedExtends`) by the five extend classifiers.
     // +5 functions, +1 `new WeakSet` (ledger F4; orchestrator judgment under owner
     // delegation 2026-10-06): a paren group is consumed only by what computes in
     // it — math, a `$( … )`, a call a callable computes, or a variable or mixin
@@ -342,7 +345,7 @@ describe('V19 one-evaluator projection ratchet', () => {
     // emergent `@{…}` — and `[@@name]` names a member by `lookupName`, so
     // `stripOuterQuotes` is gone; the synchronous positions share one guard
     // (`syncValue`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(546);
+    expect(occurrences(/^function |^async function /gmu)).toBe(547);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

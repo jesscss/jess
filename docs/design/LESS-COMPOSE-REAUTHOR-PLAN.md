@@ -443,10 +443,10 @@ Buckets: **C** = CONVERGE→INHERIT (firm), **C?** = CONVERGE? NEEDS-ORACLE-PROO
 | QueryValue | 5039 | **O** | QueryValue:2764 | different leaf set (`@var`), ratio relocated |
 | QueryFeatureValue | 5052 | A | — | Less-only ratio-folding node |
 | QueryFeature | 5126 | **O** | QueryFeature:2886 | adds container-boolean arms |
-| QueryNonOnlyKeyword | 5132 | **O** | QueryNonOnlyKeyword:2904 | different reserved-word guard (accepts `layer`) |
-| QueryTerm | 5137 | **O** | QueryTerm:2971 | adds MixinReference + VariableReference arms |
-| QueryClause | 5163 | **O** | QueryClause:2999 | terms joined by and/or vs whitespace |
-| MediaQueryTerm | 5187 | A | — | Less media interpolation term |
+| QueryNonOnlyKeyword | 5132 | ☑ inherited | QueryNonOnlyKeyword:2904 | deleted 2026-10-06 (`lane/v5-5-grammar`): `@media` reads the css media query list, whose type term reserves `layer` as media-queries-4 does |
+| QueryTerm | 5137 | ☑ inherited | QueryTerm:2971 | deleted 2026-10-06: the media term is css `MediaTerm`; Less's terms (`@{…}`, bare `@name`, namespace read, interpolating `Enclosed`) sit at the css `MediaTypeTerm` slot |
+| QueryClause | 5163 | ☑ inherited | QueryClause:2999 | the Less clause required `and`/`or` between terms and rejected valid CSS (`screen print`, `and(color)` rewritten); css's clause inherited 2026-10-06. `QueryPrelude` stays a reducer-only override: Less keeps the comments either side of a list comma |
+| MediaQueryTerm | 5187 | ☑ slot | MediaTypeTerm | replaced 2026-10-06 by the `MediaTypeTerm` override at the slot css names |
 | ContainerStyleQuery / ContainerScrollStateQuery | 5243/5250 | A | — | structured `style()`/`scroll-state()` queries |
 | ContainerName | 5257 | **O** | containerName:3029 | named node w/ extra guards vs css inline helper |
 | ContainerQueryAtom / ContainerCondition | 5271/5280 | **O** | ContainerQueryClause:3034 | style/scroll-state atoms + structured boolean model |

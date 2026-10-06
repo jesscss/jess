@@ -11707,6 +11707,23 @@ interface ExtendClass {
 }
 
 /**
+ * The body-form `&:extend()`s a statement carries for the render walk to apply wherever
+ * its body lands (see {@link recordBodyExtends}): a mixin definition's (ledger X16), an
+ * at-rule block's or a detached ruleset's (X19). Undefined for every other statement.
+ */
+function walkAppliedExtends(st: Statement): readonly ExtendInstruction[] | undefined {
+  switch (st.type) {
+    case 'MixinDefinition':
+    case 'AtRuleBlock':
+      return st.extendInstructions;
+    case 'VariableDeclaration':
+      return !isValueSlotArray(st.value) && st.value.type === 'AnonymousMixin' ? st.value.extendInstructions : undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Body `index` of a statement that places rules only when the render walk runs it: a
  * `$for`/`each()` loop, a mixin definition, a `$if`/`$while` control block (one body
  * per `$if` branch), or a detached ruleset (`@dr: { … }`). Null past the last body, and
@@ -11754,6 +11771,9 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
       }
       classifyExtend(st.rules, inDynamic, out, true);
     } else if (st.type === 'AtRuleBlock') {
+      if (st.extendInstructions !== undefined) {
+        out.dynamic = true;
+      }
       classifyExtend(st.rules, inDynamic, out, placed);
     } else if (st.type === 'StyleImport') {
       if (placed) {
@@ -11767,8 +11787,8 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
     } else if (st.type === 'MixinCall' || st.type === 'Apply') {
       out.places = true;
     } else {
-      /* A definition's own body-form extend applies wherever it is called (ledger X16). */
-      if (st.type === 'MixinDefinition' && st.extendInstructions !== undefined) {
+      /* A definition's or detached ruleset's own body-form extend applies wherever it is called (ledgers X16, X19). */
+      if (walkAppliedExtends(st) !== undefined) {
         out.dynamic = true;
       }
       for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
@@ -11805,10 +11825,14 @@ function collectDynamicExtendSets(
       }
       collectDynamicExtendSets(st.rules, inDynamic, staticRules, targetAtoms);
     } else if (st.type === 'AtRuleBlock') {
+      if (st.extendInstructions !== undefined) {
+        collectInstructionAtoms(st.extendInstructions, targetAtoms);
+      }
       collectDynamicExtendSets(st.rules, inDynamic, staticRules, targetAtoms);
     } else {
-      if (st.type === 'MixinDefinition' && st.extendInstructions !== undefined) {
-        collectInstructionAtoms(st.extendInstructions, targetAtoms);
+      const extend = walkAppliedExtends(st);
+      if (extend !== undefined) {
+        collectInstructionAtoms(extend, targetAtoms);
       }
       for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
         collectDynamicExtendSets(body, true, staticRules, targetAtoms);
@@ -11841,13 +11865,18 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
       }
       collectBodyExtendAtoms(st.rules, atoms);
     } else if (st.type === 'AtRuleBlock') {
+      if (st.extendInstructions !== undefined) {
+        collectInstructionAtoms(st.extendInstructions, atoms);
+        places = true;
+      }
       places = collectBodyExtendAtoms(st.rules, atoms) || places;
     } else if (st.type === 'StyleImport' || st.type === 'MixinCall' || st.type === 'Apply') {
       places = true;
     } else {
-      /* A definition's body-form extend is applied, by the walk, wherever it is called. */
-      if (st.type === 'MixinDefinition' && st.extendInstructions !== undefined) {
-        collectInstructionAtoms(st.extendInstructions, atoms);
+      /* A definition's or detached ruleset's body-form extend is applied, by the walk, wherever it is called. */
+      const extend = walkAppliedExtends(st);
+      if (extend !== undefined) {
+        collectInstructionAtoms(extend, atoms);
         places = true;
       }
       for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
@@ -11938,6 +11967,16 @@ function planImportedStaticExtend(
   placement: object | undefined
 ): void {
   for (const statement of statements) {
+    /*
+     * The graph has an extend (this planner runs only then), so a body-form extend the
+     * walk applies where its body lands — a definition's, an at-rule block's, a detached
+     * ruleset's (ledgers X16, X19) — arms the walk recorder, and its targets are targets.
+     */
+    const applied = walkAppliedExtends(statement);
+    if (applied !== undefined) {
+      collectInstructionAtoms(applied, overlay.dynamicTargetAtoms ??= new Set());
+      e.importedWalkPlacement = true;
+    }
     if (statement.type === 'Ruleset' && statement.selector.selectors.some(selectorBranchHasInterp)) {
       /*
        * A selector the planner could not resolve (see `planImported`) resolves only in
@@ -11991,15 +12030,7 @@ function planImportedStaticExtend(
       /* A call or `$apply` places its callee's rules where it lands (see ExtendClass). */
       e.importedWalkPlacement = true;
     } else {
-      /*
-       * The graph has an extend (this planner runs only then), so a placing body that
-       * places a rule arms the walk recorder: that rule is a target. So does a
-       * definition's own body-form extend, which the walk applies at each call.
-       */
-      if (statement.type === 'MixinDefinition' && statement.extendInstructions !== undefined) {
-        collectInstructionAtoms(statement.extendInstructions, overlay.dynamicTargetAtoms ??= new Set());
-        e.importedWalkPlacement = true;
-      }
+      /* A placing body that places a rule arms the walk recorder: that rule is a target. */
       for (let index = 0, body = placingBody(statement, 0); body !== null; body = placingBody(statement, ++index)) {
         if (collectBodyExtendAtoms(body, overlay.dynamicTargetAtoms ??= new Set())) {
           e.importedWalkPlacement = true;
@@ -12070,6 +12101,10 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
         pending.push(child);
       }
     } else if (statement.type === 'AtRuleBlock') {
+      if (statement.extendInstructions !== undefined) {
+        recordAstExtendProfile?.('astExtend.preflight.bodyFeatureBearing');
+        return true;
+      }
       for (const child of statement.rules) {
         pending.push(child);
       }
@@ -12079,9 +12114,10 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
        * must admit imported extend planning before they execute — an imported mixin
        * whose body carries `&:extend()` (e.g. Bootstrap's `#make-grid-columns()` grid
        * columns), or whose definition carries one of its own (ledger X16), arms the
-       * walk-time dynamic recorder the same way a loop does.
+       * walk-time dynamic recorder the same way a loop does. So does an at-rule block's
+       * or a detached ruleset's own (X19).
        */
-      if (statement.type === 'MixinDefinition' && statement.extendInstructions !== undefined) {
+      if (walkAppliedExtends(statement) !== undefined) {
         recordAstExtendProfile?.('astExtend.preflight.bodyFeatureBearing');
         return true;
       }
@@ -13950,19 +13986,21 @@ function recordDynamicInstruction(dyn: DynamicExtendState, inst: ExtendInstructi
 }
 
 /**
- * [extend/dynamic] A called definition's body-form `&:extend()` (ledger X16, jess#356):
- * the rule the call's body lands in — the innermost open rule — extends, as if the
- * extend were written in that rule's own body (lessc copies the Extend into the caller).
- * A call outside every rule extends nothing. A ruleset called as a mixin brings only its
- * body-form extends; an inline one (with a `subject`) binds to its own selector.
+ * [extend/dynamic] The body-form `&:extend()`s of a body the walk places: a called
+ * definition's (ledger X16, jess#356), a called detached ruleset's or an at-rule
+ * block's (X19). The rule the body lands in — the innermost open rule — extends, at the
+ * walk's current scope, as if the extend were written in that rule's own body (lessc
+ * copies the Extend into the caller). A body outside every rule extends nothing. A
+ * ruleset called as a mixin brings only its body-form extends; an inline one (with a
+ * `subject`) binds to its own selector.
  */
-function recordCalledExtends(dyn: DynamicExtendState, def: MixinDefinition, e: Emit): void {
+function recordBodyExtends(dyn: DynamicExtendState, instructions: readonly ExtendInstruction[], e: Emit): void {
   const open = dyn.pathRules.length - 1;
   if (open < 0 || dyn.pathKinds[open] === PATH_ROOT_GUARD) {
     return;
   }
   let path: Level[] | undefined;
-  for (const inst of def.extendInstructions!) {
+  for (const inst of instructions) {
     if (inst.subject === undefined) {
       recordDynamicInstruction(dyn, inst, path ??= dynamicPathAt(dyn, open), e.referenceImportDepth > 0);
     }
@@ -16144,7 +16182,7 @@ function expandCall(
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
           if (e.dynamicExtend !== null && def.extendInstructions !== undefined) {
-            recordCalledExtends(e.dynamicExtend, def, e);
+            recordBodyExtends(e.dynamicExtend, def.extendInstructions, e);
           }
 
           /*
@@ -16867,6 +16905,9 @@ function expandReferenceCall(
       e.dynamicExtend === null ? undefined : {}
     );
     const drBody = valueBlockBody(r.dr);
+    if (e.dynamicExtend !== null && r.dr.type === 'AnonymousMixin' && r.dr.extendInstructions !== undefined) {
+      recordBodyExtends(e.dynamicExtend, r.dr.extendInstructions, e);
+    }
 
     /*
      * The block's comments are trivia inside its body span, replayed exactly as
@@ -19244,8 +19285,10 @@ function putImportTail(node: ValueNode, frame: Frame, e: Emit): void {
   }
   put(e, delimiterOpen(node.delimiter));
   put(e, evalQueryPreludeSync(node.value.left, frame, e));
-  put(e, ': ');
-  putValueBoundaryTrivia(e, boundary, '');
+  put(e, ':');
+
+  /* The boundary is the whole authored run after the `:`, its padding included. */
+  putValueBoundaryTrivia(e, boundary, ' ');
   put(e, evalQueryPreludeSync(node.value.right, frame, e));
   put(e, delimiterClose(node.delimiter));
 }
@@ -20949,6 +20992,9 @@ function expandAtRuleBlock(
     /* [extend/dynamic] Facts recorded in the body take this block's scope (§8). */
     const scope = dyn.scope;
     dyn.scope = atRuleScope(scope, node, dyn.atRuleScopes);
+    if (node.extendInstructions !== undefined) {
+      recordBodyExtends(dyn, node.extendInstructions, e);
+    }
     return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, write);
   }));
 }

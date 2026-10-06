@@ -172,22 +172,6 @@ export class LessUnsupportedMixinNameError extends SyntaxError {
   }
 }
 
-/** A removed `/deep/`-style combinator is recognized so the diagnostic can name it. */
-export class LessSlashedCombinatorError extends SyntaxError {
-  readonly code = 'parse/unsupported-slashed-combinator' as const;
-  readonly offset: number;
-  readonly endOffset: number;
-  readonly reason = 'Slashed combinators were Shadow DOM proposals that never became CSS, and browsers removed them.';
-  readonly fix = 'Use a descendant combinator (a space), or ::part() or ::slotted() to style across a shadow boundary.';
-
-  constructor(offset: number, endOffset: number, combinator: string) {
-    super(`The ${combinator} combinator was removed in Less v5.`);
-    this.name = 'LessSlashedCombinatorError';
-    this.offset = offset;
-    this.endOffset = endOffset;
-  }
-}
-
 /** A value led by `/` is recognized so the diagnostic can sit on the slash. */
 export class LessLeadingSeparatorValueError extends SyntaxError {
   readonly code = 'parse/leading-separator-value' as const;

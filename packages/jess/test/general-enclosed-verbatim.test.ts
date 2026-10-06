@@ -43,6 +43,23 @@ describe('Less: general-enclosed is emitted as written and never evaluated', () 
     expect(css.slice(0, css.indexOf('{')).trimEnd()).toBe('@media (min-width: 768px)');
   });
 
+  /*
+   * A variable read inside a media group's general-enclosed contents is a
+   * reference, so it resolves and the rest stays as written: dart-sass and
+   * lessc 4.9.1 both write `(foo: 1px baz)`.
+   */
+  it.each([
+    ['scss', '$bar: 1px;\n@media (foo: $bar baz)', '@media (foo: 1px baz)'],
+    ['scss', '$bar: 1px;\n@media ($bar baz)', '@media (1px baz)'],
+    ['scss', '$bar: 1px;\n@media (foo: $bar, baz)', '@media (foo: 1px, baz)'],
+    ['less', '@x: 10px;\n@media (foo: @x baz)', '@media (foo: 10px baz)'],
+    ['less', '@x: 10px;\n@media (@x baz)', '@media (10px baz)'],
+    ['less', '@x: 10px;\n@media (foo: @{x} baz)', '@media (foo: 10px baz)']
+  ])('resolves a variable inside a %s media general-enclosed group: %j', async (dialect, source, prelude) => {
+    const css = String(await new Compiler().renderString(`${source} { a { b: c } }`, { extension: `.${dialect}` }));
+    expect(css.slice(0, css.indexOf('{')).trimEnd()).toBe(prelude);
+  });
+
   it('keeps the name exemption for a defined condition function with an interpolated payload', async () => {
     expect(await lessPrelude('@v: 1;\n@media style(--x:@{v})')).toBe('@media style(--x: 1)');
   });

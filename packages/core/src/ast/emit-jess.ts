@@ -575,6 +575,9 @@ class JessPrinter {
   }
 
   atRuleBlock(node: AtRuleBlock, indent: string): string {
+    if (node.extendInstructions !== undefined) {
+      gap('ExtendInstruction', 'a body-form extend in an at-rule block (ledger X19) has no `.jess` spelling yet');
+    }
     const prelude = node.prelude === null ? '' : ` ${this.value(node.prelude, At.Prelude)}`;
     return `${node.name}${prelude} ${this.block(node.rules, 'at', node, indent)}`;
   }
@@ -1021,6 +1024,9 @@ class JessPrinter {
 
   /** `BlockLambda`: `@{ … }` / `@(params) { … }`. */
   anonymousMixin(node: AnonymousMixin, indent: string): string {
+    if (node.extendInstructions !== undefined) {
+      gap('ExtendInstruction', 'a body-form extend in a detached ruleset (ledger X19) has no `.jess` spelling yet');
+    }
     const params = node.params === undefined ? '' : this.params(node.params);
     return `@${params}${params === '' ? '' : ' '}${this.block(node.rules, 'nested', node, indent)}`;
   }

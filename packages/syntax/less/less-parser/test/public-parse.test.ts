@@ -1433,8 +1433,10 @@ describe('public Less parse()', () => {
       between: null,
       after: null
     });
+
+    /* The boundary is the whole authored run after the `:`, its padding included. */
     expect(valueBoundaryTriviaOf(tail.value)).toMatchObject({
-      between: { start, end: start + '/* inside */ '.length }
+      between: { start: start - 1, end: start + '/* inside */ '.length }
     });
   });
 
@@ -1508,12 +1510,17 @@ describe('public Less parse()', () => {
       ]
     });
 
-    for (const invalid of [
-      '@import "theme.css" @{media} screen;',
-      '@import "theme.css" screen @{media};',
-      '@import "theme.css" @{media}@{print};'
+    /*
+     * The tail is the CSS base's media query list, whose terms may stand side by
+     * side with no connective, so an interpolation beside a type is one list, as
+     * in css and lessc 4.9.1.
+     */
+    for (const [source, css] of [
+      ['@media: print; @import "theme.css" @{media} screen;', '@import "theme.css" print screen;\n'],
+      ['@media: print; @import "theme.css" screen @{media};', '@import "theme.css" screen print;\n'],
+      ['@media: print; @print: tv; @import "theme.css" @{media}@{print};', '@import "theme.css" print tv;\n']
     ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+      expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css, source).toBe(css);
     }
   });
 
@@ -1654,7 +1661,9 @@ describe('public Less parse()', () => {
       serialize(parse('@query: card; @container @{query} { .c { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('@container card {\n  .c {\n    color: red;\n  }\n}\n');
 
-    expect(() => parse('@media @{query} screen { .media { color: red; } }')).toThrow(SyntaxError);
+    expect(
+      serialize(parse('@query: tv; @media @{query} screen { .media { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@media tv screen {\n  .media {\n    color: red;\n  }\n}\n');
 
     /* An unknown at-rule's prelude interpolates `@{…}` (ledger P2). */
     expect(
@@ -2812,6 +2821,21 @@ describe('public Less parse()', () => {
     );
   });
 
+  /*
+   * `@media` reads the CSS base's media query list: valid CSS the Less copy
+   * rejected or rewrote parses and writes as written. A glued `and(` is a
+   * function token (css-syntax-3 §4.3.4), a `<general-enclosed>` term, so it
+   * keeps its spelling instead of becoming `and (color)`.
+   */
+  it.each([
+    ['@media (foo: bar baz) { a { b: c; } }', '@media (foo: bar baz) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media ((a) and (b c)) { a { b: c; } }', '@media ((a) and (b c)) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media screen and(color) { a { b: c; } }', '@media screen and(color) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media screen print { a { b: c; } }', '@media screen print {\n  a {\n    b: c;\n  }\n}\n']
+  ])('writes the CSS media query %j as written', (source, css) => {
+    expect(serialize(parse(source)).css).toBe(css);
+  });
+
   it('returns and renders structural media/container query preludes from the public route', () => {
     const document = parse(
       '@limit: 40rem; @media only screen and (min-width: @limit), print { .card { color: red; } } @container sidebar (400px < width < @limit) { .card { color: blue; } }'
@@ -2867,12 +2891,11 @@ describe('public Less parse()', () => {
     ).toBe(
       '@media only screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container sidebar (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
-    for (const source of [
-      '@container selector(.card) { .card { color: red; } }',
-      '@media screen (width > 10px) { .card { color: red; } }'
-    ]) {
-      expect(() => parse(source), source).toThrow(SyntaxError);
-    }
+    expect(() => parse('@container selector(.card) { .card { color: red; } }')).toThrow(SyntaxError);
+
+    /* A media type and a group side by side are one media query list, as in css and lessc 4.9.1. */
+    expect(serialize(parse('@media screen (width > 10px) { .card { color: red; } }')).css)
+      .toBe('@media screen (width > 10px) {\n  .card {\n    color: red;\n  }\n}\n');
   });
 
   it('accepts unknown CSS block at-rules as opaque blocks on the public Less route', () => {

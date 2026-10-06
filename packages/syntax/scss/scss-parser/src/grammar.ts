@@ -1545,10 +1545,21 @@ const scssFactory = (g: ScssInputRules) => {
     g.CustomDoubleQuoted,
     g.CustomGroup
   );
-  const CustomValue = node<ValueNode>(
-    'CustomValue',
-    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
-    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
+
+  /*
+   * The value runs under comment-only trivia, and its node takes the comments
+   * written after its last part as trailing trivia: a comment written last
+   * (`--x: red /* c *\/;`, `--x: /* c *\/;`) is inside the value's span and is
+   * replayed in place (ledger F12), as a comment written first is.
+   */
+  const CustomValue = parser(
+    { trivia: customValueCommentTrivia },
+    node<ValueNode>(
+      'CustomValue',
+      many(g.CustomPart),
+      (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span),
+      { trailingTrivia: true }
+    )
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',

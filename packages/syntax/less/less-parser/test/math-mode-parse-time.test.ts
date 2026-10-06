@@ -132,14 +132,15 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
 
   /*
    * Media-query features build an `Operation` for their `:` and comparison
-   * pairs. They are not arithmetic, but they took the same eval-time mode read
-   * before this landed, so they are pinned to the mode as well — a change there
-   * is a deliberate decision, not a silent default.
+   * pairs. They are not arithmetic. `@media` reads the CSS base's media query
+   * list, so a comparison is the base's `Operation`, whose flag is the css one
+   * in every mode (a deliberate decision: nothing in a media feature computes,
+   * so no mode can change what it writes).
    */
-  it('a media-query comparison records the mode rather than defaulting', () => {
+  it('a media-query comparison is the CSS base\'s, whatever the mode', () => {
     const answers = MODES.map(mathMode =>
       deepOperation('@media (width >= 100px) { .a { k: 1; } }', mathMode).mathOutsideParens);
-    expect(answers).toEqual([true, true, false, false]);
+    expect(answers).toEqual([true, true, true, true]);
   });
 });
 

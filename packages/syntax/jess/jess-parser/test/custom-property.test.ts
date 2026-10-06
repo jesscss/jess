@@ -135,4 +135,21 @@ describe('Jess custom properties', () => {
       + '}\n'
     );
   });
+
+  /*
+   * Ledger F12: a comment at either edge of a custom-property value is kept in
+   * the value, in place, and a comment-only value is not the empty value; only
+   * the edge whitespace is dropped (css-syntax-3 §5.5.6). Asserted in all four
+   * dialects.
+   */
+  it.each([
+    ['a{--var:/* 1 */}', 'a {\n  --var: /* 1 */;\n}\n'],
+    ['a { --x: /* lead */ red; }', 'a {\n  --x: /* lead */ red;\n}\n'],
+    ['a { --x: red /* trail */ ; }', 'a {\n  --x: red /* trail */;\n}\n'],
+    ['a { --x:/*g*/red/*h*/; }', 'a {\n  --x: /*g*/red/*h*/;\n}\n'],
+    ['a { --x:   red   ; }', 'a {\n  --x: red;\n}\n'],
+    ['a { --x: /* c */ red /* d */ !important; }', 'a {\n  --x: /* c */ red /* d */ !important;\n}\n']
+  ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
+    expect(serialize(parse(source)).css).toBe(expected);
+  });
 });

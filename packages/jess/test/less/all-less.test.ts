@@ -229,7 +229,7 @@ const skippedFixtures: SkippedFixture[] = (
     },
     {
       file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-      reason: 'MOVED: slashed combinators are rejected by design (G37) with a named diagnostic (`parse/unsupported-slashed-combinator`), so the fixture now lives in tests-error/parse/parser-slashed-combinator.less with its cases restored, where all-less-error.test.ts asserts the rejection. This entry only covers a corpus that predates the move, whose copy here is all commented out and renders nothing against a stray-newline golden; delete it once the corpus carries the move — jess#247'
+      reason: 'DELETED on the less.js fork (see corpusFilesDeletedOnTheFork): every case is commented out, and a slashed combinator is not a selector, with no dedicated support or recognition (G37) — the cases fail like any other invalid selector. Until the corpus carries the deletion the fixture renders nothing against a stray-newline golden'
     },
     {
       file: 'tests-unit/javascript/javascript.less',
@@ -694,15 +694,24 @@ const corpusCssThatIsNotAGolden = new Map<string, string>([
   ['tests-unit/urls/css/background.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
   ['tests-unit/urls/import/import-test-d.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
   ['tests-unit/urls/actual.css', 'a stray render of urls.less committed with the corpus; urls.css is the golden'],
-
-  /*
-   * Lockstep with the less.js fork: this orphan is to be deleted there, since
-   * tests-unit/at-rules-bubbling covers it. The change that picks up the
-   * deletion removes this entry (the check below fails until it does) and
-   * re-baselines less-parser's test/oracle-byte-identity.baseline.json, which
-   * digests the file.
-   */
   ['tests-unit/directives-bubbling/directives-bubbling.css', 'byte-identical to tests-unit/at-rules-bubbling/at-rules-bubbling.css: less.js 937d1e44 moved directives-bubbling.less to at-rules-bubbling/ and left this copy behind']
+]);
+
+/*
+ * LOCKSTEP with the less.js fork: branch `lane/v5-5-fixture-deletions` (off the
+ * fork's `alpha`) deletes these corpus files. The corpus is the unpinned sibling
+ * checkout, so this lane must be right on both sides of that change: each path
+ * here may be present (and is handled by the entries above) or absent (and the
+ * stale-entry check below does not report it). Once the fork's `alpha` carries
+ * the deletion, remove these paths together with their entries in
+ * corpusCssThatIsNotAGolden and skippedFixtures, and re-baseline less-parser's
+ * test/oracle-byte-identity.baseline.json, which digests every corpus file.
+ */
+const corpusFilesDeletedOnTheFork = new Set([
+  'tests-unit/directives-bubbling/directives-bubbling.css',
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.css',
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+  'tests-unit/urls/actual.css'
 ]);
 
 describe('Less fixture discovery', () => {
@@ -717,7 +726,8 @@ describe('Less fixture discovery', () => {
     expect(unclaimed, 'corpus goldens that no Less fixture test claims').toEqual([]);
     const claimedAnyway = [...corpusCssThatIsNotAGolden.keys()].filter(css => claimedGoldens.has(css));
     expect(claimedAnyway, 'listed in corpusCssThatIsNotAGolden, but a fixture now claims it: remove the entry').toEqual([]);
-    const gone = [...corpusCssThatIsNotAGolden.keys()].filter(css => !existsSync(path.join(testData, css)));
+    const gone = [...corpusCssThatIsNotAGolden.keys()]
+      .filter(css => !corpusFilesDeletedOnTheFork.has(css) && !existsSync(path.join(testData, css)));
     expect(gone, 'listed in corpusCssThatIsNotAGolden, but the corpus no longer has it: remove the entry').toEqual([]);
   });
 });

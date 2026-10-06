@@ -199,8 +199,8 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'Quoted')).toBeDefined();
     expect(leafValues(findNode(imp!, 'VariableInterpolation')!)).toEqual(['@{', 'name', '}']);
 
-    /* The media-query postlude goes through the `@media` query grammar (P35). */
-    expect(findNode(imp!, 'MediaQueryPrelude')).toBeDefined();
+    /* The media-query postlude goes through the `@media` query grammar (P35): the CSS base's list. */
+    expect(findNode(imp!, 'QueryPrelude')).toBeDefined();
     expect(leafValues(findNode(imp!, 'ImportTail')!)).toEqual(expect.arrayContaining(['screen', 'and', '600']));
   });
 
@@ -508,7 +508,7 @@ describe('Less direct-AST closure CST contract', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(findNodes(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
-    expect(findNodes(result.tree, 'Keyword').map(leafValues)).toContainEqual(['screen']);
+    expect(findNodes(result.tree, 'QueryNonOnlyKeyword').map(leafValues)).toContainEqual(['screen']);
 
     /* The sum operator leaf's value is the sign alone, matching the product
      * operator's. Its authored padding is the leaf's span, not its value. */
@@ -548,12 +548,13 @@ describe('Less direct-AST closure CST contract', () => {
 
   it('preserves public CST owners for each structural query feature form', () => {
     const cases: readonly [source: string, grammarType: string][] = [
-      ['@media (tv) { .card { color: red; } }', 'QueryBareFeature'],
-      ['@media (min-width: 1px) { .card { color: red; } }', 'QueryColonFeature'],
-      ['@media (width >= 1px) { .card { color: red; } }', 'QueryComparisonFeature'],
-      ['@media (1px <= width) { .card { color: red; } }', 'QueryRangeFeature'],
-      ['@media ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
-      ['@media (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature'],
+      /* A media group is the css base's `<media-in-parens>`: a feature's contents, or a condition. */
+      ['@media (tv) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media (min-width: 1px) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media (width >= 1px) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media (1px <= width) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'MediaCondition'],
+      ['@media (not (height > 670px)) { .card { color: red; } }', 'QueryFeatureContents'],
 
       /* A container group is the css base's `( <container-condition> )`. */
       ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'ContainerQueryCondition'],
