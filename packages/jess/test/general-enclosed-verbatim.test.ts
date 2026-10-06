@@ -45,19 +45,59 @@ describe('Less: general-enclosed is emitted as written and never evaluated', () 
 
   /*
    * A variable read inside a media group's general-enclosed contents is a
-   * reference, so it resolves and the rest stays as written: dart-sass and
-   * lessc 4.9.1 both write `(foo: 1px baz)`.
+   * reference, so it resolves and the rest stays as written (dart-sass writes
+   * `(foo: 1px baz)`) — wherever the value walker reaches it: in math, a
+   * negation, a paren group, `if()` or a function argument. Less's bare `@x`
+   * resolves where a declaration value stands, after the feature's `name:`
+   * (ledger P7).
    */
   it.each([
     ['scss', '$bar: 1px;\n@media (foo: $bar baz)', '@media (foo: 1px baz)'],
     ['scss', '$bar: 1px;\n@media ($bar baz)', '@media (1px baz)'],
     ['scss', '$bar: 1px;\n@media (foo: $bar, baz)', '@media (foo: 1px, baz)'],
     ['less', '@x: 10px;\n@media (foo: @x baz)', '@media (foo: 10px baz)'],
-    ['less', '@x: 10px;\n@media (@x baz)', '@media (10px baz)'],
-    ['less', '@x: 10px;\n@media (foo: @{x} baz)', '@media (foo: 10px baz)']
+    ['less', '@x: 10px;\n@media (foo: bar @x)', '@media (foo: bar 10px)'],
+    ['less', '@x: 10px;\n@media (foo: @{x} baz)', '@media (foo: 10px baz)'],
+    ['less', '@x: 10px;\n@media (foo @{x})', '@media (foo 10px)'],
+    ['less', '@x: 10px;\n@media (foo: @x * 2 baz)', '@media (foo: 20px baz)'],
+    ['less', '@x: 10px;\n@media (foo: -@x baz)', '@media (foo: -10px baz)'],
+    ['less', '@x: 10px;\n@media (foo: (@x * 2) baz)', '@media (foo: 20px baz)'],
+    ['less', '@x: 10px;\n@media (foo: if(true, @x, 1) baz)', '@media (foo: 10px baz)'],
+    ['less', '@x: 10px;\n@media (foo: max(@x, 1px) baz)', '@media (foo: 10px baz)'],
+    ['less', '@x: 10px;\n@media screen and (foo: @x * 2 baz)', '@media screen and (foo: 20px baz)']
   ])('resolves a variable inside a %s media general-enclosed group: %j', async (dialect, source, prelude) => {
     const css = String(await new Compiler().renderString(`${source} { a { b: c } }`, { extension: `.${dialect}` }));
     expect(css.slice(0, css.indexOf('{')).trimEnd()).toBe(prelude);
+  });
+
+  /*
+   * Ledger P7: anywhere else in a Less query group a bare `@x` is a prelude
+   * position, where only `@{x}` substitutes — the parse names the migration.
+   * A range's bound and a feature's value stay values.
+   */
+  it.each([
+    '@media (@x)',
+    '@media (@x baz)',
+    '@media (foo @x)',
+    '@media (@x * 2 baz)',
+    '@media (foo(@x))',
+    '@media screen and (@x baz)',
+    '@media ((@x))',
+    '@media not (@x)',
+    '@media (min-width: 1px) and (@x)',
+    '@import (css) url("a.css") (@x);'
+  ])('rejects a bare Less variable outside a declaration value: %s', async (prelude) => {
+    const source = `@x: 10px;\n${prelude}${prelude.endsWith(';') ? '' : ' { a { b: c } }'}`;
+    await expect(new Compiler().renderString(source, { extension: '.less' }))
+      .rejects.toMatchObject({ code: 'parse/unsupported-bare-variable-interpolation' });
+  });
+
+  it.each([
+    ['@media (width > @x)', '@media (width > 10px)'],
+    ['@media (@x < width)', '@media (10px < width)'],
+    ['@media ((min-width: @x))', '@media ((min-width: 10px))']
+  ])('keeps a bare Less variable that is a feature value: %s', async (source, prelude) => {
+    expect(await lessPrelude(`@x: 10px;\n${source}`)).toBe(prelude);
   });
 
   it('keeps the name exemption for a defined condition function with an interpolated payload', async () => {

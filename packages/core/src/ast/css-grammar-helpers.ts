@@ -36,7 +36,8 @@ import {
   selectorTermOf,
   selist
 } from './nodes.js';
-import { generalEnclosedSourceOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
+import { walkAuthoredValue } from './traversal.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
   AnPlusB,
@@ -935,6 +936,7 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
  * — records its source bytes, so the emitter prints it as written.
  */
 export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  rejectBareVariableOutsideValue(children, state);
   let count = 0;
   let only: unknown;
   for (const child of children) {
@@ -943,6 +945,7 @@ export function queryFeatureBlock(children: readonly unknown[], span: AstSourceS
       only = child;
     }
   }
+
   /*
    * Only the group whose own contents are general-enclosed; a group around a
    * marked group is a condition. One whose contents are the dialect's
@@ -994,7 +997,7 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
  * without it is a grammar wiring defect, so it throws rather than falling back
  * to normalized, evaluated output.
  */
-function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+function withAuthoredGeneralEnclosed<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
   /*
    * Contents that read a binding — the dialect's interpolation (SCSS `(#{$q})`,
    * Less `(foo: @{x} baz)`) or a variable reference (SCSS `(foo: $bar baz)`) —
@@ -1021,37 +1024,71 @@ export function authoredSource(span: AstSourceSpan, state: unknown, what: string
 }
 
 /**
- * Whether general-enclosed contents read a binding: an interpolation that
- * references one, or a variable or property reference, at any depth of the
- * group's sequences, lists, blocks, operations and function arguments.
+ * Whether general-enclosed contents read a binding — a variable or property
+ * reference, bare or inside an interpolation — anywhere the authored value
+ * walker reaches (math, negation, `if()`, function arguments, groups).
  */
-function readsBinding(value: unknown): boolean {
-  if (isValueSlotArray(value)) {
-    return value.some(readsBinding);
-  }
-  if (isInterpolation(value)) {
-    return value.parts.some(part => 'ref' in part);
-  }
-  if (isQuoted(value)) {
-    return value.interp !== null && readsBinding(value.interp);
-  }
-  if (isNodeType(value, 'Lookup') || isNodeType(value, 'Reference')) {
-    return true;
-  }
-  if (isNodeType(value, 'Sequence') && 'parts' in value && Array.isArray(value.parts)) {
-    return value.parts.some(readsBinding);
-  }
-  if (isList(value)) {
-    return value.value.some(readsBinding);
-  }
-  if (isNodeType(value, 'Operation') && 'left' in value && 'right' in value) {
-    return readsBinding(value.left) || readsBinding(value.right);
-  }
-  if (isNodeType(value, 'FunctionCall') && 'args' in value && Array.isArray(value.args)) {
-    return value.args.some((arg: unknown) => typeof arg === 'object' && arg !== null && 'value' in arg && readsBinding(arg.value));
-  }
-  return isNodeType(value, 'Block') && 'value' in value && readsBinding(value.value);
+function readsBinding(value: ValueNode): boolean {
+  let reads = false;
+  walkAuthoredValue(value, {
+    enterNode(node) {
+      if (node.type === 'Lookup' || node.type === 'Reference') {
+        reads = true;
+      }
+      return reads ? 'skip-children' : undefined;
+    }
+  });
+  return reads;
 }
+
+/** The parse-state member a dialect sets when its bare variable is a value only (Less, ledger P7). */
+export interface BareVariableRejection {
+  readonly rejectBareVariable: (start: number, end: number, name: string) => never;
+}
+
+function rejectsBareVariable(state: unknown): state is BareVariableRejection {
+  return typeof state === 'object' && state !== null && 'rejectBareVariable' in state && typeof state.rejectBareVariable === 'function';
+}
+
+/*
+ * Ledger P7: where a dialect's bare variable is a value only (its parse state
+ * carries `rejectBareVariable`), a query group admits one only as a
+ * declaration value — after a feature's `name:`, together with everything the
+ * group holds after it — or as a range's bound. Anywhere else in the group
+ * (`(@x)`, `(@x baz)`, `(foo @x)`, `(foo(@x))`) it is a prelude position, where
+ * only the dialect's interpolation substitutes. A nested group was checked
+ * when it was built, so the walk does not enter one; an interpolation or a
+ * string is the dialect's own substitution.
+ */
+function rejectBareVariableOutsideValue(children: readonly unknown[], state: unknown): void {
+  if (!rejectsBareVariable(state)) {
+    return;
+  }
+  const contents = children.find(isValue);
+  if (contents?.type === 'Operation' && contents.operator === ':') {
+    return;
+  }
+  for (const child of children) {
+    if (!isValue(child)) {
+      continue;
+    }
+    walkAuthoredValue(child, {
+      enterNode(node) {
+        if (node.type === 'Block' || node.type === 'Interpolation' || node.type === 'Quoted'
+          || (node.type === 'Operation' && QUERY_VALUE_OPERATORS.has(node.operator))) {
+          return 'skip-children';
+        }
+        if (node.type === 'Lookup' && node.kind === 'var') {
+          state.rejectBareVariable(sourceStartOf(node), sourceEndOf(node), node.raw.slice(1));
+        }
+        return undefined;
+      }
+    });
+  }
+}
+
+/* The operators whose operands are a feature's values: `name: value` and the range comparisons. */
+const QUERY_VALUE_OPERATORS: ReadonlySet<string> = new Set([':', '<', '>', '<=', '>=', '=']);
 
 /*
  * `<general-enclosed>` read as a query's contents (media-queries-4 §3.1): what

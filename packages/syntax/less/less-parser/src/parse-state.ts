@@ -7,9 +7,10 @@
  * third module keeps that a straight line rather than a cycle.
  */
 import type { MathMode } from '@jesscss/core';
-import type { FunctionScope } from '@jesscss/core/ast';
+import type { BareVariableRejection, FunctionScope } from '@jesscss/core/ast';
+import { LessBareVariableInterpolationError } from './parse-error.js';
 
-export interface LessParseState {
+export interface LessParseState extends Partial<BareVariableRejection> {
   /**
    * The input text, the trivia machinery's back-reference for slicing.
    *
@@ -38,6 +39,14 @@ export interface LessParseState {
    * reference carries a write back to the calls built before the directive.
    */
   readonly functions?: FunctionScope;
+}
+
+/**
+ * A bare `@name` in a query group outside a declaration value (ledger P7): the
+ * shared query reducers see the group whole, and reject it through this.
+ */
+export function rejectBareVariable(start: number, end: number, name: string): never {
+  throw new LessBareVariableInterpolationError(start, end, name);
 }
 
 /** The public Less default, shared by wrapper and raw-grammar entry points. */
