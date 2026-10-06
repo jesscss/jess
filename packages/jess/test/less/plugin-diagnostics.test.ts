@@ -517,10 +517,12 @@ describe('the less-compat tree shim', () => {
       breakOnError: false
     });
 
-    const warning = result.warnings.find(w => w.code === 'plugin/function-threw');
-    expect(warning).toBeDefined();
-    expect(warning!.reason).toContain('tree.Media');
-    expect(warning!.reason).toContain('not supported');
+    /* A tree node beyond the function-plugin value surface is the A12 non-goal. */
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "p.js" uses tree.Media, which is not supported');
+    expect(refusal!.line).toBe(2);
   }, 30000);
 
   it('refuses a hook reached from a file the plugin requires, at its @plugin statement', async () => {
@@ -538,6 +540,28 @@ describe('the less-compat tree shim', () => {
     expect(refusal!.message).toBe('Plugin "p.js" uses less.FileManager, which is not supported');
     expect(refusal!.filePath).toBe(entry);
     expect(refusal!.line).toBe(2);
+  }, 30000);
+
+  /*
+   * jess#300: an at-rule is a statement, not a value, so `less.atrule()` (the
+   * 4.x factory for `tree.AtRule`) is outside the function-plugin value surface
+   * and refused as the A12 tree-API non-goal, at the call.
+   */
+  it('refuses a plugin function that builds an at-rule (less.atrule) at its call', async () => {
+    const { dir, entry } = makeProject(
+      'functions.add(\'test-atrule\', function (name, value) { return less.atrule(name.value, value.value); });',
+      '@plugin "./p";\n\ntest-atrule("@charset"; \'"utf-8"\');\n.a { b: 1; }\n'
+    );
+
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "p.js" uses tree.AtRule, which is not supported');
+    expect(refusal!.fix).toContain('At-rules are statements, not values.');
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(3);
   }, 30000);
 
   it('registers @plugin functions declared in an imported file', async () => {

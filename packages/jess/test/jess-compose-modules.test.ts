@@ -41,6 +41,12 @@ describe('.jess @-compose namespace members', () => {
     );
   });
 
+  /* Configuration is a snapshot taken when the module activates (Sass semantics). */
+  it('binds a configured value as it stood when the compose ran', async () => {
+    await expect(render('$brand: green;\n@-compose "./m.jess" with { $p: $brand; }\n$brand := red;\n.a { c: $m.p; }\n', '$p?: blue;\n.t { c: $p; }\n'))
+      .resolves.toBe('.t {\n  c: green;\n}\n.a {\n  c: green;\n}\n');
+  });
+
   it('a namespace read of a live-written member is the final binding after the module runs', async () => {
     await expect(render('@-compose "./m.jess";\n.a { x: $m.x; }\n', '$x: 1;\n.m { a: $x; }\n$x := 2;\n'))
       .resolves.toBe('.m {\n  a: 1;\n}\n.a {\n  x: 2;\n}\n');

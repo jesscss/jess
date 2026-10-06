@@ -44,5 +44,6 @@ export {
   getErrorFromParser,
   toDiagnostic,
   ERR,
-  WARN
+  WARN,
+  UNSUPPORTED_LESS_TREE_NODES
 } from './error/diagnostics.js';

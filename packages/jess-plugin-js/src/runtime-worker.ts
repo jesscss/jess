@@ -10,25 +10,6 @@ const lessPluginRuntimeCache = new Map();
 const runtimeApi = Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
 
 /**
- * A deliberate, attributable failure for a `less.tree` member the Jess
- * compatibility shim cannot honour. Structural Less 4 nodes (rulesets,
- * selectors, at-rules, imports, extends) have no representation on the value
- * bridge that carries plugin results back to the engine, so exposing a
- * look-alike constructor would silently produce wrong CSS. Throwing names the
- * member and points at the supported surface instead.
- */
-class UnsupportedTreeNodeError extends Error {
-  constructor(name, reason) {
-    super(`Less @plugin: "tree.${name}" is not supported by the Jess less-compat shim.\n`
-      + `${reason}\n`
-      + 'Supported members: Node, Anonymous, Keyword, Quoted, Dimension, Unit, Color, '
-      + 'Expression, Value, Declaration, Variable, Property, Operation, Paren, Negative, '
-      + 'Call, URL, Comment, Assignment, UnicodeDescriptor, Ruleset, DetachedRuleset, Mixin, Nil.');
-    this.name = 'UnsupportedTreeNodeError';
-  }
-}
-
-/**
  * The Less 4 `Node` base. `find` is the member bootstrap-era plugins reach for
  * through `tree.Variable.prototype.find(frames, cb)`; it is defined here (and
  * inherited) exactly as less.js defines it, so the prototype lookup that those
@@ -370,10 +351,7 @@ class Ruleset extends Node {
   constructor(selectors, rules) {
     super();
     if (selectors !== undefined && selectors !== null && (!Array.isArray(selectors) || selectors.length > 0)) {
-      throw new UnsupportedTreeNodeError(
-        'Ruleset',
-        'A selector-bearing ruleset cannot cross the plugin value boundary; only an anonymous declaration list can.'
-      );
+      refuseLessPluginApi('tree.Ruleset with selectors');
     }
     this.selectors = [];
     this.rules = Array.isArray(rules) ? rules : [];
@@ -521,26 +499,15 @@ class Assignment extends Node {
 }
 
 /**
- * Structural Less 4 nodes with no value-bridge representation. Each is exposed
- * as a constructor that fails loudly and names itself, so a 4.x plugin reaching
- * for one gets an attributable error instead of a silently wrong value.
+ * Structural Less 4 nodes with no value-bridge representation: a function
+ * plugin returns a value, and the rest of the 4.x tree API is the A12 non-goal.
+ * Reaching for one is refused like the plugin-manager hooks, and the host
+ * reports it as `plugin/unsupported-feature`, whose wording lives in core.
  */
-const UNSUPPORTED_TREE_NODES = {
-  AtRule: 'At-rules are statements, not values; a plugin function can only return a value.',
-  Attribute: 'Attribute selectors are part of selector structure, which the value bridge does not carry.',
-  Combinator: 'Combinators are part of selector structure, which the value bridge does not carry.',
-  Condition: 'Guard conditions are evaluated by the engine, not reconstructed by a plugin.',
-  Element: 'Selector elements are part of selector structure, which the value bridge does not carry.',
-  Extend: ':extend is resolved by the engine\'s extend pass, not by plugin values.',
-  Import: '@import is resolved during document loading, before plugin functions run.',
-  JavaScript: 'Inline JavaScript evaluation was removed in Jess; use an @plugin function instead.',
-  Media: '@media is a statement, not a value; a plugin function can only return a value.',
-  MixinCall: 'Mixin calls are dispatched by the engine, not constructed by plugin values.',
-  MixinDefinition: 'Mixin definitions are statements, not values.',
-  NamespaceValue: 'Namespace lookups are resolved by the engine\'s scope walk.',
-  Selector: 'Selectors are part of statement structure, which the value bridge does not carry.',
-  VariableCall: 'Detached-ruleset calls are dispatched by the engine, not by plugin values.'
-};
+const UNSUPPORTED_TREE_NODES = [
+  'AtRule', 'Attribute', 'Combinator', 'Condition', 'Element', 'Extend', 'Import',
+  'JavaScript', 'Media', 'MixinCall', 'MixinDefinition', 'NamespaceValue', 'Selector', 'VariableCall'
+];
 
 const treeNamespace = {
   Anonymous,
@@ -569,13 +536,11 @@ const treeNamespace = {
   Variable
 };
 
-for (const [name, reason] of Object.entries(UNSUPPORTED_TREE_NODES)) {
+for (const name of UNSUPPORTED_TREE_NODES) {
   Object.defineProperty(treeNamespace, name, {
     enumerable: true,
     configurable: false,
-    get() {
-      throw new UnsupportedTreeNodeError(name, reason);
-    }
+    get: () => refuseLessPluginApi(`tree.${name}`)
   });
 }
 
@@ -601,8 +566,8 @@ const lessFacade = {
 /*
  * Less 4.x exposes every `tree` constructor as a lowercase factory on the
  * plugin's `less` object (`less.dimension(1, 'px')`, `less.keyword('a')`). The
- * member is read at call time, so an unsupported node (`less.atrule(…)`) fails
- * with the same attributable error as `tree.AtRule`.
+ * member is read at call time, so an unsupported node (`less.atrule(…)`) is
+ * refused as `tree.AtRule` is.
  */
 for (const name of Object.keys(treeNamespace)) {
   lessFacade[name.toLowerCase()] = (...args) => new treeNamespace[name](...args);
@@ -806,9 +771,10 @@ const loadModule = async (modulePath) => {
 };
 
 /**
- * A refusal of the Less 4 plugin-manager API, which v5 deliberately does not
- * run. The message is only the member refused (`pluginManager.addVisitor()`,
- * `less.visitors`, ...): the host turns it into a `plugin/unsupported-feature`
+ * A refusal of the Less 4 plugin-manager API, or of a tree node beyond the
+ * function-plugin value surface, which v5 deliberately does not provide (A12).
+ * The message is only the member refused (`pluginManager.addVisitor()`,
+ * `less.visitors`, `tree.AtRule`, ...): the host turns it into a `plugin/unsupported-feature`
  * diagnostic whose wording and replacement come from `@jesscss/core`, the same
  * one the in-process bridge of `@jesscss/plugin-less-compat` reports.
  */

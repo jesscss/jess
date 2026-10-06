@@ -259,9 +259,22 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function: a structured `:nth-*()` / `:lang()` / `:dir()` pseudo reaches
     // its mixin-match atoms through its argument's parsed leaves
     // (`pushArgumentAtoms`) instead of re-splitting its canonical spelling.
-    expect(occurrences(/^function |^async function /gmu)).toBe(516);
-    expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    // -1 `new Set` (ledger F11): the `DEFERRED_CSS_AUTHORED_CALLS` name set is
+    // retired; every call with no callable is written out with its arguments as
+    // values and its comments kept.
+    // +3 functions: module configuration as an activation snapshot
+    // (`seedModuleConfig`, `snapshotModuleConfig`) that a `set` nested before a
+    // planned document-root compose may configure (`plannedAhead`, ruling J6c).
+    // +3 functions, -1 `new Map`: a structural mixin argument is evaluated once,
+    // its bound bytes written from that evaluation (`writtenBytes`,
+    // `emitAsWritten`) instead of a second evaluation memoized per source; only
+    // the layout pretty output replays rides on it (`replayedLayoutOf`).
+    // -1 function, -1 `new Set` (ledger F5): the CSS color-call shape test
+    // moved to `isCssColorCall` in `nodes.ts`, which the `.jess` converter
+    // shares.
+    expect(occurrences(/^function |^async function /gmu)).toBe(521);
+    expect(occurrences(/new Map/gu)).toBe(84);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

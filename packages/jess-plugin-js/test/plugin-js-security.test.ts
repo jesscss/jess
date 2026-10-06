@@ -367,7 +367,9 @@ describe('@jesscss/plugin-js security', () => {
     const mod = await plugin.import(modulePath);
     expect((await mod.keyword()).bytes).toBe('kw');
     expect((await mod.expression()).map((item: { bytes: string }) => item.bytes)).toEqual(['1px', 'solid']);
-    await expect(mod.atrule()).rejects.toThrow('"tree.AtRule" is not supported');
+
+    /* An at-rule is no value, so it is the A12 tree-API non-goal, refused like the hooks. */
+    await expect(mod.atrule()).rejects.toMatchObject({ code: 'plugin/unsupported-feature', message: expect.stringContaining('tree.AtRule') });
   });
 
   it('loads legacy Less @plugin wrapper files in Deno with injected variables', async () => {

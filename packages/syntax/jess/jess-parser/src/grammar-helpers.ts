@@ -31,6 +31,9 @@ type JessQueryFeatureName = { readonly property: Keyword };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
 
+/** A call argument after the first, with the padded comma written before it. */
+type JessCallArgument = { readonly separator: string; readonly value: ValueSlot };
+
 /*
  * Core's shared reducer helpers, bound to this grammar: its name is the only
  * part of their error messages that differs between dialects, and
@@ -176,6 +179,11 @@ function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument
    * absence is a reduced-shape defect, not a positional argument. */
   return typeof value === 'object' && value !== null && 'value' in value && isJessValueSlotValue(value.value)
     && 'name' in value && (value.name === undefined || typeof value.name === 'string');
+}
+
+function isJessCallArgument(value: unknown): value is JessCallArgument {
+  return typeof value === 'object' && value !== null && 'separator' in value && typeof value.separator === 'string'
+    && 'value' in value && isJessValueSlotValue(value.value);
 }
 
 function requireValueNode(value: unknown): ValueNode {
@@ -923,6 +931,7 @@ export {
   isJessValueSlotValue,
   requireValueSlot,
   isJessMixinCallArgument,
+  isJessCallArgument,
   requireValueNode,
   requireGuardNode,
   isInterpolationLiteral,
@@ -987,5 +996,6 @@ export type {
   JessComplexTail,
   JessQueryFeatureName,
   JessAtRuleHeader,
-  JessMixinCallArgument
+  JessMixinCallArgument,
+  JessCallArgument
 };

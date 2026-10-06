@@ -108,13 +108,13 @@ describe('Less built-in argument errors through the public AST route', () => {
   });
 
   /*
-   * A deferred CSS call is inert only itself: its arguments are values like any
-   * declaration value (ledger P37). A Less built-in, a condition or an operation
-   * written inside one computes, a literal is spelled as it is everywhere else
-   * (ledger V4: `.5turn` gains its `0`), and the call keeps its comments and any
-   * CSS color call left as written (ledger F5).
+   * A call written out as-is is inert only itself: its arguments are values
+   * like any declaration value (ledger P37, F11). A Less built-in, a condition or
+   * an operation written inside one computes, a literal is spelled as it is
+   * everywhere else (ledger V4: `.5turn` gains its `0`), and the call keeps its
+   * comments and any CSS color call left as written (ledger F5).
    */
-  it('evaluates the arguments of a deferred linear-gradient() as values', async () => {
+  it('evaluates the arguments of a written-out linear-gradient() as values', async () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
     const source = '@c: red; .entry { a: linear-gradient(to right, fade(@c, 50%), darken(#fff, 10%) 10.0%, rgba(0,0,0,.5) /* stop */, .5turn); }';
@@ -125,6 +125,43 @@ describe('Less built-in argument errors through the public AST route', () => {
     await expect(new Compiler({ output: { collapseNesting: true }, compile: { unitMode: 'strict' } })
       .renderString('.entry { a: linear-gradient(red (1px + 1s), blue); }', { filePath: 'entry.less', extension: '.less' }))
       .rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+  });
+
+  it('keeps the argument comments of every written-out call', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
+    await expect(render('@r: { color: red; }; .entry { a: radial-gradient(#333 /*c*/, #111); b: radial-gradient(#333 /*c*/ #222, /*d*/ #111); c: foo(rgba(0,0,0,.5) /* x */, @r); }'))
+      .resolves.toBe('.entry {\n  a: radial-gradient(#333 /*c*/, #111);\n  b: radial-gradient(#333 /*c*/ #222, /*d*/ #111);\n  c: foo(rgba(0, 0, 0, .5) /* x */, { color: red; });\n}\n');
+    await expect(render('.entry { a: rgba(1 /*c*/, 2); }'))
+      .resolves.toBe('.entry {\n  a: rgba(1 /*c*/, 2);\n}\n');
+    await expect(new Compiler({ output: { collapseNesting: true, compress: true } })
+      .renderString('.entry { a: radial-gradient(#333 /*c*/, #111); }', { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toBe('.entry{a:radial-gradient(#333,#111)}');
+  });
+
+  /*
+   * The replayed run between written-out arguments is CSS: a Less `//` line
+   * comment never renders, and a `;` argument separator is spelled `,`.
+   */
+  it('writes neither a line comment nor a `;` separator into a written-out call', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
+    await expect(render('.x { a: foo(a, // c\n  b); b: darken(foo, // c\n  10%); c: foo(a /* 1 */; b); d: foo(@a: 1 /*c*/; @b: 2); e: 1px // c\n  2px; f: foo(a, /* x // y; */ b); }'))
+      .resolves.toBe('.x {\n  a: foo(a,\n    b);\n  b: darken(foo,\n    10%);\n  c: foo(a /* 1 */, b);\n  d: foo(@a: 1 /*c*/, @b: 2);\n  e: 1px\n    2px;\n  f: foo(a, /* x // y; */ b);\n}\n');
+  });
+
+  /* A call is written out the same way in every dialect, comments kept (ledger F11, invariant 4). */
+  it('keeps the argument comments of a written-out call in .jess', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('.e { a: radial-gradient(#333 /*c*/, #111); b: foo(a, /*c*/ b); c: foo(a,\n    b); }', { filePath: 'entry.jess', extension: '.jess' }))
+      .resolves.toBe('.e {\n  a: radial-gradient(#333 /*c*/, #111);\n  b: foo(a, /*c*/ b);\n  c: foo(a,\n    b);\n}\n');
+  });
+
+  it('decides a condition written in an F5 color call', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
+    await expect(render('@c: 5; .entry { a: rgb(if((true), 1, 2), 2, 3); b: rgb(if((false), 1, 2), 2, 3); c: rgb(if((@c > 3), 1, 2), 2, 3); d: hsl(if(not (true), 10, 20), 50%, 50%); }'))
+      .resolves.toBe('.entry {\n  a: rgb(1, 2, 3);\n  b: rgb(2, 2, 3);\n  c: rgb(1, 2, 3);\n  d: hsl(20, 50%, 50%);\n}\n');
   });
 
   it('dispatches Less color overloads instead of leaking CSS-shaped authored bytes', async () => {

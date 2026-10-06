@@ -331,7 +331,11 @@ describe('Mixin canonical AST emission', () => {
       + '.host {\n  color: red;\n  .shade {\n    opacity: 0.5;\n  }\n}\n');
   });
 
-  it('projects only a selected ruleset-mixin ampersand header in nested output', () => {
+  /*
+   * A ruleset mixin's rules keep their authored `&` headers inside the caller,
+   * every one of them, as authored nesting does (jess#345).
+   */
+  it('keeps a ruleset mixin\'s ampersand headers authored in nested output', () => {
     const rulesetMixin = rule('.shell', [
       rule('.ordinary', [decl('state', keyword('literal'))]),
       rule('&-active', [decl('state', keyword('on'))]),
@@ -358,7 +362,7 @@ describe('Mixin canonical AST emission', () => {
       + '  .ordinary {\n'
       + '    state: literal;\n'
       + '  }\n'
-      + '  .host-active {\n'
+      + '  &-active {\n'
       + '    state: on;\n'
       + '  }\n'
       + '  &-later {\n'

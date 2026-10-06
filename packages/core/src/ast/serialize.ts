@@ -64,7 +64,8 @@ import {
   selectorTermCanonical,
   selectorTermHasInterp,
   simpleSelector,
-  branchTextIsPlaceholder
+  branchTextIsPlaceholder,
+  isCssColorCall
 } from './nodes.js';
 import type {
   Any,
@@ -135,10 +136,13 @@ import {
   delimiterOpen,
   isValueGroup,
   isValueGroupArray,
+  authoredSpace,
   isElided,
   isLiteral,
   itemBoundary,
+  joinGroup,
   literal,
+  runReplays,
   sepGlue,
   writtenArgument,
   type EvalModes,
@@ -468,12 +472,8 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     const request = { node, specifier, options };
     if (importHasOption(options, 'inline')) {
       try {
-        const { resolvedPath, source: inline } = await context.readInlineImport(specifier);
-        const slash = Math.max(resolvedPath.lastIndexOf('/'), resolvedPath.lastIndexOf('\\'));
-        return {
-          inline,
-          file: { name: resolvedPath.slice(slash + 1), path: resolvedPath.slice(0, Math.max(slash, 0)), fullPath: resolvedPath, source: inline }
-        };
+        const file = await context.readInlineImport(specifier);
+        return { inline: file.source, file };
       } catch (error) {
         importError(request, error);
       }
@@ -696,16 +696,6 @@ interface NestedHeaderSource {
   readonly parent: NestedHeaderSource | null;
   readonly selector: SelectorList;
   readonly frame: Frame;
-}
-
-/**
- * A selected paren-less ruleset mixin may project its first `&` header onto
- * the call site's authored selector path.  Real mixin definitions never get
- * this fact, so normal nested authored `&` remains literal.
- */
-interface NestedRuleMixinPlacement {
-  readonly source: NestedHeaderSource;
-  readonly callFrame: Frame;
 }
 
 /** A canonical ruleset body placed by an already-executed explicit mixin call.
@@ -3764,6 +3754,15 @@ interface EvalCtx {
   modes: EvalModes;
 
   /**
+   * Set on the non-evaluating byte lane of an F5 color call
+   * ({@link preserveCall}): the evaluating context that lane was derived from.
+   * The call's arguments keep their authored bytes, but a condition written in
+   * them is still decided — `rgb(if((true), 1, 2), 2, 3)` is `rgb(1, 2, 3)` — so
+   * {@link guardDeps} evaluates it here.
+   */
+  writtenFrom?: EvalCtx;
+
+  /**
    * [compress] `output.compress` — minified output. Read on both the value lane
    * (folds Color/Dimension to shortest form; tightens list commas) and the
    * structural lane (drops whitespace/comments). Optional so every non-compress
@@ -4043,7 +4042,7 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
       }
       if (!empty) {
         /* [compress] one space; the authored (possibly multi-line) run is pretty-only. */
-        bytes += e.compress === true ? ' ' : separators?.[index - 1] ?? ' ';
+        bytes += e.compress === true ? ' ' : authoredSpace(separators?.[index - 1]);
       }
       bytes += emitValueC(item, e);
       empty = false;
@@ -4063,13 +4062,36 @@ function evalTypedSlot(
   frame: Frame | null,
   e: EvalCtx,
   projectMixinValues = false,
-  writeRulesets = false
+  argument: ArgumentMode = ARG_NONE
 ): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
-    return evalTyped(slot, frame, e, projectMixinValues, writeRulesets);
+    return evalTyped(slot, frame, e, projectMixinValues, argument);
   }
-  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, writeRulesets));
-  return combineAll(values, resolved => resolved);
+  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, argument));
+  if (argument !== ARG_BINDING) {
+    return combineAll(values, resolved => resolved);
+  }
+
+  /* A binding's authored line breaks and comments between the items ride along ({@link emitAsWritten}). */
+  const layout = replayedLayoutOf(slot);
+  return combineAll(values, resolved => layout === undefined ? resolved : withValueLayout(resolved, layout));
+}
+
+/**
+ * The authored layout of a group when pretty output replays a run of it (a
+ * line break or a block comment), else `undefined`: a binding carries only the
+ * layout that changes its written bytes ({@link emitAsWritten}).
+ */
+function replayedLayoutOf(node: object): readonly string[] | undefined {
+  const layout = valueLayoutOf(node);
+  if (layout !== undefined) {
+    for (const run of layout) {
+      if (runReplays(run)) {
+        return layout;
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -4278,12 +4300,34 @@ function validateValueGroupUnits(
   }
 }
 
+/** A typed value that is no function argument. */
+const ARG_NONE = 0;
+
+/** An argument handed to a callable: a call in it yields its value. */
+const ARG_INPUT = 1;
+
+/**
+ * An argument of a call written out as-is, which has no callable (ledger F11):
+ * only the call is inert, the argument is a value like a declaration value, so
+ * an F5 color call in it keeps its authored bytes.
+ */
+const ARG_WRITTEN = 2;
+
+/**
+ * A mixin argument evaluated for its binding: no function argument, but the
+ * authored line breaks and comments between its items ride on the groups it
+ * builds, so the bound bytes keep them ({@link writtenBytes}). Only this mode
+ * reads the layout table, so no other typed evaluation pays for it.
+ */
+const ARG_BINDING = 3;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING;
+
 function evalTyped(
   node: ValueNode,
   frame: Frame | null,
   e: EvalCtx,
   projectMixinValues = false,
-  writeRulesets = false
+  argument: ArgumentMode = ARG_NONE
 ): MaybePromise<ValueGroup> {
   switch (node.type) {
     case 'AnonymousMixin':
@@ -4293,7 +4337,7 @@ function evalTyped(
        * as-is (unknown, not in scope, or failed and preserved) never loses it.
        * Anywhere else it has no value, exactly as before.
        */
-      return writeRulesets
+      return argument === ARG_INPUT || argument === ARG_WRITTEN
         ? writtenRulesetArgument(node, frame, e)
         : mapMaybe(evalValue(node, frame, e), v => force(e, v));
 
@@ -4368,7 +4412,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(e, literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, writeRulesets));
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4451,8 +4495,9 @@ function evalTyped(
        * `extract`, counted by `length`, or compared). The structure the parser owns
        * is handed to the value layer directly — no re-splitting a joined string.
        */
-      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, writeRulesets));
-      return combineAll(typed, vals => makeList(vals, node.sep));
+      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, argument));
+      const layout = argument === ARG_BINDING ? replayedLayoutOf(node) : undefined;
+      return combineAll(typed, vals => layout === undefined ? makeList(vals, node.sep) : withValueLayout(makeList(vals, node.sep), layout));
     }
     case 'Branch':
       /*
@@ -4461,8 +4506,8 @@ function evalTyped(
        * a ruleset argument is — and the branch is its authored `cond: value`.
        */
       return combineAll([
-        evalTypedSlot(node.condition, frame, e, projectMixinValues, writeRulesets),
-        evalTypedSlot(node.value, frame, e, projectMixinValues, writeRulesets)
+        evalTypedSlot(node.condition, frame, e, projectMixinValues, argument),
+        evalTypedSlot(node.value, frame, e, projectMixinValues, argument)
       ], (parts) => {
         const condition = emitValueC(parts[0]!, e);
         const value = emitValueC(parts[1]!, e);
@@ -4483,9 +4528,10 @@ function evalTyped(
       /*
        * Typed consumers deliberately bypass any direct-output preservation
        * policy. An operation or typed function argument needs the callable's
-       * result, not its authored bytes.
+       * result, not its authored bytes. An argument of a call written out as-is
+       * feeds no callable, so it keeps that policy (ledger F11).
        */
-      return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
+      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => force(e, v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
     case 'IfValue': {
@@ -4498,7 +4544,7 @@ function evalTyped(
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, e, projectMixinValues));
+        : evalTypedSlot(taken, frame, e, projectMixinValues, argument));
     }
     case 'Range':
       /*
@@ -6404,7 +6450,7 @@ function moduleReferenceCall(
   node: Reference,
   frame: Frame | null,
   e: EvalCtx
-): { name: string; call: ReferenceCall; fn: Fn; namespaced: boolean } | undefined {
+): { name: string; call: ReferenceCall; fn: Fn } | undefined {
   const moduleValues = e.moduleReferenceValues;
   if (moduleValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
     return undefined;
@@ -6441,7 +6487,7 @@ function moduleReferenceCall(
       return undefined;
     }
     const fn = lookupModuleFunction(frame, importedPath);
-    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn, namespaced: false };
+    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn };
   }
 
   if (node.steps.length - stepIndex < 2) {
@@ -6460,7 +6506,7 @@ function moduleReferenceCall(
   }
   const lowerName = name.toLowerCase();
   const fn = lookupModuleFunction(frame, lowerName);
-  return fn === undefined ? undefined : { name, call, fn, namespaced: true };
+  return fn === undefined ? undefined : { name, call, fn };
 }
 
 function evalModuleReferenceCall(
@@ -6491,7 +6537,7 @@ function evalModuleReferenceCall(
   const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
   call._s = sourceStartOf(written);
   call._e = sourceEndOf(written);
-  return dispatchCall(call, frame, e, e.ev, selected.fn, false, selected.namespaced);
+  return dispatchCall(call, frame, e, e.ev, selected.fn, false, true);
 }
 
 /**
@@ -6606,59 +6652,17 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   });
 }
 
-/** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
-const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
-
-/*
- * CSS functions Less does not define, written out as a call without dispatch:
- * only the call is inert, its arguments are values (see preserveCall). An F5
- * color constructor, by contrast, is written out whole.
- */
-const DEFERRED_CSS_AUTHORED_CALLS = new Set(['linear-gradient']);
-
-/**
- * Recognize the CSS-shaped arities that are safe to leave as authored bytes.
- *
- * Less overloads the rgb-family names: one- and two-slot calls are color/
- * alpha conveniences (`rgba(#fff)`, `rgba(#fff, .5)`), while malformed
- * one-/two-slot numeric calls must still reach the selected Less callable so
- * its normal functionMode policy can reject or preserve them. Modern CSS
- * syntax arrives as one nested slot, so inspect that typed structure as well;
- * a three-or-more item nested slot is the equivalent CSS channel shape.
- */
-function hasCssColorCallShape(node: FunctionCall): boolean {
-  if (node.args.length >= 3) {
-    return true;
-  }
-  if (node.args.length !== 1) {
-    return false;
-  }
-  const slot = node.args[0]!.value;
-  return isValueSlotArray(slot) && slot.length >= 3;
-}
-
 function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean): boolean {
-  if (!lessDocument) {
-    return false;
-  }
-  const lname = node.name.toLowerCase();
-  return (DEFERRED_COLOR_CALLS.has(lname) && hasCssColorCallShape(node))
-    || DEFERRED_CSS_AUTHORED_CALLS.has(lname);
+  return lessDocument && isCssColorCall(node);
 }
 
 /**
  * Re-emit a call after resolving variable/interpolation bytes, without invoking
- * its callable: a deferred CSS-authored call, a failed plugin call, and every
- * call on the non-evaluating byte lane. Each argument is written as authored,
- * keyword included ({@link writtenArgument}, ledger P23).
- *
- * `argumentsAreValues` marks a CSS function Less does not define
- * (`DEFERRED_CSS_AUTHORED_CALLS`): only the call itself is inert, and each
- * argument is a value like any declaration value — a call, a condition or an
- * operation written in it is evaluated (ledger P37), a unit error in it raises,
- * and a literal is spelled as it is everywhere else (ledger V4).
+ * its callable: an F5 color call and every call on the non-evaluating byte
+ * lane. Each argument is written as authored, keyword included
+ * ({@link writtenArgument}, ledger P23).
  */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, argumentsAreValues = false): MaybePromise<EvalValue> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
@@ -6667,22 +6671,14 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, argum
    * An F5 color call (and the non-evaluating byte lane) retains literal
    * spellings (`.5`, hue units) exactly: typed literal canonicalization is off
    * for its arguments; variable references still resolve through the same live
-   * frame walk.
+   * frame walk, and a condition is still decided in the evaluating context
+   * ({@link EvalCtx.writtenFrom}).
    */
-  const preserve = e.ev && !argumentsAreValues ? { ...e, ev: null } : e;
+  const preserve = e.ev ? { ...e, ev: null, writtenFrom: e } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
     const compress = e.compress === true;
-    if (argumentsAreValues) {
-      for (let index = 0; index < vals.length; index += 1) {
-        const value = vals[index]!;
-        if (!isLiteral(value)) {
-          const slot = node.args[index]!.value;
-          validateValueGroupUnits(value, e.modes, isValueSlotArray(slot) ? (slot[0] ?? node) : slot, e, false);
-        }
-      }
-    }
 
     /*
      * Comma spacing is minimal-correctness normalized to one space after the
@@ -6711,13 +6707,15 @@ function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
   return call !== null && !hasAmbientFunctions(call) ? call : null;
 }
 
-/** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
 /** Guard-eval deps sourced from an evaluation context (a value-position condition,
- *  like a CSS ruleset guard, never depends on a mixin `default()` decision). */
+ *  like a CSS ruleset guard, never depends on a mixin `default()` decision). A
+ *  condition on the written lane of an F5 call is decided in the context that
+ *  lane came from ({@link EvalCtx.writtenFrom}). */
 function guardDeps(frame: Frame | null, e: EvalCtx): {
   resolveTyped: TypedResolver; ev: ValueEvaluator | null; modes: EvalModes; isDefault: () => boolean;
 } {
-  return { resolveTyped: makeTypedResolver(frame, e), ev: e.ev, modes: e.modes, isDefault: () => false };
+  const decide = e.writtenFrom ?? e;
+  return { resolveTyped: makeTypedResolver(frame, decide), ev: decide.ev, modes: decide.modes, isDefault: () => false };
 }
 
 /**
@@ -7011,6 +7009,25 @@ function snapshotEvaluatedMixinValue(
   ));
 }
 
+/**
+ * The bytes an authored structural argument binds as, from its one typed
+ * evaluation: its items as {@link emitValue} spells them, joined with the line
+ * breaks and comments written between them, which its typed evaluation records
+ * on the groups it builds ({@link ARG_BINDING}). Its units are checked as a
+ * declaration's would be.
+ */
+function writtenBytes(value: ValueGroup, source: CallValue, e: EvalCtx): string {
+  validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+  return emitAsWritten(value);
+}
+
+function emitAsWritten(value: ValueGroup): string {
+  if (isValueGroupArray(value)) {
+    return joinGroup(value, ' ', emitAsWritten, valueLayoutOf(value));
+  }
+  return value.type === 'List' ? joinGroup(value.value, sepGlue(value.sep), emitAsWritten, valueLayoutOf(value)) : value.bytes;
+}
+
 /** Snapshot one authored structural result while retaining its original eager bytes. */
 function resolveAuthoredMixinValue(
   source: ValueSlot,
@@ -7018,10 +7035,9 @@ function resolveAuthoredMixinValue(
   e: EvalCtx,
   retain: (key: Binding) => void
 ): MaybePromise<CallValue> {
-  return mapMaybe(evalTypedSlot(source, frame, e, true), (value) => {
+  return mapMaybe(evalTypedSlot(source, frame, e, true, ARG_BINDING), (value) => {
     const mode = mixinGroupMode(value);
-    const bytes = mode === MIXIN_GROUP_VALUE ? evalBytes(source, frame, spliceCtx(e)) : emitValue(value);
-    return mapMaybe(bytes, resolved => snapshotPreparedMixinValue(value, mode, resolved, e, retain));
+    return snapshotPreparedMixinValue(value, mode, mode === MIXIN_GROUP_VALUE ? writtenBytes(value, source, e) : emitValue(value), e, retain);
   });
 }
 
@@ -7193,9 +7209,7 @@ function boundSourceTracker(
   const trackValue = (trackMode & TRACK_VALUE_SOURCE) !== 0;
   let candidateKeys: Binding[] | null = null;
   let primaryValue: MaybePromise<ValueGroup> | undefined;
-  let primaryBytes: MaybePromise<string> | undefined;
   let additionalValues: Map<CallValue, MaybePromise<ValueGroup>> | undefined;
-  let additionalBytes: Map<CallValue, MaybePromise<string>> | undefined;
   let primaryGroup: ValueGroup | undefined;
   let primaryGroupMode: MixinGroupMode = MIXIN_GROUP_SCALAR;
   let primaryGroupModeReady = false;
@@ -7209,30 +7223,23 @@ function boundSourceTracker(
   const retain = (key: Binding): void => {
     (candidateKeys ??= []).push(key);
   };
+
+  /*
+   * A source's mode is fixed, so its one evaluation is shared: an authored
+   * source is evaluated as a binding, whose written bytes keep its layout.
+   */
   const evaluatedValue = trackValue
-    ? (source: ValueSlot): MaybePromise<ValueGroup> => {
+    ? (source: ValueSlot, mode: MixinValueSourceMode): MaybePromise<ValueGroup> => {
+        const argument = mode === MIXIN_VALUE_AUTHORED ? ARG_BINDING : ARG_NONE;
         if (source === valueSources?.valueSource) {
-          return primaryValue ??= evalTypedSlot(source, frame, e, true);
+          return primaryValue ??= evalTypedSlot(source, frame, e, true, argument);
         }
         let value = additionalValues?.get(source);
         if (value === undefined) {
-          value = evalTypedSlot(source, frame, e, true);
+          value = evalTypedSlot(source, frame, e, true, argument);
           (additionalValues ??= new Map()).set(source, value);
         }
         return value;
-      }
-    : undefined;
-  const evaluatedBytes = trackValue
-    ? (source: ValueSlot): MaybePromise<string> => {
-        if (source === valueSources?.valueSource) {
-          return primaryBytes ??= evalBytes(source, frame, spliceCtx(e));
-        }
-        let bytes = additionalBytes?.get(source);
-        if (bytes === undefined) {
-          bytes = evalBytes(source, frame, spliceCtx(e));
-          (additionalBytes ??= new Map()).set(source, bytes);
-        }
-        return bytes;
       }
     : undefined;
   const preparedMode = trackValue
@@ -7308,14 +7315,13 @@ function boundSourceTracker(
           retain
         );
       }
-      const evaluated = evaluatedValue!(value);
+      const evaluated = evaluatedValue!(value, mode);
       return mapMaybe(evaluated, (group) => {
         const groupMode = preparedMode!(group);
         const bytes = mode === MIXIN_VALUE_AUTHORED && groupMode === MIXIN_GROUP_VALUE
-          ? evaluatedBytes!(value)
+          ? writtenBytes(group, value, e)
           : preparedBytes!(group);
-        return mapMaybe(bytes, resolved =>
-          snapshotPreparedMixinValue(group, groupMode, resolved, e, retain));
+        return snapshotPreparedMixinValue(group, groupMode, bytes, e, retain);
       });
     }
     if (!pluginEligible || isValueSlotArray(value) || isMixinCallValue(value)
@@ -7349,7 +7355,7 @@ function boundSourceTracker(
         if (spreadValue === undefined && mode === MIXIN_VALUE_NONE) {
           return undefined;
         }
-        const evaluated = spreadValue ?? evaluatedValue!(value);
+        const evaluated = spreadValue ?? evaluatedValue!(value, mode);
         return mapMaybe(evaluated, (group) => {
           const members = isValueGroupArray(group)
             ? group
@@ -7701,7 +7707,7 @@ function evalCall(
    */
   const lessDocument = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
   if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
-    return preserveCall(node, frame, e, DEFERRED_CSS_AUTHORED_CALLS.has(lname));
+    return preserveCall(node, frame, e);
   }
   const ev = e.ev;
 
@@ -7756,7 +7762,7 @@ function evalCall(
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
 }
 
-/** One `functionMode: 'error'` copy per render's modes, for namespaced calls (ruling J1). */
+/** One `functionMode: 'error'` copy per render's modes, for imported calls (ruling J1). */
 const erroringModesCache = new WeakMap<EvalModes, EvalModes>();
 
 function erroringModes(modes: EvalModes): EvalModes {
@@ -7773,9 +7779,10 @@ function erroringModes(modes: EvalModes): EvalModes {
  * to `selected` when a scoped function was resolved, else to a built-in when
  * `ambient`, else down the unknown-call path, which writes the call out as-is.
  *
- * A `namespaced` call (`@ns.fn(…)`, `$ns.fn(…)`) can never be a CSS function,
- * so `functionMode: 'preserve'` has nothing valid to write out: a failure is
- * an eval error whatever the configured mode (jess#280).
+ * A call through an `imported` binding — a module namespace (`@ns.fn(…)`,
+ * `$ns.fn(…)`) or a bare imported function (`$fn()`) — can never be a CSS
+ * function, so `functionMode: 'preserve'` has nothing valid to write out: a
+ * failure is an eval error whatever the configured mode (ruling J1, jess#280).
  */
 function dispatchCall(
   node: FunctionCall,
@@ -7784,13 +7791,18 @@ function dispatchCall(
   ev: ValueEvaluator,
   selected: Fn | undefined,
   ambient: boolean,
-  namespaced = false
+  imported = false
 ): MaybePromise<EvalValue> {
-  const modes = namespaced && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
+  const modes = imported && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
-  // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
+  /*
+   * Args are materialized TYPED (each arg's tag sourced from its parse node). A
+   * call with no callable is written out as-is, so its arguments are values
+   * (ledger F11) rather than inputs.
+   */
+  const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
+  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument));
   return combineAll(typed, (vals) => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {
@@ -7806,13 +7818,15 @@ function dispatchCall(
      * A call that names an argument also hands over its arguments as written,
      * read only if the call is written out as-is (P23). The keywords are the
      * call's own arguments; when nothing was rebound, the order is the authored
-     * one already.
+     * one already. The authored arguments themselves ride along for the
+     * comments and line breaks a written-out call keeps (F11); nothing is
+     * looked up unless the call is written out.
      */
     const written: WrittenArguments | undefined = named
       ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written);
+      const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written, node.args);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -8182,7 +8196,7 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
        * [compress] a space list keeps ONE space; the authored (possibly multi-line)
        * boundary run is replayed only in pretty output.
        */
-      out += e.compress === true ? ' ' : authored?.[index - 1] ?? ' ';
+      out += e.compress === true ? ' ' : authoredSpace(authored?.[index - 1]);
       out += emitValueC(values[index]!, e);
     }
     return literal(out);
@@ -8339,7 +8353,8 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
     return { branches, multi: branches.length > 1, capture: true };
   }
   if (bound.type === 'Quoted' && bound.escaped && hasTopLevelComma(bound.value)) {
-    return { branches: [bound.value], multi: true, capture: false };
+    /* The whitespace an escaped selector opens or closes with is canonicalized away (ledger O8(b)). */
+    return { branches: [bound.value.trim()], multi: true, capture: false };
   }
   return null;
 }
@@ -8385,14 +8400,16 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
  *  A lone whole-selector `*[…]` capture EXPANDS to one branch per captured
- *  selector; a lone quoted group stays a single verbatim branch. Every other
- *  complex resolves to exactly one string (a compound-embedded group compacts to
- *  `:is(…)` inside `resolveComplex`). */
-function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+ *  selector. A lone quoted group stays a single verbatim branch at a root
+ *  header, and contributes its branches one per line to a `nested` header
+ *  (ledger O8(a)). Every other complex resolves to exactly one string (a
+ *  compound-embedded group compacts to `:is(…)` inside `resolveComplex`). */
+function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx, nested = false): MaybePromise<string[]> {
   const g = loneGroupInterp(c, frame, e);
   if (g !== null) {
-    return g.capture ? g.branches : [g.branches.join(', ')];
+    return g.capture ? g.branches : nested ? splitListBytes(g.branches[0]!) : g.branches;
   }
+
   return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
 }
 
@@ -8553,7 +8570,12 @@ function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCt
       const valueIndex = c.type === 'RelativeSelector' ? i : i + 1;
       out += renderCombinator(combinators[i]!) + values[valueIndex]!;
     }
-    return out;
+
+    /*
+     * Only an interpolation can open a branch with whitespace (`~' + .e'`); at
+     * the branch boundary it is canonicalized away (ledger O8(b)).
+     */
+    return out.trimStart();
   });
 }
 
@@ -8828,7 +8850,7 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
 }
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e)), values => values.flat());
+  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e, true)), values => values.flat());
 }
 
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -8853,7 +8875,7 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
   for (const c of list.selectors) {
     const g = loneGroupInterp(c, frame, e);
     if (g !== null) {
-      parts.push(g.capture ? g.branches : [g.branches.join(', ')]);
+      parts.push(g.branches);
       continue;
     }
     parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
@@ -9202,6 +9224,7 @@ function scratchEmit(e: EvalCtx): Emit {
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,
     compressedBindings: e.compressedBindings,
+    writtenFrom: undefined,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     positions: null,
@@ -12028,6 +12051,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     mixinUrlBindings: null,
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
+    writtenFrom: undefined,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -12131,6 +12155,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     mixinUrlBindings: null,
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
+    writtenFrom: undefined, // set only on an F5 call's written lane (one shape for every spread)
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -12975,17 +13000,14 @@ const PATH_ROOT_GUARD = 4; // a root `&` guard block: its own selector alone; it
 /**
  * [extend/dynamic] Open `rule` on the recorder's path, written with `header`: the
  * flat writer's composed header, or the nested writer's own-local one (`local`).
- * `rooted` — written at a root context; `opaque` — composed against a placement the
- * recorder cannot see (a nested ruleset-mixin placement). Returns the open-rule depth
- * to restore.
+ * `rooted` — written at a root context. Returns the open-rule depth to restore.
  */
 function openDynamicPath(
   dyn: DynamicExtendState,
   rule: Ruleset,
   rooted: boolean,
   header: string[],
-  local: boolean,
-  opaque = false
+  local: boolean
 ): number {
   const depth = dyn.pathRules.length;
 
@@ -12999,7 +13021,7 @@ function openDynamicPath(
   let kind = rooted ? PATH_ROOT : PATH_NESTED;
   if (rooted && local && header.length === 1 && header[0] === '&') {
     kind = PATH_ROOT_GUARD;
-  } else if (opaque || (!rooted && depth === 0)) {
+  } else if (!rooted && depth === 0) {
     kind = PATH_OPAQUE;
   } else if (rule.selector.selectors.some(selectorBranchHasInterp)) {
     kind = local && !rooted ? PATH_OPAQUE_NESTED : PATH_OPAQUE;
@@ -13484,12 +13506,11 @@ function expandRule(
   imp = false,
   expandBubbledSelectorList = false,
   nestedSource?: NestedHeaderSource | null,
-  nestedPlacement: NestedRuleMixinPlacement | null = null,
   nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
   if (nestedSource !== undefined && nestedHoist !== undefined) {
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
-    if (nestedPlan?.flatten) {
+    if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
       nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null });
       return;
@@ -13516,7 +13537,6 @@ function expandRule(
             e,
             imp,
             nestedSource,
-            nestedPlacement,
             nestedHoist
           )));
     }
@@ -14175,13 +14195,11 @@ function walkBody(
    * [V19] Nested write-projection state. Present (with `nested === true`) only when
    * the serialize boundary selected `collapseNesting:false`. The collapsed
    * parameters above are moot when nested; the nested parameters below are moot
-   * when collapsed. `placement` is consumed and cleared by the first `&`-bearing
-   * nested header, so it is mutated in place exactly as the nested emitter did.
+   * when collapsed.
    */
   nested = false,
   hoist?: HoistEntry[],
   source: NestedHeaderSource | null = null,
-  placement: NestedRuleMixinPlacement | null = null,
   sharedLeaves?: NestedLeafBuffer,
   owner?: object
 ): MaybePromise<void> {
@@ -14370,37 +14388,16 @@ function walkBody(
             emitBeforeRootStatement(node);
 
             /*
-             * Only a selected synthesized ruleset mixin gets a placement fact.  It
-             * is consumed by the first `&`-bearing nested header; ordinary authored
-             * nesting has no fact and stays literal in collapse:false mode.
+             * A rule a mixin's body places keeps its authored `&` header, as any
+             * nested rule does: nested inside the caller, `&` already is the
+             * caller (jess#345).
              */
-            const appliesPlacement = placement !== null
-              && !(hoist !== undefined
-                && extendProjection(e)?.nestedPlan.get(node)?.flatten === true)
-              && selectorListHasAmpersand(node.selector);
-            const emitted = expandRule(
-              node,
-              null,
-              null,
-              frame,
-              e,
-              imp,
-              false,
-              source,
-              appliesPlacement ? placement : null,
-              hoist
-            );
+            const emitted = expandRule(node, null, null, frame, e, imp, false, source, hoist);
             if (isThenable(emitted)) {
               return emitted.then(() => {
-                if (appliesPlacement) {
-                  placement = null;
-                }
                 markAfterRootStatement(node);
                 return run(index + 1);
               });
-            }
-            if (appliesPlacement) {
-              placement = null;
             }
             markAfterRootStatement(node);
             break;
@@ -14604,7 +14601,7 @@ function walkBody(
             flushBuf();
             const body = selectIfBody(node, frame, e);
             if (body) {
-              const emitted = nestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion, undefined, bodyTrivia);
+              const emitted = nestedBody(body, frame, e, hoist, imp, source, undefined, applyExpansion, undefined, bodyTrivia);
               if (isThenable(emitted)) {
                 return emitted.then(() => run(index + 1));
               }
@@ -14623,7 +14620,7 @@ function walkBody(
         case 'While': {
           if (nested) {
             flushBuf();
-            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion, undefined, bodyTrivia));
+            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, undefined, applyExpansion, undefined, bodyTrivia));
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -14993,7 +14990,6 @@ function nestedBody(
   hoist?: HoistEntry[],
   imp = false, // [important] call-level `!important` forced onto this body's decls
   source: NestedHeaderSource | null = null,
-  placement: NestedRuleMixinPlacement | null = null,
   sharedLeaves?: NestedLeafBuffer,
   applyExpansion = false,
   owner?: object,
@@ -15001,7 +14997,7 @@ function nestedBody(
 ): MaybePromise<void> {
   return walkBody(
     statements, null, null, frame, MOOT_LEAVES, MOOT_FLUSH, null, e, imp, false, frame,
-    applyExpansion, false, bodyTrivia, true, hoist, source, placement, sharedLeaves, owner
+    applyExpansion, false, bodyTrivia, true, hoist, source, sharedLeaves, owner
   );
 }
 
@@ -15391,9 +15387,6 @@ function expandCall(
                   capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
                 }
                 if (sharedLeaves !== undefined) {
-                  const placement = def.ruleMixin === true && source !== null
-                    ? { source, callFrame } satisfies NestedRuleMixinPlacement
-                    : null;
                   return nestedBody(
                     def.rules,
                     callFrame,
@@ -15401,7 +15394,6 @@ function expandCall(
                     undefined,
                     bodyImp,
                     source,
-                    placement,
                     sharedLeaves,
                     applyExpansion,
                     undefined,
@@ -15599,7 +15591,6 @@ function expandApply(
               undefined,
               imp,
               source,
-              null,
               sharedLeaves,
               true
             )
@@ -16103,7 +16094,6 @@ function expandReferenceCall(
               undefined,
               imp,
               source,
-              null,
               sharedLeaves,
               applyExpansion,
               undefined,
@@ -16498,8 +16488,14 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     return base.parts.map(value => ({ value, key: null }));
   }
   if (base.type === 'Any' || base.type === 'Keyword') {
-    /* [compress] A snapshot that carries its value iterates that value's items. */
-    const carried = base.type === 'Any' ? e.compressedBindings?.get(base) : undefined;
+    /*
+     * A snapshot that kept the value it was evaluated to (a mixin argument,
+     * ledger O3) iterates that value's items in every output mode, as the same
+     * value reaching `each()` directly does; only a bare snapshot splits.
+     */
+    const carried = base.type === 'Any'
+      ? baseFrame?.mixinValueBindings?.get(base) ?? e.mixinValueBindings?.get(base) ?? e.compressedBindings?.get(base)
+      : undefined;
     if (carried !== undefined) {
       return { evaluatedItems: groupItems(carried) };
     }
@@ -16658,7 +16654,7 @@ function expandFor(
   if (unlowered !== null) {
     return sharedLeaves === undefined
       ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
-      : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
+      : nestedBody([unlowered], frame, e, undefined, imp, source, sharedLeaves, applyExpansion);
   }
 
   /*
@@ -16752,7 +16748,6 @@ function expandFor(
                 undefined,
                 imp,
                 source,
-                null,
                 sharedLeaves,
                 applyExpansion,
                 undefined,
@@ -16868,14 +16863,11 @@ function dispatch(
     if (mode === MIXIN_VALUE_AUTHORED) {
       if (hitValue !== undefined && !isMixinCallValue(hitValue)) {
         const evaluated = withExcluded(e, hitValue, () =>
-          evalTypedSlot(hitValue, hit!.frame, e, true));
+          evalTypedSlot(hitValue, hit!.frame, e, true, ARG_BINDING));
         return mapMaybe(evaluated, (group) => {
           const groupMode = mixinGroupMode(group);
-          const bytes = groupMode === MIXIN_GROUP_VALUE
-            ? withExcluded(e, hitValue, () => evalBytes(hitValue, hit!.frame, spliceCtx(e)))
-            : emitValue(group);
-          return mapMaybe(bytes, resolved =>
-            snapshotPreparedMixinValue(group, groupMode, resolved, e, retain!));
+          const bytes = groupMode === MIXIN_GROUP_VALUE ? writtenBytes(group, hitValue, e) : emitValue(group);
+          return snapshotPreparedMixinValue(group, groupMode, bytes, e, retain!);
         });
       }
       return resolveAuthoredMixinValue(v, overlay, e, retain!);
@@ -18503,7 +18495,7 @@ function emitImportPrelude(
     if (index === 1 && between !== null) {
       putValueBoundaryTrivia(e, between, ' ');
     } else {
-      put(e, separators?.[index - 1] ?? ' ');
+      put(e, authoredSpace(separators?.[index - 1]));
     }
     putImportTail(prelude.parts[index]!, frame, e);
   }
@@ -18619,15 +18611,16 @@ function validateModuleConfig(
   });
   if (rejections && rejections.length > 0) {
     const first = rejections[0]!;
-    throw moduleConfigRejected(node, first.message, first.name);
+    throw moduleConfigRejected(node, first.message, first.name, e);
   }
 }
 
-function moduleConfigRejected(node: StyleImport, message: string, name: string): JessError {
+function moduleConfigRejected(node: StyleImport, message: string, name: string, e: EvalCtx): JessError {
   return new JessError({
     code: 'eval/module-config-rejected',
     phase: 'eval',
     node,
+    ...callSiteLocation(node, e),
     summary: message,
     reason: message,
     meta: { reason: message, name }
@@ -18700,17 +18693,25 @@ function sameModuleConfig(a: StyleImportConfig, b: StyleImportConfig): boolean {
  *   rejected by the providing plugin (`applyModuleConfig`) rather than configured.
  *
  * The config VALUES were authored in the importer's file, so they evaluate in the
- * importer frame (cell `valueFrame` / `bindingValueFrames`).
+ * importer frame (cell `valueFrame` / `bindingValueFrames`): once, when execution
+ * reaches the edge that configured the module ({@link snapshotModuleConfig}).
  */
 function configuredModuleFrame(
   statements: Statement[],
   config: NonNullable<StyleImport['config']>,
   importerFrame: Frame
 ): Frame {
-  const reassign = new Map<string, VariableDeclaration>();
-  const cells = new Map<string, BindingCell>();
-  const bindingValueFrames = new Map<Binding, Frame>();
-  for (const binding of config.bindings) {
+  const frame = unconfiguredModuleFrame(statements);
+  seedModuleConfig(frame, config.bindings, importerFrame);
+  return frame;
+}
+
+/** Seed configuration bindings into both of a module frame's binding stores ({@link configuredModuleFrame}). */
+function seedModuleConfig(frame: Frame, bindings: readonly VariableDeclaration[], importerFrame: Frame): void {
+  const reassign = frame.reassign ??= new Map();
+  const cells = frame.cells ??= new Map();
+  const bindingValueFrames = frame.bindingValueFrames ??= new Map();
+  for (const binding of bindings) {
     reassign.set(binding.name, binding);
     cells.set(binding.name, {
       declaration: binding,
@@ -18721,16 +18722,31 @@ function configuredModuleFrame(
     });
     bindingValueFrames.set(binding.value, importerFrame);
   }
-  return {
-    parent: null,
-    mixins: collectMixins(statements),
-    declIndex: collectDeclIndex(statements),
-    cells,
-    reassign,
-    bindingValueFrames,
-    statements,
-    sourceOwner: null
-  };
+}
+
+/**
+ * Module configuration is a snapshot (Sass semantics): when execution reaches
+ * the edge that configured the module, each configured value is evaluated once,
+ * in the importer, and the module binds that result, as a mixin binds an
+ * argument ({@link eagerSnapshot}). A later write in the importer does not reach
+ * the module. A ruleset or a mixin call stays bound by reference. Before this
+ * point (a namespace read the planner published early, ruling J6c) the value is
+ * read where it stands.
+ */
+function snapshotModuleConfig(activation: ComposeActivation, e: EvalCtx): MaybePromise<void> {
+  const config = activation.config!;
+  const importerFrame = activation.importerFrame!;
+  const values = config.bindings.map((binding): MaybePromise<CallValue> => {
+    const value = binding.value;
+    return isMixinCallValue(value) || isTypedCallValue(value) || (!isValueSlotArray(value) && isValueBlock(value))
+      ? value
+      : eagerSnapshot(value, importerFrame, e);
+  });
+  return combineAll(values, (resolved) => {
+    seedModuleConfig(activation.frame, config.bindings.map((binding, index) => resolved[index] === binding.value
+      ? binding
+      : variableDeclaration(binding.name, resolved[index]!, binding.write)), importerFrame);
+  });
 }
 
 /**
@@ -18828,7 +18844,8 @@ function publishComposedModule(
   importerFrame: Frame,
   bodyFrame: Frame,
   specifier: string,
-  rank: SourceRank | null
+  rank: SourceRank | null,
+  e: EvalCtx
 ): void {
   const children = bodyFrame.statements!;
   const namespace = node.namespace ?? deriveModuleNamespace(specifier);
@@ -18868,7 +18885,8 @@ function publishComposedModule(
     throw moduleConfigRejected(
       node,
       `@compose "${specifier}" cannot derive a namespace from its path; add an explicit "as <name>".`,
-      specifier
+      specifier,
+      e
     );
   }
   const block = anonymousMixin(children);
@@ -18912,10 +18930,17 @@ function bindComposedLiveMembers(node: StyleImport, importerFrame: Frame, bodyFr
   });
 }
 
-/** One `@compose` edge's activation: the frame its module evaluates in, and the identity it renders once under. */
+/**
+ * One `@compose` edge's activation: the frame its module evaluates in, and the
+ * identity it renders once under. `config` is set when this edge configured the
+ * frame, whose values it snapshots in `importerFrame` when execution reaches it
+ * ({@link snapshotModuleConfig}).
+ */
 interface ComposeActivation {
   readonly frame: Frame;
   readonly emitOnceKey: string | undefined;
+  readonly config: StyleImportConfig | null;
+  readonly importerFrame: Frame | null;
 }
 
 /**
@@ -18949,6 +18974,7 @@ function activateComposeEdge(
 ): ComposeActivation {
   const authoredConfig = node.config ?? null;
   let config = authoredConfig;
+  let configuresPlanned = false;
   if (key !== undefined) {
     const recorded = e.moduleConfigs?.get(key) ?? null;
     if (authoredConfig !== null && authoredConfig.kind === 'set') {
@@ -18956,7 +18982,8 @@ function activateComposeEdge(
         throw moduleConfigRejected(
           node,
           `Module "${specifier}" is already configured with a different set of values; a module can only be configured once.`,
-          specifier
+          specifier,
+          e
         );
       }
       if (recorded === null) {
@@ -18964,9 +18991,15 @@ function activateComposeEdge(
          * A shared module renders once, under the configuration of the first
          * edge that loads it. One already loaded without a `set` is already
          * activated, so a later `set` would be silently ignored (ruling J6a).
+         * An activation the planner made early for a document-root compose
+         * that execution has not reached loaded nothing yet: this `set`, which
+         * execution reached first, comes first in source order and configures
+         * it (ruling J6c).
          */
-        if (e.loadedImports?.has(key) || e.moduleActivations?.has(key)) {
-          throw alreadyLoadedUnconfigured(node, specifier);
+        const activated = e.moduleActivations?.get(key);
+        configuresPlanned = !planned && activated !== undefined && !e.loadedImports?.has(key) && plannedAhead(activated, e);
+        if (e.loadedImports?.has(key) || (activated !== undefined && !configuresPlanned)) {
+          throw alreadyLoadedUnconfigured(node, specifier, e);
         }
         (e.moduleConfigs ??= new Map()).set(key, authoredConfig);
       }
@@ -18980,7 +19013,7 @@ function activateComposeEdge(
       if (!planned) {
         for (const edge of e.composeActivations?.keys() ?? []) {
           if (edge.config === recorded) {
-            throw alreadyLoadedUnconfigured(edge, specifier);
+            throw alreadyLoadedUnconfigured(edge, specifier, e);
           }
         }
       }
@@ -18989,24 +19022,50 @@ function activateComposeEdge(
   }
   const emitOnceKey = (config === null || config.kind === 'set') && e.multipleImportDepth === 0 ? key : undefined;
   let frame = emitOnceKey === undefined ? undefined : e.moduleActivations?.get(emitOnceKey);
+  let configures = configuresPlanned;
   if (frame === undefined) {
     if (config !== null) {
       validateModuleConfig(node, specifier, config, children, e);
     }
     frame = config !== null ? configuredModuleFrame(children, config, importerFrame) : unconfiguredModuleFrame(children);
+    configures = config !== null;
     if (emitOnceKey !== undefined) {
       (e.moduleActivations ??= new Map()).set(emitOnceKey, frame);
     }
+  } else if (configuresPlanned) {
+    validateModuleConfig(node, specifier, authoredConfig!, children, e);
+    seedModuleConfig(frame, authoredConfig!.bindings, importerFrame);
   }
-  publishComposedModule(node, importerFrame, frame, specifier, rank);
-  return { frame, emitOnceKey };
+  publishComposedModule(node, importerFrame, frame, specifier, rank, e);
+  return configures
+    ? { frame, emitOnceKey, config, importerFrame }
+    : { frame, emitOnceKey, config: null, importerFrame: null };
 }
 
-function alreadyLoadedUnconfigured(node: StyleImport, specifier: string): JessError {
+/**
+ * Whether a module activation is one the planner made for a compose that
+ * execution has not reached. Only a configuring `set` edge asks, so the pending
+ * planned composes are scanned rather than indexed by frame.
+ */
+function plannedAhead(frame: Frame, e: Emit): boolean {
+  const pending = e.composeActivations?.values();
+  if (pending === undefined) {
+    return false;
+  }
+  for (const activation of pending) {
+    if (activation.frame === frame) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function alreadyLoadedUnconfigured(node: StyleImport, specifier: string, e: EvalCtx): JessError {
   return moduleConfigRejected(
     node,
     `Module "${specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
-    specifier
+    specifier,
+    e
   );
 }
 
@@ -19072,6 +19131,7 @@ function expandStyleImport(
         const children = loaded.document?.rules ?? [];
         const isCompose = node.mode === 'compose';
         let activation: ComposeActivation | undefined;
+        let configured: MaybePromise<void> = undefined;
         if (isCompose) {
           activation = e.composeActivations?.get(node);
           if (activation === undefined) {
@@ -19081,6 +19141,7 @@ function expandStyleImport(
           } else {
             e.composeActivations!.delete(node);
           }
+          configured = activation.config === null ? undefined : snapshotModuleConfig(activation, e);
           bindComposedLiveMembers(node, frame, activation.frame);
         }
         const bodyFrame = activation?.frame ?? frame;
@@ -19095,7 +19156,8 @@ function expandStyleImport(
                 throw moduleConfigRejected(
                   node,
                   `Module "${request.specifier}" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.`,
-                  request.specifier
+                  request.specifier,
+                  e
                 );
               }
 
@@ -19111,10 +19173,10 @@ function expandStyleImport(
           }
           seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         }
-        const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
+        const publishChildren = mapMaybe(configured, () => isCompose || hasPrepublishedImportFact(e, node)
           || e.prepublishedModuleImports?.get(frame)?.has(node) === true
           ? undefined
-          : publishImportedDocumentFacts(children, frame, e, false, importSiteRank(frame, node));
+          : publishImportedDocumentFacts(children, frame, e, false, importSiteRank(frame, node)));
 
         /*
          * Published UNCONDITIONALLY here, before the document is remembered and
@@ -19716,7 +19778,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
     const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
-        parts.push(plain(authored?.[index - 1] ?? ' '));
+        parts.push(plain(authoredSpace(authored?.[index - 1])));
       }
       parts.push(evalSupportsPrelude(node[index]!, frame, e));
     }
@@ -21210,10 +21272,15 @@ function writeNestedRule(
   e: Emit,
   imp: boolean,
   source: NestedHeaderSource | null,
-  placement: NestedRuleMixinPlacement | null,
   outerHoist?: HoistEntry[]
 ): MaybePromise<void> {
-  const plan = extendProjection(e)?.nestedPlan.get(rule);
+  /*
+   * [extend/splice] The static plan is the rule's at its own placement. A ruleset
+   * called as a mixin is spliced under its caller, where it is an ordinary nested
+   * rule with its authored header (jess#345), as the flat writer has it.
+   */
+  const staticPlan = extendProjection(e)?.nestedPlan.get(rule);
+  const plan = staticPlan === undefined || reachedViaMixinSplice(frame) ? undefined : staticPlan;
   if (plan?.collapseTransparent) {
     /*
      * [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
@@ -21227,7 +21294,7 @@ function writeNestedRule(
     };
     return mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
-      () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule)
+      () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, undefined, false, rule)
     );
   }
   if (plan?.flatten && !plan.hoistNested) {
@@ -21251,27 +21318,22 @@ function writeNestedRule(
   /*
    * [extend] nested header uses the projected own-local branch list; children
    * stay literal (nested mode composes nothing).
-   * `placement` only originates at a selected synthesized ruleset mixin.  Its
-   * header is composed structurally from the original selector nodes and their
-   * render frames; it does not rewrite selector strings or re-render a body.
    * The nested header may name a value that must be awaited (an interpolated
    * selector built from an async function). Nested output is the v5 DEFAULT, so
    * this path carries the plugin corpus and cannot be a synchronous island.
    */
   const ownMaybe = plan
     ? plan.header
-    : placement === null
-      ? source === null
+    : source === null
 
-        /*
-         * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
-         * body top): a parentless `&` followed by other content drops to that
-         * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
-         * keeps `&` verbatim (`ownStrings`).
-         */
-        ? rootStringsNested(rule.selector, frame, e)
-        : ownStrings(rule.selector, frame, e)
-      : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+      /*
+       * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
+       * body top): a parentless `&` followed by other content drops to that
+       * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
+       * keeps `&` verbatim (`ownStrings`).
+       */
+      ? rootStringsNested(rule.selector, frame, e)
+      : ownStrings(rule.selector, frame, e);
   return mapMaybe(ownMaybe, (ownAll) => {
     /*
      * [placeholder] Nested output is the v5 DEFAULT and never reaches
@@ -21294,7 +21356,7 @@ function writeNestedRule(
      * the flat writer. No evaluation is re-driven (ledger X12).
      */
     const dyn = e.dynamicExtend;
-    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true, placement !== null);
+    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true);
     const recorded = dyn !== null && (!dyn.staticRules.has(rule) || reachedViaMixinSplice(frame));
 
     /*
@@ -21308,7 +21370,7 @@ function writeNestedRule(
     if (recorded) {
       recordOpenRule(dyn, rule, frame, e, rewritable);
     }
-    const authoredHeader = e.compress !== true && plan === undefined && placement === null && source === null
+    const authoredHeader = e.compress !== true && plan === undefined && source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
       : null;
     const header = composeSelectorHeader(e, own, idt, authoredHeader);
@@ -21433,7 +21495,7 @@ function writeNestedRule(
     };
     const body = (): MaybePromise<void> => mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
-      () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish)
+      () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, undefined, false, rule), finish)
     );
     return dyn === null ? body() : withDynamicPlacement(dyn, depth, dyn.scope, dyn.boundary, body);
   });
@@ -21486,7 +21548,7 @@ function writeNestedAtRuleBlock(
   };
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(
     activateBodyDependencies(node.rules, bodyFrame, e),
-    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, null, undefined, false, node), leave)
+    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, undefined, false, node), leave)
   ));
 }
 

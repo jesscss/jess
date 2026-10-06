@@ -33,8 +33,9 @@ export class PluginFunctionError extends Error {
 }
 
 /**
- * The sandbox refused a Less 4 plugin-manager API (`UnsupportedLessPluginApiError`
- * in `runtime-worker.ts`, whose message is the member refused). It is reported
+ * The sandbox refused a Less 4 plugin-manager API or tree node
+ * (`UnsupportedLessPluginApiError` in `runtime-worker.ts`, whose message is the
+ * member refused). It is reported
  * as the `plugin/unsupported-feature` diagnostic the in-process bridge of
  * `@jesscss/plugin-less-compat` raises, not as a script that threw.
  */
@@ -871,7 +872,7 @@ export class JsPlugin extends AbstractPlugin {
               args: encodeBridgeArgs(args)
             });
             if (!invokeResult.ok) {
-              throw new Error(invokeResult.error);
+              throw lessPluginApiRefusal(path.basename(modulePath), invokeResult) ?? new Error(invokeResult.error);
             }
             return decodeBridgeValue(invokeResult.value);
           };

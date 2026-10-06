@@ -642,3 +642,24 @@ describe('Mixins', () => {
     expect(css).not.toContain('mi-test-d .person {\n}');
   });
 });
+
+/*
+ * jess#345: in nested output a called ruleset mixin's `&` rules stay `&` inside
+ * the caller. Resolved there (`.b:hover` inside `.b`) they would mean
+ * `.b .b:hover`, and an extend of the mixin must not drop the `&`.
+ */
+describe('a ruleset mixin called inside a rule, nested output', () => {
+  const nested = new Compiler({ compile: { plugins: [lessPlugin()] } });
+  const body = '{ color: red; &:hover { color: green; } & { color: blue; } & + & { x: 1; } }';
+  const expected = '.b {\n  color: red;\n  &:hover {\n    color: green;\n  }\n  & {\n    color: blue;\n  }\n  & + & {\n    x: 1;\n  }\n}\n';
+
+  it('keeps every & rule of the mixin body as &', async () => {
+    const css = await nested.renderString(`.m ${body}\n.b { .m(); }`, { language: 'less' });
+    expect(css.slice(css.indexOf('.b {'))).toBe(expected);
+  });
+
+  it('keeps the & when the mixin is also an extend target', async () => {
+    const css = await nested.renderString(`.s, .z ${body}\n.b { .z(); }\n.visible:extend(.z all) { e: 1; }`, { language: 'less' });
+    expect(css.slice(css.indexOf('.b {'), css.lastIndexOf('.visible {'))).toBe(expected);
+  });
+});

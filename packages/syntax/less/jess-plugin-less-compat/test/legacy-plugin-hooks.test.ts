@@ -67,7 +67,12 @@ const hookCases: Array<[string, HookUse, string]> = [
   /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
   ['less.visitors', less => Reflect.get(less, 'visitors'), 'visitor'],
   ['less.FileManager', less => Reflect.get(less, 'FileManager'), '@jesscss/plugin-node-modules'],
-  ['less.environment', less => Reflect.get(less, 'environment'), '@jesscss/plugin-node-modules']
+  ['less.environment', less => Reflect.get(less, 'environment'), '@jesscss/plugin-node-modules'],
+
+  /* A tree node beyond the function-plugin value surface (A12), as a constructor or its 4.x factory. */
+  ['tree.AtRule', less => Reflect.get(less.tree, 'AtRule'), 'statements, not values'],
+  ['tree.AtRule', less => Reflect.get(less, 'atrule'), 'statements, not values'],
+  ['tree.Selector', less => Reflect.get(less, 'selector'), 'write the rest in the stylesheet']
 ];
 
 describe('legacy Less plugin-manager hooks', () => {

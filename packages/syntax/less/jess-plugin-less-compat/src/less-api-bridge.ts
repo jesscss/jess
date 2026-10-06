@@ -14,6 +14,7 @@ import {
   makeList,
   makeQuoted,
   sniffLiteral,
+  UNSUPPORTED_LESS_TREE_NODES,
   type Fn,
   type PluginCallCtx,
   type PluginHost,
@@ -500,8 +501,22 @@ export class LessApiBridge {
       const refusedGetters = (owner: string, members: readonly string[]): PropertyDescriptorMap =>
         Object.fromEntries(members.map(member => [member, { get: () => refuse(`${owner}.${member}`) }]));
 
-      /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
-      const less = Object.defineProperties({ ...this.less }, refusedGetters('less', ['visitors', 'FileManager', 'environment']));
+      /*
+       * 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`).
+       * A tree node beyond the value surface is refused as `tree.<Name>`, read
+       * through `less.tree` or as its lowercase 4.x factory (`less.atrule()`).
+       */
+      const tree = Object.defineProperties(
+        { ...this.less.tree },
+        Object.fromEntries(UNSUPPORTED_LESS_TREE_NODES.map(name => [name, { get: () => refuse(`tree.${name}`) }]))
+      );
+      const less = Object.defineProperties(
+        { ...this.less, tree },
+        {
+          ...refusedGetters('less', ['visitors', 'FileManager', 'environment']),
+          ...Object.fromEntries(UNSUPPORTED_LESS_TREE_NODES.map(name => [name.toLowerCase(), { get: () => refuse(`tree.${name}`) }]))
+        }
+      );
       const manager: NativeLessPluginManager = {
         less,
         installedPlugins,

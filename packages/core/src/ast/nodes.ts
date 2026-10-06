@@ -309,6 +309,35 @@ export interface FunctionCall extends SpanSlots, FunctionScopeSlot {
   readonly modern: boolean;
 }
 
+/** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
+const CSS_COLOR_CONSTRUCTORS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+
+/**
+ * Whether `node` is a CSS-shaped color constructor call (ledger F5): an
+ * rgb-family name with three or more argument slots, which a value position
+ * writes out as authored instead of dispatching.
+ *
+ * Less overloads the rgb-family names: one- and two-slot calls are color/
+ * alpha conveniences (`rgba(#fff)`, `rgba(#fff, .5)`), while malformed
+ * one-/two-slot numeric calls must still reach the selected Less callable so
+ * its normal functionMode policy can reject or preserve them. Modern CSS
+ * syntax arrives as one nested slot, so inspect that typed structure as well;
+ * a three-or-more item nested slot is the equivalent CSS channel shape.
+ */
+export function isCssColorCall(node: FunctionCall): boolean {
+  if (!CSS_COLOR_CONSTRUCTORS.has(node.name.toLowerCase())) {
+    return false;
+  }
+  if (node.args.length >= 3) {
+    return true;
+  }
+  if (node.args.length !== 1) {
+    return false;
+  }
+  const slot = node.args[0]!.value;
+  return Array.isArray(slot) && slot.length >= 3;
+}
+
 /**
  * A delimiter-bearing value, e.g. `(#aaa * 3)`, `[a, b]` or the css-values-5
  * §3.1.1 `{}`-wrapped argument `{a, b}` (`curly`).
