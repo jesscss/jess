@@ -4023,11 +4023,12 @@ interface EvalCtx {
   compressedBindings?: WeakMap<Binding, ValueGroup>;
 
   /**
-   * The typed value a scalar eager argument snapshot was evaluated to
-   * ({@link eagerSnapshot}). A typed position reads it instead of re-reading
-   * the snapshot's bytes, so an argument keeps the type the parser gave it
-   * across the mixin boundary. Created with the render, so every derived
-   * context shares it.
+   * The typed value an eager argument snapshot was evaluated to
+   * ({@link eagerSnapshot}). A typed position reads a scalar one instead of
+   * re-reading the snapshot's bytes, so an argument keeps the type the parser
+   * gave it across the mixin boundary; a structured one (a list, a block, a
+   * map) still reads there as its bytes ({@link carrySnapshot}). Created with
+   * the render, so every derived context shares it.
    */
   snapshotValues?: WeakMap<Binding, ValueGroup>;
 
@@ -4445,10 +4446,13 @@ function evalTyped(
           return carried;
         }
       }
-      return e.snapshotValues?.get(node)
-        ?? frame?.mixinUrlBindings?.get(node)
-        ?? e.mixinUrlBindings?.get(node)
-        ?? materializeNode(node, e);
+      {
+        const snapshot = e.snapshotValues?.get(node);
+        return (snapshot !== undefined && !isStructuredGroup(snapshot) ? snapshot : undefined)
+          ?? frame?.mixinUrlBindings?.get(node)
+          ?? e.mixinUrlBindings?.get(node)
+          ?? materializeNode(node, e);
+      }
     case 'Quoted':
       /*
        * `~'…'` / `~"…"` are Less escaped strings: typed arithmetic must see
@@ -7230,19 +7234,22 @@ function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: F
   return bound;
 }
 
+/** A list, a space sequence, a block or a map: a value with items, not one value. */
+const isStructuredGroup = (value: ValueGroup): boolean =>
+  isValueGroupArray(value) || value.type === 'List' || value.type === 'Block' || value.type === 'Collection';
+
 /**
  * Keep the typed value a snapshot was evaluated to beside it, so nothing reads
  * the snapshot's bytes back. One value — a number, a colour, an escaped string,
  * a url — is what a typed position reads (`snapshotValues`); a structured one
- * (a list, a block, a map) reads there as its opaque bytes and reaches a
- * function or plugin through `mixinValueBindings`. Under compress the value a
+ * ({@link isStructuredGroup}) reads there as its opaque bytes and reaches a
+ * function or plugin through `mixinValueBindings`. A query prelude reads either
+ * to know a snapshot is a value evaluation made ({@link preludeLeaf}). Under compress the value a
  * declaration folds rides too ({@link carryCompressed}), unless the bytes are
  * the authored spelling of a paren group, which is written as it is anywhere.
  */
 function carrySnapshot(bound: Any, value: ValueGroup, e: EvalCtx, spelled = false): void {
-  if (!isValueGroupArray(value) && value.type !== 'List' && value.type !== 'Block' && value.type !== 'Collection') {
-    e.snapshotValues?.set(bound, value);
-  }
+  e.snapshotValues?.set(bound, value);
   if (e.compressedBindings !== undefined && !spelled) {
     carryCompressed(bound, value, e);
   }
@@ -20452,13 +20459,12 @@ const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true
 
 /**
  * One leaf of a prelude. An `Any` the parser left as a raw prelude fragment is
- * source text nothing structured, so it is spaced like glue; an `Any` evaluation
- * made — a mixin argument's snapshot, a list included — holds the value the
- * argument was evaluated to. The parser gives every node it builds a source
- * span and a snapshot has none, so that provenance fact tells them apart.
+ * source text nothing structured, so it is spaced like glue; an `Any` that is a
+ * mixin argument's snapshot, a list included, holds the value the argument was
+ * evaluated to ({@link carrySnapshot}).
  */
 function preludeLeaf(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
-  const raw = !isValueSlotArray(node) && node.type === 'Any' && sourceStartOf(node) !== NO_SPAN;
+  const raw = !isValueSlotArray(node) && node.type === 'Any' && e.snapshotValues?.has(node) !== true;
   return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: !raw }]);
 }
 
