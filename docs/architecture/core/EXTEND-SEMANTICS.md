@@ -341,7 +341,9 @@ in the import graph, whether or not that sheet has an `:extend()` of its own
 to the same `@media` scoping as inlined rules (§8). An extend inside a mixin or loop body
 counts like any other. The zero-extend fast-reject is per import GRAPH, never per
 document: a graph with no extend plans nothing and records nothing in the render walk
-(jess#349), and when no rule the walk recorded can meet an extend target the deferred
+(jess#349). A sheet imported inside a ruleset is never planned; when nothing else in the
+graph extends, a statically addressed one is loaded before the walk only to learn whether
+it carries an extend the walk must record, and when no rule the walk recorded can meet an extend target the deferred
 fold re-solves nothing. Interpolated selectors are covered by §10.
 
 A rule a mixin call places (a ruleset called as a mixin, a detached ruleset's call and

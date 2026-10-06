@@ -294,6 +294,13 @@ describe('extend across @import', () => {
       );
     });
 
+    // The only extend in the graph sits in a sheet imported inside a ruleset.
+    it('carries an extend that is only in the imported sheet', async () => {
+      const expected = ['.sm,', '.wrap .x {', '  b: 2;', '}'].join('\n');
+      expect(await renderFile('ruleset-import-extender-main.less')).toBe(expected);
+      expect(await renderFile('ruleset-import-extender-main.less', false)).toBe(expected);
+    });
+
     it('inside a (reference) sheet, is an extend target at its nested placement', async () => {
       expect(await renderFile('ref-ruleset-import-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
     });

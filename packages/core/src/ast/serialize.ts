@@ -11295,6 +11295,14 @@ interface ExtendClass {
   static: boolean;
   dynamic: boolean;
   places: boolean;
+
+  /**
+   * The statically addressed `@import`s the walk places (inside a ruleset or a placing
+   * body). The import planner never plans those sheets, so when nothing else in the
+   * graph extends it loads them only to learn whether they carry an extend, which the
+   * walk recorder must then be armed for.
+   */
+  placedImports: StyleImport[] | null;
 }
 
 /**
@@ -11349,6 +11357,9 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
     } else if (st.type === 'StyleImport') {
       if (placed) {
         out.places = true;
+        if (st.target.type === 'Quoted' || (st.target.type === 'Url' && st.target.value.type === 'Quoted')) {
+          (out.placedImports ??= []).push(st);
+        }
       }
     } else if (st.type === 'MixinCall' || st.type === 'Apply') {
       out.places = true;
@@ -11763,10 +11774,11 @@ function planImportedFacts(
    * synchronous callable-body ownership, while actual import/extend facts opt
    * into planning.
    */
-  const extendClass: ExtendClass = { static: false, dynamic: false, places: false };
+  const extendClass: ExtendClass = { static: false, dynamic: false, places: false, placedImports: null };
   classifyExtend(root.rules, false, extendClass);
   const plansImports = e.context?.options.processImports !== false && importDocument !== undefined;
-  if (!plansImports || (!extendClass.static && !bodyHasPlannedImport(root.rules))) {
+  const probesPlacedImports = mode !== IMPORT_PLAN_PREPARE && extendClass.placedImports !== null && !extendClass.dynamic;
+  if (!plansImports || (!extendClass.static && !probesPlacedImports && !bodyHasPlannedImport(root.rules))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
     return {
       root,
@@ -12124,7 +12136,42 @@ function planImportedFacts(
       }
     }
   };
-  return visit(root.rules, frame, cssImports, null, false, NO_AT_RULES, prepublishFrame, null, []).then(() => {
+
+  /*
+   * A sheet the walk places inside a ruleset is never planned, but an extend in it still
+   * needs the walk recorder armed before the first target is written. When nothing else
+   * in the graph extends, load each statically addressed one now (the walk reuses the
+   * loaded document) and look for an extend.
+   */
+  const probePlacedImports = async (): Promise<void> => {
+    for (const st of extendClass.placedImports ?? []) {
+      if (graphHasExtend) {
+        return;
+      }
+      const options = importRequestOptions(st.options);
+      if (importHasOption(options, 'inline')) {
+        continue;
+      }
+      const request: ImportDocumentRequest = { node: st, specifier: importSpecifier(st, frame, e), options };
+      const prepared = e.plannedImportDocuments?.get(st);
+      const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
+      if (prepared === undefined) {
+        e.plannedImportDocuments?.set(st, { request, loaded });
+      }
+      if (loaded !== undefined && !('inline' in loaded) && loaded.document !== null && bodyMayPlanExtend(loaded.document.rules)) {
+        graphHasExtend = true;
+        e.importedWalkPlacement = true;
+        for (const plan of pendingPlans ?? []) {
+          plan();
+        }
+        pendingPlans = null;
+      }
+    }
+  };
+  return visit(root.rules, frame, cssImports, null, false, NO_AT_RULES, prepublishFrame, null, []).then(async () => {
+    if (plansExtend && !graphHasExtend && probesPlacedImports) {
+      await probePlacedImports();
+    }
     let plannedCssImports: CssImportPlan | null | undefined;
     if (cssImports === null) {
       plannedCssImports = undefined;
@@ -12334,7 +12381,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
      * well (ledger X7 as amended).
      */
     if (extendClass.static || extendClass.dynamic || planned.overlay.instructions.length > 0
-      || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0) {
+      || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0 || e.importedWalkPlacement) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
     e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact'); // [extend] null when no `:extend()` anywhere
@@ -15080,7 +15127,7 @@ function walkBody(
               e.importDocument,
               e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
                 ? undefined
-                : (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp)
+                : (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp, source)
             );
             if (isThenable(imported)) {
               return imported.then(() => {
