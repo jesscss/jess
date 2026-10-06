@@ -449,9 +449,21 @@ function nestingFold(list: Branch[], s: PlanSubject, raw: Branch[], guarded: boo
     }
     const cut = raw[i]!.segments.length - own[i]!.segments.length;
     const members: Branch[] = [];
-    for (let j = i; members.length < sizes[group]!; j++) {
-      if (keys[j] === group) {
-        members.push(mkBranch(list[j]!.segments.slice(cut)));
+    for (let j = i, taken = 0; taken < sizes[group]!; j++) {
+      if (keys[j] !== group) {
+        continue;
+      }
+      taken++;
+
+      /* A child the extend grouped joins the list as its members, never `:is(:is(…))`. */
+      const own = list[j]!.segments;
+      const only = own.length === cut + 1 && own[cut]!.compound.value.length === 1 ? own[cut]!.compound.value[0]! : null;
+      if (only !== null && only.t === 'is' && only.fold) {
+        for (const member of only.branches) {
+          members.push(member);
+        }
+      } else {
+        members.push(mkBranch(own.slice(cut)));
       }
     }
     const segments = list[i]!.segments.slice(0, cut);
@@ -684,13 +696,15 @@ function splitGroup(b: Branch, k: number, p: number, group: Simple & { t: 'is' }
  * specificity and the extender keeps its own.
  */
 function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolean): Branch[] | null {
-  let kept: Branch[] | null = null;
+  /* `null` holds an appended arm's place until the guard has judged it. */
+  let kept: Array<Branch | null> | null = null;
   let alone: Branch[] | null = null;
   let added: Branch[] | null = null;
   for (let a = 0; a < arms.length; a++) {
     const arm = arms[a]!;
     if (arm.ext === true) {
       kept ??= arms.slice(0, a);
+      kept.push(null);
       (added ??= []).push(arm);
       continue;
     }
@@ -708,10 +722,15 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   if (kept === null) {
     return null;
   }
-  if (added !== null) {
+  const list: Branch[] = [];
+  if (added === null) {
+    for (const arm of kept) {
+      list.push(arm!);
+    }
+  } else {
     let listSpecificity = 0;
     for (const arm of kept) {
-      const s = extendBranchSpecificity(arm, false);
+      const s = arm === null ? 0 : extendBranchSpecificity(arm, false);
       if (s < 0) {
         listSpecificity = -1;
         break;
@@ -719,11 +738,17 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
       listSpecificity = Math.max(listSpecificity, s);
     }
     const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
-    for (const arm of added) {
-      for (const alternative of regroupBranch(arm, true, 0, 0) ?? [arm]) {
+    let next = 0;
+    for (const arm of kept) {
+      if (arm !== null) {
+        list.push(arm);
+        continue;
+      }
+      const appended = added[next++]!;
+      for (const alternative of regroupBranch(appended, true, 0, 0) ?? [appended]) {
         recordAstExtendProfile?.('astExtend.emit.groupMemberScores');
         if (listSpecificity >= 0 && extendBranchSpecificity(alternative, compoundOnly) === listSpecificity) {
-          kept.push(alternative);
+          list.push(alternative);
         } else {
           (alone ??= []).push(alternative);
         }
@@ -731,7 +756,7 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
     }
   }
   const out: Branch[] = [];
-  pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: kept, fold: false }), root, k, p + 1);
+  pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
   for (const alternative of alone ?? []) {
     /* Written in place, never as a one-arm `:is()` (ledger X3's 4.x placement). */
     const spliced = spliceMember(b, k, p, alternative);

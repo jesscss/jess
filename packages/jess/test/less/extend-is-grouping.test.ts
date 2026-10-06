@@ -162,6 +162,12 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
         .toBe('.t :is(th, td), .foo');
     }
 
+    // A child the extend grouped joins the folded list as its members, in place.
+    for (const mode of ['native', 'compact'] as const) {
+      expect(headerOf(await render('.t { .a, .c { m: 1 } } .y:extend(.a all) {}', mode), 'm: 1'))
+        .toBe('.t :is(.a, .y, .c)');
+    }
+
     // What the extend adds keeps to the guard under `'compact'` too.
     expect(headerOf(await render('.t { th, .x { m: 1 } } #y:extend(.x all) {}', 'compact'), 'm: 1'))
       .toBe('.t :is(th, .x), .t #y');
