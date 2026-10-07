@@ -77,16 +77,22 @@ const GLUED_SELECTOR_FUNCTION_DEFECT =
  * declaration first. Same shared prefix, decided in the other order.
  */
 const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
-  'css-syntax-3 reads a block item that starts `<ident>:` as a declaration '
-  + 'first and as a nested rule only when that fails, and SCSS and .jess do '
-  + 'the same. But `li:not(` reads as a declaration whose value calls `not()`, '
-  + 'the argument `:last-child` fails as a value inside the function '
-  + '`dispatch()`, and that committed failure ends the block item, so the '
-  + 'nested-rule arm never runs. Every selector pseudo-function after a type '
-  + 'selector in a nested rule is rejected (`b:is(.c)`, `b:has(> img)`, '
-  + '`b:where(.c)`); `b:hover` and `b:nth-child(2n+1)` parse because their '
-  + 'value reading fails only at the `{`. Same fix and decision as the Less '
-  + 'pins (escalated).';
+  'css-syntax-3 reads a block item that starts `<ident>:` (or `<ident> :`) as '
+  + 'a declaration first and as a nested rule only when that fails, and SCSS '
+  + 'and .jess do the same. The declaration reading of `li:not(:last-child)` '
+  + 'fails INSIDE the parenthesised argument (a committed failure in '
+  + 'parseman), not at the `{`, so the nested-rule arm never runs. Whether a '
+  + 'nested rule fails therefore depends on whether its pseudo-function '
+  + 'argument also reads as a value in the dialect. SCSS and .jess reject '
+  + '`li:not(:last-child)`, `b:is(.c)`, `b:has(> img)`, `b:where(.c)`, '
+  + '`input:not([type=text])`, `li:nth-child(2n+1 of .x)` and the spaced '
+  + '`li :not(.c)`; .jess also rejects `li:nth-child(2n+1)` and '
+  + '`li:nth-of-type(2n+1)`, because `2n+1` is not a .jess value. '
+  + '`li:hover`, `li:nth-child(odd)`, `li:nth-child(2)`, `li:lang(en)` and '
+  + '`li:dir(rtl)` parse in both: their value reading fails only at the `{`. '
+  + '(SCSS reads a glued `not(` as the Sass `not` operator, so its failure is '
+  + 'inside a parenthesised operand rather than a call.) Same cause and fix as '
+  + 'the Less pins.';
 
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
@@ -483,6 +489,39 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
   },
   {
+    id: 'a type selector with an attribute :not() in a nested rule',
+    group: 'selector',
+    source: 'form { input:not([type=text]) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a descendant selector pseudo-function in a nested rule',
+    group: 'selector',
+    source: 'ul { li :not(.c) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with :nth-child(An+B) in a nested rule',
+    group: 'selector',
+    source: 'ul { li:nth-child(2n+1) { color: red } }',
+    brokenIn: ['jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with :nth-child(An+B of S) in a nested rule',
+    group: 'selector',
+    source: 'ul { li:nth-child(2n+1 of .x) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with a keyword :nth-child() in a nested rule',
+    group: 'selector',
+    source: 'ul { li:nth-child(odd) { color: red } li:lang(en) { color: red } }'
+  },
+  {
     id: ':nth-child() with an An+B microsyntax',
     group: 'selector',
     source: 'a:nth-child(2n+1) { color: red }'
@@ -789,6 +828,40 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: '.x { a:not(b, c /d/ e); f: g; }',
     brokenIn: ['less'],
     defect: GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  /* The minified `@font-face` spelling: every icon-font stylesheet writes it. */
+  {
+    id: 'glued colon before local() with a string',
+    group: 'value',
+    source: '@font-face{src:local(\'Foo\')}',
+    brokenIn: ['less'],
+    defect: GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+
+  /*
+   * A `%` delim and an An+B run are component values like any other in a
+   * declaration value (css-syntax-3 §5.4.7 reads any token sequence).
+   */
+  {
+    id: 'a percent delim in a function argument',
+    group: 'value',
+    source: 'a { b: f(c % d) }',
+    brokenIn: ['jess'],
+    defect:
+      'css, Less and SCSS accept a bare `%` delim between two components. '
+      + '.jess rejects it inside a call (`Expected: ")"`) and at the top of a '
+      + 'value: no .jess value component starts with a bare `%`.'
+  },
+  {
+    id: 'An+B in a function argument',
+    group: 'value',
+    source: 'a { b: f(2n+1) }',
+    brokenIn: ['jess'],
+    defect:
+      'css, Less and SCSS accept `2n+1` (a dimension followed by a signed '
+      + 'number) as an argument. .jess rejects it, spaced or not '
+      + '(`Expected: ")"`), which is also why a nested `li:nth-child(2n+1)` '
+      + 'rule fails in .jess (see the nested-rule pins).'
   },
   {
     id: '!important with interior whitespace',
