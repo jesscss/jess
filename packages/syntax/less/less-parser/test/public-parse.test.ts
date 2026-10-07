@@ -2155,12 +2155,10 @@ describe('public Less parse()', () => {
         }
       ]
     });
-
-    // An interpolated parent may resolve to a pseudo-element, so flattening never factors it into `:is()`.
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.card-item,\n#tone-active {\n  color: red;\n}\n.card-item.active,\n#tone-active.active {\n  color: blue;\n}\n'
+      '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     );
     for (const invalid of [
       '. @{name}-item { color: red; }',

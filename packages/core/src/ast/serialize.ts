@@ -187,7 +187,7 @@ import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [exte
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
-import { mayCarryPseudoElement, nestingGroupKey, partitionGroups } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
+import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
@@ -3958,13 +3958,15 @@ interface EvalCtx {
   reached?: boolean;
 
   /**
-   * [nesting] Composed selector branches that may carry a pseudo-element
-   * ({@link mayCarryPseudoElement}), recorded from the parser's tokens where a
-   * branch is composed ({@link rootStrings}, {@link compose}): flattening never
-   * factors one into a parent `:is()` ({@link parentUnits}). One set per render,
-   * shared by every context of it.
+   * [nesting] The composed parent lists one of whose branches ends with a
+   * pseudo-element, one flag per branch, keyed by the list itself (never by
+   * selector text): {@link rootStrings} and {@link compose} record a list from
+   * the parser's tokens as they compose it, and {@link resolveSelectorBranchAmp}
+   * reads it to write such a parent on its own where `&` keeps the
+   * pseudo-element last ({@link parentUnits}). One map per render, shared by
+   * every context of it; empty unless a parent carries a pseudo-element.
    */
-  pseudoElementParents: Set<string>;
+  pseudoElementLists: Map<readonly string[], Uint8Array>;
 
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
@@ -9172,45 +9174,43 @@ function resolveSelectorBranchSync(c: SelectorBranch, frame: Frame | null, e: Ev
   return value;
 }
 
+/** [nesting] The `&` SUBJECT-slot substitution over MULTIPLE parents: the parent
+ *  list wraps once in `:is(a, b, …)`; a single parent substitutes bare. Only a bare
+ *  LEADING `&` (the compound's subject) uses this — a name-merged `&` distributes. */
+function ampSub(parents: string[]): string {
+  return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
+}
+
 /**
- * [nesting] The units a parent list factors into when flattening: the list
- * wrapped once in `:is(a, b, …)` (a single parent bare), except that a parent
- * that may carry a pseudo-element ({@link EvalCtx.pseudoElementParents}) is a
- * unit of its own — `:is()` cannot hold a pseudo-element, so factoring one in
- * would match nothing (owner 2026-10-06: an output transformation never makes
- * output more invalid or match fewer elements; amends O10). Units come in order
- * of first appearance: `.a::before, .c, .d` gives `.a::before`, `:is(.c, .d)`.
- * Used for a bare LEADING `&` (the compound's subject) and for an `&`-less
- * child's ancestor; a name-merged `&` distributes anyway.
+ * [nesting] The units a bare `&` that keeps a pseudo-element last
+ * ({@link keepsPseudoElementLast}) substitutes over `parents`: a parent ending
+ * with a pseudo-element (`flags`, {@link EvalCtx.pseudoElementLists}) is a unit
+ * of its own, since `:is()` cannot hold one and `:is(.a::before, .b)` would drop
+ * it, and the rest share one `:is()`, at the place of the first of them:
+ * `.a::before, .b, .c { &:hover {} }` → `.a::before:hover, :is(.b, .c):hover`.
+ * Owner 2026-10-06: an output transformation never makes output more invalid or
+ * match fewer elements. Every other `&` keeps the whole list in one `:is()`,
+ * which forgives a pseudo-element branch where the plain branch (`.a::before
+ * .e`) would be invalid and drop every branch of its list.
  */
-function parentUnits(parents: string[], e: EvalCtx): string[] {
-  const marked = e.pseudoElementParents;
-  if (parents.length < 2 || marked.size === 0 || !parents.some(p => marked.has(p))) {
-    return [wrapIsList(parents)];
-  }
+function parentUnits(parents: readonly string[], flags: Uint8Array): string[] {
   const units: string[] = [];
   let rest: string[] | null = null;
   let restAt = 0;
-  for (const p of parents) {
-    if (marked.has(p)) {
-      units.push(p);
+  for (let i = 0; i < parents.length; i++) {
+    if (flags[i] === 1) {
+      units.push(parents[i]!);
     } else if (rest === null) {
-      rest = [p];
+      rest = [parents[i]!];
       restAt = units.push('') - 1;
     } else {
-      rest.push(p);
+      rest.push(parents[i]!);
     }
   }
   if (rest !== null) {
     units[restAt] = wrapIsList(rest);
   }
   return units;
-}
-
-/** [nesting] The single opaque ancestor unit for `branches`, or `null` when they factor into several ({@link parentUnits}). */
-function ancestorUnit(branches: string[], e: EvalCtx): string | null {
-  const units = parentUnits(branches, e);
-  return units.length === 1 ? units[0]! : null;
 }
 
 /** [nesting] One `&`-bearing token resolved against `parents`, position-aware.
@@ -9224,7 +9224,7 @@ function ancestorUnit(branches: string[], e: EvalCtx): string | null {
  *  `.fruit-&`) — is a name concatenation and DISTRIBUTES per parent (a group cannot
  *  splice into a name; `:is(.foo .bar)` would also relocate the subject). Returns
  *  one variant per distribution — the branch-multiplying case. */
-function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: string[], first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: readonly string[], first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<readonly string[]> {
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
@@ -9244,7 +9244,7 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: string[], fi
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
  *  a distributing `&` (append/merge) multiplies its variants (cartesian). */
-function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], subs: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], subs: readonly string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0, frame, e));
   return combineAll(tokens, (lists) => {
     let acc = [''];
@@ -9261,7 +9261,7 @@ function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], subs: stri
   });
 }
 
-function resolveTermAmp(term: SelectorTerm, parents: string[], subs: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function resolveTermAmp(term: SelectorTerm, parents: string[], subs: readonly string[], frame: Frame | null, e: EvalCtx): MaybePromise<readonly string[]> {
   return term.type === 'CompoundSelector'
     ? resolveCompoundAmp(term, parents, subs, frame, e)
     : resolveTokenAmp(term, parents, subs, true, frame, e);
@@ -9280,8 +9280,11 @@ function resolveSelectorBranchAmp(c: SelectorBranch, parents: string[], frame: F
       return parents.slice();
     }
   }
-  const subs = parentUnits(parents, e);
-  return combineAll(terms.map(term => resolveTermAmp(term, parents, subs, frame, e)), (variants) => {
+  const subs = [ampSub(parents)];
+  const last = terms.length - 1;
+  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
+  const lastSubs = flags !== undefined && keepsPseudoElementLast(terms[last]!) ? parentUnits(parents, flags) : subs;
+  return combineAll(terms.map((term, i) => resolveTermAmp(term, parents, i === last ? lastSubs : subs, frame, e)), (variants) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     const lead = c.type === 'RelativeSelector'
       ? renderCombinator(combinators[0]!).trimStart()
@@ -9333,7 +9336,15 @@ function branchHasAttributeAmp(c: SelectorBranch): boolean {
  * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
 function composeOne(parents: string[], child: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   if (!selectorBranchHasAmpersand(child)) {
-    return mapMaybe(resolveSelectorBranch(child, frame, e), text => parents.map(p => p + ' ' + text));
+    /*
+     * Nothing may follow a pseudo-element, so a parent ending with one
+     * ({@link EvalCtx.pseudoElementLists}) is held in `:is()`: the branch matches
+     * nothing either way, but written bare (`.a::before .c`) it is invalid and
+     * would drop the whole list a bubbled at-rule writes per parent.
+     */
+    const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
+    return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
+      parents.map((p, i) => (flags !== undefined && flags[i] === 1 ? `:is(${p}) ` : p + ' ') + text));
   }
   if ((parents.length >= 2 || branchHasAttributeAmp(child)) && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e);
@@ -9351,41 +9362,103 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const marked = e.pseudoElementParents;
-  const parts = child.selectors.map((c) => {
-    const composed = composeOne(parents, c, frame, e);
-    return marked.size === 0 && !mayCarryPseudoElement(c)
-      ? composed
-      : mapMaybe(composed, list => markComposedBranches(parents, c, list, e));
-  });
-  return combineAll(parts, values => values.flat());
+  const parts = child.selectors.map(c => composeOne(parents, c, frame, e));
+  return combineAll(parts, values => recordPseudoElementBranches(values, child.selectors, parents, frame, e));
 }
 
 /**
- * Record which branches `child` composed over `parents` (none at the root) may
- * carry a pseudo-element ({@link EvalCtx.pseudoElementParents}): every one when
- * the child's own tokens may; under an `&`-less child, the one under each
- * marked parent (one branch per parent, in order); under an `&` child, every
- * one when any parent is marked — a unit an `&` substituted may be that parent.
+ * [nesting] `values` (the branches each of `branches` composed over `parents`, or
+ * over nothing at the root) as one list, recorded in
+ * {@link EvalCtx.pseudoElementLists} when one of them ends with a pseudo-element:
+ * one whose own last compound has one ({@link endsWithPseudoElement}), or one a
+ * bare `&` keeping a parent's pseudo-element last stands for — the parent itself
+ * (`&`), or its unit ({@link parentUnits}) for a compound `&:hover`. Any other
+ * `&` form under a parent that ends with one is counted as ending with one too.
  */
-function markComposedBranches(parents: string[], child: SelectorBranch, composed: string[], e: EvalCtx): string[] {
-  const marked = e.pseudoElementParents;
-  if (mayCarryPseudoElement(child)) {
-    for (const text of composed) {
-      marked.add(text);
-    }
-  } else if (!selectorBranchHasAmpersand(child)) {
-    for (let i = 0; i < parents.length && i < composed.length; i++) {
-      if (marked.has(parents[i]!)) {
-        marked.add(composed[i]!);
+function recordPseudoElementBranches(
+  values: readonly (readonly string[])[],
+  branches: readonly SelectorBranch[],
+  parents: readonly string[] | null,
+  frame: Frame | null,
+  e: EvalCtx
+): string[] {
+  const out = values.flat();
+  const parentFlags = parents === null || e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
+  let flags: Uint8Array | undefined;
+  let at = 0;
+  for (let k = 0; k < branches.length; k++) {
+    const c = branches[k]!;
+    const n = values[k]!.length;
+    if (endsWithPseudoElement(c, frame, e)) {
+      (flags ??= new Uint8Array(out.length)).fill(1, at, at + n);
+    } else if (parentFlags !== undefined && parentFlags.includes(1) && selectorBranchHasAmpersand(c)) {
+      const tail = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value[c.value.length - 1]! : c;
+      if (typeof tail !== 'string' && keepsPseudoElementLast(tail)) {
+        flags ??= new Uint8Array(out.length);
+        if (tail === c && n === parents!.length && termIsBareAmp(c)) {
+          flags.set(parentFlags, at);
+        } else if (tail === c) {
+          /* One variant per unit, in {@link parentUnits} order: each lone parent, then the rest's `:is()`. */
+          let unit = at;
+          let rest = false;
+          for (let i = 0; i < parentFlags.length && unit < at + n; i++) {
+            if (parentFlags[i] === 1) {
+              flags[unit++] = 1;
+            } else if (!rest) {
+              rest = true;
+              unit++;
+            }
+          }
+        } else {
+          flags.fill(1, at, at + n);
+        }
       }
     }
-  } else if (parents.some(p => marked.has(p))) {
-    for (const text of composed) {
-      marked.add(text);
+    at += n;
+  }
+  if (flags !== undefined) {
+    e.pseudoElementLists.set(out, flags);
+  }
+  return out;
+}
+
+/**
+ * [nesting] Whether a parsed branch's last compound carries a pseudo-element
+ * ({@link tokenPseudoElement}): read from the parser's tokens, and for a
+ * one-colon interpolated pseudo (`:@{pe}`) from the name it resolves to, so
+ * `&:@{state}` with `@state: valid` does not count. A token whose interpolation
+ * awaits a plugin counts.
+ *
+ * ponytail: a one-colon interpolation is read a second time here, since the
+ * selector's own resolution does not report its tokens' kinds.
+ */
+function endsWithPseudoElement(c: SelectorBranch, frame: Frame | null, e: EvalCtx): boolean {
+  const tail = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value[c.value.length - 1]! : c;
+  if (typeof tail === 'string') {
+    return false;
+  }
+  if (tail.type !== 'CompoundSelector') {
+    return tokenEndsPseudoElement(tail, frame, e);
+  }
+  for (const sim of tail.value) {
+    if (tokenEndsPseudoElement(sim, frame, e)) {
+      return true;
     }
   }
-  return composed;
+  return false;
+}
+
+function tokenEndsPseudoElement(sim: SimpleToken, frame: Frame | null, e: EvalCtx): boolean {
+  const known = tokenPseudoElement(sim);
+  if (known !== undefined) {
+    return known;
+  }
+  const text = resolveSimpleText(sim, frame, e);
+  if (isThenable(text)) {
+    observeRejectedThenable(text);
+    return true;
+  }
+  return isPseudoElementName(text);
 }
 
 function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -9409,10 +9482,10 @@ function composeSync(parents: string[], child: SelectorList, frame: Frame | null
  * use `compose` for the rest).
  */
 function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const units = parentUnits(parents, e);
+  const isPrefix = `:is(${parents.join(', ')}) `;
   const parts = child.selectors.map((c) => {
     if (!selectorBranchHasAmpersand(c)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => units.map(unit => unit + ' ' + canon));
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => [isPrefix + canon]);
     }
     if (parents.some(hasTopLevelComma)) {
       return mapMaybe(resolveSelectorBranch(c, frame, e), (canon) => {
@@ -9472,61 +9545,40 @@ function wrapIsList(branches: string[]): string {
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
   return combineAll(canons, (values) => {
-    let out: string[];
     if (values.length === 1) {
-      out = [a + ' ' + values[0]!];
-    } else {
-      const guarded = e.collapseMode !== 'compact';
-      const groups: number[] = [];
-      let oneGroup = true;
-      for (const branch of child.selectors) {
-        const key = nestingGroupKey(branch, guarded);
-        oneGroup &&= key >= 0 && key === (groups[0] ?? key);
-        groups.push(key);
-      }
-      if (oneGroup) {
-        out = [a + ' :is(' + values.join(', ') + ')'];
-      } else {
-        const sizes = partitionGroups(groups);
-        out = [];
-        for (let i = 0; out.length < sizes.length; i++) {
-          const group = groups[i]!;
-          if (group !== out.length) {
-            continue;
-          }
-          let left = sizes[group]! - 1;
-          if (left === 0) {
-            out.push(a + ' ' + values[i]!);
-            continue;
-          }
-          let list = values[i]!;
-          for (let j = i + 1; left > 0; j++) {
-            if (groups[j] === group) {
-              list += ', ' + values[j]!;
-              left--;
-            }
-          }
-          out.push(a + ' :is(' + list + ')');
-        }
-      }
+      return [a + ' ' + values[0]!];
     }
-
-    /*
-     * A branch under a pseudo-element ancestor unit may carry one, and so may a
-     * child branch written on its own ({@link EvalCtx.pseudoElementParents}); a
-     * grouped branch holds no pseudo-element of its own (ledger O14).
-     */
-    const marked = e.pseudoElementParents;
-    if (marked.has(a)) {
-      for (const text of out) {
-        marked.add(text);
+    const guarded = e.collapseMode !== 'compact';
+    const groups: number[] = [];
+    let oneGroup = true;
+    for (const branch of child.selectors) {
+      const key = nestingGroupKey(branch, guarded);
+      oneGroup &&= key >= 0 && key === (groups[0] ?? key);
+      groups.push(key);
+    }
+    if (oneGroup) {
+      return [a + ' :is(' + values.join(', ') + ')'];
+    }
+    const sizes = partitionGroups(groups);
+    const out: string[] = [];
+    for (let i = 0; out.length < sizes.length; i++) {
+      const group = groups[i]!;
+      if (group !== out.length) {
+        continue;
       }
-    } else {
-      for (let i = 0; i < child.selectors.length; i++) {
-        if (mayCarryPseudoElement(child.selectors[i]!)) {
-          marked.add(a + ' ' + values[i]!);
+      let left = sizes[group]! - 1;
+      if (left === 0) {
+        out.push(a + ' ' + values[i]!);
+        continue;
+      }
+      let list = values[i]!;
+      for (let j = i + 1; left > 0; j++) {
+        if (groups[j] === group) {
+          list += ', ' + values[j]!;
+          left--;
         }
       }
+      out.push(a + ' :is(' + list + ')');
     }
     return out;
   });
@@ -9561,10 +9613,11 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
       parts.push(g.branches);
       continue;
     }
-    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value =>
-      markComposedBranches([], c, [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value], e)));
+    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
   }
-  return combineAll(parts, values => values.flat());
+
+  /* A lone `@{s}` group may hold anything, so its branches count as ending with a pseudo-element ({@link tokenPseudoElement}). */
+  return combineAll(parts, values => recordPseudoElementBranches(values, list.selectors, null, frame, e));
 }
 
 /** [nesting] Nested-mode own selectors at a ROOT context (no parent): a parentless
@@ -9908,7 +9961,7 @@ function scratchEmit(e: EvalCtx): Emit {
     trivia: e.trivia,
     excluded: e.excluded,
     propNames: e.propNames,
-    pseudoElementParents: e.pseudoElementParents,
+    pseudoElementLists: e.pseudoElementLists,
     optional: e.optional,
     calcDepth: e.calcDepth,
     scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
@@ -11978,10 +12031,20 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
       const list = st.selector;
       for (let index = 0; index < list.selectors.length; index++) {
         const c = list.selectors[index]!;
+
+        /*
+         * A lone `@{s}` group (a selector list) is whole-selector position, which
+         * the header expands to its branches ({@link expandSelectorBranch}); resolved
+         * here it would be the compound-position `:is(…)` and change the header
+         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored.
+         */
         if (!selectorBranchHasInterp(c)) {
           continue;
         }
         try {
+          if (loneGroupInterp(c, frame, e) !== null) {
+            continue;
+          }
           list.selectors[index] = resolveSelectorBranchInterpInPlace(c, frame, e);
         } catch (error) {
           /*
@@ -13165,7 +13228,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     context: options?.context,
     excluded: new Set(),
     propNames: new Set(),
-    pseudoElementParents: new Set(),
+    pseudoElementLists: new Map(),
     optional: options?.optional ?? false,
     pending: [],
     drops: [],
@@ -13267,7 +13330,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
-    pseudoElementParents: new Set(), // [nesting] parents never factored into `:is()`
+    pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
     drops: [], // [null] declarations that may still elide on the async lane
@@ -14865,9 +14928,7 @@ function flattenResolved(
    * onto (a multi-branch header collapses to `:is(...)`).
    */
   let headerComposed: MaybePromise<string[]>;
-
-  /* `undefined`: the header itself, once resolved; `null`: the children join their parent list ({@link parentUnits}). */
-  let childAncestor: string | null | undefined;
+  let childAncestor: string | null;
 
   /*
    * [nesting] At a ROOT context `rootStrings` resolves a parentless `&` to EMPTY.
@@ -14884,8 +14945,12 @@ function flattenResolved(
     if (rawComposed.some(s => s === '')) {
       const kept = rawComposed.filter(s => s !== '');
       childComposed = kept.length > 0 ? kept : null;
+      const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(rawComposed);
+      if (flags !== undefined && childComposed !== null) {
+        e.pseudoElementLists.set(childComposed, flags.filter((_, i) => rawComposed[i] !== ''));
+      }
     }
-    childAncestor = childComposed === null ? '' : ancestorUnit(childComposed, e);
+    childAncestor = childComposed === null ? '' : wrapIsList(childComposed);
   } else if (selectorListHasAmpersand(selector)) {
     headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, selector, frame, e);
 
@@ -14893,22 +14958,20 @@ function flattenResolved(
      * `headerComposed` can be pending only for an interpolated selector. The
      * raw composed list is already the correct parent context for children.
      */
-    childAncestor = ancestorUnit(rawComposed, e);
+    childAncestor = wrapIsList(rawComposed);
   } else if (expandBubbledSelectorList) {
     headerComposed = rawComposed;
-    childAncestor = ancestorUnit(rawComposed, e);
+    childAncestor = wrapIsList(rawComposed);
   } else {
-    headerComposed = ancestor !== null
-      ? opaqueJoin(ancestor, selector, frame, e)
-      : combineAll(parentUnits(parent, e).map(unit => opaqueJoin(unit, selector, frame, e)), units => units.flat());
+    headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), selector, frame, e);
 
     /* The header itself, once resolved, as ONE unit: every branch of it is an
      * ancestor of the children (`.a { .b, .c { e {} } }` → `:is(.a .b, .a .c) e`). */
-    childAncestor = undefined;
+    childAncestor = null;
   }
   return mapMaybe(headerComposed, (headerComposed) => {
     const dyn = e.dynamicExtend;
-    const ancestorOfChildren = childAncestor === undefined ? ancestorUnit(headerComposed, e) : childAncestor;
+    const ancestorOfChildren = childAncestor ?? wrapIsList(headerComposed);
     if (dyn === null) {
       return flattenWithHeader(
         rule, parent, frame, e, imp, childComposed, headerComposed, ancestorOfChildren, expandBubbledSelectorList
@@ -14958,7 +15021,7 @@ function flattenWithHeader(
    */
   childComposed: string[] | null,
   headerComposed: string[],
-  childAncestor: string | null,
+  childAncestor: string,
   expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
   /*
@@ -16701,6 +16764,10 @@ function expandCall(
            * share it and merge.
            */
           const bodyComposed = composed === null ? null : composed.slice();
+          const composedFlags = composed === null || e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(composed);
+          if (composedFlags !== undefined) {
+            e.pseudoElementLists.set(bodyComposed!, composedFlags);
+          }
           let bodyTrivia: BodyTriviaReplay | undefined;
           const executeBody = () => {
             bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);

@@ -9136,10 +9136,8 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
-
-    // An interpolated parent may resolve to a pseudo-element, so flattening never factors it into `:is()`.
     expect(serialize(result.value)).toEqual({
-      css: '.card-item,\n#tone-active {\n  color: red;\n}\n.card-item.active,\n#tone-active.active {\n  color: blue;\n}\n'
+      css: '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     });
   });
 

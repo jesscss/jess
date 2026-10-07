@@ -20,7 +20,7 @@
  * was built from, never from serialized text.
  */
 
-import { selectorBranchHasInterp, type SelectorBranch, type SimpleToken } from './nodes.js';
+import { selectorBranchHasInterp, type SelectorBranch, type SelectorTerm, type SimpleToken } from './nodes.js';
 import type { Branch, Compound, Simple } from './extend/ir.js';
 
 /*
@@ -209,11 +209,90 @@ const LEGACY_PSEUDO_ELEMENTS = new Set([':before', ':after', ':first-line', ':fi
  */
 function isPseudoElement(sim: SimpleToken): boolean {
   const text = sim.type === 'PseudoSelector' ? sim.name : sim.text;
-  if (text === null || text.charCodeAt(0) !== 58 /* : */) {
+  return text !== null && isPseudoElementName(text);
+}
+
+/** Whether a selector token's name — a parser token's, or one an interpolation resolved to — is a pseudo-element's. */
+export function isPseudoElementName(text: string): boolean {
+  if (text.charCodeAt(0) !== 58 /* : */) {
     return false;
   }
   const n = text.length;
   return text.charCodeAt(1) === 58 || ((n === 6 || n === 7 || n === 11 || n === 13) && LEGACY_PSEUDO_ELEMENTS.has(text.toLowerCase()));
+}
+
+/**
+ * Whether one parsed token of a compound is a pseudo-element: `true`, `false`, or
+ * `undefined` when an interpolation decides it — a one-colon name (`:@{pe}` may be the
+ * legacy `:before`), to be read once resolved ({@link isPseudoElementName}). A token an
+ * interpolation opens (`@{s}`) may be a whole selector and counts as one; `::@{pe}` is
+ * one already; an interpolation that continues a class, id, type or attribute name is
+ * that name (ponytail: `.@{v}` with `@v: ~"a::before"` is not seen).
+ */
+export function tokenPseudoElement(sim: SimpleToken): boolean | undefined {
+  if (sim.interp === null) {
+    return isPseudoElement(sim);
+  }
+  const head = sim.interp.parts[0];
+  if (head === undefined || !('lit' in head)) {
+    return true;
+  }
+  const text = head.lit;
+  return text.charCodeAt(0) !== 58 /* : */ ? false : text.charCodeAt(1) === 58 ? true : undefined;
+}
+
+/*
+ * The user-action pseudo-classes, the only simples that may follow a pseudo-element in
+ * its compound (Selectors 4 §3.6.3, §9).
+ */
+const USER_ACTION_PSEUDO_CLASSES = new Set([':hover', ':active', ':focus', ':focus-visible', ':focus-within']);
+
+export const isUserActionPseudoClass = (text: string): boolean =>
+  USER_ACTION_PSEUDO_CLASSES.has(text) || USER_ACTION_PSEUDO_CLASSES.has(text.toLowerCase());
+
+/**
+ * Whether a selector term keeps a pseudo-element its leading `&` stands for at the end
+ * of the selector: a bare `&` followed only by user-action pseudo-classes (`&`,
+ * `&:hover`, `&:hover:focus`), so under `.a::before` it is the valid `.a::before:hover`.
+ * Anything else after the `&` (`&.k`, `&::after`) would follow the pseudo-element, which
+ * no selector may do (owner 2026-10-06: an output transformation never makes output more
+ * invalid or match fewer elements).
+ */
+export function keepsPseudoElementLast(term: SelectorTerm): boolean {
+  const tokens = term.type === 'CompoundSelector' ? term.value : [term];
+  const lead = tokens[0]!;
+  if (lead.type !== 'SimpleSelector' || lead.interp !== null || lead.text !== '&') {
+    return false;
+  }
+  for (let i = 1; i < tokens.length; i++) {
+    const sim = tokens[i]!;
+    const text = sim.type === 'PseudoSelector' ? (sim.args === null ? sim.name : null) : sim.text;
+    if (sim.interp !== null || text === null || !isUserActionPseudoClass(text)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether the last compound of an extend IR branch carries a pseudo-element, read from
+ * the parser token each simple was built from (`src`) — an interpolation the walk
+ * resolved has the resolved token. A simple with no token of its own (composed header
+ * text) is not read back and does not count.
+ */
+export function irEndsWithPseudoElement(branch: Branch): boolean {
+  return irCompoundHasPseudoElement(branch.segments[branch.segments.length - 1]!.compound);
+}
+
+/* A simple that stands for a whole compound (a lone `&` substituted) is read through it. */
+function irCompoundHasPseudoElement(compound: Compound): boolean {
+  for (const s of compound.value) {
+    const src = s.t === 'text' ? s.src : undefined;
+    if (src !== undefined && ('value' in src ? irCompoundHasPseudoElement(src) : tokenPseudoElement(src) === true)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Whether a parsed branch carries a pseudo-element in one of its own compounds. */
@@ -227,18 +306,6 @@ function hasPseudoElement(branch: SelectorBranch): boolean {
     }
   }
   return false;
-}
-
-/**
- * Whether a parsed branch may carry a pseudo-element: one in its own tokens, or
- * an interpolation that may resolve to one (`.a@{pe}`, `@{s}`). Flattening
- * never factors such a PARENT branch into `:is()`, which cannot hold a
- * pseudo-element and would match nothing; it is distributed per branch (owner
- * 2026-10-06: an output transformation never makes output more invalid or match
- * fewer elements; amends O10's parent factoring).
- */
-export function mayCarryPseudoElement(branch: SelectorBranch): boolean {
-  return hasPseudoElement(branch) || selectorBranchHasInterp(branch);
 }
 
 /**
@@ -260,7 +327,7 @@ export function nestingGroupKey(branch: SelectorBranch, guarded: boolean): numbe
     return astBranchSpecificity(branch, true, false);
   }
   const comb = branch.type === 'RelativeSelector' ? branch.value[0] : undefined;
-  return (comb !== undefined && comb !== ' ' && comb !== '|') || mayCarryPseudoElement(branch) ? -1 : 0;
+  return (comb !== undefined && comb !== ' ' && comb !== '|') || hasPseudoElement(branch) || selectorBranchHasInterp(branch) ? -1 : 0;
 }
 
 function irCompoundSpecificity(compound: Compound, compoundOnly: boolean): number {
