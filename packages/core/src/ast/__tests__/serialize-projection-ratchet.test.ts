@@ -379,7 +379,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // operation kept inside a math function that is itself kept math reached
     // through a variable is grouped by precedence (`keptOperand`); the value
     // lane still writes a group's own parens back.
-    expect(occurrences(/^function |^async function /gmu)).toBe(558);
+    // +1 function (ledger X18): a plain import after a visible `(multiple)` one
+    // is import-once's no-op, asked by the planner and the render walk alike
+    // (`isVisibleMultiple`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(559);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

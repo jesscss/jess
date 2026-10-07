@@ -156,12 +156,24 @@ describe('extend across @import', () => {
     });
 
     /*
-     * Only the plain import's copy is ruled: it renders. Whether the earlier hidden copy
-     * still adds what the extend reveals, and how a plain import after a `(multiple)` one
-     * places the sheet, are orderings X18 leaves open, so they are not pinned here.
+     * The plain import's copy renders, and the earlier hidden copy is a placement of its
+     * own, so it still writes what the extend reveals there (ledger X13: each `(reference)`
+     * import is its own placement; orchestrator judgment under owner delegation 2026-10-06).
      */
-    it('a plain import after a (reference) one renders the sheet', async () => {
-      expect(await renderFile('ref-and-plain-main.less')).toContain(smX);
+    it('a plain import after a (reference) one renders the sheet; the hidden copy still reveals the extender', async () => {
+      expect(await renderFile('ref-and-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX].join('\n'));
+    });
+
+    /*
+     * A plain import is `once`: a file a visible `(multiple)` import already included is
+     * not included again, as after a plain import; the sheet is shown, so nothing the
+     * author asked to see is hidden (orchestrator judgment under owner delegation
+     * 2026-10-06, ledger X18).
+     */
+    it('a plain import after a visible (multiple) one is a no-op', async () => {
+      expect(await renderFile('multiple-and-plain-main.less')).toBe(smX);
+      expect(await renderFile('plain-multiple-plain-main.less')).toBe(`${smX}\n${smX}`);
+      expect(await renderFile('ref-multiple-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX].join('\n'));
     });
 
     /*
