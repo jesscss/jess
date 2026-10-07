@@ -1086,10 +1086,10 @@ lowers into `$( … )` (P35) and the `.jess` arm answers the same `unitMode`, so
 math `preserve` keeps is kept as `calc(…)`, and warned, in both arms. A Less
 paren group is the boundary AND the author's parens, so it lowers to
 `$(( … ))`, the group inside the boundary, and math kept as written keeps its
-parens in both arms (J16). That group is judged where the boundary is
-written, so read through a variable inside `calc()` it is the value it
-computed in both arms (`@c: (@v + 30px)`, `calc(100% - @c)` →
-`calc(100% - 40px)`), not a group authored in the math function.
+parens in both arms (J16). Parens are dropped when the calculation in them
+is resolved, inside a math function too (owner 2026-10-07), so read through a
+variable inside `calc()` that group is the value it computed in both arms
+(`@c: (@v + 30px)`, `calc(100% - @c)` → `calc(100% - 40px)`).
 
 The ladder, in both dialects — **every rung warns except the one that throws**
 (owner, 2026-08-01):

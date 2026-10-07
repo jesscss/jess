@@ -155,14 +155,15 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
   ]],
 
   /*
-   * Every paren authored inside calc() is kept as written (owner 2026-10-06); the
-   * golden was cut when only the parens that carry precedence survived.
+   * Every paren authored inside calc() around math written there, or around a
+   * lone value, is kept as written (owner 2026-10-06); the golden was cut when
+   * only the parens that carry precedence survived. Parens around a calculation
+   * that resolves are dropped (owner 2026-10-07), so `one:` matches as written.
    */
   ['tests-unit/calc/calc.less', [
     ['width: calc(50% + 50vh / 2 - 20px);', 'width: calc(50% + (50vh / 2 - 20px));'],
     ['height: calc(50% + 50vh / 2 - 20px);', 'height: calc(50% + ((50vh / 2 - 20px)));'],
     ['min-height: calc(10vh + 5vh);', 'min-height: calc(((10vh)) + calc((5vh)));'],
-    ['one: calc(100% - 20px);', 'one: calc(100% - ((20px)));'],
     ['two: calc(100% - (10px + 10px));', 'two: calc(100% - (((10px + 10px))));'],
     ['three: calc(100% - 3 * 1);', 'three: calc(100% - (3 * 1));'],
     ['four: calc(100% - 3 * 1);', 'four: calc(100% - (3 * 1));'],

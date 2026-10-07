@@ -41,11 +41,11 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * Nothing computes inside a math function, so nothing consumes a paren written
-   * there: every authored group is kept, redundant or not — owner 2026-10-06,
+   * Math written inside a math function computes nothing, so a group around it,
+   * or around one value, keeps its parens, redundant or not — owner 2026-10-06,
    * "no reason to drop parens. the user wanted to write it that way for a reason."
    */
-  it('keeps every paren authored inside calc(), in .less and .jess', async () => {
+  it('keeps the parens around math written inside calc() and around one value, in .less and .jess', async () => {
     expect(await render('@v: 10px; .x { w: calc(100% - ((@v * 3) + (@v * 2))); h: calc(100% + (25vh - 20px)); }'))
       .toBe('.x { w: calc(100% - ((10px * 3) + (10px * 2))); h: calc(100% + (25vh - 20px)); }');
     expect(await render('@v: 10px; .x { a: calc((@v)); b: calc( (1px + 2px) ); c: calc(100% - (((@v + @v)))); }'))
@@ -54,6 +54,62 @@ describe('Less math boundaries', () => {
       .toBe('.x { w: calc(100% - ((10px * 3) + (10px * 2))); }');
     expect(await renderJess('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }'))
       .toBe('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }');
+  });
+
+  /*
+   * Parens are dropped when the calculation in them is resolved (owner
+   * 2026-10-07), inside a math function as anywhere else: a call a callable
+   * computes, or a variable bound to math that computed, loses every level of
+   * parens around it. Only the parens go: `calc((x))` stays a `calc()`, since a
+   * math function's result is clamped to what the property allows (P35), so
+   * `padding: calc((min(-5px, 1px)))` is `calc(-5px)`, never `-5px`. Math
+   * written in the math function computes nothing, and neither does a call
+   * written out as-is or math kept as written, so their groups keep their
+   * parens.
+   */
+  it('drops the parens around a calculation resolved inside calc()', async () => {
+    expect(await render('@a: 10px; @b: 10px; @c: 10px + 20px; .x { one: calc(100% - ((min(@a + @b)))); two: calc(100% - (((@a + @b)))); '
+      + 'q: calc((percentage(0.5))); s: calc(1px + (min(1px, 2px))); u: calc(100% - ((@c))); p: calc((min(-5px, 1px))); '
+      + 'r: calc(((@c))); v: calc((var(--a)) + 1px); w: calc((var(--a))); m: calc((min(1px, 2em))); }'))
+      .toBe('.x { one: calc(100% - 20px); two: calc(100% - (((10px + 10px)))); q: calc(50%); s: calc(1px + 1px); '
+        + 'u: calc(100% - 30px); p: calc(-5px); r: calc(30px); v: calc((var(--a)) + 1px); w: calc((var(--a))); m: calc((min(1px, 2em))); }');
+    expect(await render('@x: calc((min(-5px, 1px))); .x { a: @x * 2; b: unit(@x); }'))
+      .toBe('.x { a: -10px; b: -5; }');
+    expect(await render('@k: 1px + 1em; .x { a: calc((@k)); b: calc(100% - ((@k))); }'))
+      .toBe('.x { a: calc((1px + 1em)); b: calc(100% - ((1px + 1em))); }');
+    expect(await renderIn('.scss', '$a: 10px; .x { one: calc(100% - ((min($a + $a)))); }'))
+      .toBe('.x { one: calc(100% - 20px); }');
+    expect(await renderJess('@-from "#less" import (percentage); .x { a: calc(100% - (($percentage(0.5)))); b: calc(100% - ((min(10px, 1px)))); }'))
+      .toBe('.x { a: calc(100% - 50%); b: calc(100% - ((min(10px, 1px)))); }');
+    expect(await renderJess('@-from "#less" import (percentage); .x { a: calc(($percentage(0.5))); b: calc((($(1px + 2px)))); c: calc((var(--a))); }'))
+      .toBe('.x { a: calc(50%); b: calc(3px); c: calc((var(--a))); }');
+
+    /* CSS computes nothing: its bytes are kept as written, and `.jess` writes valid CSS the same. */
+    const css = '.x { a: calc(100% - ((min(10px, 20px)))); b: calc((var(--a))); c: calc(100% - ((1px + 2px))); }';
+    expect(await renderCss(css)).toBe(css);
+    expect(await renderJess(css)).toBe(css);
+  });
+
+  /*
+   * Text a call returns is not a resolved calculation: an escaped string
+   * (`e("1px + 2px")`, as `~"1px + 2px"` is) or an unquoted one that is more
+   * than one value keeps the parens written around it, wherever the group is
+   * read, or what surrounds it would re-read its bytes: `2 * (1px + 2px)` is
+   * not `2 * 1px + 2px`. Text that is one value drops them as any resolved
+   * value does.
+   */
+  it('keeps the parens around text a call returns that is more than one value', async () => {
+    expect(await render('@v: e("1px + 2px"); .x { a: calc(2 * (e("1px + 2px"))); b: calc(2 * (@v)); '
+      + 'c: calc(2 * (if(true, ~"1px + 2px", 1px))); d: calc(2 / (e("1px/2"))); f: calc(2 * (e("foo"))); '
+      + 'g: calc((e("1px + 2px"))); h: calc(2 * (~"1px + 2px")); k: calc(1px + (e("var(--a, 1px)"))); }'))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (1px + 2px)); d: calc(2 / (1px/2)); '
+        + 'f: calc(2 * foo); g: calc((1px + 2px)); h: calc(2 * (1px + 2px)); k: calc(1px + var(--a, 1px)); }');
+    expect(await render('@v: e("1px + 2px"); .x { a: (e("1px + 2px")) * 2; a2: (~"1px + 2px") * 2; b: 2 - (@v); d: (e("1px + 2px")); e: (e("foo")); }'))
+      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: (1px + 2px); e: foo; }');
+    expect(await renderIn('.scss', '$v: unquote("1px + 2px"); .x { a: calc(2 * (unquote("1px + 2px"))); b: calc(2 * ($v)); c: calc(2 * (unquote("foo"))); }'))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * foo); }');
+    expect(await renderJess('@-from "#less" import (e); .x { a: calc(2 * ($e("1px + 2px"))); b: calc(2 * (($e("1px + 2px")))); }'))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); }');
   });
 
   /*

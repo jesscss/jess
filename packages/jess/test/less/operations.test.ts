@@ -209,9 +209,10 @@ describe('Operations', () => {
        * Math inside calc() is kept as written with variables substituted (owner
        * 2026-09-24, DESIGN-DECISIONS P35): a math function's result is clamped
        * to what the property allows, so folding it changes the value. Every paren
-       * authored inside calc() survives, redundant or not (owner 2026-10-06). A
-       * variable's own math (`@c`, `@calc`) still computes, and `min()` is a Less
-       * built-in.
+       * authored inside calc() around math written there survives, redundant or
+       * not (owner 2026-10-06). A variable's own math (`@c`, `@calc`) still
+       * computes, and `min()` is a Less built-in whose result is resolved, so the
+       * parens around it are dropped (owner 2026-10-07).
        */
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContainString(`
@@ -225,7 +226,7 @@ describe('Operations', () => {
           bar: calc(1 + 20%);
         }
         .b {
-          one: calc(100% - ((20px)));
+          one: calc(100% - 20px);
           two: calc(100% - (((10px + 10px))));
           three: calc(100% - (3 * 1));
           four: calc(100% - (3 * 1));

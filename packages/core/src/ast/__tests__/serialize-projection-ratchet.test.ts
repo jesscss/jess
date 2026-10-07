@@ -416,7 +416,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // placing is placed in every scope (one `expanding` set in the planner and the
     // walk), so a sheet that imports itself through a nested scope ends; a bubbled
     // at-rule's context splits as its rule's header does (`composedSplitFlags`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(575);
+    // -1 function: parens are dropped when the calculation in them is resolved,
+    // inside a math function too (owner 2026-10-07), so no group is judged by
+    // where it is read and `heldByBoundary` is gone.
+    expect(occurrences(/^function |^async function /gmu)).toBe(574);
     expect(occurrences(/new Map/gu)).toBe(91);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
