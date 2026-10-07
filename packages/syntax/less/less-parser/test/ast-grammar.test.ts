@@ -4164,6 +4164,35 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads a comparison in a value paren group as the condition if() and boolean() read', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@x: (1px > 2px); @y: (1px>2px); x: if((@a = rem), 1, 2);',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const comparison = {
+      type: 'Condition',
+      guard: { g: 'cmp', op: '>', left: { type: 'Dimension', src: '1px' }, right: { type: 'Dimension', src: '2px' } },
+      src: '(1px > 2px)'
+    };
+    expect(result.value).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'x', value: comparison },
+        { type: 'VariableDeclaration', name: 'y', value: comparison },
+        {
+          value: {
+            branches: [
+              { guard: { g: 'cmp', op: '=', left: { type: 'Lookup', name: 'a' }, right: { type: 'Keyword', src: 'rem' } } },
+              {}
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
     expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
   });

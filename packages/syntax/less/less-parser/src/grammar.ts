@@ -101,10 +101,10 @@ import {
   isVarIndirect,
   isVarRef,
   keywordOrValue,
-  lessMathInGroup,
   lessMathInValue,
   lessMathOutsideParens,
   lessMathRun,
+  lessParenFrom,
   requireMathSum,
   lowerLogicalCallStatement,
   mixinArgumentSource,
@@ -2139,17 +2139,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       span
     )
   );
-  // A bare `(...)` is a math grouping in Less.  Function/mixin argument lists
-  // have their own productions above; do not widen this value position into a
-  // permissive raw list.
+  /*
+   * A bare `(...)` is a math grouping in Less. Function/mixin argument lists
+   * have their own productions above; do not widen this value position into a
+   * permissive raw list. The group is read once, and the token after its first
+   * operand decides what it is, as in `FunctionConditionTerm`: `)` closes a
+   * math group, and a comparison continues it as the `(a > b)` condition
+   * `if()` and `boolean()` read (`@x: (1px > 2px)` holds that condition, and
+   * written out it is kept as written).
+   */
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
     // stay exact. Parentheses own their boundary gaps, including Less `//`
     // comments before the first or after the final operand.
-    noTrivia(sequence(literal('('), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
-    (children, _fields, span, _rawChildren, _triviaLog, state) =>
-      withSourceSpan(block(lessMathInGroup(requireMathSum(children), state)), span)
+    noTrivia(sequence(
+      literal('('),
+      optional(whitespace),
+      g.MathSum,
+      optional(sequence(functionConditionOperator, g.MathSum)),
+      optional(whitespace),
+      literal(')')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => lessParenFrom(children, span, state)
   );
   // CSS grid line names are a bracketed value piece, not a map accessor or an
   // opaque post-parse string. Keep the delimited grammar fact as one existing
