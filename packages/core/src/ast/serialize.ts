@@ -473,7 +473,10 @@ function importScopeOf(frame: Frame): Frame {
  * imports itself, directly or through others, ends. `placed` maps a scope's sheets to
  * whether a `once` import placed them. The import planner (a scope is the enclosing node)
  * and the render walk (its frame) both ask this in document order, an import inside a
- * ruleset included, so they agree on which imports place a sheet.
+ * ruleset included, so they agree on which imports place a sheet. A `(multiple)` import
+ * of a sheet still being placed is an import cycle, which they raise before asking
+ * ({@link importCycles}); any other import of one is a no-op, one inside a `(multiple)`
+ * sheet included.
  */
 function importIsNoOp(
   placed: Map<object, Map<string, boolean>>,
@@ -484,8 +487,11 @@ function importIsNoOp(
   options: string | null,
   inMultiple: boolean
 ): boolean {
+  if (expanding.has(key)) {
+    return true;
+  }
   let here = placed.get(scope);
-  const prior = expanding.has(key) || here?.get(key);
+  const prior = here?.get(key);
   const once = !inMultiple && importsOnce(options);
   if (once ? prior === true : isReferenceReimport(node, options, inMultiple, prior !== undefined)) {
     return true;
@@ -498,6 +504,16 @@ function importIsNoOp(
   }
   return false;
 }
+
+/**
+ * Whether `@import` of the sheet `key` with `options` asks for a `(multiple)` copy of a
+ * sheet an enclosing import is still placing: each copy would import another without end
+ * (`ms.less` = `.s { a: 1 } @import (multiple) "ms.less";`), so it is an import cycle,
+ * raised where the import is written (orchestrator judgment under owner delegation
+ * 2026-10-07). Any other import of such a sheet is a no-op ({@link importIsNoOp}).
+ */
+const importCycles = (expanding: ReadonlySet<string>, key: string, options: string | null): boolean =>
+  importHasOption(options, 'multiple') && expanding.has(key);
 
 /**
  * Whether an import takes part in import-once: every `@import` but a `(multiple)` one, which
@@ -13297,6 +13313,9 @@ function planImportedFacts(
           seen.set(loaded.key, false);
         }
       } else if (loaded.key !== undefined) {
+        if (importCycles(expanding, loaded.key, options)) {
+          throw ERR.importCycle({ node: st, ...callSiteLocation(st, e), meta: { specifier } });
+        }
         if ((once && seen.get(loaded.key) === false) || importIsNoOp(placed, expanding, importScope, loaded.key, st, options, multipleImportDepth)) {
           return;
         }
@@ -21193,6 +21212,10 @@ function expandStyleImport(
             seen.set(emitOnceKey, bodyFrame);
           }
         } else if (loaded.key !== undefined) {
+          if (e.importsExpanding !== null && importCycles(e.importsExpanding, loaded.key, request.options)) {
+            throw ERR.importCycle({ node, ...callSiteLocation(node, e), meta: { specifier: request.specifier } });
+          }
+
           /* A sheet composed as a module is not also folded in by `@import`. */
           const composed = emitOnceKey !== undefined ? e.loadedImports?.get(loaded.key) : undefined;
           if ((composed !== undefined && composed !== null)

@@ -13,14 +13,17 @@ import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
 /** Write `files` (name, source) to a fresh directory and render the first one. */
-async function renderFiles(files: Array<[string, string]>): Promise<string> {
+async function renderFilesResult(files: Array<[string, string]>) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'import-once-scope-'));
   for (const [name, source] of files) {
     fs.writeFileSync(path.join(dir, name), source);
   }
   const compiler = new Compiler({ output: { collapseNesting: 'native' }, compile: { plugins: [lessPlugin()] } });
-  const result = await compiler.renderToResult(path.join(dir, files[0]![0]));
-  return result.css.trim();
+  return compiler.renderToResult(path.join(dir, files[0]![0]), { quiet: true });
+}
+
+async function renderFiles(files: Array<[string, string]>): Promise<string> {
+  return (await renderFilesResult(files)).css.trim();
 }
 
 const t: [string, string] = ['t.less', '.t { a: 1; }'];
@@ -41,6 +44,26 @@ describe('import-once scope', () => {
       ['c1.less', '.c1 { a: 1; } .x { @import "c2.less"; }'],
       ['c2.less', '.c2 { b: 1; } .y { @import "c1.less"; }']
     ])).resolves.toBe('.c1 {\n  a: 1;\n}\n.x .c2 {\n  b: 1;\n}');
+  });
+
+  /*
+   * A `(multiple)` import of a sheet an enclosing import is still placing would place
+   * copies without end: it is an import cycle, raised in the sheet that writes it, never
+   * a stack overflow (SETTLED — orchestrator judgment under owner delegation 2026-10-07).
+   * Any other import of such a sheet is a no-op, one inside a `(multiple)` sheet included.
+   */
+  it('raises an import cycle for a (multiple) import of a sheet still being placed', async () => {
+    for (const files of [
+      [['main.less', '@import "ms.less";'], ['ms.less', '.s { a: 1; } @import (multiple) "ms.less";']],
+      [['ms.less', '.s { a: 1; } @import (multiple) "ms.less";']],
+      [['main.less', '@import (multiple) "c1.less";'], ['c1.less', '.c1 { a: 1; } @import "c2.less";'], ['c2.less', '@import (multiple) "c1.less";']]
+    ] as Array<Array<[string, string]>>) {
+      const result = await renderFilesResult(files);
+      expect(result.errors.map(error => error.code), files[0]![1]).toEqual(['import/cycle']);
+      expect(path.basename(result.errors[0]!.filePath ?? ''), files[0]![1]).toBe(files.length === 3 ? 'c2.less' : 'ms.less');
+    }
+    await expect(renderFiles([['main.less', '@import (multiple) "mb.less";'], ['mb.less', '.b { c: 1; } @import "mb.less";']]))
+      .resolves.toBe('.b {\n  c: 1;\n}');
   });
 
   it('a mixin call places its imports in the scope it is called in', async () => {

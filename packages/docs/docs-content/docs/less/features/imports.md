@@ -179,6 +179,8 @@ Outputs
 }
 ```
 
+A `(multiple)` import of a file that is still being imported around it would add copies without end, so it stops the compile with an `import/cycle` error in the file that writes it. Any other import of such a file is ignored, as above.
+
 ### optional
 
 Use `@import (optional)` to allow importing of a file only when it exists. Without the `optional` keyword Less throws a FileError and stops compiling when importing a file that can not be found. 

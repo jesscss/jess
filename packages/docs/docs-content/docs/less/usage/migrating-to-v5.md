@@ -390,6 +390,7 @@ Each sheet is still imported once, with these differences from Less 4.x:
 
 - `@import (reference) "t.less"; @import "t.less";` renders the sheet. You asked to see it; Less 4.x dropped the second import and rendered nothing.
 - `@import (multiple) "t.less"; @import "t.less";` renders the sheet twice. A `(multiple)` import does not count toward import-once; Less 4.x rendered it once.
+- A `(multiple)` import of a file that is still being imported around it (a file that imports itself with `(multiple)`) is an `import/cycle` error, where Less 4.x never finished.
 - A root `@import "t.less"` that comes after the same sheet was imported inside a ruleset or an at-rule block (`.wrap { @import "t.less"; }` or `@media print { @import "t.less"; }`) still renders the sheet at the root. Less 4.x skipped the root import.
 
 ### Safer JavaScript execution model

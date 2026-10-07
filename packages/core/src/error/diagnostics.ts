@@ -743,6 +743,13 @@ export const ERR = {
       ...args
     });
   },
+  importCycle(args: Common & { meta: { specifier: string } }) {
+    return makeJessError({
+      code: 'import/cycle',
+      phase: 'import',
+      ...args
+    });
+  },
   importNotFound(args: Common & { meta: { specifier: string; from: string } }) {
     return makeJessError({
       code: 'import/not-found',

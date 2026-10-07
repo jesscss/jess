@@ -28,6 +28,7 @@ export type JessErrorCode =
   | 'parse/source-import-css-syntax'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
+  | 'import/cycle'
   | 'import/not-found'
   | 'import/load-failed'
   | 'eval/bad-call-arity'
@@ -212,6 +213,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Circular @-compose detected',
       reason: '${chain}',
       fix: 'Break the cycle (extract shared bits and compose that).'
+    }
+  ],
+  [
+    'import/cycle',
+    {
+      summary: 'Import cycle',
+      reason: '"${specifier}" is imported with (multiple) while an enclosing import is still placing it, so each copy would import another without end.',
+      fix: 'Remove the (multiple) option, or the import that leads back to the sheet.'
     }
   ],
   [
