@@ -27,7 +27,10 @@ Overrides whether Jess files compile as modules globally. By default, files name
 
 The compile settings (`mathMode`, `unitMode`, `functionMode`, the `strict` preset,
 `allowCallerScope`, `processImports`, …) are worked out for each file, so a file
-compiles the same way whichever file imports it:
+compiles the same way whichever file imports it. Math written in a file follows
+that file's settings wherever it ends up: a variable's value, a mixin's body and
+its guard answer the settings of the file they are written in, not the file that
+reads or calls them. A file also keeps its own language's built-in functions.
 
 1. **Set globally:** `compile` settings passed to the compiler or to a render
    apply to every file, whatever its language, and win over everything below.
@@ -38,11 +41,12 @@ compiles the same way whichever file imports it:
    ```
 
 2. **Set for a folder or a language:** a `styles.config` applies to the files in
-   its folder and the folders below it that have no `styles.config` of their own.
-   Its `language.<lang>` block (`language.less`, `language.jess`, `language.scss`)
-   applies only to files of that language and wins over its `compile` block.
-   `language.<lang>` settings passed to the compiler or a render apply to that
-   language's files everywhere and win over a `styles.config`.
+   its own folder. Its `language.<lang>` block (`language.less`, `language.jess`,
+   `language.scss`) applies only to files of that language and wins over its
+   `compile` block. `language.<lang>` settings passed to the compiler or a render
+   apply to that language's files everywhere and win over a `styles.config`.
+   A `styles.config` in an installed package's folder (under `node_modules`) is not
+   loaded.
 
    ```js
    // styles.config.js
@@ -52,11 +56,18 @@ compiles the same way whichever file imports it:
    }
    ```
 
-3. **Not set:** each file uses its own language's defaults. A `.less` file keeps
-   math over units that do not convert as `calc()` and warns (`unitMode:
-   'preserve'`); a `.jess` file stops with an error (`strict`). A `.jess` file
-   imported by a `.less` file still errors, and a `.less` file imported by a
-   `.jess` file still writes `calc()`.
+   The `strict` preset is not a mode of its own: it fills the modes a file's
+   settings leave unset, so `language.less.unitMode: 'loose'` still applies beside
+   `compile: { strict: true }`. A deprecated spelling (`strictUnits`, `math`,
+   `strictMath`, `leakyScope`) counts where it is written: `language.less.strictUnits`
+   wins over `compile.unitMode` as `language.less.unitMode` would.
+
+3. **Not set:** each file uses its own language's defaults, or the options its
+   language's plugin was built with (`lessPlugin({ unitMode: 'loose' })`). A `.less`
+   file keeps math over units that do not convert as `calc()` and warns
+   (`unitMode: 'preserve'`); a `.jess` file stops with an error (`strict`). A
+   `.jess` file imported by a `.less` file still errors, and a `.less` file imported
+   by a `.jess` file still writes `calc()`.
 
 ## compile.plugins
 
