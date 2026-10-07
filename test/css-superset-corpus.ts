@@ -53,24 +53,27 @@ export interface CssConstruct {
 
 /*
  * Shared by the glued `b:is(…)` / `src:local(…)` / `a:not(…)` pins: one cause,
- * three spellings. The spaced forms parse in all four.
+ * four spellings. The spaced forms parse in all four.
  */
 const GLUED_SELECTOR_FUNCTION_DEFECT =
   'css-syntax-3 reads a block item that starts `<ident>:` as a declaration '
-  + 'first and as a nested rule only when that fails. Less tries the nested '
-  + 'rule first: `b:is(` reads as a type selector with a `:is()` pseudo, the '
-  + 'argument fails as a selector, and a failed known case of the pseudo '
-  + '`dispatch()` is a committed failure in parseman, so the declaration arm '
-  + 'never runs. REGRESSION for the `/word/` spellings: until the G37 ruling '
+  + 'first and as a nested rule only when that fails. Less sends a spaced '
+  + '`<ident>: ` straight to the declaration (its early exit) and tries the '
+  + 'nested rule first for a glued head, the reading Less sources use most '
+  + '(`a:hover {`). `b:is(` then reads as a type selector with a `:is()` '
+  + 'pseudo, the argument fails as a selector, and a failed known case of the '
+  + 'pseudo `dispatch()` is a committed failure in parseman, so the declaration '
+  + 'arm never runs. REGRESSION for the `/word/` spellings: until the G37 ruling '
   + 'removed slashed-combinator recognition (37d92989a), a `/word/` in the '
   + 'argument was held as a fact rather than failing it, so these three parsed. '
   + 'Spellings with no `/word/` never did: `a { b:is(c % d) }` and '
   + '`@font-face{src:local("Foo")}` fail the same way before and after. '
   + 'The two readings share a prefix of any length (`b:is(c) d;` against '
-  + '`b:is(c) d {}`), so no token decides between them before its end; the '
-  + 'fix contains the nested-rule reading\'s commitment (parseman '
-  + '`attempt(…, { contain: true })`, unreleased) and needs an owner decision '
-  + '(escalated).';
+  + '`b:is(c) d {}`), so no token decides between them before its end and one '
+  + 'rewind is unavoidable (jess#304). The fix contains the nested-rule '
+  + 'selector\'s commitment, `attempt(selectorList, { contain: true })`; it '
+  + 'waits on parseman feat/attempt-contain, unreleased, where that attempt '
+  + 'costs nothing measurable.';
 
 /*
  * The mirror image of the pins above, in the dialects that read the
@@ -91,8 +94,13 @@ const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
   + '`li:hover`, `li:nth-child(odd)`, `li:nth-child(2)`, `li:lang(en)` and '
   + '`li:dir(rtl)` parse in both: their value reading fails only at the `{`. '
   + '(SCSS reads a glued `not(` as the Sass `not` operator, so its failure is '
-  + 'inside a parenthesised operand rather than a call.) Same cause and fix as '
-  + 'the Less pins.';
+  + 'inside a parenthesised operand rather than a call.) Same cause as the Less '
+  + 'pins. Containing the declaration (parseman `attempt(…, { contain: true })`, '
+  + 'unreleased) parses every spelling here, but it also moves a broken '
+  + 'declaration\'s error to the document start (`color: rgb(1, 2;` reports '
+  + 'offset 0, not the missing `)`), so the fix needs either a containment that '
+  + 'keeps the deeper failure or the Less shape (nested rule first for a glued '
+  + 'head).';
 
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
