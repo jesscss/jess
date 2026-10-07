@@ -216,16 +216,22 @@ You can change the [Math](./usage/less-options#math) setting to a more eager mod
 _Released [v3.0.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)_
 
 For CSS compatibility, `calc()` does not evaluate math expressions, but will evaluate variables
-and math in nested functions. Parentheses written inside `calc()` around math or around a
-single value are kept as written. Parentheses around something that computes, such as a
-function that runs, are dropped, as they are anywhere else.
+and math in nested functions. Parentheses written inside `calc()` are kept as written when
+nothing in them computes: math written in the `calc()`, or a single value. Parentheses around
+something that computes — a function that runs, or a variable holding math that ran — are
+dropped, as they are anywhere else; the `calc()` itself stays. Text a function returns that is
+more than one value, such as `e("1px + 2px")`, is not computed and keeps its parentheses.
 
 ```less
 @var: 50vh/2;
 @a: 10px;
+@c: 10px + 20px;
 width: calc(50% + (@var - 20px));  // result is calc(50% + (50vh / 2 - 20px))
 height: calc((@var));              // result is calc((50vh / 2))
 top: calc(100% - ((min(@a, 20px))));   // result is calc(100% - 10px)
+left: calc(100% - (@c));           // result is calc(100% - 30px)
+right: calc((min(@a, 20px)));      // result is calc(10px)
+bottom: calc(2 * (e("1px + 2px")));   // result is calc(2 * (1px + 2px))
 ```
 
 Under the default `parens-division` math, `50vh/2` is not divided, so `@var` is

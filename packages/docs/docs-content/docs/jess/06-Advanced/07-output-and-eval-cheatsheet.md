@@ -65,7 +65,8 @@ verbatim.) Parens around something that computes nothing — one value, a CSS
 function such as `var()`, math kept as written — stay as you wrote them, as they
 do in plain CSS. The same holds inside a math function: math written in `calc()`
 is not computed, so `calc(100% - ((1px + 2px)))` keeps its parens, while
-`calc(100% - (($(1px + 2px))))` is `calc(100% - 3px)`.
+`calc(100% - (($(1px + 2px))))` is `calc(100% - 3px)` and `calc(($(1px + 2px)))`
+is `calc(3px)`.
 
 ```jess
 $a: #a80000; $b: #00000b;

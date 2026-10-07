@@ -632,6 +632,44 @@ export function groupAsWritten(v: Value): Value {
 }
 
 /**
+ * Whether `v` is loose text: text a call returned rather than a resolved
+ * calculation — an escaped string (`e()`, as `~"…"` is) or an unquoted one —
+ * that is more than one value ({@link isLooseText}). A paren group around it is
+ * not consumed: dropped, the parens would let what surrounds it re-read its
+ * bytes, and `2 * (1px + 2px)` is not `2 * 1px + 2px`. A value kept as written
+ * has its own precedence ({@link groupAsWritten}, {@link operandAsWritten}).
+ */
+export const isLooseValue = (v: Value): boolean =>
+  (v.type === 'Any' || v.type === 'Keyword') && !keptAsWritten.has(v) && isLooseText(v.bytes);
+
+/**
+ * Whether text is more than one value: at its top level — outside any
+ * `()[]{}` group or quoted string — it holds whitespace, a `,`, or an operator
+ * CSS math reads without spaces around it (`*`, `/`; css-values-4 §10.1).
+ */
+export function isLooseText(bytes: string): boolean {
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const c = bytes[i]!;
+    if (quote !== '') {
+      if (c === quote) {
+        quote = '';
+      }
+    } else if (c === '"' || c === '\'') {
+      quote = c;
+    } else if (c === '(' || c === '[' || c === '{') {
+      depth++;
+    } else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+    } else if (depth === 0 && (c === ' ' || c === ',' || c === '/' || c === '*' || c === '\t' || c === '\n' || c === '\r' || c === '\f')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Binary operation. Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc);
  *      kept math splices its arithmetic ({@link keptMath}),

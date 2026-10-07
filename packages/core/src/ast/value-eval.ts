@@ -77,10 +77,13 @@ export interface Dimension {
    * like — `loose` fabricates a unit from `backupUnit`, `preserve` says the
    * expression back, `strict` refuses at the consuming boundary.
    *
-   * The same spelling is carried, in every unit mode, by a `calc()` written as a
-   * paren group around one value (`calc((10px))` is `10px` spelled `(10px)`):
-   * a paren authored inside a math function around a value nothing computes is
-   * kept (owner 2026-10-06), and a typed consumer still reads the magnitude.
+   * The same spelling is carried, in every unit mode, by a `calc()` whose
+   * argument is written as a paren group: it stays a `calc()`, whose result the
+   * property clamps (P35). Around one value nothing computes the group keeps its
+   * parens (owner 2026-10-06: `calc((10px))` is `10px` spelled `(10px)`); around
+   * a calculation that resolves they are dropped (owner 2026-10-07:
+   * `calc((min(-5px, 1px)))` is `-5px` spelled `-5px`). A typed consumer still
+   * reads the magnitude.
    */
   readonly preserved?: string;
 

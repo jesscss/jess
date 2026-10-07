@@ -176,7 +176,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isLooseText, isLooseValue, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -4898,10 +4898,12 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * calculation in them is resolved (owner 2026-10-07), so
  * `calc(100% - ((min(@a + @b))))` is `calc(100% - 20px)`, while the math
  * written there computes nothing and keeps every paren around it (ledger P35:
- * `calc(100% - (((@a + @b))))`). A computing consumer — an operand of math that operates, an argument a
- * callable reads — still reads the value inside the group, through the typed
- * lane, and an operand of math kept as written keeps the group's spelling
- * ({@link spelledOperand}).
+ * `calc(100% - (((@a + @b))))`). Text a call returns that is more than one
+ * value (`e("1px + 2px")`) is not a resolved calculation either, so a group
+ * around it keeps its parens ({@link isLooseValue}). A computing consumer — an
+ * operand of math that operates, an argument a callable reads — still reads
+ * the value inside the group, through the typed lane, and an operand of math
+ * kept as written keeps the group's spelling ({@link spelledOperand}).
  */
 
 /**
@@ -5081,16 +5083,22 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number
   return !e.reached && isParenGroup(slot) && !groupComputes(slot, frame, e) ? unconsumedParens(slot) : 0;
 }
 
+/** The parens written around `slot` when it is a group whose call returned loose text ({@link isLooseValue}), or 0. */
+const looseParens = (slot: ValueSlot, v: ValueGroup): number =>
+  isParenGroup(slot) && !isValueGroupArray(v) && isLooseValue(v) ? unconsumedParens(slot) : 0;
+
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
  * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
- * 'preserve'`), while math that computes reads only the value. A named-colour
- * keyword stays bare, since `operate` reads it as a colour, and kept math already
- * carries the group in its arithmetic ({@link groupAsWritten}): wrapped again it
- * would be a nested `calc()` (`calc(100% - ($x))`).
+ * 'preserve'`), while math that computes reads only the value. A group whose
+ * call returned loose text keeps it too ({@link isLooseValue}):
+ * `(e("1px + 2px")) * 2` is not `1px + 2px * 2`. A named-colour keyword stays
+ * bare, since `operate` reads it as a colour, and kept math already carries the
+ * group in its arithmetic ({@link groupAsWritten}): wrapped again it would be a
+ * nested `calc()` (`calc(100% - ($x))`).
  */
 function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: EvalCtx): Value {
-  const depth = writtenParens(node, frame, e);
+  const depth = writtenParens(node, frame, e) || looseParens(node, value);
   return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined))
     ? value
     : { ...value, bytes: wrapParens(value.bytes, depth) };
@@ -5446,10 +5454,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * A paren group is consumed only by what computes in it
        * ({@link groupComputation}): `(1px + 2px)` is `3px`, while math `operate`
        * kept and a call written out as-is keep the parens
-       * ({@link keepAuthoredGroup}), and so does every group nothing computes in.
-       * Bytes from a call or an operation are what nothing computed — a call
-       * re-emitted as written, math on the non-evaluating lane; a conditional or
-       * a computed mixin argument computes to its bytes.
+       * ({@link groupAsWritten}), as does text a call returned that is more than
+       * one value ({@link isLooseValue}), and so does every group nothing
+       * computes in. Bytes from a call or an operation are what nothing
+       * computed — a call re-emitted as written, math on the non-evaluating
+       * lane; a conditional or a computed mixin argument computes to its bytes,
+       * which keep the parens when they are more than one value.
        */
       return mapMaybe(inner, (v) => {
         if (node.delimiter !== 'paren') {
@@ -5461,11 +5471,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return v;
         }
         if (isLiteral(v)) {
-          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
+          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation' || isLooseText(v)
             ? literal(`(${v})`)
             : v;
         }
-        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v);
+        if (computation === null) {
+          return writtenGroup(v);
+        }
+        return isValueGroupArray(v) ? v : isLooseValue(v) ? keepAsWritten(makeKeyword(`(${v.bytes})`)) : groupAsWritten(v);
       });
     }
     case 'Expression': {
@@ -7155,30 +7168,31 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
 /**
  * `calc(…)` fold: evaluate the single argument in calc mode, then decide the
  * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
- * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; a fully
- * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
- * collapse to a bare Dimension). An argument written as a paren group around
- * one value nothing computes keeps its parens and so its wrapper
- * ({@link writtenParens}): a dimension carries them as its spelling
- * (`calc((10vh))` is `10vh` spelled `(10vh)`), so every position prints the
- * same bytes and a typed consumer still reads `10vh`; any other value is the
- * kept `calc(…)` expression. A group around a calculation that resolves is
- * dropped (owner 2026-10-07), so `calc((percentage(0.5)))` reads as
- * `calc(percentage(0.5))` does; a group around kept math or a call written out
- * as-is keeps its parens ({@link groupComputation}).
+ * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; an argument
+ * that resolved to one value (`calc(percentage(0.5))` → `50%`) drops the
+ * wrapper (less.js `calc()` collapse to a bare Dimension). An argument written
+ * as a paren group keeps the wrapper: around one value nothing computes it
+ * keeps its parens too ({@link writtenParens}), and a dimension carries them as
+ * its spelling (`calc((10vh))` is `10vh` spelled `(10vh)`), so every position
+ * prints the same bytes and a typed consumer still reads `10vh`; any other
+ * value is the kept `calc(…)` expression. Around a calculation that resolves
+ * only the parens are dropped (owner 2026-10-07): `calc((min(-5px, 1px)))` is
+ * `calc(-5px)`, which the property clamps (P35); a group around kept math or a
+ * call written out as-is keeps its parens ({@link groupComputation}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
   const arg = node.args[0]!.value;
   const authored = writtenParens(arg, frame, ce);
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
-    /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
-    const kept = isParenGroup(arg) && !isValueGroupArray(v) ? keptMathOf(v) : undefined;
-    if (authored > 0 || kept !== undefined) {
+    if (isParenGroup(arg)) {
       if (!isValueGroupArray(v) && v.type === 'Dimension') {
         return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
       }
-      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored)})`), v, v));
+
+      /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
+      const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
+      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored || looseParens(arg, v))})`), v, v));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${v.bytes})`), v, v));
