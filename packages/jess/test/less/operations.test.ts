@@ -458,6 +458,9 @@ describe('Operations — a unitless number ± a dimension with a unit', () => {
 
     // One kept operation, one warning: the argument and the declaration reading it are one thing written.
     expect(mixin.warnings).toEqual(['eval/unexpressible-unit']);
+
+    // Inside a math function the operation itself is kept as written, and a kept operand still groups.
+    expect((await render('preserve', '@x: foo + 1; a: calc(@x * 2); b: calc(2 - @x);')).css).toBe('.a { a: calc((foo + 1) * 2); b: calc(2 - (foo + 1)); }');
   });
 
   it('a call that consumes the kept math warns, whether it is written out or formats it', async () => {
