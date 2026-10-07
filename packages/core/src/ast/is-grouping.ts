@@ -230,6 +230,18 @@ function hasPseudoElement(branch: SelectorBranch): boolean {
 }
 
 /**
+ * Whether a parsed branch may carry a pseudo-element: one in its own tokens, or
+ * an interpolation that may resolve to one (`.a@{pe}`, `@{s}`). Flattening
+ * never factors such a PARENT branch into `:is()`, which cannot hold a
+ * pseudo-element and would match nothing; it is distributed per branch (owner
+ * 2026-10-06: an output transformation never makes output more invalid or match
+ * fewer elements; amends O10's parent factoring).
+ */
+export function mayCarryPseudoElement(branch: SelectorBranch): boolean {
+  return hasPseudoElement(branch) || selectorBranchHasInterp(branch);
+}
+
+/**
  * The nesting fold's group key for one child branch of `A <child list>`. The
  * guarded fold (`'native'`) keys on specificity; the unguarded fold
  * (`'compact'`, group-max specificity) gives every descendant branch one key.
@@ -248,7 +260,7 @@ export function nestingGroupKey(branch: SelectorBranch, guarded: boolean): numbe
     return astBranchSpecificity(branch, true, false);
   }
   const comb = branch.type === 'RelativeSelector' ? branch.value[0] : undefined;
-  return (comb !== undefined && comb !== ' ' && comb !== '|') || hasPseudoElement(branch) || selectorBranchHasInterp(branch) ? -1 : 0;
+  return (comb !== undefined && comb !== ' ' && comb !== '|') || mayCarryPseudoElement(branch) ? -1 : 0;
 }
 
 function irCompoundSpecificity(compound: Compound, compoundOnly: boolean): number {

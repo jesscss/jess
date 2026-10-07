@@ -140,6 +140,36 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
             ? [[`${grouped(popover, ' .popover-header::before')} {`, `${split(popover, ' .popover-header::before')} {`] as const]
             : [])
         ];
+      }),
+
+      /*
+       * A parent branch that may carry a pseudo-element is never factored into
+       * `:is()` when flattening, and an interpolated branch may (`&:@{state}`
+       * could resolve to a legacy `:before`), so it is distributed per branch
+       * (owner 2026-10-06: an output transformation never makes output more
+       * invalid or match fewer elements; the interpolated case follows the O14
+       * child rule).
+       */
+      ...(['valid', 'invalid'] as const).flatMap((state) => {
+        const grouped = (parents: string[], tails: string[]): string => tails.map(tail => `:is(${parents.join(', ')})${tail}`).join(',\n') + ' {';
+        const split = (parents: string[], tails: string[]): string => parents.flatMap(parent => tails.map(tail => parent + tail)).join(',\n') + ' {';
+        const edit = (parents: string[], tails: string[]): readonly [string, string] => [grouped(parents, tails), split(parents, tails)];
+        const owner = (input: string): string[] => [`.was-validated ${input}:${state}`, `${input}.is-${state}`];
+        const feedback = [` ~ .${state}-feedback`, ` ~ .${state}-tooltip`];
+        const controls = ':is(.form-control, .custom-select)';
+        return [
+          edit(owner(controls), [':focus']),
+          ...[controls, '.form-control-file', '.form-check-input', '.custom-control-input', '.custom-file-input']
+            .map(input => edit(owner(input), feedback)),
+          edit(owner('.form-check-input'), [' ~ .form-check-label']),
+          edit(owner('.custom-control-input'), [' ~ .custom-control-label']),
+          edit(owner('.custom-file-input'), [' ~ .custom-file-label']),
+          edit(owner('.custom-control-input').map(parent => `${parent} ~ .custom-control-label`), ['::before']),
+          edit(owner('.custom-file-input').map(parent => `${parent} ~ .custom-file-label`), ['::before']),
+          edit(owner('.custom-control-input'), [':checked ~ .custom-control-label::before']),
+          edit(owner('.custom-control-input'), [':focus ~ .custom-control-label::before']),
+          edit(owner('.custom-file-input'), [':focus ~ .custom-file-label'])
+        ];
       })
     ]
   ],

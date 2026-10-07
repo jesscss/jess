@@ -187,7 +187,7 @@ import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [exte
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
-import { nestingGroupKey, partitionGroups } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
+import { mayCarryPseudoElement, nestingGroupKey, partitionGroups } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
@@ -3955,6 +3955,15 @@ interface EvalCtx {
    * parens (ledger J16; orchestrator judgment under owner delegation 2026-10-06).
    */
   reached?: boolean;
+
+  /**
+   * [nesting] Composed selector branches that may carry a pseudo-element
+   * ({@link mayCarryPseudoElement}), recorded from the parser's tokens where a
+   * branch is composed ({@link rootStrings}, {@link compose}): flattening never
+   * factors one into a parent `:is()` ({@link parentUnits}). One set per render,
+   * shared by every context of it.
+   */
+  pseudoElementParents: Set<string>;
 
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
@@ -9157,11 +9166,45 @@ function resolveSelectorBranchSync(c: SelectorBranch, frame: Frame | null, e: Ev
   return value;
 }
 
-/** [nesting] The `&` SUBJECT-slot substitution over MULTIPLE parents: the parent
- *  list wraps once in `:is(a, b, …)`; a single parent substitutes bare. Only a bare
- *  LEADING `&` (the compound's subject) uses this — a name-merged `&` distributes. */
-function ampSub(parents: string[]): string {
-  return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
+/**
+ * [nesting] The units a parent list factors into when flattening: the list
+ * wrapped once in `:is(a, b, …)` (a single parent bare), except that a parent
+ * that may carry a pseudo-element ({@link EvalCtx.pseudoElementParents}) is a
+ * unit of its own — `:is()` cannot hold a pseudo-element, so factoring one in
+ * would match nothing (owner 2026-10-06: an output transformation never makes
+ * output more invalid or match fewer elements; amends O10). Units come in order
+ * of first appearance: `.a::before, .c, .d` gives `.a::before`, `:is(.c, .d)`.
+ * Used for a bare LEADING `&` (the compound's subject) and for an `&`-less
+ * child's ancestor; a name-merged `&` distributes anyway.
+ */
+function parentUnits(parents: string[], e: EvalCtx): string[] {
+  const marked = e.pseudoElementParents;
+  if (parents.length < 2 || marked.size === 0 || !parents.some(p => marked.has(p))) {
+    return [wrapIsList(parents)];
+  }
+  const units: string[] = [];
+  let rest: string[] | null = null;
+  let restAt = 0;
+  for (const p of parents) {
+    if (marked.has(p)) {
+      units.push(p);
+    } else if (rest === null) {
+      rest = [p];
+      restAt = units.push('') - 1;
+    } else {
+      rest.push(p);
+    }
+  }
+  if (rest !== null) {
+    units[restAt] = wrapIsList(rest);
+  }
+  return units;
+}
+
+/** [nesting] The single opaque ancestor unit for `branches`, or `null` when they factor into several ({@link parentUnits}). */
+function ancestorUnit(branches: string[], e: EvalCtx): string | null {
+  const units = parentUnits(branches, e);
+  return units.length === 1 ? units[0]! : null;
 }
 
 /** [nesting] One `&`-bearing token resolved against `parents`, position-aware.
@@ -9175,7 +9218,7 @@ function ampSub(parents: string[]): string {
  *  `.fruit-&`) — is a name concatenation and DISTRIBUTES per parent (a group cannot
  *  splice into a name; `:is(.foo .bar)` would also relocate the subject). Returns
  *  one variant per distribution — the branch-multiplying case. */
-function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: string[], first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
@@ -9187,7 +9230,7 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first
       return [text];
     }
     if (first && text === '&') {
-      return [sub];
+      return subs;
     }
     return parents.map(p => text.split('&').join(p));
   });
@@ -9195,8 +9238,8 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
  *  a distributing `&` (append/merge) multiplies its variants (cartesian). */
-function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], sub: string, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, sub, i === 0, frame, e));
+function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], subs: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0, frame, e));
   return combineAll(tokens, (lists) => {
     let acc = [''];
     for (const variants of lists) {
@@ -9212,10 +9255,10 @@ function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], sub: strin
   });
 }
 
-function resolveTermAmp(term: SelectorTerm, parents: string[], sub: string, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function resolveTermAmp(term: SelectorTerm, parents: string[], subs: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   return term.type === 'CompoundSelector'
-    ? resolveCompoundAmp(term, parents, sub, frame, e)
-    : resolveTokenAmp(term, parents, sub, true, frame, e);
+    ? resolveCompoundAmp(term, parents, subs, frame, e)
+    : resolveTokenAmp(term, parents, subs, true, frame, e);
 }
 
 /** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
@@ -9231,8 +9274,8 @@ function resolveSelectorBranchAmp(c: SelectorBranch, parents: string[], frame: F
       return parents.slice();
     }
   }
-  const sub = ampSub(parents);
-  return combineAll(terms.map(term => resolveTermAmp(term, parents, sub, frame, e)), (variants) => {
+  const subs = parentUnits(parents, e);
+  return combineAll(terms.map(term => resolveTermAmp(term, parents, subs, frame, e)), (variants) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     const lead = c.type === 'RelativeSelector'
       ? renderCombinator(combinators[0]!).trimStart()
@@ -9302,8 +9345,41 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const parts = child.selectors.map(c => composeOne(parents, c, frame, e));
+  const marked = e.pseudoElementParents;
+  const parts = child.selectors.map((c) => {
+    const composed = composeOne(parents, c, frame, e);
+    return marked.size === 0 && !mayCarryPseudoElement(c)
+      ? composed
+      : mapMaybe(composed, list => markComposedBranches(parents, c, list, e));
+  });
   return combineAll(parts, values => values.flat());
+}
+
+/**
+ * Record which branches `child` composed over `parents` (none at the root) may
+ * carry a pseudo-element ({@link EvalCtx.pseudoElementParents}): every one when
+ * the child's own tokens may; under an `&`-less child, the one under each
+ * marked parent (one branch per parent, in order); under an `&` child, every
+ * one when any parent is marked — a unit an `&` substituted may be that parent.
+ */
+function markComposedBranches(parents: string[], child: SelectorBranch, composed: string[], e: EvalCtx): string[] {
+  const marked = e.pseudoElementParents;
+  if (mayCarryPseudoElement(child)) {
+    for (const text of composed) {
+      marked.add(text);
+    }
+  } else if (!selectorBranchHasAmpersand(child)) {
+    for (let i = 0; i < parents.length && i < composed.length; i++) {
+      if (marked.has(parents[i]!)) {
+        marked.add(composed[i]!);
+      }
+    }
+  } else if (parents.some(p => marked.has(p))) {
+    for (const text of composed) {
+      marked.add(text);
+    }
+  }
+  return composed;
 }
 
 function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -9327,10 +9403,10 @@ function composeSync(parents: string[], child: SelectorList, frame: Frame | null
  * use `compose` for the rest).
  */
 function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const isPrefix = `:is(${parents.join(', ')}) `;
+  const units = parentUnits(parents, e);
   const parts = child.selectors.map((c) => {
     if (!selectorBranchHasAmpersand(c)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => [isPrefix + canon]);
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => units.map(unit => unit + ' ' + canon));
     }
     if (parents.some(hasTopLevelComma)) {
       return mapMaybe(resolveSelectorBranch(c, frame, e), (canon) => {
@@ -9390,40 +9466,61 @@ function wrapIsList(branches: string[]): string {
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
   return combineAll(canons, (values) => {
+    let out: string[];
     if (values.length === 1) {
-      return [a + ' ' + values[0]!];
-    }
-    const guarded = e.collapseMode !== 'compact';
-    const groups: number[] = [];
-    let oneGroup = true;
-    for (const branch of child.selectors) {
-      const key = nestingGroupKey(branch, guarded);
-      oneGroup &&= key >= 0 && key === (groups[0] ?? key);
-      groups.push(key);
-    }
-    if (oneGroup) {
-      return [a + ' :is(' + values.join(', ') + ')'];
-    }
-    const sizes = partitionGroups(groups);
-    const out: string[] = [];
-    for (let i = 0; out.length < sizes.length; i++) {
-      const group = groups[i]!;
-      if (group !== out.length) {
-        continue;
+      out = [a + ' ' + values[0]!];
+    } else {
+      const guarded = e.collapseMode !== 'compact';
+      const groups: number[] = [];
+      let oneGroup = true;
+      for (const branch of child.selectors) {
+        const key = nestingGroupKey(branch, guarded);
+        oneGroup &&= key >= 0 && key === (groups[0] ?? key);
+        groups.push(key);
       }
-      let left = sizes[group]! - 1;
-      if (left === 0) {
-        out.push(a + ' ' + values[i]!);
-        continue;
-      }
-      let list = values[i]!;
-      for (let j = i + 1; left > 0; j++) {
-        if (groups[j] === group) {
-          list += ', ' + values[j]!;
-          left--;
+      if (oneGroup) {
+        out = [a + ' :is(' + values.join(', ') + ')'];
+      } else {
+        const sizes = partitionGroups(groups);
+        out = [];
+        for (let i = 0; out.length < sizes.length; i++) {
+          const group = groups[i]!;
+          if (group !== out.length) {
+            continue;
+          }
+          let left = sizes[group]! - 1;
+          if (left === 0) {
+            out.push(a + ' ' + values[i]!);
+            continue;
+          }
+          let list = values[i]!;
+          for (let j = i + 1; left > 0; j++) {
+            if (groups[j] === group) {
+              list += ', ' + values[j]!;
+              left--;
+            }
+          }
+          out.push(a + ' :is(' + list + ')');
         }
       }
-      out.push(a + ' :is(' + list + ')');
+    }
+
+    /*
+     * A branch under a pseudo-element ancestor unit may carry one, and so may a
+     * child branch written on its own ({@link EvalCtx.pseudoElementParents}); a
+     * grouped branch holds no pseudo-element of its own (ledger O14).
+     */
+    const marked = e.pseudoElementParents;
+    if (marked.has(a)) {
+      for (const text of out) {
+        marked.add(text);
+      }
+    } else {
+      for (let i = 0; i < child.selectors.length; i++) {
+        if (mayCarryPseudoElement(child.selectors[i]!)) {
+          marked.add(a + ' ' + values[i]!);
+        }
+      }
     }
     return out;
   });
@@ -9458,7 +9555,8 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
       parts.push(g.branches);
       continue;
     }
-    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
+    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value =>
+      markComposedBranches([], c, [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value], e)));
   }
   return combineAll(parts, values => values.flat());
 }
@@ -9804,6 +9902,7 @@ function scratchEmit(e: EvalCtx): Emit {
     trivia: e.trivia,
     excluded: e.excluded,
     propNames: e.propNames,
+    pseudoElementParents: e.pseudoElementParents,
     optional: e.optional,
     calcDepth: e.calcDepth,
     scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
@@ -13068,6 +13167,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     context: options?.context,
     excluded: new Set(),
     propNames: new Set(),
+    pseudoElementParents: new Set(),
     optional: options?.optional ?? false,
     pending: [],
     drops: [],
@@ -13169,6 +13269,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
+    pseudoElementParents: new Set(), // [nesting] parents never factored into `:is()`
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
     drops: [], // [null] declarations that may still elide on the async lane
@@ -14766,7 +14867,9 @@ function flattenResolved(
    * onto (a multi-branch header collapses to `:is(...)`).
    */
   let headerComposed: MaybePromise<string[]>;
-  let childAncestor: string | null;
+
+  /* `undefined`: the header itself, once resolved; `null`: the children join their parent list ({@link parentUnits}). */
+  let childAncestor: string | null | undefined;
 
   /*
    * [nesting] At a ROOT context `rootStrings` resolves a parentless `&` to EMPTY.
@@ -14784,7 +14887,7 @@ function flattenResolved(
       const kept = rawComposed.filter(s => s !== '');
       childComposed = kept.length > 0 ? kept : null;
     }
-    childAncestor = childComposed === null ? '' : wrapIsList(childComposed);
+    childAncestor = childComposed === null ? '' : ancestorUnit(childComposed, e);
   } else if (selectorListHasAmpersand(selector)) {
     headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, selector, frame, e);
 
@@ -14792,20 +14895,22 @@ function flattenResolved(
      * `headerComposed` can be pending only for an interpolated selector. The
      * raw composed list is already the correct parent context for children.
      */
-    childAncestor = wrapIsList(rawComposed);
+    childAncestor = ancestorUnit(rawComposed, e);
   } else if (expandBubbledSelectorList) {
     headerComposed = rawComposed;
-    childAncestor = wrapIsList(rawComposed);
+    childAncestor = ancestorUnit(rawComposed, e);
   } else {
-    headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), selector, frame, e);
+    headerComposed = ancestor !== null
+      ? opaqueJoin(ancestor, selector, frame, e)
+      : combineAll(parentUnits(parent, e).map(unit => opaqueJoin(unit, selector, frame, e)), units => units.flat());
 
     /* The header itself, once resolved, as ONE unit: every branch of it is an
      * ancestor of the children (`.a { .b, .c { e {} } }` → `:is(.a .b, .a .c) e`). */
-    childAncestor = null;
+    childAncestor = undefined;
   }
   return mapMaybe(headerComposed, (headerComposed) => {
     const dyn = e.dynamicExtend;
-    const ancestorOfChildren = childAncestor ?? wrapIsList(headerComposed);
+    const ancestorOfChildren = childAncestor === undefined ? ancestorUnit(headerComposed, e) : childAncestor;
     if (dyn === null) {
       return flattenWithHeader(
         rule, parent, frame, e, imp, childComposed, headerComposed, ancestorOfChildren, expandBubbledSelectorList
@@ -14855,7 +14960,7 @@ function flattenWithHeader(
    */
   childComposed: string[] | null,
   headerComposed: string[],
-  childAncestor: string,
+  childAncestor: string | null,
   expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
   /*

@@ -268,7 +268,11 @@ only the child branches described above; **`'compact'`** folds every descendant 
 branch into one `:is(…)` (the group-max specificity shown above). The
 **parent** `:is()` (`:is(.a, #b) .c`) is emitted by BOTH `'native'` and `'compact'` —
 it is the native desugaring of a multi-parent header, and its group-max specificity is
-unavoidable. Extend's `:is()` grafting appears in every mode and keeps the `'native'`
+unavoidable. A parent branch that carries a pseudo-element (or an interpolation that
+may resolve to one) is never factored into it, since `:is()` cannot hold a
+pseudo-element and the rule would match nothing; it is written per branch, and the
+other parents still share the `:is()`: `.a::before, .c, .d { .e {} }` →
+`.a::before .e, :is(.c, .d) .e`. Extend's `:is()` grafting appears in every mode and keeps the `'native'`
 guard in every mode, `'compact'` included. (`true` is a deprecated alias for
 `'native'`.)
 :::

@@ -385,9 +385,16 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function: a paren group around one value reached through a reference
     // evaluates to its value (judgment under owner delegation 2026-10-06;
     // `groupsOneValue`, the flag set by `withExcluded`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(560);
+    // +2 functions net and +2 `new Set` (owner 2026-10-06: an output
+    // transformation never makes output more invalid or match fewer elements):
+    // flattening keeps a parent branch that may carry a pseudo-element out of a
+    // parent `:is()` — the parent list factors into units (`parentUnits`, which
+    // replaces `ampSub`; `ancestorUnit`), recorded per render where a selector
+    // composes (`markComposedBranches`, one `pseudoElementParents` set in each
+    // root context).
+    expect(occurrences(/^function |^async function /gmu)).toBe(562);
     expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(43);
+    expect(occurrences(/new Set/gu)).toBe(45);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

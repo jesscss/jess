@@ -190,6 +190,26 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe(':is(.a > .b, .a > .c) + .d,\n:is(.a > .b, .a > .c) + .e {\n  x: 1;\n}\n');
   });
 
+  /*
+   * A parent branch carrying a pseudo-element is never factored into `:is()` —
+   * it would match nothing — and is distributed per branch, in every flattening
+   * mode; the other parents still factor (owner 2026-10-06: an output
+   * transformation never makes output more invalid or match fewer elements).
+   */
+  it('distributes a parent branch that carries a pseudo-element, and factors the rest', async () => {
+    for (const mode of ['native', 'compact'] as const) {
+      await expect(header('.a::before, .b::before { &:hover { x: 1 } }', mode)).resolves.toBe('.a::before:hover, .b::before:hover');
+      await expect(header('.t { .a::before, .b::before { &:hover { x: 1 } } }', mode)).resolves.toBe('.t .a::before:hover, .t .b::before:hover');
+      await expect(header('.a::before, .b::after, .c, .d { .e { x: 1 } }', mode)).resolves.toBe('.a::before .e, .b::after .e, :is(.c, .d) .e');
+      await expect(header('.c, .a:before, .d { &.k { x: 1 } }', mode)).resolves.toBe(':is(.c, .d).k, .a:before.k');
+      await expect(header('.a::before, .b { & + & { x: 1 } }', mode))
+        .resolves.toBe('.a::before + .a::before, .a::before + .b, .b + .a::before, .b + .b');
+      await expect(header('.t { .a::before, .b::before { .c { .d { x: 1 } } } }', mode)).resolves.toBe('.t .a::before .c .d, .t .b::before .c .d');
+    }
+    await expect(header('.a, #b { .c { x: 1 } }')).resolves.toBe(':is(.a, #b) .c');
+    await expect(header('@pe: before; .a:@{pe}, .b:@{pe} { &:hover { x: 1 } }')).resolves.toBe('.a:before:hover, .b:before:hover');
+  });
+
   it(`'false' preserves authored nesting (no :is())`, async () => {
     const out = await render('.a, .b { .c, .d { x: 1 } }', false);
     expect(out).not.toContain(':is(');
