@@ -2144,9 +2144,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * have their own productions above; do not widen this value position into a
    * permissive raw list. The group is read once, and the token after its first
    * operand decides what it is, as in `FunctionConditionTerm`: `)` closes a
-   * math group, and a comparison continues it as the `(a > b)` condition
-   * `if()` and `boolean()` read (`@x: (1px > 2px)` holds that condition, and
-   * written out it is kept as written).
+   * math group, and a comparison continues it as a group around the `a > b`
+   * condition `if()` and `boolean()` read (`@x: (1px > 2px)` holds that group;
+   * written out, it keeps its parens and its variables substitute).
    */
   const Paren = node(
     'Block',

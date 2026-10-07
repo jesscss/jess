@@ -128,4 +128,15 @@ describe('Less logical / conditional functions', () => {
     const css = await render('@a: 3px; .y { b: rgb(@a > 2px, 1, 2); c: hsl((@a > 2px) and (@a < 5px), 1%, 2%); d: rgb(not (@a = 3px), 1, 2); }');
     expect(css).toBe('.y {\n  b: rgb(3px > 2px, 1, 2);\n  c: hsl((3px > 2px) and (3px < 5px), 1%, 2%);\n  d: rgb(not (3px = 3px), 1, 2);\n}\n');
   });
+
+  /*
+   * The parser reads a comparison in a value paren group as a condition, and a
+   * condition nothing consumes is written with its operands evaluated: the
+   * variable holding the group writes the group with `@a` substituted, while a
+   * consumer still reads it as a condition.
+   */
+  it('writes a comparison group a variable holds with its variables substituted', async () => {
+    const css = await render('@a: 3px; @x: (@a > 2px); .y { a: @x; b: boolean(@x); c: if(@x, yes, no); }');
+    expect(css).toBe('.y {\n  a: (3px > 2px);\n  b: true;\n  c: yes;\n}\n');
+  });
 });

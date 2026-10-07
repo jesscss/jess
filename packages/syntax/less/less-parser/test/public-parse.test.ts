@@ -1331,7 +1331,7 @@ describe('public Less parse()', () => {
     expect(reference).toMatchObject({ rules: [{ value: { type: 'Reference', raw: '.m(~"@{x}")[@r]' } }] });
 
     // The Condition's replay (written verbatim when no evaluator is injected).
-    expect(JSON.stringify(parse('.a { c: if((~"@{x}" = 0.5), y, n); }'))).toContain('"src":"(~\\"@{x}\\" = 0.5)"');
+    expect(JSON.stringify(parse('.a { c: if((~"@{x}" = 0.5), y, n); }'))).toContain('"src":"~\\"@{x}\\" = 0.5"');
     expect(parse('.a { b: ~"a@{x}b"; c: "a@{x}b"; }').rules[0]).toMatchObject({
       rules: [
         { value: { type: 'Quoted', src: '~"a@{x}b"', value: 'a@{x}b', escaped: true } },

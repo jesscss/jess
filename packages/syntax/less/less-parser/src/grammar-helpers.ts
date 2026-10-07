@@ -1262,13 +1262,15 @@ function callWithLayout(
  * states, in Less's own terms.
  *
  * A structured {@link Condition} (the argument carried a comparison, `not(…)`
- * or `and`/`or`) already IS a guard tree. Anything else is a bare operand, and
+ * or `and`/`or`) already IS a guard tree, also inside the paren group a value
+ * position reads `(a > b)` as. Anything else is a bare operand, and
  * Less's condition asks "is this literally the boolean `true`" — the same
  * {@link lessTruth} rule `when (@x)` uses (§4.4.2). `"a"`, `red`, `0` and even
  * the STRING `"true"` are all false under it.
  */
 function lessConditionGuard(arg: ValueSlot): MixinGuard {
-  return !Array.isArray(arg) && isValueNode(arg) && arg.type === 'Condition' ? arg.guard : lessTruth(arg);
+  const inner = !Array.isArray(arg) && isValueNode(arg) && arg.type === 'Block' && arg.delimiter === 'paren' ? arg.value : arg;
+  return !Array.isArray(inner) && isValueNode(inner) && inner.type === 'Condition' ? inner.guard : lessTruth(arg);
 }
 
 /**
@@ -2245,11 +2247,13 @@ function isMathOperand(value: unknown): value is ValueNode | LessMathRun {
 }
 
 /**
- * A value-position `Paren`'s reduction. One operand is a math group. Two, with a
- * comparison between them, are the `(a > b)` condition `if()` and `boolean()`
- * read: the same term reducer builds it and it carries the same grouped `src`,
- * so the group is one node whichever production reads it. Its left operand is
- * never a group fact, so the term reducer's raw-children path is not reached.
+ * A value-position `Paren`'s reduction: a paren group around its content. One
+ * operand is a math group. Two, with a comparison between them, are a group
+ * around the `a > b` condition `if()` and `boolean()` read: the same term
+ * reducer builds it, so `(a > b)` replays the same condition source whichever
+ * production reads it, and a condition written into a value keeps the group's
+ * parens. Its left operand is never a group fact, so the term reducer's
+ * raw-children path is not reached.
  */
 function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
   const [left, right] = children.filter(isMathOperand);
@@ -2262,7 +2266,7 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
     operator,
     functionConditionOperandFrom([right], state)
   ], [], state);
-  return condition(fact.guard, `(${fact.src})`);
+  return withSourceSpan(block(condition(fact.guard, fact.src)), span);
 }
 
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
