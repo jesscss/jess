@@ -7375,18 +7375,22 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
 /**
  * `calc(…)` fold: evaluate the single argument in calc mode, then decide the
  * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
- * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; an argument
- * that resolved to one number (`calc(percentage(0.5))` → `50%`, `calc(@v)` with
- * `@v: 5px`) drops the wrapper (less.js `calc()` collapse to a bare Dimension),
- * and every other value keeps it. An argument written as a paren group keeps
- * the wrapper: around one value nothing computes it keeps its parens too
- * ({@link writtenParens}), and a dimension carries them as its spelling
- * (`calc((10vh))` is `10vh` spelled `(10vh)`), so every position prints the
- * same bytes and a typed consumer still reads `10vh`; any other value is the
- * kept `calc(…)` expression. Around a calculation that resolves only the parens
- * are dropped (owner 2026-10-07): `calc((min(-5px, 1px)))` is `calc(-5px)`,
- * which the property clamps (P35); a group around kept math or a call written
- * out as-is keeps its parens ({@link groupComputation}).
+ * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped. In `.less`
+ * and `.jess` the `calc()` always keeps its wrapper, also around an argument
+ * that resolved to one number (ledger V32): the property clamps a math
+ * function's result and not a bare value (P35), so `padding: calc(min(-5px,
+ * 1px))` is `calc(-5px)`, never the invalid `-5px`, and `calc(percentage(0.5))`
+ * is `calc(50%)`. The number is spelled `calc(…)` ({@link makeSpelledDimension}),
+ * so every position prints the same bytes and a typed consumer still reads it.
+ * A Sass calculation ({@link ValueEvaluator.sassCalculations}) is that number,
+ * as dart-sass simplifies it. An argument written as a paren group around one
+ * value nothing computes keeps its parens too ({@link writtenParens}): a
+ * dimension carries them as its spelling (`calc((10vh))` is `10vh` spelled
+ * `(10vh)`); any other value is the kept `calc(…)` expression. Around a
+ * calculation that resolves only the parens are dropped (owner 2026-10-07):
+ * `calc((min(-5px, 1px)))` is `calc(-5px)`; a group around kept math or a call
+ * written out as-is keeps its parens ({@link groupComputation}), and text keeps
+ * them always ({@link textGroup}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
@@ -7395,7 +7399,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
     if (isParenGroup(arg)) {
       if (!isValueGroupArray(v) && v.type === 'Dimension') {
-        return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
+        return authored === 0 && e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
       }
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
@@ -7407,16 +7411,16 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
     }
 
     /*
-     * `calc(x)` drops its wrapper only when `x` resolved to ONE number. A list
-     * (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math mode),
-     * a space run, or escaped text (`calc(~"100% - @{a}")`, opaque per V3) is
-     * not a `<calc-sum>` result, so unwrapping it would emit `100% - 2px` as the
-     * property value — no longer a calculation at all.
+     * A list (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math
+     * mode), a space run, or escaped text (`calc(~"100% - @{a}")`, opaque per
+     * V3) is not a `<calc-sum>` result, so even a Sass calculation keeps it in
+     * its `calc()`: unwrapped it would emit `100% - 2px` as the property value,
+     * no longer a calculation at all (V31).
      */
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
       return keepAsWritten(makeKeyword(`calc(${emitValueC(v, e)})`));
     }
-    return v;
+    return e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
 }
 

@@ -75,7 +75,8 @@ lookup or an interpolation is its value wherever it is read: `@a: (10px)` gives
 written inside a math function around math written there or around one value
 stay, whoever reads it; parens there around something that computes are dropped
 as anywhere else (`calc(100% - ((min(@a, 20px))))` → `calc(100% - 10px)`), and
-the `calc()` stays (`calc((min(@a, 20px)))` → `calc(10px)`).
+the `calc()` stays (`calc((min(@a, 20px)))` → `calc(10px)`), also around an
+argument that resolves to one number (`calc(min(@a, 20px))` → `calc(10px)`).
 
 Text is never a computed value: parens around an escaped string — `~"…"`,
 `e()`, `escape()`, or the text an `if()` picks — stay wherever the group is

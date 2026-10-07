@@ -353,6 +353,26 @@ describe('Less math boundaries', () => {
     expect(await render('@v: 50vh/2; .x { w: calc(@v); }')).toBe('.x { w: calc(50vh / 2); }');
   });
 
+  /*
+   * In `.less` and `.jess` a `calc()` keeps its wrapper around one number too
+   * (ledger V32, SETTLED — orchestrator judgment under owner delegation
+   * 2026-10-07, principle O17): the property clamps a math function's result
+   * and not a bare value (P35), so `padding: calc(min(-5px, 1px))` stays valid
+   * where `padding: -5px` is dropped. A typed consumer still reads the number.
+   * A `.scss` `calc()` is a Sass calculation, which dart-sass simplifies to the
+   * number.
+   */
+  it('keeps calc() around one number in .less and .jess, as a Sass calculation simplifies it', async () => {
+    expect(await render('@x: 3px; .x { q: calc(percentage(0.5)); p: calc(min(-5px, 1px)); r: calc(5px); w: calc(@x); n: calc(1px + calc(5px)); }'))
+      .toBe('.x { q: calc(50%); p: calc(-5px); r: calc(5px); w: calc(3px); n: calc(1px + calc(5px)); }');
+    expect(await render('@c: calc(percentage(0.5)); .x { a: @c * 2; b: unit(calc(5px)); c: percentage(calc(0.5)); e: calc(@c); }'))
+      .toBe('.x { a: 100%; b: 5; c: 50%; e: calc(50%); }');
+    expect(await renderJess('@-from "#less" import (percentage); $x: 3px; .x { q: calc($percentage(0.5)); r: calc(5px); w: calc($x); z: calc($(1px + 2px)); }'))
+      .toBe('.x { q: calc(50%); r: calc(5px); w: calc(3px); z: calc(3px); }');
+    expect(await renderIn('.scss', '$x: 3px; .x { q: calc(percentage(0.5)); p: calc(min(-5px, 1px)); r: calc(5px); w: calc($x); s: calc(10px * 2); u: calc((min(-5px, 1px))); }'))
+      .toBe('.x { q: 50%; p: -5px; r: 5px; w: 3px; s: 20px; u: -5px; }');
+  });
+
   /* Escaped text is opaque (V3): unwrapping it would write `w: 100% - 2px`, which no browser accepts. lessc 4.9.1 and dart-sass keep the calc(). */
   it('keeps calc() around escaped or interpolated text', async () => {
     expect(await render('@a: 2px; @c: ~"100% - @{a}"; .x { w: calc(~"100% - @{a}"); v: calc(@c); u: calc(e("100% - @{a}")); t: translateX(calc(~"100% - @{a}")); }'))

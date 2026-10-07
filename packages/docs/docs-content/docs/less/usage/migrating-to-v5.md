@@ -297,8 +297,6 @@ Most values compile exactly as before. These are the changes you can see in the 
 
 **Numbers you write are kept as written.** `0.50em`, `1.0px` and `1.23456789123px` stay as they are; Less 4.x wrote `0.5em`, `1px` and `1.23456789px`. A computed number is no longer rounded to 8 decimal places: `(1 / 3)` is `0.33333333333` and `(10px / 3)` is `3.3333333333px`, where Less 4.x wrote `0.33333333` and `3.33333333px`.
 
-**`calc()` around a single number is dropped.** `calc(5px)`, and `calc(@w)` with `@w: 5px`, are written `5px`; Less 4.x kept `calc(5px)`. A negative number loses the clamping `calc()` gives it: `width: calc(-5px)` becomes `width: -5px`, which browsers reject. `calc()` around anything else is kept, including escaped text: `calc(~"100% - @{gutter}")` is `calc(100% - 20px)`, as in Less 4.x.
-
 **Repeated declarations are kept.** `a: 1; a: 1;` is written twice, with `compress` too; Less 4.x dropped an identical repeat.
 
 **`!important` is written after a space.** `c!important` is `c !important`.

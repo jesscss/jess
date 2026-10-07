@@ -222,6 +222,12 @@ a calculation that is resolved — a function that runs, or a variable that name
 dropped, as they are anywhere else; the `calc()` itself stays. A variable that names a list keeps
 them. Text, such as `e("1px + 2px")`, is never a computed value and keeps its parentheses.
 
+The `calc()` stays even when its argument resolves to one number, as in Less 4.x:
+`calc(percentage(0.5))` is `calc(50%)`. The browser clamps a math function's result to what the
+property allows, so `padding: calc(min(-5px, 1px))` gives the valid `calc(-5px)`; a bare
+`padding: -5px` would be dropped. A variable holding the `calc()` still reads as the number in
+math (`@c: calc(50%); width: @c * 2` is `100%`).
+
 ```less
 @var: 50vh/2;
 @a: 10px;
