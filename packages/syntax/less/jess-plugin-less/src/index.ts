@@ -701,9 +701,10 @@ export class LessPlugin extends AbstractPlugin {
    * policy decides at parse whether each operation computes with no enclosing
    * math context, and the answer is written onto the node.
    *
-   * The grammar receives the same compile-over-document precedence that Context
-   * installs after parsing, without depending on `documentContext`, which is
-   * populated only after the parse returns.
+   * The grammar receives the same precedence that Context installs after
+   * parsing (`resolveOptions`): the settings the host supplies for the source,
+   * else the compile's, over the Less defaults. It does not depend on
+   * `documentContext`, which is populated only after the parse returns.
    *
    * `moduleMode` reaches the grammar for the same reason: whether the Less
    * built-ins are ambient is decided per document, where the grammar sees its
@@ -711,9 +712,11 @@ export class LessPlugin extends AbstractPlugin {
    * (ledger P36).
    */
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    const policy = this.#policyFor(parseOptions?.sourceOptions, parseOptions?.sourceConfigFile);
+    const settings = parseOptions?.sourceOptions;
+    const policy = this.#policyFor(settings, parseOptions?.sourceConfigFile);
     const result = safeParseLess(filePath, source, {
-      mathMode: parseOptions?.compilerOptions?.mathMode ?? policy.dialectDefaults.mathMode,
+      mathMode: (settings === undefined ? parseOptions?.compilerOptions?.mathMode : undefined)
+        ?? policy.dialectDefaults.mathMode,
       moduleMode: policy.moduleMode
     });
     if (result.document) {

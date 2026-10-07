@@ -1,10 +1,12 @@
 /*
  * Which compile settings a source file uses (DESIGN-DECISIONS C19, owner
- * 2026-10-07): with nothing set, each file uses its own language's defaults, so
- * its output never depends on the file that imported it. Settings passed to the
- * compiler or the render are global and win everywhere. A folder's
- * `styles.config` and the `language.<lang>` settings apply only to the files
- * they cover.
+ * 2026-10-07): the settings that cover a file are its nearest `styles.config`
+ * (found by walking up from the file's folder to its package root) merged under
+ * the settings passed to the compiler or the render, which win field by field.
+ * On that merge, each file's settings are computed for its language: its
+ * language's defaults, under the `compile` settings, under `language.<lang>`.
+ * With nothing set, each file uses its own language's defaults, so its output
+ * never depends on the file that imported it.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
@@ -89,7 +91,7 @@ describe('implicit settings are per language', () => {
   });
 });
 
-describe('a global setting wins over every file\'s own settings', () => {
+describe('a global setting applies to every language', () => {
   beforeEach(() => {
     write(PART_JESS, PART_LESS, LESS_IMPORTS_JESS, JESS_IMPORTS_LESS);
   });
@@ -110,16 +112,31 @@ describe('a global setting wins over every file\'s own settings', () => {
       .toEqual(['eval/invalid-unit-arithmetic']);
   });
 
-  it('a global setting wins over a language setting', async () => {
+  it('a language setting wins over a global setting', async () => {
     expect((await render('less-entry.less', {
       compile: { unitMode: 'loose' },
       language: { jess: { unitMode: 'strict' } }
-    })).css).toBe('.j { k: 4px; }');
+    })).errors).toEqual(['eval/invalid-unit-arithmetic']);
   });
 
-  it('a global setting wins over a folder\'s styles.config', async () => {
-    write(['styles.config.cjs', 'module.exports = { compile: { unitMode: \'strict\' }, language: { less: { unitMode: \'strict\' } } };\n']);
+  it('a global setting passed in wins over the same setting in a styles.config', async () => {
+    write(['styles.config.cjs', 'module.exports = { compile: { unitMode: \'strict\' } };\n']);
     expect((await render('jess-entry.jess', { compile: { unitMode: 'loose' } })).css).toBe('.l { k: 2px; }');
+  });
+
+  it('a styles.config language setting wins over a global setting passed in', async () => {
+    write(['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'strict\' } } };\n']);
+    expect((await render('jess-entry.jess', { compile: { unitMode: 'loose' } })).errors)
+      .toEqual(['eval/invalid-unit-arithmetic']);
+    expect((await render('less-entry.less', {}, { compile: { unitMode: 'loose' } })).css).toBe('.j { k: 4px; }');
+  });
+
+  it('a styles.config language math setting wins over a global math setting passed in', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { mathMode: \'parens\' } } };\n'],
+      ['div.less', '.d { k: 4px / 2; }']
+    );
+    expect((await render('div.less', { compile: { mathMode: 'always' } })).css).toBe('.d { k: 4px / 2; }');
   });
 });
 
@@ -374,10 +391,18 @@ describe('a language setting other than a mode applies only to its own files', (
 });
 
 describe('the strict preset', () => {
-  it('fills only what an explicit setting leaves unset, a language setting included', async () => {
+  beforeEach(() => {
     write(['entry.less', '.e { k: 1px + 1em; }']);
+  });
+
+  it('fills only what an explicit setting leaves unset, a language setting included', async () => {
     expect((await render('entry.less', { compile: { strict: true }, language: { less: { unitMode: 'loose' } } })).css)
       .toBe('.e { k: 2px; }');
+  });
+
+  it('passed in, fills only what a styles.config leaves unset', async () => {
+    write(['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n']);
+    expect((await render('entry.less', {}, { compile: { strict: true } })).css).toBe('.e { k: 2px; }');
   });
 });
 

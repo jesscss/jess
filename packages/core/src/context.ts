@@ -250,11 +250,12 @@ export interface ContextOptions {
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
 
   /**
-   * The settings that cover one source file — its folder's `styles.config`, and
-   * the settings for its language — supplied by the host. Called once when the
-   * file is parsed (`language` is the parsing plugin's name); the answer reaches
-   * that plugin's `safeParse` and resolves the document's policy below this
-   * Context's own mode options (DESIGN-DECISIONS C19).
+   * The settings that cover one source file, computed for its language (its
+   * `styles.config` merged under the settings passed in; global settings under
+   * its language's) — supplied by the host. Called once when the file is parsed
+   * (`language` is the parsing plugin's name); the answer reaches that plugin's
+   * `safeParse` and resolves the document's policy in place of this Context's
+   * own mode options, over its dialect's defaults (DESIGN-DECISIONS C19).
    */
   sourceOptions?(filePath: string, language: string): SourceSettings | undefined;
 
@@ -336,33 +337,29 @@ export interface SourceSettings {
 }
 
 /**
- * Resolve the option set with a SINGLE precedence (DESIGN-DECISIONS C19): an
- * explicit compile-level option wins everywhere; else the settings scoped to the
- * source (its folder's `styles.config`, its language's settings); else the
- * source dialect's own default; else the hard default. This is the one place the
- * precedence is defined.
+ * Resolve one source's option set with a SINGLE precedence (DESIGN-DECISIONS
+ * C19): the settings that cover the source; else its dialect's own default;
+ * else the hard default. The settings a host supplies for a source are already
+ * computed for its language (its global settings under its language settings),
+ * so nothing is layered over them here. This is the one place the precedence is
+ * defined.
  */
 export function resolveOptions(
-  compile: OptionInput | undefined,
-  source: OptionInput | undefined,
+  settings: OptionInput | undefined,
   dialect?: OptionInput
 ): Readonly<ResolvedOptions> {
   return Object.freeze({
-    mathMode: compile?.mathMode ?? source?.mathMode ?? dialect?.mathMode ?? OPTION_DEFAULTS.mathMode,
-    unitMode: compile?.unitMode ?? source?.unitMode ?? dialect?.unitMode ?? OPTION_DEFAULTS.unitMode,
-    functionMode: compile?.functionMode ?? source?.functionMode ?? dialect?.functionMode ?? OPTION_DEFAULTS.functionMode,
+    mathMode: settings?.mathMode ?? dialect?.mathMode ?? OPTION_DEFAULTS.mathMode,
+    unitMode: settings?.unitMode ?? dialect?.unitMode ?? OPTION_DEFAULTS.unitMode,
+    functionMode: settings?.functionMode ?? dialect?.functionMode ?? OPTION_DEFAULTS.functionMode,
 
     /* `leakyScope` is the deprecated alias of `allowLeakyScope`: the new name wins
      * within a tier, else the alias, before the next precedence tier. */
-    allowLeakyScope: compile?.allowLeakyScope ?? compile?.leakyScope
-      ?? source?.allowLeakyScope ?? source?.leakyScope
+    allowLeakyScope: settings?.allowLeakyScope ?? settings?.leakyScope
       ?? dialect?.allowLeakyScope ?? dialect?.leakyScope ?? OPTION_DEFAULTS.allowLeakyScope,
-    allowCallerScope: compile?.allowCallerScope ?? source?.allowCallerScope ?? dialect?.allowCallerScope
-      ?? OPTION_DEFAULTS.allowCallerScope,
-    bubbleRootAtRules: compile?.bubbleRootAtRules ?? source?.bubbleRootAtRules ?? dialect?.bubbleRootAtRules
-      ?? OPTION_DEFAULTS.bubbleRootAtRules,
-    processImports: compile?.processImports ?? source?.processImports ?? dialect?.processImports
-      ?? OPTION_DEFAULTS.processImports
+    allowCallerScope: settings?.allowCallerScope ?? dialect?.allowCallerScope ?? OPTION_DEFAULTS.allowCallerScope,
+    bubbleRootAtRules: settings?.bubbleRootAtRules ?? dialect?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
+    processImports: settings?.processImports ?? dialect?.processImports ?? OPTION_DEFAULTS.processImports
   });
 }
 
@@ -519,7 +516,7 @@ export class TreeContext extends DocumentContext {
      * Context folds that in on attach). Structural identity stays on the
      * instance; every other unknown key is transient `opts` data.
      */
-    super(resolveOptions(undefined, opts), opts);
+    super(resolveOptions(opts), opts);
     const { isModule, file, plugin, ...rest } = opts;
     void isModule;
     void file;
@@ -618,13 +615,14 @@ export class Context {
     this._treeContext = tc;
 
     /*
-     * Fold the compile-level options over the tree's own, once, and SHARE the
+     * The active document's policy is final (C19). Otherwise fold the
+     * compile-level options over the tree's own, once. Either way SHARE the
      * result: `context.options` and `tc.options` become the same object, so eval
      * (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
      * hit one resolved set with nothing left to merge. Idempotent on re-entry
      * (compile ?? already-folded === already-folded).
      */
-    this._options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
+    this._options = this._documentContext?.options ?? resolveOptions(this.opts, tc?.options);
     if (tc) {
       tc.replaceResolvedOptions(this._options);
     }
@@ -1359,17 +1357,17 @@ export class Context {
   evaldTrees = new Map<string, Rules>();
 
   /**
-   * One document's policy (DESIGN-DECISIONS C19): this Context's explicit mode
-   * options over the settings scoped to the source over its dialect's defaults,
-   * resolved once when the document is parsed. Documents that resolve to the
-   * same values share one frozen object, so entering one is a pointer compare
-   * when nothing changes.
+   * One document's policy (DESIGN-DECISIONS C19): the settings the host supplies
+   * for the source, else this Context's own mode options, over its dialect's
+   * defaults, resolved once when the document is parsed. Documents that resolve
+   * to the same values share one frozen object, so entering one is a pointer
+   * compare when nothing changes.
    */
   private policyFor(
     settings: SourceOptions | undefined,
     dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
   ): Readonly<ResolvedOptions> {
-    const resolved = resolveOptions(this.opts, settings, dialectDefaults);
+    const resolved = resolveOptions(settings ?? this.opts, dialectDefaults);
     const key = Object.values(resolved).join('\0');
     const known = this.policies.get(key);
     if (known !== undefined) {
