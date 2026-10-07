@@ -453,20 +453,29 @@ function isReferenceReimport(node: StyleImport, options: string | null, inMultip
     && importHasOption(options, 'reference') && !importHasOption(options, 'multiple');
 }
 
+/** The frame keying `frame`'s import-once scope in the render walk ({@link Frame.importScope}). */
+function importScopeOf(frame: Frame): Frame {
+  return frame.importScope ?? frame;
+}
+
 /**
  * Import-once, per scope (ledgers J14, X18): whether `@import` `node` of the sheet `key` is
  * a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once` import
  * already placed there, or a `(reference)` re-import ({@link isReferenceReimport}) — else
- * records the placement. A scope is the root, one ruleset, one at-rule block or one mixin
- * call; an imported sheet's own root is its importer's scope. A copy placed in another
- * scope never makes an import a no-op: `@media print { @import "t"; } @import "t";` renders
- * the root copy (orchestrator judgment under owner delegation 2026-10-07). `placed` maps a
- * scope's sheets to whether a `once` import placed them. The import planner (a scope is the
- * enclosing node) and the render walk (its frame) both ask this in document order, an
- * import inside a ruleset included, so they agree on which imports place a sheet.
+ * records the placement. A scope is the root, one ruleset or one at-rule block; a mixin
+ * call or loop iteration places in the scope it runs in ({@link importScopeOf}), and an
+ * imported sheet's own root is its importer's scope. A copy placed in another scope never
+ * makes an import a no-op: `@media print { @import "t"; } @import "t";` renders the root
+ * copy (orchestrator judgment under owner delegation 2026-10-07). A sheet an enclosing
+ * import is still placing (`expanding`) counts as placed in every scope, so a sheet that
+ * imports itself, directly or through others, ends. `placed` maps a scope's sheets to
+ * whether a `once` import placed them. The import planner (a scope is the enclosing node)
+ * and the render walk (its frame) both ask this in document order, an import inside a
+ * ruleset included, so they agree on which imports place a sheet.
  */
 function importIsNoOp(
   placed: Map<object, Map<string, boolean>>,
+  expanding: ReadonlySet<string>,
   scope: object,
   key: string,
   node: StyleImport,
@@ -474,7 +483,7 @@ function importIsNoOp(
   inMultiple: boolean
 ): boolean {
   let here = placed.get(scope);
-  const prior = here?.get(key);
+  const prior = expanding.has(key) || here?.get(key);
   const once = !inMultiple && importsOnce(options);
   if (once ? prior === true : isReferenceReimport(node, options, inMultiple, prior !== undefined)) {
     return true;
@@ -794,6 +803,13 @@ export interface Frame {
    * extend-target rule reached through such a placement (see `flattenWithHeader`).
    */
   mixinSplice?: boolean;
+
+  /**
+   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame: the
+   * frame whose import-once scope its imports count in ({@link importScopeOf}), since
+   * its output lands in the scope it runs in.
+   */
+  importScope?: Frame;
 
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDefinition[]> | null;
@@ -9306,6 +9322,9 @@ const PSEUDO_LAST = 1;
  */
 const PSEUDO_SUFFIXED = 2;
 
+/* The flags of a {@link SplitBlock} an extend left with no branch of its own. */
+const NO_SPLIT = new Uint8Array(0);
+
 /**
  * [nesting] The units a bare `&` that keeps a pseudo-element last
  * ({@link keepsPseudoElementLast}) substitutes over `parents`: a parent ending
@@ -10020,6 +10039,9 @@ interface Emit extends EvalCtx {
   /** The sheets each scope's `@import`s placed, keyed by the scope's frame ({@link importIsNoOp}). */
   importScopes: Map<Frame, Map<string, boolean>> | null;
 
+  /** The sheets the `@import`s enclosing the walk's position are placing ({@link importIsNoOp}). */
+  importsExpanding: Set<string> | null;
+
   /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
   splitBlocks: SplitBlock[] | null;
 
@@ -10145,6 +10167,7 @@ function scratchEmit(e: EvalCtx): Emit {
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
     importScopes: null,
+    importsExpanding: null,
     splitBlocks: null,
     moduleActivations: null,
     composeActivations: null,
@@ -12901,6 +12924,9 @@ function planImportedFacts(
    * a ruleset, and no import it plans shares a ruleset's scope.
    */
   const placed = new Map<object, Map<string, boolean>>();
+
+  /* The sheets the imports enclosing the walk's position are placing ({@link importIsNoOp}). */
+  const expanding = new Set<string>();
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
@@ -13076,7 +13102,7 @@ function planImportedFacts(
           seen.set(loaded.key, false);
         }
       } else if (loaded.key !== undefined) {
-        if ((once && seen.get(loaded.key) === false) || importIsNoOp(placed, importScope, loaded.key, st, options, multipleImportDepth)) {
+        if ((once && seen.get(loaded.key) === false) || importIsNoOp(placed, expanding, importScope, loaded.key, st, options, multipleImportDepth)) {
           return;
         }
         if (once) {
@@ -13195,10 +13221,20 @@ function planImportedFacts(
           isCompose ? childFrame : importScope
         );
       };
-      if (loaded.withinDocument) {
-        await loaded.withinDocument(collect);
-      } else {
-        await collect();
+      const key = isCompose || loaded.key === undefined || expanding.has(loaded.key) ? undefined : loaded.key;
+      if (key !== undefined) {
+        expanding.add(key);
+      }
+      try {
+        if (loaded.withinDocument) {
+          await loaded.withinDocument(collect);
+        } else {
+          await collect();
+        }
+      } finally {
+        if (key !== undefined) {
+          expanding.delete(key);
+        }
       }
     };
     for (let at = 0; at < statements.length; at++) {
@@ -13367,6 +13403,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     mixinDepth: 0,
     loadedImports: null,
     importScopes: null,
+    importsExpanding: null,
     splitBlocks: null,
     moduleActivations: null,
     composeActivations: null,
@@ -13471,6 +13508,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
     importScopes: null,
+    importsExpanding: null,
     splitBlocks: null,
     moduleActivations: null,
     composeActivations: null,
@@ -14808,6 +14846,9 @@ function foldDynamicExtends(e: Emit): void {
     e.extends = resolved;
   }
   let revealed: number[] | null = null;
+  const splitBlocks = e.splitBlocks;
+  let splitCursor = 0;
+  let foldedSplits: SplitBlock[] | null = null;
   for (const slot of dyn.slots) {
     let visible: string[] | null;
     if (resolved === null) {
@@ -14854,14 +14895,30 @@ function foldDynamicExtends(e: Emit): void {
       ? visible.join(',\n' + slot.indent)
       : visible.join(',\n');
 
-    /* [nesting] A split block's rules come from the rewritten header ({@link SplitBlock}). */
-    if (e.splitBlocks !== null && !slot.nested) {
-      const block = e.splitBlocks.find(b => b.header === slot.chunkIndex);
+    /*
+     * [nesting] The rewritten header is the extend's list, and its suffixed branches get
+     * rules of their own ({@link splitFlags}): the block the walk registered takes them,
+     * or one is registered now. Slots and registered blocks both ascend by header chunk.
+     */
+    if (!slot.nested) {
+      const flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
+      let block: SplitBlock | undefined;
+      if (splitBlocks !== null) {
+        while (splitCursor < splitBlocks.length && splitBlocks[splitCursor]!.header < slot.chunkIndex) {
+          splitCursor++;
+        }
+        block = splitBlocks[splitCursor]?.header === slot.chunkIndex ? splitBlocks[splitCursor] : undefined;
+      }
       if (block !== undefined) {
         block.branches = visible;
-        block.flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
+        block.flags = flags ?? NO_SPLIT;
+      } else if (flags !== undefined) {
+        (foldedSplits ??= []).push({ header: slot.chunkIndex, end: slot.blockEnd, indent: slot.indent, branches: visible, flags });
       }
     }
+  }
+  if (foldedSplits !== null) {
+    e.splitBlocks = splitBlocks === null ? foldedSplits : splitBlocks.concat(foldedSplits);
   }
 
   /*
@@ -15185,11 +15242,22 @@ function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
 }
 
 /**
- * [nesting] The branch flags of a rule's `visible` header when it holds a parent unit
+ * [nesting] A composed list's branch flags when one of its branches is a parent unit
  * that carries what followed its `&` past a pseudo-element ({@link SplitBlock}), else
- * undefined. Only a header composed from such a unit qualifies, never a list the author
- * wrote. The composed header carries its flags; an extended one takes its branches'
- * from the extend plan, which reads them from the parser's tokens.
+ * undefined.
+ */
+function composedSplitFlags(list: readonly string[], e: EvalCtx): Uint8Array | undefined {
+  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(list);
+  return flags !== undefined && flags.includes(PSEUDO_SUFFIXED) ? flags : undefined;
+}
+
+/**
+ * [nesting] The branch flags of a rule's `visible` header when a branch in it gets a rule
+ * of its own ({@link SplitBlock}), else undefined. A header the rule composed qualifies
+ * through its parent units ({@link composedSplitFlags}), never a list the author wrote. A
+ * header an extend wrote is the extend's list: every branch in it that carries a
+ * pseudo-element followed by more is one of its own, the extender's and the target's
+ * alike, as the extend plan reads them from the parser's tokens.
  */
 function splitFlags(
   rule: Ruleset,
@@ -15198,21 +15266,20 @@ function splitFlags(
   projection: ExtendResults | ExtendPlacementResults | null,
   e: Emit
 ): Uint8Array | undefined {
-  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(headerComposed);
-  if (flags === undefined || !flags.includes(PSEUDO_SUFFIXED)) {
-    return undefined;
-  }
-  return visible === headerComposed ? flags : extendedSplitFlags(visible, projection?.suffixedByRule?.get(rule));
+  return visible === headerComposed
+    ? composedSplitFlags(headerComposed, e)
+    : extendedSplitFlags(visible, projection?.suffixedByRule?.get(rule));
 }
 
 /** [nesting] An extended header's flags from the plan's suffixed branches ({@link ExtendResults.suffixedByRule}). */
-function extendedSplitFlags(header: readonly string[], suffixed: ReadonlySet<string> | undefined): Uint8Array {
-  const flags = new Uint8Array(header.length);
-  if (suffixed !== undefined) {
-    for (let i = 0; i < header.length; i++) {
-      if (suffixed.has(header[i]!)) {
-        flags[i] = PSEUDO_SUFFIXED;
-      }
+function extendedSplitFlags(header: readonly string[], suffixed: ReadonlySet<string> | undefined): Uint8Array | undefined {
+  if (suffixed === undefined) {
+    return undefined;
+  }
+  let flags: Uint8Array | undefined;
+  for (let i = 0; i < header.length; i++) {
+    if (suffixed.has(header[i]!)) {
+      (flags ??= new Uint8Array(header.length))[i] = PSEUDO_SUFFIXED;
     }
   }
   return flags;
@@ -16750,6 +16817,7 @@ function expandReferenceAncestorFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           extendPlacement: e.dynamicExtend === null ? undefined : {},
+          importScope: importScopeOf(frame),
           bindingValueFrames
         };
         if (item !== null) {
@@ -16964,6 +17032,7 @@ function expandCall(
              * keeps one shape.
              */
             extendPlacement: e.dynamicExtend === null ? undefined : {},
+            importScope: importScopeOf(frame),
             fallback: namespaced || homeFrame === frame ? undefined : frame,
             callerFallback: namespaced || homeFrame === frame ? undefined : true
           };
@@ -17198,6 +17267,7 @@ function expandApply(
          */
         mixinSplice: true,
         extendPlacement: e.dynamicExtend === null ? undefined : {},
+        importScope: importScopeOf(frame),
         ...(home === frame ? {} : { fallback: frame, callerFallback: true })
       };
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
@@ -17597,7 +17667,8 @@ function referenceCallFrame(
     sourceOwner,
 
     /* [extend/dynamic] each call places its body's rules apart (Frame.extendPlacement) */
-    extendPlacement
+    extendPlacement,
+    importScope: importScopeOf(frame)
   };
   publishMixins(frame, own); // unlocking: caller sees the ruleset's mixins
   return { dr, callFrame };
@@ -18365,6 +18436,7 @@ function expandFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           extendPlacement: e.dynamicExtend === null ? undefined : {},
+          importScope: importScopeOf(frame),
           bindingValueFrames
         };
         if (item !== null) {
@@ -18924,9 +18996,11 @@ function substituteClosureVarArgs(
  * the other branches keep one rule at the place of the first of them:
  * `.a::before, .b, .c { &:hover { x: 1 } }` → `.a::before:hover { x: 1 }
  * :is(.b, .c):hover { x: 1 }` (ledger O10 as amended, orchestrator judgment under
- * owner delegation 2026-10-07). The block is written once during the walk, which
- * merges and extends it as one rule; {@link splitOwnRules} writes the rest of it
- * when the walk is done. `header` is its header chunk, `end` the chunk after it.
+ * owner delegation 2026-10-07), in an at-rule bubbled out of the rule too. A header an
+ * extend wrote splits each branch carrying a pseudo-element followed by more
+ * ({@link splitFlags}). The block is written once during the walk, which merges and
+ * extends it as one rule; {@link splitOwnRules} writes the rest of it when the walk
+ * is done. `header` is its header chunk, `end` the chunk after it.
  */
 interface SplitBlock {
   header: number;
@@ -19030,11 +19104,15 @@ function flushBlock(
     const reopen = pk !== null && lb.parentKey === pk
       && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
     let splitBlock: SplitBlock | undefined;
+    let reopenedSlot: DynExtendSlot | undefined;
     if (reopen) {
-      /* The block reopened is the split block that ends where it ended. */
+      /* The block reopened is the split block, and the extend slot, that ends where it ended. */
       const blocks = e.splitBlocks;
       const last = blocks === null ? undefined : blocks[blocks.length - 1];
       splitBlock = last?.end === lb.endChunks ? last : undefined;
+      const slots = e.dynamicExtend?.slots;
+      const lastSlot = slots === undefined ? undefined : slots[slots.length - 1];
+      reopenedSlot = lastSlot?.blockEnd === lb.endChunks && !lastSlot.nested ? lastSlot : undefined;
       popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
       if (e.compress === true && lb.droppedSemi) {
         put(e, ';'); // [compress] restore the separator dropped at the prior close
@@ -19104,6 +19182,9 @@ function flushBlock(
     emitBlockClose(e, idt, lb);
     if (splitBlock !== undefined) {
       splitBlock.end = e.chunks.length;
+    }
+    if (reopenedSlot !== undefined) {
+      reopenedSlot.blockEnd = e.chunks.length;
     }
 
     // [adjacent-merge] update the single record in place (no per-block allocation).
@@ -20881,7 +20962,7 @@ function expandStyleImport(
           /* A sheet composed as a module is not also folded in by `@import`. */
           const composed = emitOnceKey !== undefined ? e.loadedImports?.get(loaded.key) : undefined;
           if ((composed !== undefined && composed !== null)
-            || importIsNoOp(e.importScopes ??= new Map(), frame, loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
+            || importIsNoOp(e.importScopes ??= new Map(), e.importsExpanding ??= new Set(), importScopeOf(frame), loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
             return;
           }
           if (emitOnceKey !== undefined && composed === undefined) {
@@ -20904,9 +20985,21 @@ function expandStyleImport(
             return;
           }
           rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
-          const emitDocument = () => emitLoaded
+          const emitSheet = () => emitLoaded
             ? emitLoaded(loaded.document!, bodyFrame)
             : emitDocumentStatements(loaded.document!.rules, bodyFrame, e, importDocument, true);
+
+          /* While it is placed, the sheet is one an enclosing import places ({@link importIsNoOp}). */
+          const sheetKey = isCompose ? undefined : loaded.key;
+          const expanding = e.importsExpanding;
+          const emitDocument = sheetKey === undefined || expanding === null || expanding.has(sheetKey)
+            ? emitSheet
+            : () => {
+                expanding.add(sheetKey);
+                return settled(emitSheet, () => {
+                  expanding.delete(sheetKey);
+                });
+              };
 
           /*
            * The StyleImport itself has NO postlude to honour: the loaded document
@@ -22264,6 +22357,9 @@ function emitBubbleBody(
 
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
+
+  /* [nesting] The context's parent units that are rules of their own ({@link SplitBlock}). */
+  const ctxSplit = ctx === null ? undefined : composedSplitFlags(ctx, e);
   const group: Leaf[] = [];
 
   /*
@@ -22291,7 +22387,7 @@ function emitBubbleBody(
       // Wrap the direct declarations in the propagated selector context.
       e.depth++;
       const emitted = flushBlock(
-        ctx, group, e, undefined, undefined, trailingBlockComments
+        ctx, group, e, undefined, undefined, trailingBlockComments, ctxSplit
       );
       if (isThenable(emitted)) {
         return emitted.then(

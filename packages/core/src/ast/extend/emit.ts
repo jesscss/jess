@@ -135,9 +135,8 @@ export interface ExtendResults {
   /**
    * FLAT mode: per rule, the branches of its `flatByRule` header whose last compound
    * carries a pseudo-element followed by more ({@link irPseudoElementCarriesSuffix}),
-   * by their emitted text. The serializer writes each in a rule of its own where the
-   * rule's composed parent units put one there (ledger O10 as amended). Null until a
-   * rule has one.
+   * by their emitted text. The serializer writes each in a rule of its own, since an
+   * extended header is the extend's list (ledgers O10 and O17). Null until a rule has one.
    */
   suffixedByRule: Map<Ruleset, ReadonlySet<string>> | null;
 

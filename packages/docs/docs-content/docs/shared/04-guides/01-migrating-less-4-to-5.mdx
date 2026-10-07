@@ -139,11 +139,15 @@ By default this compiles to nested CSS (`.title` stays nested under `.card`).
 Enable `collapseNesting: true` for the older flattened (`.card .title { … }`)
 output when you need deduplication or wider tooling support.
 
-Flattened output never joins a selector browsers drop to the ones they keep. A parent
-ending with a pseudo-element, given a user-action pseudo-class by `&`, gets a rule of its
-own: `.a::before, .b { &:hover { color: red } }` flattens to `.a::before:hover { color: red }`
-and `.b:hover { color: red }`, where Less 4 wrote one list, `.a::before:hover, .b:hover`,
-which Chromium drops whole — `.b:hover` included.
+In flattened output, a selector list that nesting or an extend writes never joins a
+selector Chromium drops to the ones it keeps. A parent ending with a pseudo-element, given
+a user-action pseudo-class by `&`, gets a rule of its own, inside an at-rule bubbled out of
+the rule too: `.a::before, .b { &:hover { color: red } }` flattens to
+`.a::before:hover { color: red }` and `.b:hover { color: red }`, where Less 4 wrote one
+list, `.a::before:hover, .b:hover`, which Chromium drops whole — `.b:hover` included. An
+extend does the same for a selector with something after its pseudo-element:
+`.b:hover { color: red } .q::after:focus:extend(.b:hover) {}` gives `.b:hover` and
+`.q::after:focus` a rule each. A list you write yourself is left as written.
 
 <AudienceGate include={['jess']}>
 
@@ -274,13 +278,13 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `(1px * 2px)` | `2px` | **`calc(1px * 2px)`** | An area has no CSS unit. Less 4 kept the left operand's unit, which is dimensionally false. See *Unit algebra* below. |
 | `(1 / 2px)` | `0.5px` | **`calc(1 / 2px)`** | There is no `px⁻¹` in CSS. Same rule as the row above. |
 | `url(~"b.png")` with `rootpath: 'r/'` | `url(r/b.png)` | **`url(b.png)`** | An escaped string is text you wrote verbatim, so no URL option changes it; rewriting `url(~"'b.png'")` wrote the invalid `url(r/'b.png')`. Write the path into it, or use a quoted string to have it rewritten. |
-| `url(~"'e.png'")` with `urlArgs: 'v=1'` | `url('e.png'?v=1)` | **`url('e.png')`** | The same rule: `urlArgs` adds nothing to an escaped body, where the argument landed outside the quotes and made the URL invalid. That includes `url(~"img.png")`, which Less 4 wrote `url(img.png?v=1)`; use a quoted string to have the argument added. |
+| `url(~"'e.png'")` with `urlArgs: 'v=1'` | `url('e.png'?v=1)` | **`url('e.png')`** | The same rule: `urlArgs` adds nothing to an escaped body, where the argument landed after the closing quote and made the URL invalid. That includes `url(~"img.png")`, which Less 4 wrote `url(img.png?v=1)`; use a quoted string to have the argument added. |
 | `max(4, 3px)` | `4` | **`4px`** | The unitless `4` was compared as `4px`, as `4 + 3px` is `7px`, so it is written as the length it was compared as. A bare `4` is no length. |
 | `when (~"true")` | truthy | **falsy** | See *Truthiness* below — the one row where Less 4 promoted a **string** to truthy. |
 | `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |
 | `foo(bar=@v)` | `foo(bar=50)` | **`foo(bar=@v)`** | A `name=value` argument is verbatim bytes. The IE-filter form is dropped in Less 5, and resolving inside it had no purpose. |
 | `@import "x.less" screen;` | wraps in `@media` | **parse error** | A media postlude belongs to a **CSS** `@import`. On a compile-time import it is bogus, and the shape is now decided at parse time. |
-| `@media print { @import "t"; } @import "t";` | `t` inside `@media print` only | **`t` there and at the root** | An import is skipped only after a copy of the same file **in the same scope** (the root, one ruleset, one at-rule block, one mixin call). Less 4 skipped it after a copy anywhere, so the root never got the styles — or the mixins — the author imported there. |
+| `@media print { @import "t"; } @import "t";` | `t` inside `@media print` only | **`t` there and at the root** | An import is skipped only after a copy of the same file **in the same scope** (the root, one ruleset or one at-rule block; a mixin call imports into the scope it is called in). Less 4 skipped it after a copy anywhere, so the root never got the styles — or the mixins — the author imported there. A file that imports itself, directly or through another file, still stops there. |
 
 ### Truthiness is unchanged — with one exception
 

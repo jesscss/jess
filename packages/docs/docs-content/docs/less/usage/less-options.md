@@ -291,7 +291,7 @@ As opposed to the global variable option, this puts the declaration at the end o
 |---|---|
 | `lessc --url-args="cache726357"` | `{ urlArgs: 'cache726357' }` |
 
-This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. An escaped `url(~"…")` body is left as written, so it gets no argument: in `url(~"'e.png'")` one would land inside the quotes, `url('e.png'?v=1)`, which is not a valid URL.
+This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. An escaped `url(~"…")` body is left as written, so it gets no argument: in `url(~"'e.png'")` it would land after the closing quote, `url('e.png'?v=1)`, which is not a valid URL.
 
 #### Line Numbers (Deprecated)
 

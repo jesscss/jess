@@ -686,9 +686,11 @@ Hiding follows the import placement, not the rule. Each `(reference)` or `(multi
 import is its own placement of the sheet's rules, so an extend inside one `@media` block
 reaches only that block's copy — a `(reference)` import inside a sheet imported
 `(multiple)` twice is placed once per copy. Import-once counts only a copy placed in the
-same scope — the root, one ruleset, one at-rule block or one mixin call, an imported
-sheet's root being its importer's (J14 as amended, orchestrator judgment under owner
-delegation 2026-10-07). Import-once drops a `(reference)` import of a sheet any `@import`
+same scope — the root, one ruleset or one at-rule block, a mixin call or loop iteration
+counting in the scope it runs in and an imported sheet's root in its importer's (J14 as
+amended, orchestrator judgment under owner delegation 2026-10-07). An import of a sheet an
+enclosing import is still placing is a no-op in every scope, so a sheet that imports
+itself through a nested scope ends. Import-once drops a `(reference)` import of a sheet any `@import`
 already placed in its scope — plain, `(multiple)` or `(reference)` — (ledger J14,
 jess#359; X18, orchestrator judgment under owner delegation 2026-10-06):
 `@import "t.less"; @import (reference) "t.less";` places the sheet once, visibly, and

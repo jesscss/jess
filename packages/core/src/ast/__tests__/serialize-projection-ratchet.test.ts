@@ -411,9 +411,14 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `&` past a pseudo-element is a rule of its own (`splitFlags`, from the
     // composed list's flags or an extended header's `suffixedByRule`,
     // `extendedSplitFlags`), written when the walk is done (`splitOwnRules`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(573);
+    // +2 functions, +2 `new Set`: a mixin call or loop iteration imports into the
+    // scope it runs in (`importScopeOf`), and a sheet an enclosing import is still
+    // placing is placed in every scope (one `expanding` set in the planner and the
+    // walk), so a sheet that imports itself through a nested scope ends; a bubbled
+    // at-rule's context splits as its rule's header does (`composedSplitFlags`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(575);
     expect(occurrences(/new Map/gu)).toBe(91);
-    expect(occurrences(/new Set/gu)).toBe(42);
+    expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

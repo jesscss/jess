@@ -243,6 +243,19 @@ describe('collapseNesting native vs compact', () => {
       ].join('\n'));
       await expect(render('.a::before, .b { @media print { &:hover { x: 1 } } }', mode))
         .resolves.toBe('@media print {\n  .a::before:hover {\n    x: 1;\n  }\n  .b:hover {\n    x: 1;\n  }\n}\n');
+
+      // An at-rule bubbled out of the `&:hover` rule writes its declarations the same way.
+      const printSplit = '@media print {\n  .a::before:hover {\n    x: 1;\n  }\n  .b:hover {\n    x: 1;\n  }\n}\n';
+      await expect(render('.a::before, .b { &:hover { @media print { x: 1 } } }', mode)).resolves.toBe(printSplit);
+      await expect(render('.a::before, .b { &:hover { y: 0; @media print { x: 1 } } }', mode)).resolves.toBe(
+        '.a::before:hover {\n  y: 0;\n}\n.b:hover {\n  y: 0;\n}\n' + printSplit
+      );
+      await expect(render('.a::before, .b { &:hover { @supports (display: grid) { @media print { x: 1 } } } }', mode)).resolves.toBe(
+        '@supports (display: grid) {\n  @media print {\n    .a::before:hover {\n      x: 1;\n    }\n    .b:hover {\n      x: 1;\n    }\n  }\n}\n'
+      );
+      await expect(render('.a::before, .b::after { &:hover { @media print { x: 1 } } }', mode)).resolves.toBe(
+        '@media print {\n  .a::before:hover {\n    x: 1;\n  }\n  .b::after:hover {\n    x: 1;\n  }\n}\n'
+      );
       const compressed = new Compiler({ output: { collapseNesting: mode, compress: true } });
       await expect(compressed.renderString('.a::before, .b { &:hover { x: 1 } }', { extension: '.less', suppressWarnings: true }).then(String))
         .resolves.toBe('.a::before:hover{x:1}.b:hover{x:1}');
@@ -260,6 +273,16 @@ describe('collapseNesting native vs compact', () => {
         ['.a::before { &:hover { x: 1 } } .z:extend(.a all) {}', ':is(.a, .z)::before:hover'],
         ['.a::before, .b { &:hover { x: 1 } } .z:extend(.b:hover) {}', '.a::before:hover | .b:hover, .z'],
         ['.m() { &:hover { x: 1 } } .a::before, .b { .m(); } .z:extend(.b:hover) {}', '.a::before:hover | .b:hover, .z'],
+
+        /*
+         * An extended header is the extend's list: whatever produced the target, a branch in it
+         * carrying a pseudo-element followed by more is a rule of its own, the extender included.
+         */
+        ['.b:hover { x: 1 } .q::after:focus:extend(.b:hover) {}', '.b:hover | .q::after:focus'],
+        ['.a::before, .b { &:hover { x: 1 } } .q::after:focus:extend(.b:hover) {}', '.a::before:hover | .b:hover | .q::after:focus'],
+        ['.b { &:hover { x: 1 } } .a::before:extend(.b all) {}', '.b:hover | .a::before:hover'],
+        ['.a::before:hover, .b:hover { x: 1 } .q:extend(.b:hover) {}', '.a::before:hover | .b:hover, .q'],
+        ['.b { &:hover { x: 1 } } .m() { .q::after:extend(.b all) {} } .m();', '.b:hover | .q::after:hover'],
         ['@s: ~".p::before, .q"; @{s} { x: 1; } .u:extend(.zz) {}', '.p::before, .q']
       ];
       for (const [src, expected] of extended) {

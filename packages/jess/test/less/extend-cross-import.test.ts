@@ -189,8 +189,9 @@ describe('extend across @import', () => {
     });
 
     /*
-     * Import-once counts only a copy placed in the same scope — the root, one ruleset, one
-     * at-rule block or one mixin call, an imported sheet's root being its importer's — so a
+     * Import-once counts only a copy placed in the same scope — the root, one ruleset or one
+     * at-rule block, a mixin call counting in its caller's, an imported sheet's root in its
+     * importer's (`import-once-scope.test.ts`) — so a
      * copy inside a ruleset or `@media` never hides the root's: the root import renders and
      * publishes its mixins and extend targets there (ledger J14 as amended, orchestrator
      * judgment under owner delegation 2026-10-07; lessc 4.9.1 drops the root import and

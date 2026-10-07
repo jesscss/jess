@@ -126,7 +126,7 @@ outputs
 
 ### once
 
-The default behavior of `@import` statements. It means the file is imported only once in a scope, and subsequent import statements for that file in the same scope will be ignored. A scope is the root of the stylesheet, one ruleset, one at-rule block such as `@media`, or one mixin call; an imported file's root belongs to the scope of the `@import` that brought it in. A copy placed in another scope does not count, so the file is not hidden where you import it again:
+The default behavior of `@import` statements. It means the file is imported only once in a scope, and subsequent import statements for that file in the same scope will be ignored. A scope is the root of the stylesheet, one ruleset, or one at-rule block such as `@media`; a mixin call imports into the scope it is called in, and an imported file's root belongs to the scope of the `@import` that brought it in. A copy placed in another scope does not count, so the file is not hidden where you import it again:
 
 ```less
 @media print {
@@ -136,6 +136,8 @@ The default behavior of `@import` statements. It means the file is imported only
 ```
 
 Less 4 ignored every later import of a file anywhere in the compilation, so the root import above rendered nothing.
+
+An import of a file that is still being imported around it is always ignored, so a file that imports itself, directly or through other files, stops there.
 
 Released [v1.4.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)
 
