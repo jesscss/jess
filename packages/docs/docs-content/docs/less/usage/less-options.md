@@ -177,7 +177,7 @@ _This has been replaced by the [`math`](#math) option._ Less 5 still accepts it 
 |---|---|
 | `lessc -ru`<br>`lessc --relative-urls` | `{ relativeUrls: true }` |
 
-_Has been replaced by `rewriteUrls: "all"`._ Less 5 does not read `relativeUrls`, so setting it rewrites nothing.
+_Has been replaced by `rewriteUrls: "all"`._ Less 5 ignores `relativeUrls`, without a warning, so setting it rewrites nothing, and `lessc` no longer accepts `--relative-urls`.
 
 
 ### Unit Mode
@@ -233,7 +233,7 @@ In modern mode a Less built-in must be imported, for example `@use "#less";` and
 |---|---|
 | `lessc --ie-compat` | `{ ieCompat: true }` |
 
-False by default starting in v3.0.0. Currently only used for the data-uri function to ensure that images aren't created that are too large for the browser to handle.
+Less 5 ignores `ieCompat`, and `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
 
 #### Enable Inline JavaScript (Deprecated)
 
@@ -351,7 +351,7 @@ Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hos
 |---|---|
 | `lessc --insecure` | `{ insecure: true }` |
 
-Has no effect in Less 5, and setting it reports a deprecation warning. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
+Less 5 ignores `insecure`, and `lessc` no longer accepts `--insecure`. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
 
 
 ## Source Map Options

@@ -223,8 +223,8 @@ in favor of a single `!all` flag:
 
 In every output mode, an `all` extend that matches part of a selector adds the
 extender inside an `:is()` at that spot, grouped only with alternatives of the
-same specificity: `.a .c {}` with `.d:extend(.c all) {}` gives `.a :is(.c, .d)`,
-where Less 4.x wrote `.a .c, .a .d`.
+same specificity: `.a .c { color: red; }` with `.d:extend(.c all) {}` gives
+`.a :is(.c, .d) { color: red; }`, where Less 4.x wrote `.a .c, .a .d`.
 
 ## Variable resolution follows source order
 
@@ -261,7 +261,7 @@ lessc --math=parens-division styles.less styles.css
 
 ## Evaluation differences (comparison, truthiness, arguments)
 
-The changes above are structural — features that moved or were removed. This section is the smaller, more important set: input that compiles in **both** Less 4 and Less 5 and **evaluates to something different**.
+The changes above are structural — features that moved or were removed. This section is the smaller, more important set: input that Less 5 **evaluates to something different** — a different value, or a value where Less 4 stopped with an error.
 
 The bar for changing an evaluation result is high. Less 5 follows Less 4 unless the Less 4 behaviour is **defensible by history rather than by principle** — meaning it does something documented or long-standing, but has no rule that explains *why*. Every row below states the rule Less 5 follows instead.
 
@@ -390,8 +390,9 @@ Numeric comparison, unit conversion between compatible units, and colour equalit
 
 ## Deprecated CLI / option paths
 
-- `--relative-urls` / `relativeUrls` is not read by Less 5, so nothing is rewritten: use `--rewrite-urls=all` (or `rewriteUrls: 'all'`).
-- `--ie-compat` is a no-op in modern pipelines.
+- `relativeUrls` is ignored, without a warning, and `lessc` no longer accepts `--relative-urls`: use `--rewrite-urls=all` (or `rewriteUrls: 'all'`).
+- `ieCompat` is ignored, and `lessc` no longer accepts `--ie-compat`.
+- `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
 - `dumpLineNumbers` / `--line-numbers` → accepted with a warning and otherwise ignored; use sourcemaps.
 - built-in `compress` is **not** deprecated: it is a supported minifier in 5.x and replaces `less-plugin-clean-css`.
 - `strictImports` is deprecated; avoid it in new configs.

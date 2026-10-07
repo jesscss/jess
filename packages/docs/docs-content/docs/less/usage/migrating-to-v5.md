@@ -74,6 +74,8 @@ With `collapseNesting: 'native'`, the same source flattens to the shape Less 4.x
 
 `collapseNesting` takes `false` (the default), `'native'` or `'compact'`. `true` still works as a deprecated spelling of `'native'`.
 
+Nested `@media` rules are never merged, in any mode: `@media screen { @media (min-width: 40em) { … } }` stays two nested `@media` rules, which CSS allows. Less 4.x merged them into `@media screen and (min-width: 40em)`.
+
 ### Flattened selector lists use `:is()`
 
 When you flatten, a nested rule under a selector list is written the way a browser reads native nesting, not as Less 4.x's comma-separated cascade. The parent list is factored into one `:is()`:
@@ -94,9 +96,9 @@ When you flatten, a nested rule under a selector list is written the way a brows
 
 An `:is()` scores as its most specific argument, so `.a .c` now has the specificity of `#b .c`, exactly as it does under native CSS nesting. Where every parent has the same specificity, nothing changes.
 
-`'native'` also folds a nested child list into `:is()` where the fold changes neither specificity nor which elements match: `.t { th, .x, td, thead th { … } }` gives `.t :is(th, td), .t .x, .t thead th`. `'compact'` folds every descendant child list (`.t :is(th, td, thead th)`), scoring each branch at the group's highest specificity.
+`'native'` also folds a nested child list into `:is()` where the fold changes neither specificity nor which elements match: `.t { th, .x, td, thead th { … } }` gives `.t :is(th, td), .t .x, .t thead th`. `'compact'` folds every descendant child list (`.t :is(th, .x, td, thead th)`), scoring each branch at the group's highest specificity.
 
-No flatten style folds a child branch with a pseudo-element into `:is()`, and none writes a selector list in which one selector a browser rejects takes the valid ones down with it. A parent that ends in a pseudo-element and would have something written after it gets a rule of its own, so the other parents keep matching:
+No flatten style folds a child branch with a pseudo-element into `:is()`. A parent that ends in a pseudo-element and would have something written after it, such as `&:hover`, gets a rule of its own, with the declarations repeated. A browser that rejects that selector then drops only that rule, and the other parents keep matching:
 
 ```less
 .a::before, .b, .c {
@@ -248,7 +250,7 @@ Less 5.x writes, in every output mode:
 }
 ```
 
-`.type1 .sidebar3` stays out of the `:is()`: its specificity differs from `.sidebar`'s, and an `:is()` argument with a combinator would match more elements than the selector it replaces. Less 4.x wrote `.sidebar .box, .sidebar2 .box, .type1 .sidebar3 .box`.
+`.type1 .sidebar3` stays out of the `:is()` because its specificity differs from `.sidebar`'s. Less 4.x wrote `.sidebar .box, .sidebar2 .box, .type1 .sidebar3 .box`.
 
 Migration tip: keep a focused fixture around `extend` + nested/media selectors and diff CSS output before rollout.
 
@@ -291,6 +293,16 @@ Most values compile exactly as before. These are the changes you can see in the 
 
 **Parentheses around a value that nothing computes are kept.** `c: (10vh)` stays `c: (10vh)`, and `var(--a, (10px))` keeps its parentheses; Less 4.x wrote `10vh` and `var(--a, 10px)`. Parentheses around math that computes still disappear: `(2px + 3px)` is `5px`.
 
+This includes parentheses around a variable or a mixin parameter. With `@a: 10vh`, `width: (@a)` is `width: (10vh)` and `margin: (@a) 0` is `margin: (10vh) 0`, where Less 4.x wrote `10vh` and `10vh 0`. Browsers reject a property value in parentheses and drop the declaration, so remove the parentheses: write `width: @a`.
+
+**Numbers you write are kept as written.** `0.50em`, `1.0px` and `1.23456789123px` stay as they are; Less 4.x wrote `0.5em`, `1px` and `1.23456789px`. A computed number is no longer rounded to 8 decimal places: `(1 / 3)` is `0.33333333333` and `(10px / 3)` is `3.3333333333px`, where Less 4.x wrote `0.33333333` and `3.33333333px`.
+
+**`calc()` around a single number is dropped.** `calc(5px)`, and `calc(@w)` with `@w: 5px`, are written `5px`; Less 4.x kept `calc(5px)`. A negative number loses the clamping `calc()` gives it: `width: calc(-5px)` becomes `width: -5px`, which browsers reject. `calc()` around anything else is kept, including escaped text: `calc(~"100% - @{gutter}")` is `calc(100% - 20px)`, as in Less 4.x.
+
+**Repeated declarations are kept.** `a: 1; a: 1;` is written twice, with `compress` too; Less 4.x dropped an identical repeat.
+
+**`!important` is written after a space.** `c!important` is `c !important`.
+
 **Two different units are kept as `calc()`.** A unitless number added to or subtracted from a dimension takes its unit, as in Less 4.x (`4 + 3px` is `7px`, `1.5 - 1rem` is `0.5rem`), whatever `unitMode` is set. Two units that do not convert are no longer guessed at:
 
 | expression | Less 4.x | Less 5.x (default) |
@@ -306,7 +318,7 @@ Each kept operation reports an `eval/unexpressible-unit` warning. `unitMode: 'st
 
 **A built-in call that fails is written out as-is.** A Less built-in called with more arguments than it takes, or with arguments it cannot compute, is written out instead of guessing: `percentage(0.5, 1)` stays as written (Less 4.x dropped the extra argument and wrote `50%`), and `sqrt(-4)` stays as written (Less 4.x stopped with an error). Set `functionMode: 'error'` to make every failed call an error.
 
-**`round()` rounds a tie away from zero, as in Less 4.x** (`round(2.5)` is `3`, `round(-2.5)` is `-3`). With a number of decimal places, a value that is written exactly halfway also rounds away from zero: `round(1.005, 2)` is `1.01`, where Less 4.x wrote `1`.
+**`round()` rounds a tie away from zero, as in Less 4.x** (`round(2.5)` is `3`, `round(-2.5)` is `-3`).
 
 **An escaped string is never read back as a number, color or keyword.** `~"…"` and `e()` produce text, and stay text wherever they are used:
 
@@ -322,7 +334,18 @@ Less 4.x stopped with an error on `percentage(~"@{x}")`. To compute with a value
 
 ### Custom properties
 
-A custom property's value is CSS text, and CSS has no `//` comment, so `//` inside one is part of the value:
+A custom property's value is CSS text. A Less variable in it is still replaced (`--x: @c`), but escapes, function calls and math are written as they are:
+
+| | Less 4.x | Less 5.x |
+| --- | --- | --- |
+| `--y: ~"red";` | `--y: red;` | `--y: ~"red";` |
+| `--z: percentage(0.5);` | `--z: 50%;` | `--z: percentage(0.5);` |
+| `a: var(--x, e("red"));` | `a: var(--x, red);` | `a: var(--x, e("red"));` |
+| `a: var(--x, (1px + 2px));` | `a: var(--x, 3px);` | `a: var(--x, (1px + 2px));` |
+
+A `var()` fallback is read the same way. To compute the value, compute it in a variable and use the variable: `@p: percentage(0.5); .a { --z: @p; }` gives `--z: 50%`.
+
+CSS has no `//` comment, so `//` inside a custom property is part of the value:
 
 ```less
 .a {
@@ -359,6 +382,7 @@ Rewriting the body could write a broken URL: for `url(~"'b.png'")`, Less 4.x wro
 
 - **Slashed combinators are invalid selectors.** `/deep/`, `/shadow/` and any other `/word/` between selectors are not CSS, and `.a /deep/ .b { … }` is a parse error. Less 4.x passed them through. A `/word/` inside a declaration value (`src: local(Foo/Bar/Baz)`) is unaffected.
 - **Attribute selectors keep their spelling.** `a[href="y"i]` stays tight; Less 4.x inserted a space before the flag.
+- **`An+B` arguments are written without spaces.** `:nth-child(2n + 1)` is `:nth-child(2n+1)` and `:nth-child( odd )` is `:nth-child(odd)`; Less 4.x kept your spacing.
 
 ### Imports
 
@@ -366,7 +390,7 @@ Each sheet is still imported once, with these differences from Less 4.x:
 
 - `@import (reference) "t.less"; @import "t.less";` renders the sheet. You asked to see it; Less 4.x dropped the second import and rendered nothing.
 - `@import (multiple) "t.less"; @import "t.less";` renders the sheet twice. A `(multiple)` import does not count toward import-once; Less 4.x rendered it once.
-- A root `@import "t.less"` after a copy imported inside another block (`@media print { @import "t.less"; }` or `.wrap { @import "t.less"; }`) still renders the sheet at the root: only an earlier import in the same scope counts. Less 4.x skipped the root import.
+- A root `@import "t.less"` that comes after the same sheet was imported inside a ruleset or an at-rule block (`.wrap { @import "t.less"; }` or `@media print { @import "t.less"; }`) still renders the sheet at the root. Less 4.x skipped the root import.
 
 ### Safer JavaScript execution model
 
@@ -449,7 +473,7 @@ through the explicit module binding:
 
 ### Math mode changes
 
-- Legacy `strictMath` workflows should move to the `math` option. `strictMath` is still accepted: `true` means `math: 'parens'`, and setting it reports a deprecation warning.
+- Legacy `strictMath` workflows should move to the `math` option. `strictMath` is still accepted: `true` means `math: 'parens'`, and setting it logs a deprecation warning.
 - `strict-legacy` was removed in Less 4.0; it is still accepted and means `parens`.
 - `math: 'always'` (Less 3.x's eager math) still works; `parens-division` is the default.
 - The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
@@ -484,10 +508,10 @@ Example:
 
 ### Deprecated CLI/option paths
 
-- `relativeUrls` / `--relative-urls` is not read by Less 5.x, so nothing is rewritten. Set `rewriteUrls: 'all'` (`--rewrite-urls=all`) instead.
-- `--ie-compat` is deprecated/no-op in modern pipelines.
+- `relativeUrls` is ignored, without a warning, so nothing is rewritten, and `lessc` no longer accepts `--relative-urls`. Set `rewriteUrls: 'all'` (`--rewrite-urls=all`) instead.
+- `ieCompat` is ignored, and `lessc` no longer accepts `--ie-compat`. `data-uri()` always inlines the file.
 - `dumpLineNumbers` / `--line-numbers` is deprecated and has no effect: no line-number comments or debug media queries are emitted, and setting it reports a `deprecation/dump-line-numbers-option` warning. Use source maps.
-- `insecure` / `--insecure` has no effect and reports a deprecation warning: remote imports are https-only and always verify the certificate.
+- `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
 - Error and warning positions count lines from the file as you wrote it. Less 4.x counted the text that `banner` and `globalVars` add in front of it.
 - Built-in `compress` is **not** deprecated in 5.x — it is a supported minifier and replaces `less-plugin-clean-css` (see [Compressed Output](../advanced/compressed-output)).
 - `strictImports` is deprecated and should be avoided in new configurations.

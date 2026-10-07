@@ -270,9 +270,11 @@ branch into one `:is(…)` (the group-max specificity shown above). The
 it is the native desugaring of a multi-parent header, and its group-max specificity is
 unavoidable. A parent ending with a pseudo-element is the one exception: `:is()` cannot
 hold a pseudo-element, so where the child's `&` keeps it last — `&` followed only by
-`:hover`, `:active`, `:focus`, `:focus-visible` or `:focus-within` — that parent is
-written on its own and the other parents still share the `:is()`
-(`.a::before, .b, .c { &:hover {} }` → `.a::before:hover, :is(.b, .c):hover`). Anywhere
+`:hover`, `:active`, `:focus`, `:focus-visible` or `:focus-within` — that parent gets a
+rule of its own, with the declarations repeated, and the other parents still share the
+`:is()` (`.a::before, .b, .c { &:hover {} }` → `.a::before:hover { … }` and
+`:is(.b, .c):hover { … }`). A browser that rejects the pseudo-element selector drops only
+its own rule, where one selector list would lose `.b:hover` and `.c:hover` too. Anywhere
 else nothing may follow the pseudo-element, so the branch is invalid however it is
 written, and the parent stays inside the `:is()`, which drops only that branch where a
 plain selector list would drop the whole rule (`.a::before, .b { .e {} }` →
