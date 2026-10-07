@@ -190,9 +190,10 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * Math kept as written computes nothing, so a group written as one of its
-   * operands keeps its parens (ledger J16), while math that computes reads the
-   * value inside: a unitless number adopts the unit (ledger V27).
+   * Math kept is written as `calc()` and computes nothing, so a group written
+   * as one of its operands keeps its parens inside it (ledger J16), while math
+   * that computes reads the value inside: a unitless number adopts the unit
+   * (ledger V27).
    */
   it('keeps the parens of an operand of math kept as written', async () => {
     expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; e: foo + (1px); f: (1px) + foo; g: (10px) + 1; }'))

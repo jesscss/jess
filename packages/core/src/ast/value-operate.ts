@@ -257,6 +257,14 @@ export function isUnexpressible(value: Value): boolean {
   return hasNoCssUnit(value) || preservedUnitClashes.has(value);
 }
 
+/** Whether `value` holds an operation `preserve` kept unevaluated ({@link preservedUnitClashes}). */
+export function holdsKeptOperation(value: ValueGroup): boolean {
+  return findFinalValue(value, isKeptOperation) !== undefined;
+}
+
+/** Whether `value` is an operation `preserve` kept unevaluated. */
+export const isKeptOperation = (value: Value): boolean => preservedUnitClashes.has(value);
+
 /**
  * The first value in `value` — through value groups, list members and blocks —
  * that `test` accepts. The one walk every final-value check uses, so the strict
@@ -467,12 +475,14 @@ function spliceInner(inner: string): string {
 
 /**
  * less.js calc math: inside `calc(…)` only a "safe" dimension op computes — a
- * same-unit `+`/`-`, a `*` with a unitless side, or a `/` with a unitless RHS.
- * A cross-unit op is preserved verbatim as a `calc(…)` sub-expression.
+ * same-unit `+`/`-` or one with a unitless side (it adopts the other unit,
+ * ledger V27: `@x: 4 + 3px` read in `calc(@x * 2)` is `7px`), a `*` with a
+ * unitless side, or a `/` with a unitless RHS. A cross-unit op is preserved
+ * verbatim as a `calc(…)` sub-expression.
  */
 function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
   if (op === '+' || op === '-') {
-    return a.unit === b.unit;
+    return a.unit === b.unit || !a.unit || !b.unit;
   }
   if (op === '*') {
     return !a.unit || !b.unit;
@@ -485,8 +495,8 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
 
 /**
  * The keywords `operate` produced for an operation `preserve` kept unevaluated:
- * a non-convertible `+`/`-` spelled as `calc(…)` (V18), and every keyword
- * composed from one —
+ * a non-convertible `+`/`-` written as `calc(…)` ({@link keptMath}, V18), and
+ * every keyword composed from one —
  * each mapped to the kept operation its chain started from. A Keyword carries
  * no unit facts, so the consuming boundary asks this map instead; it is what
  * keeps the additive rung of the §4.7 ladder from being silent
@@ -498,20 +508,56 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
 export const preservedUnitClashes = new WeakMap<Value, Value>();
 
 /**
- * The keywords kept AS WRITTEN — neither computed nor spelled as a
- * self-delimiting `calc(…)`: an operation `operate` kept (an un-operable keyword
- * operand, `foo + 1`), and a call no callable computed, written out as-is
- * ({@link keepAsWritten}). Each maps to the operator at its top level, or to
- * `''` when it is self-delimiting (a call, or an authored paren group around
+ * The keywords kept AS WRITTEN rather than computed: an operation `operate`
+ * kept (an un-operable keyword operand, `foo + 1`, and math whose units cannot
+ * compute, {@link keptMath}), and a call no callable computed, written out
+ * as-is ({@link keepAsWritten}). Each maps to the operator at its top level, or
+ * to `''` when it is self-delimiting (a call, or an authored paren group around
  * one). Such a keyword keeps its precedence wherever it lands: nothing in an
  * authored paren group around it computed, so the group keeps its parens
  * ({@link groupAsWritten}) — `(foo + 1) * 2` does not print as `foo + 1 * 2`,
- * nor `1px (foo + 1) 3` as `1px foo + 1 3`, nor `(var(--a))` as `var(--a)`;
- * and as the operand of another operation it is grouped by precedence
- * ({@link operandAsWritten}), so `@x * 2` with `@x: foo + 1` is
- * `(foo + 1) * 2` too.
+ * nor `(var(--a))` as `var(--a)`; and as the operand of another operation it is
+ * grouped by precedence ({@link operandAsWritten}), so `@x * 2` with
+ * `@x: foo + 1` is `(foo + 1) * 2` too.
  */
 const keptAsWritten = new WeakMap<Value, string>();
+
+/**
+ * Math `preserve` keeps because its units cannot compute — two units that do
+ * not convert (V18) — and a cross-unit operation inside a math function, each
+ * mapped to how it reads as an operand: the arithmetic as the author wrote it,
+ * their paren groups kept, sub-operations that computed computed. Its bytes are
+ * that arithmetic inside `calc()` (owner 2026-10-06: "you're supposed to keep
+ * math. you're supposed to keep it as a calc()"), and an outermost authored
+ * group becomes the `calc()`'s own parens: `(1px + 1em - 2px)` is
+ * `calc(1px + 1em - 2px)`, `((1px + 1em) / 2)` is `calc((1px + 1em) / 2)`.
+ * Wherever it is an operand of more math — another operation, or an operation
+ * written inside a math function — it is that arithmetic, grouped by precedence
+ * ({@link operandAsWritten}), so kept math never nests a `calc()`: `@x * 2` and
+ * `calc(@x * 2)` with `@x: 1px + 1em` are both `calc((1px + 1em) * 2)`.
+ */
+const keptMath = new WeakMap<Value, string>();
+
+/** Kept math `spelling` with top-level operator `op` (`''` for a group), written as `calc(…)` ({@link keptMath}). */
+function keptMathKeyword(spelling: string, op: string, left: Value, right: Value): Value {
+  const out = composedKeyword(isParenGroup(spelling) ? `calc${spelling}` : `calc(${spelling})`, left, right, op);
+  keptMath.set(out, spelling);
+  return out;
+}
+
+/** Kept math's arithmetic, how it reads as an operand of math ({@link keptMath}), or `undefined` for any other value. */
+export function keptMathOf(v: Value): string | undefined {
+  return keptMath.get(v);
+}
+
+/**
+ * Kept math an authored `calc()` holds (`calc(@x)` with `@x: 1px + 1em`): the call
+ * written out as-is, a new self-delimiting value, so the kept math itself keeps
+ * its own precedence wherever else it is read.
+ */
+export function writtenCalc(v: Value): Value {
+  return keptMath.has(v) ? keepAsWritten(composedKeyword(v.bytes, v, v, null)) : keepAsWritten(v);
+}
 
 /** `v`, marked as written out as-is rather than computed (see {@link keptAsWritten}); a call is self-delimiting. */
 export function keepAsWritten<T extends Value>(v: T): T {
@@ -527,16 +573,24 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * written is grouped when its own top operator binds looser than `op`, or as
  * loosely on the right of an operator that does not associate (`-`, `/`, `%`),
  * so the bytes say the arithmetic that was kept: `2 * (foo + 1)`,
- * `10px - (foo + 1)`, but `foo + 1 + 1px`.
+ * `10px - (foo + 1)`, but `foo + 1 + 1px`. Kept math ({@link keptMath}) is its
+ * self-delimiting `calc(…)` there, except `inMath` — an operand of math kept
+ * as one `calc()`, or of an operation written inside a math function — where it
+ * is its arithmetic, grouped the same way (`calc((1px + 1em) * 2)`).
  */
-export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = v.bytes): string {
+export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = v.bytes, inMath = false): string {
+  const kept = keptMath.get(v);
+  if (kept !== undefined && !inMath) {
+    return bytes;
+  }
+  const spelled = kept ?? bytes;
   const inner = keptAsWritten.get(v);
   if (!inner) {
-    return bytes;
+    return spelled;
   }
   const looser = precedence(inner) < precedence(op)
     || (isRight && precedence(inner) === precedence(op) && op !== '+' && op !== '*');
-  return looser ? `(${bytes})` : bytes;
+  return looser ? `(${spelled})` : spelled;
 }
 
 /**
@@ -560,22 +614,27 @@ function composedKeyword(bytes: string, left: Value, right: Value, asWritten: st
 
 /**
  * The value of an authored paren group whose content computes or was kept: a
- * value kept as written keeps the author's parens, and anything else (a
- * computed value, a `calc(…)` spelling) is one value the parens no longer
- * delimit.
+ * value kept as written keeps the author's parens — kept math keeps them in its
+ * arithmetic ({@link keptMath}) — and anything else (a computed value, a
+ * `calc(…)` spelling) is one value the parens no longer delimit.
  */
 export function groupAsWritten(v: Value): Value {
+  const kept = keptMath.get(v);
+  if (kept !== undefined) {
+    return keptMathKeyword(`(${kept})`, '', v, v);
+  }
   return v.type === 'Keyword' && keptAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
 }
 
 /**
  * Binary operation. Guard order (byte-faithful):
- *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
+ *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc);
+ *      kept math splices its arithmetic ({@link keptMath}),
  *   2. an un-operable keyword operand → preserve source `l op r`,
- *   3. inside `calc(…)`, a cross-unit dimension op → flat `calc(l op r)`,
+ *   3. inside `calc(…)`, a cross-unit dimension op → kept math `calc(l op r)`,
  *   4. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
  *   5. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
- *      `calc(l op r)` fallback.
+ *      kept math `calc(l op r)`.
  */
 export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
   /*
@@ -614,12 +673,13 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
   left = coerceNamedColorKeyword(left);
   right = coerceNamedColorKeyword(right);
 
-  const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
-  const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
-  if (leftInner !== null || rightInner !== null) {
-    const lb = leftInner !== null ? spliceInner(leftInner) : operandAsWritten(left, op, false);
-    const rb = rightInner !== null ? spliceInner(rightInner) : operandAsWritten(right, op, true);
-    return composedKeyword(`calc(${lb} ${op} ${rb})`, left, right, null);
+  const leftInner = left.type === 'Keyword' && !keptMath.has(left) ? calcInner(left.bytes) : null;
+  const rightInner = right.type === 'Keyword' && !keptMath.has(right) ? calcInner(right.bytes) : null;
+  const kept = keptMath.has(left) || keptMath.has(right);
+  if (kept || leftInner !== null || rightInner !== null) {
+    const lb = leftInner !== null ? spliceInner(leftInner) : operandAsWritten(left, op, false, left.bytes, true);
+    const rb = rightInner !== null ? spliceInner(rightInner) : operandAsWritten(right, op, true, right.bytes, true);
+    return kept ? keptMathKeyword(`${lb} ${op} ${rb}`, op, left, right) : composedKeyword(`calc(${lb} ${op} ${rb})`, left, right, null);
   }
 
   // Guard 2: an un-operable keyword operand → preserve source.
@@ -633,7 +693,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
    */
   if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
     && !calcSafe(op, left, right)) {
-    return makeKeyword(`calc(${spliceOperand(left)} ${op} ${spliceOperand(right)})`);
+    return keptMathKeyword(`${spliceOperand(left)} ${op} ${spliceOperand(right)}`, op, left, right);
   }
 
   /*
@@ -665,7 +725,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
     throw new TypeError(`Cannot operate on ${left.type}`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
-      const preserved = makeKeyword(`calc(${spliceOperand(left)} ${op} ${spliceOperand(right)})`);
+      const preserved = keptMathKeyword(`${spliceOperand(left)} ${op} ${spliceOperand(right)}`, op, left, right);
       if (err instanceof UnitArithmeticError) {
         preservedUnitClashes.set(preserved, preserved);
       }

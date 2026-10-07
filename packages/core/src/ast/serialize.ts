@@ -175,7 +175,7 @@ import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, findFinalValue, groupAsWritten, isUnexpressible, keepAsWritten, operandAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -4479,11 +4479,11 @@ const warnedUnitValues = new WeakSet<Value>();
  */
 function warnConsumedKept(operands: ValueGroup, passedOn: EvalValue | undefined, owner: object, e: EvalCtx): void {
   if (e.modes.unitMode === 'strict' || e.modes.inCalc
-    || (passedOn !== undefined && !isLiteral(passedOn) && findFinalValue(passedOn, isKept) !== undefined)) {
+    || (passedOn !== undefined && !isLiteral(passedOn) && findFinalValue(passedOn, isKeptOperation) !== undefined)) {
     return;
   }
   if (!isValueGroupArray(operands)) {
-    const kept = findFinalValue(operands, isKept);
+    const kept = findFinalValue(operands, isKeptOperation);
     if (kept !== undefined) {
       warnUnexpressibleUnit(kept, owner, e);
     }
@@ -4493,8 +4493,6 @@ function warnConsumedKept(operands: ValueGroup, passedOn: EvalValue | undefined,
     warnConsumedKept(operand, undefined, owner, e);
   }
 }
-
-const isKept = (value: Value): boolean => preservedUnitClashes.has(value);
 
 /** A typed value that is no function argument. */
 const ARG_NONE = 0;
@@ -5068,11 +5066,15 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: E
  * The bytes of one operand of an operation that is kept as written. The value
  * lane already wrote back a group's own parens ({@link writtenParens}); an
  * operand that is itself an operation kept as written (a variable holding
- * `foo + 1`) is grouped by precedence ({@link operandAsWritten}).
+ * `foo + 1`) is grouped by precedence ({@link operandAsWritten}). Inside a math
+ * function, kept math is its arithmetic, never a nested `calc()`
+ * (`calc(@x * 2)` with `@x: 1px + 1em` is `calc((1px + 1em) * 2)`).
  */
-function keptOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
+function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: EvalCtx): string {
   const bytes = emitValue(value);
-  return isLiteral(value) || isValueGroupArray(value) ? bytes : operandAsWritten(value, parent.operator, child === parent.right, bytes);
+  return isLiteral(value) || isValueGroupArray(value)
+    ? bytes
+    : operandAsWritten(value, parent.operator, child === parent.right, bytes, parent.inMathFunction || (e.calcDepth ?? 0) > 0);
 }
 
 /**
@@ -5540,7 +5542,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const bytes = `${keptOperand(node, node.left, values[0]!)} ${node.operator} ${keptOperand(node, node.right, values[1]!)}`;
+          const bytes = `${keptOperand(node, node.left, values[0]!, e)} ${node.operator} ${keptOperand(node, node.right, values[1]!, e)}`;
 
           /*
            * An operation preserved because it was authored inside a math
@@ -7123,10 +7125,13 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
       if (!isValueGroupArray(v) && v.type === 'Dimension') {
         return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
       }
-      return keepAsWritten(makeKeyword(`calc(${wrapParens(emitValue(v), authored)})`));
+
+      /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
+      const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
+      return keepAsWritten(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored)})`));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
-      return keepAsWritten(calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`));
+      return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(makeKeyword(`calc(${v.bytes})`));
     }
 
     /*

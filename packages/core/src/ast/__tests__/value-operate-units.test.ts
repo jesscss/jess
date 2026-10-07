@@ -243,6 +243,9 @@ describe('a unitless number ± a dimension with a unit', () => {
       expect(bytesOf('-', dim(1.5), dim(1, 'rem'), m)).toBe('0.5rem');
       expect(bytesOf('+', dim(10), dim(5, '%'), m)).toBe('15%');
       expect(preservedUnitClashes.has(operate('+', dim(4), dim(3, 'px'), m))).toBe(false);
+
+      // Less math read inside `calc()` (a variable holding `4 + 3px`) adopts it too.
+      expect(bytesOf('+', dim(4), dim(3, 'px'), { ...m, inCalc: true })).toBe('7px');
     }
   });
 
@@ -262,10 +265,30 @@ describe('a unitless number ± a dimension with a unit', () => {
     expect(grouped.bytes).toBe('(foo + 1)');
     expect(operate('*', grouped, dim(2), PRESERVE).bytes).toBe('(foo + 1) * 2');
 
-    // A computed value and a self-delimiting calc() spelling are one value.
+    // A computed value is one value the parens no longer delimit.
     const computed = dim(7, 'px');
     expect(groupAsWritten(computed)).toBe(computed);
-    const calc = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE);
-    expect(groupAsWritten(calc)).toBe(calc);
+  });
+
+  it('kept math chains as one calc() by precedence, never nesting one', () => {
+    const kept = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE);
+    const scaled = operate('*', kept, dim(2), PRESERVE);
+    expect(scaled.bytes).toBe('calc((1px + 3em) * 2)');
+    expect(operate('-', dim(10, 'px'), kept, PRESERVE).bytes).toBe('calc(10px - (1px + 3em))');
+    expect(operate('+', kept, dim(1, 'px'), PRESERVE).bytes).toBe('calc(1px + 3em + 1px)');
+    expect(operate('-', kept, dim(2, 'px'), PRESERVE).bytes).toBe('calc(1px + 3em - 2px)');
+
+    // The chain stays one clash, so the boundary still warns about it.
+    expect(preservedUnitClashes.has(scaled)).toBe(true);
+  });
+
+  it('an authored paren group becomes the calc() parens, and a second one stays inside', () => {
+    const kept = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE);
+    const grouped = groupAsWritten(kept);
+    expect(grouped.bytes).toBe('calc(1px + 3em)');
+    expect(groupAsWritten(grouped).bytes).toBe('calc((1px + 3em))');
+
+    // The group keeps the author's precedence: `((1px + 3em) + 1px)`.
+    expect(operate('+', grouped, dim(1, 'px'), PRESERVE).bytes).toBe('calc((1px + 3em) + 1px)');
   });
 });

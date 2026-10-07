@@ -460,6 +460,50 @@ describe('Operations — unit arithmetic under each unitMode', () => {
 
     // Inside a math function the operation itself is kept as written, and a kept operand still groups.
     expect((await render('preserve', '@x: foo + 1; a: calc(@x * 2); b: calc(2 - @x);')).css).toBe('.a { a: calc((foo + 1) * 2); b: calc(2 - (foo + 1)); }');
+
+  });
+
+  it('kept math is one calc(): an authored group is its parens, and inside a math function it is the arithmetic', async () => {
+    const grouped = await render('preserve', '@w: 1px; a: (@w + 3em); b: (@w + 3em) * 2; c: 1px (@w + 3em) 2; d: (10px / 5 + 6em - 1px * 2); e: ((@w + 3em)); f: ((@w + 3em) + 1px);');
+    expect(grouped.css).toBe('.a { a: calc(1px + 3em); b: calc((1px + 3em) * 2); c: 1px calc(1px + 3em) 2; d: calc(2px + 6em - 2px); '
+      + 'e: calc((1px + 3em)); f: calc((1px + 3em) + 1px); }');
+    expect(grouped.warnings).toEqual(Array(6).fill('eval/unexpressible-unit'));
+
+    // Reached through a variable, it is grouped by precedence inside the one calc().
+    const reached = await render('preserve', '@w: 1px; @x: @w + 3em; a: @x * 2; b: 2 * @x; c: 10px - @x; d: -@x; e: @x + 1px; f: 1px + @x;');
+    expect(reached.css).toBe('.a { a: calc((1px + 3em) * 2); b: calc(2 * (1px + 3em)); c: calc(10px - (1px + 3em)); d: calc(-1 * (1px + 3em)); '
+      + 'e: calc(1px + 3em + 1px); f: calc(1px + 1px + 3em); }');
+
+    // Inside a math function it is the arithmetic, never a nested calc().
+    expect((await render('preserve', '@w: 1px; @x: @w + 3em; a: calc(@x * 2); b: calc(@x); c: calc(1px + @x); d: max(@x, 1px); e: calc((@x)); f: calc(((@x)));')).css)
+      .toBe('.a { a: calc((1px + 3em) * 2); b: calc(1px + 3em); c: calc(1px + 1px + 3em); d: max(1px + 3em, 1px); e: calc((1px + 3em)); f: calc(((1px + 3em))); }');
+    expect((await render('preserve', '@x: 4 + 3px; w: calc(@x * 2);')).css).toBe('.a { w: calc(7px * 2); }');
+  });
+
+  it('a call that consumes kept math warns, whether it is written out or formats it', async () => {
+    const { css, warnings } = await render('preserve', '@w: 1px; a: percentage(@w + 3em); b: foo((@w + 3em)); c: e(%("%d", @w + 3em));');
+    expect(css).toBe('.a { a: percentage(calc(1px + 3em)); b: foo(calc(1px + 3em)); c: calc(1px + 3em); }');
+    expect(warnings).toEqual(Array(3).fill('eval/unexpressible-unit'));
+  });
+
+  /*
+   * Kept math has no value to compare, so a comparison reading it is not true,
+   * in a guard and in an `if()` alike, with the warning; `strict` raises in both
+   * (orchestrator judgment under owner delegation 2026-10-06).
+   */
+  it('a guard or an if() reading kept math is not true, and says why', async () => {
+    const mixins = '.m(@a) when (@a + 1em > 5px) { x: y; } .m(@a) when (default()) { x: d; } .b { .m(5px); }';
+    const guard = await renderSheet('preserve', mixins);
+    expect(guard.css).toBe('.b { x: d; }');
+    expect(guard.warnings).toEqual(['eval/unexpressible-unit']);
+    expect((await renderSheet('loose', mixins)).css).toBe('.b { x: y; }');
+    expect((await renderSheet('strict', mixins)).errors).toEqual(['eval/invalid-unit-arithmetic']);
+
+    const valued = await render('preserve', '@w: 4px; a: if((@w + 3em) > 5px, y, n); b: if(not ((@w + 3em) > 5px), y, n);');
+    expect(valued.css).toBe('.a { a: n; b: y; }');
+    expect(valued.warnings).toContain('eval/unexpressible-unit');
+    expect((await render('loose', '@w: 4px; a: if((@w + 3em) > 5px, y, n);')).css).toBe('.a { a: y; }');
+    expect((await render('strict', '@w: 4px; a: if((@w + 3em) > 5px, y, n);')).errors).toEqual(['eval/invalid-unit-arithmetic']);
   });
 
   it('a non-dividing slash keeps each side its own math: `4 / 2 + 5em` (P35)', async () => {

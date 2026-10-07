@@ -65,7 +65,8 @@ expression computes — math, or a function that runs — the parens do not surv
 to output. (A no-space `keyword(expr)` is the function shape above and stays
 verbatim.) Parens written directly in a declaration value around something that
 computes nothing — one value, a CSS function such as `var()` — stay as you
-wrote them, as they do in plain CSS. A group reached through a variable, a mixin parameter or an
+wrote them, as they do in plain CSS; parens around math kept as `calc()` are
+its own. A group reached through a variable, a mixin parameter or an
 interpolation is its value: `@a: (10px)` gives `margin: @a @a` →
 `10px 10px` and `.x-@{a}` → `.x-10px`.
 
