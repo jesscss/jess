@@ -23,8 +23,7 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
-import type { EvalModes, ValueEvaluator } from './value-eval.js';
-import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
+import { evalGuard, guardUsesDefault, type GuardEvalDeps, type ValueResolver } from './guard.js';
 
 /** The call-argument shape now lives with the nodes that carry it — a
  *  {@link CallArg} is the same node for a mixin call and a function call, so it
@@ -480,20 +479,25 @@ export function isValueSlot(value: CallValue): value is ValueSlot {
 /**
  * Select every definition that matches a call, in definition order, with
  * its bindings. Args resolve to bytes in the caller frame (arity/pattern);
- * guard leaves compare TYPED values in the callee frame through the injected
- * `ValueEvaluator`.
+ * guard leaves compare TYPED values in the callee frame through the evaluator
+ * and modes `guardDeps` gives each definition: those of the document it is
+ * written in, so candidates from different files each answer their own.
+ *
+ * A guard resolves its free variables in the mixin's DEFINITION scope
+ * (closure), so `guardDeps` keys the typed resolver off the def (see serialize
+ * `dispatch`). `isDefault` also threads to the resolver so a `default()`
+ * OPERAND (`@x = default()`) folds to the decision, not just a bare
+ * `default()` guard term.
  */
 export function selectDefinitions(
   candidates: MixinDefinition[],
   call: MixinCall,
   resolveCaller: ValueResolver,
-  makeCalleeTyped: (
+  guardDeps: (
     def: MixinDefinition,
     bindings: Map<string, CallValue> | null,
     isDefault: () => boolean,
-  ) => TypedResolver,
-  ev: ValueEvaluator | null,
-  modes: EvalModes,
+  ) => GuardEvalDeps,
   resolveDefault?: DefaultResolver,
   onNoViable?: () => void,
   boundSources?: BoundSourceTracker,
@@ -503,17 +507,6 @@ export function selectDefinitions(
     def: MixinDefinition;
     bindings: Map<string, CallValue> | null;
     order: number;
-  };
-
-  const guardDeps = (def: MixinDefinition, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
-    /*
-     * A guard resolves its free variables in the mixin's DEFINITION scope (closure),
-     * so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
-     * `isDefault` also threads to the resolver so a `default()` OPERAND (`@x =
-     * default()`) folds to the decision, not just a bare `default()` guard term.
-     */
-    const typed = makeCalleeTyped(def, bindings, isDefault);
-    return { resolveTyped: typed, ev, modes, isDefault };
   };
 
   /**

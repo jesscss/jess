@@ -1,12 +1,13 @@
 import type { Statement, Stylesheet } from './ast/nodes.js';
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
-import type { Context, ContextOptions, ResolvedOptions, SourceOptions } from './context.js';
+import type { Context, ContextOptions, ResolvedOptions, SourceOptions, SourceSettings } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
+import type { ValueEvaluator } from './ast/value-eval.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
@@ -65,11 +66,15 @@ export type SafeParseOptions = {
 
   /**
    * The settings that cover this source (its folder's `styles.config`, then its
-   * language's settings), when the host supplies them. They are this document's
-   * language settings: a plugin reads its dialect's spellings from them in place
-   * of its own constructor options, so a setting reaches only the files it covers.
+   * language's settings, then the compile's own), when the host supplies them.
+   * A plugin reads the settings for this document from them in place of
+   * `compilerOptions`, and over its own constructor options, so a setting
+   * reaches only the files it covers.
    */
   sourceOptions?: SourceOptions;
+
+  /** The `styles.config` file `sourceOptions` were read from ({@link SourceSettings.configFile}). */
+  sourceConfigFile?: SourceSettings['configFile'];
 };
 
 /**
@@ -233,6 +238,13 @@ export interface PluginInterface {
    * outer scope and owns `with`/`set` propagation.
    */
   applyModuleConfig?(request: ModuleConfigRequest): readonly ModuleConfigRejection[] | void;
+
+  /**
+   * The value evaluator for the documents this plugin parses: its language's
+   * built-in functions and value semantics. A document is evaluated with its
+   * own plugin's evaluator, whichever document imported it (DESIGN-DECISIONS C19).
+   */
+  readonly valueEvaluator?: ValueEvaluator;
 
   /** Optional compiler hooks used by compatibility plugins. */
   setContext?(context: Context): void;

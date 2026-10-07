@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { logger } from '@jesscss/core';
+import lessPlugin from '@jesscss/plugin-less';
 import { Compiler, type ConfigOptions } from '../src/index.js';
 
 let dir: string;
@@ -39,6 +41,20 @@ async function render(entry: string, compilerOptions: ConfigOptions = {}, render
     warnings: result.warnings.map(w => w.code),
     errors: result.errors.map(e => e.code)
   };
+}
+
+/** Render, collecting what the plugins log as warnings (deprecated spellings). */
+async function renderLogged(entry: string, compilerOptions: ConfigOptions = {}) {
+  const warn = logger.warn;
+  const logged: string[] = [];
+  logger.warn = (...args: unknown[]) => {
+    logged.push(args.map(String).join(' '));
+  };
+  try {
+    return { ...await render(entry, compilerOptions), logged };
+  } finally {
+    logger.warn = warn;
+  }
 }
 
 const PART_JESS = ['part.jess', '.j { k: $(1px + 3em); }'] as const;
@@ -177,6 +193,15 @@ describe('a folder\'s styles.config applies only to the files in that folder', (
     });
   });
 
+  it('the config in an installed package\'s folder is not loaded', async () => {
+    write(
+      ['entry.less', '@import \'node_modules/pkg/part.less\';'],
+      ['node_modules/pkg/part.less', '.p { k: 1px + 1em; }'],
+      ['node_modules/pkg/styles.config.cjs', 'module.exports = { compile: { unitMode: \'loose\' } };\n']
+    );
+    expect((await render('entry.less')).css).toBe('.p { k: calc(1px + 1em); }');
+  });
+
   it('an explicit language setting wins over the imported file\'s folder config', async () => {
     write(
       ['entry.less', '@import \'sub/part.less\';'],
@@ -185,5 +210,173 @@ describe('a folder\'s styles.config applies only to the files in that folder', (
     );
     expect((await render('entry.less', { language: { less: { unitMode: 'strict' } } })).errors)
       .toEqual(['eval/invalid-unit-arithmetic']);
+  });
+});
+
+describe('math follows the settings of the file it is written in', () => {
+  const LOOSE_SUB = ['sub/styles.config.cjs', 'module.exports = { compile: { unitMode: \'loose\' } };\n'] as const;
+
+  it('a .jess variable read from a .less file keeps the .jess default', async () => {
+    write(['part.jess', '$w: $(1px + 3em);'], ['entry.less', '@import \'part.jess\';\n.e { k: @w; }']);
+    expect((await render('entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+
+  it('a .less variable read from a .jess file keeps the .less default', async () => {
+    write(['part.less', '@w: 1px + 1em;'], ['entry.jess', '@-import \'./part.less\';\n.j { k: $w; }']);
+    expect(await render('entry.jess')).toEqual({
+      css: '.j { k: calc(1px + 1em); }',
+      warnings: ['eval/unexpressible-unit'],
+      errors: []
+    });
+  });
+
+  it('a variable keeps its own folder\'s settings wherever it is read', async () => {
+    write(LOOSE_SUB, ['sub/vars.less', '@x: 1px + 1em;'], ['entry.less', '@import \'sub/vars.less\';\n.e { k: @x; }']);
+    expect((await render('entry.less')).css).toBe('.e { k: 2px; }');
+    write(
+      ['entry.less', '@w: 1px + 1em;\n@import \'sub/part.less\';'],
+      ['sub/part.less', '.p { k: @w; }']
+    );
+    expect((await render('entry.less')).css).toBe('.p { k: calc(1px + 1em); }');
+  });
+
+  it('a mixin written in the entry keeps the entry\'s settings when another folder calls it', async () => {
+    write(
+      LOOSE_SUB,
+      ['entry.less', '.m() { k: 1px + 1em; }\n@import \'sub/part.less\';'],
+      ['sub/part.less', '.p { .m(); }']
+    );
+    expect((await render('entry.less')).css).toBe('.p { k: calc(1px + 1em); }');
+  });
+
+  it('a mixin written in a folder with its own config keeps it when another folder calls it', async () => {
+    write(
+      ['app/styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['app/entry.less', '.m() { k: 1px + 1em; }\n@import \'../shared/part.less\';'],
+      ['shared/part.less', '.p { .m(); }']
+    );
+    expect((await render('app/entry.less')).css).toBe('.p { k: 2px; }');
+  });
+
+  it('a namespaced or nested mixin keeps the settings of the file that defines it', async () => {
+    write(
+      LOOSE_SUB,
+      ['sub/part.less', '#ns { .m() { k: 1px + 1em; } }\n.wrap { .n() { k: 1px + 1em; } }'],
+      ['entry.less', '@import \'sub/part.less\';\n.e { #ns.m(); }\n.f { .wrap > .n(); }']
+    );
+    expect((await render('entry.less')).css).toBe('.e { k: 2px; } .f { k: 2px; }');
+  });
+
+  it('a namespace member, a mixin result and a detached ruleset keep the settings of their file', async () => {
+    write(
+      LOOSE_SUB,
+      ['sub/part.less', '#ns { @x: 1px + 1em; }\n.m() { @r: 1px + 1em; }\n@d: { k: 1px + 1em; }\n@map: { k: 1px + 1em; }\n'],
+      ['entry.less', '@import \'sub/part.less\';\n.e { k: #ns[@x]; }\n.f { k: .m()[@r]; }\n.g { @d(); }\n.h { k: @map[k]; }']
+    );
+    expect((await render('entry.less')).css).toBe('.e { k: 2px; } .f { k: 2px; } .g { k: 2px; } .h { k: 2px; }');
+  });
+
+  it('a guard keeps the settings of the file that defines it', async () => {
+    write(
+      ['sub/styles.config.cjs', 'module.exports = { compile: { unitMode: \'strict\' } };\n'],
+      ['sub/part.less', '.g(@a) when (@a > 1em) { k: big; }\n.g(@a) when (default()) { k: small; }'],
+      ['entry.less', '@import \'sub/part.less\';\n.e { .g(1px); }']
+    );
+    expect((await render('entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+
+  it('a .less file imported by a .jess file keeps the Less built-in functions', async () => {
+    write(['part.less', '.l { a: percentage(0.5); }'], ['entry.jess', '@-import \'./part.less\';']);
+    expect((await render('entry.jess')).css).toBe('.l { a: 50%; }');
+  });
+
+  it('a .jess file imported by a .less file has no Less built-in functions', async () => {
+    write(['part.jess', '.j { a: percentage(0.5); }'], ['entry.less', '@import \'part.jess\';']);
+    expect((await render('entry.less')).css).toBe('.j { a: percentage(0.5); }');
+  });
+});
+
+describe('the settings a Less plugin is built with', () => {
+  beforeEach(() => {
+    write(['entry.less', '.e { k: 1px + 1em; }']);
+  });
+
+  it('apply to the Less files', async () => {
+    expect((await render('entry.less', { compile: { plugins: [lessPlugin({ unitMode: 'loose' })] } })).css)
+      .toBe('.e { k: 2px; }');
+    expect((await render('entry.less', { compile: { plugins: [lessPlugin({ unitMode: 'strict' })] } })).errors)
+      .toEqual(['eval/invalid-unit-arithmetic']);
+  });
+
+  it('lose to a language setting', async () => {
+    expect((await render('entry.less', {
+      compile: { plugins: [lessPlugin({ unitMode: 'strict' })] },
+      language: { less: { unitMode: 'loose' } }
+    })).css).toBe('.e { k: 2px; }');
+  });
+});
+
+describe('a deprecated spelling keeps the place of the setting it is written in', () => {
+  beforeEach(() => {
+    write(['entry.less', '@import \'sub/part.less\';'], ['sub/part.less', '.p { k: 1px + 1em; }']);
+  });
+
+  it('an explicit language.less strictUnits wins over a folder\'s compile unitMode', async () => {
+    write(['sub/styles.config.cjs', 'module.exports = { compile: { unitMode: \'loose\' } };\n']);
+    expect((await render('entry.less', { language: { less: { strictUnits: true } } })).errors)
+      .toEqual(['eval/invalid-unit-arithmetic']);
+  });
+
+  it('a language.less strictUnits wins over the compile unitMode of the same config', async () => {
+    write(['sub/styles.config.cjs', 'module.exports = { compile: { unitMode: \'loose\' }, language: { less: { strictUnits: true } } };\n']);
+    expect((await render('entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+
+  it('an explicit language.less math wins over a folder\'s compile mathMode', async () => {
+    write(
+      ['sub/styles.config.cjs', 'module.exports = { compile: { mathMode: \'parens\' } };\n'],
+      ['sub/part.less', '.p { k: 4px / 2; }']
+    );
+    expect((await render('entry.less', { language: { less: { math: 'always' } } })).css).toBe('.p { k: 2px; }');
+  });
+});
+
+describe('a folder\'s config is read like the entry\'s', () => {
+  beforeEach(() => {
+    write(['entry.less', '@import \'sub/part.less\';'], ['sub/part.less', '.p { k: 1px + 1em; }']);
+  });
+
+  it('a deprecated spelling there warns', async () => {
+    write(['sub/styles.config.cjs', 'module.exports = { language: { less: { strictUnits: true } } };\n']);
+    const result = await renderLogged('entry.less');
+    expect(result.errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect(result.logged).toEqual(['strictUnits is deprecated; use unitMode. strictUnits: true now means unitMode: \'strict\'']);
+  });
+
+  it('an invalid value there names that config file', async () => {
+    write(['sub/styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'bogus\' } } };\n']);
+    const result = await new Compiler({ quiet: true }).renderToResult(path.join(dir, 'entry.less'), { quiet: true });
+    expect(result.errors.map(e => [e.code, e.filePath])).toEqual([
+      ['plugin/invalid-option', path.join(dir, 'sub/styles.config.cjs')]
+    ]);
+  });
+});
+
+describe('a language setting other than a mode applies only to its own files', () => {
+  it('the entry\'s language.less allowExtendSelectors does not reach an imported .jess file', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { allowExtendSelectors: [] } } };\n'],
+      ['part.jess', '.target { a: b; } .source { $extend .target; }'],
+      ['entry.less', '@import \'part.jess\';']
+    );
+    expect((await render('entry.less')).css).toBe('.target, .source { a: b; }');
+  });
+});
+
+describe('the strict preset', () => {
+  it('fills only what an explicit setting leaves unset, a language setting included', async () => {
+    write(['entry.less', '.e { k: 1px + 1em; }']);
+    expect((await render('entry.less', { compile: { strict: true }, language: { less: { unitMode: 'loose' } } })).css)
+      .toBe('.e { k: 2px; }');
   });
 });

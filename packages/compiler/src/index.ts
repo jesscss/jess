@@ -23,11 +23,13 @@ import {
   removeSourceMapBasepath,
   type PreparedImports,
   type PluginInterface,
-  type Position
+  type Position,
+  type SourceSettings
 } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
+  layerOptions,
   applyStrictPreset,
   inferLanguage,
   type StylesConfig,
@@ -313,7 +315,7 @@ type ResolvedRenderConfig = {
   explicitModes: NonNullable<StylesConfig['compile']>;
 
   /** The settings covering one source file; see `ContextOptions.sourceOptions`. */
-  sourceOptions(filePath: string, language: string): Record<string, unknown>;
+  sourceOptions(filePath: string, language: string): SourceSettings;
 };
 
 const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
@@ -662,26 +664,32 @@ export class Compiler {
     }
 
     /*
-     * Compile settings resolve per source file (DESIGN-DECISIONS C19). Those
-     * passed to the compiler or the render are global: they are the Context's
-     * own mode options and win everywhere. A folder's `styles.config` and the
-     * `language.<lang>` settings reach only the files they cover, through
-     * `sourceOptions`, which the Context asks for once per parsed file; the
-     * explicit `language.<lang>` settings win over the file's config (O13).
+     * Compile settings resolve per source file (DESIGN-DECISIONS C19). The
+     * compile modes passed to the compiler or the render are global: they are
+     * the Context's own mode options and win everywhere. A folder's
+     * `styles.config` and the `language.<lang>` settings reach only the files
+     * they cover, through `sourceOptions`, which the Context asks for once per
+     * parsed file; the explicit settings win over the file's config (O13). The
+     * `strict` preset is not itself a mode: it fills the modes a file's settings
+     * leave unset, so an explicit language setting still wins over it.
      */
-    const explicitModes = applyStrictPreset(explicitConfig.compile ?? {});
-    const sourceOptions = (sourcePath: string, sourceLanguage: string): Record<string, unknown> => {
-      const folderConfig = sourcePath === filePath
-        ? loadedFileConfig
-        : path.isAbsolute(sourcePath) ? getConfigWithMeta(path.dirname(sourcePath)).config : {};
+    const explicitModes = explicitConfig.compile ?? {};
+    const sourceOptions = (sourcePath: string, sourceLanguage: string): SourceSettings => {
+      /*
+       * A config file is code: one in an installed package's folder is not
+       * loaded, so compiling a project never runs a dependency's config.
+       */
+      const folder = sourcePath === filePath
+        ? { config: loadedFileConfig, configFilePath }
+        : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
+          ? getConfigWithMeta(path.dirname(sourcePath))
+          : { config: {}, configFilePath: undefined };
       const params = { language: sourceLanguage, input: sourcePath };
-      const settings = getOptions(folderConfig, params);
-      for (const [key, value] of Object.entries(getOptions(explicitConfig, params))) {
-        if (value !== undefined) {
-          settings[key] = value;
-        }
-      }
-      return settings;
+      const folderOptions = getOptions(folder.config, params);
+      return {
+        options: layerOptions(folderOptions, getOptions(explicitConfig, params)),
+        configFile: folder.configFilePath === undefined ? undefined : { path: folder.configFilePath, options: folderOptions }
+      };
     };
     const jsPluginConfig: JsPluginConfig = {
       jsReadRoot: resolveJsReadRoot(filePath, configFilePath, effectiveConfig.compile?.jsReadRoot)
@@ -1072,7 +1080,10 @@ export class Compiler {
       /*
        * The Context's mode options are the global tier alone; the entry's config
        * file and language settings reach the entry like any other file, through
-       * `sourceOptions`, so they never leak into the files it imports.
+       * `sourceOptions`, so its modes never reach the files it imports. A parser
+       * reads its other per-file settings (the selector policies) from
+       * `sourceOptions` too, so the entry's copies spread above are never read
+       * for another file.
        */
       mathMode: explicit.mathMode,
       unitMode: explicit.unitMode,

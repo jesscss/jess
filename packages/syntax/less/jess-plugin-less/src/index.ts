@@ -9,12 +9,13 @@ import {
   type PluginInterface,
   type SafeParseOptions,
   type SourceOptions,
+  type SourceSettings,
   buildEvaluator,
   MATH_MODES,
   MODULE_MODES,
   ProvidedModules,
   UNIT_MODES,
-  logger, type PluginHost } from '@jesscss/core';
+  logger, type PluginHost, type ValueEvaluator } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, ModuleMode, UnitMode, LessOptions } from 'styles-config';
@@ -69,7 +70,10 @@ function formatOptionValue(value: unknown): string {
  * value the styles.config file sets is reported against that file; a value
  * passed in code has no file to name.
  */
-function checkModeOptions(opts: object, context?: LessPluginResolverContext): void {
+function checkModeOptions(
+  opts: object,
+  context?: Pick<LessPluginResolverContext, 'configFilePath' | 'configFileOptionsFor'>
+): void {
   for (const [option, values] of Object.entries(MODE_OPTION_VALUES)) {
     const allowed: readonly unknown[] = values;
     const value: unknown = Reflect.get(opts, option);
@@ -244,13 +248,17 @@ export class LessPluginResolver {
   /**
    * The Less plugin for these options. `context`, when the options were
    * resolved for a render, lets an invalid value name the config file it came from.
+   * `ownOptions` are the options the user built the plugin with, which the
+   * settings scoped to each source override ({@link LessPlugin}).
    */
   getOrCreate(
     lessOptions: Record<string, unknown>,
     nativePlugins: readonly unknown[] = [],
-    context?: LessPluginResolverContext
+    context?: LessPluginResolverContext,
+    ownOptions: Record<string, unknown> = {}
   ): PluginInterface {
-    const key = this.getCacheKey(lessOptions, nativePlugins);
+    const ownKey = this.getCacheKey(ownOptions);
+    const key = `${this.getCacheKey(lessOptions, nativePlugins)}|own:${ownKey}`;
     let plugin = this.pluginInstanceCache.get(key);
     if (!plugin) {
       checkModeOptions(lessOptions, context);
@@ -258,7 +266,8 @@ export class LessPluginResolver {
         ...lessOptions,
         ...(nativePlugins.length === 0 ? {} : { plugins: nativePlugins })
       };
-      plugin = lessPlugin(pluginOptions);
+      const own: LessPluginOptions = { ...ownOptions };
+      plugin = new LessPlugin(pluginOptions, own);
       this.pluginInstanceCache.set(key, plugin);
     }
     return plugin;
@@ -281,7 +290,7 @@ export class LessPluginResolver {
     return this.getOrCreate({
       ...pluginOptions,
       ...resolvedLessOptions
-    }, nativePlugins, context);
+    }, nativePlugins, context, pluginOptions);
   }
 
   dispose(): void {
@@ -371,20 +380,30 @@ function escapeUnquotedUrlPath(pathValue: string): string {
   return escaped;
 }
 
-/** A Less source's policy: the modes its settings name, deprecated spellings included, over the Less defaults. */
+/** A Less source's policy: the modes its settings name over the Less defaults. */
 type LessPolicy = {
   readonly dialectDefaults: LessDialectDefaults;
   readonly moduleMode: ModuleMode;
 };
 
+/** The modes one tier of Less settings sets, by their canonical names. */
+type LessModeSettings = Partial<LessDialectDefaults> & { moduleMode?: ModuleMode };
+
+/** The Less settings that name a mode, deprecated spellings included. */
+type LessModeInput = Pick<
+  LessPluginOptions,
+  'mathMode' | 'math' | 'strictMath' | 'unitMode' | 'strictUnits' | 'allowLeakyScope' | 'leakyScope'
+  | 'allowCallerScope' | 'bubbleRootAtRules' | 'processImports' | 'moduleMode'
+>;
+
 /**
- * Read the Less mode settings. `warn` reports each deprecated spelling: the
- * plugin's own options warn once when it is built, while settings scoped to one
- * source are read for every file, where the warning would repeat.
+ * The modes `opts` sets, each deprecated spelling read as the mode it names
+ * within this one tier of settings, so a spelling keeps the precedence of the
+ * tier it is written in. `warn` reports each deprecated spelling.
  */
-function lessPolicy(opts: LessPluginOptions, warn: boolean): LessPolicy {
+function lessModeSettings(opts: LessModeInput, warn: (message: string) => void): LessModeSettings {
   // Handle deprecated math option -> mathMode conversion
-  let mathMode: MathMode;
+  let mathMode: MathMode | undefined;
   if (opts.mathMode !== undefined) {
     mathMode = opts.mathMode;
   } else if (opts.math !== undefined) {
@@ -399,22 +418,16 @@ function lessPolicy(opts: LessPluginOptions, warn: boolean): LessPolicy {
       // 3 or 'strict-legacy' -> 'parens' (deprecated, use 'strict' instead)
       mathMode = 'parens';
     }
-  } else if (opts.strictMath === true) {
-    mathMode = 'parens';
-  } else {
-    mathMode = lessPluginDefaults.mathMode;
-  }
+  } else if (opts.strictMath !== undefined) {
+    mathMode = opts.strictMath ? 'parens' : lessPluginDefaults.mathMode;
 
-  /*
-   * `strictMath` is the Less 4.x boolean alias of `math` (orchestrator judgment
-   * under owner delegation, 2026-10-05), on the `strictUnits` pattern: `true`
-   * is 'parens', `false` the default, and an explicit `mathMode` or `math`
-   * wins. Any use warns.
-   */
-  if (warn && opts.strictMath !== undefined && opts.mathMode === undefined && opts.math === undefined) {
-    logger.warn(
-      `strictMath is deprecated; use mathMode. strictMath: ${String(opts.strictMath)} now means mathMode: '${mathMode}'`
-    );
+    /*
+     * `strictMath` is the Less 4.x boolean alias of `math` (orchestrator judgment
+     * under owner delegation, 2026-10-05), on the `strictUnits` pattern: `true`
+     * is 'parens', `false` the default, and an explicit `mathMode` or `math`
+     * wins. Any use warns.
+     */
+    warn(`strictMath is deprecated; use mathMode. strictMath: ${String(opts.strictMath)} now means mathMode: '${mathMode}'`);
   }
 
   /*
@@ -424,55 +437,90 @@ function lessPolicy(opts: LessPluginOptions, warn: boolean): LessPolicy {
    * selected by an explicit `unitMode: 'loose'`. Any use warns so the mapping
    * is never discovered by staring at output.
    */
-  let unitMode: UnitMode;
-  if (opts.unitMode !== undefined) {
-    unitMode = opts.unitMode;
-  } else if (opts.strictUnits === true) {
-    unitMode = 'strict';
-  } else {
-    unitMode = lessPluginDefaults.unitMode;
-  }
-  if (warn && opts.strictUnits !== undefined && opts.unitMode === undefined) {
-    logger.warn(
+  let unitMode = opts.unitMode;
+  if (unitMode === undefined && opts.strictUnits !== undefined) {
+    unitMode = opts.strictUnits ? 'strict' : lessPluginDefaults.unitMode;
+    warn(
       `strictUnits is deprecated; use unitMode. strictUnits: ${String(opts.strictUnits)} now means `
       + `unitMode: '${unitMode}'${opts.strictUnits ? '' : ' (Less 4.x unit folding is unitMode: \'loose\')'}`
     );
   }
   return {
+    mathMode,
+    unitMode,
+    allowLeakyScope: opts.allowLeakyScope ?? opts.leakyScope,
+    allowCallerScope: opts.allowCallerScope,
+    bubbleRootAtRules: opts.bubbleRootAtRules,
+    processImports: opts.processImports,
+    moduleMode: opts.moduleMode
+  };
+}
+
+/** The policy `source`'s settings over `own` over the Less defaults ({@link LessPlugin}). */
+function lessPolicy(own: LessModeSettings, source: LessModeSettings = {}): LessPolicy {
+  return {
     dialectDefaults: Object.freeze({
-      mathMode,
-      unitMode,
-      allowLeakyScope: opts.allowLeakyScope ?? opts.leakyScope ?? lessPluginDefaults.allowLeakyScope,
-      allowCallerScope: opts.allowCallerScope ?? lessPluginDefaults.allowCallerScope,
-      bubbleRootAtRules: opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules,
-      processImports: opts.processImports ?? lessPluginDefaults.processImports
+      mathMode: source.mathMode ?? own.mathMode ?? lessPluginDefaults.mathMode,
+      unitMode: source.unitMode ?? own.unitMode ?? lessPluginDefaults.unitMode,
+      allowLeakyScope: source.allowLeakyScope ?? own.allowLeakyScope ?? lessPluginDefaults.allowLeakyScope,
+      allowCallerScope: source.allowCallerScope ?? own.allowCallerScope ?? lessPluginDefaults.allowCallerScope,
+      bubbleRootAtRules: source.bubbleRootAtRules ?? own.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules,
+      processImports: source.processImports ?? own.processImports ?? lessPluginDefaults.processImports
     }),
-    moduleMode: opts.moduleMode ?? lessPluginDefaults.moduleMode
+    moduleMode: source.moduleMode ?? own.moduleMode ?? lessPluginDefaults.moduleMode
   };
 }
 
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
+  readonly valueEvaluator: ValueEvaluator = lessValueEvaluator;
   readonly #policy: LessPolicy;
+
+  /** The modes this plugin was built with, under the settings a host scopes to each source. */
+  readonly #own: LessModeSettings;
+  readonly #warned = new Set<string>();
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
-  constructor(public opts: LessPluginOptions = {}) {
+  /**
+   * `own` is the options a user built the plugin with, when `opts` also carries
+   * settings a host resolved for the entry ({@link LessPluginResolver}): under a
+   * host that scopes settings to each source, those reach every file through
+   * its own settings instead.
+   */
+  constructor(public opts: LessPluginOptions = {}, own: LessPluginOptions = opts) {
     super();
     checkModeOptions(opts);
-    this.#policy = lessPolicy(opts, true);
+    const warn = (message: string): void => this.#warn(message);
+    this.#policy = lessPolicy(lessModeSettings(opts, warn));
+    if (own !== opts) {
+      checkModeOptions(own);
+    }
+    this.#own = lessModeSettings(own, warn);
+  }
+
+  /** Each deprecated spelling warns once, however many files are read with it. */
+  #warn(message: string): void {
+    if (!this.#warned.has(message)) {
+      this.#warned.add(message);
+      logger.warn(message);
+    }
   }
 
   /**
-   * The policy for one source. Settings the host scopes to that file are its
-   * Less settings, in place of this plugin's own options (DESIGN-DECISIONS C19).
+   * The policy for one source (DESIGN-DECISIONS C19): the settings the host
+   * scopes to that file over the options this plugin was built with. A value
+   * its `styles.config` set wrong names that file.
    */
-  #policyFor(settings: SourceOptions | undefined): LessPolicy {
+  #policyFor(settings: SourceOptions | undefined, configFile: SourceSettings['configFile']): LessPolicy {
     if (settings === undefined) {
       return this.#policy;
     }
-    checkModeOptions(settings);
-    return lessPolicy({ ...settings }, false);
+    checkModeOptions(settings, configFile && {
+      configFilePath: configFile.path,
+      configFileOptionsFor: () => configFile.options
+    });
+    return lessPolicy(this.#own, lessModeSettings(settings, message => this.#warn(message)));
   }
 
   transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
@@ -529,8 +577,6 @@ export class LessPlugin extends AbstractPlugin {
     if (context.documentContext?.plugin !== this) {
       return;
     }
-
-    context.registerValueEvaluator(lessValueEvaluator);
 
     let host = this.pluginHosts.get(context);
     if (!host) {
@@ -665,7 +711,7 @@ export class LessPlugin extends AbstractPlugin {
    * (ledger P36).
    */
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    const policy = this.#policyFor(parseOptions?.sourceOptions);
+    const policy = this.#policyFor(parseOptions?.sourceOptions, parseOptions?.sourceConfigFile);
     const result = safeParseLess(filePath, source, {
       mathMode: parseOptions?.compilerOptions?.mathMode ?? policy.dialectDefaults.mathMode,
       moduleMode: policy.moduleMode

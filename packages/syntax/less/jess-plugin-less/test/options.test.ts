@@ -127,13 +127,19 @@ describe('Less plugin source settings', () => {
   const parse = (sourceOptions?: Record<string, unknown>) =>
     plugin.safeParse!('entry.less', '.entry {}', sourceOptions === undefined ? undefined : { sourceOptions }).dialectDefaults;
 
-  it('reads the settings that cover a source in place of its own options', () => {
+  it('reads the settings that cover a source over its own options', () => {
     expect(parse()).toMatchObject({ unitMode: 'loose', mathMode: 'always' });
-    expect(parse({})).toMatchObject({ unitMode: 'preserve', mathMode: 'parens-division' });
+    expect(parse({})).toMatchObject({ unitMode: 'loose', mathMode: 'always' });
     expect(parse({ unitMode: 'strict', math: 'parens' })).toMatchObject({ unitMode: 'strict', mathMode: 'parens' });
   });
 
-  it('reads the deprecated spellings without repeating their warning for every file', () => {
+  it('reads a deprecated spelling as the mode it names in its own settings, over the plugin\'s', () => {
+    const own = lessPlugin({ unitMode: 'strict', mathMode: 'always' });
+    expect(own.safeParse!('entry.less', '.entry {}', { sourceOptions: { strictUnits: false, math: 'parens' } }).dialectDefaults)
+      .toMatchObject({ unitMode: 'preserve', mathMode: 'parens' });
+  });
+
+  it('warns about a deprecated spelling once, however many files are read with it', () => {
     const warn = logger.warn;
     const warned: string[] = [];
     logger.warn = (...args: unknown[]) => {
@@ -141,10 +147,20 @@ describe('Less plugin source settings', () => {
     };
     try {
       expect(parse({ strictUnits: true, strictMath: true })).toMatchObject({ unitMode: 'strict', mathMode: 'parens' });
+      expect(parse({ strictUnits: true, strictMath: true })).toMatchObject({ unitMode: 'strict', mathMode: 'parens' });
     } finally {
       logger.warn = warn;
     }
-    expect(warned).toEqual([]);
+    expect(warned).toEqual([
+      'strictMath is deprecated; use mathMode. strictMath: true now means mathMode: \'parens\'',
+      'strictUnits is deprecated; use unitMode. strictUnits: true now means unitMode: \'strict\''
+    ]);
+  });
+
+  it('names the config file that set an invalid value', () => {
+    const configFile = { path: '/project/sub/styles.config.cjs', options: { unitMode: 'stict' } };
+    expect(() => plugin.safeParse!('entry.less', '.entry {}', { sourceOptions: { unitMode: 'stict' }, sourceConfigFile: configFile }))
+      .toThrow(expect.objectContaining({ code: 'plugin/invalid-option', filePath: configFile.path }));
   });
 
   it('rejects an unknown mode value', () => {

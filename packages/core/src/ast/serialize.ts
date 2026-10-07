@@ -181,7 +181,7 @@ import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBoo
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -1053,6 +1053,33 @@ function sourceOwnerForBody(rules: object, frame: Frame, e: EvalCtx): object | n
   return e.context?.sourceOwnerForBody?.(rules) ?? frame.sourceOwner ?? null;
 }
 
+/**
+ * The document a definition is written in, for a body that runs later, from
+ * wherever it is called: the document that recorded it (a root definition),
+ * else the one whose scope `home` (the frame it was found in) belongs to. Its
+ * math then answers its own document's policy (DESIGN-DECISIONS C19), whichever
+ * document calls it.
+ */
+function definitionOwner(rules: object, home: Frame, e: EvalCtx): object | null {
+  return e.context?.bodyOwner(rules) ?? frameOwner(home, e);
+}
+
+/**
+ * The document a frame's scope belongs to: the nearest frame up the chain whose
+ * body a document recorded, or that recorded its owner when it was built; else
+ * the active document.
+ */
+function frameOwner(home: Frame, e: EvalCtx): object | null {
+  const context = e.context;
+  for (let f: Frame | null = home; f; f = f.parent) {
+    const owner = f.statements ? context?.bodyOwner(f.statements) ?? f.sourceOwner : f.sourceOwner;
+    if (owner) {
+      return owner;
+    }
+  }
+  return context?.currentSourceOwner() ?? null;
+}
+
 function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T): T;
 function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => Promise<T>): Promise<T>;
 function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T>;
@@ -1072,8 +1099,7 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
   if (!(owner instanceof DocumentContext)) {
     return context.withSourceOwner(owner, run);
   }
-  const policy = owner.options;
-  const scoped = e.policy === undefined || policy === e.policy ? run : () => withPolicy(e, policy, run);
+  const scoped = changesPolicy(e, owner) ? () => withPolicy(e, owner, run) : run;
   const trivia = documentTriviaOf(owner);
   if (trivia === e.trivia) {
     return context.withSourceOwner(owner, scoped);
@@ -1094,23 +1120,34 @@ function modesOf(policy: Readonly<ResolvedOptions>, compress: boolean): EvalMode
 }
 
 /**
- * Evaluate `run` under one document's policy (DESIGN-DECISIONS C19): math
- * written in a file answers that file's own settings, so `modes` and
- * `allowCallerScope` follow the source owner into an imported document, a mixin
- * body or a callback written in another file. Documents that resolve to the same
- * values share one policy object, so a single-policy render never gets here.
+ * Whether entering `owner` changes how `e` evaluates: its policy or its
+ * evaluator (its own plugin's, when it has one) differs. Documents that resolve
+ * to the same values share one policy object, so this is two pointer compares,
+ * false in a single-policy render.
  */
-function withPolicy<T>(e: EvalCtx, policy: Readonly<ResolvedOptions>, run: () => MaybePromise<T>): MaybePromise<T> {
+function changesPolicy(e: EvalCtx, owner: DocumentContext): boolean {
+  return e.policy !== undefined && (owner.options !== e.policy || (owner.plugin?.valueEvaluator ?? e.ev) !== e.ev);
+}
+
+/**
+ * Evaluate `run` under one document's policy (DESIGN-DECISIONS C19): math
+ * written in a file answers that file's own settings and calls its language's
+ * functions, so `modes`, `allowCallerScope` and the evaluator follow the
+ * source owner into an imported document, a definition written in another
+ * file, or a variable's value.
+ */
+function withPolicy<T>(e: EvalCtx, owner: DocumentContext, run: () => T): T;
+function withPolicy<T>(e: EvalCtx, owner: DocumentContext, run: () => T | Promise<T>): T | Promise<T> {
   const previous = e.policy;
   const modes = e.modes;
   const allowCallerScope = e.allowCallerScope;
-  e.policy = policy;
-  e.modes = modesOf(policy, modes.compress === true);
-  e.allowCallerScope = policy.allowCallerScope;
+  const ev = e.ev;
+  enterPolicy(e, owner);
   const restore = (): void => {
     e.policy = previous;
     e.modes = modes;
     e.allowCallerScope = allowCallerScope;
+    e.ev = ev;
   };
   try {
     const result = run();
@@ -1125,6 +1162,15 @@ function withPolicy<T>(e: EvalCtx, policy: Readonly<ResolvedOptions>, run: () =>
   }
 }
 
+/** Point `e` at `owner`'s policy and evaluator ({@link withPolicy}). */
+function enterPolicy(e: EvalCtx, owner: DocumentContext): void {
+  const policy = owner.options;
+  e.ev = owner.plugin?.valueEvaluator ?? e.ev;
+  e.policy = policy;
+  e.modes = modesOf(policy, e.modes.compress === true);
+  e.allowCallerScope = policy.allowCallerScope;
+}
+
 /** Enter a loaded document through its driver scope, `e`'s policy following the Context into it. */
 function inDocument(
   e: EvalCtx,
@@ -1135,8 +1181,8 @@ function inDocument(
     return emit();
   }
   return within(() => {
-    const policy = e.context?.options;
-    return policy === undefined || e.policy === undefined || policy === e.policy ? emit() : withPolicy(e, policy, emit);
+    const owner = e.context?.documentContext;
+    return owner instanceof DocumentContext && changesPolicy(e, owner) ? withPolicy(e, owner, emit) : emit();
   });
 }
 
@@ -2448,27 +2494,6 @@ function publishImportedRuleMixins(frame: Frame, index: OrderedMixinIndex | null
   for (const candidates of index.byName.values()) {
     for (const candidate of candidates) {
       publishImportedMixinDefinition(frame, candidate.definition, false, rank);
-    }
-  }
-}
-
-/**
- * Imported callables execute later in their importer frame, but any nested
- * import in their shared body remains relative to the source document that
- * authored it. Record that source scope on Context's session-owned provenance
- * table; AST facts stay plain and no render-local ownership map is needed.
- */
-function rememberImportedCallableBodies(
-  document: Stylesheet,
-  rules: readonly Statement[],
-  context: Context | undefined
-): void {
-  if (!context) {
-    return;
-  }
-  for (const child of rules) {
-    if (child.type === 'MixinDefinition' || child.type === 'Ruleset') {
-      context.rememberDocumentBody(document, child.rules);
     }
   }
 }
@@ -3842,10 +3867,22 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: EvalCtx): bool
 function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
   e.excluded.add(node);
   try {
-    return whileReached(e, run);
+    /* A root variable's value is looked up only once the session's documents differ. */
+    return whileReachedFrom(e, e.context?.mixedPolicies === true ? e.context.bodyOwner(node) : undefined, run);
   } finally {
     e.excluded.delete(node);
   }
+}
+
+/**
+ * {@link whileReached}, under the policy of the document that wrote the value
+ * (`owner`) when it differs: a value a reference reaches answers the settings
+ * of the file it is written in, wherever it is read (DESIGN-DECISIONS C19).
+ */
+function whileReachedFrom<T>(e: EvalCtx, owner: object | null | undefined, run: () => T): T {
+  return e.context?.mixedPolicies === true && owner instanceof DocumentContext && changesPolicy(e, owner)
+    ? withPolicy(e, owner, () => whileReached(e, run))
+    : whileReached(e, run);
 }
 
 /**
@@ -4595,12 +4632,15 @@ function validateValueGroupUnits(
    * `strict` throws on. An operation the author WROTE inside a math function
    * never reaches here as an unexpressible value: it is kept as written because
    * they asked for it (§4.6), not because we declined to fabricate a unit.
+   * Under `strict` the only such value is an operation another document's
+   * `preserve` kept (a variable it declared; DESIGN-DECISIONS C19), which warns
+   * as it does there.
    */
-  if (modes.unitMode !== 'strict') {
-    const unexpressible = findFinalValue(value, isUnexpressible);
-    if (unexpressible !== undefined) {
-      warnUnexpressibleUnit(unexpressible, owner, e);
-    }
+  const unexpressible = modes.unitMode !== 'strict'
+    ? findFinalValue(value, isUnexpressible)
+    : e.context?.mixedPolicies === true ? findFinalValue(value, isKeptOperation) : undefined;
+  if (unexpressible !== undefined) {
+    warnUnexpressibleUnit(unexpressible, owner, e);
   }
 }
 
@@ -4637,7 +4677,7 @@ const warnedUnitValues = new WeakSet<Value>();
  * that can say so.
  */
 function warnConsumedKept(operands: ValueGroup, passedOn: EvalValue | undefined, owner: object, e: EvalCtx): void {
-  if (e.modes.unitMode === 'strict'
+  if ((e.modes.unitMode === 'strict' && e.context?.mixedPolicies !== true)
     || (passedOn !== undefined && !isLiteral(passedOn) && findFinalValue(passedOn, isKeptOperation) !== undefined)) {
     return;
   }
@@ -4827,7 +4867,7 @@ function evalTyped(
       return isMixinCallValue(member)
         ? force(literal(node.raw))
         : resolved.evaluated
-          ?? whileReached(e, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
+          ?? whileReachedFrom(e, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
     }
     case 'Block':
       /*
@@ -6714,7 +6754,7 @@ function invokeValueLambda(
     cells: cellsForParams(bindings),
     reassign: null,
     statements: lambda.rules,
-    sourceOwner: defFrame ? sourceOwnerForBody(lambda.rules, defFrame, e) : null,
+    sourceOwner: defFrame ? definitionOwner(lambda.rules, defFrame, e) : null,
     ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame, callerFallback: true } : {})
   };
   return { value: result, frame: activation };
@@ -6919,6 +6959,7 @@ function resolveReferenceResult(
     if (!map) {
       return null;
     }
+    const calleeMember = value.type === 'MixinCall';
 
     /*
      * Ledger A8: `.name(args)` on a `@compose` namespace in STATEMENT position is
@@ -7109,6 +7150,11 @@ function resolveReferenceResult(
     value = matched.value;
     valueFrame = matched.frame;
     evaluated = matched.evaluated;
+
+    /* A mixin call's member is written in the file that defines the mixin. */
+    if (calleeMember && valueFrame) {
+      sourceOwner = frameOwner(valueFrame, e);
+    }
   }
   return { value, frame: valueFrame, evaluated, sourceOwner };
 }
@@ -7240,7 +7286,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   const member = resolved.value;
   return isMixinCallValue(member)
     ? literal(node.raw)
-    : resolved.evaluated ?? whileReached(e, () => evalValueSlot(member, resolved.frame, e));
+    : resolved.evaluated ?? whileReachedFrom(e, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e));
 }
 
 /**
@@ -13179,7 +13225,6 @@ function planImportedFacts(
           seen.set(loaded.key, true);
         }
       }
-      rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
       /*
        * [import-fold] Where this `@import` sits in each frame it publishes into —
@@ -17103,7 +17148,7 @@ function expandCall(
             mixins: collectMixins(def.rules),
             declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings, undefined, frame), reassign: null,
             statements: def.rules,
-            sourceOwner: sourceOwnerForBody(def.rules, frame, e),
+            sourceOwner: definitionOwner(def.rules, homeFrame, e),
             mixinUrlBindings: undefined,
             mixinValueBindings: undefined,
             mixinSplice: true,
@@ -17340,7 +17385,7 @@ function expandApply(
         mixins: collectMixins(rule.rules),
         declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
         statements: rule.rules,
-        sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
+        sourceOwner: definitionOwner(rule.rules, home, e),
 
         /*
          * [extend/dynamic] Like a ruleset called as a mixin, an applied body splices the
@@ -18594,13 +18639,15 @@ function dispatch(
    * [closure] a guard resolves free variables in the mixin's DEFINITION scope, with
    * the params overlaid and the call site as a fallback — the same frame layering
    * `expandCall` builds for the body. Absent a home (detached call)
-   * it falls back to the caller frame (`parent: frame`).
+   * it falls back to the caller frame (`parent: frame`). It is evaluated under the
+   * policy of the document the definition is written in, as its body is
+   * (DESIGN-DECISIONS C19).
    */
-  const makeCalleeTyped = (
+  const guardDeps = (
     def: MixinDefinition,
     bindings: Map<string, CallValue> | null,
     isDefault: () => boolean
-  ): TypedResolver => {
+  ): GuardEvalDeps => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
       ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame, callerFallback: true }
@@ -18612,14 +18659,19 @@ function dispatch(
      * operands resolve SYNC (`makeTypedResolver` throws on async), so the spread ctx
      * never drives the async Emit machinery.
      */
-    return makeTypedResolver(overlay, { ...e, defaultFn: isDefault });
+    const guardCtx: EvalCtx = { ...e, defaultFn: isDefault };
+    const owner = e.context?.mixedPolicies === true ? definitionOwner(def.rules, home ?? frame, e) : null;
+    if (owner instanceof DocumentContext && changesPolicy(guardCtx, owner)) {
+      enterPolicy(guardCtx, owner);
+    }
+    return { resolveTyped: makeTypedResolver(overlay, guardCtx), ev: guardCtx.ev, modes: guardCtx.modes, isDefault };
   };
 
   /*
    * A DEFAULT param value resolves with the params bound so far in scope (Less:
    * `@hover-background: darken(@background, …)` reads the `@background` param)
    * overlaid on the mixin's DEFINITION scope, with the call site as a fallback —
-   * the same frame layering `makeCalleeTyped` builds for guards. So a default like
+   * the same frame layering `guardDeps` builds for guards. So a default like
    * `@parameter: @parameterDefault` reads the def-scope `@parameterDefault`, not a
    * same-name variable redeclared in the caller (`scope` fixture #allAreUsedHere).
    */
@@ -18744,9 +18796,7 @@ function dispatch(
         candidates,
         call2,
         resolveCaller,
-        makeCalleeTyped,
-        e.ev,
-        e.modes,
+        guardDeps,
         resolveDefault,
         errorOnNoViable ? () => unresolvedMixinCall(call2, e) : undefined,
         boundSources,
@@ -21066,7 +21116,6 @@ function expandStyleImport(
           if (loaded.document === null) {
             return;
           }
-          rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
           const emitSheet = () => emitLoaded
             ? emitLoaded(loaded.document!, bodyFrame)
             : emitDocumentStatements(loaded.document!.rules, bodyFrame, e, importDocument, true);
@@ -21933,7 +21982,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       const member = resolved.value;
       return resolved.evaluated !== null
         ? typedPreludeParts(resolved.evaluated, e.compress === true)
-        : whileReached(e, () => evalQueryPreludeParts(member, resolved.frame, e));
+        : whileReachedFrom(e, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e));
     }
     default:
       /*
@@ -23189,7 +23238,7 @@ function emitTransparentShells(
         mixins: collectMixins(shell.def.rules),
         declIndex: collectDeclIndex(shell.def.rules, shell.bindings), cells: cellsForParams(shell.bindings, undefined, frame), reassign: null,
         statements: shell.def.rules,
-        sourceOwner: sourceOwnerForBody(shell.def.rules, frame, e),
+        sourceOwner: definitionOwner(shell.def.rules, shell.home, e),
         mixinUrlBindings: undefined,
         mixinValueBindings: undefined
       };

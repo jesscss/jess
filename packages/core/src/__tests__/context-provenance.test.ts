@@ -136,7 +136,7 @@ describe('Context canonical document provenance', () => {
     /* Settings the host scopes to one source sit between the two. */
     received.length = 0;
     const scoped = new Context({
-      sourceOptions: filePath => (filePath.endsWith('/root.test') ? { unitMode: 'preserve' } : undefined)
+      sourceOptions: filePath => (filePath.endsWith('/root.test') ? { options: { unitMode: 'preserve' } } : undefined)
     }, [parser]);
     expect(optionsIn(scoped, await parse(scoped, 'root'))).toMatchObject({ mathMode: 'always', unitMode: 'preserve' });
     expect(optionsIn(scoped, await parse(scoped, 'imported'))).toMatchObject({ mathMode: 'parens', unitMode: 'strict' });

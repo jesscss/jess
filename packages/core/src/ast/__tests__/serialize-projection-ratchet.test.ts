@@ -420,7 +420,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // answers its own resolved settings): `modes` follows the source owner across
     // a document boundary (`withPolicy`, `inDocument`), seeded once per walk
     // (`initialPolicy`), with one `modes` object per policy (`modesOf`, `policyModes`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(579);
+    // +5 (same ruling): the policy, now with the evaluator, also follows a
+    // definition written in another file to wherever it is called, its guard, a
+    // root variable's value and a value a reference reaches (`definitionOwner`,
+    // `frameOwner`, `changesPolicy`, `enterPolicy`, `whileReachedFrom` and one
+    // `withPolicy` overload line), less `rememberImportedCallableBodies`: every
+    // document records its root definitions when it is parsed.
+    expect(occurrences(/^function |^async function /gmu)).toBe(584);
     expect(occurrences(/new Map/gu)).toBe(91);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);

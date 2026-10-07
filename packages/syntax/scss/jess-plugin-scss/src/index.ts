@@ -6,9 +6,9 @@ import {
   type ModuleConfigRequest,
   parserDiagnostic,
   type UnitMode,
-  type Context,
   ProvidedModules,
-  buildEvaluator
+  buildEvaluator,
+  type ValueEvaluator
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
@@ -55,6 +55,7 @@ type ScssDialectDefaults = Required<Pick<
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
+  readonly valueEvaluator: ValueEvaluator = sassValueEvaluator;
   readonly #dialectDefaults: ScssDialectDefaults;
 
   constructor(public opts: ScssPluginOptions = {}) {
@@ -78,13 +79,6 @@ export class ScssPlugin extends AbstractPlugin {
 
   import(absoluteFilePath: string): Promise<Record<string, unknown>> {
     return providedModules.import(absoluteFilePath);
-  }
-
-  setContext(context: Context): void {
-    if (context.documentContext?.plugin !== this) {
-      return;
-    }
-    context.registerValueEvaluator(sassValueEvaluator);
   }
 
   /**

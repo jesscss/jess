@@ -256,7 +256,7 @@ export interface ContextOptions {
    * that plugin's `safeParse` and resolves the document's policy below this
    * Context's own mode options (DESIGN-DECISIONS C19).
    */
-  sourceOptions?(filePath: string, language: string): SourceOptions | undefined;
+  sourceOptions?(filePath: string, language: string): SourceSettings | undefined;
 
   /**
    * Per-tree transient serialization data threaded from the parser (source-anchored
@@ -315,9 +315,25 @@ type OptionInput = Partial<ResolvedOptions> & {
 
 /**
  * The settings a host scopes to one source file: the modes by their canonical
- * names, plus any dialect-specific spelling its plugin reads (Less `strictUnits`).
+ * names, the selector policies, plus any dialect-specific spelling its plugin
+ * reads (Less `strictUnits`).
  */
-export type SourceOptions = Readonly<OptionInput & Record<string, unknown>>;
+export type SourceOptions = Readonly<OptionInput & {
+  allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
+} & Record<string, unknown>>;
+
+/** What a host supplies for one source file ({@link ContextOptions.sourceOptions}). */
+export interface SourceSettings {
+  readonly options: SourceOptions;
+
+  /**
+   * The `styles.config` file the settings were read from, with what that file
+   * alone sets for the source's language, so a plugin can name the file in a
+   * diagnostic about a value it set.
+   */
+  readonly configFile?: { readonly path: string; readonly options: Readonly<Record<string, unknown>> };
+}
 
 /**
  * Resolve the option set with a SINGLE precedence (DESIGN-DECISIONS C19): an
@@ -537,6 +553,16 @@ export class Context {
 
   /** Each distinct resolved policy once, so documents that agree share one object. */
   private readonly policies = new Map<string, Readonly<ResolvedOptions>>();
+
+  /** The first document parsed, which every later one is compared with ({@link mixedPolicies}). */
+  private firstDocument: DocumentContext | undefined;
+
+  /**
+   * Whether this session's documents differ in policy or value evaluator. Until
+   * one does, nothing a document wrote needs its own policy looked up, so a
+   * single-policy render pays one field read where a lookup would go.
+   */
+  mixedPolicies = false;
   private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
   private readonly pluginPathCache = new Map<string, Promise<ResolvedPathResult> | ResolvedPathResult>();
   private readonly pluginModuleCache = new Map<string, Promise<LoadedPluginModuleResult> | LoadedPluginModuleResult>();
@@ -561,15 +587,16 @@ export class Context {
   private _evaluator?: ValueEvaluator;
 
   /**
-   * Canonical AST-v2 value evaluator registered by the active dialect plugin.
-   * Its concrete registry is assembled outside core (`@jesscss/fns`), while
+   * Canonical AST-v2 value evaluator: the active document's own plugin's
+   * (`PluginInterface.valueEvaluator`), else the one registered here. Its
+   * concrete registry is assembled outside core (`@jesscss/fns`), while
    * Context owns the per-render execution state and lifetime.
    */
   get evaluator(): ValueEvaluator | undefined {
-    return this._evaluator;
+    return this._documentContext?.plugin?.valueEvaluator ?? this._evaluator;
   }
 
-  /** Register the typed value evaluator supplied by the active dialect plugin. */
+  /** Register the value evaluator for documents whose plugin supplies none. */
   registerValueEvaluator(evaluator: ValueEvaluator): void {
     this._evaluator = evaluator;
   }
@@ -1375,6 +1402,24 @@ export class Context {
     });
     attachDocumentFacts(documentContext, triviaMapOf(document));
     this.documentContexts.set(document, documentContext);
+
+    /*
+     * A document's root definitions and variable values can be reached from
+     * any other document (an import splices them into the importer's frame),
+     * so each records the document it is written in, once: its math answers
+     * that document's policy wherever it is read (DESIGN-DECISIONS C19).
+     */
+    for (const statement of document.rules) {
+      if (statement.type === 'MixinDefinition' || statement.type === 'Ruleset') {
+        this.documentBodyContexts.set(statement.rules, documentContext);
+      } else if (statement.type === 'VariableDeclaration') {
+        this.documentBodyContexts.set(statement.value, documentContext);
+      }
+    }
+    const first = this.firstDocument ??= documentContext;
+    if (first.options !== policy || first.plugin?.valueEvaluator !== plugin.valueEvaluator) {
+      this.mixedPolicies = true;
+    }
   }
 
   /**
@@ -1466,6 +1511,11 @@ export class Context {
   /** The source owner that authored a callable body, if one is known. */
   sourceOwnerForBody(body: object): object | null {
     return this.documentBodyContexts.get(body) ?? this._documentContext ?? null;
+  }
+
+  /** The document that recorded `body` (a root definition's body or a root variable's value), if one did. */
+  bodyOwner(body: object): DocumentContext | undefined {
+    return this.documentBodyContexts.get(body);
   }
 
   /**
@@ -1658,11 +1708,13 @@ export class Context {
     if (!plugin.safeParse) {
       throw new Error(`Plugin "${plugin.name}" does not support parsing`);
     }
-    const settings = this.opts.sourceOptions?.(filePath, plugin.name);
+    const supplied = this.opts.sourceOptions?.(filePath, plugin.name);
+    const settings = supplied?.options;
     const result = plugin.safeParse(filePath, source, {
       compilerOptions: this.opts,
-      ...(settings === undefined ? {} : { sourceOptions: settings }),
-      ...(importOptions === undefined ? {} : { importOptions })
+      sourceOptions: settings,
+      sourceConfigFile: supplied?.configFile,
+      importOptions
     });
     return { result, settings };
   }

@@ -3,23 +3,28 @@ import {
   buildEvaluator,
   createFnRegistry,
   parserDiagnostic,
-  type Context,
   type ISafeParseResult,
   type ModuleConfigRejection,
   type ModuleConfigRequest,
   type Plugin,
-  type SafeParseOptions
+  type SafeParseOptions,
+  type ValueEvaluator
 } from '@jesscss/core';
 import { parse, type JessParseOptions } from '@jesscss/jess-parser';
 
+/**
+ * The selector policies for one document: the settings the host scopes to it
+ * when it supplies them (so another language's settings never reach a `.jess`
+ * file), else the compile's.
+ */
 function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions {
-  const compilerOptions = options?.compilerOptions;
+  const settings = options?.sourceOptions ?? options?.compilerOptions;
   return {
-    ...(compilerOptions?.allowApplySelectors !== undefined
-      ? { allowApplySelectors: compilerOptions.allowApplySelectors }
+    ...(settings?.allowApplySelectors !== undefined
+      ? { allowApplySelectors: settings.allowApplySelectors }
       : {}),
-    ...(compilerOptions?.allowExtendSelectors !== undefined
-      ? { allowExtendSelectors: compilerOptions.allowExtendSelectors }
+    ...(settings?.allowExtendSelectors !== undefined
+      ? { allowExtendSelectors: settings.allowExtendSelectors }
       : {})
   };
 }
@@ -60,13 +65,7 @@ const JESS_DIALECT_DEFAULTS = Object.freeze({ unitMode: 'strict' as const });
 export class JessPlugin extends AbstractPlugin {
   name = 'jess';
   supportedExtensions = ['.jess'];
-
-  setContext(context: Context): void {
-    if (context.documentContext?.plugin !== this) {
-      return;
-    }
-    context.registerValueEvaluator(jessValueEvaluator);
-  }
+  readonly valueEvaluator: ValueEvaluator = jessValueEvaluator;
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     try {
