@@ -4017,8 +4017,10 @@ interface EvalCtx {
    * selector text): {@link rootStrings} and {@link compose} record a list from
    * the parser's tokens as they compose it, and {@link resolveSelectorBranchAmp}
    * reads it to write such a parent on its own where `&` keeps the
-   * pseudo-element last ({@link parentUnits}). One map per render, shared by
-   * every context of it; empty unless a parent carries a pseudo-element.
+   * pseudo-element last ({@link parentUnits}); a flag is {@link PSEUDO_LAST} or,
+   * for a unit that carries what followed its `&`, {@link PSEUDO_SUFFIXED}. One
+   * map per render, shared by every context of it; empty unless a parent carries
+   * a pseudo-element.
    */
   pseudoElementLists: Map<readonly string[], Uint8Array>;
 
@@ -9291,13 +9293,27 @@ function ampSub(parents: string[]): string {
   return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
 }
 
+/* [nesting] A composed branch's flag in {@link EvalCtx.pseudoElementLists}. */
+const PSEUDO_NONE = 0;
+
+/* Its last compound ends with a pseudo-element. */
+const PSEUDO_LAST = 1;
+
+/*
+ * It is a parent's unit ({@link parentUnits}) whose pseudo-element carries what
+ * followed the `&` (`.a::before` under `&:hover`): a rule of its own
+ * ({@link SplitBlock}).
+ */
+const PSEUDO_SUFFIXED = 2;
+
 /**
  * [nesting] The units a bare `&` that keeps a pseudo-element last
  * ({@link keepsPseudoElementLast}) substitutes over `parents`: a parent ending
  * with a pseudo-element (`flags`, {@link EvalCtx.pseudoElementLists}) is a unit
  * of its own, since `:is()` cannot hold one and `:is(.a::before, .b)` would drop
  * it, and the rest share one `:is()`, at the place of the first of them:
- * `.a::before, .b, .c { &:hover {} }` → `.a::before:hover, :is(.b, .c):hover`.
+ * `.a::before, .b, .c { &:hover {} }` → `.a::before:hover, :is(.b, .c):hover`, each
+ * unit that carries `:hover` then a rule of its own ({@link SplitBlock}).
  * Owner 2026-10-06: an output transformation never makes output more invalid or
  * match fewer elements. Every other `&` keeps the whole list in one `:is()`,
  * which forgives a pseudo-element branch where the plain branch (`.a::before
@@ -9308,7 +9324,7 @@ function parentUnits(parents: readonly string[], flags: Uint8Array): string[] {
   let rest: string[] | null = null;
   let restAt = 0;
   for (let i = 0; i < parents.length; i++) {
-    if (flags[i] === 1) {
+    if (flags[i] !== PSEUDO_NONE) {
       units.push(parents[i]!);
     } else if (rest === null) {
       rest = [parents[i]!];
@@ -9458,7 +9474,7 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
      * would drop the whole list a bubbled at-rule writes per parent.
      */
     return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
-      parents.map((p, i) => (flags !== undefined && flags[i] === 1 ? `:is(${p}) ` : p + ' ') + text));
+      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
   }
   if ((parents.length >= 2 || branchHasAttributeAmp(child)) && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
@@ -9487,8 +9503,9 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
  * {@link EvalCtx.pseudoElementLists} when one of them ends with a pseudo-element:
  * one whose own last compound has one ({@link endsWithPseudoElement}), or one a
  * bare `&` keeping a parent's pseudo-element last stands for — the parent itself
- * (`&`), or its unit ({@link parentUnits}) for a compound `&:hover`. Any other
- * `&` form under a parent that ends with one is counted as ending with one too.
+ * (`&`, `.x &`), or its unit ({@link parentUnits}) with what follows the `&`
+ * (`&:hover`), {@link PSEUDO_SUFFIXED}. Any other `&` form under a parent that ends
+ * with one is counted as ending with one too.
  */
 function recordPseudoElementBranches(
   values: readonly (readonly string[])[],
@@ -9499,34 +9516,37 @@ function recordPseudoElementBranches(
   e: EvalCtx
 ): string[] {
   const out = values.flat();
-  const parentEnds = parentFlags !== undefined && parentFlags.includes(1);
+  const parentEnds = parentFlags !== undefined && (parentFlags.includes(PSEUDO_LAST) || parentFlags.includes(PSEUDO_SUFFIXED));
   let flags: Uint8Array | undefined;
   let at = 0;
   for (let k = 0; k < branches.length; k++) {
     const c = branches[k]!;
     const n = values[k]!.length;
     if (endsWithPseudoElement(c, frame, e)) {
-      (flags ??= new Uint8Array(out.length)).fill(1, at, at + n);
+      (flags ??= new Uint8Array(out.length)).fill(PSEUDO_LAST, at, at + n);
     } else if (parentEnds && parentFlags !== undefined && selectorBranchHasAmpersand(c)) {
       const tail = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value[c.value.length - 1]! : c;
       if (typeof tail !== 'string' && keepsPseudoElementLast(tail)) {
         flags ??= new Uint8Array(out.length);
         if (tail === c && n === parents!.length && termIsBareAmp(c)) {
           flags.set(parentFlags, at);
-        } else if (tail === c) {
-          /* One variant per unit, in {@link parentUnits} order: each lone parent, then the rest's `:is()`. */
+        } else {
+          /*
+           * One variant per unit, in {@link parentUnits} order: each lone parent, then
+           * the rest's `:is()`. A lone parent carries what follows its `&` (`&:hover`),
+           * or stays as it was where nothing does (`.x &`).
+           */
+          const suffixed = !termIsBareAmp(tail);
           let unit = at;
           let rest = false;
           for (let i = 0; i < parentFlags.length && unit < at + n; i++) {
-            if (parentFlags[i] === 1) {
-              flags[unit++] = 1;
+            if (parentFlags[i] !== PSEUDO_NONE) {
+              flags[unit++] = suffixed ? PSEUDO_SUFFIXED : parentFlags[i]!;
             } else if (!rest) {
               rest = true;
               unit++;
             }
           }
-        } else {
-          flags.fill(1, at, at + n);
         }
       }
     }
@@ -9617,7 +9637,12 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
     }
     return resolveSelectorBranchAmp(c, parents, frame, e);
   });
-  return combineAll(parts, values => values.flat());
+
+  /* Only a parent's unit makes an emitted header's branch a rule of its own ({@link splitFlags}). */
+  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
+  return combineAll(parts, values => flags === undefined
+    ? values.flat()
+    : recordPseudoElementBranches(values, child.selectors, parents, flags, frame, e));
 }
 
 /** True if ANY branch of the list references `&` (routes the rule to the cartesian
@@ -9995,6 +10020,9 @@ interface Emit extends EvalCtx {
   /** The sheets each scope's `@import`s placed, keyed by the scope's frame ({@link importIsNoOp}). */
   importScopes: Map<Frame, Map<string, boolean>> | null;
 
+  /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
+  splitBlocks: SplitBlock[] | null;
+
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
 
@@ -10117,6 +10145,7 @@ function scratchEmit(e: EvalCtx): Emit {
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
     importScopes: null,
+    splitBlocks: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13338,6 +13367,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     mixinDepth: 0,
     loadedImports: null,
     importScopes: null,
+    splitBlocks: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13441,6 +13471,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
     importScopes: null,
+    splitBlocks: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13606,6 +13637,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
             e.chunks[i] = '';
           }
         }
+      }
+      if (e.splitBlocks !== null) {
+        splitOwnRules(e);
       }
       if (e.positions) {
         resolvePositionOffsets(e.chunks, e.positions);
@@ -14819,6 +14853,15 @@ function foldDynamicExtends(e: Emit): void {
     e.chunks[slot.chunkIndex] = slot.indent
       ? visible.join(',\n' + slot.indent)
       : visible.join(',\n');
+
+    /* [nesting] A split block's rules come from the rewritten header ({@link SplitBlock}). */
+    if (e.splitBlocks !== null && !slot.nested) {
+      const block = e.splitBlocks.find(b => b.header === slot.chunkIndex);
+      if (block !== undefined) {
+        block.branches = visible;
+        block.flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
+      }
+    }
   }
 
   /*
@@ -15141,6 +15184,40 @@ function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
   return childFrame;
 }
 
+/**
+ * [nesting] The branch flags of a rule's `visible` header when it holds a parent unit
+ * that carries what followed its `&` past a pseudo-element ({@link SplitBlock}), else
+ * undefined. Only a header composed from such a unit qualifies, never a list the author
+ * wrote. The composed header carries its flags; an extended one takes its branches'
+ * from the extend plan, which reads them from the parser's tokens.
+ */
+function splitFlags(
+  rule: Ruleset,
+  visible: string[],
+  headerComposed: string[],
+  projection: ExtendResults | ExtendPlacementResults | null,
+  e: Emit
+): Uint8Array | undefined {
+  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(headerComposed);
+  if (flags === undefined || !flags.includes(PSEUDO_SUFFIXED)) {
+    return undefined;
+  }
+  return visible === headerComposed ? flags : extendedSplitFlags(visible, projection?.suffixedByRule?.get(rule));
+}
+
+/** [nesting] An extended header's flags from the plan's suffixed branches ({@link ExtendResults.suffixedByRule}). */
+function extendedSplitFlags(header: readonly string[], suffixed: ReadonlySet<string> | undefined): Uint8Array {
+  const flags = new Uint8Array(header.length);
+  if (suffixed !== undefined) {
+    for (let i = 0; i < header.length; i++) {
+      if (suffixed.has(header[i]!)) {
+        flags[i] = PSEUDO_SUFFIXED;
+      }
+    }
+  }
+  return flags;
+}
+
 function flattenWithHeader(
   rule: Ruleset,
   parent: string[] | null,
@@ -15246,6 +15323,7 @@ function flattenWithHeader(
 
   /* `header` is non-null below; the reference-ancestor lane returned above. */
   const visible = header!;
+  const split = splitFlags(rule, visible, headerComposed, projection, e);
   const group: Leaf[] = [];
   const flush = (): MaybePromise<void> => {
     if (group.length || e.pendingLeafBlockCommentOwner === group) {
@@ -15257,7 +15335,7 @@ function flattenWithHeader(
        * and header merge; top-level rules (`parent === null`) never do.
        */
       return mapMaybe(flushBlock(
-        visible, group, e, rule.selector, parent, trailingBlockComments
+        visible, group, e, rule.selector, parent, trailingBlockComments, split
       ), () => {
         recordDynExtendSlot(e, rule, frame, visible, reserved);
         group.length = 0;
@@ -15277,7 +15355,7 @@ function flattenWithHeader(
   ): MaybePromise<void> => {
     if (leaves.length || trailingBlockComments.length !== 0) {
       return mapMaybe(flushBlock(
-        visible, leaves, e, rule.selector, parent, trailingBlockComments
+        visible, leaves, e, rule.selector, parent, trailingBlockComments, split
       ), () => {
         recordDynExtendSlot(e, rule, frame, visible, reserved);
       });
@@ -18837,13 +18915,77 @@ function substituteClosureVarArgs(
       };
 }
 
+/**
+ * [nesting] A block whose header holds a parent unit carrying what followed its `&`
+ * past a pseudo-element ({@link PSEUDO_SUFFIXED}, `.a::before:hover`). Chromium drops
+ * such a selector and every selector list that holds it, so a list joining it to
+ * valid branches would make them match nothing (owner principle 2026-10-06, ledger
+ * O17). Each such branch gets a rule of its own, the declarations written again, and
+ * the other branches keep one rule at the place of the first of them:
+ * `.a::before, .b, .c { &:hover { x: 1 } }` → `.a::before:hover { x: 1 }
+ * :is(.b, .c):hover { x: 1 }` (ledger O10 as amended, orchestrator judgment under
+ * owner delegation 2026-10-07). The block is written once during the walk, which
+ * merges and extends it as one rule; {@link splitOwnRules} writes the rest of it
+ * when the walk is done. `header` is its header chunk, `end` the chunk after it.
+ */
+interface SplitBlock {
+  header: number;
+  end: number;
+  indent: string;
+  branches: readonly string[];
+  flags: Uint8Array;
+}
+
+/**
+ * [nesting] Write each {@link SplitBlock} as its rules: the header chunk takes the
+ * first rule's branches and the block's last chunk the other rules, each its header
+ * and a copy of the block's body. A block blanked after the walk (a hidden
+ * `(reference)` block) is left as it is.
+ */
+function splitOwnRules(e: Emit): void {
+  for (const block of e.splitBlocks!) {
+    if (e.chunks[block.header] === '') {
+      continue;
+    }
+    const { branches, flags, indent } = block;
+    const rules: string[][] = [];
+    let rest: string[] | null = null;
+    for (let i = 0; i < branches.length; i++) {
+      if (flags[i] === PSEUDO_SUFFIXED) {
+        rules.push([branches[i]!]);
+      } else if (rest === null) {
+        rest = [branches[i]!];
+        rules.push(rest);
+      } else {
+        rest.push(branches[i]!);
+      }
+    }
+    if (rules.length < 2) {
+      continue;
+    }
+    let body = '';
+    for (let i = block.header + 1; i < block.end; i++) {
+      body += e.chunks[i]!;
+    }
+    let tail = '';
+    for (let r = 1; r < rules.length; r++) {
+      tail += indent + composeSelectorHeader(e, rules[r]!, indent, null) + body;
+    }
+    e.chunks[block.header] = composeSelectorHeader(e, rules[0]!, indent, null);
+    e.chunks[block.end - 1] += tail;
+  }
+}
+
 function flushBlock(
   selector: string[],
   group: Leaf[],
   e: Emit,
   selNode?: SelectorList,
   parentKey?: object | null,
-  trailingBlockComments: readonly string[] = EMPTY_LEAF_BLOCK_COMMENTS
+  trailingBlockComments: readonly string[] = EMPTY_LEAF_BLOCK_COMMENTS,
+
+  /* `selector`'s branch flags when one is a unit of its own ({@link SplitBlock}). */
+  split?: Uint8Array
 ): MaybePromise<void> {
   /*
    * A root-level mixin/detached-ruleset call has no selector header. Its ordinary
@@ -18887,7 +19029,12 @@ function flushBlock(
     const lb = e.lastBlock;
     const reopen = pk !== null && lb.parentKey === pk
       && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
+    let splitBlock: SplitBlock | undefined;
     if (reopen) {
+      /* The block reopened is the split block that ends where it ended. */
+      const blocks = e.splitBlocks;
+      const last = blocks === null ? undefined : blocks[blocks.length - 1];
+      splitBlock = last?.end === lb.endChunks ? last : undefined;
       popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
       if (e.compress === true && lb.droppedSemi) {
         put(e, ';'); // [compress] restore the separator dropped at the prior close
@@ -18909,6 +19056,10 @@ function flushBlock(
       if (e.dynamicExtend) {
         e.dynamicExtend.pendingHeaderChunk = selNode !== undefined && selector.length > 0 ? e.chunks.length : -1;
         e.dynamicExtend.pendingHeaderIndent = idt;
+      }
+      if (split !== undefined) {
+        splitBlock = { header: e.chunks.length, end: -1, indent: idt, branches: selector, flags: split };
+        (e.splitBlocks ??= []).push(splitBlock);
       }
       put(e, header);
       if (e.positions && selNode) {
@@ -18951,6 +19102,9 @@ function flushBlock(
       putBlockComment(e, bodyIndent(e), comment);
     }
     emitBlockClose(e, idt, lb);
+    if (splitBlock !== undefined) {
+      splitBlock.end = e.chunks.length;
+    }
 
     // [adjacent-merge] update the single record in place (no per-block allocation).
     lb.parentKey = pk;

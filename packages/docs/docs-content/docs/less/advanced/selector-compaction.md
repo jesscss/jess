@@ -271,8 +271,12 @@ it is the native desugaring of a multi-parent header, and its group-max specific
 unavoidable. A parent ending with a pseudo-element is the one exception: `:is()` cannot
 hold a pseudo-element, so where the child's `&` keeps it last — `&` followed only by
 `:hover`, `:active`, `:focus`, `:focus-visible` or `:focus-within` — that parent is
-written on its own and the other parents still share the `:is()`
-(`.a::before, .b, .c { &:hover {} }` → `.a::before:hover, :is(.b, .c):hover`). Anywhere
+written on its own and the other parents still share the `:is()`. Such a parent, with
+what follows its `&`, also gets a rule of its own, the declarations written again:
+Chromium drops `.a::before:hover` and every selector list that holds it, so in one list
+it would take the valid branches down with it
+(`.a::before, .b, .c { &:hover { x: 1 } }` → `.a::before:hover { x: 1 }` and
+`:is(.b, .c):hover { x: 1 }`). A list you write yourself is left as written. Anywhere
 else nothing may follow the pseudo-element, so the branch is invalid however it is
 written, and the parent stays inside the `:is()`, which drops only that branch where a
 plain selector list would drop the whole rule (`.a::before, .b { .e {} }` →

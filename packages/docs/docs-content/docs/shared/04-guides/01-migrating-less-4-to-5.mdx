@@ -139,6 +139,12 @@ By default this compiles to nested CSS (`.title` stays nested under `.card`).
 Enable `collapseNesting: true` for the older flattened (`.card .title { … }`)
 output when you need deduplication or wider tooling support.
 
+Flattened output never joins a selector browsers drop to the ones they keep. A parent
+ending with a pseudo-element, given a user-action pseudo-class by `&`, gets a rule of its
+own: `.a::before, .b { &:hover { color: red } }` flattens to `.a::before:hover { color: red }`
+and `.b:hover { color: red }`, where Less 4 wrote one list, `.a::before:hover, .b:hover`,
+which Chromium drops whole — `.b:hover` included.
+
 <AudienceGate include={['jess']}>
 
 If you are porting a 4.x project that assumed flattened output, set

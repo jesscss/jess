@@ -406,7 +406,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // (`placedStatically`, the `walkPlacements` set), and a rule an import body
     // queues after its parent's block emits under that import's placement
     // (`withImportPlacement`, `queueContainer`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(570);
+    // +3 functions (owner principle 2026-10-06, O17; orchestrator judgment under
+    // owner delegation 2026-10-07): a parent unit that carries what followed its
+    // `&` past a pseudo-element is a rule of its own (`splitFlags`, from the
+    // composed list's flags or an extended header's `suffixedByRule`,
+    // `extendedSplitFlags`), written when the walk is done (`splitOwnRules`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(573);
     expect(occurrences(/new Map/gu)).toBe(91);
     expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

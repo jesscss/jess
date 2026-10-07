@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extendBranchSpecificity, nestingGroupKey, partitionGroups } from '../is-grouping.js';
+import { extendBranchSpecificity, irPseudoElementCarriesSuffix, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchFromSelector, descendantBranch, textSimple } from '../extend/ir.js';
 import { compoundSelectorOf, complexSelector, relativeSelector, sel, simpleSelector, type SelectorBranch } from '../nodes.js';
 
@@ -34,6 +34,21 @@ describe('the shared :is() grouping', () => {
     expect(extendBranchSpecificity(ir(compound('.a', ':before')), false)).toBe(-1);
     expect(extendBranchSpecificity(ir(compound('a', ':-webkit-autofill')), false)).toBe(-1);
     expect(extendBranchSpecificity(ir(relativeSelector('>', [{ term: simpleSelector('.a') }])), false)).toBe(-1);
+  });
+
+  // A branch Chromium drops along with its selector list (ledger O10 as amended 2026-10-07).
+  it('finds a pseudo-element followed by more in an extend branch, read from the parser tokens', () => {
+    expect(irPseudoElementCarriesSuffix(ir(compound('.a', '::before', ':hover')))).toBe(true);
+    expect(irPseudoElementCarriesSuffix(ir(compound('.a', ':before', ':focus')))).toBe(true);
+    expect(irPseudoElementCarriesSuffix(ir(compound('.a', '::before')))).toBe(false);
+    expect(irPseudoElementCarriesSuffix(ir(compound('.a', ':hover')))).toBe(false);
+    expect(irPseudoElementCarriesSuffix(ir(descendant('.x', '.a')))).toBe(false);
+
+    // A `&` substituted by its parent's compound is read through it.
+    const parent = ir(compound('.a', '::before')).segments[0]!.compound;
+    expect(irPseudoElementCarriesSuffix(descendantBranch([textSimple('.a::before', undefined, parent), textSimple(':hover')]))).toBe(true);
+    expect(irPseudoElementCarriesSuffix(descendantBranch([textSimple('.a::before', undefined, parent)]))).toBe(false);
+    expect(irPseudoElementCarriesSuffix(descendantBranch([textSimple('.a::before:hover')]))).toBe(false);
   });
 
   it('never reads a token without parser provenance back out of its text', () => {

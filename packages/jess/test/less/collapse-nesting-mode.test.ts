@@ -18,6 +18,12 @@ async function header(src: string, collapseNesting: 'native' | 'compact' = 'nati
   return out.slice(0, out.indexOf(' {')).replace(/,\n/g, ', ');
 }
 
+/** Every top-level rule's flattened header in order, branches joined by `, ` and rules by ` | `. */
+async function headers(src: string, collapseNesting: 'native' | 'compact' = 'native'): Promise<string> {
+  const out = await render(src, collapseNesting);
+  return [...out.matchAll(/^([^{}\s][^{}]*?) \{$/gmu)].map(m => m[1]!.replace(/,\n/g, ', ')).join(' | ');
+}
+
 describe('collapseNesting native vs compact', () => {
   it(`'native' folds an equal-specificity child list`, async () => {
     await expect(render('.t { th, td { x: 1 } }', 'native')).resolves.toBe('.t :is(th, td) {\n  x: 1;\n}\n');
@@ -195,27 +201,51 @@ describe('collapseNesting native vs compact', () => {
    * the pseudo-element last — a bare `&` followed only by user-action pseudo-classes
    * (Selectors 4 §3.6.3) — in every flattening mode, since `:is()` cannot hold one and
    * `:is(.a::before, .b::before):hover` matches nothing; the other parents still share
-   * the `:is()`. Anywhere else nothing may follow the pseudo-element, the branch is
-   * invalid whatever is done, and the parent stays in the forgiving `:is()`: a plain
-   * branch (`.a::before .e`) would drop every branch of its list (owner 2026-10-06: an
-   * output transformation never makes output more invalid or match fewer elements).
+   * the `:is()`. Such a unit that carries anything after its pseudo-element gets a rule
+   * of its own, its declarations written again: Chromium drops `.a::before:hover` and
+   * every selector list that holds it, so in one list with `:is(.b, .c):hover` it would
+   * take `.b:hover` down with it. Anywhere else nothing may follow the pseudo-element, the
+   * branch is invalid whatever is done, and the parent stays in the forgiving `:is()`: a
+   * plain branch (`.a::before .e`) would drop every branch of its list (owner principle
+   * 2026-10-06, O17: an output transformation never makes output more invalid or match
+   * fewer elements; units of their own, orchestrator judgment under owner delegation
+   * 2026-10-07).
    */
   it('writes a parent ending with a pseudo-element on its own only where `&` keeps it last', async () => {
     for (const mode of ['native', 'compact'] as const) {
       const cases: Array<[string, string]> = [
-        ['.a::before, .b::before { &:hover { x: 1 } }', '.a::before:hover, .b::before:hover'],
-        ['.t { .a::before, .b::before { &:hover { x: 1 } } }', '.t .a::before:hover, .t .b::before:hover'],
-        ['.a::before, .b, .c { &:hover:focus { x: 1 } }', '.a::before:hover:focus, :is(.b, .c):hover:focus'],
+        ['.a::before, .b::before { &:hover { x: 1 } }', '.a::before:hover | .b::before:hover'],
+        ['.t { .a::before, .b::before { &:hover { x: 1 } } }', '.t .a::before:hover | .t .b::before:hover'],
+        ['.a::before, .b, .c { &:hover:focus { x: 1 } }', '.a::before:hover:focus | :is(.b, .c):hover:focus'],
         ['.a::before, .b { .x & { x: 1 } }', '.x .a::before, .x .b'],
-        ['.a::before, .b::before { &:hover { &:focus { x: 1 } } }', '.a::before:hover:focus, .b::before:hover:focus'],
-        ['.m() { &:hover { x: 1 } } .a::before, .b::before { .m(); }', '.a::before:hover, .b::before:hover'],
+        ['.a::before, .b::before { &:hover { &:focus { x: 1 } } }', '.a::before:hover:focus | .b::before:hover:focus'],
+        ['.m() { &:hover { x: 1 } } .a::before, .b::before { .m(); }', '.a::before:hover | .b::before:hover'],
+        ['.a::before { &:hover, .x & { x: 1 } }', '.a::before:hover | .x .a::before'],
+        ['.a::-webkit-scrollbar, .b::before { &:hover { x: 1 } }', '.a::-webkit-scrollbar:hover | .b::before:hover'],
         ['.a::before, .b::after, .c, .d { .e { x: 1 } }', ':is(.a::before, .b::after, .c, .d) .e'],
         ['.c, .a:before, .d { &.k { x: 1 } }', ':is(.c, .a:before, .d).k'],
-        ['.a::before, .b { & + & { x: 1 } }', ':is(.a::before, .b) + .a::before, :is(.a::before, .b) + .b']
+        ['.a::before, .b { & + & { x: 1 } }', ':is(.a::before, .b) + .a::before, :is(.a::before, .b) + .b'],
+
+        // A list the author wrote is theirs: only what the flattening composes is split.
+        ['.a::before:hover, .b:hover { x: 1 }', '.a::before:hover, .b:hover'],
+        ['.p { .a::before:hover, .b:hover { x: 1 } }', '.p .a::before:hover, .p .b:hover']
       ];
       for (const [src, expected] of cases) {
-        await expect(header(src, mode), `${mode}: ${src}`).resolves.toBe(expected);
+        await expect(headers(src, mode), `${mode}: ${src}`).resolves.toBe(expected);
       }
+
+      // Each rule writes the declarations; the order of the blocks is kept around a child.
+      await expect(render('.a::before, .b, .c { &:hover { x: 1 } }', mode))
+        .resolves.toBe('.a::before:hover {\n  x: 1;\n}\n:is(.b, .c):hover {\n  x: 1;\n}\n');
+      await expect(render('.a::before, .b { &:hover { x: 1; .c { y: 2 } z: 3 } }', mode)).resolves.toBe([
+        '.a::before:hover {\n  x: 1;\n}', '.b:hover {\n  x: 1;\n}', ':is(.a::before:hover, .b:hover) .c {\n  y: 2;\n}',
+        '.a::before:hover {\n  z: 3;\n}', '.b:hover {\n  z: 3;\n}', ''
+      ].join('\n'));
+      await expect(render('.a::before, .b { @media print { &:hover { x: 1 } } }', mode))
+        .resolves.toBe('@media print {\n  .a::before:hover {\n    x: 1;\n  }\n  .b:hover {\n    x: 1;\n  }\n}\n');
+      const compressed = new Compiler({ output: { collapseNesting: mode, compress: true } });
+      await expect(compressed.renderString('.a::before, .b { &:hover { x: 1 } }', { extension: '.less', suppressWarnings: true }).then(String))
+        .resolves.toBe('.a::before:hover{x:1}.b:hover{x:1}');
 
       // An at-rule bubbled out of the rule writes a branch per parent.
       await expect(render('.a::before, .b { @media print { .c { x: 1 } } }', mode))
@@ -223,19 +253,21 @@ describe('collapseNesting native vs compact', () => {
 
       // A rule an extend writes takes the same units, its own `:is()` grouping kept outside the pseudo-element.
       const extended: Array<[string, string]> = [
-        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a::before:hover) {}', ':is(.a, .b)::before:hover, .z'],
+        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a::before:hover) {}', ':is(.a, .b)::before:hover | .z'],
         ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a all) {}', ':is(.a, .z, .b)::before:hover'],
-        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a::before all) {}', '.a::before:hover, .z:hover, .b::before:hover'],
-        ['.a::before, .c, .d { &:hover { x: 1 } } .z:extend(.c all) {}', '.a::before:hover, :is(.c, .d, .z):hover'],
+        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a::before all) {}', '.a::before:hover | .z:hover | .b::before:hover'],
+        ['.a::before, .c, .d { &:hover { x: 1 } } .z:extend(.c all) {}', '.a::before:hover | :is(.c, .d, .z):hover'],
         ['.a::before { &:hover { x: 1 } } .z:extend(.a all) {}', ':is(.a, .z)::before:hover'],
+        ['.a::before, .b { &:hover { x: 1 } } .z:extend(.b:hover) {}', '.a::before:hover | .b:hover, .z'],
+        ['.m() { &:hover { x: 1 } } .a::before, .b { .m(); } .z:extend(.b:hover) {}', '.a::before:hover | .b:hover, .z'],
         ['@s: ~".p::before, .q"; @{s} { x: 1; } .u:extend(.zz) {}', '.p::before, .q']
       ];
       for (const [src, expected] of extended) {
-        await expect(header(src, mode), `${mode}: ${src}`).resolves.toBe(expected);
+        await expect(headers(src, mode), `${mode}: ${src}`).resolves.toBe(expected);
       }
     }
     await expect(header('.a, #b { .c { x: 1 } }')).resolves.toBe(':is(.a, #b) .c');
-    await expect(header('@pe: before; .a:@{pe}, .b:@{pe} { &:hover { x: 1 } }')).resolves.toBe('.a:before:hover, .b:before:hover');
+    await expect(headers('@pe: before; .a:@{pe}, .b:@{pe} { &:hover { x: 1 } }')).resolves.toBe('.a:before:hover | .b:before:hover');
     await expect(header('@state: valid; .a:@{state}, .b:@{state} { &:hover { x: 1 } }')).resolves.toBe(':is(.a:valid, .b:valid):hover');
 
     // Recorded per composed list, never by selector text: a same-text parent list elsewhere is unaffected.
