@@ -267,6 +267,7 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `(2px / 1px)` | `2px` | **`2`** | Like units cancel. A ratio of two lengths *is* a number; Less 4 re-attached a unit the value no longer carried. |
 | `(1px * 2px)` | `2px` | **`calc(1px * 2px)`** | An area has no CSS unit. Less 4 kept the left operand's unit, which is dimensionally false. See *Unit algebra* below. |
 | `(1 / 2px)` | `0.5px` | **`calc(1 / 2px)`** | There is no `px⁻¹` in CSS. Same rule as the row above. |
+| `url(~"b.png")` with `rootpath: 'r/'` | `url(r/b.png)` | **`url(b.png)`** | An escaped string is text you wrote verbatim, so its path is not rewritten; rewriting `url(~"'b.png'")` wrote the invalid `url(r/'b.png')`. Write the path into it, or use a quoted string to have it rewritten. `urlArgs` still applies. |
 | `max(4, 3px)` | `4` | **`4px`** | The unitless `4` was compared as `4px`, as `4 + 3px` is `7px`, so it is written as the length it was compared as. A bare `4` is no length. |
 | `when (~"true")` | truthy | **falsy** | See *Truthiness* below — the one row where Less 4 promoted a **string** to truthy. |
 | `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |

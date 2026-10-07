@@ -22,6 +22,10 @@ describe('typed reads, not byte scans', () => {
   it('transforms url(@var) by the string the variable holds, never an escaped body', async () => {
     expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); f: url(~"b.png"); }', { rootpath: 'root/' }))
       .toBe('.x { q: url("root/a.png"); e: url(\'b.png\'); d: url(\'b.png\'); f: url(b.png); }');
+
+    // Only the path is left alone: URL-only policy such as `urlArgs` still applies to an escaped body.
+    expect(await render('@base: ~"img"; .x { a: url(~"@{base}/x.png"); b: url(@base); c: url(~"./y.png"); }', { rootpath: 'root/', urlArgs: 'v=1', rewriteUrls: 'all' }))
+      .toBe('.x { a: url(img/x.png?v=1); b: url(img?v=1); c: url(./y.png?v=1); }');
   });
 
   it('names an @@ lookup by the string content of its name', async () => {

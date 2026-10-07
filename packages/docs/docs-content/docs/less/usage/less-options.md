@@ -30,6 +30,8 @@ Allows you to add a path to every generated import and url in your css. This doe
 
 For instance, if all the images the css use are in a folder called resources, you can use this option to add this on to the URL's and then have the name of that folder configurable.
 
+An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so neither `rootpath` nor `rewriteUrls` changes its path; `urlArgs` still applies to it.
+
 ### Rewrite URLs
 
 | | |
@@ -289,7 +291,7 @@ As opposed to the global variable option, this puts the declaration at the end o
 |---|---|
 | `lessc --url-args="cache726357"` | `{ urlArgs: 'cache726357' }` |
 
-This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance.
+This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. It applies to an escaped `url(~"…")` body too, whose path is otherwise left as written.
 
 #### Line Numbers (Deprecated)
 
