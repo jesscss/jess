@@ -4916,14 +4916,15 @@ function evalTyped(
        * An inert group has nothing for the frame to compute, so it is not
        * consumed and keeps its parens ({@link isInertGroup}); nor is a group in
        * an argument of a call written out as-is, which no callable reads, unless
-       * what it holds computes ({@link groupComputes}). Such an argument keeps
+       * what it holds computes on this lane, a comparison included
+       * ({@link slotComputation}). Such an argument keeps
        * the written-out policy inside a group that computes, so an F5 color
        * call there is still written as authored.
        */
       if (e.reached && groupsOneValue(node)) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e));
       }
-      if (isInertGroup(node) || (writtenAsAuthored(argument) && !groupComputes(node, frame, e))) {
+      if (isInertGroup(node) || (writtenAsAuthored(argument) && slotComputation(node.value, frame, e, true, true) === null)) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
       }
       return mapMaybe(evalTypedSlot(
@@ -5110,9 +5111,10 @@ const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean =>
  * that resolves is a calculation resolved, so when what it names is one value
  * that computes nothing the first reference read is returned; one that does not
  * resolve, or names a list, is not. `references: false` asks only what
- * computes ({@link argumentSnapshot}).
+ * computes ({@link argumentSnapshot}). `typed: true` asks for the typed lane,
+ * which evaluates every condition it reads.
  */
-function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, references = true): ValueNode | null {
+function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, references = true, typed = false): ValueNode | null {
   let inner = slot;
   let scope = frame;
   let reference: Lookup | Reference | null = null;
@@ -5138,15 +5140,21 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, refer
         named = resolveReferenceResult(inner, scope, e);
         break;
       case 'Expression':
-        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }, references) === null ? reference : inner;
+        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }, references, typed) === null ? reference : inner;
 
-      /* A comparison computes where a value-position one is evaluated: at a `.jess` `$( … )` boundary (§7.1). */
+      /*
+       * A comparison computes where it is evaluated: at a `.jess` `$( … )`
+       * boundary (§7.1), and on the typed lane, which reads an argument of a call
+       * written out as-is (`unknown((@a > 1))` is `unknown(true)`). Anywhere else
+       * the value lane writes it ({@link writtenCondition}), so a group around it
+       * keeps its parens.
+       */
       case 'Condition':
-        return e.exprBoundary === true ? inner : reference;
+        return typed || e.exprBoundary === true ? inner : reference;
       case 'Interpolation': {
         const first = inner.parts[0];
         return isComputationSplice(inner) && first !== undefined && 'ref' in first
-          && slotComputation(first.ref, scope, e, references) !== null
+          && slotComputation(first.ref, scope, e, references, typed) !== null
           ? inner
           : reference;
       }
