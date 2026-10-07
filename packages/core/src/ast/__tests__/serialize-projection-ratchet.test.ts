@@ -432,8 +432,11 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (orchestrator judgment under owner delegation 2026-10-07): a
     // condition written into a value is written from its guard tree with its
     // operands evaluated, so its variables substitute (`writtenCondition`).
+    // +1 `new Map` (orchestrator judgment under owner delegation 2026-10-07): an
+    // at-rule bubbled out of a rule an extend reached writes the rule's extended
+    // header, keyed by the context the rule's body walks under (`extendedContexts`).
     expect(occurrences(/^function |^async function /gmu)).toBe(584);
-    expect(occurrences(/new Map/gu)).toBe(91);
+    expect(occurrences(/new Map/gu)).toBe(92);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
     expect(occurrences(/new WeakSet/gu)).toBe(2);

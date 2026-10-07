@@ -10231,6 +10231,14 @@ interface Emit extends EvalCtx {
   /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
   splitBlocks: SplitBlock[] | null;
 
+  /**
+   * [extend] The header an extend wrote for a rule, keyed by the composed context its
+   * body walks under: an at-rule bubbled out of the rule writes its declarations
+   * under it ({@link emitBubbleBody}). Its branch flags, when a branch is a rule of
+   * its own, are in `pseudoElementLists`. Null until a rule's header is extended.
+   */
+  extendedContexts: Map<readonly string[], string[]> | null;
+
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
 
@@ -10355,6 +10363,7 @@ function scratchEmit(e: EvalCtx): Emit {
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13604,6 +13613,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13708,6 +13718,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -15286,7 +15297,7 @@ function expandRule(
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null });
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource });
       return;
     }
   }
@@ -15594,6 +15605,19 @@ function flattenWithHeader(
   /* `header` is non-null below; the reference-ancestor lane returned above. */
   const visible = header!;
   const split = splitFlags(rule, visible, headerComposed, projection, e);
+
+  /*
+   * [extend] An at-rule bubbled out of a rule an extend reached writes the rule's
+   * declarations in it under the extended header: an extend reaches its target's
+   * scope and every scope nested in it (EXTEND-SEMANTICS §8), so `.q:extend(.b all)`
+   * gives `@media print { .b, .q { … } }` for `.b { @media print { … } }`.
+   */
+  if (visible !== headerComposed && childComposed !== null) {
+    (e.extendedContexts ??= new Map()).set(childComposed, visible);
+    if (split !== undefined) {
+      e.pseudoElementLists.set(visible, split);
+    }
+  }
   const group: Leaf[] = [];
   const flush = (): MaybePromise<void> => {
     if (group.length || e.pendingLeafBlockCommentOwner === group) {
@@ -22567,8 +22591,13 @@ function emitBubbleBody(
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
 
-  /* [nesting] The context's parent units that are rules of their own ({@link SplitBlock}). */
-  const ctxSplit = ctx === null ? undefined : composedSplitFlags(ctx, e);
+  /*
+   * [nesting] The context's parent units that are rules of their own ({@link SplitBlock}).
+   * A context whose rule an extend reached writes the rule's extended header
+   * ({@link Emit.extendedContexts}).
+   */
+  const directHeader = ctx === null ? null : e.extendedContexts?.get(ctx) ?? ctx;
+  const ctxSplit = directHeader === null ? undefined : composedSplitFlags(directHeader, e);
   const group: Leaf[] = [];
 
   /*
@@ -22593,14 +22622,27 @@ function emitBubbleBody(
       return;
     }
     if (ctx !== null) {
-      // Wrap the direct declarations in the propagated selector context.
+      /*
+       * Wrap the direct declarations in the propagated selector context. While the
+       * walk records extends, the rule open on its path is the rule the at-rule
+       * bubbled out of: the header is a slot of that rule, which the deferred fold
+       * rewrites as it rewrites the rule's own header.
+       */
+      const dyn = e.dynamicExtend;
+      const owner = dyn === null ? undefined : dyn.pathRules[dyn.pathRules.length - 1];
       e.depth++;
       const emitted = flushBlock(
-        ctx, group, e, undefined, undefined, trailingBlockComments, ctxSplit
+        directHeader!, group, e, owner?.selector, undefined, trailingBlockComments, ctxSplit
       );
+      const slot = (): void => {
+        if (owner !== undefined) {
+          recordDynExtendSlot(e, owner, frame, directHeader!, false);
+        }
+      };
       if (isThenable(emitted)) {
         return emitted.then(
           () => {
+            slot();
             e.depth--;
             group.length = 0;
           },
@@ -22610,6 +22652,7 @@ function emitBubbleBody(
           }
         );
       }
+      slot();
       e.depth--;
     } else {
       const mergeMode = mergeGroupMode(group);
@@ -23099,6 +23142,9 @@ interface HoistEntry {
   frame: Frame;
   bubble: number;
 
+  /** The context the rule was written under, which its flattened body composes against ({@link emitHoisted}). */
+  source: NestedHeaderSource | null;
+
   /**
    * The at-rules the entry has risen out of, outermost first, or null. An at-rule is
    * not a rule block (it does not count toward `bubble`), but the rule still belongs
@@ -23122,7 +23168,7 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   }
   return extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
     ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
-    : emitHoisted(h.rule, h.frame, e);
+    : emitHoisted(h.rule, h.frame, e, h.source);
 }
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
@@ -23398,7 +23444,7 @@ function writeNestedRule(
      * Fallback (a top-level rule never flattens; a body-nested one is deferred by
      * the nested projection's hoist queue). Emit via the flat path with compaction.
      */
-    return emitHoisted(rule, frame, e);
+    return emitHoisted(rule, frame, e, source);
   }
 
   /*
@@ -23605,7 +23651,7 @@ function writeNestedRule(
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
           if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers });
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source });
             continue;
           }
           const emitted = emitHoistEntry(h, e, imp);
@@ -23624,12 +23670,17 @@ function writeNestedRule(
   });
 }
 
-/** Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
- * using the nested-mode hoist header (flat composition + `:is()`-compaction). */
-function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
+/**
+ * Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
+ * using the nested-mode hoist header (flat composition + `:is()`-compaction). Its
+ * body composes against the context it was written under (`source`), so a child
+ * or an at-rule bubbled out of it keeps the rule's ancestors: `.a { .b { @media
+ * print { … } } }` hoisting `.b` writes `@media print { .a .b { … } }`.
+ */
+function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  const emitted = expandRule(rule, null, null, frame, e);
+  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e);
   if (isThenable(emitted)) {
     return emitted.then(
       () => {
@@ -23666,7 +23717,7 @@ function writeNestedAtRuleBlock(
     }
     const wrapper: HoistWrapper = { node, prelude };
     for (const h of hoist) {
-      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers] });
+      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source });
     }
   };
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(
