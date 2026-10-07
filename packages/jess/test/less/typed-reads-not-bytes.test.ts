@@ -15,12 +15,13 @@ async function render(source: string, less: Record<string, unknown> = {}): Promi
 describe('typed reads, not byte scans', () => {
   /*
    * A quoted string's quote is syntax, so its content is the path. An escaped
-   * string is opaque (V22): its content is never re-read for a quote, so
-   * `url(~"'b.png'")` is transformed whole, directly or through a variable.
+   * string is opaque (V22): no URL rewrite reaches into it, directly or through
+   * a variable — rewriting `url(~"'b.png'")` wrote the bad-url token
+   * `url(root/'b.png')` (orchestrator judgment under owner delegation 2026-10-06).
    */
-  it('transforms url(@var) by the string the variable holds', async () => {
-    expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); }', { rootpath: 'root/' }))
-      .toBe('.x { q: url("root/a.png"); e: url(root/\'b.png\'); d: url(root/\'b.png\'); }');
+  it('transforms url(@var) by the string the variable holds, never an escaped body', async () => {
+    expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); f: url(~"b.png"); }', { rootpath: 'root/' }))
+      .toBe('.x { q: url("root/a.png"); e: url(\'b.png\'); d: url(\'b.png\'); f: url(b.png); }');
   });
 
   it('names an @@ lookup by the string content of its name', async () => {
