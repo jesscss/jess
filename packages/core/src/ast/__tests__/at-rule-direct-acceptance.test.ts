@@ -29,7 +29,7 @@ describe('At-rule canonical AST emission', () => {
 
   it('preserves media feature parens when a prelude reference resolves to a block value', () => {
     const document = stylesheet([
-      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'), false, cssBaseMathOutsideParens(':'), false)), { mode: 'declare' }),
+      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'), false, cssBaseMathOutsideParens(':'))), { mode: 'declare' }),
       atRuleBlock('@media', spaced([
         keyword('not'),
         keyword('all'),

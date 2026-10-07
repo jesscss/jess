@@ -198,7 +198,7 @@ a blanket optimization exemption or a new active architecture queue.
       "file": "packages/core/src/ast/value-operate.ts",
       "caller": "export function operate(",
       "guard": "modes.unitMode === 'preserve'",
-      "call": "makeKeyword(`calc("
+      "call": "keptMathKeyword("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-units.test.ts", "packages/jess/test/less/calc-explicit-compose.test.ts"]}
   },

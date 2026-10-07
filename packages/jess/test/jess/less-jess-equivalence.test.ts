@@ -1038,16 +1038,13 @@ describe('spellings the emitter names instead of printing', () => {
 });
 
 /*
- * The corpus cannot see this divergence: every fixture that holds a unitless
- * number ± a unit is already listed in KNOWN for another cause, so the
- * ratchet stays green whichever way `.jess` answers. `.less` keeps `4 + 3px`
- * as written outside `unitMode: 'loose'` (owner 2026-10-06), while `.jess`
- * computes `$(4 + 3px)` to `7px` (RESOLVED-SEMANTICS §4 rows b, c). Whether the
- * ruling reaches `.jess` is an open owner question; this pins both arms so
- * the answer cannot change unseen, and becomes an equality once it is given.
+ * The corpus cannot see this case: every fixture that holds a unitless number
+ * ± a unit is listed in KNOWN for another cause. A unitless operand adopts the
+ * other operand's unit in every dialect (owner 2026-10-06, ledger V27), so both
+ * arms compute `4 + 3px` to `7px`.
  */
 describe('targeted round trip: a unitless number ± a unit', () => {
-  it('records the open divergence: `.less` keeps the math as written, `.jess` computes it', async () => {
+  it('both arms compute it', async () => {
     const less = '@a: 4;\n.a {\n  b: (@a + 3px);\n  c: @a * 2px;\n}\n';
     const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
     const render = async (source: string, extension: '.less' | '.jess') => {
@@ -1055,8 +1052,8 @@ describe('targeted round trip: a unitless number ± a unit', () => {
         .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
       return result.css.replace(/\s+/g, ' ').trim();
     };
-    expect(await render(less, '.less')).toBe('.a { b: (4 + 3px); c: 8px; }');
-    expect(await render(jess, '.jess')).toBe('.a { b: 7px; c: 8px; }');
+    expect(await render(less, '.less')).toBe('.a { b: 7px; c: 8px; }');
+    expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
   });
 });
 

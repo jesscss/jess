@@ -373,7 +373,7 @@ export function supportsDeclaration(children: readonly unknown[]): ValueNode {
     return generalEnclosedSequence(children);
   }
   const parts = slotParts(value);
-  return operation(':', name, parts.length === 1 ? parts[0]! : spaced(parts), false, cssBaseMathOutsideParens(':'), false);
+  return operation(':', name, parts.length === 1 ? parts[0]! : spaced(parts), false, cssBaseMathOutsideParens(':'));
 }
 
 function isCommaList(value: unknown): value is List {
@@ -388,7 +388,7 @@ export function styleFeature(children: readonly unknown[]): ValueNode {
   const [name, value] = children.filter(isValue);
   return value === undefined
     ? name!
-    : operation(':', name!, value, false, cssBaseMathOutsideParens(':'), false);
+    : operation(':', name!, value, false, cssBaseMathOutsideParens(':'));
 }
 
 /*
@@ -962,8 +962,7 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
     left,
     values[0]!,
     false,
-    cssBaseMathOutsideParens(operators[0]!),
-    false
+    cssBaseMathOutsideParens(operators[0]!)
   );
   for (let index = 1; index < operators.length; index++) {
     const right = values[index];
@@ -975,8 +974,7 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
       result,
       right,
       false,
-      cssBaseMathOutsideParens(operators[index]!),
-      false
+      cssBaseMathOutsideParens(operators[index]!)
     );
   }
   return result;
@@ -989,7 +987,7 @@ export function queryValueRatio(children: readonly unknown[]): ValueNode {
   const denominator = values[1];
   return denominator === undefined
     ? numerator
-    : operation('/', numerator, denominator, false, cssBaseMathOutsideParens('/'), false);
+    : operation('/', numerator, denominator, false, cssBaseMathOutsideParens('/'));
 }
 
 /**
@@ -1013,13 +1011,13 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
     }
     const property = keyword(tokenText(children[2]));
     const operators = queryComparisonOperators(children);
-    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!), false);
+    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
     if (operators.length > 1) {
       const right = children[4];
       if (!isValue(right)) {
         throw new Error('CSS AST query range lost its trailing value');
       }
-      result = operation(operators[1]!, result, right, false, cssBaseMathOutsideParens(operators[1]!), false);
+      result = operation(operators[1]!, result, right, false, cssBaseMathOutsideParens(operators[1]!));
     }
     return result;
   }
@@ -1034,7 +1032,7 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
   }
   if (tokenText(children[1]) === ':') {
     return children.length === 3 && isValue(children[2])
-      ? operation(':', name, children[2], false, cssBaseMathOutsideParens(':'), false)
+      ? operation(':', name, children[2], false, cssBaseMathOutsideParens(':'))
       : withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
   }
 
@@ -1443,8 +1441,7 @@ export function foldOperation(children: readonly unknown[]): ValueNode {
         result,
         child,
         true,
-        cssBaseMathOutsideParens(operator),
-        false
+        cssBaseMathOutsideParens(operator)
       );
       operator = undefined;
       continue;

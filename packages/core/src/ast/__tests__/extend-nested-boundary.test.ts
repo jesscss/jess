@@ -326,14 +326,50 @@ describe('nested-mode extend whose extender is the target\'s parent', () => {
   });
 
   /*
-   * A sub-compound `all` match folds the parent in as its own-local remainder, as a
-   * sibling's (the extend-selector fixture's `.attributes { [data="test"],
-   * .attribute-test }`): `&` in place of `.z`. The flat output substitutes the whole
-   * extender (`.y .y.k`, lessc's), so the two modes differ here as they do for the
-   * sibling.
+   * A sub-compound `all` match is one answer in both modes: the extender stands for
+   * the target where it appears, writing the context it shares with that position
+   * once (PINNED-DEFECTS DF8; orchestrator judgment under owner delegation
+   * 2026-10-07). A sibling under the shared parent is its own-local remainder
+   * (`.attributes .attribute-test`, never `.attributes .attributes .attribute-test`);
+   * the parent itself keeps its own compound below the parent (`.y .y.k`, folded
+   * with the target as `:is(.z, .y).k`; never the broader `&.k`).
    */
-  it('folds the parent into a sub-compound `all` match as `&`', () => {
-    expect(nestedLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y {\n  .z.k,\n  &.k {\n    c: 3;\n  }\n}\n');
+  it('writes a sub-compound `all` match by an extender sharing the parent once, in both modes', () => {
+    const sibling = '.attributes { [data="test"] { c: 1; } .attribute-test { &:extend([data="test"] all); } }';
+    expect(nestedLess(sibling)).toBe('.attributes {\n  [data="test"],\n  .attribute-test {\n    c: 1;\n  }\n}\n');
+    expect(flatLess(sibling)).toBe('.attributes [data="test"],\n.attributes .attribute-test {\n  c: 1;\n}\n');
+
+    expect(nestedLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y {\n  :is(.z, .y).k {\n    c: 3;\n  }\n}\n');
     expect(flatLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y :is(.z, .y).k {\n  c: 3;\n}\n');
+
+    const deeper = '.p { .y { &:extend(.z all); .z.k { c: 3; } } }';
+    expect(nestedLess(deeper)).toBe('.p {\n  .y {\n    :is(.z, .y).k {\n      c: 3;\n    }\n  }\n}\n');
+    expect(flatLess(deeper)).toBe('.p .y .z.k,\n.p .y .y.k {\n  c: 3;\n}\n');
+    const merged = '.p { &.y { &:extend(.z all); .z.k { c: 3; } } }';
+    expect(nestedLess(merged)).toBe('.p {\n  &.y {\n    .z.k,\n    .p.y.k {\n      c: 3;\n    }\n  }\n}\n');
+    expect(flatLess(merged)).toBe('.p.y .z.k,\n.p.y .p.y.k {\n  c: 3;\n}\n');
+
+    // A context the extender does not lead with in full is written as it is.
+    expect(flatLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a .b [d],\n.a .b .a .e {\n  c: 1;\n}\n');
+  });
+
+  /*
+   * A shared context joined by a child or sibling combinator is written once too, by the
+   * narrower of the target's and the extender's combinators (`.a > :is(.a .r)` is
+   * `.a > .r`), so both modes agree; mixed ancestor and sibling joins do not reduce.
+   */
+  it('writes a shared context once across child and sibling combinators, in both modes', () => {
+    const cases: Array<[string, string, string]> = [
+      ['.a { > .t { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  > .t,\n  > .r {\n    c: 1;\n  }\n}\n', '.a > .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { .t { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  .t,\n  > .r {\n    c: 1;\n  }\n}\n', '.a .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { > .t { c: 1; } .r { &:extend(.t all); } }', '.a {\n  > :is(.t, .r) {\n    c: 1;\n  }\n}\n', '.a > .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { + .t { c: 1; } + .r { &:extend(.t all); } }', '.a {\n  + .t,\n  + .r {\n    c: 1;\n  }\n}\n', '.a + .t,\n.a + .r {\n  c: 1;\n}\n'],
+      ['.a { > .t.k { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  > .t.k,\n  > .r.k {\n    c: 1;\n  }\n}\n', '.a > .t.k,\n.a > .r.k {\n  c: 1;\n}\n']
+    ];
+    for (const [src, nestedOut, flatOut] of cases) {
+      expect(nestedLess(src), src).toBe(nestedOut);
+      expect(flatLess(src), src).toBe(flatOut);
+    }
+    expect(flatLess('.a { ~ .t { c: 1; } > .r { &:extend(.t all); } }')).toBe('.a ~ .t,\n.a ~ .a > .r {\n  c: 1;\n}\n');
   });
 });

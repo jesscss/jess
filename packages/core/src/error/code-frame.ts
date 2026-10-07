@@ -178,27 +178,34 @@ export interface EvalErrorFrame {
   endLine?: number;
   endColumn?: number;
   lines?: Record<number, string>;
+
+  /** {@link INJECTED_TEXT_NOTE} when the position is in text the host added around the file. */
+  note?: string;
 }
 
 /**
  * Recover a code-frame position for a generic error raised during eval. The
  * central eval seam stamps the offending node's source span + source onto the
  * error; here we resolve that span into 1-based line/column and the surrounding
- * source lines. Returns `undefined` when nothing was stamped (e.g. a throw with
+ * source lines, counted in the file as written (ledger O16), as every other
+ * diagnostic is. Returns `undefined` when nothing was stamped (e.g. a throw with
  * no source-bearing node), so callers keep their existing `1:1` fallback.
  */
 export function evalErrorFrameFrom(err: unknown): EvalErrorFrame | undefined {
   const loc = readEvalErrorLocation(err);
-  if (loc?.source === undefined) {
+  const source = loc?.file?.source;
+  if (loc === undefined || source === undefined) {
     return undefined;
   }
-  const { line, column } = lineColAt(loc.source, loc.spanStart);
-  const end = loc.spanEnd !== undefined ? lineColAt(loc.source, loc.spanEnd) : undefined;
+  const owner = fileAt(loc.file!, source, loc.spanStart);
+  const { line, column } = lineColAt(source, loc.spanStart, owner);
+  const end = loc.spanEnd !== undefined ? lineColAt(source, loc.spanEnd, owner) : undefined;
   return {
     line,
     column,
     endLine: end?.line,
     endColumn: end?.column,
-    lines: extractRelevantLines(loc.source, line)
+    lines: extractRelevantLines(source, line, 1, owner),
+    ...(owner === loc.file ? {} : { note: INJECTED_TEXT_NOTE })
   };
 }

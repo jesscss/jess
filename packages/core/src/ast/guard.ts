@@ -23,6 +23,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { ValueSlot } from './nodes.js';
 import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
+import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
 
 /**
@@ -135,10 +136,17 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * The node's own `g` picks the primitive — the assertion or the match test
        * (§4.2a). Both read the SAME ground; they differ only in what they make
        * of a pair that has none, so the two positions cannot drift apart.
+       *
+       * An operation `preserve` kept for its units (`1px + 3em`) has no
+       * value to compare, so a comparison reading one is not true — in a guard
+       * and in an `if()` alike, where the assertion would otherwise raise on a
+       * pair with no ground. The operand's warning is the consumer's
+       * (`warnConsumedKept`); `strict` raised at the operation already
+       * (orchestrator judgment under owner delegation 2026-10-06).
        */
-      const compare = node.g === 'match'
-        ? (a: ValueGroup, b: ValueGroup): boolean => ev.compareMatch(node.op, a, b, deps.modes)
-        : (a: ValueGroup, b: ValueGroup): boolean => ev.compare(node.op, a, b, deps.modes);
+      const compare = (a: ValueGroup, b: ValueGroup): boolean =>
+        !holdsKeptOperation(a) && !holdsKeptOperation(b)
+        && (node.g === 'match' ? ev.compareMatch(node.op, a, b, deps.modes) : ev.compare(node.op, a, b, deps.modes));
       return isThenable(left) || isThenable(right)
         ? Promise.all([left, right]).then(([a, b]) => compare(a, b))
         : compare(left, right);

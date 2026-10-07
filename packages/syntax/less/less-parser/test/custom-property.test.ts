@@ -212,6 +212,16 @@ describe('Less custom properties', () => {
     expect(serialize(document).css).toBe('.x {\n  --a: /* c */ red;\n  --b: /* d */ blue;\n  --c: green;\n}\n');
   });
 
+  /*
+   * A Less `//` inside a custom-property value is value text: a custom property
+   * is verbatim CSS, and CSS has no `//` comments (orchestrator judgment under
+   * owner delegation 2026-10-06, ledger F13). lessc 4.9.1 drops it.
+   */
+  it('keeps a // inside a custom-property value as value text', () => {
+    expect(serialize(parse('.x { --a: red // c\n; --b: red // c\n  blue; --c: a//b; }')).css)
+      .toBe('.x {\n  --a: red // c;\n  --b: red // c\n    blue;\n  --c: a//b;\n}\n');
+  });
+
   /* U+00A0 is an ident code point (css-syntax-3 §4.2), not whitespace, so a value keeps it at either edge. */
   it('keeps a non-CSS space at a custom-property value edge', () => {
     expect(serialize(parse('.x { --a:\u00a0red; --b: (\u00a0red\u00a0); --c: var(--y, red\u00a0); }')).css)

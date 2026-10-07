@@ -30,6 +30,8 @@ Allows you to add a path to every generated import and url in your css. This doe
 
 For instance, if all the images the css use are in a folder called resources, you can use this option to add this on to the URL's and then have the name of that folder configurable.
 
+An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so neither `rootpath` nor `rewriteUrls` changes its path; `urlArgs` still applies to it.
+
 ### Rewrite URLs
 
 | | |
@@ -224,18 +226,9 @@ In this case, things are clearly not right - a length multiplied by a length giv
 - `strict` — assume this is a bug in the calculation and throw an error.
 - `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing, with an `eval/unexpressible-unit` warning; anything `strict` computes, `preserve` computes identically.
 
-A unitless number added to or subtracted from a dimension with a unit is one of the cases only `loose` guesses at. `4 + 3px` is `7px` under `loose` and an error under `strict`; under `preserve` it is kept as written, with the warning. It is not wrapped in `calc()`, because `calc()` rejects a number plus a length too:
+A unitless number added to or subtracted from a dimension takes the dimension's unit in every mode, as in Less 4 and Sass: `4 + 3px` is `7px` and `1.5 - 1rem` is `0.5rem`, under `strict` too. `strict` keeps its Less 4 meaning — an error only where two different real units meet (`1px + 1em`).
 
-```less
-@w: 4;
-.class {
-  a: @w + 3px;        // preserve: 4 + 3px     loose: 7px
-  b: (@w + 3px) * 2;  // preserve: (4 + 3px) * 2
-  c: @w * 3px;        // 12px in every mode
-}
-```
-
-The parts of the expression that do compute are computed, and the kept expression keeps its grouping, whether you wrote the parentheses or it reached an operator through a variable or a mixin argument (`@x * 2` with `@x: 4 + 3px` is `(4 + 3px) * 2`), so it means what you wrote. A guard or a function that reads kept math gets no number from it: the guard does not match and the call is written out as-is, each with the warning. Multiplying or dividing by a unitless number (`2px * 3`, `6px / 2`) is unaffected.
+Math `preserve` keeps stays one `calc()`. The parts of the expression that do compute are computed, and the kept expression keeps its grouping, whether you wrote the parentheses or it reached an operator through a variable or a mixin argument (`@x * 2` with `@x: 1px + 1em` is `calc((1px + 1em) * 2)`); an outer pair of parentheses you wrote becomes the `calc()`'s own. Inside a math function the kept math is its arithmetic, never a nested `calc()`, however it gets there — a variable, a group around it, a mixin argument (`calc(@x * 2)` and `calc((@x) * 2)` are `calc((1px + 1em) * 2)`, `max(@x, 1px)` is `max(1px + 1em, 1px)`) — and it warns there too; math you write inside the `calc()` is yours and stays silent. A guard, an `if()` or a function that reads kept math gets no number from it: the comparison is not true and the call is written out as-is, each with the warning. A unitless `min()`/`max()` argument compares as carrying the other arguments' unit, and takes that unit when it wins (`max(4, 3px)` is `4px`, as `4 + 3px` is `7px`); only two different real units are not comparable.
 
 #### Strict Units (deprecated)
 
@@ -298,7 +291,7 @@ As opposed to the global variable option, this puts the declaration at the end o
 |---|---|
 | `lessc --url-args="cache726357"` | `{ urlArgs: 'cache726357' }` |
 
-This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance.
+This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. It applies to an escaped `url(~"…")` body too, whose path is otherwise left as written.
 
 #### Line Numbers (Deprecated)
 

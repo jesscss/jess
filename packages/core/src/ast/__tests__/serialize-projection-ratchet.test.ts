@@ -325,9 +325,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // every document an `@import` of any kind placed, created on the first import,
     // so a `(reference)` import of a sheet already loaded is dropped after a
     // `(multiple)` or `(reference)` import as J14 drops it after a plain one.
-    // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
-    // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
-    // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
+    // +1 function (ledger V29): an authored paren group around an operation kept
+    // as written (`(foo + 1)`) keeps its parens in both value lanes
+    // (`keepAuthoredGroup`), so precedence survives.
     // +1 function (ledger X19): the body-form extends the walk applies where a body
     // lands — a mixin definition's, an at-rule block's, a detached ruleset's — are
     // read in one place (`walkAppliedExtends`) by the five extend classifiers.
@@ -379,8 +379,23 @@ describe('V19 one-evaluator projection ratchet', () => {
     // operation kept inside a math function that is itself kept math reached
     // through a variable is grouped by precedence (`keptOperand`); the value
     // lane still writes a group's own parens back.
-    expect(occurrences(/^function |^async function /gmu)).toBe(558);
-    expect(occurrences(/new Map/gu)).toBe(85);
+    // +1 function: every import that is neither `(multiple)` nor `(reference)`
+    // takes part in import-once, `(once)`, `(optional)` and `(less)` included,
+    // asked by the planner and the render walk alike (`importsOnce`).
+    // +2 functions: a paren group around one value reached through a reference
+    // evaluates to its value wherever it is read (judgment under owner
+    // delegation 2026-10-06; `groupsOneValue`, and `whileReached`, which every
+    // binding and member read sets the flag through).
+    // +1 function: a group nothing computes around kept math keeps the kept
+    // identity, so a math function still writes its arithmetic (`writtenGroup`).
+    // +4 functions and +2 `new Map` (owner 2026-10-06: an output transformation
+    // never makes output more invalid or match fewer elements): a parent ending
+    // with a pseudo-element is its own unit where `&` keeps it last
+    // (`parentUnits`), recorded per composed list from the parser's tokens
+    // (`recordPseudoElementBranches`, `endsWithPseudoElement`,
+    // `tokenEndsPseudoElement`; one `pseudoElementLists` map in each root context).
+    expect(occurrences(/^function |^async function /gmu)).toBe(566);
+    expect(occurrences(/new Map/gu)).toBe(87);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(2);

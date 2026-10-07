@@ -15,12 +15,17 @@ async function render(source: string, less: Record<string, unknown> = {}): Promi
 describe('typed reads, not byte scans', () => {
   /*
    * A quoted string's quote is syntax, so its content is the path. An escaped
-   * string is opaque (V22): its content is never re-read for a quote, so
-   * `url(~"'b.png'")` is transformed whole, directly or through a variable.
+   * string is opaque (V22): no URL rewrite reaches into it, directly or through
+   * a variable — rewriting `url(~"'b.png'")` wrote the bad-url token
+   * `url(root/'b.png')` (orchestrator judgment under owner delegation 2026-10-06).
    */
-  it('transforms url(@var) by the string the variable holds', async () => {
-    expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); }', { rootpath: 'root/' }))
-      .toBe('.x { q: url("root/a.png"); e: url(root/\'b.png\'); d: url(root/\'b.png\'); }');
+  it('transforms url(@var) by the string the variable holds, never an escaped body', async () => {
+    expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); f: url(~"b.png"); }', { rootpath: 'root/' }))
+      .toBe('.x { q: url("root/a.png"); e: url(\'b.png\'); d: url(\'b.png\'); f: url(b.png); }');
+
+    // Only the path is left alone: URL-only policy such as `urlArgs` still applies to an escaped body.
+    expect(await render('@base: ~"img"; .x { a: url(~"@{base}/x.png"); b: url(@base); c: url(~"./y.png"); }', { rootpath: 'root/', urlArgs: 'v=1', rewriteUrls: 'all' }))
+      .toBe('.x { a: url(img/x.png?v=1); b: url(img?v=1); c: url(./y.png?v=1); }');
   });
 
   it('names an @@ lookup by the string content of its name', async () => {
@@ -41,7 +46,7 @@ describe('typed reads, not byte scans', () => {
       .toBe('.x { v: x; w: "y"; }');
     expect(await render('@m: { @k: 1px; }; @n: "k"; @o: ~"k"; .x { a: @m[@@n]; b: @m[@@o]; }')).toBe('.x { a: 1px; b: 1px; }');
     expect(await render('@g: (10px); @f: (min-width: 640px); .x { v: ~"@{g}"; } @media @{f} { .y { w: 1; } }'))
-      .toBe('.x { v: (10px); } @media (min-width: 640px) { .y { w: 1; } }');
+      .toBe('.x { v: 10px; } @media (min-width: 640px) { .y { w: 1; } }');
   });
 
   /* A splice writes a value as a declaration writes it, its comments and line breaks included (SEMANTIC-INVARIANTS 2). */

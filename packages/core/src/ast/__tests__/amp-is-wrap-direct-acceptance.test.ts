@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  compoundSelector, compoundSelectorOf, complexSelector, decl, keyword, pseudoSelector,
+  compoundSelectorOf, complexSelector, decl, keyword, pseudoSelector,
   rule, sel, selist, simpleSelector, stylesheet, type ComplexSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -36,8 +36,8 @@ describe('selector-reference `&` over a multi-item parent list wraps as `:is()`'
 
   it('combinator `& + &` wraps each hole in `:is(parents)`', () => {
     const child = complexSelector([
-      { term: compoundSelector('&') },
-      { combinator: '+', term: compoundSelector('&') }
+      { term: simpleSelector('&') },
+      { combinator: '+', term: simpleSelector('&') }
     ]);
     expect(header(nest(['.a', '#b'], child))).toBe(':is(.a, #b) + :is(.a, #b)');
   });
@@ -89,8 +89,8 @@ describe('selector-reference `&` over a multi-item parent list wraps as `:is()`'
 
   it('single parent: `& + &`', () => {
     const child = complexSelector([
-      { term: compoundSelector('&') },
-      { combinator: '+', term: compoundSelector('&') }
+      { term: simpleSelector('&') },
+      { combinator: '+', term: simpleSelector('&') }
     ]);
     expect(header(nest(['.a'], child))).toBe('.a + .a');
   });

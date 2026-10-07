@@ -28,6 +28,7 @@ import {
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
 import { textHoldsParentRef } from '../nodes.js';
 import type { SimpleToken } from '../nodes.js';
+import { irEndsWithPseudoElement, isUserActionPseudoClass } from '../is-grouping.js';
 
 /**
  * The parser token a name continuation of `s` stands for: `s` is a text token the
@@ -110,7 +111,11 @@ function isBareAmp(seg: SelectorPart): boolean {
 
 /** The single-compound parent's structured selector value, or null when its
  * substitution can stay on the existing text-only path. Called only after a fused
- * ampersand is found; bare `&` and amp-free branches never pay this scan. */
+ * ampersand is found; bare `&` and amp-free branches never pay this scan. A parent
+ * that ends with a pseudo-element stays structured too, so an `all` extend still
+ * reaches the simples before it (`.a::before { &:hover {} }` and
+ * `.z:extend(.a all)` give `:is(.a, .z)::before:hover`), as it does through a
+ * parent list's `:is()`. */
 function structuredParentValue(parent: Branch): Simple[] | null {
   const value = parent.segments[0]!.compound.value;
   for (let index = 0; index < value.length; index++) {
@@ -118,7 +123,7 @@ function structuredParentValue(parent: Branch): Simple[] | null {
       return value;
     }
   }
-  return null;
+  return value.length > 1 && irEndsWithPseudoElement(parent) ? value : null;
 }
 
 /**
@@ -285,10 +290,83 @@ function composeOne(parent: Branch, child: Branch): Branch {
   return withBnd(mkBranch([...parent.segments.map(cloneSeg), ...cloneBranch(child).segments]), outBnd);
 }
 
-/** Compose a child selector list under a parent selector list. */
+/**
+ * Compose a child selector list under a parent selector list. A child whose `&` keeps a
+ * pseudo-element last ({@link keepsPseudoElementLast}) composes under each parent that
+ * ends with one on its own, and under one `:is()` of the rest, as the serializer
+ * substitutes it (`serialize.ts` `parentUnits`): `:is()` cannot hold a pseudo-element
+ * (owner 2026-10-06: an output transformation never makes output more invalid or match
+ * fewer elements).
+ */
 function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch[] {
   const token = parentToken(parentBranches);
-  return childBranches.map(c => composeOne(token, c));
+  let units: Branch[] | undefined;
+  const out: Branch[] = [];
+  for (const c of childBranches) {
+    if (parentBranches.length > 1 && keepsPseudoElementLast(c)) {
+      units ??= parentUnits(parentBranches, token);
+      for (const unit of units) {
+        out.push(composeOne(unit, c));
+      }
+      continue;
+    }
+    out.push(composeOne(token, c));
+  }
+  return out;
+}
+
+/**
+ * The parent tokens a child keeping a pseudo-element last composes under: each parent
+ * that ends with one alone, and one `:is()` of the rest at the place of the first of
+ * them — `token` itself when no parent ends with one.
+ */
+function parentUnits(parents: Branch[], token: Branch): Branch[] {
+  if (!parents.some(irEndsWithPseudoElement)) {
+    return [token];
+  }
+  const units: Branch[] = [];
+  let rest: Branch[] | null = null;
+  let restAt = 0;
+  for (const p of parents) {
+    if (irEndsWithPseudoElement(p)) {
+      units.push(cloneBranch(p));
+    } else if (rest === null) {
+      rest = [p];
+      restAt = units.push(token) - 1;
+    } else {
+      rest.push(p);
+    }
+  }
+  if (rest !== null) {
+    units[restAt] = parentToken(rest);
+  }
+  return units;
+}
+
+/**
+ * Whether a child branch's `&` keeps a pseudo-element last: its last compound is a bare
+ * `&` followed only by user-action pseudo-classes (`&:hover`), and no earlier compound
+ * holds an `&` (`../is-grouping.ts` `keepsPseudoElementLast` for the parsed selector).
+ */
+function keepsPseudoElementLast(b: Branch): boolean {
+  const segments = b.segments;
+  const last = segments[segments.length - 1]!.compound.value;
+  const lead = last[0];
+  if (lead === undefined || lead.t !== 'text' || lead.text !== '&') {
+    return false;
+  }
+  for (let i = 1; i < last.length; i++) {
+    const s = last[i]!;
+    if (s.t !== 'text' || !isUserActionPseudoClass(s.text)) {
+      return false;
+    }
+  }
+  for (let k = 0; k < segments.length - 1; k++) {
+    if (compoundHasAmp(segments[k]!.compound.value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Strip every `&` from a ROOT-context branch, returning `null` when nothing but

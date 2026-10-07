@@ -156,12 +156,36 @@ describe('extend across @import', () => {
     });
 
     /*
-     * Only the plain import's copy is ruled: it renders. Whether the earlier hidden copy
-     * still adds what the extend reveals, and how a plain import after a `(multiple)` one
-     * places the sheet, are orderings X18 leaves open, so they are not pinned here.
+     * The plain import's copy renders, and the earlier hidden copy is a placement of its
+     * own, so it still writes what the extend reveals there (ledger X13: each `(reference)`
+     * import is its own placement; orchestrator judgment under owner delegation 2026-10-06).
      */
-    it('a plain import after a (reference) one renders the sheet', async () => {
-      expect(await renderFile('ref-and-plain-main.less')).toContain(smX);
+    it('a plain import after a (reference) one renders the sheet; the hidden copy still reveals the extender', async () => {
+      expect(await renderFile('ref-and-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX].join('\n'));
+    });
+
+    /*
+     * A `(multiple)` copy stays outside import-once, so a plain import after it is the
+     * sheet's first `once` import and renders it, wherever the `(multiple)` copy landed: a
+     * sheet the author asked to see is never hidden (ledger X18, orchestrator judgment under
+     * owner delegation 2026-10-07).
+     */
+    it('a plain import after a (multiple) one renders the sheet', async () => {
+      expect(await renderFile('multiple-and-plain-main.less')).toBe(`${smX}\n${smX}`);
+      expect(await renderFile('plain-multiple-plain-main.less')).toBe(`${smX}\n${smX}`);
+      expect(await renderFile('ref-multiple-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX, smX].join('\n'));
+      expect(await renderFile('media-multiple-and-plain-main.less')).toBe(
+        ['@media print {', '  .sm {', '    b: 2;', '  }', '}', '.sm {', '  b: 2;', '}'].join('\n')
+      );
+      expect(await renderFile('mixin-multiple-and-plain-main.less')).toBe(
+        ['.y .sm {', '  b: 2;', '}', smX].join('\n')
+      );
+    });
+
+    // `(once)` is import-once spelled out; `(optional)` and `(less)` change only how a sheet loads.
+    it('every import but (multiple) and (reference) is import-once', async () => {
+      expect(await renderFile('once-and-once-main.less')).toBe(smX);
+      expect(await renderFile('plain-and-options-main.less')).toBe(smX);
     });
 
     /*

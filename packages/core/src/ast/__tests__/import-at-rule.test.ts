@@ -1032,7 +1032,7 @@ describe('StyleImport', () => {
         quoted('"child.css"', 'child.css', '"', false),
         null,
         null,
-        block(operation(':', keyword('min-width'), variableReference('width', 'scoped'), false, false, false))
+        block(operation(':', keyword('min-width'), variableReference('width', 'scoped'), false, false))
       ),
       atRuleBlock('@media', keyword('screen'), [
         authoredImport('@import', quoted('"nested.css"', 'nested.css', '"', false))
@@ -1094,10 +1094,16 @@ describe('StyleImport', () => {
       authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
       rule('.child', [decl('color', keyword('green'))])
     ]);
-    for (const option of ['less', 'optional']) {
+
+    /*
+     * `(multiple)` places each occurrence; without it an option-bearing import is
+     * import-once like a plain one (ledger X18), which the last check pins.
+     */
+    for (const options of [['less', 'multiple'], ['optional', 'multiple'], ['less'], ['optional']]) {
+      const twice = options.includes('multiple');
       const entry = stylesheet([
-        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ',')),
-        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ','))
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list(options.map(option => keyword(option)), ',')),
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list(options.map(option => keyword(option)), ','))
       ]);
       const documents = new Map([
         [entryPath, entry],
@@ -1124,9 +1130,10 @@ describe('StyleImport', () => {
 
       const context = new Context({}, [new OptionImportPlugin()]);
       const loadedEntry = await context.getTree(entryPath);
-      await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
-        css: '@import "child.css";\n@import "child.css";\n'
-          + '.child {\n  color: green;\n}\n.child {\n  color: green;\n}\n'
+      await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context })), options.join(', ')).resolves.toEqual({
+        css: twice
+          ? '@import "child.css";\n@import "child.css";\n.child {\n  color: green;\n}\n.child {\n  color: green;\n}\n'
+          : '@import "child.css";\n.child {\n  color: green;\n}\n'
       });
     }
   });

@@ -107,7 +107,8 @@ function internalUnknownDiagnostic(
     filePath,
     line: frame?.line ?? 1,
     column: frame?.column ?? 1,
-    lines: frame?.lines
+    lines: frame?.lines,
+    ...(frame?.note === undefined ? {} : { note: frame.note })
   };
 }
 

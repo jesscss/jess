@@ -163,9 +163,10 @@ export interface Any {
   /**
    * PROVENANCE, not a second value: the quote an escaped string (`~"…"`,
    * `~'…'`, `e()`) was written with, `''` for any other opaque text. Nothing in
-   * the value domain reads it; it is what lets a legacy plugin receive the
-   * escaped `tree.Quoted` Less 4.x hands it. Non-optional and
-   * factory-defaulted, so every `Any` realizes one hidden class.
+   * the value domain computes with it; it is what lets a legacy plugin receive
+   * the escaped `tree.Quoted` Less 4.x hands it, and what keeps a URL rewrite
+   * out of an escaped `url()` body. Non-optional and factory-defaulted, so
+   * every `Any` realizes one hidden class.
    */
   readonly escapedQuote: string;
 }
@@ -733,13 +734,8 @@ export const writtenArgument = (keyword: ArgumentKeyword, bytes: string, compres
     : `${keyword.sigil ?? ''}${keyword.name}${compress === true ? ':' : ': '}${bytes}`;
 
 export interface ValueEvaluator {
-  /**
-   * Binary operation on two materialized operands (direct / delegated math).
-   * `unitlessAdoptsUnit` is the operation node's dialect fact
-   * (`Operation.unitlessAdoptsUnit`, nodes.ts): whether a unitless `+`/`-`
-   * operand takes the other side's unit in every `unitMode`.
-   */
-  operate(op: string, left: Value, right: Value, modes: EvalModes, unitlessAdoptsUnit: boolean): Value;
+  /** Binary operation on two materialized operands (direct / delegated math). */
+  operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
 
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when

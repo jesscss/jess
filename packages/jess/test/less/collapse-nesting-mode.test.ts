@@ -190,6 +190,60 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe(':is(.a > .b, .a > .c) + .d,\n:is(.a > .b, .a > .c) + .e {\n  x: 1;\n}\n');
   });
 
+  /*
+   * A parent ending with a pseudo-element is written on its own where its `&` keeps
+   * the pseudo-element last — a bare `&` followed only by user-action pseudo-classes
+   * (Selectors 4 §3.6.3) — in every flattening mode, since `:is()` cannot hold one and
+   * `:is(.a::before, .b::before):hover` matches nothing; the other parents still share
+   * the `:is()`. Anywhere else nothing may follow the pseudo-element, the branch is
+   * invalid whatever is done, and the parent stays in the forgiving `:is()`: a plain
+   * branch (`.a::before .e`) would drop every branch of its list (owner 2026-10-06: an
+   * output transformation never makes output more invalid or match fewer elements).
+   */
+  it('writes a parent ending with a pseudo-element on its own only where `&` keeps it last', async () => {
+    for (const mode of ['native', 'compact'] as const) {
+      const cases: Array<[string, string]> = [
+        ['.a::before, .b::before { &:hover { x: 1 } }', '.a::before:hover, .b::before:hover'],
+        ['.t { .a::before, .b::before { &:hover { x: 1 } } }', '.t .a::before:hover, .t .b::before:hover'],
+        ['.a::before, .b, .c { &:hover:focus { x: 1 } }', '.a::before:hover:focus, :is(.b, .c):hover:focus'],
+        ['.a::before, .b { .x & { x: 1 } }', '.x .a::before, .x .b'],
+        ['.a::before, .b::before { &:hover { &:focus { x: 1 } } }', '.a::before:hover:focus, .b::before:hover:focus'],
+        ['.m() { &:hover { x: 1 } } .a::before, .b::before { .m(); }', '.a::before:hover, .b::before:hover'],
+        ['.a::before, .b::after, .c, .d { .e { x: 1 } }', ':is(.a::before, .b::after, .c, .d) .e'],
+        ['.c, .a:before, .d { &.k { x: 1 } }', ':is(.c, .a:before, .d).k'],
+        ['.a::before, .b { & + & { x: 1 } }', ':is(.a::before, .b) + .a::before, :is(.a::before, .b) + .b']
+      ];
+      for (const [src, expected] of cases) {
+        await expect(header(src, mode), `${mode}: ${src}`).resolves.toBe(expected);
+      }
+
+      // An at-rule bubbled out of the rule writes a branch per parent.
+      await expect(render('.a::before, .b { @media print { .c { x: 1 } } }', mode))
+        .resolves.toBe('@media print {\n  :is(.a::before) .c,\n  .b .c {\n    x: 1;\n  }\n}\n');
+
+      // A rule an extend writes takes the same units, its own `:is()` grouping kept outside the pseudo-element.
+      const extended: Array<[string, string]> = [
+        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a::before:hover) {}', ':is(.a, .b)::before:hover, .z'],
+        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a all) {}', ':is(.a, .z, .b)::before:hover'],
+        ['.a::before, .b::before { &:hover { x: 1 } } .z:extend(.a::before all) {}', '.a::before:hover, .z:hover, .b::before:hover'],
+        ['.a::before, .c, .d { &:hover { x: 1 } } .z:extend(.c all) {}', '.a::before:hover, :is(.c, .d, .z):hover'],
+        ['.a::before { &:hover { x: 1 } } .z:extend(.a all) {}', ':is(.a, .z)::before:hover'],
+        ['@s: ~".p::before, .q"; @{s} { x: 1; } .u:extend(.zz) {}', '.p::before, .q']
+      ];
+      for (const [src, expected] of extended) {
+        await expect(header(src, mode), `${mode}: ${src}`).resolves.toBe(expected);
+      }
+    }
+    await expect(header('.a, #b { .c { x: 1 } }')).resolves.toBe(':is(.a, #b) .c');
+    await expect(header('@pe: before; .a:@{pe}, .b:@{pe} { &:hover { x: 1 } }')).resolves.toBe('.a:before:hover, .b:before:hover');
+    await expect(header('@state: valid; .a:@{state}, .b:@{state} { &:hover { x: 1 } }')).resolves.toBe(':is(.a:valid, .b:valid):hover');
+
+    // Recorded per composed list, never by selector text: a same-text parent list elsewhere is unaffected.
+    const unrelated = await render('@s: ~".a"; @{s} { x: 1; } .a, #b { .c { y: 2; } &:hover { z: 3; } }', 'native');
+    expect(unrelated).toContain(':is(.a, #b) .c {');
+    expect(unrelated).toContain(':is(.a, #b):hover {');
+  });
+
   it(`'false' preserves authored nesting (no :is())`, async () => {
     const out = await render('.a, .b { .c, .d { x: 1 } }', false);
     expect(out).not.toContain(':is(');

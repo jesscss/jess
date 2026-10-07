@@ -190,22 +190,58 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * Math kept as written computes nothing, so a group written as one of its
-   * operands keeps its parens (DESIGN-DECISIONS P35, unitless ± unit, owner
-   * 2026-10-06), while math that computes reads the value inside.
+   * Math kept is written as `calc()` and computes nothing, so a group written
+   * as one of its operands keeps its parens inside it (ledger J16), while math
+   * that computes reads the value inside: a unitless number adopts the unit
+   * (ledger V27).
    */
   it('keeps the parens of an operand of math kept as written', async () => {
-    expect(await render('.x { a: (10px) + 1; c: 1 + (10px); d: ((10px)) + 1; e: foo + (1px); f: (1px) + foo; }'))
-      .toBe('.x { a: (10px) + 1; c: 1 + (10px); d: ((10px)) + 1; e: foo + (1px); f: (1px) + foo; }');
-    expect(await render('.x { a: (10px) + 1; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
+    expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; e: foo + (1px); f: (1px) + foo; g: (10px) + 1; }'))
+      .toBe('.x { a: calc((10px) + 1em); c: calc(1em + (10px)); d: calc(((10px)) + 1em); e: foo + (1px); f: (1px) + foo; g: 11px; }');
+    expect(await render('.x { a: (10px) + 1em; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
   });
 
-  /* A parameter stands for its argument as written, as a variable does (SEMANTIC-INVARIANTS 2). */
-  it('binds a mixin argument written as a group with its parens', async () => {
+  /*
+   * A paren group around one value keeps its parens where it is written directly
+   * in a declaration value or inside a math function; one reached through a
+   * variable, a parameter or an interpolation evaluates to its value, Less
+   * grouping (orchestrator judgment under owner delegation 2026-10-06; ledger
+   * J16). A parameter stands for its argument as a variable does.
+   */
+  it('evaluates a group reached through a variable, a parameter or an interpolation to its value', async () => {
     expect(await render('@g: (10px); .m(@x) { a: @x; b: @x * 2; } .d(@x: (10px)) { a: @x; } .x { a: @g; .m((10px)); .d(); }'))
-      .toBe('.x { a: (10px); a: (10px); b: 20px; a: (10px); }');
-    expect(await renderIn('.scss', '@mixin m($x) { a: $x; } .x { @include m((10px)); }')).toBe('.x { a: (10px); }');
-    expect(await renderIn('.less', '.m(@x) { b: @x; } .x { .m((0.5px)); c: (0.5px); }', true)).toBe('.x{b:(0.5px);c:(0.5px)}');
+      .toBe('.x { a: 10px; a: 10px; b: 20px; a: 10px; }');
+    expect(await render('@a: (10px); .x-@{a} { s: ~"@{a}"; m: @a @a; c: (10px); k: calc((10px)); p: (@a); } @c: calc((10px)); .y { c: @c; }'))
+      .toBe('.x-10px { s: 10px; m: 10px 10px; c: (10px); k: calc((10px)); p: (10px); } .y { c: calc((10px)); }');
+    expect(await render('@a: (10px) (red); @b: @a; .x { a: @b; w: 1px; v: $w; } .y { w: (1px); v: $w; }'))
+      .toBe('.x { a: 10px red; w: 1px; v: 1px; } .y { w: (1px); v: 1px; }');
+    expect(await renderIn('.scss', '$a: (10px); @mixin m($x) { a: $x; } .x-#{$a} { @include m((10px)); s: "#{$a}"; m: $a $a; c: (10px); }'))
+      .toBe('.x-10px { a: 10px; s: "10px"; m: 10px 10px; c: (10px); }');
+    expect(await renderJess('$a: (10px);\n.x { m: $a $a; c: (10px); }')).toBe('.x { m: 10px 10px; c: (10px); }');
+    expect(await renderIn('.less', '.m(@x) { b: @x; } .x { .m((0.5px)); c: (0.5px); }', true)).toBe('.x{b:.5px;c:(0.5px)}');
+
+    // Wherever the reference is read: in a math function, a query, through a member, and around a call.
+    expect(await render('@a: (10px); .x { w: calc(@a * 2); v: calc(1px + @a); } @media (min-width: @a) { .y { b: 1; } } @container (min-width: @a) { .z { b: 1; } }'))
+      .toBe('.x { w: calc(10px * 2); v: calc(1px + 10px); } @media (min-width: 10px) { .y { b: 1; } } @container (min-width: 10px) { .z { b: 1; } }');
+    expect(await render('#ns { @a: (10px); } @m: { k: (10px); }; .mx() { @r: (10px); k: (10px); } .x { a: #ns[@a]; b: @m[k] @m[k]; c: .mx()[@r]; d: .mx()[k]; }'))
+      .toBe('.x { a: 10px; b: 10px 10px; c: 10px; d: 10px; }');
+    expect(await render('@a: (var(--y)); @b: (foo(1)); .x-@{b} { a: @a; s: ~"@{a}"; }')).toBe('.x-foo(1) { a: var(--y); s: var(--y); }');
+    expect(await renderIn('.scss', '$a: (10px); .x { w: calc(#{$a} * 2); } @media (min-width: $a) { .y { b: 1; } }'))
+      .toBe('.x { w: calc(10px * 2); } @media (min-width: 10px) { .y { b: 1; } }');
+
+    // A group written inside a math function keeps its parens, even in a value a reference reached.
+    expect(await render('@c: clamp(1px, (10px), 3em); @d: calc(1px + (10px)); .x { c: @c; d: @d; }'))
+      .toBe('.x { c: clamp(1px, (10px), 3em); d: calc(1px + (10px)); }');
+  });
+
+  // Kept math is its arithmetic inside a math function in every dialect, never a nested `calc()` (owner 2026-10-06).
+  it('writes kept math a math function reads as its arithmetic in .scss and .jess', async () => {
+    const preserve = new Compiler({ compile: { unitMode: 'preserve' } });
+    const out = async (extension: '.scss' | '.jess', source: string): Promise<string> =>
+      (await preserve.renderString(source, { extension, suppressWarnings: true })).replace(/\s+/g, ' ').trim();
+    expect(await out('.scss', '$x: 1px + 1em; .a { w: calc(100% - ($x)); v: calc(($x) * 2); }'))
+      .toBe('.a { w: calc(100% - (1px + 1em)); v: calc((1px + 1em) * 2); }');
+    expect(await out('.jess', '$x: $(1px + 1em);\n.a { w: calc($x * 2); }')).toBe('.a { w: calc((1px + 1em) * 2); }');
   });
 
   it('still consumes the parens of Less math outside a math function', async () => {

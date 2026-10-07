@@ -5,8 +5,10 @@ import { Compiler } from '../src/index.js';
  * `min()`/`max()` per dialect. There is no single shared body, and that is the
  * point: each namespace does one language's job.
  *
- *   `#less`      lessc semantics — coerce unitless into the reference unit,
- *                compare canonically.        max(1px, 1in, 2) → 1in
+ *   `#less`      coerce unitless into the reference unit, compare
+ *                canonically, and a unitless winner takes that unit.
+ *                                            max(1px, 1in, 2) → 1in
+ *                                            max(4, 3px)      → 4px
  *   `#sass/math` dart-sass semantics, fold artifacts included — a unitless
  *                operand compares on display numbers, no conversion.
  *                                            max(1px, 1in, 2) → 2
@@ -43,12 +45,9 @@ const AGREED: Array<[string, string]> = [
   ['max(1px, 1in)', '1in'],
   ['min(1cm, 3mm)', '3mm'],
   ['max(3em, 1em, 2em, 5em)', '5em'],
-  ['min(2px, 1)', '1'],
   ['min(3, 1cm)', '1cm'],
-  ['max(3, 1cm)', '3'],
   ['max(1, 2px)', '2px'],
   ['min(1px, 2px, 3)', '1px'],
-  ['max(1px, 2px, 3)', '3'],
   ['min(1%, 2, 3%)', '1%'],
   ['max(1%, 2, 3%)', '3%'],
   ['max(1px)', '1px'],
@@ -62,6 +61,15 @@ const AGREED: Array<[string, string]> = [
 
 /** Where the languages genuinely differ: `[expression, Less, Sass]`. */
 const DIVERGENT: Array<[string, string, string]> = [
+  /*
+   * A unitless winner takes the reference unit in Less, as a unitless `+`/`-`
+   * operand does (ledger C20, V27; orchestrator judgment under owner delegation
+   * 2026-10-06): `width: max(4, 3px)` is the length `4px`, never the bare `4`.
+   * dart-sass returns the argument as written.
+   */
+  ['min(2px, 1)', '1px', '1'],
+  ['max(3, 1cm)', '3cm', '3'],
+  ['max(1px, 2px, 3)', '3px', '3'],
   // Less coerces 2 → 2px, so 1in (96px) wins. Sass compares 1, 1, 2 and takes 2.
   ['max(1px, 1in, 2)', '1in', '2'],
   // The dart-sass fold artifact: min succeeds because its running winner goes
@@ -84,6 +92,27 @@ describe('min()/max() per dialect', () => {
   it.each(DIVERGENT)('%s → %s in Less, %s in Sass', async (expr, lessExpected, sassExpected) => {
     expect(await render(compiler, expr, '.scss'), `${expr} in .scss`).toBe(sassExpected);
     expect(await render(compiler, expr, '.less'), `${expr} in .less`).toBe(lessExpected);
+  });
+
+  /*
+   * A unitless argument is comparable with one that has a unit in every
+   * `unitMode`, `strict` included, as a unitless `+`/`-` operand adopts the
+   * other unit (ledger V27, C20; orchestrator judgment under owner delegation
+   * 2026-10-06); in Less a unitless winner takes that unit, and dart-sass
+   * returns it as written. Only two different real units are not comparable.
+   */
+  it('compares a unitless argument with a unit in every unitMode', async () => {
+    for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
+      const moded = new Compiler({ compile: { unitMode } });
+      for (const extension of FOLDING_DIALECTS) {
+        const at = `${unitMode} ${extension}`;
+        const less = extension === '.less';
+        expect(await render(moded, 'max(4, 3px)', extension), at).toBe(less ? '4px' : '4');
+        expect(await render(moded, 'min(1, 2px)', extension), at).toBe(less ? '1px' : '1');
+        expect(await render(moded, 'max(1, 2px)', extension), at).toBe('2px');
+        expect(await render(moded, 'max(1px, 2em)', extension), at).toBe('max(1px, 2em)');
+      }
+    }
   });
 });
 
