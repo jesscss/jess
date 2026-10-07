@@ -5349,6 +5349,37 @@ function writtenGroup(v: EvalValue): Value {
     : makeKeyword(`(${emitValue(v)})`);
 }
 
+/**
+ * A condition written into a value — one no guard, `if()` or `.jess` `$( … )`
+ * consumes — as its guard tree holds it, each operand evaluated, so its
+ * variables substitute: `(@a > 2px)` with `@a: 3px` is `(3px > 2px)` (SETTLED —
+ * orchestrator judgment under owner delegation 2026-10-07). A term under
+ * `and`, `or` or `not` is written in the parens Less's condition syntax
+ * requires: `(3px > 2px) and (3px < 5px)`.
+ */
+function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx, nested: boolean): MaybePromise<string> {
+  const term = (bytes: string): string => nested ? `(${bytes})` : bytes;
+  switch (guard.g) {
+    case 'cmp':
+    case 'match':
+      return combineAll([evalValueSlot(guard.left, frame, e), evalValueSlot(guard.right, frame, e)], ([left, right]) =>
+        term(`${emitValueC(left!, e)} ${guard.op} ${emitValueC(right!, e)}`));
+    case 'and':
+    case 'or':
+      return combineAll([writtenCondition(guard.left, frame, e, true), writtenCondition(guard.right, frame, e, true)], ([left, right]) =>
+        `${left!} ${guard.g} ${right!}`);
+    case 'not':
+      return mapMaybe(writtenCondition(guard.inner, frame, e, true), inner => `not ${inner}`);
+    case 'truth':
+      return mapMaybe(evalValueSlot(guard.value, frame, e), v => term(emitValueC(v, e)));
+    case 'call':
+      return combineAll(guard.args.map(arg => evalValueSlot(arg, frame, e)), args =>
+        term(`${guard.name}(${args.map(arg => emitValueC(arg, e)).join(', ')})`));
+    case 'default':
+      return term('default()');
+  }
+}
+
 /** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
 const isQueryRelation = (operator: string): boolean =>
   operator === ':' || operator === '<' || operator === '>' || operator === '<=' || operator === '>=' || operator === '=';
@@ -5723,7 +5754,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (e.ev && e.exprBoundary) {
         return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
       }
-      return literal(node.src);
+      return writtenCondition(node.guard, frame, e, false);
     case 'Operation': {
       if (node.operator === 'and' || node.operator === 'or') {
         return evalLogicalOperation(node, frame, e);

@@ -105,7 +105,9 @@ it: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`, `(e("foo"))` →
 operation emit verbatim; the function only runs when the value is operated on or
 given a Less overload / variable argument. Less one-/two-slot overloads such as
 `rgba(#5F59)` dispatch normally, and malformed numeric arities reach the regular
-call-level error/preserve policy.
+call-level error/preserve policy. A call written out this way still substitutes
+its variables, in a comparison too: with `@a: 3px`, `rgb(@a > 2px, 1, 2)` is
+written `rgb(3px > 2px, 1, 2)`.
 
 ```less
 .a { color: hsl(200, 50%, 40%); }        // verbatim
