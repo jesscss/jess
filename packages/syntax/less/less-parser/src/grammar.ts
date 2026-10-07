@@ -2583,12 +2583,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValue,
     children => trimCustomValueEnd(requireValueNode(children[0]))
   );
+  /**
+   * The `var()` name: css's `<custom-property-name>` first, then the Less forms
+   * that evaluate to one — a variable (`@v`, `@@v`, `@m[k]`), an escape
+   * (`~"--x"`), or a call (`e("--x")`). The parser keeps the shape; evaluation
+   * supplies the name, as Less 4.x does (`var(@v)` with `@v: --x` is `var(--x)`).
+   */
+  const varName = choice(
+    g.CustomPropertyValue,
+    g.EscapedQuoted,
+    g.IndirectVariableReference,
+    g.VariableReferenceChain,
+    g.Call
+  );
   const VarFunction = node(
     'VarCall',
     sequence(
       routed(),
       optional(whitespace),
-      g.CustomPropertyValue,
+      varName,
       optional(whitespace),
       optional(parser({ trivia: customValueGapTrivia }, sequence(literal(','), g.VarFallback))),
       literal(')')

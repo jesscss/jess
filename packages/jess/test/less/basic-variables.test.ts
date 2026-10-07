@@ -67,6 +67,21 @@ describe('Less variable references through the public AST route', () => {
     );
   });
 
+  it('should resolve a Less variable, escape or call written as the var() name', async () => {
+    const lessCode = [
+      '@v: --x;',
+      '.box {',
+      '  a: var(@v);',
+      '  b: var(~"--x");',
+      '  c: var(e("--x"), 1px);',
+      '}'
+    ].join('\n');
+
+    await expect(parseAndRender(lessCode)).resolves.toBe(
+      '.box {\n  a: var(--x);\n  b: var(--x);\n  c: var(--x, 1px);\n}\n'
+    );
+  });
+
   /*
    * PINNED (jess#236). lessc 4.9.1 keeps `@foo: .a;` as permissive text and
    * only raises on `@foo()`. Less 5 rejects the declaration at parse time, and

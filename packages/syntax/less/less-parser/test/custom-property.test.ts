@@ -88,6 +88,17 @@ describe('Less custom properties', () => {
     });
   });
 
+  it.each([
+    ['a variable', 'var(@v)', { type: 'Lookup', kind: 'var', name: 'v' }],
+    ['an indirect variable', 'var(@@v)', { type: 'Lookup', kind: 'var', raw: '@@v' }],
+    ['an escape', 'var(~"--x")', { type: 'Quoted', escaped: true, value: '--x' }],
+    ['a call', 'var(e("--x"))', { type: 'FunctionCall', name: 'e' }]
+  ])('keeps %s written as the var() name for evaluation to resolve', (_label, call, name) => {
+    expect(parse(`a { b: ${call}; }`)).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'var', args: [{ value: name }] } }] }]
+    });
+  });
+
   it('parses raw Less variables inside custom-property values structurally', () => {
     const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; }');
 
