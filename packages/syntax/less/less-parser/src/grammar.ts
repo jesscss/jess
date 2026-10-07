@@ -557,13 +557,11 @@ const compoundSelectorTrivia = classifiedTrivia({
 });
 const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
 const customValueCommentTrivia = classifiedTrivia({ blockComment: customValueBlockCommentRun });
-// The trivia between a custom-property declaration's `:` and its value: the
-// whitespace css-syntax-3 §5.5.6 step 3 discards, and Less `//` line comments,
-// which never render. A block comment is not in it (see CustomDeclaration).
-const customValueGapTrivia = classifiedTrivia({
-  whitespace: whitespaceRun,
-  lineComment
-});
+// The trivia between a custom-property declaration's `:` and its value: only
+// the whitespace css-syntax-3 §5.5.6 step 3 discards, as in the CSS base. The
+// value is CSS `<declaration-value>`, which has no `//` comment, so a `//` or a
+// block comment there starts the value (see CustomDeclaration).
+const customValueGapTrivia = classifiedTrivia({ whitespace: whitespaceRun });
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.
@@ -2607,10 +2605,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // this tail simply claims it. It mirrors the ordinary-declaration tail exactly:
     // `!`, trivia, `important`.
     //
-    // Only whitespace and `//` line comments are trivia between the colon and
-    // the value, so a block comment written before the first value part
-    // (`--x: /* c */ @{v}`) starts the value and its span, and is replayed in
-    // place rather than after the declaration.
+    // Only whitespace is trivia between the colon and the value, so a block
+    // comment written before the first value part (`--x: /* c */ @{v}`) starts
+    // the value and its span, and is replayed in place rather than after the
+    // declaration; a `//` there is value text (`--x: //b;`), as in CSS.
     sequence(
       g.CustomPropertyName,
       parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)),

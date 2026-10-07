@@ -152,4 +152,19 @@ describe('Jess custom properties', () => {
   ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
     expect(serialize(parse(source)).css).toBe(expected);
   });
+
+  /*
+   * CSS has no `//` comment, and a custom-property value is CSS
+   * `<declaration-value>` in every dialect: a `//` after the `:` is value text,
+   * not a comment that hides the `;` after it.
+   */
+  it('reads a `//` that opens a custom-property value as value text', () => {
+    expect(parse('a { --x: //b; c: d; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--x', value: { type: 'Any', src: '//b' } },
+        { type: 'Declaration', name: 'c' }
+      ] }]
+    });
+    expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
+  });
 });

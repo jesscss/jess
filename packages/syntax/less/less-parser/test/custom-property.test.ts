@@ -193,7 +193,8 @@ describe('Less custom properties', () => {
   /*
    * A block comment before the first value part opens the value: the value's
    * span starts at it, so it is written in place. The comment-free value keeps
-   * no edge whitespace. Whitespace and `//` comments after the `:` stay outside.
+   * no edge whitespace. Only whitespace after the `:` stays outside: CSS has no
+   * `//` comment, so a `//` there opens the value too.
    */
   it('starts a custom-property value at a comment that opens it', () => {
     const source = '@v: red; .x { --a: /* c */ @{v}; --b: /* d */ blue; --c: // l\n  green; }';
@@ -207,9 +208,24 @@ describe('Less custom properties', () => {
       return span === undefined ? undefined : source.slice(span.start, span.end);
     });
 
-    expect(spans).toEqual(['/* c */ @{v}', '/* d */ blue', 'green']);
+    expect(spans).toEqual(['/* c */ @{v}', '/* d */ blue', '// l\n  green']);
     expect(rule.rules[1]).toMatchObject({ type: 'Declaration', value: { type: 'Any', src: 'blue' } });
-    expect(serialize(document).css).toBe('.x {\n  --a: /* c */ red;\n  --b: /* d */ blue;\n  --c: green;\n}\n');
+    expect(serialize(document).css).toBe('.x {\n  --a: /* c */ red;\n  --b: /* d */ blue;\n  --c: // l\n    green;\n}\n');
+  });
+
+  /*
+   * A custom-property value is CSS `<declaration-value>` in every dialect, so a
+   * `//` after the `:` is value text, not a Less line comment that hides the `;`
+   * after it (Less 4.x read `--x: //b; c: d;` as `--x: c: d;`).
+   */
+  it('reads a `//` that opens a custom-property value as value text', () => {
+    expect(parse('a { --x: //b; c: d; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--x', value: { type: 'Any', src: '//b' } },
+        { type: 'Declaration', name: 'c' }
+      ] }]
+    });
+    expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
   });
 
   /* U+00A0 is an ident code point (css-syntax-3 §4.2), not whitespace, so a value keeps it at either edge. */
