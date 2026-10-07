@@ -7175,9 +7175,9 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
 /**
  * `calc(…)` fold: evaluate the single argument in calc mode, then decide the
  * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
- * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; a fully
- * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
- * collapse to a bare Dimension). An argument written as a paren group around
+ * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; an argument
+ * that resolved to one number (`calc(@v)` with `@v: 5px`) drops the wrapper,
+ * and every other value keeps it. An argument written as a paren group around
  * one value keeps its parens and so its wrapper ({@link unconsumedParens}): a
  * dimension carries them as its spelling (`calc((10vh))` is `10vh` spelled
  * `(10vh)`), so every position prints the same bytes and a typed consumer still
@@ -7204,12 +7204,13 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
     }
 
     /*
-     * `calc(x)` drops its wrapper only when `x` resolved to ONE value. A list
-     * (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math mode)
-     * or a space run is not a `<calc-sum>` result, so unwrapping it would emit
-     * `50vh / 2` as the property value — no longer a calculation at all.
+     * `calc(x)` drops its wrapper only when `x` resolved to ONE number. A list
+     * (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math mode),
+     * a space run, or escaped text (`calc(~"100% - @{a}")`, opaque per V3) is
+     * not a `<calc-sum>` result, so unwrapping it would emit `100% - 2px` as the
+     * property value — no longer a calculation at all.
      */
-    if (isValueGroupArray(v) || v.type === 'List') {
+    if (isValueGroupArray(v) || v.type !== 'Dimension') {
       return keepAsWritten(makeKeyword(`calc(${emitValueC(v, e)})`));
     }
     return v;

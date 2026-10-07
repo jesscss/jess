@@ -271,6 +271,14 @@ describe('Less math boundaries', () => {
     expect(await render('@v: 50vh/2; .x { w: calc(@v); }')).toBe('.x { w: calc(50vh / 2); }');
   });
 
+  /* Escaped text is opaque (V3): unwrapping it would write `w: 100% - 2px`, which no browser accepts. lessc 4.9.1 and dart-sass keep the calc(). */
+  it('keeps calc() around escaped or interpolated text', async () => {
+    expect(await render('@a: 2px; @c: ~"100% - @{a}"; .x { w: calc(~"100% - @{a}"); v: calc(@c); u: calc(e("100% - @{a}")); t: translateX(calc(~"100% - @{a}")); }'))
+      .toBe('.x { w: calc(100% - 2px); v: calc(100% - 2px); u: calc(100% - 2px); t: translateX(calc(100% - 2px)); }');
+    expect(await renderIn('.scss', '$a: 2px; .x { w: calc(#{"100% - #{$a}"}); v: calc(#{$a}); }'))
+      .toBe('.x { w: calc(100% - 2px); v: calc(2px); }');
+  });
+
   it('keeps the parens of an authored group that a preserved call does not evaluate', async () => {
     expect(await render('.x { w: hsl(210, percentage((20 / 20)), 50%); }'))
       .toBe('.x { w: hsl(210, percentage((20 / 20)), 50%); }');
