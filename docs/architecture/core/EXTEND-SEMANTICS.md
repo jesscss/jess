@@ -685,9 +685,12 @@ EXTENDER's selector only — the referenced target header never surfaces on its 
 Hiding follows the import placement, not the rule. Each `(reference)` or `(multiple)`
 import is its own placement of the sheet's rules, so an extend inside one `@media` block
 reaches only that block's copy — a `(reference)` import inside a sheet imported
-`(multiple)` twice is placed once per copy. Import-once drops a `(reference)` import
-of a sheet any `@import` already loaded — plain, `(multiple)` or `(reference)` — (ledger
-J14, jess#359; X18, orchestrator judgment under owner delegation 2026-10-06):
+`(multiple)` twice is placed once per copy. Import-once counts only a copy placed in the
+same scope — the root, one ruleset, one at-rule block or one mixin call, an imported
+sheet's root being its importer's (J14 as amended, orchestrator judgment under owner
+delegation 2026-10-07). Import-once drops a `(reference)` import of a sheet any `@import`
+already placed in its scope — plain, `(multiple)` or `(reference)` — (ledger J14,
+jess#359; X18, orchestrator judgment under owner delegation 2026-10-06):
 `@import "t.less"; @import (reference) "t.less";` places the sheet once, visibly, and
 `@import (multiple) "t.less"; @import (reference) "t.less";` places only the `(multiple)`
 copy. A `(reference)` import that comes first does not stop a later plain import, which
@@ -699,12 +702,12 @@ plain import of the sheet is its first `once` import and renders it too, whereve
 `(multiple)` copy landed (`@media print { @import (multiple) "t.less"; } @import "t.less";`
 keeps the root copy). Every import other than `(multiple)` and `(reference)` is import-once,
 `(once)`, `(optional)` and `(less)` included (X18, orchestrator judgment under owner
-delegation 2026-10-07: a sheet the author asked to see is never hidden). An import inside a ruleset loads the
-sheet where the ruleset renders, and counts in document order like any other: after
-`.wrap { @import "t.less"; }`, a root `@import "t.less";` or `@import (reference) "t.less";`
-is a no-op, so it neither renders the sheet nor makes its mixins callable at the root, as
-lessc 4.9.1 has it. A guarded ruleset's import is not counted, because the guard may not
-hold. A sheet a `(reference)` sheet imports is
+delegation 2026-10-07: a sheet the author asked to see is never hidden). A copy in
+another scope never makes an import a no-op: after `.wrap { @import "t.less"; }` or
+`@media print { @import "t.less"; }`, a root `@import "t.less";` renders the sheet at the
+root and makes its mixins callable there, and a root `@import (reference) "t.less";` places
+its hidden copy there (lessc 4.9.1 drops both, leaving `.mx` undefined at the root). The
+other way round, a scoped import after a root one places its own copy too. A sheet a `(reference)` sheet imports is
 referenced too, and a reference sheet's rule called as a mixin from outside the import
 renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the
 render walk) may still reveal renders as a reserved block, which the deferred fold

@@ -274,6 +274,7 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |
 | `foo(bar=@v)` | `foo(bar=50)` | **`foo(bar=@v)`** | A `name=value` argument is verbatim bytes. The IE-filter form is dropped in Less 5, and resolving inside it had no purpose. |
 | `@import "x.less" screen;` | wraps in `@media` | **parse error** | A media postlude belongs to a **CSS** `@import`. On a compile-time import it is bogus, and the shape is now decided at parse time. |
+| `@media print { @import "t"; } @import "t";` | `t` inside `@media print` only | **`t` there and at the root** | An import is skipped only after a copy of the same file **in the same scope** (the root, one ruleset, one at-rule block, one mixin call). Less 4 skipped it after a copy anywhere, so the root never got the styles — or the mixins — the author imported there. |
 
 ### Truthiness is unchanged — with one exception
 

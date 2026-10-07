@@ -189,16 +189,47 @@ describe('extend across @import', () => {
     });
 
     /*
-     * An import inside a ruleset loads the sheet too, so a later import of it is a no-op
-     * everywhere: it neither renders (the extend finds no root `.sm`) nor publishes the
-     * mixins the walk never renders there. One before the ruleset is the one that counts.
+     * Import-once counts only a copy placed in the same scope — the root, one ruleset, one
+     * at-rule block or one mixin call, an imported sheet's root being its importer's — so a
+     * copy inside a ruleset or `@media` never hides the root's: the root import renders and
+     * publishes its mixins and extend targets there (ledger J14 as amended, orchestrator
+     * judgment under owner delegation 2026-10-07; lessc 4.9.1 drops the root import and
+     * leaves `.mx` undefined).
      */
-    it('an import of a sheet an import inside a ruleset already loaded is a no-op', async () => {
-      for (const main of ['ruleset-ref-then-ref-main.less', 'ruleset-plain-then-plain-main.less']) {
-        const result = await mkCompiler(true).safeRender(path.join(fixtures, main));
-        expect(result.errors.map(error => error.code), main).toEqual(['resolve/name-not-found']);
-      }
-      expect(await renderFile('ref-then-ruleset-ref-main.less')).toBe(['.x {', '  b: 2;', '}', '.y {', '  m: 1;', '}'].join('\n'));
+    it('a copy placed in another scope does not make an import a no-op', async () => {
+      const sm = ['.sm {', '  b: 2;', '}'].join('\n');
+      const y = ['.y {', '  m: 1;', '}'].join('\n');
+      const wrapSm = ['.wrap .sm {', '  b: 2;', '}'].join('\n');
+      const printSm = ['@media print {', '  .sm {', '    b: 2;', '  }', '}'].join('\n');
+      expect(await renderFile('ruleset-plain-then-plain-main.less')).toBe([wrapSm, sm, y].join('\n'));
+      expect(await renderFile('media-plain-then-plain-main.less')).toBe([printSm, sm, y].join('\n'));
+      expect(await renderFile('ruleset-plain-then-plain-extend-main.less')).toBe([wrapSm, '.sm,', '.x {', '  b: 2;', '}'].join('\n'));
+      expect(await renderFile('plain-then-media-main.less')).toBe([sm, printSm].join('\n'));
+      expect(await renderFile('mixin-scopes-main.less')).toBe(['.x .sm {', '  b: 2;', '}', '.y .sm {', '  b: 2;', '}'].join('\n'));
+
+      // A `(reference)` import is a no-op only after a copy in its own scope too (ledger X18).
+      expect(await renderFile('ruleset-ref-then-ref-main.less')).toBe(['.x {', '  b: 2;', '}', y].join('\n'));
+      expect(await renderFile('ref-then-ruleset-ref-main.less')).toBe(['.x {', '  b: 2;', '}', y].join('\n'));
+
+      // In one scope the sheet is still placed once.
+      expect(await renderFile('ruleset-twice-main.less')).toBe(wrapSm);
+    });
+
+    /*
+     * Each scope's copy of a sheet is its own placement, as a `(multiple)` copy is, so an
+     * extend reaches only the copies in its own reach: one in `@media print` extends the
+     * print copy alone, and one whose target is `.wrap .sm` the ruleset's copy alone. The
+     * ruleset's copy never takes the root copy's extended header, `(multiple)` included.
+     */
+    it('an extend reaches each scope\'s copy of a sheet on its own', async () => {
+      const sm = ['.sm {', '  b: 2;', '}'].join('\n');
+      const printSmX = ['@media print {', '  .sm,', '  .x {', '    b: 2;', '  }', '}'].join('\n');
+      const smX = ['.sm,', '.x {', '  b: 2;', '}'].join('\n');
+      const wrapSm = ['.wrap .sm {', '  b: 2;', '}'].join('\n');
+      expect(await renderFile('media-extend-then-plain-main.less')).toBe([printSmX, sm].join('\n'));
+      expect(await renderFile('plain-then-media-extend-main.less')).toBe([sm, printSmX].join('\n'));
+      expect(await renderFile('ruleset-plain-then-plain-extend-wrap-main.less')).toBe(['.wrap .sm,', '.x {', '  b: 2;', '}', sm].join('\n'));
+      expect(await renderFile('ruleset-multiple-then-plain-extend-main.less')).toBe([wrapSm, smX].join('\n'));
     });
 
     /*

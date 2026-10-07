@@ -398,9 +398,17 @@ describe('V19 one-evaluator projection ratchet', () => {
     // with the `.jess` printer (`isAuthoredGroupExpression`).
     // +1 function: the group a computation boundary holds is judged at the
     // boundary, not by the `calc()` that reads it (`heldByBoundary`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(566);
-    expect(occurrences(/new Map/gu)).toBe(87);
-    expect(occurrences(/new Set/gu)).toBe(43);
+    // +4 functions, +4 `new Map`, -1 `new Set` (ledger J14 as amended,
+    // orchestrator judgment under owner delegation 2026-10-07): import-once is
+    // kept per scope, one map of sheets per scope in the planner and the walk
+    // (`importIsNoOp`), so each scope's copy of a sheet is its own extend
+    // placement; the walk records the rules of a placement it issued
+    // (`placedStatically`, the `walkPlacements` set), and a rule an import body
+    // queues after its parent's block emits under that import's placement
+    // (`withImportPlacement`, `queueContainer`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(570);
+    expect(occurrences(/new Map/gu)).toBe(91);
+    expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

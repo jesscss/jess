@@ -442,16 +442,50 @@ function importHasOption(options: string | null, option: string): boolean {
 
 /**
  * Import-once covers a `(reference)` re-import (ledger J14, X18): a `(reference)` import of
- * a document any `@import` already placed — plain, `(multiple)` or `(reference)` — is
- * dropped, so the sheet is placed once and stays as visible as it was. A plain import after
- * a `(reference)` one is not a re-import: it renders the sheet the author asked to see. A
- * `(multiple)` import, or one inside a `(multiple)` sheet, places its own copy and is never
- * dropped. The import planner and the render walk both ask this, in document order, an
- * import inside a ruleset included, so they agree on which imports place a sheet.
+ * a document any `@import` already placed in its scope — plain, `(multiple)` or
+ * `(reference)` — is dropped, so the sheet is placed once there and stays as visible as it
+ * was. A plain import after a `(reference)` one is not a re-import: it renders the sheet the
+ * author asked to see. A `(multiple)` import, or one inside a `(multiple)` sheet, places its
+ * own copy and is never dropped.
  */
 function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, placed: boolean): boolean {
   return placed && !inMultiple && node.mode !== 'compose'
     && importHasOption(options, 'reference') && !importHasOption(options, 'multiple');
+}
+
+/**
+ * Import-once, per scope (ledgers J14, X18): whether `@import` `node` of the sheet `key` is
+ * a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once` import
+ * already placed there, or a `(reference)` re-import ({@link isReferenceReimport}) — else
+ * records the placement. A scope is the root, one ruleset, one at-rule block or one mixin
+ * call; an imported sheet's own root is its importer's scope. A copy placed in another
+ * scope never makes an import a no-op: `@media print { @import "t"; } @import "t";` renders
+ * the root copy (orchestrator judgment under owner delegation 2026-10-07). `placed` maps a
+ * scope's sheets to whether a `once` import placed them. The import planner (a scope is the
+ * enclosing node) and the render walk (its frame) both ask this in document order, an
+ * import inside a ruleset included, so they agree on which imports place a sheet.
+ */
+function importIsNoOp(
+  placed: Map<object, Map<string, boolean>>,
+  scope: object,
+  key: string,
+  node: StyleImport,
+  options: string | null,
+  inMultiple: boolean
+): boolean {
+  let here = placed.get(scope);
+  const prior = here?.get(key);
+  const once = !inMultiple && importsOnce(options);
+  if (once ? prior === true : isReferenceReimport(node, options, inMultiple, prior !== undefined)) {
+    return true;
+  }
+  if (here === undefined) {
+    placed.set(scope, here = new Map());
+  }
+  if (once || prior === undefined) {
+    here.set(key, once);
+  }
+  return false;
 }
 
 /**
@@ -6444,6 +6478,8 @@ function declMapFromMixinCall(
   const discard: Partition = {
     encounteredContainer: false,
     trailing: [],
+    placement: undefined,
+    boundary: null,
     pending: [],
     emitBlock: noop
   };
@@ -8619,7 +8655,7 @@ function writtenBlockBody(
         const em = scratchEmit(e);
         const collected: Leaf[] = [];
         const noop = (): void => {};
-        const nested: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+        const nested: Partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: noop };
         settledExpansion(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), rule, em);
         if (nested.trailing.length > 0 || nested.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
@@ -9815,6 +9851,11 @@ interface DynamicExtendState {
   /** Rules already accounted for statically (main + static imported preflight); a
    * rule outside this set is a dynamic emission whose facts are recorded at emit. */
   staticRules: Set<Ruleset>;
+
+  /** The import placements the walk issued, which the static plan never projected:
+   * a rule they place is a dynamic emission even when `staticRules` holds it, since
+   * the plan holds it at another copy of its sheet. */
+  walkPlacements: Set<object> | null;
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
   slots: DynExtendSlot[];
@@ -9951,8 +9992,8 @@ interface Emit extends EvalCtx {
    */
   loadedImports: Map<string, Frame | null> | null;
 
-  /** Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
-  placedDocuments: Set<string> | null;
+  /** The sheets each scope's `@import`s placed, keyed by the scope's frame ({@link importIsNoOp}). */
+  importScopes: Map<Frame, Map<string, boolean>> | null;
 
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
@@ -10075,7 +10116,7 @@ function scratchEmit(e: EvalCtx): Emit {
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
-    placedDocuments: null,
+    importScopes: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -12822,62 +12863,15 @@ function planImportedFacts(
     };
   }
 
-  /* Each document loaded once, by identity: true when an `@import` loaded it. */
+  /* Each document loaded once, by identity: true when an `@import` loaded it, false a `@compose`. */
   const seen = new Map<string, boolean>();
 
-  /* Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
-  const placed = new Set<string>();
-
   /*
-   * The sheets an `@import` nested in a ruleset places, and everything they import, are
-   * loaded only where the walk renders that ruleset, but they count toward import-once
-   * here in document order too (ledgers J14, X18): a later `@import` of a sheet one of
-   * them placed is dropped here as the walk drops it, so it publishes no facts the walk
-   * never renders. A guarded ruleset may never render, and a path the walk interpolates
-   * is known only there, so neither counts.
-   *
-   * ponytail: a guard that holds still leaves a later import of the same sheet dropped
-   * by the walk with its facts published here; evaluating the guard here would close it.
+   * The sheets each scope's `@import`s placed ({@link importIsNoOp}), a scope keyed by its
+   * at-rule block, or by the document root the walk began at. The planner never walks into
+   * a ruleset, and no import it plans shares a ruleset's scope.
    */
-  const countRulesetImports = async (rules: readonly Statement[], multiple: boolean): Promise<void> => {
-    for (const st of rules) {
-      if (st.type === 'Ruleset' || st.type === 'AtRuleBlock') {
-        if (st.type === 'AtRuleBlock' || st.guard === undefined) {
-          await countRulesetImports(st.rules, multiple);
-        }
-        continue;
-      }
-      if (st.type !== 'StyleImport' || st.mode === 'compose') {
-        continue;
-      }
-      const target = st.target.type === 'Url' ? st.target.value : st.target;
-      const options = importRequestOptions(st.options);
-      if (!isStaticQuoted(target) || importHasOption(options, 'inline')) {
-        continue;
-      }
-      const prepared = e.plannedImportDocuments?.get(st);
-      const request: ImportDocumentRequest = prepared?.request ?? { node: st, specifier: target.value, options };
-      const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
-      if (prepared === undefined) {
-        e.plannedImportDocuments?.set(st, { request, loaded });
-      }
-      if (loaded === undefined || 'inline' in loaded || loaded.document === null || loaded.key === undefined) {
-        continue;
-      }
-      if (!multiple && importsOnce(options)) {
-        if (seen.has(loaded.key)) {
-          continue;
-        }
-        seen.set(loaded.key, true);
-      } else if (isReferenceReimport(st, options, multiple, placed.has(loaded.key))) {
-        continue;
-      }
-      placed.add(loaded.key);
-      const sheet = loaded.document.rules;
-      const count = (): Promise<void> => countRulesetImports(sheet, multiple || importHasOption(options, 'multiple'));
-      await (loaded.withinDocument ? loaded.withinDocument(count) : count());
-    }
-  };
+  const placed = new Map<object, Map<string, boolean>>();
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
@@ -12985,7 +12979,10 @@ function planImportedFacts(
      * `(reference)` sheet imports is hidden too, and shares its placement.
      */
     hidden = false,
-    placement: object | undefined = undefined
+    placement: object | undefined = undefined,
+
+    /* The import-once scope of `statements` ({@link importIsNoOp}): the at-rule block, or the root. */
+    importScope: object = scope
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     const deferredSites: number[] = [];
@@ -13034,20 +13031,29 @@ function planImportedFacts(
        * facts into the importing frame before its body is walked.
        */
       const isCompose = st.mode === 'compose';
-      if (!multipleImportDepth && importsOnce(options) && loaded.key !== undefined) {
-        if (seen.has(loaded.key)) {
-          /* A module composed again is still loaded from this sheet too (ledger X14). */
-          if (isCompose && plansExtend) {
-            composedModuleBoundary(overlay.moduleBoundaries, loaded.key, boundary);
+      const once = !multipleImportDepth && importsOnce(options);
+
+      /* A plain import of a sheet one placed in another scope already: a copy of its own. */
+      let again = false;
+      if (isCompose) {
+        if (once && loaded.key !== undefined) {
+          if (seen.has(loaded.key)) {
+            /* A module composed again is still loaded from this sheet too (ledger X14). */
+            if (plansExtend) {
+              composedModuleBoundary(overlay.moduleBoundaries, loaded.key, boundary);
+            }
+            return;
           }
+          seen.set(loaded.key, false);
+        }
+      } else if (loaded.key !== undefined) {
+        if ((once && seen.get(loaded.key) === false) || importIsNoOp(placed, importScope, loaded.key, st, options, multipleImportDepth)) {
           return;
         }
-        seen.set(loaded.key, !isCompose);
-      } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && placed.has(loaded.key))) {
-        return;
-      }
-      if (!isCompose && loaded.key !== undefined) {
-        placed.add(loaded.key);
+        if (once) {
+          again = seen.get(loaded.key) === true;
+          seen.set(loaded.key, true);
+        }
       }
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
@@ -13091,7 +13097,9 @@ function planImportedFacts(
        * `(reference)` sheet's stay inside that sheet. Plain imports share their
        * importer's boundary. A `(reference)` or `(multiple)` import is its own render
        * placement, so its copies of the sheet's rules project apart from every other
-       * copy (#359); a plain import shares its importer's placement.
+       * copy (#359), and so is a plain import of a sheet one placed in another scope
+       * already (ledger J14 as amended); any other plain import shares its importer's
+       * placement.
        */
       const sheetHidden = hidden || reference;
       let sheetBoundary = boundary;
@@ -13103,7 +13111,7 @@ function planImportedFacts(
         if (reference) {
           sheetBoundary = { parents: [sheetBoundary] };
         }
-        if (reference || importHasOption(options, 'multiple')) {
+        if (reference || again || importHasOption(options, 'multiple')) {
           sheetPlacement = {};
           const placements = overlay.importPlacements ??= new Map();
           let byStatement = placements.get(placement);
@@ -13152,7 +13160,10 @@ function planImportedFacts(
           [],
           sheetBoundary,
           sheetHidden,
-          sheetPlacement
+          sheetPlacement,
+
+          /* An imported sheet's root is its importer's scope; a composed module is its own. */
+          isCompose ? childFrame : importScope
         );
       };
       if (loaded.withinDocument) {
@@ -13197,8 +13208,6 @@ function planImportedFacts(
             (deferredAnchors ??= []).push(anchor);
           }
         }
-      } else if (st.type === 'Ruleset' && st.guard === undefined) {
-        await countRulesetImports(st.rules, multipleImportDepth);
       } else if (st.type === 'ModuleImport' && e.context) {
         const { module } = await e.context.getModule(st.path.value).catch(moduleLoadFailed(st, e));
         e.plannedModuleImports?.set(st, module);
@@ -13210,7 +13219,7 @@ function planImportedFacts(
          * — and ledger A10's `@import "lib" screen;` desugar lands exactly here.
          * Those facts keep publication order (see {@link importSiteRank}).
          */
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement);
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement, st);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -13328,7 +13337,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
-    placedDocuments: null,
+    importScopes: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13431,7 +13440,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
-    placedDocuments: null,
+    importScopes: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13540,6 +13549,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerStarts: [],
         containerEnds: [],
         staticRules,
+        walkPlacements: null,
         subjects: [],
         instructions: [],
         slots: [],
@@ -14531,6 +14541,47 @@ function innermostExtendPlacement(frame: Frame | null, e: Emit): object | undefi
   return e.importPlacement;
 }
 
+/**
+ * [extend/dynamic] Whether `rule` is accounted for by the static plan where it is placed
+ * now: a rule the plan holds, outside an import placement the walk issued
+ * ({@link DynamicExtendState.walkPlacements}). Always true when nothing is recorded.
+ */
+function placedStatically(rule: Ruleset, e: Emit): boolean {
+  const dyn = e.dynamicExtend;
+  return dyn === null
+    || (dyn.staticRules.has(rule) && (dyn.walkPlacements === null || e.importPlacement === undefined || !dyn.walkPlacements.has(e.importPlacement)));
+}
+
+/**
+ * Run `emit` under import placement `placement` and extend boundary `boundary`,
+ * restoring the outer ones after. An import's sheet emits under its own; a rule an
+ * import body queued for after its parent's block ({@link Partition.trailing}) emits
+ * under the one it was queued in.
+ */
+function withImportPlacement(
+  e: Emit,
+  placement: object | undefined,
+  boundary: ExtendBoundary | null,
+  emit: () => MaybePromise<void>
+): MaybePromise<void> {
+  const dyn = e.dynamicExtend;
+  const outerPlacement = e.importPlacement;
+  const outerBoundary = dyn?.boundary ?? null;
+  if (placement === outerPlacement && boundary === outerBoundary) {
+    return emit();
+  }
+  e.importPlacement = placement;
+  if (dyn !== null) {
+    dyn.boundary = boundary;
+  }
+  return settled(emit, () => {
+    e.importPlacement = outerPlacement;
+    if (dyn !== null) {
+      dyn.boundary = outerBoundary;
+    }
+  });
+}
+
 /** [extend/splice] True when this rule is emitted through a mixin-call body splice —
  * its static extend-plan header (keyed on the shared definition node) does NOT apply
  * to this call-site placement (see {@link Frame.mixinSplice}). */
@@ -15134,7 +15185,7 @@ function flattenWithHeader(
    * other rule keeps the O(1) path.
    */
   const dyn = e.dynamicExtend;
-  const isStatic = dyn === null || dyn.staticRules.has(rule);
+  const isStatic = placedStatically(rule, e);
   const viaCall = (flat !== undefined || hoist !== undefined || (dyn !== null && isStatic))
     && reachedViaMixinSplice(frame);
   const spliced = viaCall && (flat !== undefined || hoist !== undefined);
@@ -15235,6 +15286,8 @@ function flattenWithHeader(
   const partition: Partition = {
     encounteredContainer: false,
     trailing: [],
+    placement: e.importPlacement,
+    boundary: e.dynamicExtend?.boundary ?? null,
     pending: [],
     emitBlock
   };
@@ -15298,6 +15351,20 @@ function flattenWithHeader(
    * from that document's trivia.
    */
   return withSourceOwner(e, childFrame.sourceOwner, executeBody);
+}
+
+/**
+ * [partition] Queue a collapsed child to emit after its parent's block. One an import
+ * body queued emits under that import's placement and boundary
+ * ({@link withImportPlacement}), not under the parent's, which `trailing` runs under:
+ * a rule of a sheet imported inside a ruleset projects as that copy's.
+ */
+function queueContainer(p: Partition, e: Emit, emit: () => MaybePromise<void>): void {
+  const placement = e.importPlacement;
+  const boundary = e.dynamicExtend?.boundary ?? null;
+  p.trailing.push(placement === p.placement && boundary === p.boundary
+    ? emit
+    : () => withImportPlacement(e, placement, boundary, emit));
 }
 
 /** [partition] Queue the direct leaves preceding a collapsed child as one parent block. */
@@ -15582,6 +15649,10 @@ interface Partition {
 
   /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
+
+  /** The import placement and extend boundary `trailing` runs under ({@link queueContainer}). */
+  placement: object | undefined;
+  boundary: ExtendBoundary | null;
 
   /** Buffered trailing declarations awaiting the next boundary (a run → one block). */
   pending: Leaf[];
@@ -15913,7 +15984,7 @@ function walkBody(
             flushPending(partition);
             partition.encounteredContainer = true;
             skipBodyTrivia(bodyTrivia, rule, e);
-            partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
+            queueContainer(partition, e, () => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
           } else {
             skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
@@ -16161,7 +16232,7 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
-            partition.trailing.push(emitAt);
+            queueContainer(partition, e, emitAt);
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -16215,7 +16286,7 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
-            partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
+            queueContainer(partition, e, () => emitAtRuleStatement(atNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -16247,7 +16318,8 @@ function walkBody(
               e.importDocument,
               e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
                 ? undefined
-                : (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp, source)
+                : (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp, source),
+              source !== null
             );
             if (isThenable(imported)) {
               return imported.then(() => {
@@ -16319,11 +16391,11 @@ function walkBody(
             const flushed = flush();
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
-                expandStyleImport(node, frame, e, e.importDocument, emitLoaded),
+                expandStyleImport(node, frame, e, e.importDocument, emitLoaded, emitLoaded !== undefined),
                 () => run(index + 1)
               ));
             }
-            const imported = expandStyleImport(node, frame, e, e.importDocument, emitLoaded);
+            const imported = expandStyleImport(node, frame, e, e.importDocument, emitLoaded, emitLoaded !== undefined);
             if (isThenable(imported)) {
               return imported.then(() => run(index + 1));
             }
@@ -16363,7 +16435,7 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
-            partition.trailing.push(() => emitModuleImport(importNode, frame, e));
+            queueContainer(partition, e, () => emitModuleImport(importNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -16389,7 +16461,7 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
-            partition.trailing.push(() => emitUnknownAtRuleBlock(opaqueNode, e));
+            queueContainer(partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17840,6 +17912,8 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
   const discard: Partition = {
     encounteredContainer: false,
     trailing: [],
+    placement: undefined,
+    boundary: null,
     pending: [],
     emitBlock: noop
   };
@@ -20554,7 +20628,10 @@ function expandStyleImport(
   frame: Frame,
   e: Emit,
   importDocument?: SerializeOptions['importDocument'],
-  emitLoaded?: (document: Stylesheet, frame: Frame) => MaybePromise<void>
+  emitLoaded?: (document: Stylesheet, frame: Frame) => MaybePromise<void>,
+
+  /* The import sits in a ruleset's body, which the import planner never walks. */
+  inRule = false
 ): MaybePromise<void> {
   if (e.context?.options.processImports === false) {
     return;
@@ -20622,10 +20699,10 @@ function expandStyleImport(
         const emitOnceKey = !importsOnce(request.options) || e.multipleImportDepth !== 0
           ? undefined
           : activation === undefined ? loaded.key : activation.emitOnceKey;
-        if (emitOnceKey !== undefined) {
-          const seen = e.loadedImports ??= new Map();
-          if (seen.has(emitOnceKey)) {
-            if (isCompose) {
+        if (isCompose) {
+          if (emitOnceKey !== undefined) {
+            const seen = e.loadedImports ??= new Map();
+            if (seen.has(emitOnceKey)) {
               if (seen.get(emitOnceKey) === null) {
                 throw moduleConfigRejected(
                   node,
@@ -20642,18 +20719,20 @@ function expandStyleImport(
               if (e.dynamicExtend !== null) {
                 composedModuleBoundary(e.dynamicExtend.moduleBoundaries, emitOnceKey, e.dynamicExtend.boundary);
               }
+              return;
             }
+            seen.set(emitOnceKey, bodyFrame);
+          }
+        } else if (loaded.key !== undefined) {
+          /* A sheet composed as a module is not also folded in by `@import`. */
+          const composed = emitOnceKey !== undefined ? e.loadedImports?.get(loaded.key) : undefined;
+          if ((composed !== undefined && composed !== null)
+            || importIsNoOp(e.importScopes ??= new Map(), frame, loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
             return;
           }
-          seen.set(emitOnceKey, isCompose ? bodyFrame : null);
-        } else if (isReferenceReimport(
-          node, request.options, e.multipleImportDepth !== 0,
-          loaded.key !== undefined && e.placedDocuments?.has(loaded.key) === true
-        )) {
-          return;
-        }
-        if (!isCompose && loaded.key !== undefined) {
-          (e.placedDocuments ??= new Set()).add(loaded.key);
+          if (emitOnceKey !== undefined && composed === undefined) {
+            (e.loadedImports ??= new Map()).set(loaded.key, null);
+          }
         }
         const publishChildren = mapMaybe(configured, () => isCompose || hasPrepublishedImportFact(e, node)
           || e.prepublishedModuleImports?.get(frame)?.has(node) === true
@@ -20684,15 +20763,28 @@ function expandStyleImport(
            *
            * [extend] A `(reference)` or `(multiple)` import is its own render
            * placement, the one the planner gave its static facts (a fresh one for an
-           * import the planner never reached); any other import emits in its
-           * importer's. [extend/dynamic] A composed module or `(reference)` sheet
-           * records its walk facts inside its own extend boundary (ledger X14).
+           * import the planner never reached), and so is a copy of a sheet the planner
+           * placed elsewhere first, or one inside a ruleset, which the planner never
+           * walks: each scope's copy of a sheet projects apart (ledger J14 as amended).
+           * Any other import emits in its importer's. The rules a fresh placement
+           * places are the walk's to record ({@link DynamicExtendState.walkPlacements}).
+           * [extend/dynamic] A composed module or `(reference)` sheet records its walk
+           * facts inside its own extend boundary (ledger X14).
            */
           const ownReference = importHasOption(request.options, 'reference');
           const planned = e.importPlacements?.get(e.importPlacement)?.get(node);
-          const placement = planned?.token
-            ?? (ownReference || importHasOption(request.options, 'multiple') ? {} : e.importPlacement);
           const dyn = e.dynamicExtend;
+          let placement = planned?.token;
+          if (placement === undefined) {
+            if (ownReference || importHasOption(request.options, 'multiple') || (inRule && !isCompose)) {
+              placement = {};
+              if (dyn !== null) {
+                (dyn.walkPlacements ??= new Set()).add(placement);
+              }
+            } else {
+              placement = e.importPlacement;
+            }
+          }
           let boundary = dyn?.boundary ?? null;
           if (dyn !== null && isCompose) {
             boundary = composedModuleBoundary(dyn.moduleBoundaries, loaded.key, boundary);
@@ -20700,23 +20792,7 @@ function expandStyleImport(
           if (dyn !== null && ownReference) {
             boundary = planned?.boundary ?? { parents: [boundary] };
           }
-          const emit = (): MaybePromise<void> => {
-            const outerPlacement = e.importPlacement;
-            const outerBoundary = dyn?.boundary ?? null;
-            if (placement === outerPlacement && boundary === outerBoundary) {
-              return emitDocument();
-            }
-            e.importPlacement = placement;
-            if (dyn !== null) {
-              dyn.boundary = boundary;
-            }
-            return settled(emitDocument, () => {
-              e.importPlacement = outerPlacement;
-              if (dyn !== null) {
-                dyn.boundary = outerBoundary;
-              }
-            });
-          };
+          const emit = (): MaybePromise<void> => withImportPlacement(e, placement, boundary, emitDocument);
 
           /*
            * An imported document executes IN the importing frame, so a `@plugin`
@@ -22930,7 +23006,7 @@ function writeNestedRule(
      */
     const dyn = e.dynamicExtend;
     const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true, resolved ?? undefined);
-    const recorded = dyn !== null && (!dyn.staticRules.has(rule) || reachedViaMixinSplice(frame));
+    const recorded = dyn !== null && (!placedStatically(rule, e) || reachedViaMixinSplice(frame));
 
     /*
      * A recorded rule written under a parent block is no rewritable slot, so no
