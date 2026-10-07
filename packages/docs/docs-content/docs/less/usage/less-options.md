@@ -185,7 +185,7 @@ _This has been replaced by the [`math`](#math) option._ Less 5 still accepts it 
 |---|---|
 | `lessc -ru`<br>`lessc --relative-urls` | `{ relativeUrls: true }` |
 
-_Has been replaced by `rewriteUrls: "all"`._ Less 5 ignores `relativeUrls`, without a warning, so setting it rewrites nothing, and `lessc` no longer accepts `--relative-urls`.
+_Has been replaced by `rewriteUrls: "all"`._ Less 5 accepts `relativeUrls` in options and in a `styles.config` as a deprecated spelling of `rewriteUrls`: `true` means `rewriteUrls: "all"`, `false` leaves the default, and an explicit `rewriteUrls` wins. Setting it logs a deprecation warning. `lessc` no longer accepts `--relative-urls`.
 
 
 ### Unit Mode
@@ -241,7 +241,7 @@ In modern mode a Less built-in must be imported, for example `@use "#less";` and
 |---|---|
 | `lessc --ie-compat` | `{ ieCompat: true }` |
 
-Less 5 ignores `ieCompat`, and `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
+Less 5 accepts `ieCompat` and ignores it, reporting a `deprecation/ie-compat-option` warning when it is set to `true`; `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
 
 #### Enable Inline JavaScript (Deprecated)
 

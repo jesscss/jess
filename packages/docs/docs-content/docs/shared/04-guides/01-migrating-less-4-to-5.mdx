@@ -406,8 +406,8 @@ Numeric comparison, unit conversion between compatible units, and colour equalit
 
 ## Deprecated CLI / option paths
 
-- `relativeUrls` is ignored, without a warning, and `lessc` no longer accepts `--relative-urls`: use `--rewrite-urls=all` (or `rewriteUrls: 'all'`).
-- `ieCompat` is ignored, and `lessc` no longer accepts `--ie-compat`.
+- `relativeUrls: true` is a deprecated spelling of `rewriteUrls: 'all'`, with a warning; an explicit `rewriteUrls` wins. `lessc` no longer accepts `--relative-urls`: use `--rewrite-urls=all`.
+- `ieCompat` is accepted and ignored, with a `deprecation/ie-compat-option` warning, and `lessc` no longer accepts `--ie-compat`.
 - `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
 - `dumpLineNumbers` / `--line-numbers` → accepted with a warning and otherwise ignored; use sourcemaps.
 - built-in `compress` is **not** deprecated: it is a supported minifier in 5.x and replaces `less-plugin-clean-css`.

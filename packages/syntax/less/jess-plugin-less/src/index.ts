@@ -228,6 +228,7 @@ export class LessPluginResolver {
       collapseNesting: lessOptions.collapseNesting,
       rootpath: lessOptions.rootpath,
       rewriteUrls: lessOptions.rewriteUrls,
+      relativeUrls: lessOptions.relativeUrls,
       urlArgs: lessOptions.urlArgs,
       processImports: lessOptions.processImports
     });
@@ -480,6 +481,9 @@ export class LessPlugin extends AbstractPlugin {
   /** The modes this plugin was built with, under the settings a host scopes to each source. */
   readonly #own: LessModeSettings;
   readonly #warned = new Set<string>();
+
+  /** `rewriteUrls`, or what the deprecated `relativeUrls` names when it is unset. */
+  readonly #rewriteUrls: LessPluginOptions['rewriteUrls'];
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
   /**
@@ -497,6 +501,18 @@ export class LessPlugin extends AbstractPlugin {
       checkModeOptions(own);
     }
     this.#own = lessModeSettings(own, warn);
+
+    /*
+     * `relativeUrls` is the Less 4.x boolean alias of `rewriteUrls` (orchestrator
+     * judgment under owner delegation 2026-10-07), on the `strictMath` pattern:
+     * `true` is 'all', `false` the default, and an explicit `rewriteUrls` wins.
+     * Any use warns.
+     */
+    this.#rewriteUrls = opts.rewriteUrls;
+    if (opts.rewriteUrls === undefined && opts.relativeUrls !== undefined) {
+      this.#rewriteUrls = opts.relativeUrls ? 'all' : undefined;
+      warn(`relativeUrls is deprecated; use rewriteUrls. relativeUrls: ${String(opts.relativeUrls)} now means rewriteUrls: '${opts.relativeUrls ? 'all' : 'off'}'`);
+    }
   }
 
   /** Each deprecated spelling warns once, however many files are read with it. */
@@ -526,7 +542,7 @@ export class LessPlugin extends AbstractPlugin {
   transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
     let transformed: string;
     if (isUrlRelative(value)) {
-      const rewriteUrls = this.opts.rewriteUrls;
+      const rewriteUrls = this.#rewriteUrls;
       const local = value.startsWith('.');
 
       /*

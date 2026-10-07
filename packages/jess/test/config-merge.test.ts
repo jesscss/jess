@@ -320,6 +320,44 @@ describe('Config Merging', () => {
     expect(result.css).toBe(plain.css);
   });
 
+  /*
+   * Less 4.x `ieCompat` (`lessc --ie-compat`) made `data-uri()` fall back to `url()`
+   * for a file too large for IE8. `data-uri()` always inlines the file, so the option
+   * is accepted, warns once, and changes nothing; a Less 4.x caller can pass it through.
+   */
+  it.each([
+    ['language.less', { language: { less: { ieCompat: true } } }],
+    ['compile', { compile: { ieCompat: true } }]
+  ])('accepts deprecated %s.ieCompat with one no-effect warning and unchanged output', async (_where, options) => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }\n');
+
+    const plain = await new Compiler().renderToResult(testFile, { suppressWarnings: true });
+    const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+    const deprecations = result.warnings.filter(warning => warning.code === 'deprecation/ie-compat-option');
+    expect(deprecations).toHaveLength(1);
+    expect(deprecations[0]!.reason).toBe('"ieCompat" is deprecated and has no effect: data-uri() always inlines the file.');
+    expect(deprecations[0]!.filePath).toBeUndefined();
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(plain.css);
+
+    const unset = await new Compiler({ language: { less: { ieCompat: false } } }).renderToResult(testFile, { suppressWarnings: true });
+    expect(unset.warnings.map(warning => warning.code)).not.toContain('deprecation/ie-compat-option');
+  });
+
+  /* The deprecated `relativeUrls` alias of `rewriteUrls: 'all'` works from a styles.config too. */
+  it('reads the deprecated relativeUrls from a styles.config as rewriteUrls: all', async () => {
+    const render = async (dir: string, less: string) => {
+      fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'sub', 'a.less'), '.a { b: url("img.png"); }\n');
+      fs.writeFileSync(path.join(dir, 'main.less'), '@import "sub/a.less";\n');
+      fs.writeFileSync(path.join(dir, 'styles.config.cjs'), `module.exports = { language: { less: ${less} } };\n`);
+      return (await new Compiler().renderToResult(path.join(dir, 'main.less'), { suppressWarnings: true })).css;
+    };
+    expect(await render(path.join(tempDir, 'alias'), '{ relativeUrls: true }')).toContain('url("sub/img.png")');
+    expect(await render(path.join(tempDir, 'explicit'), '{ relativeUrls: true, rewriteUrls: \'off\' }')).toContain('url("img.png")');
+  });
+
   it('does not warn when insecure is unset or false', async () => {
     const testFile = path.join(tempDir, 'test.less');
     fs.writeFileSync(testFile, '.a { color: red; }');

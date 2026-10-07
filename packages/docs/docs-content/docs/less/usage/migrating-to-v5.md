@@ -509,8 +509,8 @@ Example:
 
 ### Deprecated CLI/option paths
 
-- `relativeUrls` is ignored, without a warning, so nothing is rewritten, and `lessc` no longer accepts `--relative-urls`. Set `rewriteUrls: 'all'` (`--rewrite-urls=all`) instead.
-- `ieCompat` is ignored, and `lessc` no longer accepts `--ie-compat`. `data-uri()` always inlines the file.
+- `relativeUrls` is a deprecated spelling of `rewriteUrls`: `relativeUrls: true` means `rewriteUrls: 'all'` and logs a deprecation warning, and an explicit `rewriteUrls` wins. `lessc` no longer accepts `--relative-urls`; use `--rewrite-urls=all`.
+- `ieCompat` is accepted and ignored, with a `deprecation/ie-compat-option` warning when it is `true`, and `lessc` no longer accepts `--ie-compat`. `data-uri()` always inlines the file.
 - `dumpLineNumbers` / `--line-numbers` is deprecated and has no effect: no line-number comments or debug media queries are emitted, and setting it reports a `deprecation/dump-line-numbers-option` warning. Use source maps.
 - `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
 - Error and warning positions count lines from the file as you wrote it. Less 4.x counted the text that `banner` and `globalVars` add in front of it.
