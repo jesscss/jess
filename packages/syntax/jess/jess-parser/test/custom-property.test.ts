@@ -110,6 +110,26 @@ describe('Jess custom properties', () => {
     expect(() => parse('a { font-family: fn(1,); }')).toThrow(SyntaxError);
   });
 
+  /*
+   * An empty fallback is not a missing one: `var(--x,)` substitutes nothing
+   * when `--x` is unset, `var(--x)` makes the declaration invalid at computed-
+   * value time (css-variables-1 §3). The fallback is the empty `Any` css and
+   * SCSS build for it, so the comma is written back.
+   */
+  it.each([
+    ['a { b: var(--x,); }', 'a {\n  b: var(--x, );\n}\n'],
+    ['a { b: var(--x, ); }', 'a {\n  b: var(--x, );\n}\n'],
+    ['a { b: var(--x, // c\n); }', 'a {\n  b: var(--x, );\n}\n']
+  ])('keeps an empty var() fallback: %j', (source, expected) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'FunctionCall', name: 'var', args: [
+        { value: { type: 'Keyword', src: '--x' } },
+        { value: { type: 'Any', src: '' } }
+      ] } }] }]
+    });
+    expect(serialize(parse(source)).css).toBe(expected);
+  });
+
   it('keeps custom-property block comments as trivia and renders them inline', () => {
     const source = '.x { --a: red/* c */blue; --b: f(a/* inner */b); --c: [a/* square */b]; --d: { x: 1/* curly */ }; }';
     const document = parse(source);

@@ -400,6 +400,7 @@ type SharedSyntax = {
   UnicodeRange: Combinator<ValueNode>;
   Important: Combinator<true>;
   CustomPropertyValue: Combinator<Keyword>;
+  VarFallbackEmpty: Combinator<ValueNode>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   keyframeSelector: Combinator<SimpleSelector>;
 };
@@ -2466,7 +2467,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       optional(sequence(
         literal(','),
         optional(valueTrivia),
-        optional(g.Value),
+
+        /* An empty fallback is css's empty `Any`, never a missing fallback. */
+        choice(g.Value, g.VarFallbackEmpty),
         optional(valueTrivia)
       )),
       literal(')')
