@@ -352,4 +352,24 @@ describe('nested-mode extend whose extender is the target\'s parent', () => {
     // A context the extender does not lead with in full is written as it is.
     expect(flatLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a .b [d],\n.a .b .a .e {\n  c: 1;\n}\n');
   });
+
+  /*
+   * A shared context joined by a child or sibling combinator is written once too, by the
+   * narrower of the target's and the extender's combinators (`.a > :is(.a .r)` is
+   * `.a > .r`), so both modes agree; mixed ancestor and sibling joins do not reduce.
+   */
+  it('writes a shared context once across child and sibling combinators, in both modes', () => {
+    const cases: Array<[string, string, string]> = [
+      ['.a { > .t { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  > .t,\n  > .r {\n    c: 1;\n  }\n}\n', '.a > .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { .t { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  .t,\n  > .r {\n    c: 1;\n  }\n}\n', '.a .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { > .t { c: 1; } .r { &:extend(.t all); } }', '.a {\n  > :is(.t, .r) {\n    c: 1;\n  }\n}\n', '.a > .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { + .t { c: 1; } + .r { &:extend(.t all); } }', '.a {\n  + .t,\n  + .r {\n    c: 1;\n  }\n}\n', '.a + .t,\n.a + .r {\n  c: 1;\n}\n'],
+      ['.a { > .t.k { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  > .t.k,\n  > .r.k {\n    c: 1;\n  }\n}\n', '.a > .t.k,\n.a > .r.k {\n  c: 1;\n}\n']
+    ];
+    for (const [src, nestedOut, flatOut] of cases) {
+      expect(nestedLess(src), src).toBe(nestedOut);
+      expect(flatLess(src), src).toBe(flatOut);
+    }
+    expect(flatLess('.a { ~ .t { c: 1; } > .r { &:extend(.t all); } }')).toBe('.a ~ .t,\n.a ~ .a > .r {\n  c: 1;\n}\n');
+  });
 });

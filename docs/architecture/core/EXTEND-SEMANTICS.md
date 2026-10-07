@@ -497,7 +497,12 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
   `.attributes .attributes .attribute-test`. The rule (PINNED-DEFECTS DF8,
   orchestrator judgment under owner delegation 2026-10-07): the extender stands for
   the target where it appears, so `A T` extended by `A R` is `A R` (what
-  `A :is(A R)` matches) and by `A` itself is `A A_last`; one answer in both modes.
+  `A :is(A R)` matches) and by `A` itself is `A A_last`; one answer in both modes. A
+  child or sibling join reduces the same way, by the narrower of the target's and the
+  extender's combinators when both are ancestor combinators (` `, `>`) or both sibling
+  ones (`+`, `~`): `.a { > .t {…} > .r { &:extend(.t all); } }` and
+  `.a { .t {…} > .r { &:extend(.t all); } }` write `.a > .r`, never `.a > .a > .r` or
+  `.a .a > .r`; a mixed join (`~` against `>`) does not reduce and is written in full.
 - **Flatten triggers** — a rule (and its descendants) FLATTEN to a top-level block when
   the match CROSSES the `&` (the parent-context ↔ child-appended-compound join), which
   nested structure cannot express locally:

@@ -46,6 +46,7 @@ import {
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
+import type { Combinator } from '../node.js';
 import { branchHasAmp, composePath } from './compose.js';
 import { mergeCompound, NO_SIMPLES } from './conflict.js';
 import { extendBranchSpecificity, nestingGroupKey, partitionGroups } from '../is-grouping.js';
@@ -826,7 +827,9 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
   }
   const segments = b.segments.slice(0, k);
   segments.push({
-    combinator: k === 0 && segment.combinator === ' ' ? arm[0]!.combinator : segment.combinator,
+    combinator: k === 0 && segment.combinator === ' '
+      ? arm[0]!.combinator
+      : drop > 0 && member.segments.length > k ? narrower(segment.combinator, arm[0]!.combinator)! : segment.combinator,
     compound: { value: head }
   });
   for (let j = 1; j < n - 1; j++) {
@@ -844,14 +847,17 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
 /**
  * How many leading compounds of `member` to leave out where it replaces the group in
  * `b.segments[k]`: an extender standing for its target where the target appears
- * writes the context it shares with that position once (PINNED-DEFECTS DF8;
- * orchestrator judgment under owner delegation 2026-10-07). A member that leads with
- * the whole context before the group, `A R`, matches there what `A :is(A R)` does,
- * which is `A R`, so it drops `A` (`.attributes { [data="test"] {…} .attribute-test {
- * &:extend([data="test"] all); } }` → `.attributes .attribute-test`, never
- * `.attributes .attributes .attribute-test`); one that IS that context keeps its last
- * compound (`.p .y` in `.p .y .z.k` → `.p .y .y.k`). Only where the kept part joins
- * by a descendant combinator, which no context can narrow; 0 otherwise.
+ * writes the context it shares with that position once, so nested and flat output
+ * agree (PINNED-DEFECTS DF8; orchestrator judgment under owner delegation 2026-10-07).
+ * A member that leads with the whole context before the group, `A d R`, matches there
+ * what `A c :is(A d R)` does. When `c` and `d` are both ancestor combinators (` `, `>`)
+ * or both sibling ones (`+`, `~`) that is `A R` joined by the narrower of the two
+ * ({@link narrower}), so it drops `A` (`.attributes { [data="test"] {…}
+ * .attribute-test { &:extend([data="test"] all); } }` → `.attributes .attribute-test`,
+ * never `.attributes .attributes .attribute-test`; `.a { .t {…} > .r {
+ * &:extend(.t all); } }` → `.a > .r`). A member that IS that context keeps its last
+ * compound (`.p .y` in `.p .y .z.k` → `.p .y .y.k`), which only a descendant join
+ * allows. 0 otherwise.
  */
 function sharedContext(b: Branch, k: number, member: Branch): number {
   const n = member.segments.length;
@@ -859,17 +865,26 @@ function sharedContext(b: Branch, k: number, member: Branch): number {
     return 0;
   }
   const drop = n > k ? k : k - 1;
-  if (member.segments[drop]!.combinator !== ' ') {
+  const joined = member.segments[drop]!.combinator;
+  if (n > k ? narrower(b.segments[k]!.combinator, joined) === undefined : joined !== ' ') {
     return 0;
   }
-  for (let i = 0; i < k; i++) {
-    const ms = member.segments[i]!;
-    const bs = b.segments[i]!;
-    if ((i > 0 && ms.combinator !== bs.combinator) || compoundText(ms.compound) !== compoundText(bs.compound)) {
-      return 0;
-    }
+  return samePrefix(member, b, k) ? drop : 0;
+}
+
+/**
+ * The combinator `A c :is(A d R)` reduces to, `A ? R`, or `undefined` when it does not
+ * reduce: the narrower of two ancestor combinators (`>` over ` `) or of two sibling ones
+ * (`+` over `~`), since the element the narrower one names satisfies the wider one too.
+ */
+function narrower(c: Combinator, d: Combinator): Combinator | undefined {
+  if ((c === ' ' || c === '>') && (d === ' ' || d === '>')) {
+    return c === '>' ? c : d;
   }
-  return drop;
+  if ((c === '+' || c === '~') && (d === '+' || d === '~')) {
+    return c === '+' ? c : d;
+  }
+  return undefined;
 }
 
 /* ------------------------------------------------- relative extender folding */
