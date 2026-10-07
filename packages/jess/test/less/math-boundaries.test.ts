@@ -48,7 +48,7 @@ describe('Less math boundaries', () => {
   it('keeps the parens around math written inside calc() and around one value, in .less and .jess', async () => {
     expect(await render('@v: 10px; .x { w: calc(100% - ((@v * 3) + (@v * 2))); h: calc(100% + (25vh - 20px)); }'))
       .toBe('.x { w: calc(100% - ((10px * 3) + (10px * 2))); h: calc(100% + (25vh - 20px)); }');
-    expect(await render('@v: 10px; .x { a: calc((@v)); b: calc( (1px + 2px) ); c: calc(100% - (((@v + @v)))); }'))
+    expect(await render('@v: 10px; .x { a: calc((10px)); b: calc( (1px + 2px) ); c: calc(100% - (((@v + @v)))); }'))
       .toBe('.x { a: calc((10px)); b: calc((1px + 2px)); c: calc(100% - (((10px + 10px)))); }');
     expect(await renderJess('$v: 10px; .x { w: calc(100% - (($v * 3) + ($v * 2))); }'))
       .toBe('.x { w: calc(100% - ((10px * 3) + (10px * 2))); }');
@@ -91,25 +91,33 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * Text a call returns is not a resolved calculation: an escaped string
-   * (`e("1px + 2px")`, as `~"1px + 2px"` is) or an unquoted one that is more
-   * than one value keeps the parens written around it, wherever the group is
-   * read, or what surrounds it would re-read its bytes: `2 * (1px + 2px)` is
-   * not `2 * 1px + 2px`. Text that is one value drops them as any resolved
-   * value does.
+   * Text is not a resolved calculation: a group around an escaped string —
+   * `e("…")`, `~"…"`, the text an `if()` picks — keeps the parens written
+   * around it, wherever the group is read and however long the text is, so
+   * what surrounds it never re-reads its bytes: `2 * (1px + 2px)` is not
+   * `2 * 1px + 2px` (SETTLED — orchestrator judgment under owner delegation
+   * 2026-10-07). The test is the value's type, never its bytes. A variable
+   * holding such a group holds the text with its parens. In `.scss`, a
+   * `calc()` is a Sass calculation, which keeps a parenthesized string, as
+   * dart-sass does; outside one Sass parens group and drop.
    */
-  it('keeps the parens around text a call returns that is more than one value', async () => {
+  it('keeps the parens around text, however it is reached', async () => {
     expect(await render('@v: e("1px + 2px"); .x { a: calc(2 * (e("1px + 2px"))); b: calc(2 * (@v)); '
       + 'c: calc(2 * (if(true, ~"1px + 2px", 1px))); d: calc(2 / (e("1px/2"))); f: calc(2 * (e("foo"))); '
       + 'g: calc((e("1px + 2px"))); h: calc(2 * (~"1px + 2px")); k: calc(1px + (e("var(--a, 1px)"))); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (1px + 2px)); d: calc(2 / (1px/2)); '
-        + 'f: calc(2 * foo); g: calc((1px + 2px)); h: calc(2 * (1px + 2px)); k: calc(1px + var(--a, 1px)); }');
+        + 'f: calc(2 * (foo)); g: calc((1px + 2px)); h: calc(2 * (1px + 2px)); k: calc(1px + (var(--a, 1px))); }');
     expect(await render('@v: e("1px + 2px"); .x { a: (e("1px + 2px")) * 2; a2: (~"1px + 2px") * 2; b: 2 - (@v); d: (e("1px + 2px")); e: (e("foo")); }'))
-      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: (1px + 2px); e: foo; }');
-    expect(await renderIn('.scss', '$v: unquote("1px + 2px"); .x { a: calc(2 * (unquote("1px + 2px"))); b: calc(2 * ($v)); c: calc(2 * (unquote("foo"))); }'))
-      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * foo); }');
-    expect(await renderJess('@-from "#less" import (e); .x { a: calc(2 * ($e("1px + 2px"))); b: calc(2 * (($e("1px + 2px")))); }'))
-      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); }');
+      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: (1px + 2px); e: (foo); }');
+    expect(await render('@a: (e("1px + 2px")); @s: ~"a b"; .m(@x) { m: (@x); n: calc(2 * (@x)); } '
+      + '.x { a: calc(2 * @a); b: @a; c: (@s); s: ~"@{a}"; .m(e("1px + 2px")); .m(~"a b"); }'))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: (1px + 2px); c: (a b); s: (1px + 2px); m: (1px + 2px); n: calc(2 * (1px + 2px)); m: (a b); n: calc(2 * (a b)); }');
+    const scss = '$v: unquote("1px + 2px"); $k: foo; .x { a: calc(2 * (unquote("1px + 2px"))); b: calc(2 * ($v)); '
+      + 'c: calc(2 * (unquote("foo"))); d: calc(2 * ($k)); e: (unquote("1px + 2px")); f: ($k); }';
+    expect(await renderIn('.scss', scss))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (foo)); d: calc(2 * (foo)); e: 1px + 2px; f: foo; }');
+    expect(await renderJess('@-from "#less" import (e); .x { a: calc(2 * ($e("1px + 2px"))); b: calc(2 * (($e("1px + 2px")))); c: ($e("foo")); }'))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); c: (foo); }');
   });
 
   /*
@@ -188,8 +196,8 @@ describe('Less math boundaries', () => {
       expect(await renderIn(extension, src), extension).toBe(css);
     }
     expect(await renderJess('.x { w: min((10px), 1px); }')).toBe('.x { w: min((10px), 1px); }');
-    expect(await render('@w: 10px; @c: foo(1); .x { a: (@w); b: ((10px)); c: (@c); d: (10px) * 2; e: percentage((0.5)); }'))
-      .toBe('.x { a: (10px); b: ((10px)); c: (foo(1)); d: 20px; e: 50%; }');
+    expect(await render('@c: foo(1); .x { b: ((10px)); c: (@c); d: (10px) * 2; e: percentage((0.5)); }'))
+      .toBe('.x { b: ((10px)); c: (foo(1)); d: 20px; e: 50%; }');
   });
 
   /*
@@ -198,8 +206,8 @@ describe('Less math boundaries', () => {
    * parameter bound to math, exactly as a group around the math itself.
    */
   it('consumes a paren group around anything that computes', async () => {
-    expect(await render('.a { b: 1px solid (darken(red, 10%)); w: (percentage(0.5)); u: (unit(5, px)); e: (e("x")); f: (if(true, a, b)); }'))
-      .toBe('.a { b: 1px solid #cc0000; w: 50%; u: 5px; e: x; f: a; }');
+    expect(await render('.a { b: 1px solid (darken(red, 10%)); w: (percentage(0.5)); u: (unit(5, px)); f: (if(true, a, b)); }'))
+      .toBe('.a { b: 1px solid #cc0000; w: 50%; u: 5px; f: a; }');
     expect(await renderIn('.scss', '.a { w: (percentage(0.5)); b: solid (darken(red, 10%)); }'))
       .toBe('.a { w: 50%; b: solid #cc0000; }');
     expect(await renderJess('.a { a: ($(1px + 2px)); b: ($(foo + 1)); }')).toBe('.a { a: 3px; b: (foo + 1); }');
@@ -211,6 +219,24 @@ describe('Less math boundaries', () => {
   });
 
   /*
+   * A reference that resolves is a calculation resolved, so a group around one
+   * drops its parens when what it names is one value: a variable, a parameter,
+   * a property or a member (SETTLED — orchestrator judgment under owner
+   * delegation 2026-10-07, applying the owner's rule "parens are dropped IF the
+   * calculation in the parens is resolved"). One naming a call written out
+   * as-is keeps them, as a group around the call does, and so does one naming a
+   * list, which what surrounds it would otherwise re-read
+   * (`calc(100% / (@v))` with `@v: 50vh/2`).
+   */
+  it('drops the parens around a reference that resolves to one value', async () => {
+    expect(await render('@a: 10vh; @k: foo; @l: 1px 2px; @v: 50vh/2; @g: (10px); @c: foo(1); .m(@x) { p: (@x); } '
+      + '.x { width: (@a); k: (@k); l: (@l); v: calc(100% / (@v)); g: (@g); c: (@c); w: (@a) + 1em; q: calc(2 * (@a)); .m(5px); }'))
+      .toBe('.x { width: 10vh; k: foo; l: (1px 2px); v: calc(100% / (50vh / 2)); g: 10px; c: (foo(1)); w: calc(10vh + 1em); q: calc(2 * 10vh); p: 5px; }');
+    expect(await renderIn('.scss', '$d: 10px; .x { k: ($d); }')).toBe('.x { k: 10px; }');
+    expect(await renderJess('$d: 10px; .x { k: ($d); }')).toBe('.x { k: 10px; }');
+  });
+
+  /*
    * Every way of reading a value names the same value (SEMANTIC-INVARIANTS 2): a
    * group around a property, a member, an `@@name` or a `.jess` function call
    * is consumed exactly when the group around the value it reads would be.
@@ -218,7 +244,7 @@ describe('Less math boundaries', () => {
   it('consumes a group around a computed value however it is read', async () => {
     const less = '@n: v; @v: 1px + 2px; @m: { v: 1px + 2px; k: 10px; }; #ns { @v: 1px + 2px; } .mx() { @r: 1px + 2px; } '
       + '.x { w: 1px + 2px; a: ($w); b: (@m[v]); c: (#ns[@v]); d: (@@n); e: (.mx()[@r]); f: (@m[k]); }';
-    expect(await render(less)).toBe('.x { w: 3px; a: 3px; b: 3px; c: 3px; d: 3px; e: 3px; f: (10px); }');
+    expect(await render(less)).toBe('.x { w: 3px; a: 3px; b: 3px; c: 3px; d: 3px; e: 3px; f: 10px; }');
     const jess = '@-from "#less" import (percentage); $p: $percentage(0.5); $f: @($x) { result: $x; }; '
       + '.x { a: ($percentage(0.5)); b: ($p); c: ($f(10px)); }';
     expect(await renderJess(jess)).toBe('.x { a: 50%; b: 50%; c: 10px; }');
@@ -242,7 +268,7 @@ describe('Less math boundaries', () => {
   it('computes with a function result written as a group around one value', async () => {
     const src = '@function f($x) { @return ($x); } @function g() { @return (1px); } '
       + '.x { a: f(1px) * 2; b: percentage(f(0.5)); c: f(1px); d: max(f(1px), 2px); e: if(f(1px) == 1px, y, n); h: g() + g(); }';
-    expect(await renderIn('.scss', src)).toBe('.x { a: 2px; b: 50%; c: (1px); d: 2px; e: y; h: 2px; }');
+    expect(await renderIn('.scss', src)).toBe('.x { a: 2px; b: 50%; c: 1px; d: 2px; e: y; h: 2px; }');
   });
 
   /*
@@ -268,7 +294,7 @@ describe('Less math boundaries', () => {
     expect(await render('@g: (10px); .m(@x) { a: @x; b: @x * 2; } .d(@x: (10px)) { a: @x; } .x { a: @g; .m((10px)); .d(); }'))
       .toBe('.x { a: 10px; a: 10px; b: 20px; a: 10px; }');
     expect(await render('@a: (10px); .x-@{a} { s: ~"@{a}"; m: @a @a; c: (10px); k: calc((10px)); p: (@a); } @c: calc((10px)); .y { c: @c; }'))
-      .toBe('.x-10px { s: 10px; m: 10px 10px; c: (10px); k: calc((10px)); p: (10px); } .y { c: calc((10px)); }');
+      .toBe('.x-10px { s: 10px; m: 10px 10px; c: (10px); k: calc((10px)); p: 10px; } .y { c: calc((10px)); }');
     expect(await render('@a: (10px) (red); @b: @a; .x { a: @b; w: 1px; v: $w; } .y { w: (1px); v: $w; }'))
       .toBe('.x { a: 10px red; w: 1px; v: 1px; } .y { w: (1px); v: 1px; }');
     expect(await renderIn('.scss', '$a: (10px); @mixin m($x) { a: $x; } .x-#{$a} { @include m((10px)); s: "#{$a}"; m: $a $a; c: (10px); }'))

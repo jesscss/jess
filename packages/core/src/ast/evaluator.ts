@@ -117,7 +117,7 @@ const stringify = (v: ValueGroup): string =>
  * `makeSassRegistry()` in `@jesscss/fns`), so registration stays outside core.
  * Core imports no fn bodies here.
  */
-export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
+export function buildEvaluator(registry: FnRegistry, options: { readonly sassCalculations?: boolean } = {}): ValueEvaluator {
   const call = (
     name: string,
     args: ValueGroup,
@@ -194,5 +194,14 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { operate, call, paramNames, has: name => registry.has(name), compare, compareMatch, typeCheck };
+  return {
+    operate,
+    call,
+    paramNames,
+    has: name => registry.has(name),
+    compare,
+    compareMatch,
+    typeCheck,
+    sassCalculations: options.sassCalculations === true
+  };
 }

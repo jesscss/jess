@@ -291,9 +291,9 @@ Most values compile exactly as before. These are the changes you can see in the 
 
 **A slash between values is spaced.** A `/` that does not divide is written with a space on each side, like the other separators: `font: bold 12px/1.5 sans-serif` gives `font: bold 12px / 1.5 sans-serif`, and `16/9` gives `16 / 9`. The spaces mean nothing to CSS. See [Value & Separator Formatting](../advanced/value-formatting).
 
-**Parentheses around a value that nothing computes are kept.** `c: (10vh)` stays `c: (10vh)`, and `var(--a, (10px))` keeps its parentheses; Less 4.x wrote `10vh` and `var(--a, 10px)`. Parentheses around math that computes still disappear: `(2px + 3px)` is `5px`.
+**Parentheses around a value that nothing computes are kept.** `c: (10vh)` stays `c: (10vh)`, and `var(--a, (10px))` keeps its parentheses; Less 4.x wrote `10vh` and `var(--a, 10px)`. Parentheses around a calculation that is resolved still disappear, as in Less 4.x: `(2px + 3px)` is `5px`, and with `@a: 10vh`, `width: (@a)` is `width: 10vh`. A variable that names a list keeps them: with `@l: 1px 2px`, `(@l)` stays `(1px 2px)`.
 
-This includes parentheses around a variable or a mixin parameter. With `@a: 10vh`, `width: (@a)` is `width: (10vh)` and `margin: (@a) 0` is `margin: (10vh) 0`, where Less 4.x wrote `10vh` and `10vh 0`. Browsers reject a property value in parentheses and drop the declaration, so remove the parentheses: write `width: @a`.
+**Parentheses around text are kept.** An escaped string (`~"…"`, `e()`, `escape()`) is text, not a computed value, so the parentheses written around it stay wherever it is read, through a variable too. `(e("foo"))` is `(foo)`, where Less 4.x wrote `foo`; and with `@t: (e("1px + 2px"))`, `calc(2 * @t)` is `calc(2 * (1px + 2px))`, where Less 4.x wrote `calc(2 * 1px + 2px)`, which means something else.
 
 **Numbers you write are kept as written.** `0.50em`, `1.0px` and `1.23456789123px` stay as they are; Less 4.x wrote `0.5em`, `1px` and `1.23456789px`. A computed number is no longer rounded to 8 decimal places: `(1 / 3)` is `0.33333333333` and `(10px / 3)` is `3.3333333333px`, where Less 4.x wrote `0.33333333` and `3.33333333px`.
 

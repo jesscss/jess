@@ -167,6 +167,8 @@ import {
   type ValueEvaluator,
   type ValueGroup,
   type Value,
+  type Any as TextValue,
+  type Keyword as KeywordValue,
   type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
@@ -176,7 +178,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isLooseText, isLooseValue, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -4903,7 +4905,7 @@ function evalTyped(
        * call there is still written as authored.
        */
       if (e.reached && groupsOneValue(node)) {
-        return evalTypedSlot(node.value, frame, e, projectMixinValues, argument);
+        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e));
       }
       if (isInertGroup(node) || (writtenAsAuthored(argument) && !groupComputes(node, frame, e))) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
@@ -4914,7 +4916,7 @@ function evalTyped(
         { ...e, parenFrames: pushParenFrame(e, true) },
         projectMixinValues,
         writtenAsAuthored(argument) ? argument : ARG_NONE
-      ), keepAuthoredGroup);
+      ), v => keepAuthoredGroup(v, e));
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -5007,7 +5009,7 @@ function evalTyped(
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
-      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, v => keepAuthoredGroup(v, e)) : computed;
     }
     case 'Interpolation': {
       /*
@@ -5041,35 +5043,39 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
   !isValueSlotArray(slot) && slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true;
 
 /*
- * A paren group is consumed when what it holds computes — math (`(1px + 2px)` is
- * `3px`), a comparison (`.jess` `$((1 > 0))` is `true`), a call a callable
- * computes (`(percentage(0.5))` is `50%`, `.jess` `($percentage(0.5))` too), or
- * anything a reference names that is one of those: a variable (`@a`, `@@name`),
- * a mixin parameter, a property (`$w`) or a member (`@m[v]`, `#ns[@v]`,
- * `.m()[@r]`) (ledger F4: once computed, the parens do not survive). A `.jess`
- * `$( … )` computes when what it holds does, so `($(10px))` keeps its parens as
- * `(10px)` does. Every other group keeps its parens
- * wherever it is written — around one value (`c: (10vh)`, `(@w)` with `@w:
- * 10px`), around a call written out as-is (`(var(--a))`) or a CSS colour call
- * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
- * every dialect, so valid CSS emits the bytes css does
- * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
- * 2026-10-06). A math function is no exception: parens are dropped when the
- * calculation in them is resolved (owner 2026-10-07), so
- * `calc(100% - ((min(@a + @b))))` is `calc(100% - 20px)`, while the math
- * written there computes nothing and keeps every paren around it (ledger P35:
- * `calc(100% - (((@a + @b))))`). Text a call returns that is more than one
- * value (`e("1px + 2px")`) is not a resolved calculation either, so a group
- * around it keeps its parens ({@link isLooseValue}). A computing consumer — an
- * operand of math that operates, an argument a callable reads — still reads
- * the value inside the group, through the typed lane, and an operand of math
- * kept as written keeps the group's spelling ({@link spelledOperand}).
+ * Parens are dropped when the calculation in them is resolved (owner
+ * 2026-10-07). A paren group is consumed when what it holds computes — math
+ * (`(1px + 2px)` is `3px`), a comparison (`.jess` `$((1 > 0))` is `true`), a
+ * call a callable computes (`(percentage(0.5))` is `50%`, `.jess`
+ * `($percentage(0.5))` too) — or is a reference that resolves: a variable
+ * (`(@w)` with `@w: 10px` is `10px`, `@@name` too), a mixin parameter, a
+ * property (`$w`) or a member (`@m[v]`, `#ns[@v]`, `.m()[@r]`) (ledger F4: once
+ * computed, the parens do not survive). A `.jess` `$( … )` computes when what
+ * it holds does, so `($(10px))` keeps its parens as `(10px)` does. Every other
+ * group keeps its parens wherever it is written — around one value
+ * (`c: (10vh)`), around a call written out as-is (`(var(--a))`) or a CSS colour
+ * call (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes —
+ * in every dialect, so valid CSS emits the bytes css does (SEMANTIC-INVARIANTS
+ * 4; orchestrator judgment under owner delegation 2026-10-06). A math function
+ * is no exception, so `calc(100% - ((min(@a + @b))))` is `calc(100% - 20px)`,
+ * while the math written there computes nothing and keeps every paren around it
+ * (ledger P35: `calc(100% - (((@a + @b))))`).
+ *
+ * Text is never a resolved calculation: a group whose content is opaque text
+ * keeps its parens wherever it is read, a reference reaching it included
+ * ({@link isOpaqueText}, {@link textGroup}). Its value is the text spelled with
+ * them, so math around it reads `2 * (1px + 2px)`, never `2 * 1px + 2px`.
+ * Every other kept group only changes the spelling: a computing consumer — an
+ * operand of math that operates, an argument a callable reads — reads the value
+ * inside it through the typed lane, and an operand of math kept as written keeps
+ * the group's spelling ({@link spelledOperand}).
  */
 
 /**
  * What computes in the group (see above), or `null`: the operation, comparison,
  * `$( … )`, call or conditional it holds, directly or through what its
- * references name. A call counts here, and one no callable computed comes back
+ * references name, else the reference itself when one resolves to a value that
+ * computes nothing. A call counts here, and one no callable computed comes back
  * marked as written out as-is, which {@link keepAuthoredGroup} keeps in its
  * parens.
  */
@@ -5084,11 +5090,16 @@ const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean =>
  * through the references it reads. A reference is resolved by the resolver its
  * evaluation uses, so every way of reading a value classifies it alike. A
  * `$( … )` or authored group expression stands for what it holds, and is
- * returned when that computes, so the group reads the splice typed.
+ * returned when that computes, so the group reads the splice typed. A reference
+ * that resolves is a calculation resolved, so when what it names is one value
+ * that computes nothing the first reference read is returned; one that does not
+ * resolve, or names a list, is not. `references: false` asks only what
+ * computes ({@link argumentSnapshot}).
  */
-function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx): ValueNode | null {
+function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, references = true): ValueNode | null {
   let inner = slot;
   let scope = frame;
+  let reference: Lookup | Reference | null = null;
 
   /* ponytail: a reference cycle raises when the group evaluates; the cap only bounds this walk. */
   for (let hops = 0; hops < 32; hops += 1) {
@@ -5111,23 +5122,31 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Valu
         named = resolveReferenceResult(inner, scope, e);
         break;
       case 'Expression':
-        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }) === null ? null : inner;
+        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }, references) === null ? reference : inner;
 
       /* A comparison computes where a value-position one is evaluated: at a `.jess` `$( … )` boundary (§7.1). */
       case 'Condition':
-        return e.exprBoundary === true ? inner : null;
+        return e.exprBoundary === true ? inner : reference;
       case 'Interpolation': {
         const first = inner.parts[0];
         return isComputationSplice(inner) && first !== undefined && 'ref' in first
-          && slotComputation(first.ref, scope, e) !== null
+          && slotComputation(first.ref, scope, e, references) !== null
           ? inner
-          : null;
+          : reference;
       }
+
+      /* A list is not one value: dropped, the parens would let what surrounds it re-read it (`100% / (@v)` with `@v: 50vh/2`). */
+      case 'List':
+      case 'Sequence':
+        return null;
       default:
-        return computationIn(inner);
+        return computationIn(inner) ?? reference;
     }
     if (named === null || named === undefined || isMixinCallValue(named.value)) {
       return null;
+    }
+    if (references) {
+      reference ??= inner;
     }
     inner = named.value;
     scope = named.frame;
@@ -5243,23 +5262,34 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number
   return !e.reached && isParenGroup(slot) && !groupComputes(slot, frame, e) ? unconsumedParens(slot) : 0;
 }
 
-/** The parens written around `slot` when it is a group whose call returned loose text ({@link isLooseValue}), or 0. */
-const looseParens = (slot: ValueSlot, v: ValueGroup): number =>
-  isParenGroup(slot) && !isValueGroupArray(v) && isLooseValue(v) ? unconsumedParens(slot) : 0;
+/**
+ * Whether `v` is opaque text, which no paren group around it ever loses: an
+ * escaped string — `~"…"`, `e()`, `escape()`, an interpolated template, the
+ * value-domain `Any` (ledger V3) — in every dialect. In a Sass calculation
+ * ({@link ValueEvaluator.sassCalculations}) an unquoted string is text too, as
+ * dart-sass keeps a parenthesized string in one (`calc(2 * (unquote("1px + 2px")))`
+ * is `calc(2 * (1px + 2px))`, `calc(2 * ($k))` with `$k: foo` is
+ * `calc(2 * (foo))`). The test is the value's type, never its bytes.
+ */
+const isOpaqueText = (v: Value, e: EvalCtx): v is TextValue | KeywordValue =>
+  v.type === 'Any' || (v.type === 'Keyword' && (e.calcDepth ?? 0) > 0 && e.ev?.sassCalculations === true);
+
+/** A paren group around opaque text ({@link isOpaqueText}): the text spelled with its parens, still text. */
+const textGroup = (v: TextValue | KeywordValue): Value => v.type === 'Any' ? makeAny(`(${v.bytes})`, v.escapedQuote) : makeKeyword(`(${v.bytes})`);
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
  * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
- * 'preserve'`), while math that computes reads only the value. A group whose
- * call returned loose text keeps it too ({@link isLooseValue}):
- * `(e("1px + 2px")) * 2` is not `1px + 2px * 2`. A named-colour keyword stays
- * bare, since `operate` reads it as a colour, and kept math already carries the
- * group in its arithmetic ({@link groupAsWritten}): wrapped again it would be a
- * nested `calc()` (`calc(100% - ($x))`).
+ * 'preserve'`), while math that computes reads only the value. Text already
+ * carries its group ({@link textGroup}): `(e("1px + 2px")) * 2` is
+ * `calc((1px + 2px) * 2)`. A named-colour keyword stays bare, since `operate`
+ * reads it as a colour, and kept math already carries the group in its
+ * arithmetic ({@link groupAsWritten}): wrapped again it would be a nested
+ * `calc()` (`calc(100% - ($x))`).
  */
 function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: EvalCtx): Value {
-  const depth = writtenParens(node, frame, e) || looseParens(node, value);
-  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined))
+  const depth = writtenParens(node, frame, e);
+  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined)) || isOpaqueText(value, e)
     ? value
     : { ...value, bytes: wrapParens(value.bytes, depth) };
 }
@@ -5292,11 +5322,19 @@ function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: E
  * An authored paren group's value once its math has run. A computed inner is
  * one value and sheds the parens; an operation `operate` kept as written
  * (`foo + 1`) is still an expression and keeps
- * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`.
+ * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`; and text keeps them
+ * as part of the text ({@link textGroup}).
  */
-function keepAuthoredGroup<T extends EvalValue>(v: T): T | Value {
-  return isLiteral(v) || isValueGroupArray(v) ? v : groupAsWritten(v);
+function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx): T | Value {
+  if (isLiteral(v) || isValueGroupArray(v)) {
+    return v;
+  }
+  const grouped = groupAsWritten(v);
+  return grouped === v && isOpaqueText(v, e) ? textGroup(v) : grouped;
 }
+
+/** A group a reference reached, around one value: the value, unless it is text, which keeps the parens ({@link whileReached}). */
+const reachedGroup = (v: ValueGroup, e: EvalCtx): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e) ? textGroup(v) : v;
 
 /**
  * A paren group nothing in computes, around its evaluated content: the group
@@ -5595,10 +5633,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return evalValueSlot(node.value, frame, e);
       }
       const computation = node.delimiter === 'paren' ? groupComputation(node, frame, e) : null;
+      const reached = node.delimiter === 'paren' && e.reached && groupsOneValue(node);
       const ctx = node.delimiter === 'paren' ? { ...e, parenFrames: pushParenFrame(e, true) } : e;
 
-      /* A `.jess` `$( … )` splice is read typed, so math it kept as written is still the kept expression. */
-      const inner = computation !== null && computation.type === 'Interpolation' && e.ev
+      /*
+       * Read typed where the value's type decides the spelling: a `.jess` `$( … )`
+       * splice, so math it kept as written is still the kept expression; and a
+       * group a reference reached or one around a reference, a conditional or a
+       * computed mixin argument, so text in it keeps the parens
+       * ({@link isOpaqueText}). A call and math say their own type on this lane.
+       */
+      const inner = e.ev && (reached || (computation !== null && computation.type !== 'FunctionCall'
+        && computation.type !== 'Operation' && computation.type !== 'Expression'))
         ? evalTypedSlot(node.value, frame, ctx)
         : evalValueSlot(node.value, frame, ctx);
 
@@ -5612,13 +5658,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        *
        * A paren group is consumed only by what computes in it
        * ({@link groupComputation}): `(1px + 2px)` is `3px`, while math `operate`
-       * kept and a call written out as-is keep the parens
-       * ({@link groupAsWritten}), as does text a call returned that is more than
-       * one value ({@link isLooseValue}), and so does every group nothing
+       * kept, a call written out as-is ({@link groupAsWritten}) and text
+       * ({@link textGroup}) keep the parens, and so does every group nothing
        * computes in. Bytes from a call or an operation are what nothing
-       * computed — a call re-emitted as written, math on the non-evaluating
-       * lane; a conditional or a computed mixin argument computes to its bytes,
-       * which keep the parens when they are more than one value.
+       * computed — a call re-emitted as written, math on the non-evaluating lane.
        */
       return mapMaybe(inner, (v) => {
         if (node.delimiter !== 'paren') {
@@ -5626,18 +5669,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             ? literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`)
             : makeBlock(v, node.delimiter, node.escaped);
         }
-        if (e.reached && groupsOneValue(node)) {
-          return v;
+        if (reached) {
+          return isLiteral(v) ? v : reachedGroup(v, e);
         }
         if (isLiteral(v)) {
-          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation' || isLooseText(v)
+          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
             ? literal(`(${v})`)
             : v;
         }
-        if (computation === null) {
-          return writtenGroup(v);
-        }
-        return isValueGroupArray(v) ? v : isLooseValue(v) ? keepAsWritten(makeKeyword(`(${v.bytes})`)) : groupAsWritten(v);
+        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e);
       });
     }
     case 'Expression': {
@@ -5663,7 +5703,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
       const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
-      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, v => keepAuthoredGroup(v, e)) : computed;
     }
     case 'Condition':
       /*
@@ -7360,7 +7400,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
-      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored || looseParens(arg, v))})`), v, v));
+      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${v.bytes})`), v, v));
@@ -7681,7 +7721,7 @@ function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: F
   if (source === undefined) {
     return bound;
   }
-  if (slotComputation(source, frame, e) !== null) {
+  if (slotComputation(source, frame, e, false) !== null) {
     computedArguments.add(bound);
   }
   return bound;
