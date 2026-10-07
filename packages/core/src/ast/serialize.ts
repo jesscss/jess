@@ -9457,6 +9457,7 @@ function recordPseudoElementBranches(
   e: EvalCtx
 ): string[] {
   const out = values.flat();
+  const parentEnds = parentFlags !== undefined && parentFlags.includes(1);
   let flags: Uint8Array | undefined;
   let at = 0;
   for (let k = 0; k < branches.length; k++) {
@@ -9464,7 +9465,7 @@ function recordPseudoElementBranches(
     const n = values[k]!.length;
     if (endsWithPseudoElement(c, frame, e)) {
       (flags ??= new Uint8Array(out.length)).fill(1, at, at + n);
-    } else if (parentFlags !== undefined && parentFlags.includes(1) && selectorBranchHasAmpersand(c)) {
+    } else if (parentEnds && parentFlags !== undefined && selectorBranchHasAmpersand(c)) {
       const tail = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value[c.value.length - 1]! : c;
       if (typeof tail !== 'string' && keepsPseudoElementLast(tail)) {
         flags ??= new Uint8Array(out.length);
