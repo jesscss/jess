@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { extractRelevantLines, lineColAt } from '../error/code-frame.js';
+import { evalErrorFrameFrom, extractRelevantLines, lineColAt } from '../error/code-frame.js';
+import { stampEvalErrorLocation } from '../error/eval-error-location.js';
 
 describe('code-frame source index', () => {
   it('returns correct locations and frame slices for CRLF source without splitting it', () => {
@@ -12,6 +13,26 @@ describe('code-frame source index', () => {
       1: 'first',
       2: 'second',
       3: 'third'
+    });
+  });
+
+  /*
+   * Ledger O16: a diagnostic in the authored file counts from its first authored
+   * character, past text a host prepended (`banner`, `globalVars`); the legacy
+   * eval seam's generic-error frame counts the same way.
+   */
+  it('frames a stamped eval error in the file as written, past prepended text', () => {
+    const prepared = '@g1: 1;\n@g2: 2;\n.a {\n  b: c;\n}\n';
+    const file = { source: prepared, sourceOffset: prepared.indexOf('.a') };
+    const error = new TypeError('boom');
+    const at = prepared.indexOf('b: c');
+    stampEvalErrorLocation(error, at, at + 4, file);
+    expect(evalErrorFrameFrom(error)).toEqual({
+      line: 2,
+      column: 3,
+      endLine: 2,
+      endColumn: 7,
+      lines: { 1: '.a {', 2: '  b: c;', 3: '}' }
     });
   });
 

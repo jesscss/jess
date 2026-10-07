@@ -36,6 +36,7 @@ import {
   F_HAS_FIELDSPANS
 } from './util/provenance.js';
 import { stampEvalErrorLocation } from '../error/eval-error-location.js';
+import type { SourceOwner } from '../error/code-frame.js';
 
 const { isArray } = Array;
 
@@ -1441,7 +1442,7 @@ export abstract class Node<
        * top-level catch can frame the real location instead of falling back to
        * `1:1`. The innermost source-bearing node wins (see stampEvalErrorLocation).
        */
-      stampEvalErrorLocation(err, spanStartOf(node), spanEndOf(node), Node.evalErrorSourceFor(node, context));
+      stampEvalErrorLocation(err, spanStartOf(node), spanEndOf(node), Node.evalErrorFileFor(node, context));
       throw err;
     }
     if (isThenable(evaluated)) {
@@ -1452,7 +1453,7 @@ export abstract class Node<
         }
         return evald;
       }, (err: unknown) => {
-        stampEvalErrorLocation(err, spanStartOf(node), spanEndOf(node), Node.evalErrorSourceFor(node, context));
+        stampEvalErrorLocation(err, spanStartOf(node), spanEndOf(node), Node.evalErrorFileFor(node, context));
         throw err;
       });
     }
@@ -1464,14 +1465,15 @@ export abstract class Node<
   }
 
   /**
-   * The source text to pair with a stamped eval-error span. Prefers the node's
-   * own source-root file (correct across imports); falls back to the root tree's
+   * The source file to pair with a stamped eval-error span: its text, and where
+   * the authored file starts in it (ledger O16). Prefers the node's own
+   * source-root file (correct across imports); falls back to the root tree's
    * file, then the current tree context's file. Cold error path only.
    */
-  private static evalErrorSourceFor(node: Node, context: Context): string | undefined {
-    return node.sourceRoot?._treeContext?.file?.source
-      ?? context.root?._treeContext?.file?.source
-      ?? context.treeContext?.file?.source;
+  private static evalErrorFileFor(node: Node, context: Context): SourceOwner | undefined {
+    return node.sourceRoot?._treeContext?.file
+      ?? context.root?._treeContext?.file
+      ?? context.treeContext?.file;
   }
 
   /**
