@@ -4164,6 +4164,35 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads a comparison in a value paren group as the condition if() and boolean() read', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@x: (1px > 2px); @y: (1px>2px); x: if((@a = rem), 1, 2);',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const comparison = {
+      type: 'Condition',
+      guard: { g: 'cmp', op: '>', left: { type: 'Dimension', src: '1px' }, right: { type: 'Dimension', src: '2px' } },
+      src: '(1px > 2px)'
+    };
+    expect(result.value).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'x', value: comparison },
+        { type: 'VariableDeclaration', name: 'y', value: comparison },
+        {
+          value: {
+            branches: [
+              { guard: { g: 'cmp', op: '=', left: { type: 'Lookup', name: 'a' }, right: { type: 'Keyword', src: 'rem' } } },
+              {}
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
     expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
   });
@@ -9189,6 +9218,38 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+  });
+
+  it('keeps a bare selector interpolation as one simple before a combinator or another compound', () => {
+    const interpolated = {
+      type: 'SimpleSelector',
+      text: null,
+      interp: { parts: [{ ref: { type: 'Lookup', kind: 'var', name: 's' }, unquote: true }] }
+    };
+    const selectorOf = (source: string) => {
+      const result = run(lessGrammar.Document, `@s: ~".q"; ${source} { a: b; }`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok).toBe(true);
+      expect(result.unconsumedFrom).toBeNull();
+      return (stylesheet(result.value).rules[1] as Ruleset).selector;
+    };
+
+    expect(selectorOf('@{s} .r')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [interpolated, ' ', { text: '.r' }] }]
+    });
+    expect(selectorOf('@{s} > .r')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [interpolated, '>', { text: '.r' }] }]
+    });
+    expect(selectorOf('.r @{s} .t')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [{ text: '.r' }, ' ', interpolated, ' ', { text: '.t' }] }]
+    });
+    expect(selectorOf('@{s}:hover')).toMatchObject({
+      selectors: [{ type: 'CompoundSelector', value: [interpolated, { text: ':hover' }] }]
+    });
+
+    // A glued `|` makes `@{ns}` a namespace prefix, which is not modelled.
+    expect(parsesCompleteStylesheet('@ns: q; @{ns}|a { a: b; }')).toBe(false);
   });
 
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {

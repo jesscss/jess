@@ -101,10 +101,10 @@ import {
   isVarIndirect,
   isVarRef,
   keywordOrValue,
-  lessMathInGroup,
   lessMathInValue,
   lessMathOutsideParens,
   lessMathRun,
+  lessParenFrom,
   requireMathSum,
   lowerLogicalCallStatement,
   mixinArgumentSource,
@@ -579,10 +579,11 @@ const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6
 // flattened into an interpolation template.
 const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-// A bare `@{name}` is a whole-selector interpolation only. Keeping the
-// delimiter lookahead here prevents it from consuming the interpolation prefix
-// of an unmodelled namespace/attribute selector such as `@{ns}|a`.
-const bareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
+// A bare `@{name}` is one selector simple, so a combinator, another compound,
+// a glued simple, a guard, `,` or `{` may follow it (`@{s} > .r`, `.r @{s} .t`).
+// Only a glued `|` is refused: that `@{ns}` is the namespace prefix of an
+// unmodelled namespace selector (`@{ns}|a`), not a simple of its own.
+const bareInterpolatedSelectorEnd = regex(/(?!\|)/);
 // Semantically identical to the production Less `ampToken` terminal. A static ampersand
 // is already the canonical AST representation: `SimpleSelector.text` retains `&` and
 // core's selector path identifies parent references from that text.  The
@@ -2138,17 +2139,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       span
     )
   );
-  // A bare `(...)` is a math grouping in Less.  Function/mixin argument lists
-  // have their own productions above; do not widen this value position into a
-  // permissive raw list.
+  /*
+   * A bare `(...)` is a math grouping in Less. Function/mixin argument lists
+   * have their own productions above; do not widen this value position into a
+   * permissive raw list. The group is read once, and the token after its first
+   * operand decides what it is, as in `FunctionConditionTerm`: `)` closes a
+   * math group, and a comparison continues it as the `(a > b)` condition
+   * `if()` and `boolean()` read (`@x: (1px > 2px)` holds that condition, and
+   * written out it is kept as written).
+   */
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
     // stay exact. Parentheses own their boundary gaps, including Less `//`
     // comments before the first or after the final operand.
-    noTrivia(sequence(literal('('), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
-    (children, _fields, span, _rawChildren, _triviaLog, state) =>
-      withSourceSpan(block(lessMathInGroup(requireMathSum(children), state)), span)
+    noTrivia(sequence(
+      literal('('),
+      optional(whitespace),
+      g.MathSum,
+      optional(sequence(functionConditionOperator, g.MathSum)),
+      optional(whitespace),
+      literal(')')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => lessParenFrom(children, span, state)
   );
   // CSS grid line names are a bracketed value piece, not a map accessor or an
   // opaque post-parse string. Keep the delimited grammar fact as one existing
@@ -2582,12 +2595,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValue,
     children => trimCustomValueEnd(requireValueNode(children[0]))
   );
+  /**
+   * The `var()` name: css's `<custom-property-name>` first, then the Less forms
+   * that evaluate to one — a variable (`@v`, `@@v`, `@m[k]`), an escape
+   * (`~"--x"`), or a call (`e("--x")`). The parser keeps the shape; evaluation
+   * supplies the name, as Less 4.x does (`var(@v)` with `@v: --x` is `var(--x)`).
+   */
+  const varName = choice(
+    g.CustomPropertyValue,
+    g.EscapedQuoted,
+    g.IndirectVariableReference,
+    g.VariableReferenceChain,
+    g.Call
+  );
   const VarFunction = node(
     'VarCall',
     sequence(
       routed(),
       optional(whitespace),
-      g.CustomPropertyValue,
+      varName,
       optional(whitespace),
       optional(parser({ trivia: customValueGapTrivia }, sequence(literal(','), g.VarFallback))),
       literal(')')

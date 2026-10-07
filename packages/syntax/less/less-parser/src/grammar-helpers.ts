@@ -2244,6 +2244,27 @@ function isMathOperand(value: unknown): value is ValueNode | LessMathRun {
   return isValueNode(value) || isLessMathRun(value);
 }
 
+/**
+ * A value-position `Paren`'s reduction. One operand is a math group. Two, with a
+ * comparison between them, are the `(a > b)` condition `if()` and `boolean()`
+ * read: the same term reducer builds it and it carries the same grouped `src`,
+ * so the group is one node whichever production reads it. Its left operand is
+ * never a group fact, so the term reducer's raw-children path is not reached.
+ */
+function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
+  const [left, right] = children.filter(isMathOperand);
+  if (right === undefined) {
+    return withSourceSpan(block(lessMathInGroup(left!, state)), span);
+  }
+  const operator = children.find(child => guardOperatorText(child) !== null);
+  const fact = functionConditionTermFrom([
+    functionConditionOperandFrom([left], state),
+    operator,
+    functionConditionOperandFrom([right], state)
+  ], [], state);
+  return condition(fact.guard, `(${fact.src})`);
+}
+
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
   const facts = children.filter(isFunctionConditionFact);
   const first = facts[0];
@@ -2637,6 +2658,7 @@ export {
   isLessMathRun,
   lessMathInGroup,
   lessMathInValue,
+  lessParenFrom,
   lessMathRun,
   requireMathSum,
   functionCallFromChildren,
