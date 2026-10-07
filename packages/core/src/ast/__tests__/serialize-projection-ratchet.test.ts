@@ -379,9 +379,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // operation kept inside a math function that is itself kept math reached
     // through a variable is grouped by precedence (`keptOperand`); the value
     // lane still writes a group's own parens back.
-    // +1 function (ledger X18): a plain import after a visible `(multiple)` one
-    // is import-once's no-op, asked by the planner and the render walk alike
-    // (`isVisibleMultiple`).
+    // +1 function: every import that is neither `(multiple)` nor `(reference)`
+    // takes part in import-once, `(once)`, `(optional)` and `(less)` included,
+    // asked by the planner and the render walk alike (`importsOnce`).
     // +1 function: a paren group around one value reached through a reference
     // evaluates to its value (judgment under owner delegation 2026-10-06;
     // `groupsOneValue`, the flag set by `withExcluded`).

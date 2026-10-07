@@ -689,9 +689,12 @@ copy. A `(reference)` import that comes first does not stop a later plain import
 renders the sheet the author asked to see as its own visible copy; the earlier hidden
 copy is a placement of its own, so it still writes what an extend reveals there
 (`@import (reference) "t.less"; @import "t.less"; .x:extend(.sm) {}` → `.x { … }` then
-`.sm, .x { … }`). A plain import is import-once, so after a visible `(multiple)` import of
-the sheet it is a no-op (`@import (multiple) "t.less"; @import "t.less";` places one copy;
-X18, orchestrator judgment under owner delegation 2026-10-06). An import inside a ruleset loads the
+`.sm, .x { … }`). A `(multiple)` import places its own copy outside import-once, so a later
+plain import of the sheet is its first `once` import and renders it too, wherever the
+`(multiple)` copy landed (`@media print { @import (multiple) "t.less"; } @import "t.less";`
+keeps the root copy). Every import other than `(multiple)` and `(reference)` is import-once,
+`(once)`, `(optional)` and `(less)` included (X18, orchestrator judgment under owner
+delegation 2026-10-07: a sheet the author asked to see is never hidden). An import inside a ruleset loads the
 sheet where the ruleset renders, and counts in document order like any other: after
 `.wrap { @import "t.less"; }`, a root `@import "t.less";` or `@import (reference) "t.less";`
 is a no-op, so it neither renders the sheet nor makes its mixins callable at the root, as

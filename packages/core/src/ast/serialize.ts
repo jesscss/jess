@@ -444,11 +444,9 @@ function importHasOption(options: string | null, option: string): boolean {
  * a document any `@import` already placed — plain, `(multiple)` or `(reference)` — is
  * dropped, so the sheet is placed once and stays as visible as it was. A plain import after
  * a `(reference)` one is not a re-import: it renders the sheet the author asked to see. A
- * plain import after a visible `(multiple)` one is (a plain import is `once`: any later
- * import of a file already included is ignored; {@link isVisibleMultiple}). A `(multiple)`
- * import, or one inside a `(multiple)` sheet, places its own copy and is never dropped.
- * The import planner and the render walk both ask this, in document order, an import
- * inside a ruleset included, so they agree on which imports place a sheet.
+ * `(multiple)` import, or one inside a `(multiple)` sheet, places its own copy and is never
+ * dropped. The import planner and the render walk both ask this, in document order, an
+ * import inside a ruleset included, so they agree on which imports place a sheet.
  */
 function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, placed: boolean): boolean {
   return placed && !inMultiple && node.mode !== 'compose'
@@ -456,13 +454,16 @@ function isReferenceReimport(node: StyleImport, options: string | null, inMultip
 }
 
 /**
- * A `(multiple)` import that places its sheet visibly — not `(reference)`, not inside a
- * `(reference)` sheet — includes the file, so a later plain import of it is a no-op, as
- * after a plain import (ledger X18: the sheet is shown, so nothing the author asked to see
- * is hidden; orchestrator judgment under owner delegation 2026-10-06).
+ * Whether an import takes part in import-once: every `@import` but a `(multiple)` one, which
+ * places its own copy, and a `(reference)` one, which {@link isReferenceReimport} decides.
+ * `(once)` is the default spelled out; `(optional)` and `(less)` change only how the sheet
+ * loads. A `(multiple)` copy stays outside the bookkeeping, so a later plain import of the
+ * sheet is its first `once` import and renders it, wherever the `(multiple)` copy landed
+ * (ledger X18: a sheet the author asked to see is never hidden; orchestrator judgment
+ * under owner delegation 2026-10-07).
  */
-function isVisibleMultiple(node: StyleImport, options: string | null, hidden: boolean): boolean {
-  return !hidden && node.mode !== 'compose' && importHasOption(options, 'multiple') && !importHasOption(options, 'reference');
+function importsOnce(options: string | null): boolean {
+  return options === null || (!importHasOption(options, 'multiple') && !importHasOption(options, 'reference'));
 }
 
 /**
@@ -12694,11 +12695,11 @@ function planImportedFacts(
    * ponytail: a guard that holds still leaves a later import of the same sheet dropped
    * by the walk with its facts published here; evaluating the guard here would close it.
    */
-  const countRulesetImports = async (rules: readonly Statement[], multiple: boolean, hidden: boolean): Promise<void> => {
+  const countRulesetImports = async (rules: readonly Statement[], multiple: boolean): Promise<void> => {
     for (const st of rules) {
       if (st.type === 'Ruleset' || st.type === 'AtRuleBlock') {
         if (st.type === 'AtRuleBlock' || st.guard === undefined) {
-          await countRulesetImports(st.rules, multiple, hidden);
+          await countRulesetImports(st.rules, multiple);
         }
         continue;
       }
@@ -12719,23 +12720,17 @@ function planImportedFacts(
       if (loaded === undefined || 'inline' in loaded || loaded.document === null || loaded.key === undefined) {
         continue;
       }
-      if (options === null && !multiple) {
+      if (!multiple && importsOnce(options)) {
         if (seen.has(loaded.key)) {
           continue;
         }
         seen.set(loaded.key, true);
       } else if (isReferenceReimport(st, options, multiple, placed.has(loaded.key))) {
         continue;
-      } else if (isVisibleMultiple(st, options, hidden)) {
-        seen.set(loaded.key, true);
       }
       placed.add(loaded.key);
       const sheet = loaded.document.rules;
-      const count = (): Promise<void> => countRulesetImports(
-        sheet,
-        multiple || importHasOption(options, 'multiple'),
-        hidden || importHasOption(options, 'reference')
-      );
+      const count = (): Promise<void> => countRulesetImports(sheet, multiple || importHasOption(options, 'multiple'));
       await (loaded.withinDocument ? loaded.withinDocument(count) : count());
     }
   };
@@ -12895,7 +12890,7 @@ function planImportedFacts(
        * facts into the importing frame before its body is walked.
        */
       const isCompose = st.mode === 'compose';
-      if (options === null && !multipleImportDepth && loaded.key !== undefined) {
+      if (!multipleImportDepth && importsOnce(options) && loaded.key !== undefined) {
         if (seen.has(loaded.key)) {
           /* A module composed again is still loaded from this sheet too (ledger X14). */
           if (isCompose && plansExtend) {
@@ -12906,8 +12901,6 @@ function planImportedFacts(
         seen.set(loaded.key, !isCompose);
       } else if (isReferenceReimport(st, options, multipleImportDepth, loaded.key !== undefined && placed.has(loaded.key))) {
         return;
-      } else if (loaded.key !== undefined && isVisibleMultiple(st, options, hidden)) {
-        seen.set(loaded.key, true);
       }
       if (!isCompose && loaded.key !== undefined) {
         placed.add(loaded.key);
@@ -13061,7 +13054,7 @@ function planImportedFacts(
           }
         }
       } else if (st.type === 'Ruleset' && st.guard === undefined) {
-        await countRulesetImports(st.rules, multipleImportDepth, hidden);
+        await countRulesetImports(st.rules, multipleImportDepth);
       } else if (st.type === 'ModuleImport' && e.context) {
         const { module } = await e.context.getModule(st.path.value).catch(moduleLoadFailed(st, e));
         e.plannedModuleImports?.set(st, module);
@@ -20476,11 +20469,11 @@ function expandStyleImport(
           bindComposedLiveMembers(node, frame, activation.frame);
         }
         const bodyFrame = activation?.frame ?? frame;
-        const emitOnceKey = request.options !== null || e.multipleImportDepth !== 0
+        const emitOnceKey = !importsOnce(request.options) || e.multipleImportDepth !== 0
           ? undefined
           : activation === undefined ? loaded.key : activation.emitOnceKey;
-        const seen = e.loadedImports ??= new Map();
         if (emitOnceKey !== undefined) {
+          const seen = e.loadedImports ??= new Map();
           if (seen.has(emitOnceKey)) {
             if (isCompose) {
               if (seen.get(emitOnceKey) === null) {
@@ -20508,8 +20501,6 @@ function expandStyleImport(
           loaded.key !== undefined && e.placedDocuments?.has(loaded.key) === true
         )) {
           return;
-        } else if (loaded.key !== undefined && isVisibleMultiple(node, request.options, e.referenceImportDepth !== 0)) {
-          seen.set(loaded.key, null);
         }
         if (!isCompose && loaded.key !== undefined) {
           (e.placedDocuments ??= new Set()).add(loaded.key);

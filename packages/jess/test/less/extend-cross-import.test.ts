@@ -165,15 +165,27 @@ describe('extend across @import', () => {
     });
 
     /*
-     * A plain import is `once`: a file a visible `(multiple)` import already included is
-     * not included again, as after a plain import; the sheet is shown, so nothing the
-     * author asked to see is hidden (orchestrator judgment under owner delegation
-     * 2026-10-06, ledger X18).
+     * A `(multiple)` copy stays outside import-once, so a plain import after it is the
+     * sheet's first `once` import and renders it, wherever the `(multiple)` copy landed: a
+     * sheet the author asked to see is never hidden (ledger X18, orchestrator judgment under
+     * owner delegation 2026-10-07).
      */
-    it('a plain import after a visible (multiple) one is a no-op', async () => {
-      expect(await renderFile('multiple-and-plain-main.less')).toBe(smX);
+    it('a plain import after a (multiple) one renders the sheet', async () => {
+      expect(await renderFile('multiple-and-plain-main.less')).toBe(`${smX}\n${smX}`);
       expect(await renderFile('plain-multiple-plain-main.less')).toBe(`${smX}\n${smX}`);
-      expect(await renderFile('ref-multiple-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX].join('\n'));
+      expect(await renderFile('ref-multiple-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX, smX].join('\n'));
+      expect(await renderFile('media-multiple-and-plain-main.less')).toBe(
+        ['@media print {', '  .sm {', '    b: 2;', '  }', '}', '.sm {', '  b: 2;', '}'].join('\n')
+      );
+      expect(await renderFile('mixin-multiple-and-plain-main.less')).toBe(
+        ['.y .sm {', '  b: 2;', '}', smX].join('\n')
+      );
+    });
+
+    // `(once)` is import-once spelled out; `(optional)` and `(less)` change only how a sheet loads.
+    it('every import but (multiple) and (reference) is import-once', async () => {
+      expect(await renderFile('once-and-once-main.less')).toBe(smX);
+      expect(await renderFile('plain-and-options-main.less')).toBe(smX);
     });
 
     /*
