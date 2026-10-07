@@ -90,7 +90,8 @@ const numericCompare = (a: number, b: number): -1 | 0 | 1 => {
  * mode, so `strictUnits` made `1px + 3em` a hard error while `2px > 1em` stayed a
  * silent `false`: the same operand pair, the same defect, two answers, and the
  * author cannot tell "not greater" from "never comparable". Arithmetic already
- * raises here (`dimensionOperate`); this is comparison catching up.
+ * raises here (`dimensionOperate`); this is comparison catching up. Equality
+ * never passes the mode ({@link orderUnitMode}): `1em = 1px` is `false`.
  */
 function dimensionCompare(
   a: Dimension,
@@ -681,6 +682,17 @@ function answer(op: string, c: Compared, left: ValueGroup, right: ValueGroup): b
 }
 
 /**
+ * The `unitMode` a comparison hands {@link dimensionCompare}. EQUALITY NEVER
+ * RAISES (§4.1): two units that do not reconcile are simply not equal, under
+ * `strict` too — the meaning `strict` keeps from Less 4.x `strictUnits` and
+ * dart-sass, which both answer `1em == 1px` with `false`. Only an ORDER over
+ * them has no answer, so only a relational operator takes the mode, and
+ * `strict` raises there (§4.2; dart-sass errors on `1em < 1px` too).
+ */
+const orderUnitMode = (op: string, unitMode: UnitMode | undefined): UnitMode | undefined =>
+  op === '=' || op === '==' || op === SASS_EQUAL ? undefined : unitMode;
+
+/**
  * Comparison in VALUE position (`if(@a > 0, …)`, `$(…)`) on typed operands,
  * faithful to less.js `Node.compare` (see {@link compareNodes}): dimensions
  * reconcile units, quoted strings compare lexically, colors/lists by structural
@@ -698,7 +710,7 @@ export function compare(
   right: ValueGroup,
   unitMode?: UnitMode
 ): boolean {
-  const c = compareGroups(left, right, unitMode, op === SASS_EQUAL);
+  const c = compareGroups(left, right, orderUnitMode(op, unitMode), op === SASS_EQUAL);
   if (c === NO_GROUND) {
     /*
      * RELATIONAL is trichotomous (§4.2), so a groundless pair raises rather than
@@ -743,7 +755,7 @@ export function compareMatch(
 ): boolean {
   return answer(
     op,
-    compareGroups(left, right, unitMode, op === SASS_EQUAL),
+    compareGroups(left, right, orderUnitMode(op, unitMode), op === SASS_EQUAL),
     left,
     right
   );

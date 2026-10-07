@@ -296,11 +296,13 @@ rows state for `.jess`, arrived at independently.
 **AMENDED (owner, 2026-10-06).** Rows `b` and `c` hold in every `unitMode`:
 a unitless operand of `+`/`-` adopts the other side's unit, in every dialect,
 as dart-sass and Less 4.x do. The other unit rows are read under the `.jess`
-DEFAULT, which is `unitMode: 'strict'` (§4.7): `f`, `f2`, `f3`, `h` and `j2` are
-errors (`strict` raises on two real units that do not reconcile, in
-comparison as in arithmetic, and on a result whose unit CSS cannot express).
-The values written beside `f`/`f2`/`f3` are what an explicit
-`unitMode: 'preserve'` gives; `j2` is `false` under `preserve` or `loose`.
+DEFAULT, which is `unitMode: 'strict'` (§4.7): `f`, `f2`, `f3` and `h` are
+errors (`strict` raises on two real units that do not reconcile in arithmetic
+and on a result whose unit CSS cannot express). The values written beside
+`f`/`f2`/`f3` are what an explicit `unitMode: 'preserve'` gives. Row `j2` is
+`false` in every mode, the default included: equality never raises (§4.1), and
+only a RELATIONAL comparison over units that do not reconcile raises under
+`strict` (§4.2).
 
 ### 4.1 The comparison model — one-on-one common ground
 
@@ -1068,9 +1070,12 @@ demanded an expressible result whatever `unitMode` said. Now:
   file's dialect supplies it for the whole compile: a `.less` partial under a
   `.jess` entry is strict by default, a `.jess` partial under a `.less` entry
   is `preserve`.
-- **`strict` raises on units that do not reconcile in comparison as in
-  arithmetic**, so `$(1em = 1px)` (§4 row `j2`) is also an error by default,
-  and `false` under `preserve` or `loose`.
+- **Equality never raises (§4.1).** `strict` raises on units that do not
+  reconcile in arithmetic and in a RELATIONAL comparison (`$(1em > 1px)`, as
+  dart-sass does); `$(1em = 1px)` (§4 row `j2`) and `$(1em == 1px)` are
+  `false` in every mode, as in Less 4.x `strictUnits` and dart-sass. A guard
+  that dispatches on a unit (`when ($a = 1px)`) therefore matches the
+  candidate it names under the `.jess` default too.
 
 **The round trip** (`.less → .jess → .css` equals `.less → .css`, under one
 explicit configuration — `docs/design/JESS-EQUIVALENCE-HARNESS.md`): Less math
@@ -1148,8 +1153,10 @@ section said `preserve` raises, which contradicted the name and the code.
 The compiler default is `preserve` (`DEFAULT_MODES`), which the `.less` and
 `.scss` plugins keep; the `.jess` plugin's dialect default is `strict` (above),
 and `strict` also arrives via the `strict: true` preset. This is the same lever extended in
-`5c516dbb1`, which gave `unitMode` reach into comparison — the modes now govern
-arithmetic, comparison, and expressibility as one policy rather than three.
+`5c516dbb1`, which gave `unitMode` reach into RELATIONAL comparison — the modes
+now govern arithmetic, order, and expressibility as one policy rather than
+three. (`5c516dbb1` also made `strict` equality raise; that half is reverted,
+because equality never raises, §4.1.)
 
 ## 5. Lowering — how dialects reach one set of semantics
 

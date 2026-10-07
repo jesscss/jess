@@ -184,10 +184,21 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
     expect(compare('<', dim(2, 'px'), dim(1, 'em'), 'loose')).toBe(false);
   });
 
-  it('throws on an unreconcilable pair under strict, as arithmetic already does', () => {
+  it('throws on an unreconcilable ORDER under strict, as arithmetic already does', () => {
     expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'strict')).toThrow(UnitArithmeticError);
-    expect(() => compare('=', dim(2, 'px'), dim(1, 'em'), 'strict')).toThrow(UnitArithmeticError);
     expect(() => compare('<=', dim(1, 'em'), dim(2, 'px'), 'strict')).toThrow(UnitArithmeticError);
+  });
+
+  /*
+   * §4.1 (owner 2026-08-01): equality never raises. `strict` keeps the meaning
+   * it has in Less 4.x `strictUnits` and dart-sass (owner 2026-10-06), and both
+   * answer `1em == 1px` with `false`; only an order over the pair has no answer.
+   */
+  it('never throws for equality, under strict too, in value and guard position', () => {
+    for (const op of ['=', '==', SASS_EQUAL]) {
+      expect(compare(op, dim(2, 'px'), dim(1, 'em'), 'strict'), op).toBe(false);
+      expect(compareMatch(op, dim(2, 'px'), dim(1, 'em'), 'strict'), op).toBe(false);
+    }
   });
 
   it('names both offending units, matching the arithmetic message', () => {
@@ -202,10 +213,11 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
       .toThrow('Bad units: \'px*px\' and \'em*px\'.');
   });
 
-  it('throws for a compound operand against its own display unit under strict', () => {
+  it('throws for a compound operand ordered against its own display unit under strict', () => {
     const squared = makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px');
-    expect(() => compare('=', squared, dim(6, 'px'), 'strict'))
+    expect(() => compare('>', squared, dim(6, 'px'), 'strict'))
       .toThrow('Bad units: \'px*px\' and \'px\'.');
+    expect(compare('=', squared, dim(6, 'px'), 'strict')).toBe(false);
   });
 
   it('does NOT throw for units that reconcile, whatever the mode', () => {
@@ -259,14 +271,15 @@ describe('compare — a compound operand compares on its whole unit multiset', (
 
   /*
    * One unit identity for a compound operand: `=` and `+`/`-` both take the
-   * multiset as written (ledger V18), so a pair `+` rejects is not equal either,
-   * and under strict both throw.
+   * multiset as written (ledger V18), so a pair `+` rejects is not equal either.
+   * Under strict `+` and an order over the pair throw; equality never does.
    */
   it('a multiset is the units it was written in, exactly as `+`/`-` take it', () => {
     const inchPixels = makeCompoundDimension(1, 'in', ['in', 'px'], [], 'in');
     const pixelPixels = makeCompoundDimension(96, 'px', ['px', 'px'], [], 'px');
     expect(compare('=', inchPixels, pixelPixels)).toBe(false);
-    expect(() => compare('=', inchPixels, pixelPixels, 'strict')).toThrow('Bad units: \'in*px\' and \'px*px\'.');
+    expect(compare('=', inchPixels, pixelPixels, 'strict')).toBe(false);
+    expect(() => compare('<', inchPixels, pixelPixels, 'strict')).toThrow('Bad units: \'in*px\' and \'px*px\'.');
     expect(() => operate('+', inchPixels, pixelPixels, { unitMode: 'strict' }))
       .toThrow('Bad units: \'in*px\' and \'px*px\'.');
   });

@@ -419,14 +419,34 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
     await expect(value('$(2 = 2%)')).resolves.toBe('true');
   });
 
-  it('units that do not convert follow the `unitMode` ladder (row j2)', async () => {
+  it('units that do not convert are not equal, in every rung — equality never raises (row j2)', async () => {
     /*
-     * `strict` raises on a pair whose units cannot reconcile, in comparison as
-     * in arithmetic, and `strict` is the `.jess` default (§4.7, owner
-     * 2026-10-06). Under a lenient mode the pair is simply not equal.
+     * §4.1 (owner 2026-08-01): equality never raises. `strict`, the `.jess`
+     * default, keeps the meaning it has in Less 4.x `strictUnits` and dart-sass
+     * (owner 2026-10-06), and both answer `1em == 1px` with `false`. Only an
+     * ORDER over the pair has no answer, so `>` is where `strict` raises.
      */
-    await expect(value('$(1em = 1px)')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
-    await expect(valueIn('$(1em = 1px)', 'preserve')).resolves.toBe('false');
+    for (const mode of [undefined, ...UNIT_MODES]) {
+      await expect(valueIn('$(1em = 1px)', mode), mode ?? 'the default').resolves.toBe('false');
+      await expect(valueIn('$(1em == 1px)', mode), mode ?? 'the default').resolves.toBe('false');
+    }
+    await expect(valueIn('$(1em > 1px)', undefined)).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+    await expect(valueIn('$(1em > 1px)', 'preserve')).resolves.toBe('false');
+
+    // `.scss` under `strict` answers as dart-sass does: `==` is false, `<` raises.
+    const strictScss = (source: string) => new Compiler({ compile: { unitMode: 'strict' }, quiet: true })
+      .renderString(source, { filePath: 'entry.scss', extension: '.scss' });
+    expect((await strictScss('.a { @if 1em == 1px { k: eq; } @else { k: ne; } }')).replace(/\s+/g, ' ').trim()).toBe('.a { k: ne; }');
+    await expect(strictScss('.a { @if 1em < 1px { k: lt; } }')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+  });
+
+  it('a guard that dispatches on the unit matches the candidate it names, as in `.less`', async () => {
+    const dispatch = (param: string) => `.m(${param}) when (${param} = 1px) { k: px; } .m(${param}) when (${param} = 1em) { k: em; }`;
+    await expect(sheet(`${dispatch('$a')} .x { $ > .m(1em); }`, '.jess')).resolves.toBe('.x { k: em; }');
+    await expect(sheet(`${dispatch('@a')} .x { .m(1em); }`, '.less')).resolves.toBe('.x { k: em; }');
+    const strictLess = await new Compiler({ compile: { unitMode: 'strict' }, quiet: true })
+      .renderString(`${dispatch('@a')} .x { .m(1em); }`, { filePath: 'entry.less', extension: '.less' });
+    expect(strictLess.replace(/\s+/g, ' ').trim()).toBe('.x { k: em; }');
   });
 
   it('string ground: a value equals its own spelling (rows q, r, s)', async () => {
