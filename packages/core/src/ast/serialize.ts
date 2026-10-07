@@ -9340,7 +9340,13 @@ function resolveTermAmp(term: SelectorTerm, parents: string[], subs: readonly st
  *  that replaces the old context-blind cartesian odometer. A whole selector branch
  *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
  *  interior `&` resolves by role in `resolveCompoundAmp`. */
-function resolveSelectorBranchAmp(c: SelectorBranch, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function resolveSelectorBranchAmp(
+  c: SelectorBranch,
+  parents: string[],
+  frame: Frame | null,
+  e: EvalCtx,
+  flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents)
+): MaybePromise<string[]> {
   const terms = selectorBranchTerms(c);
   const combinators = selectorBranchCombinators(c);
   if (c.type !== 'RelativeSelector' && terms.length === 1 && combinators.length === 0) {
@@ -9350,7 +9356,6 @@ function resolveSelectorBranchAmp(c: SelectorBranch, parents: string[], frame: F
   }
   const subs = [ampSub(parents)];
   const last = terms.length - 1;
-  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
   const lastSubs = flags !== undefined && keepsPseudoElementLast(terms[last]!) ? parentUnits(parents, flags) : subs;
   return combineAll(terms.map((term, i) => resolveTermAmp(term, parents, i === last ? lastSubs : subs, frame, e)), (variants) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
@@ -9402,20 +9407,19 @@ function branchHasAttributeAmp(c: SelectorBranch): boolean {
  * common BEM/`&:hover` nesting — keeps the fast `joinAmpersand` string splice (byte-
  * identical to the structural walk for one parent), which also carries the legacy
  * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
-function composeOne(parents: string[], child: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function composeOne(parents: string[], child: SelectorBranch, frame: Frame | null, e: EvalCtx, flags: Uint8Array | undefined): MaybePromise<string[]> {
   if (!selectorBranchHasAmpersand(child)) {
     /*
-     * Nothing may follow a pseudo-element, so a parent ending with one
-     * ({@link EvalCtx.pseudoElementLists}) is held in `:is()`: the branch matches
+     * Nothing may follow a pseudo-element, so a parent ending with one (`flags`,
+     * {@link EvalCtx.pseudoElementLists}) is held in `:is()`: the branch matches
      * nothing either way, but written bare (`.a::before .c`) it is invalid and
      * would drop the whole list a bubbled at-rule writes per parent.
      */
-    const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
     return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
       parents.map((p, i) => (flags !== undefined && flags[i] === 1 ? `:is(${p}) ` : p + ' ') + text));
   }
   if ((parents.length >= 2 || branchHasAttributeAmp(child)) && !parents.some(hasTopLevelComma)) {
-    return resolveSelectorBranchAmp(child, parents, frame, e);
+    return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
   return mapMaybe(resolveSelectorBranch(child, frame, e), (text) => {
     if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
@@ -9430,8 +9434,9 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const parts = child.selectors.map(c => composeOne(parents, c, frame, e));
-  return combineAll(parts, values => recordPseudoElementBranches(values, child.selectors, parents, frame, e));
+  const flags = e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
+  const parts = child.selectors.map(c => composeOne(parents, c, frame, e, flags));
+  return combineAll(parts, values => recordPseudoElementBranches(values, child.selectors, parents, flags, frame, e));
 }
 
 /**
@@ -9447,11 +9452,11 @@ function recordPseudoElementBranches(
   values: readonly (readonly string[])[],
   branches: readonly SelectorBranch[],
   parents: readonly string[] | null,
+  parentFlags: Uint8Array | undefined,
   frame: Frame | null,
   e: EvalCtx
 ): string[] {
   const out = values.flat();
-  const parentFlags = parents === null || e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(parents);
   let flags: Uint8Array | undefined;
   let at = 0;
   for (let k = 0; k < branches.length; k++) {
@@ -9685,7 +9690,7 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
   }
 
   /* A lone `@{s}` group may hold anything, so its branches count as ending with a pseudo-element ({@link tokenPseudoElement}). */
-  return combineAll(parts, values => recordPseudoElementBranches(values, list.selectors, null, frame, e));
+  return combineAll(parts, values => recordPseudoElementBranches(values, list.selectors, null, undefined, frame, e));
 }
 
 /** [nesting] Nested-mode own selectors at a ROOT context (no parent): a parentless

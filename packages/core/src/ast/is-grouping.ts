@@ -212,13 +212,23 @@ function isPseudoElement(sim: SimpleToken): boolean {
   return text !== null && isPseudoElementName(text);
 }
 
-/** Whether a selector token's name — a parser token's, or one an interpolation resolved to — is a pseudo-element's. */
+/**
+ * Whether a selector token's name — a parser token's, or one an interpolation
+ * resolved to — is a pseudo-element's. A one-colon name is lowercased only when its
+ * length and first letter are a legacy pseudo-element's (`:after`, `:before`,
+ * `:first-line`, `:first-letter`), so `:hover` and `:focus` cost two reads.
+ */
 export function isPseudoElementName(text: string): boolean {
   if (text.charCodeAt(0) !== 58 /* : */) {
     return false;
   }
+  const first = text.charCodeAt(1) | 32;
+  if (first === 58 /* : */) {
+    return true;
+  }
   const n = text.length;
-  return text.charCodeAt(1) === 58 || ((n === 6 || n === 7 || n === 11 || n === 13) && LEGACY_PSEUDO_ELEMENTS.has(text.toLowerCase()));
+  return ((n === 6 && first === 97 /* a */) || (n === 7 && first === 98 /* b */) || ((n === 11 || n === 13) && first === 102 /* f */))
+    && LEGACY_PSEUDO_ELEMENTS.has(text.toLowerCase());
 }
 
 /**

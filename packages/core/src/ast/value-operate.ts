@@ -262,8 +262,8 @@ export function holdsKeptOperation(value: ValueGroup): boolean {
   return findFinalValue(value, isKeptOperation) !== undefined;
 }
 
-/** Whether `value` is an operation `preserve` kept unevaluated. */
-export const isKeptOperation = (value: Value): boolean => preservedUnitClashes.has(value);
+/** Whether `value` is an operation `preserve` kept unevaluated; every one is a keyword, so no other value pays the lookup. */
+export const isKeptOperation = (value: Value): boolean => value.type === 'Keyword' && preservedUnitClashes.has(value);
 
 /**
  * The first value in `value` — through value groups, list members and blocks —
