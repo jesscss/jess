@@ -159,29 +159,15 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
    * lone value, is kept as written (owner 2026-10-06); the golden was cut when
    * only the parens that carry precedence survived. Parens around a calculation
    * that resolves are dropped (owner 2026-10-07), so `one:` matches as written.
-   * The fixture's folder has no `styles.config`, so the one above it covers it
-   * (DESIGN-DECISIONS O19, owner 2026-10-07): `tests-unit/styles.config.ts`
-   * sets `mathMode: 'always'`, and `@var: 50vh/2` is `25vh`.
    */
   ['tests-unit/calc/calc.less', [
-    ['width: calc(50% + 50vh / 2 - 20px);', 'width: calc(50% + (25vh - 20px));'],
-    ['height: calc(50% + 50vh / 2 - 20px);', 'height: calc(50% + ((25vh - 20px)));'],
+    ['width: calc(50% + 50vh / 2 - 20px);', 'width: calc(50% + (50vh / 2 - 20px));'],
+    ['height: calc(50% + 50vh / 2 - 20px);', 'height: calc(50% + ((50vh / 2 - 20px)));'],
     ['min-height: calc(10vh + 5vh);', 'min-height: calc(((10vh)) + calc((5vh)));'],
     ['two: calc(100% - (10px + 10px));', 'two: calc(100% - (((10px + 10px))));'],
     ['three: calc(100% - 3 * 1);', 'three: calc(100% - (3 * 1));'],
     ['four: calc(100% - 3 * 1);', 'four: calc(100% - (3 * 1));'],
     ['height: calc(100% - (10px * 3 + 10px * 2));', 'height: calc(100% - ((10px * 3) + (10px * 2)));']
-  ]],
-
-  /*
-   * As for `calc.less`: `tests-unit/styles.config.ts` (`mathMode: 'always'`)
-   * covers the fixture's folder, which has no `styles.config` of its own
-   * (DESIGN-DECISIONS O19, owner 2026-10-07), so every division computes.
-   */
-  ['tests-unit/operations/operations-advanced.less', [
-    ['  result: calc(10px / 2 * 2);\n', '  result: 10px;\n'],
-    ['  result: 10px / 2;\n', '  result: 5px;\n'],
-    ['  div: 10 / 5;\n', '  div: 2;\n']
   ]],
   ['tests-unit/extend-nest/extend-nest.less', [
     // `.sidebar`, `.sidebar2` (0,1,0); `.type1 .sidebar3`, `.type2.sidebar4` (0,2,0).
