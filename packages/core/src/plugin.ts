@@ -84,15 +84,6 @@ export interface UrlTransformRequest {
    */
   kind?: 'url' | 'import';
 
-  /**
-   * The target is opaque text — the body of an escaped string (`url(~"…")`,
-   * ledger V3) — whose path is never rewritten (`rootpath`, `rewriteUrls`):
-   * rewriting text the author wrote verbatim could leave a bad-url token
-   * (`url(root/'b.png')`). URL-only policy such as query arguments still
-   * applies (orchestrator judgment under owner delegation 2026-10-06).
-   */
-  opaque?: boolean;
-
   /** The document that authored this URL. */
   fromFilePath?: string;
 

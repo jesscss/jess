@@ -1350,7 +1350,7 @@ export class Context {
    * document. The entry/source paths are provenance facts already retained by
    * this Context; this does not perform resolution, loading, or parsing.
    */
-  transformUrl(value: string, quoted: boolean, kind: NonNullable<UrlTransformRequest['kind']> = 'url', opaque = false): string {
+  transformUrl(value: string, quoted: boolean, kind: NonNullable<UrlTransformRequest['kind']> = 'url'): string {
     const document = this.sourceContext;
     const transform = document?.plugin?.transformUrl;
     if (!transform) {
@@ -1361,7 +1361,6 @@ export class Context {
       value,
       quoted,
       kind,
-      ...(opaque ? { opaque } : {}),
       ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
       ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath })
     };

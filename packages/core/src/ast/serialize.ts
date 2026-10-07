@@ -5305,14 +5305,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           /*
            * Less `~"…"` / `~'…'` is an escaped string value: inside a URL it
            * deliberately strips both the escape marker and its quote wrapper.
-           * Its content is opaque (ledger V3), so its path is never rewritten:
-           * `url(~"'b.png'")` stays `url('b.png')` under a rootpath, where a
-           * rewrite wrote the bad-url token `url(root/'b.png')` (orchestrator
-           * judgment under owner delegation 2026-10-06). The plugin still sees
-           * it, marked opaque, for URL-only policy such as `urlArgs`.
+           * Its content is opaque (ledger V3), so no URL option touches it:
+           * `url(~"'b.png'")` stays `url('b.png')`, where `rootpath` wrote the
+           * bad-url token `url(root/'b.png')` and `urlArgs` the invalid
+           * `url('b.png'?v=1)` (orchestrator judgments under owner delegation
+           * 2026-10-06 and 2026-10-07).
            */
           if (body.escaped) {
-            return literal(`url(${e.context?.transformUrl(content, false, 'url', true) ?? content})`);
+            return literal(`url(${content})`);
           }
           const target = e.context?.transformUrl(content, true) ?? content;
           return literal(`url(${body.quote}${target}${body.quote})`);
@@ -5328,16 +5328,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          * transform (rootpath/rewriteUrls/urlArgs) an authored `url("…")` gets. A
          * string's quote is syntax, read from the typed string: transform its
          * content and keep the quote around it. An escaped string is opaque
-         * (ledger V3): its path is not rewritten, as `url(~"…")` written
-         * directly is not. Anything else is transformed whole.
+         * (ledger V3): no URL option touches it, as none touches `url(~"…")`
+         * written directly. Anything else is transformed whole.
          */
         if (!isValueGroupArray(value) && value.type === 'Quoted' && !value.escaped) {
           const target = e.context?.transformUrl(value.value, true) ?? value.value;
           return literal(`url(${value.quote}${target}${value.quote})`);
         }
         if (!isValueGroupArray(value) && (value.type === 'Quoted' || (value.type === 'Any' && value.escapedQuote !== ''))) {
-          const opaque = emitValue(value);
-          return literal(`url(${e.context?.transformUrl(opaque, false, 'url', true) ?? opaque})`);
+          return literal(`url(${emitValue(value)})`);
         }
         const raw = emitValue(value);
         const target = e.context?.transformUrl(raw, false) ?? raw;

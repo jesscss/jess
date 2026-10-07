@@ -447,11 +447,9 @@ export class LessPlugin extends AbstractPlugin {
     this.#moduleMode = opts.moduleMode ?? lessPluginDefaults.moduleMode;
   }
 
-  transformUrl({ value, quoted, kind, opaque, fromFilePath, entryFilePath }: UrlTransformRequest): string {
+  transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
     let transformed: string;
-    if (opaque === true) {
-      transformed = value;
-    } else if (isUrlRelative(value)) {
+    if (isUrlRelative(value)) {
       const rewriteUrls = this.opts.rewriteUrls;
       const local = value.startsWith('.');
 
