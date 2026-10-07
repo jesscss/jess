@@ -2,10 +2,10 @@ import * as path from 'path';
 import { loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
 
 /**
- * Get configuration from styles.config.* or jess.config.* file, searching from the given directory
- * up through parent directories.
+ * Get configuration from the nearest styles.config.* file, searching from the given directory
+ * up through parent directories to the package root (the first one with a package.json).
  *
- * @param searchFrom - File or directory path to start searching from (searches up to root)
+ * @param searchFrom - Directory to start searching from
  * @returns Configuration object, or empty object if no config found
  */
 export const getConfig = (searchFrom?: string): StylesConfig => {

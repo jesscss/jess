@@ -380,3 +380,36 @@ describe('the strict preset', () => {
       .toBe('.e { k: 2px; }');
   });
 });
+
+describe('the styles.config that covers a file is the nearest one above it, within its package', () => {
+  it('a config in a parent folder covers the files below it, imported files included', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['app/entry.less', '.e { k: 1px + 1em; }\n@import \'../shared/deep/part.less\';'],
+      ['shared/deep/part.less', '.p { k: 1px + 1em; }']
+    );
+    expect((await render('app/entry.less')).css).toBe('.e { k: 2px; } .p { k: 2px; }');
+  });
+
+  it('the nearest config covers a file, not the configs above it', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['sub/styles.config.cjs', 'module.exports = { language: { less: { mathMode: \'always\' } } };\n'],
+      ['sub/entry.less', '.e { k: 1px + 1em; }']
+    );
+    expect((await render('sub/entry.less')).css).toBe('.e { k: calc(1px + 1em); }');
+  });
+
+  it('the search stops at the folder with the package.json', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['pkg/package.json', '{}'],
+      ['pkg/src/entry.less', '.e { k: 1px + 1em; }'],
+      ['configured/package.json', '{}'],
+      ['configured/styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'strict\' } } };\n'],
+      ['configured/src/entry.less', '.e { k: 1px + 1em; }']
+    );
+    expect((await render('pkg/src/entry.less')).css).toBe('.e { k: calc(1px + 1em); }');
+    expect((await render('configured/src/entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+});

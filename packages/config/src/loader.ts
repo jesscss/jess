@@ -1,4 +1,4 @@
-import { cosmiconfig, cosmiconfigSync, defaultLoadersSync } from 'cosmiconfig';
+import { cosmiconfig, cosmiconfigSync, defaultLoadersSync, type OptionsSync } from 'cosmiconfig';
 import type { StylesConfig } from './types.js';
 
 export interface LoadedConfigMeta {
@@ -6,7 +6,13 @@ export interface LoadedConfigMeta {
   configFilePath?: string;
 }
 
-const explorer = cosmiconfig('styles', {
+/**
+ * A search finds the nearest `styles.config.*`: in the start folder, else the
+ * nearest folder above it, stopping at the first folder with a `package.json`
+ * (the package root), which is searched too (DESIGN-DECISIONS O19).
+ */
+const explorerOptions: Partial<OptionsSync> = {
+  searchStrategy: 'project',
   searchPlaces: [
     'styles.config.ts',
     'styles.config.js',
@@ -25,28 +31,11 @@ const explorer = cosmiconfig('styles', {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     '.cjs': defaultLoadersSync['.cjs']
   }
-});
+};
 
-const explorerSync = cosmiconfigSync('styles', {
-  searchPlaces: [
-    'styles.config.ts',
-    'styles.config.js',
-    'styles.config.mts',
-    'styles.config.mjs',
-    'styles.config.cjs',
-    'styles.config.cts'
-  ],
-  loaders: {
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.mts': defaultLoadersSync['.ts'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.cts': defaultLoadersSync['.ts'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.mjs': defaultLoadersSync['.js'],
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    '.cjs': defaultLoadersSync['.cjs']
-  }
-});
+const explorer = cosmiconfig('styles', explorerOptions);
+
+const explorerSync = cosmiconfigSync('styles', explorerOptions);
 
 /**
  * Load styles configuration from the file system (async)

@@ -566,6 +566,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
+  ['all-less:tests-unit/color-functions/modern-syntax.less', {
+    cause: 'lost-info',
+    outcome: 'css-mismatch',
+    reason: 'under `mathMode: \'always\'` (the folder is covered by `tests-unit/styles.config.ts`, ledger O19) the alpha slash of `rgb(0 128 255 / 50%)` parses as a division, which the Less `rgb()` reads back as its alpha separator; the conversion writes it as `.jess` math, `rgb(0 128 $(255 / 50%))`, which divides'
+  }],
   ['all-less:tests-unit/color-functions/rgba.less', {
     cause: 'lost-info',
     outcome: 'arm-b-error',
