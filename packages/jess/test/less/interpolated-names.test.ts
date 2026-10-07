@@ -34,6 +34,17 @@ describe('Interpolated Names', () => {
     });
   });
 
+  describe('Selectors', () => {
+    it('should keep a leading selector interpolation before a combinator', async () => {
+      expect(await compiler.renderString('@s: ~".q"; @{s} .r { a: b }', { language: 'less' }))
+        .toBe('.q .r {\n  a: b;\n}\n');
+      expect(await compiler.renderString('@s: ~".q"; @{s} > .r { a: b }', { language: 'less' }))
+        .toBe('.q > .r {\n  a: b;\n}\n');
+      expect(await compiler.renderString('@s: q; @{s} .r { a: b }', { language: 'less' }))
+        .toBe('q .r {\n  a: b;\n}\n');
+    });
+  });
+
   describe('Lookup', () => {
     it('should find declarations with interpolated names', async () => {
       const lessCode = `

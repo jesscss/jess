@@ -9191,6 +9191,38 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps a bare selector interpolation as one simple before a combinator or another compound', () => {
+    const interpolated = {
+      type: 'SimpleSelector',
+      text: null,
+      interp: { parts: [{ ref: { type: 'Lookup', kind: 'var', name: 's' }, unquote: true }] }
+    };
+    const selectorOf = (source: string) => {
+      const result = run(lessGrammar.Document, `@s: ~".q"; ${source} { a: b; }`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok).toBe(true);
+      expect(result.unconsumedFrom).toBeNull();
+      return (stylesheet(result.value).rules[1] as Ruleset).selector;
+    };
+
+    expect(selectorOf('@{s} .r')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [interpolated, ' ', { text: '.r' }] }]
+    });
+    expect(selectorOf('@{s} > .r')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [interpolated, '>', { text: '.r' }] }]
+    });
+    expect(selectorOf('.r @{s} .t')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [{ text: '.r' }, ' ', interpolated, ' ', { text: '.t' }] }]
+    });
+    expect(selectorOf('@{s}:hover')).toMatchObject({
+      selectors: [{ type: 'CompoundSelector', value: [interpolated, { text: ':hover' }] }]
+    });
+
+    // A glued `|` makes `@{ns}` a namespace prefix, which is not modelled.
+    expect(parsesCompleteStylesheet('@ns: q; @{ns}|a { a: b; }')).toBe(false);
+  });
+
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
     const source =
       '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';

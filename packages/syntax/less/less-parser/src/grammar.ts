@@ -579,10 +579,11 @@ const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6
 // flattened into an interpolation template.
 const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-// A bare `@{name}` is a whole-selector interpolation only. Keeping the
-// delimiter lookahead here prevents it from consuming the interpolation prefix
-// of an unmodelled namespace/attribute selector such as `@{ns}|a`.
-const bareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
+// A bare `@{name}` is one selector simple, so a combinator, another compound,
+// a glued simple, a guard, `,` or `{` may follow it (`@{s} > .r`, `.r @{s} .t`).
+// Only a glued `|` is refused: that `@{ns}` is the namespace prefix of an
+// unmodelled namespace selector (`@{ns}|a`), not a simple of its own.
+const bareInterpolatedSelectorEnd = regex(/(?!\|)/);
 // Semantically identical to the production Less `ampToken` terminal. A static ampersand
 // is already the canonical AST representation: `SimpleSelector.text` retains `&` and
 // core's selector path identifies parent references from that text.  The
