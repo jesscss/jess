@@ -183,9 +183,9 @@ _This has been replaced by the [`math`](#math) option._ Less 5 still accepts it 
 
 | | |
 |---|---|
-| `lessc -ru`<br>`lessc --relative-urls` | `{ relativeUrls: true }` |
+| `lessc --relative-urls` | `{ relativeUrls: true }` |
 
-_Has been replaced by `rewriteUrls: "all"`._ Less 5 ignores `relativeUrls`, without a warning, so setting it rewrites nothing, and `lessc` no longer accepts `--relative-urls`.
+_Has been replaced by `rewriteUrls: "all"`._ Less 5 reads `relativeUrls: true` as `rewriteUrls: 'all'` and warns; an explicit `rewriteUrls` wins. As in Less 4.x, `lessc --relative-urls` ignores a value (`--relative-urls=off` is `--relative-urls`), and `-ru` is the short form of `--rewrite-urls`, not of `--relative-urls`.
 
 
 ### Unit Mode
