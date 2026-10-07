@@ -434,11 +434,6 @@ pinned"):
   in as its own-local remainder (`.w { .y { &:extend(.w .k); } .k {} }` → `.w { .k, .y {…} }`),
   and the parent itself as `&` (§7a). An inline extend on one selector of a list
   (`.y:extend(.y .z), .q { .z {…} }`) is dropped: `&` would also cover `.q` (DF7).
-- A sub-compound `all` match by an extender that shares the target's parent folds as its
-  own-local remainder in nested output (`.attributes { [data="test"], .attribute-test }`,
-  the extend-selector fixture; `&` for the parent itself) and as the whole extender in
-  flat output (`.attributes .attributes .attribute-test`, lessc's). Here which output is
-  right is undecided (DF8).
 - An `all` extender folded into the header of a rule with child rules joins the header
   list even when its specificity differs, and native CSS nesting reads that list as one
   `:is()` for the children, so they gain the extender's specificity
@@ -491,9 +486,18 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
   is unchanged; the strip is capped at parent depth so a self-extend never slices empty.
   A level the render walk recorded (an at-rule block's extend, a placed body) or an
   inline extender's narrowed level is its own object, so an equal selector list shares
-  as identity does. An extender that IS the parent has no remainder and is written `&`
-  (`.y { &:extend(.y .z); .z {…} }` → `.y { .z, & {…} }`; an exact one splits off a
-  target with children as `& {…}`).
+  as identity does. An extender that IS the parent has no remainder: where it replaces
+  the whole selector it is written `&` (`.y { &:extend(.y .z); .z {…} }` →
+  `.y { .z, & {…} }`; an exact one splits off a target with children as `& {…}`);
+  where it replaces part of the own-local selector (a sub-compound `all` match) it keeps
+  its own last compound, since that part sits below the parent
+  (`.y { &:extend(.z all); .z.k {…} }` → `.y { :is(.z, .y).k {…} }`, i.e. `.y .y.k`).
+  Flat output writes the same context once where it splices an extender in place of
+  the target (`emit.ts` `sharedContext`): `.attributes .attribute-test`, never
+  `.attributes .attributes .attribute-test`. The rule (PINNED-DEFECTS DF8,
+  orchestrator judgment under owner delegation 2026-10-07): the extender stands for
+  the target where it appears, so `A T` extended by `A R` is `A R` (what
+  `A :is(A R)` matches) and by `A` itself is `A A_last`; one answer in both modes.
 - **Flatten triggers** — a rule (and its descendants) FLATTEN to a top-level block when
   the match CROSSES the `&` (the parent-context ↔ child-appended-compound join), which
   nested structure cannot express locally:

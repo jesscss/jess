@@ -808,12 +808,14 @@ function withSimple(b: Branch, k: number, p: number, simple: Simple): Branch {
  * member's first compound and those after it join its last compound
  * (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made valid
  * by {@link mergeCompound}; null when one would need two element types — no element
- * matches it, so the member contributes no branch.
+ * matches it, so the member contributes no branch. A member that leads with the
+ * whole context before the group is written without it twice ({@link sharedContext}).
  */
 function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch | null {
   const segment = b.segments[k]!;
   const value = segment.compound.value;
-  const arm = member.segments;
+  const drop = sharedContext(b, k, member);
+  const arm = drop === 0 ? member.segments : member.segments.slice(drop);
   const n = arm.length;
   const before = value.slice(0, p);
   const after = value.slice(p + 1);
@@ -837,6 +839,37 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
     segments.push(b.segments[j]!);
   }
   return withSegments(b, segments);
+}
+
+/**
+ * How many leading compounds of `member` to leave out where it replaces the group in
+ * `b.segments[k]`: an extender standing for its target where the target appears
+ * writes the context it shares with that position once (PINNED-DEFECTS DF8;
+ * orchestrator judgment under owner delegation 2026-10-07). A member that leads with
+ * the whole context before the group, `A R`, matches there what `A :is(A R)` does,
+ * which is `A R`, so it drops `A` (`.attributes { [data="test"] {…} .attribute-test {
+ * &:extend([data="test"] all); } }` → `.attributes .attribute-test`, never
+ * `.attributes .attributes .attribute-test`); one that IS that context keeps its last
+ * compound (`.p .y` in `.p .y .z.k` → `.p .y .y.k`). Only where the kept part joins
+ * by a descendant combinator, which no context can narrow; 0 otherwise.
+ */
+function sharedContext(b: Branch, k: number, member: Branch): number {
+  const n = member.segments.length;
+  if (k === 0 || n < 2 || n < k) {
+    return 0;
+  }
+  const drop = n > k ? k : k - 1;
+  if (member.segments[drop]!.combinator !== ' ') {
+    return 0;
+  }
+  for (let i = 0; i < k; i++) {
+    const ms = member.segments[i]!;
+    const bs = b.segments[i]!;
+    if ((i > 0 && ms.combinator !== bs.combinator) || compoundText(ms.compound) !== compoundText(bs.compound)) {
+      return 0;
+    }
+  }
+  return drop;
 }
 
 /* ------------------------------------------------- relative extender folding */
@@ -879,14 +912,27 @@ const PARENT_PATH: Level[] = [[mkBranch([{ combinator: ' ', compound: { value: [
  * (`.rep_ace`, no shared ancestor) is unchanged. The strip is capped at the parent
  * context depth so a self-extend never slices the path empty. An extender that IS
  * the shared parent (`.y { &:extend(.y .z); .z {…} }`, or the rule an at-rule block
- * inside it lands in) has no remainder: relative to the parent it is `&`.
+ * inside it lands in) has no remainder: where it replaces the WHOLE selector
+ * (`whole`), relative to the parent it is `&`. Where it replaces a part of the
+ * own-local selector (a sub-compound `all` match) it keeps its own composed last
+ * compound, since the part sits below the parent (`.y { &:extend(.z all); .z.k {…} }`
+ * → `:is(.z, .y).k`, i.e. `.y .y.k`; `.p { &.y {…} }` keeps `.p.y`; PINNED-DEFECTS
+ * DF8, orchestrator judgment under owner delegation 2026-10-07).
  */
-function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanInstruction {
+function relativizeExtender(inst: PlanInstruction, subject: PlanSubject, whole: boolean): PlanInstruction {
   const drop = Math.min(sharedPrefixLen(subject.path, inst.extenderPath), subject.path.length - 1);
   if (drop === 0) {
     return inst;
   }
-  return { ...inst, extenderPath: drop === inst.extenderPath.length ? PARENT_PATH : inst.extenderPath.slice(drop) };
+  if (drop < inst.extenderPath.length) {
+    return { ...inst, extenderPath: inst.extenderPath.slice(drop) };
+  }
+  return { ...inst, extenderPath: whole ? PARENT_PATH : [composePath(inst.extenderPath).map(lastCompound)] };
+}
+
+/** `b`'s last compound as a branch of its own. */
+function lastCompound(b: Branch): Branch {
+  return mkBranch([{ combinator: ' ', compound: b.segments[b.segments.length - 1]!.compound }]);
 }
 
 /* ---------------------------------------------------------------- top level */
@@ -1474,7 +1520,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
          * a sibling under a shared ancestor folds as its own-local remainder
          * (`.attribute-test`), not the double-prefixed full path.
          */
-        .map(inst => relativizeExtender(inst, s));
+        .map(inst => relativizeExtender(inst, s, false));
       header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
 
       /*
@@ -1489,7 +1535,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         if (!raw.some(b => branchWholeMatches(b, inst.target, inst.partial))) {
           continue;
         }
-        const rel = relativizeExtender(inst, s);
+        const rel = relativizeExtender(inst, s, true);
         if (rel === inst) {
           continue;
         }
