@@ -265,6 +265,26 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: '@container (style(--x: 1)) { a { color: red } }'
   },
   {
+    id: '@container with a boolean style() feature',
+    group: 'at-rule',
+    source: '@container style(--x) { a { color: red } }',
+    brokenIn: ['less', 'jess'],
+    defect:
+      'css-conditional-5 lets a style feature be a bare custom-property name '
+      + '(true when its computed value is not the initial one); css and SCSS '
+      + 'accept `style(--x)`. Less and .jess require the `:` and a value.'
+  },
+  {
+    id: '@container with an empty style() value',
+    group: 'at-rule',
+    source: '@container style(--x:) { a { color: red } }',
+    brokenIn: ['jess'],
+    defect:
+      'A custom property may hold the empty value (css-variables-1 §2), and css, '
+      + 'Less and SCSS accept `style(--x:)` and `style(--x: )`. .jess rejects both '
+      + '(`Expected: ")"`).'
+  },
+  {
     id: '@keyframes with percentage and to selectors',
     group: 'at-rule',
     source: '@keyframes x { 0% { opacity: 1 } 50%,to { opacity: 0 } }'
@@ -805,6 +825,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
       + 'component does not admit a punctuation-led run. P33 requires all four '
       + 'to accept it, so this is a superset defect, not a dialect difference. '
       + '(Less accepts it: its fallback is the custom-property value, ledger P2.)'
+  },
+  {
+    id: 'a comment between two var() fallback components',
+    group: 'value',
+    source: 'a { color: var(--x, red /* c */ blue) }',
+    brokenIn: ['jess'],
+    defect:
+      'css-syntax-3 §5.4.4 skips comments wherever whitespace is allowed; css, '
+      + 'Less and SCSS accept a comment between fallback components. .jess '
+      + 'rejects it (`Expected: ")"`), though it accepts one before the first '
+      + 'component.'
   },
   {
     id: 'slashes between words in a function argument',
