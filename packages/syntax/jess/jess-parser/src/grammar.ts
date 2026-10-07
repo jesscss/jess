@@ -1157,7 +1157,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.ExpressionSum
       ))
     )),
-    (children) => {
+    (children, _fields, span) => {
       if (children.length === 1) {
         return requireExpressionFact(children[0]);
       }
@@ -1165,10 +1165,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const operator = requireJessOperatorFact(children[1]);
       const right = requireExpressionFact(children[2]);
       const src = `${left.src}${operator.src}${right.src}`;
-      return { value: condition(
+      return { value: withSourceSpan(condition(
         { g: 'cmp', op: operator.value, left: left.value, right: right.value },
         src
-      ), src };
+      ), span), src };
     }
   );
 
@@ -3405,7 +3405,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             denominator,
             false,
             cssBaseMathOutsideParens('/'),
-            false
+            true
           );
     }
   );
@@ -3487,7 +3487,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             values[0]!,
             false,
             cssBaseMathOutsideParens(operators[0]!),
-            false
+            true
           )
         : operation(
             operators[0]!,
@@ -3495,7 +3495,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             propertyFact.property,
             false,
             cssBaseMathOutsideParens(operators[0]!),
-            false
+            true
           );
       if (operators.length === 2) {
         const trailing = values.at(-1);
@@ -3508,7 +3508,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           trailing,
           false,
           cssBaseMathOutsideParens(operators[1]!),
-          false
+          true
         );
       }
       return block(result);
@@ -3762,7 +3762,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         requireValueNode(children[3]),
         false,
         cssBaseMathOutsideParens(':'),
-        false
+        true
       )]
     )
   );

@@ -89,21 +89,12 @@ const scssTruthy = async (v: string) => (await sheet(`$x: ${v}; @if $x { .a { k:
 const lessTruthy = async (v: string) => (await sheet(`@x: ${v}; .m() when (@x) { k: T } .a { .m(); }`, '.less')) !== '';
 
 describe('OPERATIONS §4 — arithmetic', () => {
-  it('folds commensurate arithmetic (rows a, d, e)', async () => {
+  it('folds commensurate arithmetic (rows a-e)', async () => {
     await expect(value('$(1 + 2)')).resolves.toBe('3');
+    await expect(value('$(1 + 2px)')).resolves.toBe('3px');
+    await expect(value('$(1px + 2)')).resolves.toBe('3px');
     await expect(value('$(1 * 2px)')).resolves.toBe('2px');
     await expect(value('$(1px * 2)')).resolves.toBe('2px');
-  });
-
-  it('a unitless number ± a unit is an ERROR by default (rows b, c, superseded)', async () => {
-    /*
-     * Owner 2026-10-06: mixed units in `$( … )` are an error in `.jess` by
-     * default, and the compile's `unitMode` can change that (§4.7). Rows b and
-     * c (`3px`) are superseded. Multiplying or dividing by a unitless number
-     * is not a mix (rows d, e).
-     */
-    await expect(value('$(1 + 2px)')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
-    await expect(value('$(1px + 2)')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
   });
 
   it('divides where division is written (row g)', async () => {
@@ -164,15 +155,17 @@ describe('OPERATIONS §4 — arithmetic', () => {
 
 describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit `unitMode` applies', () => {
   /*
-   * OWNER RULING (2026-10-06): mixed or unexpressible units in `$( … )` are an
-   * ERROR in `.jess` by default, and "it of course also depends on compile
-   * settings". `.jess` stands on the same `unitMode` ladder as every dialect;
-   * only its DEFAULT rung differs — `strict`, the `.jess` plugin's dialect
-   * default — and an explicit compile `unitMode` replaces that default.
+   * OWNER RULING (2026-10-06): two real units that do not convert in `$( … )`
+   * are an ERROR in `.jess` by default, and "it of course also depends on
+   * compile settings". `.jess` stands on the same `unitMode` ladder as every
+   * dialect; only its DEFAULT rung differs — `strict`, the `.jess` plugin's
+   * dialect default — and an explicit compile `unitMode` replaces that default.
    *
-   * The cases are a unit PRODUCT (`1px * 2px`), a bare RECIPROCAL (`1 / 2px`),
-   * a unitless number ± a unit (`1 + 2px`, rows b and c superseded) and units
-   * that do not convert (`1px + 3em`). An EXPRESSIBLE result is none of them.
+   * `strict` keeps its Less 4.x `strictUnits` meaning: it raises on two real
+   * units that do not convert (`1px + 3em`) and on a result whose unit CSS
+   * cannot express — a unit PRODUCT (`1px * 2px`) or a bare RECIPROCAL
+   * (`1 / 2px`). A unitless operand is not a unit: `$(1 + 2px)` is `3px` in
+   * every rung (rows b, c).
    */
 
   /* Each `.jess` case beside the same arithmetic in `.less`, which divides only inside parens. */
@@ -180,13 +173,14 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
     ['$(1 / 2px)', '(1 / 2px)'],
     ['$(1px * 2px)', '1px * 2px'],
     ['$(1px * 10%)', '1px * 10%'],
-    ['$(1 + 2px)', '1 + 2px'],
-    ['$(3px - 1)', '3px - 1'],
-    ['$(1px + 3em)', '1px + 3em']
+    ['$(1px + 3em)', '1px + 3em'],
+    ['$(3em - 1px)', '3em - 1px']
   ];
   const expressible: Array<[string, string]> = [
     ['$(2px / 1px)', '2'],
     ['$(1px * 2)', '2px'],
+    ['$(1 + 2px)', '3px'],
+    ['$(3px - 1)', '2px'],
     /*
      * The cancel chain. §4.7 is a question about a FINAL value, so arithmetic must
      * keep computing THROUGH an unexpressible intermediate — `1px * 1px` has no CSS
@@ -206,22 +200,25 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
     }
   });
 
-  it('the error points at the operation inside the `$( … )` that wrote it', async () => {
+  it('the error points into the `$( … )` that wrote it', async () => {
     const at = async (source: string) => {
       const { errors } = await new Compiler({ quiet: true })
         .renderToResult({ source, filePath: 'entry.jess', extension: '.jess' }, { quiet: true });
       return errors.map(error => `${error.code}@${error.line}:${error.column}`);
     };
 
-    // Raised by the operation itself: the `+` of `1 + 2px`.
-    await expect(at('.a {\n  k: $(1 + 2px);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:10']);
+    // Raised by the operation itself: the `+` of `1px + 3em`.
+    await expect(at('.a {\n  k: $(1px + 3em);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:12']);
 
     // Raised where the value is consumed, located where it was computed.
     await expect(at('.a {\n  k: $(1px * 2px);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:12']);
     await expect(at('$x: $(1px * 2px);\n.a {\n  k: $x;\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@1:11']);
 
     // The failing operation of a chain, not the first one.
-    await expect(at('.a {\n  k: $(1px + 1px + 3em);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:18']);
+    await expect(at('.a {\n  k: $(1 + 1px + 3em);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:16']);
+
+    // A comparison of two units that do not convert: the comparison itself.
+    await expect(at('.a {\n  k: $(1em > 1px);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:8']);
   });
 
   it('an explicit `unitMode` answers exactly what `.less` answers, warning included', async () => {
@@ -231,11 +228,34 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
         await expect(warningsIn(jess, mode), `${jess} warnings under ${mode}`).resolves.toEqual(await warningsIn(less, mode, '.less'));
       }
     }
-    await expect(valueIn('$(1 + 2px)', 'loose')).resolves.toBe('3px');
     await expect(valueIn('$(1px + 3em)', 'loose')).resolves.toBe('4px');
     await expect(valueIn('$(1px * 2px)', 'preserve')).resolves.toBe('calc(1px * 2px)');
     await expect(valueIn('$(1px + 3em)', 'preserve')).resolves.toBe('calc(1px + 3em)');
     await expect(warningsIn('$(1px + 3em)', 'preserve')).resolves.toEqual(['eval/unexpressible-unit']);
+  });
+
+  it('with no `unitMode` given, the ENTRY\'s dialect supplies the rung for every partial', async () => {
+    /*
+     * The `.jess` default is a compile setting (the plugin's dialect default),
+     * not a node fact, so like every dialect default the entry file supplies it
+     * for the whole render: `strict` under a `.jess` entry, `preserve` under a
+     * `.less` one.
+     */
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-unit-entry-default-'));
+    fs.writeFileSync(path.join(dir, 'part.jess'), '.j { k: $(1px + 3em); }');
+    fs.writeFileSync(path.join(dir, 'part.less'), '.l { k: 1px + 3em; }');
+    const render = async (source: string, extension: '.less' | '.jess') => {
+      const result = await new Compiler({ quiet: true })
+        .renderToResult({ source, filePath: path.join(dir, `entry${extension}`), extension }, { quiet: true });
+      return { css: result.css.replace(/\s+/g, ' ').trim(), warnings: result.warnings.map(w => w.code), errors: result.errors.map(w => w.code) };
+    };
+    try {
+      expect(await render('@import \'part.jess\';', '.less'))
+        .toEqual({ css: '.j { k: calc(1px + 3em); }', warnings: ['eval/unexpressible-unit'], errors: [] });
+      expect((await render('@-import \'./part.less\';', '.jess')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('`.jess` has no arithmetic spelling OUTSIDE `$( … )` — ledger P13(d), enforced by the GRAMMAR', async () => {
@@ -315,11 +335,9 @@ describe('OPERATIONS — a unitless number ± a dimension with a unit, per diale
   /*
    * Owner 2026-10-06 (ledger P35): `.less` computes `4 + 3px` only under
    * `unitMode: 'loose'`, keeps it as written under `preserve`, and raises under
-   * `strict`. `.jess` stands on the same ladder with `strict` as its default
-   * (the §4.7 block above). `.scss` keeps Sass's own arithmetic — dart-sass
-   * 1.101.7 answers `1 + 1px` with `2px` and no warning — in every mode: that
-   * is the dialect's own language (orchestrator judgment under owner
-   * delegation, 2026-10-06).
+   * `strict`. `.scss` keeps Sass's own arithmetic — dart-sass 1.101.7 answers
+   * `1 + 1px` with `2px` and no warning — in every mode; whether it should take
+   * the Less ruling instead is an open owner question.
    */
   it('`.less` follows the unitMode ladder', async () => {
     await expect(valueIn('4 + 3px', 'loose', '.less')).resolves.toBe('7px');
@@ -336,39 +354,31 @@ describe('OPERATIONS — a unitless number ± a dimension with a unit, per diale
     }
   });
 
-  it('Sass arithmetic is the `.scss` operation\'s own; the unit ladder is the compile\'s', async () => {
+  it('the rule is the operation\'s own dialect\'s, whatever dialect the entry is', async () => {
     /*
-     * One render evaluates operations written in more than one dialect. A
-     * `.scss` operation carries Sass's answer (`Operation.unitlessAdoptsUnit`),
-     * so a `.scss` partial keeps it under any entry. `unitMode` is a compile
-     * setting: a `.jess` and a `.less` partial answer to the same rung, and
-     * with none given the ENTRY's dialect supplies it — `preserve` for a
-     * `.less` entry, `strict` for a `.jess` one.
+     * One render evaluates operations written in more than one dialect, so the
+     * operation carries its dialect's answer (`Operation.unitlessAdoptsUnit`):
+     * a `.scss` or `.jess` partial keeps its arithmetic under a `.less` entry,
+     * and a `.less` partial keeps the ladder under a `.scss` entry.
      */
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-unitless-dialect-'));
     fs.writeFileSync(path.join(dir, 'part.scss'), '.s { k: 4 + 3px; }');
     fs.writeFileSync(path.join(dir, 'part.jess'), '.j { k: $(4 + 3px); }');
     fs.writeFileSync(path.join(dir, 'part.less'), '.l { k: 4 + 3px; }');
-    const render = async (source: string, extension: '.less' | '.scss' | '.jess', unitMode: UnitMode | undefined) => {
-      const result = await new Compiler({ compile: unitMode === undefined ? {} : { unitMode }, quiet: true })
+    const render = async (source: string, extension: '.less' | '.scss', unitMode: UnitMode) => {
+      const result = await new Compiler({ compile: { unitMode }, quiet: true })
         .renderToResult({ source, filePath: path.join(dir, `entry${extension}`), extension }, { quiet: true });
-      const css = result.css.replace(/\s+/g, ' ').trim();
-      const k = (selector: string) => new RegExp(`\\.${selector} \\{ k: ([^;]*); \\}`).exec(css)?.[1];
-      return { s: k('s'), j: k('j'), l: k('l'), warnings: result.warnings.map(w => w.code), errors: result.errors.map(w => w.code) };
+      return { css: result.css.replace(/\s+/g, ' ').trim(), warnings: result.warnings.map(w => w.code), errors: result.errors.map(w => w.code) };
     };
-    const all = '@import \'part.scss\'; @import \'part.jess\'; @import \'part.less\';';
     try {
-      for (const mode of [undefined, 'loose', 'preserve'] as const) {
-        const fromLess = await render(all, '.less', mode);
-        expect(fromLess.s, String(mode)).toBe('7px');
-        expect(fromLess.j, String(mode)).toBe(fromLess.l);
-        expect(fromLess.errors, String(mode)).toEqual([]);
+      for (const mode of UNIT_MODES) {
+        const fromLess = await render('@import \'part.scss\'; @import \'part.jess\';', '.less', mode);
+        expect(fromLess, mode).toEqual({ css: '.s { k: 7px; } .j { k: 7px; }', warnings: [], errors: [] });
       }
-      expect((await render(all, '.less', 'loose')).j).toBe('7px');
-      expect((await render(all, '.less', 'preserve')).warnings).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
-      expect((await render(all, '.less', 'strict')).errors).toContain('eval/invalid-unit-arithmetic');
-      expect((await render('@-import \'./part.less\';', '.jess', undefined)).errors).toEqual(['eval/invalid-unit-arithmetic']);
-      expect((await render('@import \'part.less\';', '.scss', 'loose')).l).toBe('7px');
+      expect(await render('@import \'part.less\';', '.scss', 'preserve'))
+        .toEqual({ css: '.l { k: 4 + 3px; }', warnings: ['eval/unexpressible-unit'], errors: [] });
+      expect((await render('@import \'part.less\';', '.scss', 'strict')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+      expect((await render('@import \'part.less\';', '.scss', 'loose')).css).toBe('.l { k: 7px; }');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

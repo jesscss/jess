@@ -10,7 +10,7 @@ describe('@jesscss/plugin-jess', () => {
   });
 
   it('defaults `unitMode` to `strict`, as a frozen dialect default a compile option overrides', () => {
-    const result = jessPlugin().safeParse!('entry.jess', '.entry { k: $(1 + 2px); }');
+    const result = jessPlugin().safeParse!('entry.jess', '.entry { k: $(1px + 3em); }');
 
     expect(result.dialectDefaults).toEqual({ unitMode: 'strict' });
     expect(Object.isFrozen(result.dialectDefaults)).toBe(true);

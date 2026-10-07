@@ -255,8 +255,8 @@ rows state for `.jess`, arrived at independently.
 ```jess
 .a {
   a: $(1 + 2);        // 3
-  b: $(1 + 2px);      // ERROR by default -- SUPERSEDED, was 3px; see §4.7
-  c: $(1px + 2);      // ERROR by default -- SUPERSEDED, was 3px; see §4.7
+  b: $(1 + 2px);      // 3px
+  c: $(1px + 2);      // 3px
   d: $(1 * 2px);      // 2px
   e: $(1px * 2);      // 2px
   f: $(1px * 2px);    // EVAL warning -> calc(1px * 2px)
@@ -293,12 +293,14 @@ rows state for `.jess`, arrived at independently.
 }
 ```
 
-**AMENDED (owner, 2026-10-06).** The unit rows are read under the `.jess`
-DEFAULT, which is `unitMode: 'strict'` (§4.7): `b` and `c` are errors, and so
-are `f`, `f2`, `f3`, `h` and `j2` (`strict` raises on units that do not
-reconcile, in comparison as in arithmetic). The values written beside `f`/`f2`/
-`f3` are what an explicit `unitMode: 'preserve'` gives; `j2` is `false` under
-`preserve` or `loose`.
+**AMENDED (owner, 2026-10-06).** Rows `b` and `c` hold in every `unitMode`:
+a unitless operand of `+`/`-` adopts the other side's unit, in every dialect,
+as dart-sass and Less 4.x do. The other unit rows are read under the `.jess`
+DEFAULT, which is `unitMode: 'strict'` (§4.7): `f`, `f2`, `f3`, `h` and `j2` are
+errors (`strict` raises on two real units that do not reconcile, in
+comparison as in arithmetic, and on a result whose unit CSS cannot express).
+The values written beside `f`/`f2`/`f3` are what an explicit
+`unitMode: 'preserve'` gives; `j2` is `false` under `preserve` or `loose`.
 
 ### 4.1 The comparison model — one-on-one common ground
 
@@ -1042,10 +1044,15 @@ default yes it's an error"*. This supersedes the earlier ruling ("Jess doesn't
 have unit modes… i mean .jess language"), under which a `$( … )` boundary
 demanded an expressible result whatever `unitMode` said. Now:
 
-- **The `.jess` default is `unitMode: 'strict'`.** `$(1 + 2px)`, `$(3px - 1)`,
-  `$(1px + 3em)`, `$(1px * 2px)` and `$(1 / 2px)` are errors
-  (`eval/invalid-unit-arithmetic`), located at the operation inside the
-  `$( … )` that wrote it, as a Less operation's are.
+- **The `.jess` default is `unitMode: 'strict'`.** `$(1px + 3em)` (two units
+  that do not convert), `$(1px * 2px)` and `$(1 / 2px)` (a unit CSS cannot
+  express) are errors (`eval/invalid-unit-arithmetic`), located at the
+  operation inside the `$( … )` that wrote it, as a Less operation's are.
+- **`strict` keeps its Less 4.x `strictUnits` meaning** (owner 2026-10-06): a
+  unitless number is not a unit, so it adopts the other operand's unit in
+  `+` and `-` in every mode. `$(1 + 2px)` is `3px` and `$(3px - 1)` is `2px`
+  under `strict` as under `loose` and `preserve`, in `.jess`, `.less` and
+  `.scss` alike (dart-sass 1.101.7 `1 + 1px` → `2px`).
 - **An explicit compile `unitMode` applies to `.jess` exactly as to `.less`.**
   `loose` computes (Less 4.x's answer); `preserve` keeps the expression and
   warns `eval/unexpressible-unit`. There is no `.jess`-only rule at the
@@ -1061,18 +1068,17 @@ demanded an expressible result whatever `unitMode` said. Now:
 - **`strict` raises on units that do not reconcile in comparison as in
   arithmetic**, so `$(1em = 1px)` (§4 row `j2`) is also an error by default,
   and `false` under `preserve` or `loose`.
-- **`.scss` keeps Sass's arithmetic for a unitless `+`/`-`** in every mode
-  (dart-sass 1.101.7 `1 + 1px` → `2px`): the dialect's own language, a node
-  fact (`Operation.unitlessAdoptsUnit`) that follows the file it was written
-  in. `.jess` and `.less` do not carry it.
 
 **The round trip** (`.less → .jess → .css` equals `.less → .css`, under one
 explicit configuration — `docs/design/JESS-EQUIVALENCE-HARNESS.md`): Less math
 lowers into `$( … )` (P35) and the `.jess` arm answers the same `unitMode`, so
-math `preserve` keeps is kept, and warned, in both arms. A Less paren group is
-the boundary AND the author's parens, so it lowers to `$(( … ))`, the group
-inside the boundary, and math kept as written keeps its parens in both arms
-(J16).
+math `preserve` keeps is kept as `calc(…)`, and warned, in both arms. A Less
+paren group is the boundary AND the author's parens, so it lowers to
+`$(( … ))`, the group inside the boundary, and math kept as written keeps its
+parens in both arms (J16). That group is judged where the boundary is
+written, so read through a variable inside `calc()` it is the value it
+computed in both arms (`@c: (@v + 30px)`, `calc(100% - @c)` →
+`calc(100% - 40px)`), not a group authored in the math function.
 
 The ladder, in both dialects — **every rung warns except the one that throws**
 (owner, 2026-08-01):

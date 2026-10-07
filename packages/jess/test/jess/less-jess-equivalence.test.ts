@@ -523,6 +523,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements'
   }],
+  ['all-less:tests-config/units/no-strict/no-strict.less', {
+    cause: 'cannot-express',
+    outcome: 'css-mismatch',
+    reason: 'a unitless number ± a unit: `.less` keeps `2 + 5em` as written outside `unitMode: \'loose\'` (V27) while `.jess` adopts the unit (`7em`, V28); the 2026-10-06 ruling that every dialect adopts it closes this'
+  }],
   ['all-less:tests-config/url-args/urls.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -1047,19 +1052,41 @@ describe('a Less paren group lowers to a group inside the boundary', () => {
 });
 
 /*
- * The corpus cannot see this case: every fixture that holds a unitless number
- * ± a unit is already listed in KNOWN for another cause, so the ratchet stays
- * green whichever way `.jess` answers. Kept math lowers into `$( … )` like all
- * Less math (P35), and `.jess` answers the compile's `unitMode` as `.less` does
- * (owner 2026-10-06) — `strict` is only its default — so under the one pinned
- * configuration both arms keep the same math and warn the same.
+ * The corpus cannot see this divergence: every fixture that holds a unitless
+ * number ± a unit is already listed in KNOWN for another cause, so the
+ * ratchet stays green whichever way `.jess` answers. `.less` keeps `4 + 3px`
+ * as written outside `unitMode: 'loose'` (owner 2026-10-06), while `.jess`
+ * computes `$(4 + 3px)` to `7px` (RESOLVED-SEMANTICS §4 rows b, c). Whether the
+ * ruling reaches `.jess` is an open owner question; this pins both arms so
+ * the answer cannot change unseen, and becomes an equality once it is given.
  */
 describe('targeted round trip: a unitless number ± a unit', () => {
-  it('`.less` and its `.jess` lowering keep the same math, with the same warnings', async () => {
-    const less = '@a: 4;\n.a {\n  b: (@a + 3px);\n  c: @a * 2px;\n  d: @a + 3px;\n}\n';
+  it('records the open divergence: `.less` keeps the math as written, `.jess` computes it', async () => {
+    const less = '@a: 4;\n.a {\n  b: (@a + 3px);\n  c: @a * 2px;\n}\n';
     const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
     const render = async (source: string, extension: '.less' | '.jess') => {
       const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+      return result.css.replace(/\s+/g, ' ').trim();
+    };
+    expect(await render(less, '.less')).toBe('.a { b: (4 + 3px); c: 8px; }');
+    expect(await render(jess, '.jess')).toBe('.a { b: 7px; c: 8px; }');
+  });
+});
+
+/*
+ * Math that does not compute — two units that do not convert, or a keyword
+ * operand — lowers into `$( … )` like all Less math (P35), an authored group
+ * as `$(( … ))`. `.jess` answers an explicit `unitMode` exactly as `.less`
+ * does (owner 2026-10-06; `strict` is only its default), so under each rung
+ * both arms write the same bytes and report the same diagnostics.
+ */
+describe('targeted round trip: kept math', () => {
+  it('`.less` and its `.jess` lowering agree under every explicit `unitMode`', async () => {
+    const less = '@a: 4px;\n@x: @a + 1em;\n.a {\n  b: (@a + 3em);\n  c: @a - 3em;\n  d: @x;\n  e: calc(@x * 2);\n  f: (foo + 1);\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = async (source: string, extension: '.less' | '.jess', unitMode: 'loose' | 'preserve' | 'strict') => {
+      const result = await new Compiler({ compile: { ...PINNED_COMPILE, unitMode, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
         .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
       return {
         css: result.css.replace(/\s+/g, ' ').trim(),
@@ -1067,11 +1094,13 @@ describe('targeted round trip: a unitless number ± a unit', () => {
         errors: result.errors.map(e => e.code)
       };
     };
-    const lessArm = await render(less, '.less');
-    expect(lessArm.errors).toEqual([]);
-    expect(lessArm.warnings).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
-    expect(lessArm.css).toContain('4 + 3px');
-    expect(await render(jess, '.jess')).toEqual(lessArm);
+    for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
+      expect(await render(jess, '.jess', unitMode), unitMode).toEqual(await render(less, '.less', unitMode));
+    }
+    const kept = await render(less, '.less', 'preserve');
+    expect(kept.css).toContain('calc(4px + 3em)');
+    expect(kept.warnings).toContain('eval/unexpressible-unit');
+    expect((await render(less, '.less', 'strict')).errors).toEqual(['eval/invalid-unit-arithmetic']);
   });
 });
 

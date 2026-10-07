@@ -309,11 +309,11 @@ export interface Operation extends SpanSlots {
    * dialect whose grammar built the node, like {@link mathOutsideParens}.
    *
    * `.scss` says yes: Sass adds a unitless number to any dimension (dart-sass
-   * 1.101.7 `1 + 1px` → `2px`, no warning) — the dialect's own language. CSS
-   * says no, since calc() types `<number> + <length>` as a failure
-   * (css-values-4 §10.9), and so do `.less` and `.jess`, where the `unitMode`
-   * ladder decides (owner 2026-10-06, ledgers P35, V28): only `loose` computes
-   * it. `.jess` reaches the ladder with its own default rung, `strict`.
+   * 1.101.7 `1 + 1px` → `2px`, no warning). `.jess` says yes: its target table
+   * computes `$(1 + 2px)` → `3px` (RESOLVED-SEMANTICS §4 rows b, c). CSS says
+   * no, since calc() types `<number> + <length>` as a failure (css-values-4
+   * §10.9), and so does `.less`, where the `unitMode` ladder decides (owner
+   * 2026-10-06, ledger P35): only `loose` computes it.
    *
    * The node carries it, not the evaluator: one render evaluates nodes from
    * more than one dialect, so a `.scss` partial imported into a `.less` entry
@@ -447,7 +447,7 @@ export interface Expression extends SpanSlots, AuthoredCallSlot {
  * the one guard evaluator — a `foo(@a > 0)` arg is byte-identical to the guard
  * `@a > 0`. `src` is the verbatim spelling, emitted when no evaluator is injected.
  */
-export interface Condition {
+export interface Condition extends SpanSlots {
   readonly type: 'Condition';
   readonly guard: GuardNode;
   readonly src: string;
@@ -1877,7 +1877,7 @@ export const cssBaseMathOutsideParens = (operator: string): boolean => operator 
  * default-collapse trap. Every caller states its answer: `.css`/`.jess`/`.scss`
  * through {@link cssBaseMathOutsideParens}, `.less` through its own
  * mode-resolving helper. `unitlessAdoptsUnit` has no default for the same
- * reason: `false` is the CSS, `.less` and `.jess` answer, `true` the `.scss`
+ * reason: `false` is the CSS and `.less` answer, `true` the `.scss` and `.jess`
  * one.
  */
 export const operation = (
@@ -1949,7 +1949,7 @@ export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ typ
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>
   ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall });
-export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
+export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
 export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
   ({ type: 'IfValue', branches, _asCall: asCall });
 export const variableDeclaration = (
