@@ -24,7 +24,7 @@ import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn
 import type { Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
-type JessOperatorFact = { readonly value: string; readonly src: string };
+type JessOperatorFact = { readonly value: string; readonly src: string; readonly start: number };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
 type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
 type JessQueryFeatureName = { readonly property: Keyword };
@@ -210,30 +210,41 @@ function requireExpressionFact(value: unknown): ExpressionFact {
  * symbol itself and the exact authored bytes around it. They are identical for a
  * plain whitespace-flanked operator token, and differ only when the boundary
  * also carries a block comment, which the operator-boundary productions recognize
- * as grammar structure rather than trimming out of a token.
+ * as grammar structure rather than trimming out of a token. `start` is where the
+ * boundary begins, which is where the operand before it ends.
  */
-function requireJessOperatorFact(value: unknown): JessOperatorFact {
-  if (typeof value === 'object' && value !== null && 'value' in value && 'src' in value
-    && typeof value.value === 'string' && typeof value.src === 'string') {
-    return { value: value.value, src: value.src };
-  }
-  const token = requireToken(value);
-  return { value: token.value.trim(), src: token.value };
+function isJessOperatorFact(value: unknown): value is JessOperatorFact {
+  return typeof value === 'object' && value !== null && 'value' in value && 'src' in value && 'start' in value
+    && typeof value.value === 'string' && typeof value.src === 'string' && typeof value.start === 'number';
 }
 
-function foldExpression(children: readonly unknown[]): ExpressionFact {
+function requireJessOperatorFact(value: unknown): JessOperatorFact {
+  if (isJessOperatorFact(value)) {
+    return value;
+  }
+  throw new TypeError('Jess grammar produced an invalid operator fact.');
+}
+
+/**
+ * Fold one `noTrivia` run of `$( … )` operands left to right. Every operation
+ * of a left fold starts where the run starts and ends where the next operator's
+ * boundary begins (the run's end for the last), so each gets its exact source
+ * span — what a unit error or warning points at, as a Less operation's does.
+ */
+function foldExpression(children: readonly unknown[], span: { readonly start: number; readonly end: number }): ExpressionFact {
   let fact = requireExpressionFact(children[0]);
   for (let index = 1; index < children.length; index += 2) {
     const operator = requireJessOperatorFact(children[index]);
     const right = requireExpressionFact(children[index + 1]);
+    const next = children[index + 2];
     fact = {
-      value: operation(
+      value: withSourceSpan(operation(
         operator.value,
         fact.value,
         right.value,
         false,
         cssBaseMathOutsideParens(operator.value)
-      ),
+      ), { start: span.start, end: next === undefined ? span.end : requireJessOperatorFact(next).start }),
       src: `${fact.src}${operator.src}${right.src}`
     };
   }

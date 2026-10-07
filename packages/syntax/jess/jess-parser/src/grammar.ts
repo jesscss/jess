@@ -932,7 +932,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       expressionProductSymbol,
       expressionBoundary
     )),
-    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+    (children, _fields, span) => ({ value: requireToken(children[1]).value, src: tokenSource(children), start: span.start })
   );
   const ExpressionSumOperator = node<JessOperatorFact>(
     'ExpressionSumOperator',
@@ -941,7 +941,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       expressionSumSymbol,
       expressionBoundary
     )),
-    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+    (children, _fields, span) => ({ value: requireToken(children[1]).value, src: tokenSource(children), start: span.start })
   );
   const ExpressionCompareOperator = node<JessOperatorFact>(
     'ExpressionCompareOperator',
@@ -950,7 +950,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       expressionCompareSymbol,
       expressionBoundary
     )),
-    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+    (children, _fields, span) => ({ value: requireToken(children[1]).value, src: tokenSource(children), start: span.start })
   );
   const ExpressionDeclarationReference = node<ExpressionFact>(
     'ExpressionDeclarationReference',
@@ -1135,7 +1135,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.ExpressionAtom
       ))
     )),
-    children => foldExpression(children)
+    (children, _fields, span) => foldExpression(children, span)
   );
   const ExpressionSum = node<ExpressionFact>(
     'ExpressionSum',
@@ -1146,7 +1146,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.ExpressionProduct
       ))
     )),
-    children => foldExpression(children)
+    (children, _fields, span) => foldExpression(children, span)
   );
   const ExpressionCompare = node<ExpressionFact>(
     'ExpressionCompare',
@@ -1157,7 +1157,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.ExpressionSum
       ))
     )),
-    (children) => {
+    (children, _fields, span) => {
       if (children.length === 1) {
         return requireExpressionFact(children[0]);
       }
@@ -1165,10 +1165,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const operator = requireJessOperatorFact(children[1]);
       const right = requireExpressionFact(children[2]);
       const src = `${left.src}${operator.src}${right.src}`;
-      return { value: condition(
+      return { value: withSourceSpan(condition(
         { g: 'cmp', op: operator.value, left: left.value, right: right.value },
         src
-      ), src };
+      ), span), src };
     }
   );
 

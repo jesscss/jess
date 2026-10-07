@@ -394,6 +394,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // (`parentUnits`), recorded per composed list from the parser's tokens
     // (`recordPseudoElementBranches`, `endsWithPseudoElement`,
     // `tokenEndsPseudoElement`; one `pseudoElementLists` map in each root context).
+    // -1 function: the authored-group predicate moved to provenance, shared
+    // with the `.jess` printer (`isAuthoredGroupExpression`).
+    // +1 function: the group a computation boundary holds is judged at the
+    // boundary, not by the `calc()` that reads it (`heldByBoundary`).
     expect(occurrences(/^function |^async function /gmu)).toBe(566);
     expect(occurrences(/new Map/gu)).toBe(87);
     expect(occurrences(/new Set/gu)).toBe(43);

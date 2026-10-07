@@ -75,20 +75,35 @@ such as `$w + 1px`.
 ## Units
 
 An expression computes with units. A unitless number added to or subtracted
-from a dimension takes the dimension's unit, and like units cancel:
+from a dimension takes the dimension's unit, multiplying or dividing by one
+keeps the unit, compatible units convert, and like units cancel:
 
 ```less
-value: $(1 + 2px);       // 3px
-value: $(2px * 3);       // 6px
-value: $(2px / 1px);     // 2
+value: $(1 + 2px);         // 3px
+value: $(2px * 3);         // 6px
+value: $(1cm + 10mm);      // 2cm
+value: $(2px / 1px);       // 2
 value: $(1px * 1px / 1px); // 1px
 ```
 
-A result whose unit CSS cannot express — an area such as `$(1px * 2px)` or a
-reciprocal such as `$(1 / 2px)` — is an error, whatever the `unitMode` compile
-option says: `unitMode` is a Less compatibility setting.
+Mixing units that do not convert is an error by default: `$(1px + 3em)` stops
+the compile with `eval/invalid-unit-arithmetic` at the operation that mixed
+them. So does a result whose unit CSS cannot express — an area such as
+`$(1px * 2px)` or a reciprocal such as `$(1 / 2px)`. Write `calc(1px + 3em)`
+when the browser should resolve it.
 
-One case does still follow `unitMode`: adding or subtracting dimensions whose
-units do not convert. `$(1px + 3em)` is `4px` under `loose`, `calc(1px + 3em)`
-under `preserve` (the default) and an error under `strict`. Write
-`calc(1px + 3em)` when that is what you mean; it is the same in every mode.
+The rule follows the expression wherever its value is used:
+`calc(100% - $(1px + 3em))` is the same error, because the math belongs to the
+`$( … )`, not to the `calc()` around it.
+
+Comparing units that do not convert is only an error when you ask for an
+order. `$(1em = 1px)` and `$(1em == 1px)` are `false`, so a mixin guard can
+dispatch on a unit; `$(1em > 1px)` is an error, as it is in Sass.
+
+The `unitMode` compile option changes that default, exactly as it does for
+Less: `preserve` keeps the math as `calc(1px + 3em)` and warns
+(`eval/unexpressible-unit`), and `loose` computes Less 4.x's answer
+(`$(1px + 3em)` is `4px`). Without the option, `.jess` uses `strict`. A
+unitless number takes the other operand's unit under every setting. The
+default comes from the entry file: a `.jess` file imported by a `.less` entry
+uses the Less default, `preserve`.

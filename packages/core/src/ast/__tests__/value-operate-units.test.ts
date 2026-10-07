@@ -243,9 +243,6 @@ describe('a unitless number ± a dimension with a unit', () => {
       expect(bytesOf('-', dim(1.5), dim(1, 'rem'), m)).toBe('0.5rem');
       expect(bytesOf('+', dim(10), dim(5, '%'), m)).toBe('15%');
       expect(preservedUnitClashes.has(operate('+', dim(4), dim(3, 'px'), m))).toBe(false);
-
-      // Less math read inside `calc()` (a variable holding `4 + 3px`) adopts it too.
-      expect(bytesOf('+', dim(4), dim(3, 'px'), { ...m, inCalc: true })).toBe('7px');
     }
   });
 

@@ -424,7 +424,7 @@ export interface Expression extends SpanSlots, AuthoredCallSlot {
  * the one guard evaluator — a `foo(@a > 0)` arg is byte-identical to the guard
  * `@a > 0`. `src` is the verbatim spelling, emitted when no evaluator is injected.
  */
-export interface Condition {
+export interface Condition extends SpanSlots {
   readonly type: 'Condition';
   readonly guard: GuardNode;
   readonly src: string;
@@ -1914,7 +1914,7 @@ export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ typ
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>
   ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall });
-export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
+export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
 export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
   ({ type: 'IfValue', branches, _asCall: asCall });
 export const variableDeclaration = (

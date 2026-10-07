@@ -230,15 +230,13 @@ function displayUnit(u: UnitSet): string {
  * later operation can cancel them; only final materialization/emission applies
  * the singularity rule.
  *
- * `demandExpressible` raises the rule ABOVE `unitMode`, for a value produced at
- * a boundary that is itself a demand for an expressible result. `unitMode` is a
- * LESS-COMPAT lever (`.less` decides between Less 4.x's dimensionally false fold,
- * a preserved `calc(…)`, and an error); a construct that means "compute this and
- * give me the value" has no such choice to offer, because there is no value to
- * give when the result has no CSS spelling. See {@link Expression}.
+ * Every dialect answers to `unitMode` here, `.jess` `$( … )` included: `.jess`
+ * differs only in its DEFAULT, which is `strict` (owner 2026-10-06), supplied
+ * as the `.jess` plugin's dialect default and overridden by an explicit
+ * compile `unitMode`.
  */
-export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandExpressible = false): void {
-  if (!demandExpressible && modes.unitMode !== 'strict') {
+export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
+  if (modes.unitMode !== 'strict') {
     return;
   }
   const bad = findFinalValue(value, hasNoCssUnit);
@@ -474,26 +472,6 @@ function spliceInner(inner: string): string {
 }
 
 /**
- * less.js calc math: inside `calc(…)` only a "safe" dimension op computes — a
- * same-unit `+`/`-` or one with a unitless side (it adopts the other unit,
- * ledger V27: `@x: 4 + 3px` read in `calc(@x * 2)` is `7px`), a `*` with a
- * unitless side, or a `/` with a unitless RHS. A cross-unit op is preserved
- * verbatim as a `calc(…)` sub-expression.
- */
-function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
-  if (op === '+' || op === '-') {
-    return a.unit === b.unit || !a.unit || !b.unit;
-  }
-  if (op === '*') {
-    return !a.unit || !b.unit;
-  }
-  if (op === '/') {
-    return !b.unit;
-  }
-  return true;
-}
-
-/**
  * The keywords `operate` produced for an operation `preserve` kept unevaluated:
  * a non-convertible `+`/`-` written as `calc(…)` ({@link keptMath}, V18), and
  * every keyword composed from one —
@@ -658,10 +636,14 @@ export function groupAsWritten(v: Value): Value {
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc);
  *      kept math splices its arithmetic ({@link keptMath}),
  *   2. an un-operable keyword operand → preserve source `l op r`,
- *   3. inside `calc(…)`, a cross-unit dimension op → kept math `calc(l op r)`,
- *   4. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
- *   5. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
+ *   3. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
+ *   4. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
  *      kept math `calc(l op r)`.
+ *
+ * Where the operation's value is read does not enter: an operation written
+ * inside a math function never reaches here (its `inMathFunction` fact keeps it
+ * as written), and any other operation — inside a `$( … )` or a variable that a
+ * `calc()` reads — answers `unitMode` exactly as it does anywhere else.
  */
 export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
   /*
@@ -714,15 +696,6 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
   // Guard 2: an un-operable keyword operand → preserve source.
   if (left.type === 'Keyword' || right.type === 'Keyword') {
     return composedKeyword(`${operandAsWritten(left, op, false)} ${op} ${operandAsWritten(right, op, true)}`, left, right, op);
-  }
-
-  /*
-   * Guard 3: inside calc, a cross-unit dimension op does NOT collapse on raw
-   * magnitudes — it is preserved as a flat `calc(l op r)` sub-expression.
-   */
-  if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
-    && !calcSafe(op, left, right)) {
-    return keptMathKeyword(`${spliceOperand(left)} ${op} ${spliceOperand(right)}`, op, left, right);
   }
 
   /*

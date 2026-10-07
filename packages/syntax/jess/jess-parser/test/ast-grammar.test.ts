@@ -3748,6 +3748,37 @@ describe('Jess AST grammar facts', () => {
   });
 });
 
+describe('`$( … )` arithmetic', () => {
+  /** The value inside the one `$( … )` of `.a { k: $( … ); }`. */
+  const computed = (source: string) => {
+    const ruleset = parse(source).rules[0];
+    const declaration = ruleset?.type === 'Ruleset' ? ruleset.rules[0] : undefined;
+    const value = declaration?.type === 'Declaration' ? declaration.value : undefined;
+    const part = value !== undefined && !Array.isArray(value) && value.type === 'Interpolation' ? value.parts[0] : undefined;
+    const inner = part !== undefined && 'ref' in part && part.ref.type === 'Expression' ? part.ref.value : undefined;
+    if (inner === undefined || Array.isArray(inner)) {
+      throw new TypeError('expected one value inside $( … )');
+    }
+    return inner;
+  };
+  const text = (source: string, node: object) => source.slice(sourceSpanOf(node)!.start, sourceSpanOf(node)!.end);
+
+  it('spans each operation of a run, so a unit diagnostic points at it', () => {
+    const source = '.a { k: $(1 + 2px + 3em); }';
+    const outer = computed(source);
+    if (outer.type !== 'Operation') {
+      throw new TypeError('expected an operation inside $( … )');
+    }
+    expect(text(source, outer)).toBe('1 + 2px + 3em');
+    expect(text(source, outer.left)).toBe('1 + 2px');
+  });
+
+  it('spans a comparison, so a unit diagnostic points at it', () => {
+    const source = '.a { k: $(1em > 1px); }';
+    expect(text(source, computed(source))).toBe('1em > 1px');
+  });
+});
+
 /*
  * A keyword ends at the css-syntax-3 §4.3.11 ident-continue boundary, which
  * includes every non-ASCII ident character. `$applyé` is a name of its own, and

@@ -87,8 +87,8 @@ import type {
   Comment,
   ComplexSelector,
   CompoundSelector,
+  Condition,
   Declaration,
-  Expression,
   AnonymousMixin,
   ValueBlock,
   Dimension,
@@ -195,7 +195,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError, type TreeContextLike } from '../error/jess-error.js';
 import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -3937,8 +3937,11 @@ interface EvalCtx {
   optional?: boolean;
 
   /*
-   * [calc] `calc(…)` nesting depth. While > 0, dimension math is gated to the
-   * safe-unit subset and cross-unit ops preserve as `calc(…)` sub-expressions.
+   * [calc] `calc(…)` nesting depth. It decides how a paren group inside the
+   * math function is spelled ({@link groupComputation}) and admits an operation
+   * no math mode would run there; it never changes the unit answer of an
+   * operation that computes — an operation written inside a math function is
+   * kept by its own `inMathFunction` fact instead.
    */
   calcDepth?: number;
 
@@ -3984,6 +3987,15 @@ interface EvalCtx {
    * every context of it; empty unless a parent carries a pseudo-element.
    */
   pseudoElementLists: Map<readonly string[], Uint8Array>;
+
+  /*
+   * The paren group a computation boundary holds as its whole value (`.jess`
+   * `$(( … ))`, Less `(( … ))`). It and any group directly inside it are judged
+   * where the boundary is written, so each is consumed when what it holds
+   * computes even when the value is read inside a math function
+   * ({@link groupComputation}).
+   */
+  boundaryGroup?: Block;
 
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
@@ -4277,8 +4289,8 @@ function rememberUnitOwner(value: Value, node: Operation): Value {
   return value;
 }
 
-function isOperationNode(node: object): node is Operation {
-  return 'type' in node && node.type === 'Operation';
+function isOperatorSite(node: object): node is Operation | Condition {
+  return 'type' in node && (node.type === 'Operation' || node.type === 'Condition');
 }
 
 /** True when a `+`/`-` operator is GLUED to the right operand in source (a leading
@@ -4306,9 +4318,20 @@ const operationSignGlued = (node: Operation): boolean => {
   return opEnd - opStart === leftWidth + 1 + node.operator.length + rightWidth;
 };
 
+/**
+ * Where a unit diagnostic points: at the operator of the operation or of the
+ * value-position comparison (`$(1em > 1px)`) that raised it, between its two
+ * operands' spans; anything else at its own start.
+ */
 function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof callSiteLocation> {
   const location = callSiteLocation(node, e);
-  if (!isOperationNode(node)) {
+  if (!isOperatorSite(node)) {
+    return location;
+  }
+  const sides = node.type === 'Operation'
+    ? node
+    : node.guard.g === 'cmp' ? { operator: node.guard.op, left: node.guard.left, right: node.guard.right } : undefined;
+  if (sides === undefined) {
     return location;
   }
   const source = location.ctx.file?.source;
@@ -4316,13 +4339,13 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof cal
   if (source === undefined || span === undefined) {
     return location;
   }
-  const leftEndSlot = sourceEndOf(node.left);
-  const rightStartSlot = sourceStartOf(node.right);
+  const leftEndSlot = sourceEndOf(sides.left);
+  const rightStartSlot = sourceStartOf(sides.right);
   const leftEnd = leftEndSlot === NO_SPAN ? span.start : leftEndSlot;
   const rightStart = rightStartSlot === NO_SPAN ? span.end : rightStartSlot;
   const searchStart = Math.max(span.start, leftEnd);
   const searchEnd = Math.min(span.end, rightStart);
-  const operatorOffset = source.indexOf(node.operator, searchStart);
+  const operatorOffset = source.indexOf(sides.operator, searchStart);
   if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
     return location;
   }
@@ -4433,31 +4456,27 @@ function validateValueGroupUnits(
   value: ValueGroup,
   modes: EvalModes,
   owner: object,
-  e: EvalCtx,
-  demandExpressible: boolean
+  e: EvalCtx
 ): void {
   if (isValueGroupArray(value)) {
     for (const item of value) {
-      validateValueGroupUnits(item, modes, owner, e, demandExpressible);
+      validateValueGroupUnits(item, modes, owner, e);
     }
     return;
   }
   try {
-    validateFinalUnits(value, modes, demandExpressible);
+    validateFinalUnits(value, modes);
   } catch (error) {
     throwUnitArithmetic(error, unitOwners.get(value) ?? owner, e);
   }
 
   /*
    * §4.7 — the other two rungs, at the same boundary and on the same condition
-   * `strict` throws on. `inCalc` is exempt: an operation the author WROTE inside
-   * a math function is preserved because they asked for it (§4.6), not because
-   * we declined to fabricate a unit, so there is nothing to report.
-   *
-   * A `demandExpressible` boundary has already thrown or passed, and it offers no
-   * lenient rung to warn ABOUT — so it never reaches here.
+   * `strict` throws on. An operation the author WROTE inside a math function
+   * never reaches here as an unexpressible value: it is kept as written because
+   * they asked for it (§4.6), not because we declined to fabricate a unit.
    */
-  if (!demandExpressible && modes.unitMode !== 'strict' && !modes.inCalc) {
+  if (modes.unitMode !== 'strict') {
     const unexpressible = findFinalValue(value, isUnexpressible);
     if (unexpressible !== undefined) {
       warnUnexpressibleUnit(unexpressible, owner, e);
@@ -4481,7 +4500,7 @@ function validateItemUnits(items: readonly EvalValue[], sources: readonly (Value
     const item = items[index]!;
     if (!isLiteral(item)) {
       const source = sources[index];
-      validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? owner : source, e, false);
+      validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? owner : source, e);
     }
   }
 }
@@ -4498,7 +4517,7 @@ const warnedUnitValues = new WeakSet<Value>();
  * that can say so.
  */
 function warnConsumedKept(operands: ValueGroup, passedOn: EvalValue | undefined, owner: object, e: EvalCtx): void {
-  if (e.modes.unitMode === 'strict' || e.modes.inCalc
+  if (e.modes.unitMode === 'strict'
     || (passedOn !== undefined && !isLiteral(passedOn) && findFinalValue(passedOn, isKeptOperation) !== undefined)) {
     return;
   }
@@ -4837,7 +4856,7 @@ function evalTyped(
       if (!e.ev) {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
-      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true, boundaryGroup: isParenGroup(node.value) ? node.value : undefined }, projectMixinValues, argument);
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Interpolation': {
@@ -4847,17 +4866,15 @@ function evalTyped(
        * quoted template is a `Quoted` (see above).
        * - `.jess` `$( … )` (a lone `Expression` ref) is the computation's own
        *   value — unquoted, as the splice is, so a string result is opaque text
-       *   (ledger V3);
+       *   (ledger V3). Its units are checked where the value is consumed, as a
+       *   Less computation's are, so a later operation can still cancel them;
        * - any other template (Less `@{n}px`, an interpolated custom-property
        *   value) is opaque bytes, exactly as its `.jess` spelling `~"…"` is (V3).
        */
       const first = node.parts[0];
       if (node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
-        const ref = first.ref;
-        return mapMaybe(evalTyped(ref, frame, e), (value) => {
-          validateValueGroupUnits(value, e.modes, ref, e, true);
-          return first.unquote && !isValueGroupArray(value) && value.type === 'Quoted' ? makeAny(value.value) : value;
-        });
+        return mapMaybe(evalTyped(first.ref, frame, e), value =>
+          first.unquote && !isValueGroupArray(value) && value.type === 'Quoted' ? makeAny(value.value) : value);
       }
       return mapMaybe(evalInterp(node, frame, e), bytes => isLiteral(bytes) ? makeAny(bytes) : bytes);
     }
@@ -4887,8 +4904,11 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
  * every dialect, so valid CSS emits the bytes css does
  * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
- * 2026-10-06). Inside a math function every authored paren is kept (ledger
- * P35). A computing consumer — an operand of math that operates, an argument a
+ * 2026-10-06). Inside a math function every paren authored there is kept
+ * (ledger P35); the group a computation boundary holds is written at the
+ * boundary, so read through a variable inside `calc()` it still computes
+ * (`$c: $(($v + 30px))`, `calc(100% - $c)` → `calc(100% - 40px)`). A
+ * computing consumer — an operand of math that operates, an argument a
  * callable reads — still reads the value inside the group, through the typed
  * lane, and an operand of math kept as written keeps the group's spelling
  * ({@link spelledOperand}).
@@ -4902,7 +4922,17 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * parens.
  */
 function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNode | null {
-  return (e.calcDepth ?? 0) > 0 ? null : slotComputation(node.value, frame, e);
+  return (e.calcDepth ?? 0) > 0 && !heldByBoundary(node, e) ? null : slotComputation(node.value, frame, e);
+}
+
+/** `node` is the group a computation boundary holds, or a group directly inside it (`$((( … )))`). */
+function heldByBoundary(node: Block, e: EvalCtx): boolean {
+  for (let group: ValueSlot | undefined = e.boundaryGroup; group !== undefined && isParenGroup(group); group = group.value) {
+    if (group === node) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
@@ -5093,22 +5123,21 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: E
  * `foo + 1`) is grouped by precedence ({@link operandAsWritten}). Inside a math
  * function, kept math is its arithmetic, never a nested `calc()`
  * (`calc(@x * 2)` with `@x: 1px + 1em` is `calc((1px + 1em) * 2)`).
+ *
+ * Writing the operand out is where its value is consumed, so it answers the
+ * §4.7 ladder there, as a declaration value or a list member does: a math
+ * function that reads `$(1px * 2px)` or a variable holding `1px + 1em` raises
+ * under `strict` and warns under `preserve` (ledger F8).
  */
 function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: EvalCtx): string {
+  if (isLiteral(value)) {
+    return value;
+  }
+  validateValueGroupUnits(value, e.modes, child, e);
   const bytes = emitValue(value);
-  return isLiteral(value) || isValueGroupArray(value)
+  return isValueGroupArray(value)
     ? bytes
     : operandAsWritten(value, parent.operator, child === parent.right, bytes, parent.inMathFunction || (e.calcDepth ?? 0) > 0);
-}
-
-/**
- * An `Expression` the author spelled as a paren group — its span opens at the
- * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
- * bare Less computation starts where its value starts, so neither prints parens.
- */
-function isAuthoredGroupExpression(node: Expression): boolean {
-  const start = sourceStartOf(node);
-  return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
 }
 
 /**
@@ -5481,7 +5510,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          */
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
-      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true, boundaryGroup: isParenGroup(node.value) ? node.value : undefined });
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Condition':
@@ -5609,22 +5638,21 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       const ev = e.ev;
 
-      // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
+      /*
+       * Operands are materialized TYPED (tag sourced from the parse), not
+       * re-sniffed. An operation that operates was not written inside a math
+       * function, so a `calc()` that reads its value — through a `$( … )` or a
+       * variable — does not change how it computes: under `strict` two units
+       * that do not convert still raise here, and under `preserve` the kept
+       * `calc(…)` still reaches the boundary that warns about it (ledger F8).
+       */
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
-
-      /*
-       * Inside `calc(…)`, flag the modes so cross-unit math written there
-       * preserves (guard 3). Math a reference reached is not written there: kept,
-       * it is the clash it is anywhere, so the boundary warns for it once
-       * (`calc(@x * 2)` with `@x: 1px + 1em`; {@link EvalCtx.reached}).
-       */
-      const m: EvalModes = (e.calcDepth ?? 0) > 0 && !e.reached ? { ...e.modes, inCalc: true } : e.modes;
       return combineAll([l, r], (values) => {
         const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
         const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
-          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m), node);
+          return rememberUnitOwner(ev.operate(node.operator, lv, rv, e.modes), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
@@ -5854,11 +5882,8 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        * Emitting a typed value to bytes IS consuming it, so this splice is a final
        * typed-value boundary in exactly the sense `validateFinalUnits` is written
        * over, and the `unitMode` ladder must answer here too: `strict` throws,
-       * `loose`/`preserve` warn.
-       *
-       * UNLESS THE REF IS AN `Expression` — the `$( … )` computation boundary,
-       * which DEMANDS an expressible result and consults no mode. See the note on
-       * `demandExpressible` below.
+       * `loose`/`preserve` warn. A `.jess` `$( … )` answers to the same ladder;
+       * its dialect only changes the default rung to `strict` (owner 2026-10-06).
        *
        * Without this the ladder was reachable only through a code path, not over a
        * construct (SEMANTIC-INVARIANTS 1), and one value printed different bytes in
@@ -5870,26 +5895,8 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        * F7(b) hole, and §4.7's table is written in the `$( … )` spelling, so the
        * rung that throws had no reachable site at all.
        */
-      /*
-       * `unitMode` IS A LESS-COMPAT LEVER, AND `.jess` IS NOT ON THE LADDER.
-       *
-       * The scoping is carried by WHAT THE NODE SAYS, not by a dialect check: an
-       * `Expression` ref IS the `$( … )` computation boundary (`nodes.ts` {@link
-       * Expression}), which means "compute this and give me the value". When the
-       * result has no CSS spelling there is no value to give, so the three rungs
-       * have nothing to choose between — `loose`'s fabricated unit and
-       * `preserve`'s `calc(…)` are both answers to a question the author did not
-       * ask. It errors, and no mode is consulted.
-       *
-       * That statement mentions no dialect, yet it scopes `unitMode` out of
-       * `.jess` EXACTLY, because `$( … )` is `.jess`'s ONLY arithmetic spelling
-       * (ledger P13(d)) — the grammar makes bare `1px * 2px` a PARSE ERROR there,
-       * so no `.jess` arithmetic can reach a boundary that would consult a mode.
-       * `.less`/`.scss` are untouched: their grammars build `Expression` only
-       * around a `condition(…)`, whose result is a Bool and never carries a unit.
-       */
       if (!isLiteral(value)) {
-        validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
+        validateValueGroupUnits(value, e.modes, part.ref, e);
 
         /* A lone `$( … )` that kept its math is that kept math, so a math function reading it writes its arithmetic, never a nested `calc()`. */
         if (part === lone && !isValueGroupArray(value) && keptMathOf(value) !== undefined) {
@@ -7566,7 +7573,7 @@ function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
  */
 function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
   return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
-    validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+    validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e);
     const bytes = emitValue(value);
     const bound = argumentSnapshot(bytes, source, frame, e);
     carrySnapshot(bound, value, e, bound.src !== bytes);
@@ -7616,7 +7623,7 @@ function snapshotEvaluatedMixinValue(
  * declaration's would be.
  */
 function writtenBytes(value: ValueGroup, source: CallValue, e: EvalCtx): string {
-  validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+  validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e);
   return emitAsWritten(value);
 }
 
@@ -8857,7 +8864,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
   const elideSink = e.elideSink;
   return mapMaybe(evalValueSlot(node, frame, e), (value) => {
     if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e, false);
+      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e);
       if (elideSink !== undefined && isElided(value)) {
         elideSink.elided = true;
       }

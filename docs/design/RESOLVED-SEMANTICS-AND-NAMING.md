@@ -293,6 +293,17 @@ rows state for `.jess`, arrived at independently.
 }
 ```
 
+**AMENDED (owner, 2026-10-06).** Rows `b` and `c` hold in every `unitMode`:
+a unitless operand of `+`/`-` adopts the other side's unit, in every dialect,
+as dart-sass and Less 4.x do. The other unit rows are read under the `.jess`
+DEFAULT, which is `unitMode: 'strict'` (§4.7): `f`, `f2`, `f3` and `h` are
+errors (`strict` raises on two real units that do not reconcile in arithmetic
+and on a result whose unit CSS cannot express). The values written beside
+`f`/`f2`/`f3` are what an explicit `unitMode: 'preserve'` gives. Row `j2` is
+`false` in every mode, the default included: equality never raises (§4.1), and
+only a RELATIONAL comparison over units that do not reconcile raises under
+`strict` (§4.2).
+
 ### 4.1 The comparison model — one-on-one common ground
 
 **Owner ruling, 2026-08-01. Each comparison is ONE-ON-ONE: the operand pair picks
@@ -1027,40 +1038,67 @@ and the final type must match the context — were confirmed against the spec; t
 verbatim normative sentences were not retrieved, as both fetches truncated before
 §10.9. Re-confirm before quoting the spec directly.)*
 
-#### `unitMode` is a LESS-COMPAT lever, and `.jess` is not on the ladder
+#### `.jess` stands on the `unitMode` ladder, with `strict` as its default
 
-**Owner ruling: "Jess doesn't have unit modes… i mean .jess language."** An
-earlier revision of this section printed the ladder below as though it governed
-`.jess`, which contradicted this section's own opening ruling three paragraphs
-up — and that contradiction is why the leak survived review. `.jess` has ONE
-behaviour: **an unexpressible final unit is an error.** `unitMode` does not
-change `.jess` output at any of its three values (pinned by
-`packages/jess/test/jess/operations.test.ts` §4.7).
+**Owner ruling, 2026-10-06**, asked whether mixed units in `$( … )` are an
+error, verbatim: *"it of course also depends on compile settings, but by
+default yes it's an error"*. This supersedes the earlier ruling ("Jess doesn't
+have unit modes… i mean .jess language"), under which a `$( … )` boundary
+demanded an expressible result whatever `unitMode` said. Now:
 
-The scoping is carried by **what the lowered node says**, not by a dialect check
-in the evaluator. `$( … )` lowers to an `Expression` — the computation boundary
-(`packages/core/src/ast/nodes.ts` `expression()`) — and a boundary that means
-"compute this and give me the value" DEMANDS an expressible result: when the
-result has no CSS spelling there is no value to give, so the rungs have nothing
-to choose between. `loose`'s fabricated unit and `preserve`'s `calc(…)` are both
-answers to a question the author did not ask.
+- **The `.jess` default is `unitMode: 'strict'`.** `$(1px + 3em)` (two units
+  that do not convert), `$(1px * 2px)` and `$(1 / 2px)` (a unit CSS cannot
+  express) are errors (`eval/invalid-unit-arithmetic`), located at the
+  operation inside the `$( … )` that wrote it, as a Less operation's are. That
+  holds wherever the value is read: `calc(100% - $(1px + 3em))` and a `$x`
+  holding the `$( … )` read inside `calc()` are the same error, because the
+  math is the `$( … )`'s, not the `calc()`'s (§4.6; ledger F8).
+- **`strict` keeps its Less 4.x `strictUnits` meaning** (owner 2026-10-06): a
+  unitless number is not a unit, so it adopts the other operand's unit in
+  `+` and `-` in every mode. `$(1 + 2px)` is `3px` and `$(3px - 1)` is `2px`
+  under `strict` as under `loose` and `preserve`, in `.jess`, `.less` and
+  `.scss` alike (dart-sass 1.101.7 `1 + 1px` → `2px`).
+- **An explicit compile `unitMode` applies to `.jess` exactly as to `.less`.**
+  `loose` computes (Less 4.x's answer); `preserve` keeps the expression and
+  warns `eval/unexpressible-unit`. There is no `.jess`-only rule at the
+  boundary any more: a `$( … )` value's units are checked where it is
+  consumed, so a chain can still cancel (`$x: $(1px * 2px)`, `$($x / 1px)`).
+- **The default is a compile setting, not a node fact.** The `.jess` plugin
+  supplies `strict` as its dialect default (`jess-plugin-jess`
+  `dialectDefaults`); an explicit compile `unitMode` overrides it
+  (`resolveOptions`, `context.ts`). Like every dialect default, the ENTRY
+  file's dialect supplies it for the whole compile (ledger C19): a `.less`
+  partial under a `.jess` entry is strict by default, a `.jess` partial under
+  a `.less` entry is `preserve`. Whether an evaluation mode should instead
+  follow the file each construct was written in is the owner question C19
+  leaves open; `.jess` is the first dialect whose `unitMode` default differs,
+  so that question now changes output in a mixed-dialect compile.
+- **Equality never raises (§4.1).** `strict` raises on units that do not
+  reconcile in arithmetic and in a RELATIONAL comparison (`$(1em > 1px)`, as
+  dart-sass does); `$(1em = 1px)` (§4 row `j2`) and `$(1em == 1px)` are
+  `false` in every mode, as in Less 4.x `strictUnits` and dart-sass. A guard
+  that dispatches on a unit (`when ($a = 1px)`) therefore matches the
+  candidate it names under the `.jess` default too.
 
-That statement names no dialect, yet it scopes `unitMode` out of `.jess`
-*exactly*, because `$( … )` is `.jess`'s **only** arithmetic spelling (ledger
-**P13(d)**) — the grammar makes bare `1px * 2px` a PARSE ERROR in `.jess` value
-position, so no `.jess` arithmetic can reach a boundary that would consult a
-mode. `.less`/`.scss` are untouched: their grammars build `Expression` only
-around a `condition(…)`, whose result is a Bool and never carries a unit.
+**The round trip** (`.less → .jess → .css` equals `.less → .css`, under one
+explicit configuration — `docs/design/JESS-EQUIVALENCE-HARNESS.md`): Less math
+lowers into `$( … )` (P35) and the `.jess` arm answers the same `unitMode`, so
+math `preserve` keeps is kept as `calc(…)`, and warned, in both arms. A Less
+paren group is the boundary AND the author's parens, so it lowers to
+`$(( … ))`, the group inside the boundary, and math kept as written keeps its
+parens in both arms (J16). That group is judged where the boundary is
+written, so read through a variable inside `calc()` it is the value it
+computed in both arms (`@c: (@v + 30px)`, `calc(100% - @c)` →
+`calc(100% - 40px)`), not a group authored in the math function.
 
-The ladder below therefore describes **`.less`** (`.scss`'s participation is
-under a separate owner ruling and is deliberately not asserted either way), and
-**every rung warns except the one that throws** (owner, 2026-08-01):
+The ladder, in both dialects — **every rung warns except the one that throws**
+(owner, 2026-08-01):
 
-| mode | `.less` `(1 / 2px)` | | LANDED |
+| mode | `.less` `(1 / 2px)`, `.jess` `$(1 / 2px)` | | LANDED |
 | --- | --- | --- | --- |
 | `loose` | `0.5px` | Less 4.x's answer, **+ warning** | `0.5px` + `eval/unexpressible-unit` |
-| **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** | `calc(1 / 2px)` + `eval/unexpressible-unit` |
-| `strict` | throws | | throws `eval/invalid-unit-arithmetic` |
+| `preserve` (`.less` default) | `calc(1 / 2px)` | **+ warning** | `calc(1 / 2px)` + `eval/unexpressible-unit` |
+| `strict` (`.jess` default) | throws | | throws `eval/invalid-unit-arithmetic` |
 
 *(The `.less` rows are parenthesised because `.less` runs under `mathMode:
 'parens-division'`, where a bare `/` is a value separator and never divides —
@@ -1095,18 +1133,14 @@ worth recording precisely, because the wrong diagnosis is the plausible one:
   the splice — the ledger's **F7(b)**.
 
 `1px + 1em` under `strict` DOES raise, which is the `5c516dbb1` work and is
-unaffected. It is an INCOMPATIBLE-units conversion, not an unexpressible result,
-so it is not on this ladder and does not warn.
+unaffected. It is an INCOMPATIBLE-units conversion, not an unexpressible unit;
+`preserve` keeps it as `calc(1px + 1em)` and warns (ledger V18), and `loose`
+folds it to `2px`.
 
-**OPEN — the one `.jess` result `unitMode` still changes.** Because the
-incompatible-units conversion is decided at the operation and not at the
-boundary, "`unitMode` does not change `.jess` output" holds for every row above
-but not for it: `$(1px + 3em)` is `4px` under `loose`, `calc(1px + 3em)` with no
-warning under `preserve`, and an error under `strict` (measured 2026-10-06). The
-owner has not said which single answer `.jess` gives. The candidates are the
-error (the `$( … )` boundary demands one value, and dart-sass errors too) or
-`calc(1px + 3em)` (what `.less` emits under the default, so the
-`.less → .jess → .css` round trip holds).
+**CLOSED (owner 2026-10-06) — `$(1px + 3em)`.** It was the one `.jess` result
+`unitMode` still changed while the other rows ignored it. It now answers the
+ladder like every row: an error by default, `calc(1px + 3em)` with the warning
+under `preserve`, `4px` under `loose`.
 
 **No mode is silent.** Silent preservation is the worst option: the author gets
 output that looks fine and never learns the expression was meaningless. Ledger
@@ -1119,10 +1153,17 @@ existing implementation — `value-operate.ts:425` and `:441` already convert a
 unit clash into a `calc(…)` rather than throwing. An earlier revision of this
 section said `preserve` raises, which contradicted the name and the code.
 
-The default is `preserve` (`DEFAULT_MODES`, and the dialect plugins); `strict`
-arrives via the `strict: true` preset. This is the same lever extended in
-`5c516dbb1`, which gave `unitMode` reach into comparison — the modes now govern
-arithmetic, comparison, and expressibility as one policy rather than three.
+The compiler default is `preserve` (`DEFAULT_MODES`), which the `.less` and
+`.scss` plugins keep; the `.jess` plugin's dialect default is `strict` (above),
+and `strict` also arrives via the `strict: true` preset. `.scss` keeps
+`preserve` for now. Its answer is dart-sass's, `1px + 1em` an error (judgment
+under owner delegation, 2026-10-06), but `.scss` math functions do not keep
+their operations as written yet (§6), so a `strict` default would turn valid
+CSS such as `clamp(1rem, 2vw + 1rem, 3rem)` into an error. This is the same lever extended in
+`5c516dbb1`, which gave `unitMode` reach into RELATIONAL comparison — the modes
+now govern arithmetic, order, and expressibility as one policy rather than
+three. (`5c516dbb1` also made `strict` equality raise; that half is reverted,
+because equality never raises, §4.1.)
 
 ## 5. Lowering — how dialects reach one set of semantics
 
