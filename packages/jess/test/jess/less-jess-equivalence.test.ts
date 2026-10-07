@@ -558,11 +558,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
-  ['all-less:tests-unit/calc/calc.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'a computed paren group read through a variable inside `calc()` keeps its parens in `.jess` (`$c: $(($v + 30px))`, `calc(100% - $c)` → `calc(100% - (40px))`): the group is judged in the reader\'s math context, not where it was written'
-  }],
   ['all-less:tests-unit/color-functions/rgba.less', {
     cause: 'lost-info',
     outcome: 'arm-b-error',
@@ -973,6 +968,18 @@ describe('round trip of paren groups', () => {
       expect(await render(jess, 'jess'), jess).toBe(await render(less, 'less'));
     });
   }
+
+  it('a group a computation holds is judged where it is written, not inside the `calc()` that reads it', async () => {
+    /*
+     * `(@v + 30px)` lowers to `$(($^v + 30px))`; `((@v + 30px))` is a group
+     * inside the boundary in Less too. Read through a variable inside `calc()`,
+     * each is the value it computed, not a group authored in the math function.
+     */
+    const less = '@v: 10px; @c: (@v + 30px); @d: ((@v + 30px)); .x { a: calc(100% - @c); b: calc(100% - @d); }';
+    const css = '.x {\n  a: calc(100% - 40px);\n  b: calc(100% - 40px);\n}\n';
+    expect(await render(less, 'less')).toBe(css);
+    expect(await render(emitJess(parseLess(less), { functions: LESS_FUNCTIONS }), 'jess')).toBe(css);
+  });
 });
 
 describe('converted custom properties', () => {

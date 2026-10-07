@@ -381,7 +381,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // lane still writes a group's own parens back.
     // -1 function: the authored-group predicate moved to provenance, shared
     // with the `.jess` printer (`isAuthoredGroupExpression`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(557);
+    // +1 function: the group a computation boundary holds is judged at the
+    // boundary, not by the `calc()` that reads it (`heldByBoundary`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(558);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

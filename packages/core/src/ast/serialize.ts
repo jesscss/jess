@@ -3919,6 +3919,15 @@ interface EvalCtx {
   exprBoundary?: boolean;
 
   /*
+   * The paren group a computation boundary holds as its whole value (`.jess`
+   * `$(( … ))`, Less `(( … ))`). It and any group directly inside it are judged
+   * where the boundary is written, so each is consumed when what it holds
+   * computes even when the value is read inside a math function
+   * ({@link groupComputation}).
+   */
+  boundaryGroup?: Block;
+
+  /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
    * `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
    * name is already in flight, breaking the self-reference `${prop-name}: red` where
@@ -4764,7 +4773,7 @@ function evalTyped(
       if (!e.ev) {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
-      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true, boundaryGroup: isParenGroup(node.value) ? node.value : undefined }, projectMixinValues, argument);
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Interpolation': {
@@ -4812,8 +4821,11 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
  * every dialect, so valid CSS emits the bytes css does
  * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
- * 2026-10-06). Inside a math function every authored paren is kept (ledger
- * P35). A computing consumer — an operand of math that operates, an argument a
+ * 2026-10-06). Inside a math function every paren authored there is kept
+ * (ledger P35); the group a computation boundary holds is written at the
+ * boundary, so read through a variable inside `calc()` it still computes
+ * (`$c: $(($v + 30px))`, `calc(100% - $c)` → `calc(100% - 40px)`). A
+ * computing consumer — an operand of math that operates, an argument a
  * callable reads — still reads the value inside the group, through the typed
  * lane, and an operand of math kept as written keeps the group's spelling
  * ({@link spelledOperand}).
@@ -4827,7 +4839,17 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * parens.
  */
 function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNode | null {
-  return (e.calcDepth ?? 0) > 0 ? null : slotComputation(node.value, frame, e);
+  return (e.calcDepth ?? 0) > 0 && !heldByBoundary(node, e) ? null : slotComputation(node.value, frame, e);
+}
+
+/** `node` is the group a computation boundary holds, or a group directly inside it (`$((( … )))`). */
+function heldByBoundary(node: Block, e: EvalCtx): boolean {
+  for (let group: ValueSlot | undefined = e.boundaryGroup; group !== undefined && isParenGroup(group); group = group.value) {
+    if (group === node) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
@@ -5340,7 +5362,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          */
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
-      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true, boundaryGroup: isParenGroup(node.value) ? node.value : undefined });
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Condition':
