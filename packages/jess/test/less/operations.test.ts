@@ -480,6 +480,35 @@ describe('Operations — unit arithmetic under each unitMode', () => {
     expect((await render('preserve', '@x: 4 + 3px; w: calc(@x * 2);')).css).toBe('.a { w: calc(7px * 2); }');
   });
 
+  /*
+   * However kept math reaches a math function — an authored group around it, a
+   * group a variable holds, a mixin argument or its default — it is written as its
+   * arithmetic there, never as a nested `calc()`, and it warns as it does anywhere
+   * else; math written inside the `calc()` is the author's and stays silent. Owner
+   * 2026-10-06: "you're supposed to keep it as a calc()".
+   */
+  it('kept math a math function reads is its arithmetic however it is reached, and warns', async () => {
+    const reads: Array<[string, string]> = [
+      ['a: calc(100% - (@x));', 'a: calc(100% - (1px + 1em));'],
+      ['b: calc((@x) * 2);', 'b: calc((1px + 1em) * 2);'],
+      ['@y: (@x); c: calc(@y * 2);', 'c: calc((1px + 1em) * 2);'],
+      ['d: calc(@x * 2);', 'd: calc((1px + 1em) * 2);']
+    ];
+    for (const [body, out] of reads) {
+      const read = await render('preserve', `@x: 1px + 1em; ${body}`);
+      expect(read.css, body).toBe(`.a { ${out} }`);
+      expect(read.warnings, body).toEqual(['eval/unexpressible-unit']);
+    }
+    const mixin = await renderSheet('preserve', '.m(@v: 1px + 1em) { a: calc(@v * 2); b: calc(1px + @v); } .x { .m(); } .y { .m(1px + 1em); }');
+    expect(mixin.css).toBe('.x { a: calc((1px + 1em) * 2); b: calc(1px + 1px + 1em); } .y { a: calc((1px + 1em) * 2); b: calc(1px + 1px + 1em); }');
+    expect(mixin.warnings).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
+
+    expect((await render('strict', '@x: 1px + 1em; a: calc(@x * 2);')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    const written = await render('preserve', 'a: calc(1px + 1em); b: calc((1px + 1em) * 2);');
+    expect(written.css).toBe('.a { a: calc(1px + 1em); b: calc((1px + 1em) * 2); }');
+    expect(written.warnings).toEqual([]);
+  });
+
   it('a call that consumes kept math warns, whether it is written out or formats it', async () => {
     const { css, warnings } = await render('preserve', '@w: 1px; a: percentage(@w + 3em); b: foo((@w + 3em)); c: e(%("%d", @w + 3em));');
     expect(css).toBe('.a { a: percentage(calc(1px + 3em)); b: foo(calc(1px + 3em)); c: calc(1px + 3em); }');

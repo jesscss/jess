@@ -174,8 +174,9 @@ import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
+import { isMathFunctionName } from './math-functions.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -3723,28 +3724,43 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: EvalCtx): bool
  * down a sync descent, and two overlapping async reads of the same decl do not
  * falsely block each other). `run` returns whatever the caller's fold produces.
  *
- * [paren-group] `reached` marks the binding as one a reference reached — a
- * variable, an `@@name`, a property, and so an interpolation of one — and sets
- * {@link EvalCtx.reached} over the same span: a paren group around one value in
- * it evaluates to its value, Less grouping (`@a: (10px)` → `.x-@{a}` is
- * `.x-10px`, `margin: @a @a` is `10px 10px`), while one written directly in a
- * declaration value, or inside a math function, keeps its parens (ledger J16;
- * orchestrator judgment under owner delegation 2026-10-06).
+ * Every caller reads a binding a reference reached — a variable, an `@@name`, a
+ * property, a mixin argument, and so an interpolation of one — so the span is
+ * also {@link whileReached}.
+ */
+function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
+  e.excluded.add(node);
+  try {
+    return whileReached(e, run);
+  } finally {
+    e.excluded.delete(node);
+  }
+}
+
+/**
+ * [paren-group] Evaluate a value a reference reached — {@link withExcluded}'s
+ * binding reads, and a map, namespace or mixin-call member — with
+ * {@link EvalCtx.reached} set: a paren group around one value in it evaluates
+ * to its value, Less grouping, wherever the reference is read (`@a: (10px)` →
+ * `.x-@{a}` is `.x-10px`, `margin: @a @a` is `10px 10px`, `calc(@a * 2)` is
+ * `calc(10px * 2)`, `@media (min-width: @a)` is `(min-width: 10px)`). One
+ * written directly in a declaration value, or inside a math function, keeps its
+ * parens ({@link evalCalc} and {@link evalCall} clear the flag for the math
+ * function's arguments; ledger J16, orchestrator judgment under owner
+ * delegation 2026-10-06). Written only when it changes.
  *
- * ponytail: a group the binding evaluates only after an await keeps its parens;
+ * ponytail: a group the value evaluates only after an await keeps its parens;
  * carry the flag through the continuation if a plugin value needs it.
  */
-function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T, reached = false): T {
-  e.excluded.add(node);
-  const was = e.reached;
-  if (reached) {
-    e.reached = true;
+function whileReached<T>(e: EvalCtx, run: () => T): T {
+  if (e.reached) {
+    return run();
   }
+  e.reached = true;
   try {
     return run();
   } finally {
-    e.excluded.delete(node);
-    e.reached = was;
+    e.reached = false;
   }
 }
 
@@ -3950,12 +3966,13 @@ interface EvalCtx {
   exprBoundary?: boolean;
 
   /**
-   * [paren-group] Set while a binding a reference reached is evaluated
-   * ({@link withExcluded}): a paren group around one value evaluates to its
-   * value there, while one written directly in a declaration value keeps its
-   * parens (ledger J16; orchestrator judgment under owner delegation 2026-10-06).
+   * [paren-group] Set while a value a reference reached is evaluated
+   * ({@link whileReached}), outside any math function written in it: a paren
+   * group around one value there evaluates to its value, and math there is not
+   * math written inside the `calc()` that reads it (ledger J16; orchestrator
+   * judgment under owner delegation 2026-10-06).
    */
-  reached?: boolean;
+  reached: boolean;
 
   /**
    * [nesting] The composed parent lists one of whose branches ends with a
@@ -4633,7 +4650,7 @@ function evalTyped(
         const hit = resolvePropAccessor(node, frame, e);
         return hit.merged
           ? mergedPropertyValue(hit.merged, e, projectMixinValues, argument)
-          : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument), true);
+          : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument));
       }
       if (node.kind !== 'var') {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
@@ -4650,7 +4667,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), true);
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4667,10 +4684,11 @@ function evalTyped(
       if (resolved === null) {
         return force(unresolvedReference(node, frame, e));
       }
-      return isMixinCallValue(resolved.value)
+      const member = resolved.value;
+      return isMixinCallValue(member)
         ? force(literal(node.raw))
         : resolved.evaluated
-          ?? evalTypedSlot(resolved.value, resolved.frame, e, projectMixinValues);
+          ?? whileReached(e, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
     }
     case 'Block':
       /*
@@ -4715,11 +4733,11 @@ function evalTyped(
        * the written-out policy inside a group that computes, so an F5 color
        * call there is still written as authored.
        */
-      if (e.reached === true && (e.calcDepth ?? 0) === 0 && groupsOneValue(node) && !groupComputes(node, frame, e)) {
+      if (e.reached && groupsOneValue(node)) {
         return evalTypedSlot(node.value, frame, e, projectMixinValues, argument);
       }
       if (isInertGroup(node) || (writtenAsAuthored(argument) && !groupComputes(node, frame, e))) {
-        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`));
+        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
       }
       return mapMaybe(evalTypedSlot(
         node.value,
@@ -5046,21 +5064,24 @@ const wrapParens = (bytes: string, depth: number): string => depth === 0 ? bytes
  * How many paren levels the author wrote around `slot` when it is a group that
  * nothing in computes ({@link groupComputes}), or 0. The typed lane hands a
  * consumer the value inside; this is the spelling it keeps when nothing
- * computes it.
+ * computes it. A group a reference reached evaluates to its value
+ * ({@link whileReached}) and has none.
  */
 function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number {
-  return isParenGroup(slot) && !groupComputes(slot, frame, e) ? unconsumedParens(slot) : 0;
+  return !e.reached && isParenGroup(slot) && !groupComputes(slot, frame, e) ? unconsumedParens(slot) : 0;
 }
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
  * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
  * 'preserve'`), while math that computes reads only the value. A named-colour
- * keyword stays bare, since `operate` reads it as a colour.
+ * keyword stays bare, since `operate` reads it as a colour, and kept math already
+ * carries the group in its arithmetic ({@link groupAsWritten}): wrapped again it
+ * would be a nested `calc()` (`calc(100% - ($x))`).
  */
 function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: EvalCtx): Value {
   const depth = writtenParens(node, frame, e);
-  return depth === 0 || (value.type === 'Keyword' && namedColor(value.bytes) !== undefined)
+  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined))
     ? value
     : { ...value, bytes: wrapParens(value.bytes, depth) };
 }
@@ -5098,6 +5119,19 @@ function isAuthoredGroupExpression(node: Expression): boolean {
  */
 function keepAuthoredGroup<T extends EvalValue>(v: T): T | Value {
   return isLiteral(v) || isValueGroupArray(v) ? v : groupAsWritten(v);
+}
+
+/**
+ * A paren group nothing in computes, around its evaluated content: the group
+ * spelled back. Kept math in it keeps its kept identity ({@link groupAsWritten}),
+ * so inside a math function it is still its arithmetic in the group
+ * (`calc(100% - (@x))` with `@x: 1px + 1em` is `calc(100% - (1px + 1em))`),
+ * never a nested `calc()`.
+ */
+function writtenGroup(v: EvalValue): Value {
+  return !isLiteral(v) && !isValueGroupArray(v) && keptMathOf(v) !== undefined
+    ? groupAsWritten(v)
+    : makeKeyword(`(${emitValue(v)})`);
 }
 
 /** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
@@ -5180,6 +5214,19 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (e.compress === true) {
         const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node) ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
+          return carried;
+        }
+      }
+
+      /*
+       * Inside `calc()` an operand is read as it is evaluated: kept math a mixin
+       * argument bound to is its arithmetic there, never a nested `calc()`
+       * (`.m(@v) { w: calc(@v * 2); }` with `.m(1px + 1em)` is
+       * `calc((1px + 1em) * 2)`), as the same math through a variable is.
+       */
+      if ((e.calcDepth ?? 0) > 0) {
+        const carried = e.snapshotValues?.get(node);
+        if (carried !== undefined && !isValueGroupArray(carried) && keptMathOf(carried) !== undefined) {
           return carried;
         }
       }
@@ -5288,8 +5335,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return hit.evaluated ?? withExcluded(
             e,
             hit.value,
-            () => evalBinding(hit.value, hit.frame, e, hit.evaluated),
-            true
+            () => evalBinding(hit.value, hit.frame, e, hit.evaluated)
           );
         });
       }
@@ -5297,7 +5343,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const hit = resolvePropAccessor(node, frame, e);
       return hit.merged
         ? mergedPropertyBytes(hit.merged, e)
-        : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e), true);
+        : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
     case 'Important':
       /*
@@ -5400,7 +5446,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             ? literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`)
             : makeBlock(v, node.delimiter, node.escaped);
         }
-        if (computation === null && e.reached === true && (e.calcDepth ?? 0) === 0 && groupsOneValue(node)) {
+        if (e.reached && groupsOneValue(node)) {
           return v;
         }
         if (isLiteral(v)) {
@@ -5408,7 +5454,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             ? literal(`(${v})`)
             : v;
         }
-        return computation === null ? makeKeyword(`(${emitValue(v)})`) : keepAuthoredGroup(v);
+        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v);
       });
     }
     case 'Expression': {
@@ -5556,7 +5602,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
            * A Keyword is the same carrier `value-operate` already uses for a
            * preserved `calc(…)` sub-expression.
            */
-          return node.inMathFunction ? makeKeyword(bytes) : literal(bytes);
+          return node.inMathFunction ? carryKeptClash(makeKeyword(bytes), values[0]!, values[1]!) : literal(bytes);
         });
       }
       const ev = e.ev;
@@ -5565,8 +5611,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
 
-      // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
-      const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
+      /*
+       * Inside `calc(…)`, flag the modes so cross-unit math written there
+       * preserves (guard 3). Math a reference reached is not written there: kept,
+       * it is the clash it is anywhere, so the boundary warns for it once
+       * (`calc(@x * 2)` with `@x: 1px + 1em`; {@link EvalCtx.reached}).
+       */
+      const m: EvalModes = (e.calcDepth ?? 0) > 0 && !e.reached ? { ...e.modes, inCalc: true } : e.modes;
       return combineAll([l, r], (values) => {
         const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
         const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
@@ -5837,6 +5888,11 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        */
       if (!isLiteral(value)) {
         validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
+
+        /* A lone `$( … )` that kept its math is that kept math, so a math function reading it writes its arithmetic, never a nested `calc()`. */
+        if (part === lone && !isValueGroupArray(value) && keptMathOf(value) !== undefined) {
+          return value;
+        }
       }
       bytes += emitSplice(value);
     }
@@ -7051,9 +7107,10 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   if (resolved === null) {
     return unresolvedReference(node, frame, e);
   }
-  return isMixinCallValue(resolved.value)
+  const member = resolved.value;
+  return isMixinCallValue(member)
     ? literal(node.raw)
-    : resolved.evaluated ?? evalValueSlot(resolved.value, resolved.frame, e);
+    : resolved.evaluated ?? whileReached(e, () => evalValueSlot(member, resolved.frame, e));
 }
 
 /**
@@ -7131,10 +7188,10 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
-      return keepAsWritten(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored)})`));
+      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored)})`), v, v));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
-      return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(makeKeyword(`calc(${v.bytes})`));
+      return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${v.bytes})`), v, v));
     }
 
     /*
@@ -8218,6 +8275,15 @@ function evalCall(
   e: EvalCtx,
   demanded = false
 ): MaybePromise<EvalValue> {
+  /*
+   * [paren-group] A math function's arguments are written in it, not reached: a
+   * paren group there keeps its parens even in a value a reference reached
+   * ({@link whileReached}), and math there is math written in it.
+   */
+  if (e.reached && isMathFunctionName(node.name)) {
+    return evalCall(node, frame, { ...e, reached: false }, demanded);
+  }
+
   /*
    * [lambda-fn] Checked before every other dispatch policy so a user `@function`
    * shadows builtins, CSS-authored-call preservation, and the introspection
@@ -9962,6 +10028,7 @@ function scratchEmit(e: EvalCtx): Emit {
     excluded: e.excluded,
     propNames: e.propNames,
     pseudoElementLists: e.pseudoElementLists,
+    reached: e.reached,
     optional: e.optional,
     calcDepth: e.calcDepth,
     scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
@@ -13229,6 +13296,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     excluded: new Set(),
     propNames: new Set(),
     pseudoElementLists: new Map(),
+    reached: false,
     optional: options?.optional ?? false,
     pending: [],
     drops: [],
@@ -13331,6 +13399,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
+    reached: false, // [paren-group] inside a value a reference reached
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
     drops: [], // [null] declarations that may still elide on the async lane
@@ -21364,6 +21433,15 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
         : concatPreludeParts([plain(`${node.name}(`), evalQueryPreludeParts(feature, frame, e), plain(')')]);
     }
     case 'Block': {
+      /*
+       * A group around one value a reference reached is that value
+       * ({@link whileReached}): `@a: (10px)` in `(min-width: @a)` is `10px`, where
+       * `(10px)` is no `<mf-value>` and the query would never match. A feature
+       * (`@q: (min-width: 640px)`) is no one value and keeps its parens.
+       */
+      if (e.reached && isParenGroup(node) && groupsOneValue(node)) {
+        return evalQueryPreludeParts(node.value, frame, e);
+      }
       const open = delimiterOpen(node.delimiter);
       const close = delimiterClose(node.delimiter);
       return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
@@ -21433,9 +21511,10 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       if (resolved === null || isMixinCallValue(resolved.value)) {
         return mapMaybe(evalBytes(node, frame, e), leaf);
       }
+      const member = resolved.value;
       return resolved.evaluated !== null
         ? typedPreludeParts(resolved.evaluated, e.compress === true)
-        : evalQueryPreludeParts(resolved.value, resolved.frame, e);
+        : whileReached(e, () => evalQueryPreludeParts(member, resolved.frame, e));
     }
     default:
       /*

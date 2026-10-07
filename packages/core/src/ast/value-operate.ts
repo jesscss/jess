@@ -538,16 +538,43 @@ const keptAsWritten = new WeakMap<Value, string>();
  */
 const keptMath = new WeakMap<Value, string>();
 
-/** Kept math `spelling` with top-level operator `op` (`''` for a group), written as `calc(…)` ({@link keptMath}). */
+/**
+ * Kept math `spelling` with top-level operator `op`, written as `calc(…)`
+ * ({@link keptMath}). `op` is `''` for an authored group around kept math, whose
+ * own parens are the `calc()`'s ({@link groupAsWritten}).
+ */
 function keptMathKeyword(spelling: string, op: string, left: Value, right: Value): Value {
-  const out = composedKeyword(isParenGroup(spelling) ? `calc${spelling}` : `calc(${spelling})`, left, right, op);
+  const out = composedKeyword(op === '' ? `calc${spelling}` : `calc(${spelling})`, left, right, op);
   keptMath.set(out, spelling);
   return out;
 }
 
-/** Kept math's arithmetic, how it reads as an operand of math ({@link keptMath}), or `undefined` for any other value. */
+/**
+ * `out`, written from `left` and `right` without operating on them (an
+ * operation kept inside a math function, or the `calc()` around one), marked as
+ * the preserved clash an operand is ({@link preservedUnitClashes}), so the
+ * boundary still warns once for kept math a math function reads
+ * (`calc(@x * 2)` with `@x: 1px + 1em`). Math authored inside the math function
+ * has no such operand.
+ */
+export function carryKeptClash(out: Value, left: ValueGroup | string, right: ValueGroup | string): Value {
+  const kept = clashOf(left) ?? clashOf(right);
+  if (kept !== undefined) {
+    preservedUnitClashes.set(out, kept);
+  }
+  return out;
+}
+
+const clashOf = (v: ValueGroup | string): Value | undefined =>
+  typeof v === 'string' || isValueGroupArray(v) ? undefined : preservedUnitClashes.get(v);
+
+/**
+ * Kept math's arithmetic, how it reads as an operand of math ({@link keptMath}),
+ * or `undefined` for any other value. Kept math is always a keyword, so no other
+ * value pays the lookup.
+ */
 export function keptMathOf(v: Value): string | undefined {
-  return keptMath.get(v);
+  return v.type === 'Keyword' ? keptMath.get(v) : undefined;
 }
 
 /**
@@ -579,7 +606,7 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * is its arithmetic, grouped the same way (`calc((1px + 1em) * 2)`).
  */
 export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = v.bytes, inMath = false): string {
-  const kept = keptMath.get(v);
+  const kept = keptMathOf(v);
   if (kept !== undefined && !inMath) {
     return bytes;
   }
@@ -619,7 +646,7 @@ function composedKeyword(bytes: string, left: Value, right: Value, asWritten: st
  * `calc(…)` spelling) is one value the parens no longer delimit.
  */
 export function groupAsWritten(v: Value): Value {
-  const kept = keptMath.get(v);
+  const kept = keptMathOf(v);
   if (kept !== undefined) {
     return keptMathKeyword(`(${kept})`, '', v, v);
   }
@@ -673,9 +700,11 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
   left = coerceNamedColorKeyword(left);
   right = coerceNamedColorKeyword(right);
 
-  const leftInner = left.type === 'Keyword' && !keptMath.has(left) ? calcInner(left.bytes) : null;
-  const rightInner = right.type === 'Keyword' && !keptMath.has(right) ? calcInner(right.bytes) : null;
-  const kept = keptMath.has(left) || keptMath.has(right);
+  const leftKept = keptMathOf(left) !== undefined;
+  const rightKept = keptMathOf(right) !== undefined;
+  const leftInner = left.type === 'Keyword' && !leftKept ? calcInner(left.bytes) : null;
+  const rightInner = right.type === 'Keyword' && !rightKept ? calcInner(right.bytes) : null;
+  const kept = leftKept || rightKept;
   if (kept || leftInner !== null || rightInner !== null) {
     const lb = leftInner !== null ? spliceInner(leftInner) : operandAsWritten(left, op, false, left.bytes, true);
     const rb = rightInner !== null ? spliceInner(rightInner) : operandAsWritten(right, op, true, right.bytes, true);

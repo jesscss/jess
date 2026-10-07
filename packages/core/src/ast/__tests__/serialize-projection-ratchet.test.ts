@@ -382,16 +382,19 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function: every import that is neither `(multiple)` nor `(reference)`
     // takes part in import-once, `(once)`, `(optional)` and `(less)` included,
     // asked by the planner and the render walk alike (`importsOnce`).
-    // +1 function: a paren group around one value reached through a reference
-    // evaluates to its value (judgment under owner delegation 2026-10-06;
-    // `groupsOneValue`, the flag set by `withExcluded`).
+    // +2 functions: a paren group around one value reached through a reference
+    // evaluates to its value wherever it is read (judgment under owner
+    // delegation 2026-10-06; `groupsOneValue`, and `whileReached`, which every
+    // binding and member read sets the flag through).
+    // +1 function: a group nothing computes around kept math keeps the kept
+    // identity, so a math function still writes its arithmetic (`writtenGroup`).
     // +4 functions and +2 `new Map` (owner 2026-10-06: an output transformation
     // never makes output more invalid or match fewer elements): a parent ending
     // with a pseudo-element is its own unit where `&` keeps it last
     // (`parentUnits`), recorded per composed list from the parser's tokens
     // (`recordPseudoElementBranches`, `endsWithPseudoElement`,
     // `tokenEndsPseudoElement`; one `pseudoElementLists` map in each root context).
-    expect(occurrences(/^function |^async function /gmu)).toBe(564);
+    expect(occurrences(/^function |^async function /gmu)).toBe(566);
     expect(occurrences(/new Map/gu)).toBe(87);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
