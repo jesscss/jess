@@ -178,7 +178,8 @@ export function getOptions(
   params: GetOptionsParams = {}
 ): Record<string, any> {
   const { input: inputFile, output: outputFile } = params;
-  const { compile = {}, input, output, language: languageConfig = {} } = config;
+  const { input, output, language: languageConfig = {} } = config;
+  const compile = applyStrictPreset(config.compile ?? {});
 
   // Determine language: explicit param > inferred from input extension
   const language = params.language ?? inferLanguage(inputFile);
@@ -201,6 +202,10 @@ export function getOptions(
     // Start with compile-level settings
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
+    functionMode: compile.functionMode,
+    allowLeakyScope: compile.allowLeakyScope,
+    leakyScope: compile.leakyScope,
+    allowCallerScope: compile.allowCallerScope,
     allowExtendSelectors: compile.allowExtendSelectors,
     allowApplySelectors: compile.allowApplySelectors,
     processImports: compile.processImports,

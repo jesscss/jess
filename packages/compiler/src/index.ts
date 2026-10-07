@@ -308,6 +308,12 @@ type ResolvedRenderConfig = {
   language?: string;
   optionsFor(language?: string): Record<string, unknown>;
   configFileOptionsFor(language?: string): Record<string, unknown>;
+
+  /** The compile modes set explicitly, by the compiler or the render: global. */
+  explicitModes: NonNullable<StylesConfig['compile']>;
+
+  /** The settings covering one source file; see `ContextOptions.sourceOptions`. */
+  sourceOptions(filePath: string, language: string): Record<string, unknown>;
 };
 
 const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
@@ -632,23 +638,51 @@ export class Compiler {
     const { config: loadedFileConfig, configFilePath } = filePath
       ? getConfigWithMeta(path.dirname(filePath))
       : { config: {}, configFilePath: undefined };
+    const explicitConfig: ConfigOptions = mergeWith(
+      createBaseConfig(),
+      this.baseOptsNormalized,
+      renderOptions || {},
+      arrayConcatCustomizer
+    );
     const effectiveConfig: ConfigOptions = mergeWith(
       createBaseConfig(),
       loadedFileConfig,
-      this.baseOptsNormalized,
-      renderOptions || {},
+      explicitConfig,
       arrayConcatCustomizer
     );
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the
-     * bundle it sets (unitMode/allowLeakyScope/allowCallerScope/allowOverloadedImport)
-     * reaches eval via `context.opts` (contextOptions spreads compile). Individual
-     * options already set always win.
+     * non-mode option it sets (`allowOverloadedImport`) reaches the Context; the
+     * modes it sets are read per source file, below. Individual options already
+     * set always win.
      */
     if (effectiveConfig.compile?.strict) {
       effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
     }
+
+    /*
+     * Compile settings resolve per source file (DESIGN-DECISIONS C19). Those
+     * passed to the compiler or the render are global: they are the Context's
+     * own mode options and win everywhere. A folder's `styles.config` and the
+     * `language.<lang>` settings reach only the files they cover, through
+     * `sourceOptions`, which the Context asks for once per parsed file; the
+     * explicit `language.<lang>` settings win over the file's config (O13).
+     */
+    const explicitModes = applyStrictPreset(explicitConfig.compile ?? {});
+    const sourceOptions = (sourcePath: string, sourceLanguage: string): Record<string, unknown> => {
+      const folderConfig = sourcePath === filePath
+        ? loadedFileConfig
+        : path.isAbsolute(sourcePath) ? getConfigWithMeta(path.dirname(sourcePath)).config : {};
+      const params = { language: sourceLanguage, input: sourcePath };
+      const settings = getOptions(folderConfig, params);
+      for (const [key, value] of Object.entries(getOptions(explicitConfig, params))) {
+        if (value !== undefined) {
+          settings[key] = value;
+        }
+      }
+      return settings;
+    };
     const jsPluginConfig: JsPluginConfig = {
       jsReadRoot: resolveJsReadRoot(filePath, configFilePath, effectiveConfig.compile?.jsReadRoot)
     };
@@ -754,6 +788,8 @@ export class Compiler {
       jsPluginConfig,
       printOptions,
       language,
+      explicitModes,
+      sourceOptions,
       optionsFor: (targetLanguage?: string) =>
         getOptions(effectiveConfig, {
           language: targetLanguage,
@@ -1027,10 +1063,26 @@ export class Compiler {
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
     const searchPaths = getSearchPaths(resolved.activeOptions)
       ?? getSearchPaths(resolved.effectiveConfig.compile ?? {});
+    const explicit = resolved.explicitModes;
     const contextOptions: ContextOptions & Record<string, unknown> = {
       ...resolved.effectiveConfig.compile,
       ...resolved.activeOptions,
-      ...(searchPaths ? { searchPaths } : {})
+      ...(searchPaths ? { searchPaths } : {}),
+
+      /*
+       * The Context's mode options are the global tier alone; the entry's config
+       * file and language settings reach the entry like any other file, through
+       * `sourceOptions`, so they never leak into the files it imports.
+       */
+      mathMode: explicit.mathMode,
+      unitMode: explicit.unitMode,
+      functionMode: explicit.functionMode,
+      allowLeakyScope: explicit.allowLeakyScope,
+      leakyScope: explicit.leakyScope,
+      allowCallerScope: explicit.allowCallerScope,
+      bubbleRootAtRules: undefined,
+      processImports: explicit.processImports,
+      sourceOptions: resolved.sourceOptions
     };
 
     /*

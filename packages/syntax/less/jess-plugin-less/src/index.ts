@@ -8,6 +8,7 @@ import {
   type ISafeParseResult,
   type PluginInterface,
   type SafeParseOptions,
+  type SourceOptions,
   buildEvaluator,
   MATH_MODES,
   MODULE_MODES,
@@ -370,81 +371,108 @@ function escapeUnquotedUrlPath(pathValue: string): string {
   return escaped;
 }
 
-export class LessPlugin extends AbstractPlugin {
-  name = 'less';
-  supportedExtensions = ['.less'];
-  readonly #dialectDefaults: LessDialectDefaults;
-  readonly #moduleMode: ModuleMode;
-  private readonly pluginHosts = new WeakMap<Context, PluginHost>();
+/** A Less source's policy: the modes its settings name, deprecated spellings included, over the Less defaults. */
+type LessPolicy = {
+  readonly dialectDefaults: LessDialectDefaults;
+  readonly moduleMode: ModuleMode;
+};
 
-  constructor(public opts: LessPluginOptions = {}) {
-    super();
-    checkModeOptions(opts);
-
-    // Handle deprecated math option -> mathMode conversion
-    let mathMode: MathMode;
-    if (opts.mathMode !== undefined) {
-      mathMode = opts.mathMode;
-    } else if (opts.math !== undefined) {
-      // Convert deprecated math option to mathMode
-      if (opts.math === 0 || opts.math === 'always') {
-        mathMode = 'always';
-      } else if (opts.math === 1 || opts.math === 'parens-division') {
-        mathMode = 'parens-division';
-      } else if (opts.math === 2 || opts.math === 'parens' || opts.math === 'strict') {
-        mathMode = 'parens';
-      } else {
-        // 3 or 'strict-legacy' -> 'parens' (deprecated, use 'strict' instead)
-        mathMode = 'parens';
-      }
-    } else if (opts.strictMath === true) {
+/**
+ * Read the Less mode settings. `warn` reports each deprecated spelling: the
+ * plugin's own options warn once when it is built, while settings scoped to one
+ * source are read for every file, where the warning would repeat.
+ */
+function lessPolicy(opts: LessPluginOptions, warn: boolean): LessPolicy {
+  // Handle deprecated math option -> mathMode conversion
+  let mathMode: MathMode;
+  if (opts.mathMode !== undefined) {
+    mathMode = opts.mathMode;
+  } else if (opts.math !== undefined) {
+    // Convert deprecated math option to mathMode
+    if (opts.math === 0 || opts.math === 'always') {
+      mathMode = 'always';
+    } else if (opts.math === 1 || opts.math === 'parens-division') {
+      mathMode = 'parens-division';
+    } else if (opts.math === 2 || opts.math === 'parens' || opts.math === 'strict') {
       mathMode = 'parens';
     } else {
-      mathMode = lessPluginDefaults.mathMode;
+      // 3 or 'strict-legacy' -> 'parens' (deprecated, use 'strict' instead)
+      mathMode = 'parens';
     }
+  } else if (opts.strictMath === true) {
+    mathMode = 'parens';
+  } else {
+    mathMode = lessPluginDefaults.mathMode;
+  }
 
-    /*
-     * `strictMath` is the Less 4.x boolean alias of `math` (orchestrator judgment
-     * under owner delegation, 2026-10-05), on the `strictUnits` pattern: `true`
-     * is 'parens', `false` the default, and an explicit `mathMode` or `math`
-     * wins. Any use warns.
-     */
-    if (opts.strictMath !== undefined && opts.mathMode === undefined && opts.math === undefined) {
-      logger.warn(
-        `strictMath is deprecated; use mathMode. strictMath: ${String(opts.strictMath)} now means mathMode: '${mathMode}'`
-      );
-    }
+  /*
+   * `strictMath` is the Less 4.x boolean alias of `math` (orchestrator judgment
+   * under owner delegation, 2026-10-05), on the `strictUnits` pattern: `true`
+   * is 'parens', `false` the default, and an explicit `mathMode` or `math`
+   * wins. Any use warns.
+   */
+  if (warn && opts.strictMath !== undefined && opts.mathMode === undefined && opts.math === undefined) {
+    logger.warn(
+      `strictMath is deprecated; use mathMode. strictMath: ${String(opts.strictMath)} now means mathMode: '${mathMode}'`
+    );
+  }
 
-    /*
-     * `strictUnits` is the deprecated boolean alias of `unitMode` (owner ruling
-     * 2026-09-02): `true` → 'strict'; `false` means "not strict", i.e. the
-     * default 'preserve' — NOT the Less 4.x 'loose' fold, which is only ever
-     * selected by an explicit `unitMode: 'loose'`. Any use warns so the mapping
-     * is never discovered by staring at output.
-     */
-    let unitMode: UnitMode;
-    if (opts.unitMode !== undefined) {
-      unitMode = opts.unitMode;
-    } else if (opts.strictUnits === true) {
-      unitMode = 'strict';
-    } else {
-      unitMode = lessPluginDefaults.unitMode;
-    }
-    if (opts.strictUnits !== undefined && opts.unitMode === undefined) {
-      logger.warn(
-        `strictUnits is deprecated; use unitMode. strictUnits: ${String(opts.strictUnits)} now means `
-        + `unitMode: '${unitMode}'${opts.strictUnits ? '' : ' (Less 4.x unit folding is unitMode: \'loose\')'}`
-      );
-    }
-    this.#dialectDefaults = Object.freeze({
+  /*
+   * `strictUnits` is the deprecated boolean alias of `unitMode` (owner ruling
+   * 2026-09-02): `true` → 'strict'; `false` means "not strict", i.e. the
+   * default 'preserve' — NOT the Less 4.x 'loose' fold, which is only ever
+   * selected by an explicit `unitMode: 'loose'`. Any use warns so the mapping
+   * is never discovered by staring at output.
+   */
+  let unitMode: UnitMode;
+  if (opts.unitMode !== undefined) {
+    unitMode = opts.unitMode;
+  } else if (opts.strictUnits === true) {
+    unitMode = 'strict';
+  } else {
+    unitMode = lessPluginDefaults.unitMode;
+  }
+  if (warn && opts.strictUnits !== undefined && opts.unitMode === undefined) {
+    logger.warn(
+      `strictUnits is deprecated; use unitMode. strictUnits: ${String(opts.strictUnits)} now means `
+      + `unitMode: '${unitMode}'${opts.strictUnits ? '' : ' (Less 4.x unit folding is unitMode: \'loose\')'}`
+    );
+  }
+  return {
+    dialectDefaults: Object.freeze({
       mathMode,
       unitMode,
       allowLeakyScope: opts.allowLeakyScope ?? opts.leakyScope ?? lessPluginDefaults.allowLeakyScope,
       allowCallerScope: opts.allowCallerScope ?? lessPluginDefaults.allowCallerScope,
       bubbleRootAtRules: opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules,
       processImports: opts.processImports ?? lessPluginDefaults.processImports
-    });
-    this.#moduleMode = opts.moduleMode ?? lessPluginDefaults.moduleMode;
+    }),
+    moduleMode: opts.moduleMode ?? lessPluginDefaults.moduleMode
+  };
+}
+
+export class LessPlugin extends AbstractPlugin {
+  name = 'less';
+  supportedExtensions = ['.less'];
+  readonly #policy: LessPolicy;
+  private readonly pluginHosts = new WeakMap<Context, PluginHost>();
+
+  constructor(public opts: LessPluginOptions = {}) {
+    super();
+    checkModeOptions(opts);
+    this.#policy = lessPolicy(opts, true);
+  }
+
+  /**
+   * The policy for one source. Settings the host scopes to that file are its
+   * Less settings, in place of this plugin's own options (DESIGN-DECISIONS C19).
+   */
+  #policyFor(settings: SourceOptions | undefined): LessPolicy {
+    if (settings === undefined) {
+      return this.#policy;
+    }
+    checkModeOptions(settings);
+    return lessPolicy({ ...settings }, false);
   }
 
   transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
@@ -637,12 +665,13 @@ export class LessPlugin extends AbstractPlugin {
    * (ledger P36).
    */
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
+    const policy = this.#policyFor(parseOptions?.sourceOptions);
     const result = safeParseLess(filePath, source, {
-      mathMode: parseOptions?.compilerOptions?.mathMode ?? this.#dialectDefaults.mathMode,
-      moduleMode: this.#moduleMode
+      mathMode: parseOptions?.compilerOptions?.mathMode ?? policy.dialectDefaults.mathMode,
+      moduleMode: policy.moduleMode
     });
     if (result.document) {
-      result.dialectDefaults = this.#dialectDefaults;
+      result.dialectDefaults = policy.dialectDefaults;
     }
     return result;
   }

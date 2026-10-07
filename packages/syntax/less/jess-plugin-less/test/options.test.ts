@@ -121,3 +121,33 @@ describe('LessPluginResolver cache', () => {
     }
   });
 });
+
+describe('Less plugin source settings', () => {
+  const plugin = lessPlugin({ unitMode: 'loose', mathMode: 'always' });
+  const parse = (sourceOptions?: Record<string, unknown>) =>
+    plugin.safeParse!('entry.less', '.entry {}', sourceOptions === undefined ? undefined : { sourceOptions }).dialectDefaults;
+
+  it('reads the settings that cover a source in place of its own options', () => {
+    expect(parse()).toMatchObject({ unitMode: 'loose', mathMode: 'always' });
+    expect(parse({})).toMatchObject({ unitMode: 'preserve', mathMode: 'parens-division' });
+    expect(parse({ unitMode: 'strict', math: 'parens' })).toMatchObject({ unitMode: 'strict', mathMode: 'parens' });
+  });
+
+  it('reads the deprecated spellings without repeating their warning for every file', () => {
+    const warn = logger.warn;
+    const warned: string[] = [];
+    logger.warn = (...args: unknown[]) => {
+      warned.push(args.map(String).join(' '));
+    };
+    try {
+      expect(parse({ strictUnits: true, strictMath: true })).toMatchObject({ unitMode: 'strict', mathMode: 'parens' });
+    } finally {
+      logger.warn = warn;
+    }
+    expect(warned).toEqual([]);
+  });
+
+  it('rejects an unknown mode value', () => {
+    expect(() => parse({ unitMode: 'stict' })).toThrow('The less option unitMode must be');
+  });
+});

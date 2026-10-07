@@ -76,6 +76,25 @@ describe('getOptions', () => {
       expect(options.allowExtendSelectors).toEqual(['simple']);
     });
 
+    it('carries every compile-tier mode, with the strict preset expanded', () => {
+      const config: StylesConfig = {
+        compile: {
+          strict: true,
+          functionMode: 'error',
+          leakyScope: true
+        }
+      };
+      expect(getOptions(config)).toMatchObject({
+        unitMode: 'strict',
+        functionMode: 'error',
+        allowLeakyScope: false,
+        leakyScope: true,
+        allowCallerScope: false
+      });
+      expect(getOptions({ ...config, language: { less: { unitMode: 'loose' } } }, { language: 'less' }).unitMode)
+        .toBe('loose');
+    });
+
     it('should override compile options with language options', () => {
       const config: StylesConfig = {
         compile: {

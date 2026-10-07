@@ -84,18 +84,18 @@ interface Known {
 const ALL_EXTEND_KINDS = ['class', 'simple', 'basic', 'pseudo', 'complex', 'compound', 'placeholder'] as const;
 
 /**
- * The options whose DIALECT defaults differ between `.less` and `.jess`, pinned
+ * The modes whose DIALECT defaults differ between `.less` and `.jess`, pinned
  * to the Less values for both arms so neither falls back to its own dialect's
  * defaults.
  */
-const PINNED_COMPILE = {
+const PINNED_MODES = {
   mathMode: 'parens-division',
   unitMode: 'preserve',
   allowLeakyScope: true,
   allowCallerScope: false,
-  processImports: true,
-  allowExtendSelectors: [...ALL_EXTEND_KINDS]
+  processImports: true
 } as const;
+const PINNED_COMPILE = { ...PINNED_MODES, allowExtendSelectors: [...ALL_EXTEND_KINDS] } as const;
 
 const P35 = 'P35 not landed';
 const TIMEOUT_MS = 30_000;
@@ -205,12 +205,17 @@ const shape = (tree: object): string =>
 function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigOptions {
   const { compile = {}, language = {}, output, ...rest } = fixture.config;
   const { plugins: fixturePlugins = [], ...fixtureCompile } = compile;
-  const lessOptions = { bubbleRootAtRules: true, ...(language.less ?? {}) };
+
+  /*
+   * The pins are language settings, under the fixture's own: a compile setting
+   * is global and would win over the fixture's `language.less` (ledger C19).
+   */
+  const lessOptions = { ...PINNED_MODES, bubbleRootAtRules: true, ...(language.less ?? {}) };
   const fixtureOutput = Array.isArray(output) ? {} : (output ?? {});
   return {
     ...rest,
     compile: {
-      ...PINNED_COMPILE,
+      allowExtendSelectors: PINNED_COMPILE.allowExtendSelectors,
       ...fixtureCompile,
       jsReadRoot: corpus.copy,
       plugins: [...corpus.plugins(corpus.copy), ...fixturePlugins]
