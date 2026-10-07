@@ -271,3 +271,34 @@ export function getOptions(
     return layerOptions(options, filled);
   }, {});
 }
+
+/** One config's `input` or `output` over another's: two single objects merge, a list of entries replaces. */
+function mergeEntries<T extends object>(lower: T | T[] | undefined, upper: T | T[] | undefined): T | T[] | undefined {
+  if (upper === undefined || lower === undefined || Array.isArray(lower) || Array.isArray(upper)) {
+    return upper ?? lower;
+  }
+  return { ...lower, ...upper };
+}
+
+/**
+ * `upper`'s config over `lower`'s, setting by setting, as the `styles.config`
+ * files from a file's folder up to its package root merge (DESIGN-DECISIONS
+ * O19): each `compile` and `language.<lang>` setting ({@link layerOptions}, so a
+ * mode `upper` spells differently replaces `lower`'s spelling), each `input` and
+ * `output` setting when both are single objects (a list of file entries replaces
+ * the other), and any other key whole.
+ */
+export function mergeConfigs(lower: StylesConfig, upper: StylesConfig): StylesConfig {
+  const language: NonNullable<StylesConfig['language']> = { ...lower.language };
+  for (const [name, options] of Object.entries(upper.language ?? {})) {
+    language[name] = layerOptions(lower.language?.[name] ?? {}, options ?? {});
+  }
+  return {
+    ...lower,
+    ...upper,
+    compile: layerOptions(lower.compile ?? {}, upper.compile ?? {}),
+    language,
+    input: mergeEntries(lower.input, upper.input),
+    output: mergeEntries(lower.output, upper.output)
+  };
+}

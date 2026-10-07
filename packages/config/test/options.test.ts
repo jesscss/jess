@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getOptions, applyStrictPreset, layerOptions } from '../src/options.js';
+import { getOptions, applyStrictPreset, layerOptions, mergeConfigs } from '../src/options.js';
 import type { StylesConfig } from '../src/types.js';
 
 describe('getOptions', () => {
@@ -384,5 +384,37 @@ describe('applyStrictPreset', () => {
     const out = applyStrictPreset(input);
     expect(input).toEqual({ strict: true });
     expect(out).not.toBe(input);
+  });
+});
+
+describe('mergeConfigs', () => {
+  it('merges the compile and language settings setting by setting, the upper config winning', () => {
+    const merged = mergeConfigs(
+      { compile: { mathMode: 'always', unitMode: 'loose' }, language: { less: { unitMode: 'loose', rootpath: '/a/' } } },
+      { compile: { unitMode: 'strict' }, language: { less: { mathMode: 'parens' }, jess: { unitMode: 'preserve' } } }
+    );
+    expect(merged.compile).toEqual({ mathMode: 'always', unitMode: 'strict' });
+    expect(merged.language).toEqual({
+      less: { unitMode: 'loose', rootpath: '/a/', mathMode: 'parens' },
+      jess: { unitMode: 'preserve' }
+    });
+  });
+
+  it('lets an upper spelling of a mode replace every lower spelling of it', () => {
+    const merged = mergeConfigs({ language: { less: { unitMode: 'loose' } } }, { language: { less: { strictUnits: true } } });
+    expect(merged.language?.less).toEqual({ strictUnits: true });
+  });
+
+  it('merges single input and output objects setting by setting; a list of entries replaces', () => {
+    expect(mergeConfigs({ output: { collapseNesting: true, compress: true } }, { output: { collapseNesting: false } }).output)
+      .toEqual({ collapseNesting: false, compress: true });
+    expect(mergeConfigs({ output: { collapseNesting: true } }, { output: [{ file: '{name}.css' }] }).output)
+      .toEqual([{ file: '{name}.css' }]);
+    expect(mergeConfigs({ output: [{ file: '{name}.css' }] }, {}).output).toEqual([{ file: '{name}.css' }]);
+  });
+
+  it('replaces any other key whole', () => {
+    expect(mergeConfigs({ lint: { files: ['a'], reportSyntax: true } }, { lint: { files: ['b'] } }).lint)
+      .toEqual({ files: ['b'] });
   });
 });

@@ -2,8 +2,9 @@ import * as path from 'path';
 import { loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
 
 /**
- * Get configuration from the nearest styles.config.* file, searching from the given directory
- * up through parent directories to the package root (the first one with a package.json).
+ * Get configuration from every styles.config.* file from the given directory up through parent
+ * directories to the package root (the first one with a package.json), merged: the nearest wins
+ * setting by setting.
  *
  * @param searchFrom - Directory to start searching from
  * @returns Configuration object, or empty object if no config found
@@ -15,6 +16,9 @@ export const getConfig = (searchFrom?: string): StylesConfig => {
 export interface ConfigWithMeta {
   config: StylesConfig;
   configFilePath?: string;
+
+  /** What the file at `configFilePath` sets by itself, before the configs above it merge in. */
+  ownConfig?: StylesConfig;
 }
 
 export const getConfigWithMeta = (searchFrom?: string): ConfigWithMeta => {

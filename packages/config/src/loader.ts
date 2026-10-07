@@ -1,9 +1,15 @@
-import { cosmiconfig, cosmiconfigSync, defaultLoadersSync, type OptionsSync } from 'cosmiconfig';
+import { cosmiconfig, cosmiconfigSync, defaultLoadersSync, type CosmiconfigResult, type OptionsSync } from 'cosmiconfig';
+import fs from 'fs';
+import path from 'path';
+import { mergeConfigs } from './options.js';
 import type { StylesConfig } from './types.js';
 
 export interface LoadedConfigMeta {
   config: StylesConfig;
   configFilePath?: string;
+
+  /** What the file at `configFilePath` sets by itself, before the configs above it merge in. */
+  ownConfig?: StylesConfig;
 }
 
 /**
@@ -38,35 +44,70 @@ const explorer = cosmiconfig('styles', explorerOptions);
 const explorerSync = cosmiconfigSync('styles', explorerOptions);
 
 /**
- * Load styles configuration from the file system (async)
+ * Where to look for the next config above the one at `filepath`: its folder's
+ * parent, or none when its folder is the package root (has a `package.json` or
+ * `package.yaml`, where cosmiconfig's `project` search stops) or the file-system root.
+ */
+function searchAbove({ filepath }: { filepath: string }): string | undefined {
+  const dir = path.dirname(filepath);
+  const parent = path.dirname(dir);
+  const packageRoot = ['package.json', 'package.yaml'].some(name => fs.existsSync(path.join(dir, name)));
+  return parent === dir || packageRoot ? undefined : parent;
+}
+
+/** The configs found, nearest first, merged: the nearest wins setting by setting ({@link mergeConfigs}). */
+function mergeFound(found: ReadonlyArray<{ config: unknown; filepath: string }>): LoadedConfigMeta {
+  const configs = found.map(result => normalizeConfig(result.config));
+  return {
+    config: configs.reduceRight<StylesConfig>((merged, config) => mergeConfigs(merged, config), {}),
+    configFilePath: found[0]?.filepath,
+    ownConfig: configs[0] ?? {}
+  };
+}
+
+/**
+ * Load styles configuration from the file system (async): every config from
+ * `searchFrom` up to the package root, merged ({@link loadConfigSyncWithMeta}).
  * @param searchFrom - Directory to search from (defaults to process.cwd())
  * @returns Configuration object or null if not found
  */
 export async function loadConfig(searchFrom?: string): Promise<StylesConfig | null> {
-  const result = await explorer.search(searchFrom);
-  return result?.config ? normalizeConfig(result.config) : null;
+  const found: Array<NonNullable<CosmiconfigResult>> = [];
+  let result = await explorer.search(searchFrom);
+  while (result) {
+    found.push(result);
+    const above = searchAbove(result);
+    result = above === undefined ? null : await explorer.search(above);
+  }
+  return found.length > 0 ? mergeFound(found).config : null;
 }
 
 /**
- * Load styles configuration from the file system (sync)
+ * Load styles configuration from the file system (sync): every config from
+ * `searchFrom` up to the package root, merged ({@link loadConfigSyncWithMeta}).
  * @param searchFrom - Directory to search from (defaults to process.cwd())
  * @returns Configuration object or empty object if not found
  */
 export function loadConfigSync(searchFrom?: string): StylesConfig {
-  const result = explorerSync.search(searchFrom);
-  return result?.config ? normalizeConfig(result.config) : {};
+  return loadConfigSyncWithMeta(searchFrom).config;
 }
 
 /**
- * Load styles configuration with metadata (sync).
- * Includes config file path when a config file is discovered.
+ * Load styles configuration with metadata (sync). Every `styles.config.*` from
+ * `searchFrom` up to the package root (the first folder with a `package.json`,
+ * itself included) is merged, the nearest winning setting by setting
+ * (DESIGN-DECISIONS O19). `configFilePath` is the nearest one, and `ownConfig`
+ * what that file sets by itself.
  */
 export function loadConfigSyncWithMeta(searchFrom?: string): LoadedConfigMeta {
-  const result = explorerSync.search(searchFrom);
-  return {
-    config: result?.config ? normalizeConfig(result.config) : {},
-    configFilePath: result?.filepath
-  };
+  const found: Array<NonNullable<CosmiconfigResult>> = [];
+  let result = explorerSync.search(searchFrom);
+  while (result) {
+    found.push(result);
+    const above = searchAbove(result);
+    result = above === undefined ? null : explorerSync.search(above);
+  }
+  return mergeFound(found);
 }
 
 /**

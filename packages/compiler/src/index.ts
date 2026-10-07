@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { mergeWith } from 'lodash-es';
-import { getConfigWithMeta } from './config.js';
+import { getConfigWithMeta, type ConfigWithMeta } from './config.js';
 import {
   Context,
   type ContextOptions,
@@ -636,9 +636,8 @@ export class Compiler {
     renderOptions?: Partial<ConfigOptions>,
     parseInput: { language?: string; extension?: string } = {}
   ): ResolvedRenderConfig {
-    const { config: loadedFileConfig, configFilePath } = filePath
-      ? getConfigWithMeta(path.dirname(filePath))
-      : { config: {}, configFilePath: undefined };
+    const entryFolder: ConfigWithMeta = filePath ? getConfigWithMeta(path.dirname(filePath)) : { config: {} };
+    const { config: loadedFileConfig, configFilePath } = entryFolder;
     const explicitConfig: ConfigOptions = mergeWith(
       createBaseConfig(),
       this.baseOptsNormalized,
@@ -678,17 +677,23 @@ export class Compiler {
        * A config file is code: none is loaded for a file in an installed
        * package, so compiling a project never runs a dependency's config.
        */
-      const folder = sourcePath === filePath
-        ? { config: loadedFileConfig, configFilePath }
+      const folder: ConfigWithMeta = sourcePath === filePath
+        ? entryFolder
         : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
           ? getConfigWithMeta(path.dirname(sourcePath))
-          : { config: {}, configFilePath: undefined };
+          : { config: {} };
       const params = { language: sourceLanguage, input: sourcePath };
+
+      /*
+       * ponytail: an invalid value is reported against the nearest config file
+       * only when that file sets it itself; one a config above it sets names no
+       * file. Pass every file with its own settings if that location is needed.
+       */
       return {
         options: getOptions([folder.config, explicitConfig], params),
         configFile: folder.configFilePath === undefined
           ? undefined
-          : { path: folder.configFilePath, options: getOptions(folder.config, params) }
+          : { path: folder.configFilePath, options: getOptions(folder.ownConfig ?? {}, params) }
       };
     };
     const jsPluginConfig: JsPluginConfig = {
@@ -805,7 +810,7 @@ export class Compiler {
           output: resolvedOutputFilePath
         }) as Record<string, unknown>,
       configFileOptionsFor: (targetLanguage?: string) =>
-        getOptions(loadedFileConfig, {
+        getOptions(entryFolder.ownConfig ?? {}, {
           language: targetLanguage,
           input: configInputPath,
           output: resolvedOutputFilePath

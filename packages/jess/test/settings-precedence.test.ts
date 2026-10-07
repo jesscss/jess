@@ -1,10 +1,11 @@
 /*
  * Which compile settings a source file uses (DESIGN-DECISIONS C19, owner
- * 2026-10-07): the settings that cover a file are its nearest `styles.config`
- * (found by walking up from the file's folder to its package root) merged under
- * the settings passed to the compiler or the render, which win field by field.
- * On that merge, each file's settings are computed for its language: its
- * language's defaults, under the `compile` settings, under `language.<lang>`.
+ * 2026-10-07): the settings that cover a file are every `styles.config` from
+ * the file's folder up to its package root, merged, the nearest winning setting
+ * by setting, under the settings passed to the compiler or the render, which win
+ * setting by setting. On that merge, each file's settings are computed for its
+ * language: its language's defaults, under the `compile` settings, under
+ * `language.<lang>`.
  * With nothing set, each file uses its own language's defaults, so its output
  * never depends on the file that imported it.
  */
@@ -426,7 +427,7 @@ describe('the strict preset', () => {
   });
 });
 
-describe('the styles.config that covers a file is the nearest one above it, within its package', () => {
+describe('the styles.configs from a file\'s folder up to its package root cover it, merged', () => {
   it('a config in a parent folder covers the files below it, imported files included', async () => {
     write(
       ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
@@ -436,22 +437,46 @@ describe('the styles.config that covers a file is the nearest one above it, with
     expect((await render('app/entry.less')).css).toBe('.e { k: 2px; } .p { k: 2px; }');
   });
 
-  it('the nearest config covers a file, not the configs above it', async () => {
+  it('an ancestor\'s setting reaches a subfolder whose own config sets other keys', async () => {
     write(
       ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
       ['sub/styles.config.cjs', 'module.exports = { language: { less: { mathMode: \'always\' } } };\n'],
-      ['sub/entry.less', '.e { k: 1px + 1em; }']
+      ['sub/entry.less', '.e { k: 1px + 1em; d: 4px / 2; }']
     );
-    expect((await render('sub/entry.less')).css).toBe('.e { k: calc(1px + 1em); }');
+    expect((await render('sub/entry.less')).css).toBe('.e { k: 2px; d: 2px; }');
   });
 
-  it('the search stops at the folder with the package.json', async () => {
+  it('the nearer config wins setting by setting, in any spelling', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { compile: { mathMode: \'always\' }, language: { less: { unitMode: \'loose\' } } };\n'],
+      ['sub/styles.config.cjs', 'module.exports = { language: { less: { strictUnits: true } } };\n'],
+      ['sub/entry.less', '.e { d: 4px / 2; }\n.f { k: 1px + 1em; }']
+    );
+    const result = await renderLogged('sub/entry.less');
+    expect(result.errors).toEqual(['eval/invalid-unit-arithmetic']);
+    write(['sub/entry.less', '.e { d: 4px / 2; }']);
+    expect((await render('sub/entry.less')).css).toBe('.e { d: 2px; }');
+  });
+
+  it('merges before the language order: an ancestor\'s language setting wins over a nearer compile setting', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'strict\' } } };\n'],
+      ['sub/styles.config.cjs', 'module.exports = { compile: { unitMode: \'loose\' } };\n'],
+      ['sub/entry.less', '.e { k: 1px + 1em; }'],
+      ['sub/part.jess', '.j { k: $(1px + 3em); }']
+    );
+    expect((await render('sub/entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect((await render('sub/part.jess')).css).toBe('.j { k: 4px; }');
+  });
+
+  it('the search stops at the folder with the package.json, and merges that folder\'s config', async () => {
     write(
       ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
       ['pkg/package.json', '{}'],
       ['pkg/src/entry.less', '.e { k: 1px + 1em; }'],
       ['configured/package.json', '{}'],
       ['configured/styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'strict\' } } };\n'],
+      ['configured/src/styles.config.cjs', 'module.exports = { language: { less: { mathMode: \'always\' } } };\n'],
       ['configured/src/entry.less', '.e { k: 1px + 1em; }']
     );
     expect((await render('pkg/src/entry.less')).css).toBe('.e { k: calc(1px + 1em); }');
