@@ -161,4 +161,24 @@ describe('SCSS custom properties', () => {
     });
     expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
   });
+
+  /*
+   * The other side of that reading: a `//` "comment" that opens a value is now
+   * value text, so a quote in it opens a string that the line ends unclosed (a
+   * bad string, css-syntax-3 §4.3.5). dart-sass rejects this too.
+   */
+  it('rejects an unclosed quote in a `//` that opens a custom-property value', () => {
+    expect(() => parse('a {\n  --x: // don\'t\n    red;\n}')).toThrow();
+  });
+
+  /*
+   * PINNED DEFECT — a `//` in a `var()` fallback of an ordinary declaration. The
+   * fallback is a SassScript argument there, where `//` is a silent comment:
+   * dart-sass 1.101.7 compiles `var(--x, // b` + newline + `red)` to
+   * `var(--x, red)`. SCSS rejects it, because its `var()` (inherited from the css
+   * base) skips only whitespace and block comments.
+   */
+  it('PINNED DEFECT — rejects a line comment in a var() fallback', () => {
+    expect(() => parse('a {\n  color: var(--x, // b\n    red);\n}')).toThrow();
+  });
 });

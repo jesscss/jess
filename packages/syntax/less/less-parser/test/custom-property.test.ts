@@ -234,6 +234,16 @@ describe('Less custom properties', () => {
    * a `//` that opens one is value text, not a comment that drops it or hides
    * the `)` after it.
    */
+  /*
+   * The other side of that reading: a `//` "comment" that opens a value is now
+   * value text, so a quote in it opens a string that the line ends unclosed (a
+   * bad string, css-syntax-3 §4.3.5). lessc 4.9.1 read it as a comment; dart-sass
+   * rejects it.
+   */
+  it('rejects an unclosed quote in a `//` that opens a custom-property value', () => {
+    expect(() => parse('a {\n  --x: // don\'t\n    red;\n}')).toThrow();
+  });
+
   it.each([
     ['a { b: var(--y, //c\n); }', 'a {\n  b: var(--y, //c);\n}\n'],
     ['a { b: var(--y, //c); }', 'a {\n  b: var(--y, //c);\n}\n'],
