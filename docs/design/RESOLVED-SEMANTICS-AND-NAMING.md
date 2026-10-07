@@ -1142,8 +1142,9 @@ existing implementation — `value-operate.ts:425` and `:441` already convert a
 unit clash into a `calc(…)` rather than throwing. An earlier revision of this
 section said `preserve` raises, which contradicted the name and the code.
 
-The default is `preserve` (`DEFAULT_MODES`, and the dialect plugins); `strict`
-arrives via the `strict: true` preset. This is the same lever extended in
+The compiler default is `preserve` (`DEFAULT_MODES`), which the `.less` and
+`.scss` plugins keep; the `.jess` plugin's dialect default is `strict` (above),
+and `strict` also arrives via the `strict: true` preset. This is the same lever extended in
 `5c516dbb1`, which gave `unitMode` reach into comparison — the modes now govern
 arithmetic, comparison, and expressibility as one policy rather than three.
 
