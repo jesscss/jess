@@ -37,6 +37,11 @@ describe('Less at-rules through the public AST route', () => {
         { language, filePath: `/virtual/media.${language}` }
       );
       expect(css, language).toBe('@media screen /* a */, /* b */ print {\n  a {\n    b: c;\n  }\n}\n');
+      const three = await new Compiler().renderString(
+        '@media screen /* a */, print, /* b */ tv { a { b: c } }',
+        { language, filePath: `/virtual/media3.${language}` }
+      );
+      expect(three, language).toBe('@media screen /* a */, print, /* b */ tv {\n  a {\n    b: c;\n  }\n}\n');
     }
   });
 

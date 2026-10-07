@@ -524,6 +524,10 @@ export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaL
   return semanticGapText(textWithTriviaGaps(children, triviaLog));
 }
 
+/** Whether the source holds a block comment's opener at `at`. */
+const isBlockCommentAt = (source: string, at: number): boolean =>
+  source.charCodeAt(at) === 0x2f && source.charCodeAt(at + 1) === 0x2a;
+
 /**
  * The authored trivia a node's log records before raw child `insertIndex`, as the
  * layout of a list keeps it: each block comment with the whitespace either side of
@@ -532,39 +536,46 @@ export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaL
  * any dialect's trivia scope reads the same.
  */
 export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number): string {
-  let first = -1;
-  let last = -1;
+  return triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, 0, insertIndex), insertIndex);
+}
+
+/** The first log entry from `from` whose insert index is at least `insertIndex`: the indices never decrease. */
+function triviaEntryAt(triviaLog: readonly number[], from: number, insertIndex: number): number {
+  let entry = from;
+  while (entry < triviaLog.length && triviaLog[entry + 2]! < insertIndex) {
+    entry += CSS_NODE_TRIVIA_STRIDE;
+  }
+  return entry;
+}
+
+/** {@link triviaTextAt} for the run of entries that starts at `first`. */
+function triviaRunText(triviaLog: readonly number[], source: string, first: number, insertIndex: number): string {
+  let end = first;
   let hasBlockComment = false;
   let hasLineBreak = false;
-  for (let entry = 0; entry < triviaLog.length; entry += CSS_NODE_TRIVIA_STRIDE) {
-    if (triviaLog[entry + 2] !== insertIndex) {
-      continue;
-    }
-    if (first < 0) {
-      first = entry;
-    }
-    last = entry;
-    const start = triviaLog[entry]!;
-    const end = triviaLog[entry + 1]!;
-    if (source.startsWith('/*', start)) {
+  for (; end < triviaLog.length && triviaLog[end + 2] === insertIndex; end += CSS_NODE_TRIVIA_STRIDE) {
+    if (isBlockCommentAt(source, triviaLog[end]!)) {
       hasBlockComment = true;
-    } else if (/[\n\r]/u.test(source.slice(start, end))) {
-      hasLineBreak = true;
+    } else if (!hasLineBreak) {
+      for (let at = triviaLog[end]!, stop = triviaLog[end + 1]!; at < stop; at++) {
+        const code = source.charCodeAt(at);
+        if (code === 0x0a || code === 0x0d) {
+          hasLineBreak = true;
+          break;
+        }
+      }
     }
   }
-  if (first < 0 || (!hasBlockComment && !hasLineBreak)) {
+  if (!hasBlockComment && !hasLineBreak) {
     return '';
   }
   let text = '';
-  for (let entry = first; entry <= last; entry += CSS_NODE_TRIVIA_STRIDE) {
-    if (triviaLog[entry + 2] !== insertIndex) {
-      continue;
-    }
+  for (let entry = first; entry < end; entry += CSS_NODE_TRIVIA_STRIDE) {
     const start = triviaLog[entry]!;
-    const isComment = (at: number): boolean => at >= first && at <= last
-      && triviaLog[at + 2] === insertIndex && source.startsWith('/*', triviaLog[at]!);
-    if (!hasBlockComment || source.startsWith('/*', start)
-      || (!source.startsWith('//', start) && (isComment(entry - CSS_NODE_TRIVIA_STRIDE) || isComment(entry + CSS_NODE_TRIVIA_STRIDE)))) {
+    if (!hasBlockComment || isBlockCommentAt(source, start)
+      || (!source.startsWith('//', start)
+        && ((entry > first && isBlockCommentAt(source, triviaLog[entry - CSS_NODE_TRIVIA_STRIDE]!))
+          || (entry + CSS_NODE_TRIVIA_STRIDE < end && isBlockCommentAt(source, triviaLog[entry + CSS_NODE_TRIVIA_STRIDE]!))))) {
       text += source.slice(start, triviaLog[entry + 1]);
     }
   }
@@ -600,6 +611,7 @@ export function commaListWithComments<T extends ValueSlot>(
   }
   const layout: string[] = [];
   let raw = 0;
+  let entry = 0;
   for (const separator of separators) {
     while (raw < rawChildren.length && rawLeafValue(rawChildren[raw]) !== separator) {
       raw++;
@@ -607,7 +619,12 @@ export function commaListWithComments<T extends ValueSlot>(
     if (raw === rawChildren.length) {
       return result;
     }
-    layout.push(triviaTextAt(triviaLog, source, raw) + separator + triviaTextAt(triviaLog, source, raw + 1));
+
+    /* The log's insert indices only grow, so one cursor reads every separator's trivia. */
+    entry = triviaEntryAt(triviaLog, entry, raw);
+    const before = triviaRunText(triviaLog, source, entry, raw);
+    entry = triviaEntryAt(triviaLog, entry, raw + 1);
+    layout.push(before + separator + triviaRunText(triviaLog, source, entry, raw + 1));
     raw++;
   }
   return withValueLayout(result, layout);
