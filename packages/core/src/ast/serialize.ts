@@ -189,7 +189,7 @@ import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanRe
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
-import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
+import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
@@ -1072,11 +1072,72 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
   if (!(owner instanceof DocumentContext)) {
     return context.withSourceOwner(owner, run);
   }
+  const policy = owner.options;
+  const scoped = e.policy === undefined || policy === e.policy ? run : () => withPolicy(e, policy, run);
   const trivia = documentTriviaOf(owner);
   if (trivia === e.trivia) {
-    return context.withSourceOwner(owner, run);
+    return context.withSourceOwner(owner, scoped);
   }
-  return withTrivia(e, trivia, () => context.withSourceOwner(owner, run));
+  return withTrivia(e, trivia, () => context.withSourceOwner(owner, scoped));
+}
+
+/** Each resolved policy's `modes`, pretty and compressed, so a document switch allocates once. */
+const policyModes = new WeakMap<Readonly<ResolvedOptions>, readonly [EvalModes, EvalModes]>();
+
+function modesOf(policy: Readonly<ResolvedOptions>, compress: boolean): EvalModes {
+  let modes = policyModes.get(policy);
+  if (modes === undefined) {
+    modes = [{ ...policy, compress: false }, { ...policy, compress: true }];
+    policyModes.set(policy, modes);
+  }
+  return modes[compress ? 1 : 0];
+}
+
+/**
+ * Evaluate `run` under one document's policy (DESIGN-DECISIONS C19): math
+ * written in a file answers that file's own settings, so `modes` and
+ * `allowCallerScope` follow the source owner into an imported document, a mixin
+ * body or a callback written in another file. Documents that resolve to the same
+ * values share one policy object, so a single-policy render never gets here.
+ */
+function withPolicy<T>(e: EvalCtx, policy: Readonly<ResolvedOptions>, run: () => MaybePromise<T>): MaybePromise<T> {
+  const previous = e.policy;
+  const modes = e.modes;
+  const allowCallerScope = e.allowCallerScope;
+  e.policy = policy;
+  e.modes = modesOf(policy, modes.compress === true);
+  e.allowCallerScope = policy.allowCallerScope;
+  const restore = (): void => {
+    e.policy = previous;
+    e.modes = modes;
+    e.allowCallerScope = allowCallerScope;
+  };
+  try {
+    const result = run();
+    if (isThenable(result)) {
+      return result.finally(restore);
+    }
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
+/** Enter a loaded document through its driver scope, `e`'s policy following the Context into it. */
+function inDocument(
+  e: EvalCtx,
+  within: ImportDocumentTree['withinDocument'],
+  emit: () => MaybePromise<void>
+): MaybePromise<void> {
+  if (within === undefined) {
+    return emit();
+  }
+  return within(() => {
+    const policy = e.context?.options;
+    return policy === undefined || e.policy === undefined || policy === e.policy ? emit() : withPolicy(e, policy, emit);
+  });
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
@@ -3930,6 +3991,13 @@ function warnConsumedOperand(value: ValueGroup, slot: ValueSlot, e: EvalCtx): vo
 interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
+
+  /**
+   * The active document's resolved policy that `modes` and `allowCallerScope`
+   * were taken from; {@link withPolicy} swaps all three at a document boundary.
+   * Unset when the caller passed explicit `modes`, which then never switch.
+   */
+  policy?: Readonly<ResolvedOptions>;
 
   /**
    * Set on the non-evaluating byte lane of an F5 color call
@@ -13227,11 +13295,7 @@ function planImportedFacts(
         expanding.add(key);
       }
       try {
-        if (loaded.withinDocument) {
-          await loaded.withinDocument(collect);
-        } else {
-          await collect();
-        }
+        await inDocument(e, loaded.withinDocument, collect);
       } finally {
         if (key !== undefined) {
           expanding.delete(key);
@@ -13368,6 +13432,25 @@ export type PrepareStaticImportsOptions = Pick<
   'context' | 'evaluator' | 'modes' | 'trivia' | 'optional' | 'collapseNesting' | 'compress' | 'importDocument' | 'pluginHost' | 'io'
 >;
 
+/**
+ * The eval policy a walk starts with: explicit `modes` for a context-free
+ * consumer (they never switch), else the active document's resolved policy,
+ * which {@link withPolicy} then follows across document boundaries.
+ */
+function initialPolicy(
+  options: Pick<SerializeOptions, 'context' | 'modes' | 'compress'> | undefined
+): Pick<EvalCtx, 'modes' | 'policy' | 'allowCallerScope'> {
+  const compress = options?.compress ?? false;
+  const policy = options?.modes === undefined ? options?.context?.options : undefined;
+  if (policy !== undefined) {
+    return { modes: modesOf(policy, compress), policy, allowCallerScope: policy.allowCallerScope };
+  }
+  return {
+    modes: { ...(options?.modes ?? DEFAULT_MODES), compress },
+    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false // [R16] legacy caller-read, default hermetic
+  };
+}
+
 export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticImportsOptions): MaybePromise<PreparedImports> {
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
@@ -13378,8 +13461,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     chunks: [],
     positions: null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null,
-    modes: { ...(options?.modes ?? options?.context?.options ?? DEFAULT_MODES), compress: options?.compress ?? false },
-    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false,
+    ...initialPolicy(options),
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(),
@@ -13483,8 +13565,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     chunks: [],
     positions: options?.trackPositions ? [] : null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
-    modes: { ...(options?.modes ?? options?.context?.options ?? DEFAULT_MODES), compress: options?.compress ?? false },
-    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false, // [R16] legacy caller-read, default hermetic
+    ...initialPolicy(options),
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
@@ -20084,7 +20165,7 @@ function emitPlannedCssImports(plan: CssImportPlan | null, e: Emit): MaybePromis
         continue;
       }
       let next = index;
-      const emitted = withinDocument(() => {
+      const emitted = inDocument(e, withinDocument, () => {
         while (next !== -1 && withinDocuments[next] === withinDocument) {
           const scopedNode = nodes[next]!;
           if (scopedNode !== null) {
@@ -21078,7 +21159,7 @@ function expandStyleImport(
             }
             let result: MaybePromise<void>;
             try {
-              result = loaded.withinDocument ? loaded.withinDocument(emitWithPlugins) : emitWithPlugins();
+              result = inDocument(e, loaded.withinDocument, emitWithPlugins);
             } catch (error) {
               if (reference) {
                 e.referenceImportDepth--;
@@ -21117,7 +21198,7 @@ function expandStyleImport(
             }
             return result;
           }
-          return loaded.withinDocument ? loaded.withinDocument(emitWithPlugins) : emitWithPlugins();
+          return inDocument(e, loaded.withinDocument, emitWithPlugins);
         });
       }
       if (e.referenceImportDepth === 0) {

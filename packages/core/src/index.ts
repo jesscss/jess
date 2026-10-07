@@ -11,7 +11,8 @@ import '@ungap/set-methods';
 export {
   Context,
   type ContextOptions,
-  type SourceContext
+  type SourceContext,
+  type SourceOptions
 } from './context.js';
 export { logger, type Logger } from './logger.js';
 export {

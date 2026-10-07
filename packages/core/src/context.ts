@@ -142,6 +142,10 @@ export interface ContextOptions {
    */
   dynamic?: boolean;
 
+  /*
+   * The mode options (these three and the scope/import modes below) set here are
+   * global: they win over every document's own settings (DESIGN-DECISIONS C19).
+   */
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
@@ -246,6 +250,15 @@ export interface ContextOptions {
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
 
   /**
+   * The settings that cover one source file — its folder's `styles.config`, and
+   * the settings for its language — supplied by the host. Called once when the
+   * file is parsed (`language` is the parsing plugin's name); the answer reaches
+   * that plugin's `safeParse` and resolves the document's policy below this
+   * Context's own mode options (DESIGN-DECISIONS C19).
+   */
+  sourceOptions?(filePath: string, language: string): SourceOptions | undefined;
+
+  /**
    * Per-tree transient serialization data threaded from the parser (source-anchored
    * comment/whitespace runs). Seeded onto the render {@link Context} (and per-tree
    * {@link TreeContext}) and read back at emit time.
@@ -263,9 +276,9 @@ export interface ContextOptions {
  * The flat, fully-resolved option set read on the eval fast path. Every field is
  * present (no `undefined`), so a read-site is a single property access —
  * `context.options.unitMode` — with no `?? treeContext ?? default` chain and
- * no per-read merge. Resolved once and cached on {@link Context}; recomputed only
- * when `context.treeContext` switches (see its setter), so crossing into an
- * imported file is one recompute, not a cost paid on every option read.
+ * no per-read merge. Resolved once per document when the document is parsed
+ * (its policy), and shared by every document that resolves to the same values;
+ * entering a document swaps one pointer, so no cost is paid on an option read.
  */
 export interface ResolvedOptions {
   mathMode: MathMode;
@@ -278,8 +291,8 @@ export interface ResolvedOptions {
 }
 
 /**
- * Ultimate fallbacks — used only when neither the compile config nor the tree
- * context (plugin/language/file) supplied a value.
+ * Ultimate fallbacks — used only when neither the compile config, the source's
+ * settings nor its dialect supplied a value.
  */
 const OPTION_DEFAULTS: ResolvedOptions = {
   mathMode: 'parens-division',
@@ -301,29 +314,39 @@ type OptionInput = Partial<ResolvedOptions> & {
 };
 
 /**
- * Resolve the option set with a SINGLE precedence: an explicit compile-level
- * option wins, else the source document's input configuration, else the
- * hard default. This is the one place the precedence is defined — it replaces the
- * three divergent `??` orders that used to live scattered across the read-sites
- * (`compile ?? tree` in conditions, `tree`-only in lists, `tree ?? compile` for
- * mathMode).
+ * The settings a host scopes to one source file: the modes by their canonical
+ * names, plus any dialect-specific spelling its plugin reads (Less `strictUnits`).
+ */
+export type SourceOptions = Readonly<OptionInput & Record<string, unknown>>;
+
+/**
+ * Resolve the option set with a SINGLE precedence (DESIGN-DECISIONS C19): an
+ * explicit compile-level option wins everywhere; else the settings scoped to the
+ * source (its folder's `styles.config`, its language's settings); else the
+ * source dialect's own default; else the hard default. This is the one place the
+ * precedence is defined.
  */
 export function resolveOptions(
   compile: OptionInput | undefined,
-  tree: OptionInput | undefined
+  source: OptionInput | undefined,
+  dialect?: OptionInput
 ): Readonly<ResolvedOptions> {
   return Object.freeze({
-    mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
-    unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
-    functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
+    mathMode: compile?.mathMode ?? source?.mathMode ?? dialect?.mathMode ?? OPTION_DEFAULTS.mathMode,
+    unitMode: compile?.unitMode ?? source?.unitMode ?? dialect?.unitMode ?? OPTION_DEFAULTS.unitMode,
+    functionMode: compile?.functionMode ?? source?.functionMode ?? dialect?.functionMode ?? OPTION_DEFAULTS.functionMode,
 
     /* `leakyScope` is the deprecated alias of `allowLeakyScope`: the new name wins
-     * within a source, else the alias, before the next precedence tier. */
+     * within a tier, else the alias, before the next precedence tier. */
     allowLeakyScope: compile?.allowLeakyScope ?? compile?.leakyScope
-      ?? tree?.allowLeakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.allowLeakyScope,
-    allowCallerScope: compile?.allowCallerScope ?? tree?.allowCallerScope ?? OPTION_DEFAULTS.allowCallerScope,
-    bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
-    processImports: compile?.processImports ?? tree?.processImports ?? OPTION_DEFAULTS.processImports
+      ?? source?.allowLeakyScope ?? source?.leakyScope
+      ?? dialect?.allowLeakyScope ?? dialect?.leakyScope ?? OPTION_DEFAULTS.allowLeakyScope,
+    allowCallerScope: compile?.allowCallerScope ?? source?.allowCallerScope ?? dialect?.allowCallerScope
+      ?? OPTION_DEFAULTS.allowCallerScope,
+    bubbleRootAtRules: compile?.bubbleRootAtRules ?? source?.bubbleRootAtRules ?? dialect?.bubbleRootAtRules
+      ?? OPTION_DEFAULTS.bubbleRootAtRules,
+    processImports: compile?.processImports ?? source?.processImports ?? dialect?.processImports
+      ?? OPTION_DEFAULTS.processImports
   });
 }
 
@@ -511,7 +534,9 @@ export class Context {
 
   private _treeContext: TreeContext | undefined;
   private _documentContext: DocumentContext | undefined;
-  private sessionOptions: Readonly<ResolvedOptions> | undefined;
+
+  /** Each distinct resolved policy once, so documents that agree share one object. */
+  private readonly policies = new Map<string, Readonly<ResolvedOptions>>();
   private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
   private readonly pluginPathCache = new Map<string, Promise<ResolvedPathResult> | ResolvedPathResult>();
   private readonly pluginModuleCache = new Map<string, Promise<LoadedPluginModuleResult> | LoadedPluginModuleResult>();
@@ -1292,11 +1317,8 @@ export class Context {
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
 
-    /*
-     * Seed resolved options from compile config (no tree context yet); the
-     * treeContext setter recomputes this once a file's context is active.
-     */
-    this._options = resolveOptions(opts, undefined);
+    /* The policy outside any document; entering a document swaps in its own. */
+    this._options = this.policyFor(undefined, undefined);
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
     if (opts.output?.compress !== undefined) {
@@ -1309,18 +1331,38 @@ export class Context {
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
   evaldTrees = new Map<string, Rules>();
 
+  /**
+   * One document's policy (DESIGN-DECISIONS C19): this Context's explicit mode
+   * options over the settings scoped to the source over its dialect's defaults,
+   * resolved once when the document is parsed. Documents that resolve to the
+   * same values share one frozen object, so entering one is a pointer compare
+   * when nothing changes.
+   */
+  private policyFor(
+    settings: SourceOptions | undefined,
+    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
+  ): Readonly<ResolvedOptions> {
+    const resolved = resolveOptions(this.opts, settings, dialectDefaults);
+    const key = Object.values(resolved).join('\0');
+    const known = this.policies.get(key);
+    if (known !== undefined) {
+      return known;
+    }
+    this.policies.set(key, resolved);
+    return resolved;
+  }
+
   /** Record the parser/source identity once, when an AST document enters this session. */
   private rememberDocumentContext(
     document: Stylesheet,
     filePath: string,
     source: string | undefined,
     plugin: PluginInterface,
-    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined,
+    policy: Readonly<ResolvedOptions>,
     sourceOffset?: number,
     sourceEnd?: number
   ): void {
-    this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
-    const documentContext = new DocumentContext(this.sessionOptions, {
+    const documentContext = new DocumentContext(policy, {
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
@@ -1611,12 +1653,18 @@ export class Context {
     plugin: PluginInterface,
     filePath: string,
     source: string,
-    options?: Parameters<NonNullable<PluginInterface['safeParse']>>[2]
-  ): ISafeParseResult {
+    importOptions?: ImportOptions
+  ): { result: ISafeParseResult; settings: SourceOptions | undefined } {
     if (!plugin.safeParse) {
       throw new Error(`Plugin "${plugin.name}" does not support parsing`);
     }
-    return plugin.safeParse(filePath, source, options);
+    const settings = this.opts.sourceOptions?.(filePath, plugin.name);
+    const result = plugin.safeParse(filePath, source, {
+      compilerOptions: this.opts,
+      ...(settings === undefined ? {} : { sourceOptions: settings }),
+      ...(importOptions === undefined ? {} : { importOptions })
+    });
+    return { result, settings };
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
@@ -1647,10 +1695,7 @@ export class Context {
     }
 
     const source = await this.readSource(resolvedPath, locator);
-    const parseResult = this.parseSource(plugin, resolvedPath, source, {
-      importOptions,
-      compilerOptions: this.opts
-    });
+    const { result: parseResult, settings } = this.parseSource(plugin, resolvedPath, source, importOptions);
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -1670,7 +1715,7 @@ export class Context {
       if (!this.document) {
         this.document = document;
       }
-      this.rememberDocumentContext(document, resolvedPath, source, plugin, parseResult.dialectDefaults);
+      this.rememberDocumentContext(document, resolvedPath, source, plugin, this.policyFor(settings, parseResult.dialectDefaults));
 
       this.parsedSourceTrees.set(parsedSourceKey, document);
       if (type === undefined) {
@@ -1831,9 +1876,7 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const result = this.parseSource(plugin, virtualPath, content, {
-      compilerOptions: this.opts
-    });
+    const { result, settings } = this.parseSource(plugin, virtualPath, content);
     if (sourceOffset || sourceEnd !== undefined) {
       const owner = { sourceOffset, sourceEnd };
       result.errors = result.errors.map(error => inAuthoredFile(error, content, owner));
@@ -1861,7 +1904,15 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults, sourceOffset, sourceEnd);
+    this.rememberDocumentContext(
+      document,
+      virtualPath,
+      content,
+      plugin,
+      this.policyFor(settings, result.dialectDefaults),
+      sourceOffset,
+      sourceEnd
+    );
 
     return {
       node: document,

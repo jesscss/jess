@@ -416,10 +416,14 @@ describe('V19 one-evaluator projection ratchet', () => {
     // placing is placed in every scope (one `expanding` set in the planner and the
     // walk), so a sheet that imports itself through a nested scope ends; a bubbled
     // at-rule's context splits as its rule's header does (`composedSplitFlags`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(575);
+    // +4 functions and +1 `new WeakMap` (owner 2026-10-07, ledger C19: each file
+    // answers its own resolved settings): `modes` follows the source owner across
+    // a document boundary (`withPolicy`, `inDocument`), seeded once per walk
+    // (`initialPolicy`), with one `modes` object per policy (`modesOf`, `policyModes`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(579);
     expect(occurrences(/new Map/gu)).toBe(91);
     expect(occurrences(/new Set/gu)).toBe(44);
-    expect(occurrences(/new WeakMap/gu)).toBe(10);
+    expect(occurrences(/new WeakMap/gu)).toBe(11);
     expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
