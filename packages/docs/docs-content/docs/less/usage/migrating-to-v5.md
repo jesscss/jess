@@ -285,7 +285,7 @@ This is a breaking change from older Less behavior, but it matches a more predic
 
 ### Values and math
 
-Most values compile exactly as before. These are the changes you can see in the output. For comparisons and guards, see the evaluation table in [Migrating Less 4.x → 5.x](./less-v5-breaking-changes#evaluation-differences-comparison-truthiness-arguments).
+Most values compile exactly as before. These are the changes you can see in the output. For comparisons and guards, see the evaluation table in [Migrating Less 4.x → 5.x](../guides/migrating-less-4-to-5#evaluation-differences-comparison-truthiness-arguments).
 
 **A slash between values is spaced.** A `/` that does not divide is written with a space on each side, like the other separators: `font: bold 12px/1.5 sans-serif` gives `font: bold 12px / 1.5 sans-serif`, and `16/9` gives `16 / 9`. The spaces mean nothing to CSS. See [Value & Separator Formatting](../advanced/value-formatting).
 
