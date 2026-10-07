@@ -240,6 +240,27 @@ describe('Less math boundaries', () => {
       .toBe('.x { w: hsl(210, percentage((20 / 20)), 50%); }');
   });
 
+  /*
+   * Ledger F8: math written OUTSIDE a math function is the same computation when
+   * a `calc()` reads it — through a variable, a group or a call argument. The
+   * `calc()` keeps its own operations as written; it does not make another
+   * operation less strict, nor silence the warning `preserve` owes the author.
+   */
+  it('answers unitMode for math a calc() reads but did not write', async () => {
+    for (const source of [
+      '@x: 1px + 1em; .x { w: calc(@x * 2); }',
+      '@x: (1px * 2px); .x { w: calc(100% - @x); }',
+      '.x { w: calc(1px + foo(2px + 3em)); }'
+    ]) {
+      await expect(render(source, { unitMode: 'strict' }), source).rejects.toThrow('Invalid unit arithmetic');
+      const { warnings } = await new Compiler({ quiet: true })
+        .renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+      expect(warnings.map(w => w.code), source).toEqual(['eval/unexpressible-unit']);
+    }
+    expect(await render('@w: (10px + 2em); .x { w: calc(100% - @w); k: @w; }', { unitMode: 'loose' }))
+      .toBe('.x { w: calc(100% - 12px); k: 12px; }');
+  });
+
   it('validates the units of every slash-list side, as it does a lone operation', async () => {
     await expect(render('.x { w: 2px*3px/1px; }', { unitMode: 'strict' })).rejects.toThrow('Invalid unit arithmetic');
     await expect(render('.x { w: 2px*3px; }', { unitMode: 'strict' })).rejects.toThrow('Invalid unit arithmetic');

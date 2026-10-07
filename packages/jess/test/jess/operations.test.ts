@@ -219,6 +219,32 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
 
     // A comparison of two units that do not convert: the comparison itself.
     await expect(at('.a {\n  k: $(1em > 1px);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:8']);
+
+    // Inside a math function, the same operation inside the `$( … )`.
+    await expect(at('.a {\n  k: calc(100% - $(1px + 3em));\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:24']);
+    await expect(at('.a {\n  k: calc(100% - $(1px * 2px));\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:24']);
+  });
+
+  it('a `$( … )` that a math function reads is the same computation (ledger F8)', async () => {
+    /*
+     * `$( … )` is the opt-in to compute, wherever it stands: its math is not
+     * written inside the `calc()` around it, so the `calc()` does not make it
+     * any less strict, and a variable holding it answers the same wherever it
+     * is read. A `calc()` used to keep such math as a silent `calc(…)` in
+     * every rung, invalid CSS included (`calc(100% - calc(1px * 2px))`).
+     */
+    const inCalc = ['calc(100% - $(1px + 3em))', 'calc(100% - $(1px * 2px))', 'calc(100% - $(1 / 2px))'];
+    for (const expr of inCalc) {
+      for (const mode of [undefined, 'strict'] as const) {
+        await expect(valueIn(expr, mode), `${expr} under ${mode ?? 'the default'}`).rejects.toMatchObject({
+          code: 'eval/invalid-unit-arithmetic'
+        });
+      }
+      await expect(warningsIn(expr, 'preserve'), `${expr} under preserve`).resolves.toEqual(['eval/unexpressible-unit']);
+    }
+    await expect(body('$x: $(1px + 3em); k: calc(100% - $x);')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+    await expect(valueIn('calc(100% - $(1px + 3em))', 'loose')).resolves.toBe('calc(100% - 4px)');
+    await expect(valueIn('calc(100% - $(1px + 3em))', 'preserve')).resolves.toContain('1px + 3em');
   });
 
   it('an explicit `unitMode` answers exactly what `.less` answers, warning included', async () => {

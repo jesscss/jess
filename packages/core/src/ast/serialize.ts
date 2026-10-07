@@ -3890,8 +3890,11 @@ interface EvalCtx {
   optional?: boolean;
 
   /*
-   * [calc] `calc(…)` nesting depth. While > 0, dimension math is gated to the
-   * safe-unit subset and cross-unit ops preserve as `calc(…)` sub-expressions.
+   * [calc] `calc(…)` nesting depth. It decides how a paren group inside the
+   * math function is spelled ({@link groupComputation}) and admits an operation
+   * no math mode would run there; it never changes the unit answer of an
+   * operation that computes — an operation written inside a math function is
+   * kept by its own `inMathFunction` fact instead.
    */
   calcDepth?: number;
 
@@ -4391,11 +4394,11 @@ function validateValueGroupUnits(
 
   /*
    * §4.7 — the other two rungs, at the same boundary and on the same condition
-   * `strict` throws on. `inCalc` is exempt: an operation the author WROTE inside
-   * a math function is preserved because they asked for it (§4.6), not because
-   * we declined to fabricate a unit, so there is nothing to report.
+   * `strict` throws on. An operation the author WROTE inside a math function
+   * never reaches here as an unexpressible value: it is kept as written because
+   * they asked for it (§4.6), not because we declined to fabricate a unit.
    */
-  if (modes.unitMode !== 'strict' && !modes.inCalc) {
+  if (modes.unitMode !== 'strict') {
     const unexpressible = findFinalValue(value, isUnexpressible);
     if (unexpressible !== undefined) {
       warnUnexpressibleUnit(unexpressible, owner, e);
@@ -4436,7 +4439,7 @@ const warnedUnitValues = new WeakSet<Value>();
  * that can say so.
  */
 function warnConsumedKept(operands: ValueGroup, passedOn: EvalValue | undefined, owner: object, e: EvalCtx): void {
-  if (e.modes.unitMode === 'strict' || e.modes.inCalc
+  if (e.modes.unitMode === 'strict'
     || (passedOn !== undefined && !isLiteral(passedOn) && findFinalValue(passedOn, isKept) !== undefined)) {
     return;
   }
@@ -5022,10 +5025,19 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: E
  * lane already wrote back a group's own parens ({@link writtenParens}); an
  * operand that is itself an operation kept as written (a variable holding
  * `4 + 3px`) is grouped by precedence ({@link operandAsWritten}).
+ *
+ * Writing the operand out is where its value is consumed, so it answers the
+ * §4.7 ladder there, as a declaration value or a list member does: a math
+ * function that reads `$(1px * 2px)` or a variable holding `1px + 1em` raises
+ * under `strict` and warns under `preserve` (ledger F8).
  */
-function keptOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
+function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: EvalCtx): string {
+  if (isLiteral(value)) {
+    return value;
+  }
+  validateValueGroupUnits(value, e.modes, child, e);
   const bytes = emitValue(value);
-  return isLiteral(value) || isValueGroupArray(value) ? bytes : operandAsWritten(value, parent.operator, child === parent.right, bytes);
+  return isValueGroupArray(value) ? bytes : operandAsWritten(value, parent.operator, child === parent.right, bytes);
 }
 
 /**
@@ -5474,7 +5486,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const bytes = `${keptOperand(node, node.left, values[0]!)} ${node.operator} ${keptOperand(node, node.right, values[1]!)}`;
+          const bytes = `${keptOperand(node, node.left, values[0]!, e)} ${node.operator} ${keptOperand(node, node.right, values[1]!, e)}`;
 
           /*
            * An operation preserved because it was authored inside a math
@@ -5490,17 +5502,21 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       const ev = e.ev;
 
-      // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
+      /*
+       * Operands are materialized TYPED (tag sourced from the parse), not
+       * re-sniffed. An operation that operates was not written inside a math
+       * function, so a `calc()` that reads its value — through a `$( … )` or a
+       * variable — does not change how it computes: under `strict` two units
+       * that do not convert still raise here, and under `preserve` the kept
+       * `calc(…)` still reaches the boundary that warns about it (ledger F8).
+       */
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
-
-      // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
-      const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
       return combineAll([l, r], (values) => {
         const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
         const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
-          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m, node.unitlessAdoptsUnit), node);
+          return rememberUnitOwner(ev.operate(node.operator, lv, rv, e.modes, node.unitlessAdoptsUnit), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }

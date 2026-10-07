@@ -485,24 +485,6 @@ function spliceInner(inner: string): string {
 }
 
 /**
- * less.js calc math: inside `calc(…)` only a "safe" dimension op computes — a
- * same-unit `+`/`-`, a `*` with a unitless side, or a `/` with a unitless RHS.
- * A cross-unit op is preserved verbatim as a `calc(…)` sub-expression.
- */
-function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
-  if (op === '+' || op === '-') {
-    return a.unit === b.unit;
-  }
-  if (op === '*') {
-    return !a.unit || !b.unit;
-  }
-  if (op === '/') {
-    return !b.unit;
-  }
-  return true;
-}
-
-/**
  * The keywords `operate` produced for an operation `preserve` kept unevaluated:
  * a non-convertible `+`/`-` spelled as `calc(…)` (V18), a unitless `+`/`-`
  * kept as written (owner 2026-10-06), and every keyword composed from one —
@@ -591,11 +573,15 @@ export function groupAsWritten(v: Value): Value {
  * Binary operation. Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
  *   2. an un-operable keyword operand → preserve source `l op r`,
- *   3. inside `calc(…)`, a cross-unit dimension op → flat `calc(l op r)`,
- *   4. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
- *   5. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
+ *   3. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
+ *   4. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
  *      `calc(l op r)` fallback, or the bare `l op r` for a unitless `+`/`-`
  *      operand, which `calc()` cannot spell either ({@link UnitlessSumError}).
+ *
+ * Where the operation's value is read does not enter: an operation written
+ * inside a math function never reaches here (its `inMathFunction` fact keeps it
+ * as written), and any other operation — inside a `$( … )` or a variable that a
+ * `calc()` reads — answers `unitMode` exactly as it does anywhere else.
  *
  * `unitlessAdoptsUnit` is the operation node's dialect fact
  * (`Operation.unitlessAdoptsUnit`, nodes.ts); omitted, it is the CSS and
@@ -649,15 +635,6 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
   // Guard 2: an un-operable keyword operand → preserve source.
   if (left.type === 'Keyword' || right.type === 'Keyword') {
     return composedKeyword(`${operandAsWritten(left, op, false)} ${op} ${operandAsWritten(right, op, true)}`, left, right, op);
-  }
-
-  /*
-   * Guard 3: inside calc, a cross-unit dimension op does NOT collapse on raw
-   * magnitudes — it is preserved as a flat `calc(l op r)` sub-expression.
-   */
-  if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
-    && !calcSafe(op, left, right)) {
-    return makeKeyword(`calc(${spliceOperand(left)} ${op} ${spliceOperand(right)})`);
   }
 
   /*

@@ -1047,7 +1047,10 @@ demanded an expressible result whatever `unitMode` said. Now:
 - **The `.jess` default is `unitMode: 'strict'`.** `$(1px + 3em)` (two units
   that do not convert), `$(1px * 2px)` and `$(1 / 2px)` (a unit CSS cannot
   express) are errors (`eval/invalid-unit-arithmetic`), located at the
-  operation inside the `$( … )` that wrote it, as a Less operation's are.
+  operation inside the `$( … )` that wrote it, as a Less operation's are. That
+  holds wherever the value is read: `calc(100% - $(1px + 3em))` and a `$x`
+  holding the `$( … )` read inside `calc()` are the same error, because the
+  math is the `$( … )`'s, not the `calc()`'s (§4.6; ledger F8).
 - **`strict` keeps its Less 4.x `strictUnits` meaning** (owner 2026-10-06): a
   unitless number is not a unit, so it adopts the other operand's unit in
   `+` and `-` in every mode. `$(1 + 2px)` is `3px` and `$(3px - 1)` is `2px`
