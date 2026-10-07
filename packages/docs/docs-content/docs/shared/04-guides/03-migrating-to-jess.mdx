@@ -182,6 +182,13 @@ Use:
 SCSS variable math keeps the `$` variable spelling inside the Jess expression,
 for example `$width + 1` lowers to `$($width + 1)`.
 
+Math is converted as written, units included: `1px + 1em` becomes `$(1px + 1em)`.
+Once a file is `.jess`, it follows the `.jess` default, `unitMode: 'strict'`, so math
+mixing two units that do not convert stops the compile there, where Less kept it as
+`calc(1px + 1em)` with a warning. Fix the math, write `calc(1px + 1em)` when the
+browser should resolve it, or set `unitMode: 'preserve'` to keep Less's behaviour. A
+`.less` file a `.jess` file imports keeps the Less default.
+
 #### Sass-to-Jess
 
 <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
