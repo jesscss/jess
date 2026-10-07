@@ -930,7 +930,12 @@ describe('StyleImport', () => {
     }))).resolves.toEqual({ css: 'body {\n  width: 100%;\n}\n' });
   });
 
-  it('keeps an async duplicate import inside nested @media ahead of a later sibling', async () => {
+  /*
+   * The `@media` block is a scope of its own, so its import places the sheet there too
+   * (import-once counts only a copy in the same scope: ledger J14 as amended,
+   * orchestrator judgment under owner delegation 2026-10-07).
+   */
+  it('keeps an async import of a sheet the root placed inside nested @media, ahead of a later sibling', async () => {
     const imported = stylesheet([rule('.imported', [decl('background', color('green'))])]);
     const importNode = () => authoredImport('@import', quoted('"imported.less"', 'imported.less', '"', false));
     const document = stylesheet([
@@ -947,7 +952,7 @@ describe('StyleImport', () => {
       importDocument: ({ specifier }) => Promise.resolve(specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined)
     })).resolves.toEqual({
       css: '.imported {\n  background: green;\n}\n'
-        + '@media (max-width: 768px) {\n  .mobile {\n    color: red;\n  }\n}\n'
+        + '@media (max-width: 768px) {\n  .imported {\n    background: green;\n  }\n  .mobile {\n    color: red;\n  }\n}\n'
         + '.container {\n  .nested {\n    color: blue;\n  }\n}\n'
     });
   });

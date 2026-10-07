@@ -15,17 +15,17 @@ async function render(source: string, less: Record<string, unknown> = {}): Promi
 describe('typed reads, not byte scans', () => {
   /*
    * A quoted string's quote is syntax, so its content is the path. An escaped
-   * string is opaque (V22): no URL rewrite reaches into it, directly or through
-   * a variable — rewriting `url(~"'b.png'")` wrote the bad-url token
-   * `url(root/'b.png')` (orchestrator judgment under owner delegation 2026-10-06).
+   * string is opaque (V22): no URL option reaches into it, directly or through
+   * a variable — `rootpath` wrote the bad-url token `url(root/'b.png')` and
+   * `urlArgs` the invalid `url('b.png'?v=1)` (orchestrator judgments under owner
+   * delegation 2026-10-06 and 2026-10-07).
    */
   it('transforms url(@var) by the string the variable holds, never an escaped body', async () => {
     expect(await render('@q: "a.png"; @e: ~"\'b.png\'"; .x { q: url(@q); e: url(@e); d: url(~"\'b.png\'"); f: url(~"b.png"); }', { rootpath: 'root/' }))
       .toBe('.x { q: url("root/a.png"); e: url(\'b.png\'); d: url(\'b.png\'); f: url(b.png); }');
 
-    // Only the path is left alone: URL-only policy such as `urlArgs` still applies to an escaped body.
-    expect(await render('@base: ~"img"; .x { a: url(~"@{base}/x.png"); b: url(@base); c: url(~"./y.png"); }', { rootpath: 'root/', urlArgs: 'v=1', rewriteUrls: 'all' }))
-      .toBe('.x { a: url(img/x.png?v=1); b: url(img?v=1); c: url(./y.png?v=1); }');
+    expect(await render('@base: ~"img"; @e: ~"\'e.png\'"; .x { a: url(~"@{base}/x.png"); b: url(@base); c: url(~"./y.png"); d: url(~"\'e.png\'"); e: url(@e); q: url("q.png"); }', { rootpath: 'root/', urlArgs: 'v=1', rewriteUrls: 'all' }))
+      .toBe('.x { a: url(img/x.png); b: url(img); c: url(./y.png); d: url(\'e.png\'); e: url(\'e.png\'); q: url("root/q.png?v=1"); }');
   });
 
   it('names an @@ lookup by the string content of its name', async () => {

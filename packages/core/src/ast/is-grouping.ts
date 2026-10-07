@@ -305,6 +305,37 @@ function irCompoundHasPseudoElement(compound: Compound): boolean {
   return false;
 }
 
+/**
+ * Whether the last compound of an extend IR branch carries a pseudo-element followed
+ * by more (`.a::before:hover`, `:is(.a, .z)::before:hover`): a branch Chromium drops
+ * along with every selector list that holds it. Read from the parser tokens, as
+ * {@link irEndsWithPseudoElement} is; a simple standing for a substituted compound
+ * counts where that compound carries one followed by more, or ends with one and a
+ * simple follows it.
+ */
+export function irPseudoElementCarriesSuffix(branch: Branch): boolean {
+  return irCompoundCarriesSuffix(branch.segments[branch.segments.length - 1]!.compound);
+}
+
+function irCompoundCarriesSuffix(compound: Compound): boolean {
+  const value = compound.value;
+  for (let i = 0; i < value.length; i++) {
+    const s = value[i]!;
+    const src = s.t === 'text' ? s.src : undefined;
+    if (src === undefined) {
+      continue;
+    }
+    if ('value' in src) {
+      if (irCompoundCarriesSuffix(src) || (i < value.length - 1 && irCompoundHasPseudoElement(src))) {
+        return true;
+      }
+    } else if (i < value.length - 1 && tokenPseudoElement(src) === true) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Whether a parsed branch carries a pseudo-element in one of its own compounds. */
 function hasPseudoElement(branch: SelectorBranch): boolean {
   if (branch.type === 'SimpleSelector' || branch.type === 'PseudoSelector') {

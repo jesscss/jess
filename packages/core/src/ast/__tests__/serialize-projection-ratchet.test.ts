@@ -398,9 +398,27 @@ describe('V19 one-evaluator projection ratchet', () => {
     // with the `.jess` printer (`isAuthoredGroupExpression`).
     // +1 function: the group a computation boundary holds is judged at the
     // boundary, not by the `calc()` that reads it (`heldByBoundary`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(566);
-    expect(occurrences(/new Map/gu)).toBe(87);
-    expect(occurrences(/new Set/gu)).toBe(43);
+    // +4 functions, +4 `new Map`, -1 `new Set` (ledger J14 as amended,
+    // orchestrator judgment under owner delegation 2026-10-07): import-once is
+    // kept per scope, one map of sheets per scope in the planner and the walk
+    // (`importIsNoOp`), so each scope's copy of a sheet is its own extend
+    // placement; the walk records the rules of a placement it issued
+    // (`placedStatically`, the `walkPlacements` set), and a rule an import body
+    // queues after its parent's block emits under that import's placement
+    // (`withImportPlacement`, `queueContainer`).
+    // +3 functions (owner principle 2026-10-06, O17; orchestrator judgment under
+    // owner delegation 2026-10-07): a parent unit that carries what followed its
+    // `&` past a pseudo-element is a rule of its own (`splitFlags`, from the
+    // composed list's flags or an extended header's `suffixedByRule`,
+    // `extendedSplitFlags`), written when the walk is done (`splitOwnRules`).
+    // +2 functions, +2 `new Set`: a mixin call or loop iteration imports into the
+    // scope it runs in (`importScopeOf`), and a sheet an enclosing import is still
+    // placing is placed in every scope (one `expanding` set in the planner and the
+    // walk), so a sheet that imports itself through a nested scope ends; a bubbled
+    // at-rule's context splits as its rule's header does (`composedSplitFlags`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(575);
+    expect(occurrences(/new Map/gu)).toBe(91);
+    expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

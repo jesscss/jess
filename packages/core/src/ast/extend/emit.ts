@@ -49,7 +49,7 @@ import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import type { Combinator } from '../node.js';
 import { branchHasAmp, composePath } from './compose.js';
 import { mergeCompound, NO_SIMPLES } from './conflict.js';
-import { extendBranchSpecificity, nestingGroupKey, partitionGroups } from '../is-grouping.js';
+import { extendBranchSpecificity, irPseudoElementCarriesSuffix, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
@@ -108,6 +108,7 @@ export interface NestedRulePlan {
 export interface ExtendPlacementResults {
   flatByRule: Map<Ruleset, string[]>;
   hiddenByRule: Map<Ruleset, boolean[]>;
+  suffixedByRule: Map<Ruleset, ReadonlySet<string>> | null;
   nestedPlan: Map<Ruleset, NestedRulePlan>;
   hoistHeader: Map<Ruleset, string[]>;
   visibleReferenceAtRules: Set<AtRuleBlock> | null;
@@ -130,6 +131,14 @@ export interface ExtendResults {
    * hidden branch (the common case). A rule whose mask is all-`true` emits nothing.
    */
   hiddenByRule: Map<Ruleset, boolean[]>;
+
+  /**
+   * FLAT mode: per rule, the branches of its `flatByRule` header whose last compound
+   * carries a pseudo-element followed by more ({@link irPseudoElementCarriesSuffix}),
+   * by their emitted text. The serializer writes each in a rule of its own, since an
+   * extended header is the extend's list (ledgers O10 and O17). Null until a rule has one.
+   */
+  suffixedByRule: Map<Ruleset, ReadonlySet<string>> | null;
 
   /** Reference-imported at-rule containers with at least one visible descendant. */
   visibleReferenceAtRules: Set<AtRuleBlock> | null;
@@ -988,6 +997,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
   const staticProjection: ExtendPlacementResults = {
     flatByRule,
     hiddenByRule,
+    suffixedByRule: null,
     nestedPlan,
     hoistHeader,
     visibleReferenceAtRules: null,
@@ -1004,6 +1014,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
       projection = {
         flatByRule: new Map(),
         hiddenByRule: new Map(),
+        suffixedByRule: null,
         nestedPlan: new Map(),
         hoistHeader: new Map(),
         visibleReferenceAtRules: null,
@@ -1177,10 +1188,15 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
        */
       let hiddenMask: boolean[] | null = null;
       let hasVisibleBranch = false;
+      let suffixed: Set<string> | null = null;
       const headerTexts: string[] = [];
       for (let index = 0; index < compacted.length; index++) {
         const branch = compacted[index]!;
-        headerTexts.push(branchOut(branch));
+        const text = branchOut(branch);
+        headerTexts.push(text);
+        if (irPseudoElementCarriesSuffix(branch)) {
+          (suffixed ??= new Set()).add(text);
+        }
         if (branch.hidden === true) {
           if (hiddenMask === null) {
             hiddenMask = [];
@@ -1197,6 +1213,9 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         }
       }
       projection.flatByRule.set(s.rule, headerTexts);
+      if (suffixed !== null) {
+        (projection.suffixedByRule ??= new Map()).set(s.rule, suffixed);
+      }
       if (hiddenMask !== null) {
         projection.hiddenByRule.set(s.rule, hiddenMask);
       }
@@ -1571,6 +1590,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
   return {
     flatByRule,
     hiddenByRule,
+    suffixedByRule: staticProjection.suffixedByRule,
     visibleReferenceAtRules: staticProjection.visibleReferenceAtRules,
     visibleReferenceRuleAncestors: staticProjection.visibleReferenceRuleAncestors,
     nestedPlan,

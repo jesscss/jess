@@ -229,6 +229,30 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
    */
   ['tests-config/math-parens-division/parens.less', [
     ['  border-radius-keep: 8px / 4 + 3px;\n', '  border-radius-keep: 8px / 7px;\n']
+  ]],
+
+  /*
+   * Import-once counts only a copy placed in the same scope (ledger J14 as amended,
+   * orchestrator judgment under owner delegation 2026-10-07): a sheet a copy in
+   * another scope already placed renders where the author imports it again. The
+   * goldens hold Less 4.x's document-wide import-once, which dropped these copies.
+   */
+  ['tests-config/strict-imports/strict-imports.less', [
+    [
+      '@media (max-width: 768px) {\n  .mobile {\n    color: red;\n  }\n}\n.container {\n  .nested {',
+      [
+        '@media (max-width: 768px) {\n  .imported {\n    background: green;\n  }\n  .mobile {\n    color: red;\n  }\n}',
+        '.container {\n  .imported {\n    background: green;\n  }\n  .nested {'
+      ].join('\n')
+    ]
+  ]],
+
+  // `import-test-f.less` imports `import-test-e` at the root after `@media screen` placed a copy.
+  ['tests-unit/import/import.less', [
+    [
+      '.mixin {\n  height: 10px;\n  color: red;\n}\n.test-rule-f {',
+      '.mixin {\n  height: 10px;\n  color: red;\n}\nbody {\n  width: 100%;\n}\n.test-rule-f {'
+    ]
   ]]
 ]);
 
