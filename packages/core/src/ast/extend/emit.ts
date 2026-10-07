@@ -108,7 +108,7 @@ export interface NestedRulePlan {
 export interface ExtendPlacementResults {
   flatByRule: Map<Ruleset, string[]>;
   hiddenByRule: Map<Ruleset, boolean[]>;
-  suffixedByRule: Map<Ruleset, ReadonlySet<string>> | null;
+  suffixedByRule: Map<Ruleset, Set<string>> | null;
   nestedPlan: Map<Ruleset, NestedRulePlan>;
   hoistHeader: Map<Ruleset, string[]>;
   visibleReferenceAtRules: Set<AtRuleBlock> | null;
@@ -133,12 +133,14 @@ export interface ExtendResults {
   hiddenByRule: Map<Ruleset, boolean[]>;
 
   /**
-   * FLAT mode: per rule, the branches of its `flatByRule` header whose last compound
-   * carries a pseudo-element followed by more ({@link irPseudoElementCarriesSuffix}),
-   * by their emitted text. The serializer writes each in a rule of its own, since an
-   * extended header is the extend's list (ledgers O10 and O17). Null until a rule has one.
+   * Per rule, the branches of a header the extend wrote — its `flatByRule`, nested
+   * (`nestedPlan`) or hoisted header — whose last compound carries a pseudo-element
+   * followed by more ({@link irPseudoElementCarriesSuffix}), by their emitted text.
+   * The serializer writes each in a rule of its own in every output mode, since an
+   * extended header is the extend's list (ledgers O10 and O17). Null until a rule
+   * has one.
    */
-  suffixedByRule: Map<Ruleset, ReadonlySet<string>> | null;
+  suffixedByRule: Map<Ruleset, Set<string>> | null;
 
   /** Reference-imported at-rule containers with at least one visible descendant. */
   visibleReferenceAtRules: Set<AtRuleBlock> | null;
@@ -1027,6 +1029,31 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
   const projectionFor = (subject: PlanSubject): ExtendPlacementResults =>
     projectionForPlacement(subject.placement);
 
+  /**
+   * The emitted texts of `branches`, a header the extend wrote for `s`, noting in
+   * `suffixedByRule` each branch that carries a pseudo-element followed by more.
+   */
+  const extendedHeaderTexts = (s: PlanSubject, branches: readonly Branch[]): string[] => {
+    const texts: string[] = [];
+    let suffixed: Set<string> | undefined;
+    for (const branch of branches) {
+      const text = branchOut(branch);
+      texts.push(text);
+      if (irPseudoElementCarriesSuffix(branch)) {
+        if (suffixed === undefined) {
+          const byRule = projectionFor(s).suffixedByRule ??= new Map();
+          suffixed = byRule.get(s.rule);
+          if (suffixed === undefined) {
+            suffixed = new Set();
+            byRule.set(s.rule, suffixed);
+          }
+        }
+        suffixed.add(text);
+      }
+    }
+    return texts;
+  };
+
   /*
    * LAZY + MEMOIZED composePath. `composePath(s.path)` (full ancestor fold + Branch-
    * IR allocation) is THE expensive primitive; it is computed at most once per
@@ -1188,15 +1215,9 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
        */
       let hiddenMask: boolean[] | null = null;
       let hasVisibleBranch = false;
-      let suffixed: Set<string> | null = null;
-      const headerTexts: string[] = [];
+      const headerTexts = extendedHeaderTexts(s, compacted);
       for (let index = 0; index < compacted.length; index++) {
         const branch = compacted[index]!;
-        const text = branchOut(branch);
-        headerTexts.push(text);
-        if (irPseudoElementCarriesSuffix(branch)) {
-          (suffixed ??= new Set()).add(text);
-        }
         if (branch.hidden === true) {
           if (hiddenMask === null) {
             hiddenMask = [];
@@ -1213,9 +1234,6 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         }
       }
       projection.flatByRule.set(s.rule, headerTexts);
-      if (suffixed !== null) {
-        (projection.suffixedByRule ??= new Map()).set(s.rule, suffixed);
-      }
       if (hiddenMask !== null) {
         projection.hiddenByRule.set(s.rule, hiddenMask);
       }
@@ -1454,7 +1472,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
        * prefix, so a child comma-list under one parent DOES compact across segments
        * (extend-exact `:is(<parent>) :is(.replace, .c)`).
        */
-      const hoisted = groupedBranches(siblingCompact(nestingFold(flatBySubject.get(s)!, s, rawOf(s), guardedNesting), true), true).map(branchOut);
+      const hoisted = extendedHeaderTexts(s, groupedBranches(siblingCompact(nestingFold(flatBySubject.get(s)!, s, rawOf(s), guardedNesting), true), true));
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
 
       /*
@@ -1488,7 +1506,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
        */
       const solved = flatBySubject.get(s)!;
       const subPath = cross.drop > 0 ? solved.map(b => dropLeadingSegs(b, cross.drop)) : solved;
-      const header = groupedBranches(siblingCompact(subPath, true), cross.drop === 0).map(branchOut);
+      const header = extendedHeaderTexts(s, groupedBranches(siblingCompact(subPath, true), cross.drop === 0));
       projectionFor(s).nestedPlan.set(s.rule, {
         flatten: true, hoistNested: true, header, splits: [], hoistBubble: cross.bubble
       });
@@ -1579,9 +1597,15 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         }
       }
     }
+
+    /* A list the author wrote and no extend rewrote is left as written (ledger O10). */
+    const grouped = groupedBranches(header, s.parent === null);
+    const rewritten = asTop
+      ? projectionFor(s).flatByRule.has(s.rule)
+      : grouped.length !== s.ownLocal.length || grouped.some((b, i) => branchOut(b) !== branchOut(s.ownLocal[i]!));
     projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,
-      header: groupedBranches(header, s.parent === null).map(branchOut),
+      header: rewritten ? extendedHeaderTexts(s, grouped) : grouped.map(branchOut),
       splits: dedupBranchTexts(splits).map(t => [t]),
       collapseTransparent: collapsedParent.has(s.rule)
     });

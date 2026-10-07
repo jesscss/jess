@@ -280,8 +280,16 @@ the extend engine both call it.
   (`:is(.c, .z) .d` + `#b:extend(.c all)` → `:is(.c, .z) .d, #b .d`; `.y` joins:
   `:is(.c, .z, .y) .d`; `.a :is(.c, .z)` + `.p .q:extend(.c all)` →
   `.a :is(.c, .z), .a .p .q`).
-- KNOWN GAPS: a pseudo-element member written as its own branch makes the whole
-  rule invalid, as in 4.x (the forgiving `:is()` kept the other branches). SCSS `@extend` uses the same Less 4.x expansion, not
+- A member written as its own branch that leaves a pseudo-element followed by more
+  (`.a .c:hover` + `.p::before:extend(.c all)` → `.a .p::before:hover`) gets a RULE OF
+  ITS OWN, its declarations written again, in every output mode, nested included
+  (orchestrator judgment under owner delegation 2026-10-07, principle O17; the ledger
+  O10 split): Chromium drops such a selector and every list holding it. The plan
+  records every extended header's suffixed branches (`emit.ts` `extendedHeaderTexts`,
+  `suffixedByRule`) — flat, nested and hoisted alike — and both writers split them
+  (`serialize.ts` `SplitBlock`, `writeNestedRule`, `splitOwnRules`, inner blocks
+  first). A header no extend rewrote is left as written.
+- KNOWN GAPS: SCSS `@extend` uses the same Less 4.x expansion, not
   dart-sass's weave — deferred Sass-parity work, tracked with its repro in
   `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not pinned").
 

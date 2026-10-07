@@ -115,6 +115,8 @@ No flatten style folds a child branch with a pseudo-element into `:is()`. A pare
 :is(.b, .c):hover { color: red; }
 ```
 
+An extend does the same, in nested output too: `.a .c:hover { color: red; } .p::before:extend(.c all) {}` gives `.a .c:hover` and `.a .p::before:hover` a rule each, where Less 4.x wrote them as one list.
+
 See [Selector Compaction](../advanced/selector-compaction) for every rule.
 
 ### At-rule variables require interpolation

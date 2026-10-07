@@ -105,6 +105,25 @@ first part and those after it to its last part (`.a > .m.c` extended by `.p .q` 
 written between them: the order of selectors inside one rule changes neither the
 cascade nor specificity. Groups appear in the order their first member appears.
 
+A selector written out this way that leaves a pseudo-element followed by more — a
+pseudo-class after `::before` — gets a rule of its own, with the declarations written
+again. Chromium drops such a selector, and a selector list that holds it drops with it,
+so the other selectors keep matching only in a rule without it:
+
+```less
+.a .c:hover { color: red; }
+.p::before:extend(.c all) {}
+```
+
+```css
+.a .c:hover {
+  color: red;
+}
+.a .p::before:hover {
+  color: red;
+}
+```
+
 This holds in **every** output mode — nested, `'native'` and `'compact'`. Only the
 nesting fold of `'compact'` groups selectors of different specificity.
 

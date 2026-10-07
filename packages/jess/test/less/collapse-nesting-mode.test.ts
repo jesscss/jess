@@ -299,6 +299,26 @@ describe('collapseNesting native vs compact', () => {
     expect(unrelated).toContain(':is(.a, #b):hover {');
   });
 
+  /*
+   * An extend's expanded placement that leaves a pseudo-element followed by more
+   * (`.a .p::before:hover`) gets a rule of its own in every output mode, nested
+   * included, so Chromium does not drop the list holding it (SETTLED — orchestrator
+   * judgment under owner delegation 2026-10-07, principle O17; ledger O10).
+   */
+  it('writes an extended branch with a pseudo-element followed by more as its own rule, nested output included', async () => {
+    const oneLine = async (src: string, mode: false | 'native' | 'compact'): Promise<string> => (await render(src, mode)).replace(/\s+/g, ' ').trim();
+    for (const mode of [false, 'native', 'compact'] as const) {
+      await expect(oneLine('.a .c:hover { x: 1 } .p::before:extend(.c all) {}', mode), String(mode))
+        .resolves.toBe('.a .c:hover { x: 1; } .a .p::before:hover { x: 1; }');
+      await expect(oneLine('.a .c:hover { x: 1 } .q:extend(.c all) {} .p::before:extend(.c all) {}', mode), String(mode))
+        .resolves.toBe('.a :is(.c, .q):hover { x: 1; } .a .p::before:hover { x: 1; }');
+    }
+    await expect(oneLine('.x { .c:hover { x: 1; .d { y: 1 } } } .p::before:extend(.c all) {}', false))
+      .resolves.toBe('.x { .c:hover { x: 1; .d { y: 1; } } .p::before:hover { x: 1; .d { y: 1; } } }');
+    await expect(oneLine('.x { .a::before:hover, .c:hover { x: 1 } } .q:extend(.zz) {}', false))
+      .resolves.toBe('.x { .a::before:hover, .c:hover { x: 1; } }');
+  });
+
   it(`'false' preserves authored nesting (no :is())`, async () => {
     const out = await render('.a, .b { .c, .d { x: 1 } }', false);
     expect(out).not.toContain(':is(');

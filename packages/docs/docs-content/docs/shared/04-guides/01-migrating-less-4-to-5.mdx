@@ -142,15 +142,18 @@ when you need wider tooling support (`true` is a deprecated spelling of
 `:is()` (`.a, #b { .c {} }` → `:is(.a, #b) .c`), as native nesting does, where
 Less 4.x wrote `.a .c, #b .c`.
 
-In flattened output, a selector list that nesting or an extend writes never joins a
-selector Chromium drops to the ones it keeps. A parent ending with a pseudo-element, given
+A selector list that nesting or an extend writes never joins a selector Chromium drops
+to the ones it keeps; for an extend this holds in nested output too. A parent ending with a pseudo-element, given
 a user-action pseudo-class by `&`, gets a rule of its own, inside an at-rule bubbled out of
 the rule too: `.a::before, .b { &:hover { color: red } }` flattens to
 `.a::before:hover { color: red }` and `.b:hover { color: red }`, where Less 4 wrote one
 list, `.a::before:hover, .b:hover`, which Chromium drops whole — `.b:hover` included. An
 extend does the same for a selector with something after its pseudo-element:
 `.b:hover { color: red } .q::after:focus:extend(.b:hover) {}` gives `.b:hover` and
-`.q::after:focus` a rule each. A list you write yourself is left as written.
+`.q::after:focus` a rule each, and so does an `all` extend that places a pseudo-element
+before what follows the match: `.a .c:hover { color: red } .p::before:extend(.c all) {}`
+gives `.a .c:hover` and `.a .p::before:hover` a rule each. A list you write yourself is
+left as written.
 
 <AudienceGate include={['jess']}>
 

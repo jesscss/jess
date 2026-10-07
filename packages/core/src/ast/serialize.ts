@@ -15045,7 +15045,6 @@ function foldDynamicExtends(e: Emit): void {
   }
   let revealed: number[] | null = null;
   const splitBlocks = e.splitBlocks;
-  let splitCursor = 0;
   let foldedSplits: SplitBlock[] | null = null;
   for (const slot of dyn.slots) {
     let visible: string[] | null;
@@ -15096,23 +15095,29 @@ function foldDynamicExtends(e: Emit): void {
     /*
      * [nesting] The rewritten header is the extend's list, and its suffixed branches get
      * rules of their own ({@link splitFlags}): the block the walk registered takes them,
-     * or one is registered now. Slots and registered blocks both ascend by header chunk.
+     * or one is registered now. Registered blocks ascend by header chunk; a nested
+     * rule's slot is recorded after its children's, so it is found by a binary search.
      */
-    if (!slot.nested) {
-      const flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
-      let block: SplitBlock | undefined;
-      if (splitBlocks !== null) {
-        while (splitCursor < splitBlocks.length && splitBlocks[splitCursor]!.header < slot.chunkIndex) {
-          splitCursor++;
+    const flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
+    let block: SplitBlock | undefined;
+    if (splitBlocks !== null) {
+      let lo = 0;
+      let hi = splitBlocks.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (splitBlocks[mid]!.header < slot.chunkIndex) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
         }
-        block = splitBlocks[splitCursor]?.header === slot.chunkIndex ? splitBlocks[splitCursor] : undefined;
       }
-      if (block !== undefined) {
-        block.branches = visible;
-        block.flags = flags ?? NO_SPLIT;
-      } else if (flags !== undefined) {
-        (foldedSplits ??= []).push({ header: slot.chunkIndex, end: slot.blockEnd, indent: slot.indent, branches: visible, flags });
-      }
+      block = splitBlocks[lo]?.header === slot.chunkIndex ? splitBlocks[lo] : undefined;
+    }
+    if (block !== undefined) {
+      block.branches = visible;
+      block.flags = flags ?? NO_SPLIT;
+    } else if (flags !== undefined) {
+      (foldedSplits ??= []).push({ header: slot.chunkIndex, end: slot.blockEnd, indent: slot.indent, branches: visible, flags });
     }
   }
   if (foldedSplits !== null) {
@@ -19220,7 +19225,9 @@ interface SplitBlock {
  * `(reference)` block) is left as it is.
  */
 function splitOwnRules(e: Emit): void {
-  for (const block of e.splitBlocks!) {
+  /* An inner block first (nested output nests them), so an outer block copies a body already split. */
+  const blocks = e.splitBlocks!.sort((a, b) => b.header - a.header);
+  for (const block of blocks) {
     if (e.chunks[block.header] === '') {
       continue;
     }
@@ -23367,7 +23374,8 @@ function writeNestedRule(
    * called as a mixin is spliced under its caller, where it is an ordinary nested
    * rule with its authored header (jess#345), as the flat writer has it.
    */
-  const staticPlan = extendProjection(e)?.nestedPlan.get(rule);
+  const projection = extendProjection(e);
+  const staticPlan = projection?.nestedPlan.get(rule);
   const plan = staticPlan === undefined || reachedViaMixinSplice(frame) ? undefined : staticPlan;
   if (plan?.collapseTransparent) {
     /*
@@ -23476,6 +23484,10 @@ function writeNestedRule(
       : null;
     const header = composeSelectorHeader(e, own, idt, authoredHeader);
 
+    /* [nesting] An extended header's branches that carry a pseudo-element followed by more get rules of their own ({@link SplitBlock}). */
+    const split = plan === undefined ? undefined : extendedSplitFlags(own, projection?.suffixedByRule?.get(rule));
+    let splitBlock: SplitBlock | undefined;
+
     /*
      * Less only coalesces this nested-output root seam after an authored header
      * has been evaluated. Static same-selector root rules remain distinct.
@@ -23497,6 +23509,10 @@ function writeNestedRule(
       }
       const selStart = e.chunks.length;
       headerChunkIndex = e.chunks.length;
+      if (split !== undefined) {
+        splitBlock = { header: headerChunkIndex, end: -1, indent: idt, branches: own, flags: split };
+        (e.splitBlocks ??= []).push(splitBlock);
+      }
       put(e, header);
       if (e.positions) {
         e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.chunks.length, source: srcFile(e) });
@@ -23525,8 +23541,14 @@ function writeNestedRule(
         if (e.positions) {
           e.positions.length = markPos;
         }
+        if (splitBlock !== undefined) {
+          e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(splitBlock), 1);
+        }
       } else {
         emitBlockClose(e, idt, lb);
+        if (splitBlock !== undefined) {
+          splitBlock.end = e.chunks.length;
+        }
         if (e.positions) {
           e.positions.push({ node: rule, type: rule.type, start, end: e.chunks.length, source: srcFile(e) });
         }
