@@ -110,6 +110,26 @@ describe('Jess custom properties', () => {
     expect(() => parse('a { font-family: fn(1,); }')).toThrow(SyntaxError);
   });
 
+  /*
+   * An empty fallback is not a missing one: `var(--x,)` substitutes nothing
+   * when `--x` is unset, `var(--x)` makes the declaration invalid at computed-
+   * value time (css-variables-1 §3). The fallback is the empty `Any` css and
+   * SCSS build for it, so the comma is written back.
+   */
+  it.each([
+    ['a { b: var(--x,); }', 'a {\n  b: var(--x, );\n}\n'],
+    ['a { b: var(--x, ); }', 'a {\n  b: var(--x, );\n}\n'],
+    ['a { b: var(--x, // c\n); }', 'a {\n  b: var(--x, );\n}\n']
+  ])('keeps an empty var() fallback: %j', (source, expected) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'FunctionCall', name: 'var', args: [
+        { value: { type: 'Keyword', src: '--x' } },
+        { value: { type: 'Any', src: '' } }
+      ] } }] }]
+    });
+    expect(serialize(parse(source)).css).toBe(expected);
+  });
+
   it('keeps custom-property block comments as trivia and renders them inline', () => {
     const source = '.x { --a: red/* c */blue; --b: f(a/* inner */b); --c: [a/* square */b]; --d: { x: 1/* curly */ }; }';
     const document = parse(source);
@@ -151,5 +171,29 @@ describe('Jess custom properties', () => {
     ['a { --x: /* c */ red /* d */ !important; }', 'a {\n  --x: /* c */ red /* d */ !important;\n}\n']
   ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
     expect(serialize(parse(source)).css).toBe(expected);
+  });
+
+  /*
+   * CSS has no `//` comment, and a custom-property value is CSS
+   * `<declaration-value>` in every dialect: a `//` after the `:` is value text,
+   * not a comment that hides the `;` after it.
+   */
+  it('reads a `//` that opens a custom-property value as value text', () => {
+    expect(parse('a { --x: //b; c: d; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--x', value: { type: 'Any', src: '//b' } },
+        { type: 'Declaration', name: 'c' }
+      ] }]
+    });
+    expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
+  });
+
+  /*
+   * The other side of that reading: a `//` "comment" that opens a value is now
+   * value text, so a quote in it opens a string that the line ends unclosed (a
+   * bad string, css-syntax-3 §4.3.5). dart-sass rejects this too.
+   */
+  it('rejects an unclosed quote in a `//` that opens a custom-property value', () => {
+    expect(() => parse('a {\n  --x: // don\'t\n    red;\n}')).toThrow();
   });
 });

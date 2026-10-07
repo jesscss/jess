@@ -367,7 +367,8 @@ const whitespace = classifiedTrivia({
 
 /*
  * The gap between a custom property's `:` and its value: whitespace only, so a
- * comment there starts the value (ledger F12). Less's twin adds `//` comments.
+ * comment there starts the value (ledger F12). The Less, SCSS and .jess gaps are
+ * the same table: CSS has no `//` comment, so a `//` there starts the value too.
  */
 const customValueGapTrivia = classifiedTrivia({ whitespace: whitespaceRun });
 

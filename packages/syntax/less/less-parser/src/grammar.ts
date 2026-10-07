@@ -557,13 +557,12 @@ const compoundSelectorTrivia = classifiedTrivia({
 });
 const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
 const customValueCommentTrivia = classifiedTrivia({ blockComment: customValueBlockCommentRun });
-// The trivia between a custom-property declaration's `:` and its value: the
-// whitespace css-syntax-3 §5.5.6 step 3 discards, and Less `//` line comments,
-// which never render. A block comment is not in it (see CustomDeclaration).
-const customValueGapTrivia = classifiedTrivia({
-  whitespace: whitespaceRun,
-  lineComment
-});
+// The trivia before a custom-property value — after a declaration's `:`, a
+// `var()` fallback's `,`, a style query's `:` — is only the whitespace
+// css-syntax-3 §5.5.6 step 3 discards, as in the CSS base. The value is CSS
+// `<declaration-value>`, which has no `//` comment, so a `//` or a block comment
+// there starts the value (see CustomDeclaration).
+const customValueGapTrivia = classifiedTrivia({ whitespace: whitespaceRun });
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.
@@ -2575,6 +2574,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
    * used before .define()"), so `VarFunction` is restated here with the css
    * shape — opener, custom property, optional `, <fallback>` — and Less trivia.
+   * The gap after the comma is the custom-property value's own gap, so a `//`
+   * that opens the fallback is value text (see CustomDeclaration).
    */
   const VarFallback = node(
     'VarFallback',
@@ -2588,7 +2589,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(whitespace),
       g.CustomPropertyValue,
       optional(whitespace),
-      optional(sequence(literal(','), g.VarFallback)),
+      optional(parser({ trivia: customValueGapTrivia }, sequence(literal(','), g.VarFallback))),
       literal(')')
     ),
     (children, _fields, span) => withSourceSpan(funcCall(functionNameFromOpener(children[0]), children.filter(isValueNode)), span)
@@ -2606,10 +2607,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // this tail simply claims it. It mirrors the ordinary-declaration tail exactly:
     // `!`, trivia, `important`.
     //
-    // Only whitespace and `//` line comments are trivia between the colon and
-    // the value, so a block comment written before the first value part
-    // (`--x: /* c */ @{v}`) starts the value and its span, and is replayed in
-    // place rather than after the declaration.
+    // Only whitespace is trivia between the colon and the value, so a block
+    // comment written before the first value part (`--x: /* c */ @{v}`) starts
+    // the value and its span, and is replayed in place rather than after the
+    // declaration; a `//` there is value text (`--x: //b;`), as in CSS.
     sequence(
       g.CustomPropertyName,
       parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)),
@@ -3846,12 +3847,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     IDENT_BOUNDARY,
     { caseInsensitive: true }
   ), literal('('))));
-  const styleQueryDeclaration = sequence(g.CustomPropertyToken, literal(':'), g.CustomValue);
+  const styleQueryDeclaration = sequence(
+    g.CustomPropertyToken,
+    parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue))
+  );
   const styleQuery = node(
     'ContainerStyleQuery',
     // A style() payload is a `<declaration-value>` (css-conditional-5), the same
-    // permissive custom-property value a `--x:` declaration takes (ledger P2): it
-    // is never computed.
+    // permissive custom-property value a `--x:` declaration takes (ledger P2),
+    // after the same whitespace-only gap: it is never computed, and a `//` that
+    // opens it is value text.
     sequence(styleFunctionOpener, styleQueryDeclaration, literal(')')),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
@@ -3864,7 +3869,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const StyleFeature = node(
     'StyleFeature',
-    sequence(routed(), optional(sequence(literal(':'), g.CustomValue))),
+    sequence(routed(), optional(parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const name = keyword(requireToken(children[0]).value);
       const value = children.find(isValueNode);

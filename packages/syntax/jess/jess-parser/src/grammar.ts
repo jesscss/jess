@@ -400,6 +400,7 @@ type SharedSyntax = {
   UnicodeRange: Combinator<ValueNode>;
   Important: Combinator<true>;
   CustomPropertyValue: Combinator<Keyword>;
+  VarFallbackEmpty: Combinator<ValueNode>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   keyframeSelector: Combinator<SimpleSelector>;
 };
@@ -513,11 +514,12 @@ const compoundTrivia = classifiedTrivia({ comment: blockComment });
 const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCommentRun });
 
-/* The gap between a custom property's `:` and its value: whitespace and `//` comments, never a block comment (ledger F12). */
-const customValueGapTrivia = classifiedTrivia({
-  whitespace: rawWhitespace,
-  comment: regex(/\/\/[^\n\r]*/)
-});
+/*
+ * The gap between a custom property's `:` and its value: whitespace only, as in
+ * the css base. The value is CSS `<declaration-value>`, which has no `//`
+ * comment, so a `//` or a block comment there starts the value (ledger F12).
+ */
+const customValueGapTrivia = classifiedTrivia({ whitespace: rawWhitespace });
 
 /*
  * Comments are Jess trivia. Block comments can still survive through the AST
@@ -2465,7 +2467,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       optional(sequence(
         literal(','),
         optional(valueTrivia),
-        optional(g.Value),
+
+        /* An empty fallback is css's empty `Any`, never a missing fallback. */
+        choice(g.Value, g.VarFallbackEmpty),
         optional(valueTrivia)
       )),
       literal(')')
@@ -4771,9 +4775,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.InterpolatedCustomPropertyName,
 
       /*
-       * Only whitespace and `//` comments are trivia between the colon and the
-       * value, so a block comment written before the value's first part starts
-       * the value and stays in place (ledger F12), as in css, Less and SCSS.
+       * Only whitespace is trivia between the colon and the value, so a block
+       * comment written before the value's first part starts the value and
+       * stays in place (ledger F12), and a `//` there is value text, as in css,
+       * Less and SCSS.
        */
       parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)),
       optional(g.Important),

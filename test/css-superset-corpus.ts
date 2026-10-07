@@ -53,20 +53,54 @@ export interface CssConstruct {
 
 /*
  * Shared by the glued `b:is(…)` / `src:local(…)` / `a:not(…)` pins: one cause,
- * three spellings. The spaced forms parse in all four.
+ * four spellings. The spaced forms parse in all four.
  */
 const GLUED_SELECTOR_FUNCTION_DEFECT =
   'css-syntax-3 reads a block item that starts `<ident>:` as a declaration '
-  + 'first and as a nested rule only when that fails. Less tries the nested '
-  + 'rule first: `b:is(` reads as a type selector with a `:is()` pseudo, the '
-  + 'argument fails as a selector, and a failed known case of the pseudo '
-  + '`dispatch()` is a committed failure in parseman, so the declaration arm '
-  + 'never runs. REGRESSION for the `/word/` spellings: until the G37 ruling '
+  + 'first and as a nested rule only when that fails. Less sends a spaced '
+  + '`<ident>: ` straight to the declaration (its early exit) and tries the '
+  + 'nested rule first for a glued head, the reading Less sources use most '
+  + '(`a:hover {`). `b:is(` then reads as a type selector with a `:is()` '
+  + 'pseudo, the argument fails as a selector, and a failed known case of the '
+  + 'pseudo `dispatch()` is a committed failure in parseman, so the declaration '
+  + 'arm never runs. REGRESSION for the `/word/` spellings: until the G37 ruling '
   + 'removed slashed-combinator recognition (37d92989a), a `/word/` in the '
   + 'argument was held as a fact rather than failing it, so these three parsed. '
   + 'Spellings with no `/word/` never did: `a { b:is(c % d) }` and '
   + '`@font-face{src:local("Foo")}` fail the same way before and after. '
-  + 'Needs an owner decision on the fix (escalated).';
+  + 'The two readings share a prefix of any length (`b:is(c) d;` against '
+  + '`b:is(c) d {}`), so no token decides between them before its end and one '
+  + 'rewind is unavoidable (jess#304). The fix contains the nested-rule '
+  + 'selector\'s commitment, `attempt(selectorList, { contain: true })`; it '
+  + 'waits on parseman feat/attempt-contain, unreleased, where that attempt '
+  + 'costs nothing measurable.';
+
+/*
+ * The mirror image of the pins above, in the dialects that read the
+ * declaration first. Same shared prefix, decided in the other order.
+ */
+const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
+  'css-syntax-3 reads a block item that starts `<ident>:` (or `<ident> :`) as '
+  + 'a declaration first and as a nested rule only when that fails, and SCSS '
+  + 'and .jess do the same. The declaration reading of `li:not(:last-child)` '
+  + 'fails INSIDE the parenthesised argument (a committed failure in '
+  + 'parseman), not at the `{`, so the nested-rule arm never runs. Whether a '
+  + 'nested rule fails therefore depends on whether its pseudo-function '
+  + 'argument also reads as a value in the dialect. SCSS and .jess reject '
+  + '`li:not(:last-child)`, `b:is(.c)`, `b:has(> img)`, `b:where(.c)`, '
+  + '`input:not([type=text])`, `li:nth-child(2n+1 of .x)` and the spaced '
+  + '`li :not(.c)`; .jess also rejects `li:nth-child(2n+1)` and '
+  + '`li:nth-of-type(2n+1)`, because `2n+1` is not a .jess value. '
+  + '`li:hover`, `li:nth-child(odd)`, `li:nth-child(2)`, `li:lang(en)` and '
+  + '`li:dir(rtl)` parse in both: their value reading fails only at the `{`. '
+  + '(SCSS reads a glued `not(` as the Sass `not` operator, so its failure is '
+  + 'inside a parenthesised operand rather than a call.) Same cause as the Less '
+  + 'pins. Containing the declaration (parseman `attempt(…, { contain: true })`, '
+  + 'unreleased) parses every spelling here, but it also moves a broken '
+  + 'declaration\'s error to the document start (`color: rgb(1, 2;` reports '
+  + 'offset 0, not the missing `)`), so the fix needs either a containment that '
+  + 'keeps the deeper failure or the Less shape (nested rule first for a glued '
+  + 'head).';
 
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
@@ -229,6 +263,26 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: '@container with a parenthesised style()',
     group: 'at-rule',
     source: '@container (style(--x: 1)) { a { color: red } }'
+  },
+  {
+    id: '@container with a boolean style() feature',
+    group: 'at-rule',
+    source: '@container style(--x) { a { color: red } }',
+    brokenIn: ['less', 'jess'],
+    defect:
+      'css-conditional-5 lets a style feature be a bare custom-property name '
+      + '(true when its computed value is not the initial one); css and SCSS '
+      + 'accept `style(--x)`. Less and .jess require the `:` and a value.'
+  },
+  {
+    id: '@container with an empty style() value',
+    group: 'at-rule',
+    source: '@container style(--x:) { a { color: red } }',
+    brokenIn: ['jess'],
+    defect:
+      'A custom property may hold the empty value (css-variables-1 §2), and css, '
+      + 'Less and SCSS accept `style(--x:)` and `style(--x: )`. .jess rejects both '
+      + '(`Expected: ")"`).'
   },
   {
     id: '@keyframes with percentage and to selectors',
@@ -444,6 +498,56 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: ':is() nested in :not()',
     group: 'selector',
     source: 'a:not(:is(.b, .c)) { color: red }'
+  },
+
+  /*
+   * css-nesting-1: a nested rule may start with a type selector, so inside a
+   * block `li:hover` and `li:not(…)` share their head with a declaration.
+   */
+  {
+    id: 'a type selector with a pseudo-class in a nested rule',
+    group: 'selector',
+    source: 'ul { li:hover { color: red } }'
+  },
+  {
+    id: 'a type selector with a selector pseudo-function in a nested rule',
+    group: 'selector',
+    source: 'ul { li:not(:last-child) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with an attribute :not() in a nested rule',
+    group: 'selector',
+    source: 'form { input:not([type=text]) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a descendant selector pseudo-function in a nested rule',
+    group: 'selector',
+    source: 'ul { li :not(.c) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with :nth-child(An+B) in a nested rule',
+    group: 'selector',
+    source: 'ul { li:nth-child(2n+1) { color: red } }',
+    brokenIn: ['jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with :nth-child(An+B of S) in a nested rule',
+    group: 'selector',
+    source: 'ul { li:nth-child(2n+1 of .x) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'a type selector with a keyword :nth-child() in a nested rule',
+    group: 'selector',
+    source: 'ul { li:nth-child(odd) { color: red } li:lang(en) { color: red } }'
   },
   {
     id: ':nth-child() with an An+B microsyntax',
@@ -723,6 +827,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
       + '(Less accepts it: its fallback is the custom-property value, ledger P2.)'
   },
   {
+    id: 'a comment between two var() fallback components',
+    group: 'value',
+    source: 'a { color: var(--x, red /* c */ blue) }',
+    brokenIn: ['jess'],
+    defect:
+      'css-syntax-3 §5.4.4 skips comments wherever whitespace is allowed; css, '
+      + 'Less and SCSS accept a comment between fallback components. .jess '
+      + 'rejects it (`Expected: ")"`), though it accepts one before the first '
+      + 'component.'
+  },
+  {
     id: 'slashes between words in a function argument',
     group: 'value',
     source: '@font-face { src: local(Foo/Bar/Baz) }'
@@ -752,6 +867,40 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: '.x { a:not(b, c /d/ e); f: g; }',
     brokenIn: ['less'],
     defect: GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  /* The minified `@font-face` spelling: every icon-font stylesheet writes it. */
+  {
+    id: 'glued colon before local() with a string',
+    group: 'value',
+    source: '@font-face{src:local(\'Foo\')}',
+    brokenIn: ['less'],
+    defect: GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+
+  /*
+   * A `%` delim and an An+B run are component values like any other in a
+   * declaration value (css-syntax-3 §5.4.7 reads any token sequence).
+   */
+  {
+    id: 'a percent delim in a function argument',
+    group: 'value',
+    source: 'a { b: f(c % d) }',
+    brokenIn: ['jess'],
+    defect:
+      'css, Less and SCSS accept a bare `%` delim between two components. '
+      + '.jess rejects it inside a call (`Expected: ")"`) and at the top of a '
+      + 'value: no .jess value component starts with a bare `%`.'
+  },
+  {
+    id: 'An+B in a function argument',
+    group: 'value',
+    source: 'a { b: f(2n+1) }',
+    brokenIn: ['jess'],
+    defect:
+      'css, Less and SCSS accept `2n+1` (a dimension followed by a signed '
+      + 'number) as an argument. .jess rejects it, spaced or not '
+      + '(`Expected: ")"`), which is also why a nested `li:nth-child(2n+1)` '
+      + 'rule fails in .jess (see the nested-rule pins).'
   },
   {
     id: '!important with interior whitespace',

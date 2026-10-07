@@ -108,6 +108,21 @@ describe('typed reads, not byte scans', () => {
       .toBe('@container style(--x: 3) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }');
   });
 
+  /*
+   * PINNED DEFECT — an AUTHORED style() value is re-spaced as query syntax. The
+   * prelude writer runs its media-query spacing (a `<ratio>` `/`, a range `<`)
+   * over the value's bytes, so `16/9`, `a<b` and `//c` come out `16 / 9`,
+   * `a < b` and `/  / c`, where the same custom-property value in a declaration
+   * is written as authored. Every dialect does this (css builds the argument as
+   * one raw fragment; Less, SCSS and .jess as a feature whose value is a raw
+   * fragment). A custom-property value is a token sequence, so the spaced form
+   * is a different value.
+   */
+  it('PINNED DEFECT — re-spaces an authored style() value as query syntax', async () => {
+    expect(await render('.d { --r: 16/9; --l: a<b; } @container style(--r: 16/9) and style(--l: a<b) { .a { b: c; } }'))
+      .toBe('.d { --r: 16/9; --l: a<b; } @container style(--r: 16 / 9) and style(--l: a < b) { .a { b: c; } }');
+  });
+
   /* A condition call's feature is walked as the feature in parens is, so a value spliced into it is never re-spaced. */
   it('writes a value spliced into a style() query as it evaluated', async () => {
     const source = '@v: ~\'a:b\'; @w: ~\'a  /  b\'; @container style(--x: @{v}) and style(--y:1) and style(--z: @{w}) { .a { b: c; } }';

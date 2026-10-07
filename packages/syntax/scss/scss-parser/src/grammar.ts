@@ -417,6 +417,13 @@ const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCommentRun });
 
 /*
+ * The gap between a custom property's `:` and its value: whitespace only, as in
+ * the css base. The value is CSS `<declaration-value>`, and dart-sass reads a
+ * `//` there as value text, so it starts the value like a block comment does.
+ */
+const customValueGapTrivia = classifiedTrivia({ whitespace: whitespaceRun });
+
+/*
  * Quoted-string skippers for the grammar-level ambient `scanSkip`: every
  * non-raw scan sees these before any local structural skip, so a sentinel hidden
  * inside a string (an arg terminator, `with(`, etc.) is never matched. Consumes
@@ -1574,8 +1581,7 @@ const scssFactory = (g: ScssInputRules) => {
      */
     sequence(
       g.CustomPropertyName,
-      literal(':'),
-      g.CustomValue,
+      parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)),
       optional(g.Important),
       optional(literal(';'))
     ),
