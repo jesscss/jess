@@ -11,6 +11,9 @@ export interface StrictPresetOptions {
   unitMode?: 'loose' | 'preserve' | 'strict';
   allowLeakyScope?: boolean;
 
+  /** @deprecated Use `unitMode`. */
+  strictUnits?: boolean;
+
   /** @deprecated Use `allowLeakyScope`. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
@@ -31,9 +34,11 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
     return opts;
   }
   const filled = { ...opts };
-  filled.unitMode ??= 'strict';
 
-  /* A deprecated `leakyScope` is set too: fill the canonical name only when neither is. */
+  /* A deprecated spelling set counts as set: fill the canonical name only when neither is. */
+  if (filled.strictUnits === undefined) {
+    filled.unitMode ??= 'strict';
+  }
   if (filled.leakyScope === undefined) {
     filled.allowLeakyScope ??= false;
   }
@@ -205,14 +210,16 @@ function compileOptions(compile: NonNullable<StylesConfig['compile']>): StrictPr
  *
  * On the merged config, the options are computed for the file's language
  * (later wins):
- * 1. compile options, the `strict` preset filling only the modes nothing in the
- *    merged config sets (it is not itself a mode)
+ * 1. compile options
  * 2. language-specific options (inferred from input extension or explicitly specified)
  * 3. matched input options (if input path provided and matches)
  * 4. matched output options (if output path provided and matches)
  *
  * The language's own defaults sit below all of these, where a file's modes are
- * resolved.
+ * resolved. The `strict` preset is not itself a mode: the most specific place
+ * that sets `strict` decides it, and when true it fills the modes that place
+ * leaves unset, so `language.less.strict` wins over `compile.unitMode` for
+ * `.less` files and `language.less.unitMode` wins over it.
  *
  * @param config - The styles configuration object, or the configs to merge, earliest first
  * @param params - Options specifying language, input file, and output file
@@ -251,9 +258,16 @@ export function getOptions(
       languageOptions = layerOptions(languageOptions, languageConfig?.[language] ?? {});
     }
   }
-  const { strict, ...base } = applyStrictPreset<StrictPresetOptions>(compile);
-  void strict;
-  const matchedInput = getMatchingOptions(configs.flatMap(c => c.input ?? []), inputFile);
-  const matchedOutput = getMatchingOptions(configs.flatMap(c => c.output ?? []), outputFile);
-  return layerOptions(layerOptions(layerOptions(base, languageOptions), matchedInput), matchedOutput);
+  const tiers: ReadonlyArray<StrictPresetOptions & Record<string, unknown>> = [
+    compile,
+    languageOptions,
+    getMatchingOptions(configs.flatMap(c => c.input ?? []), inputFile),
+    getMatchingOptions(configs.flatMap(c => c.output ?? []), outputFile)
+  ];
+  const decides = tiers.findLastIndex(tier => tier.strict !== undefined);
+  return tiers.reduce<Record<string, any>>((options, tier, index) => {
+    const { strict, ...filled } = applyStrictPreset({ ...tier, strict: index === decides && tier.strict === true });
+    void strict;
+    return layerOptions(options, filled);
+  }, {});
 }

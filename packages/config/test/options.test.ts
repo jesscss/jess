@@ -134,6 +134,33 @@ describe('getOptions', () => {
       expect(getOptions([explicit, { compile: { strict: false } }]).unitMode).toBeUndefined();
     });
 
+    it('fills a language\'s strict preset into that language\'s settings, over the compile settings', () => {
+      const config: StylesConfig = {
+        compile: { unitMode: 'loose', allowCallerScope: true },
+        language: { less: { strict: true, allowCallerScope: true } }
+      };
+      expect(getOptions(config, { language: 'less' })).toMatchObject({ unitMode: 'strict', allowCallerScope: true });
+      expect(getOptions(config, { language: 'less' })).not.toHaveProperty('strict');
+      expect(getOptions(config, { language: 'jess' }).unitMode).toBe('loose');
+      const spelled = getOptions({ language: { less: { strict: true, strictUnits: false } } }, { language: 'less' });
+      expect([spelled.unitMode, spelled.strictUnits]).toEqual([undefined, false]);
+    });
+
+    it('lets a language\'s strict setting decide over the compile one for its files', () => {
+      const config: StylesConfig = { compile: { strict: true }, language: { less: { strict: false } } };
+      expect(getOptions(config, { language: 'less' }).unitMode).toBeUndefined();
+      expect(getOptions(config, { language: 'jess' }).unitMode).toBe('strict');
+    });
+
+    it('fills a matched input entry\'s strict preset over the language settings', () => {
+      const config: StylesConfig = {
+        language: { less: { unitMode: 'loose' } },
+        input: [{ file: 'strict/*.less', strict: true }]
+      };
+      expect(getOptions(config, { input: 'strict/a.less' }).unitMode).toBe('strict');
+      expect(getOptions(config, { input: 'other/a.less' }).unitMode).toBe('loose');
+    });
+
     it('should override compile options with language options', () => {
       const config: StylesConfig = {
         compile: {

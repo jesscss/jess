@@ -404,4 +404,24 @@ describe('the strict preset', () => {
     write(['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n']);
     expect((await render('entry.less', {}, { compile: { strict: true } })).css).toBe('.e { k: 2px; }');
   });
+
+  it('in a language setting, wins over a global setting for that language\'s files only', async () => {
+    write(['part.jess', '.j { k: $(1px + 3em); }']);
+    const options = { compile: { unitMode: 'loose' as const }, language: { less: { strict: true } } };
+    expect((await render('entry.less', options)).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect((await render('part.jess', options)).css).toBe('.j { k: 4px; }');
+  });
+
+  it('in a language setting, fills only what that language\'s settings leave unset', async () => {
+    expect((await render('entry.less', { language: { less: { strict: true, unitMode: 'loose' } } })).css)
+      .toBe('.e { k: 2px; }');
+  });
+
+  it('turned off in a language setting, does not reach that language\'s files from a global setting', async () => {
+    expect(await render('entry.less', { compile: { strict: true }, language: { less: { strict: false } } })).toEqual({
+      css: '.e { k: calc(1px + 1em); }',
+      warnings: ['eval/unexpressible-unit'],
+      errors: []
+    });
+  });
 });
