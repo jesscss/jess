@@ -1443,15 +1443,28 @@ export class Context {
     if (!transform) {
       return value;
     }
+    return transform.call(document.plugin, this.urlRequest(document, value, quoted, kind)) ?? value;
+  }
+
+  /**
+   * The URL option the active document's plugin would add to an escaped `url()`
+   * body `value`, which an escaped string does not get ({@link Plugin.escapedUrlSkips}).
+   */
+  escapedUrlSkips(value: string): string | undefined {
+    const document = this.sourceContext;
+    const skips = document?.plugin?.escapedUrlSkips;
+    return document === undefined || skips === undefined ? undefined : skips.call(document.plugin, this.urlRequest(document, value, false, 'url'));
+  }
+
+  private urlRequest(document: SourceContext, value: string, quoted: boolean, kind: NonNullable<UrlTransformRequest['kind']>): UrlTransformRequest {
     const entry = this.document ? this.documentContexts.get(this.document) : undefined;
-    const request: UrlTransformRequest = {
+    return {
       value,
       quoted,
       kind,
-      ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
+      ...(document.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
       ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath })
     };
-    return transform.call(document.plugin, request) ?? value;
   }
 
   /**

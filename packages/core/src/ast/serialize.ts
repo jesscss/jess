@@ -5396,6 +5396,19 @@ function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx, nes
   }
 }
 
+/**
+ * Report the URL option an escaped `url()` body does not get, where the `url()` is
+ * written ({@link Context.escapedUrlSkips}): with `urlArgs: 'v=1'`, `url(~"e.png")`
+ * stays `url(e.png)`, and the author loses the argument Less 4 added (SETTLED —
+ * orchestrator judgment under owner delegation 2026-10-07; ledger V3).
+ */
+function skippedUrlOption(node: Url, content: string, e: EvalCtx): void {
+  const option = e.context?.escapedUrlSkips(content);
+  if (option !== undefined) {
+    e.context!.warnAtNode('eval/url-option-skipped', 'eval', node, { url: `url(${content})`, option });
+  }
+}
+
 /** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
 const isQueryRelation = (operator: string): boolean =>
   operator === ':' || operator === '<' || operator === '>' || operator === '<=' || operator === '>=' || operator === '=';
@@ -5545,6 +5558,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
            * 2026-10-06 and 2026-10-07).
            */
           if (body.escaped) {
+            skippedUrlOption(node, content, e);
             return literal(`url(${content})`);
           }
           const target = e.context?.transformUrl(content, true) ?? content;
@@ -5569,7 +5583,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return literal(`url(${value.quote}${target}${value.quote})`);
         }
         if (!isValueGroupArray(value) && (value.type === 'Quoted' || (value.type === 'Any' && value.escapedQuote !== ''))) {
-          return literal(`url(${emitValue(value)})`);
+          const content = emitValue(value);
+          skippedUrlOption(node, content, e);
+          return literal(`url(${content})`);
         }
         const raw = emitValue(value);
         const target = e.context?.transformUrl(raw, false) ?? raw;

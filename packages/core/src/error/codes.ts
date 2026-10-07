@@ -50,6 +50,7 @@ export type JessErrorCode =
   | 'eval/invalid-unit-arithmetic'
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
+  | 'eval/url-option-skipped'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
   | 'eval/unit-conversion'
@@ -398,6 +399,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${expr} has no single CSS value: its units compose to one CSS cannot express, or + or - joins two units that do not convert.',
       fix: 'Cancel the units, or drop one side\'s unit. An expression calc() accepts can be wrapped in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/url-option-skipped',
+    {
+      summary: '${option} is not added to ${url}',
+      reason: '${url} has an escaped body, which no URL option changes, so ${option} is not added to it.',
+      fix: 'Write the URL as a quoted string, url("…"), to have ${option} added, or write it into the escaped string.'
     }
   ],
   [

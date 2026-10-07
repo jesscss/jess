@@ -206,6 +206,14 @@ export interface PluginInterface {
    */
   transformUrl?(request: UrlTransformRequest): string | undefined;
 
+  /**
+   * The URL option {@link transformUrl} would add to `request` that an escaped
+   * `url()` body does not get, since no URL option changes an escaped string
+   * (ledger V3), or `undefined`. Less names `urlArgs`: the author loses the
+   * argument Less 4 added, so it is reported where the `url()` is written.
+   */
+  escapedUrlSkips?(request: UrlTransformRequest): string | undefined;
+
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
 

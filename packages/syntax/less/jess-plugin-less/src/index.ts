@@ -556,7 +556,7 @@ export class LessPlugin extends AbstractPlugin {
     } else {
       transformed = normalizeUrlPath(value);
     }
-    if (this.opts.urlArgs && kind !== 'import' && !value.trimStart().toLowerCase().startsWith('data:')) {
+    if (this.#addsUrlArgs(value, kind)) {
       const args = `${transformed.includes('?') ? '&' : '?'}${this.opts.urlArgs}`;
       const fragment = transformed.indexOf('#');
       transformed = fragment < 0
@@ -564,6 +564,16 @@ export class LessPlugin extends AbstractPlugin {
         : transformed.slice(0, fragment) + args + transformed.slice(fragment);
     }
     return transformed;
+  }
+
+  /** `urlArgs`, when {@link transformUrl} would add it to an escaped `url()` body. */
+  escapedUrlSkips({ value, kind }: UrlTransformRequest): string | undefined {
+    return this.#addsUrlArgs(value, kind) ? 'urlArgs' : undefined;
+  }
+
+  /** Whether `urlArgs` goes on a `url()` target: never on an import path or a `data:` URI. */
+  #addsUrlArgs(value: string, kind: UrlTransformRequest['kind']): boolean {
+    return Boolean(this.opts.urlArgs) && kind !== 'import' && !value.trimStart().toLowerCase().startsWith('data:');
   }
 
   expandImport(importPath: string, currentDir: string) {

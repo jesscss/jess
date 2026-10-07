@@ -376,7 +376,7 @@ An escaped string inside `url()` — `url(~"img/b.png")`, or a variable holding 
 | `rootpath: 'r/'` | `url(r/b.png)` | `url(b.png)` |
 | `urlArgs: 'v=1'` | `url(b.png?v=1)` | `url(b.png)` |
 
-Rewriting the body could write a broken URL: for `url(~"'b.png'")`, Less 4.x wrote `url(r/'b.png')`. Use a quoted string (`url("b.png")`, or `url("@{base}/b.png")`) when you want the options to apply.
+Rewriting the body could write a broken URL: for `url(~"'b.png'")`, Less 4.x wrote `url(r/'b.png')`. Use a quoted string (`url("b.png")`, or `url("@{base}/b.png")`) when you want the options to apply. Since a cache-busting `urlArgs` is easy to lose this way, each escaped `url()` it skips reports an `eval/url-option-skipped` warning naming the URL.
 
 ### Selectors
 

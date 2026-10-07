@@ -38,7 +38,7 @@ Allows you to add a path to every generated import and url in your css. This doe
 
 For instance, if all the images the css use are in a folder called resources, you can use this option to add this on to the URL's and then have the name of that folder configurable.
 
-An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so `rootpath`, `rewriteUrls` and `urlArgs` all leave it as written. Less 4 rewrote it, which could write a broken URL: under `rootpath: 'r/'`, `url(~"'b.png'")` became `url(r/'b.png')`. Use a quoted string (`url("@{base}/x.png")`) when you want the options to apply.
+An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so `rootpath`, `rewriteUrls` and `urlArgs` all leave it as written. Less 4 rewrote it, which could write a broken URL: under `rootpath: 'r/'`, `url(~"'b.png'")` became `url(r/'b.png')`. Use a quoted string (`url("@{base}/x.png")`) when you want the options to apply. With `urlArgs` set, each escaped `url()` body that does not get the argument reports an `eval/url-option-skipped` warning naming the URL, since Less 4 added it there.
 
 ### Rewrite URLs
 
