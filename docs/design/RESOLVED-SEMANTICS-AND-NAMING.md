@@ -1067,9 +1067,12 @@ demanded an expressible result whatever `unitMode` said. Now:
   supplies `strict` as its dialect default (`jess-plugin-jess`
   `dialectDefaults`); an explicit compile `unitMode` overrides it
   (`resolveOptions`, `context.ts`). Like every dialect default, the ENTRY
-  file's dialect supplies it for the whole compile: a `.less` partial under a
-  `.jess` entry is strict by default, a `.jess` partial under a `.less` entry
-  is `preserve`.
+  file's dialect supplies it for the whole compile (ledger C19): a `.less`
+  partial under a `.jess` entry is strict by default, a `.jess` partial under
+  a `.less` entry is `preserve`. Whether an evaluation mode should instead
+  follow the file each construct was written in is the owner question C19
+  leaves open; `.jess` is the first dialect whose `unitMode` default differs,
+  so that question now changes output in a mixed-dialect compile.
 - **Equality never raises (§4.1).** `strict` raises on units that do not
   reconcile in arithmetic and in a RELATIONAL comparison (`$(1em > 1px)`, as
   dart-sass does); `$(1em = 1px)` (§4 row `j2`) and `$(1em == 1px)` are
@@ -1152,7 +1155,11 @@ section said `preserve` raises, which contradicted the name and the code.
 
 The compiler default is `preserve` (`DEFAULT_MODES`), which the `.less` and
 `.scss` plugins keep; the `.jess` plugin's dialect default is `strict` (above),
-and `strict` also arrives via the `strict: true` preset. This is the same lever extended in
+and `strict` also arrives via the `strict: true` preset. `.scss` keeps
+`preserve` for now. Its answer is dart-sass's, `1px + 1em` an error (judgment
+under owner delegation, 2026-10-06), but `.scss` math functions do not keep
+their operations as written yet (§6), so a `strict` default would turn valid
+CSS such as `clamp(1rem, 2vw + 1rem, 3rem)` into an error. This is the same lever extended in
 `5c516dbb1`, which gave `unitMode` reach into RELATIONAL comparison — the modes
 now govern arithmetic, order, and expressibility as one policy rather than
 three. (`5c516dbb1` also made `strict` equality raise; that half is reverted,

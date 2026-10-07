@@ -104,4 +104,6 @@ The `unitMode` compile option changes that default, exactly as it does for
 Less: `preserve` keeps the math as `calc(1px + 3em)` and warns
 (`eval/unexpressible-unit`), and `loose` computes Less 4.x's answer
 (`$(1px + 3em)` is `4px`). Without the option, `.jess` uses `strict`. A
-unitless number takes the other operand's unit under every setting.
+unitless number takes the other operand's unit under every setting. The
+default comes from the entry file: a `.jess` file imported by a `.less` entry
+uses the Less default, `preserve`.

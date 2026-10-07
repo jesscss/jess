@@ -264,8 +264,10 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
     /*
      * The `.jess` default is a compile setting (the plugin's dialect default),
      * not a node fact, so like every dialect default the entry file supplies it
-     * for the whole render: `strict` under a `.jess` entry, `preserve` under a
-     * `.less` one.
+     * for the whole render (ledger C19): `strict` under a `.jess` entry,
+     * `preserve` under a `.less` one. Whether an evaluation mode should follow
+     * the file each construct was written in instead is the owner question C19
+     * leaves open; this pins today's answer so a change to it is seen.
      */
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-unit-entry-default-'));
     fs.writeFileSync(path.join(dir, 'part.jess'), '.j { k: $(1px + 3em); }');
@@ -308,9 +310,11 @@ describe('OPERATIONS §4.7 — the `unitMode` ladder, in `.less`', () => {
    * The ladder itself, in the dialect whose default rung is `preserve`. `.jess`
    * answers the same way under an explicit mode (the block above).
    *
-   * `.scss` is deliberately absent: whether Sass takes this ladder is under a
-   * separate owner ruling, and a row here either way would entrench an answer
-   * that has not been given.
+   * `.scss` is absent. Its answer is dart-sass's (judgment under owner
+   * delegation, 2026-10-06): `1px + 1em` is an error by default. That default
+   * waits on `.scss` math functions — today `clamp(1rem, 2vw + 1rem, 3rem)`
+   * operates on its arguments in `.scss` (RESOLVED-SEMANTICS §6), so a `strict`
+   * default would turn that valid CSS into an error.
    */
 
   it('`loose` gives Less 4.x\'s answer — the rung that folds', async () => {
