@@ -138,8 +138,11 @@ export default myPlugin;
 
 If those defaults affect evaluation, return a frozen readonly projection as
 `dialectDefaults` on each successful parse result. Do not mutate `Context` from
-`setContext`; Context resolves the entry dialect's defaults once and keeps the
-result immutable for the compilation session.
+`setContext`; Context resolves each document's policy once, from that document's
+own `dialectDefaults`, so a file keeps your language's defaults whichever file
+imports it. When the host passes `sourceOptions` to `safeParse` (the settings
+that cover that file: its folder's `styles.config` and the settings for your
+language), read your options from them instead of the factory's.
 
 ## Bundler integration
 

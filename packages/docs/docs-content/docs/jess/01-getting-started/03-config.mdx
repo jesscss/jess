@@ -23,6 +23,41 @@ Changes compilation mode so dynamic content is represented as CSS custom propert
 
 Overrides whether Jess files compile as modules globally. By default, files named `[filename].module.jess` or `[filename].m.jess` are treated as modules and class names are hashed.
 
+## Compile settings
+
+The compile settings (`mathMode`, `unitMode`, `functionMode`, the `strict` preset,
+`allowCallerScope`, `processImports`, …) are worked out for each file, so a file
+compiles the same way whichever file imports it:
+
+1. **Set globally:** `compile` settings passed to the compiler or to a render
+   apply to every file, whatever its language, and win over everything below.
+
+   ```js
+   new Compiler({ compile: { unitMode: 'preserve' } });
+   compiler.render('main.less', { compile: { unitMode: 'preserve' } });
+   ```
+
+2. **Set for a folder or a language:** a `styles.config` applies to the files in
+   its folder and the folders below it that have no `styles.config` of their own.
+   Its `language.<lang>` block (`language.less`, `language.jess`, `language.scss`)
+   applies only to files of that language and wins over its `compile` block.
+   `language.<lang>` settings passed to the compiler or a render apply to that
+   language's files everywhere and win over a `styles.config`.
+
+   ```js
+   // styles.config.js
+   export default {
+     compile: { unitMode: 'preserve' },
+     language: { jess: { unitMode: 'strict' } }
+   }
+   ```
+
+3. **Not set:** each file uses its own language's defaults. A `.less` file keeps
+   math over units that do not convert as `calc()` and warns (`unitMode:
+   'preserve'`); a `.jess` file stops with an error (`strict`). A `.jess` file
+   imported by a `.less` file still errors, and a `.less` file imported by a
+   `.jess` file still writes `calc()`.
+
 ## compile.plugins
 
 Add compile-time plugins used by the compiler (for language/runtime extensions). This is separate from bundler plugins such as `rollup-plugin-jess`.
