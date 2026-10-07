@@ -1,7 +1,8 @@
 /*
  * Which compile settings a source file uses (DESIGN-DECISIONS C19, owner
- * 2026-10-07): the settings that cover a file are its folder's `styles.config`
- * merged under the settings passed to the compiler or the render, which win
+ * 2026-10-07): the settings that cover a file are every `styles.config` from
+ * the file's folder up to its package root, merged, the nearest winning setting
+ * by setting, under the settings passed to the compiler or the render, which win
  * setting by setting. On that merge, each file's settings are computed for its
  * language: its language's defaults, under the `compile` settings, under
  * `language.<lang>`.
@@ -423,5 +424,62 @@ describe('the strict preset', () => {
       warnings: ['eval/unexpressible-unit'],
       errors: []
     });
+  });
+});
+
+describe('the styles.configs from a file\'s folder up to its package root cover it, merged', () => {
+  it('a config in a parent folder covers the files below it, imported files included', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['app/entry.less', '.e { k: 1px + 1em; }\n@import \'../shared/deep/part.less\';'],
+      ['shared/deep/part.less', '.p { k: 1px + 1em; }']
+    );
+    expect((await render('app/entry.less')).css).toBe('.e { k: 2px; } .p { k: 2px; }');
+  });
+
+  it('an ancestor\'s setting reaches a subfolder whose own config sets other keys', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['sub/styles.config.cjs', 'module.exports = { language: { less: { mathMode: \'always\' } } };\n'],
+      ['sub/entry.less', '.e { k: 1px + 1em; d: 4px / 2; }']
+    );
+    expect((await render('sub/entry.less')).css).toBe('.e { k: 2px; d: 2px; }');
+  });
+
+  it('the nearer config wins setting by setting, in any spelling', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { compile: { mathMode: \'always\' }, language: { less: { unitMode: \'loose\' } } };\n'],
+      ['sub/styles.config.cjs', 'module.exports = { language: { less: { strictUnits: true } } };\n'],
+      ['sub/entry.less', '.e { d: 4px / 2; }\n.f { k: 1px + 1em; }']
+    );
+    const result = await renderLogged('sub/entry.less');
+    expect(result.errors).toEqual(['eval/invalid-unit-arithmetic']);
+    write(['sub/entry.less', '.e { d: 4px / 2; }']);
+    expect((await render('sub/entry.less')).css).toBe('.e { d: 2px; }');
+  });
+
+  it('merges before the language order: an ancestor\'s language setting wins over a nearer compile setting', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'strict\' } } };\n'],
+      ['sub/styles.config.cjs', 'module.exports = { compile: { unitMode: \'loose\' } };\n'],
+      ['sub/entry.less', '.e { k: 1px + 1em; }'],
+      ['sub/part.jess', '.j { k: $(1px + 3em); }']
+    );
+    expect((await render('sub/entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect((await render('sub/part.jess')).css).toBe('.j { k: 4px; }');
+  });
+
+  it('the search stops at the folder with the package.json, and merges that folder\'s config', async () => {
+    write(
+      ['styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'loose\' } } };\n'],
+      ['pkg/package.json', '{}'],
+      ['pkg/src/entry.less', '.e { k: 1px + 1em; }'],
+      ['configured/package.json', '{}'],
+      ['configured/styles.config.cjs', 'module.exports = { language: { less: { unitMode: \'strict\' } } };\n'],
+      ['configured/src/styles.config.cjs', 'module.exports = { language: { less: { mathMode: \'always\' } } };\n'],
+      ['configured/src/entry.less', '.e { k: 1px + 1em; }']
+    );
+    expect((await render('pkg/src/entry.less')).css).toBe('.e { k: calc(1px + 1em); }');
+    expect((await render('configured/src/entry.less')).errors).toEqual(['eval/invalid-unit-arithmetic']);
   });
 });
