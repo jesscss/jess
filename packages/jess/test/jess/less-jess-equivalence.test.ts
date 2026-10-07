@@ -207,13 +207,17 @@ function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigO
   const { plugins: fixturePlugins = [], ...fixtureCompile } = compile;
 
   /*
-   * The pins are language settings, under the fixture's own canonical modes: a
-   * compile setting is global and would win over the fixture's `language.less`
-   * (ledger C19). A fixture's deprecated spelling (`math`, `strictUnits`) sits in
+   * The pins are language settings, under the fixture's own canonical modes, from
+   * its `compile` block and its `language.less`: a language setting wins over a
+   * compile one (ledger C19), so a fixture's compile mode joins the pins' tier to
+   * win over them. A fixture's deprecated spelling (`math`, `strictUnits`) sits in
    * the same object as the pinned canonical name, which wins, so those fixtures
    * render under the pins in both arms: `.jess` reads only the canonical names.
    */
-  const lessOptions = { ...PINNED_MODES, bubbleRootAtRules: true, ...(language.less ?? {}) };
+  const fixtureModes = Object.fromEntries(Object.entries(fixtureCompile).filter(
+    ([name, value]) => value !== undefined && Object.hasOwn(PINNED_MODES, name)
+  ));
+  const lessOptions = { ...PINNED_MODES, bubbleRootAtRules: true, ...fixtureModes, ...(language.less ?? {}) };
   const fixtureOutput = Array.isArray(output) ? {} : (output ?? {});
   return {
     ...rest,

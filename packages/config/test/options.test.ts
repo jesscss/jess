@@ -87,10 +87,10 @@ describe('getOptions', () => {
       expect(getOptions(config)).toMatchObject({
         unitMode: 'strict',
         functionMode: 'error',
-        allowLeakyScope: undefined,
         leakyScope: true,
         allowCallerScope: false
       });
+      expect(getOptions(config).allowLeakyScope).toBeUndefined();
       expect(getOptions({ ...config, language: { less: { unitMode: 'loose' } } }, { language: 'less' }).unitMode)
         .toBe('loose');
     });
@@ -104,6 +104,34 @@ describe('getOptions', () => {
       expect(options).toMatchObject({ strictUnits: true, math: 'parens', leakyScope: false });
       expect([options.unitMode, options.mathMode, options.allowLeakyScope]).toEqual([undefined, undefined, undefined]);
       expect(layerOptions({ unitMode: 'loose', strictUnits: true }, { unitMode: undefined })).toEqual({ unitMode: 'loose', strictUnits: true });
+    });
+
+    it('merges several configs field by field, later over earlier, before the language tier applies', () => {
+      const folder: StylesConfig = {
+        compile: { unitMode: 'strict', mathMode: 'parens' },
+        language: { less: { unitMode: 'loose', allowExtendSelectors: ['simple'] } }
+      };
+      const explicit: StylesConfig = { compile: { unitMode: 'preserve', mathMode: 'always' } };
+      expect(getOptions([folder, explicit], { language: 'less' })).toMatchObject({
+        unitMode: 'loose',
+        mathMode: 'always',
+        allowExtendSelectors: ['simple']
+      });
+      expect(getOptions([folder, explicit], { language: 'jess' })).toMatchObject({ unitMode: 'preserve', mathMode: 'always' });
+    });
+
+    it('lets a later config\'s spelling of a mode replace an earlier config\'s spelling at the same place', () => {
+      const folder: StylesConfig = { language: { less: { unitMode: 'loose' } } };
+      const explicit: StylesConfig = { language: { less: { strictUnits: true } } };
+      const options = getOptions([folder, explicit], { language: 'less' });
+      expect([options.unitMode, options.strictUnits]).toEqual([undefined, true]);
+    });
+
+    it('fills the strict preset only into the modes the merged configs leave unset', () => {
+      const folder: StylesConfig = { compile: { unitMode: 'loose' } };
+      const explicit: StylesConfig = { compile: { strict: true } };
+      expect(getOptions([folder, explicit])).toMatchObject({ unitMode: 'loose', allowCallerScope: false });
+      expect(getOptions([explicit, { compile: { strict: false } }]).unitMode).toBeUndefined();
     });
 
     it('should override compile options with language options', () => {
