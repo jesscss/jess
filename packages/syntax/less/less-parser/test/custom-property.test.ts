@@ -228,6 +228,30 @@ describe('Less custom properties', () => {
     expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
   });
 
+  /*
+   * A `var()` fallback and a style query's value are the same custom-property
+   * value (ledger P2), so the gap before them is the same whitespace-only gap:
+   * a `//` that opens one is value text, not a comment that drops it or hides
+   * the `)` after it.
+   */
+  it.each([
+    ['a { b: var(--y, //c\n); }', 'a {\n  b: var(--y, //c);\n}\n'],
+    ['a { b: var(--y, //c); }', 'a {\n  b: var(--y, //c);\n}\n'],
+    ['a { b: var(--y, //c d); }', 'a {\n  b: var(--y, //c d);\n}\n']
+  ])('reads a `//` that opens a var() fallback as value text: %j', (source, expected) => {
+    expect(serialize(parse(source)).css).toBe(expected);
+  });
+  it.each([
+    '@container style(--x: //c\n) { a { b: c; } }',
+    '@container style(--x: //c) { a { b: c; } }'
+  ])('reads a `//` that opens a style query value as value text: %j', (source) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ prelude: { type: 'FunctionCall', name: 'style', args: [
+        { value: { type: 'Operation', operator: ':', right: { type: 'Any', src: expect.stringMatching(/^\/\/c\s*$/) } } }
+      ] } }]
+    });
+  });
+
   /* U+00A0 is an ident code point (css-syntax-3 §4.2), not whitespace, so a value keeps it at either edge. */
   it('keeps a non-CSS space at a custom-property value edge', () => {
     expect(serialize(parse('.x { --a:\u00a0red; --b: (\u00a0red\u00a0); --c: var(--y, red\u00a0); }')).css)
