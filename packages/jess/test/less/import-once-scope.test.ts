@@ -1,6 +1,7 @@
 /**
  * Import-once is counted per scope: the root, one ruleset or one at-rule block, where a
- * mixin call or loop iteration belongs to the scope it is called in, and an imported
+ * mixin call or loop iteration belongs to the scope it is called in, a bare-`&` rule to its
+ * parent's, and an imported
  * sheet's root to its importer's. A copy placed in another scope never makes an import a
  * no-op, and an `@import` of a sheet an enclosing `@import` is still placing is always one,
  * so a sheet that imports itself, directly or through another sheet, ends.
@@ -64,6 +65,27 @@ describe('import-once scope', () => {
     }
     await expect(renderFiles([['main.less', '@import (multiple) "mb.less";'], ['mb.less', '.b { c: 1; } @import "mb.less";']]))
       .resolves.toBe('.b {\n  c: 1;\n}');
+  });
+
+  /*
+   * A rule whose selector is a bare `&`, guarded or not, writes into its parent's
+   * selector, so it is its parent's import-once scope (SETTLED — orchestrator judgment
+   * under owner delegation 2026-10-07).
+   */
+  it('a bare `&` rule imports into its parent\'s scope', async () => {
+    for (const main of [
+      '& when (true) { @import "t.less"; } @import "t.less";',
+      '& { @import "t.less"; } @import "t.less";',
+      '@import "t.less"; & when (true) { @import "t.less"; }'
+    ]) {
+      await expect(renderFiles([['main.less', main], t]), main).resolves.toBe(tRule);
+    }
+    await expect(renderFiles([['main.less', '.x { & { @import "t.less"; } @import "t.less"; }'], t]))
+      .resolves.toBe('.x .t {\n  a: 1;\n}');
+
+    // The parent's scope, not the root: a ruleset around it is still a scope of its own.
+    await expect(renderFiles([['main.less', '.x { & when (true) { @import "t.less"; } } @import "t.less";'], t]))
+      .resolves.toBe(`.x .t {\n  a: 1;\n}\n${tRule}`);
   });
 
   it('a mixin call places its imports in the scope it is called in', async () => {

@@ -465,8 +465,8 @@ function importScopeOf(frame: Frame): Frame {
  * a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once` import
  * already placed there, or a `(reference)` re-import ({@link isReferenceReimport}) — else
  * records the placement. A scope is the root, one ruleset or one at-rule block; a mixin
- * call or loop iteration places in the scope it runs in ({@link importScopeOf}), and an
- * imported sheet's own root is its importer's scope. A copy placed in another scope never
+ * call or loop iteration places in the scope it runs in ({@link importScopeOf}), a bare-`&`
+ * rule in its parent's, and an imported sheet's own root is its importer's scope. A copy placed in another scope never
  * makes an import a no-op: `@media print { @import "t"; } @import "t";` renders the root
  * copy (orchestrator judgment under owner delegation 2026-10-07). A sheet an enclosing
  * import is still placing (`expanding`) counts as placed in every scope, so a sheet that
@@ -823,9 +823,9 @@ export interface Frame {
   mixinSplice?: boolean;
 
   /**
-   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame: the
-   * frame whose import-once scope its imports count in ({@link importScopeOf}), since
-   * its output lands in the scope it runs in.
+   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame, and a
+   * bare-`&` rule's: the frame whose import-once scope its imports count in
+   * ({@link importScopeOf}), since its output lands in the scope it runs in.
    */
   importScope?: Frame;
 
@@ -15461,15 +15461,28 @@ function flattenResolved(
 /** Establish one ordinary visible ruleset activation for either writer. */
 function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
   const priorPlacement = frame.rulePlacements?.get(rule);
-  const childFrame: Frame = priorPlacement?.parent === frame
-    ? priorPlacement
-    : {
-        parent: frame,
-        mixins: collectMixins(rule.rules),
-        declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-        statements: rule.rules,
-        sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
-      };
+  let childFrame: Frame;
+  if (priorPlacement?.parent === frame) {
+    childFrame = priorPlacement;
+  } else {
+    childFrame = {
+      parent: frame,
+      mixins: collectMixins(rule.rules),
+      declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
+      statements: rule.rules,
+      sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
+    };
+
+    /*
+     * A rule whose selector is a bare `&` (`& { … }`, `& when (…) { … }`) writes into its
+     * parent's selector, so its imports count in its parent's import-once scope
+     * (orchestrator judgment under owner delegation 2026-10-07; ledger J14).
+     */
+    const selectors = rule.selector.selectors;
+    if (selectors.length === 1 && selectors[0]!.type === 'SimpleSelector' && selectors[0]!.text === '&') {
+      childFrame.importScope = importScopeOf(frame);
+    }
+  }
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   return childFrame;
 }
@@ -16334,11 +16347,14 @@ function walkBody(
               if (!passes) {
                 return;
               }
+
+              /* Its body is this block's, so its imports count in this block's import-once scope. */
               const selfFrame: Frame = {
                 parent: frame,
                 mixins: collectMixins(rule.rules),
                 declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-                statements: rule.rules
+                statements: rule.rules,
+                importScope: importScopeOf(frame)
               };
               return walkBody(
                 rule.rules,
