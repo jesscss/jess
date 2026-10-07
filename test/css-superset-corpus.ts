@@ -66,7 +66,27 @@ const GLUED_SELECTOR_FUNCTION_DEFECT =
   + 'argument was held as a fact rather than failing it, so these three parsed. '
   + 'Spellings with no `/word/` never did: `a { b:is(c % d) }` and '
   + '`@font-face{src:local("Foo")}` fail the same way before and after. '
-  + 'Needs an owner decision on the fix (escalated).';
+  + 'The two readings share a prefix of any length (`b:is(c) d;` against '
+  + '`b:is(c) d {}`), so no token decides between them before its end; the '
+  + 'fix contains the nested-rule reading\'s commitment (parseman '
+  + '`attempt(…, { contain: true })`, unreleased) and needs an owner decision '
+  + '(escalated).';
+
+/*
+ * The mirror image of the pins above, in the dialects that read the
+ * declaration first. Same shared prefix, decided in the other order.
+ */
+const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
+  'css-syntax-3 reads a block item that starts `<ident>:` as a declaration '
+  + 'first and as a nested rule only when that fails, and SCSS and .jess do '
+  + 'the same. But `li:not(` reads as a declaration whose value calls `not()`, '
+  + 'the argument `:last-child` fails as a value inside the function '
+  + '`dispatch()`, and that committed failure ends the block item, so the '
+  + 'nested-rule arm never runs. Every selector pseudo-function after a type '
+  + 'selector in a nested rule is rejected (`b:is(.c)`, `b:has(> img)`, '
+  + '`b:where(.c)`); `b:hover` and `b:nth-child(2n+1)` parse because their '
+  + 'value reading fails only at the `{`. Same fix and decision as the Less '
+  + 'pins (escalated).';
 
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
@@ -444,6 +464,23 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: ':is() nested in :not()',
     group: 'selector',
     source: 'a:not(:is(.b, .c)) { color: red }'
+  },
+
+  /*
+   * css-nesting-1: a nested rule may start with a type selector, so inside a
+   * block `li:hover` and `li:not(…)` share their head with a declaration.
+   */
+  {
+    id: 'a type selector with a pseudo-class in a nested rule',
+    group: 'selector',
+    source: 'ul { li:hover { color: red } }'
+  },
+  {
+    id: 'a type selector with a selector pseudo-function in a nested rule',
+    group: 'selector',
+    source: 'ul { li:not(:last-child) { color: red } }',
+    brokenIn: ['scss', 'jess'],
+    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
   },
   {
     id: ':nth-child() with an An+B microsyntax',
