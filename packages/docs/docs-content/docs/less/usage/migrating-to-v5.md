@@ -392,6 +392,16 @@ Each sheet is still imported once, with these differences from Less 4.x:
 - `@import (multiple) "t.less"; @import "t.less";` renders the sheet twice. A `(multiple)` import does not count toward import-once; Less 4.x rendered it once.
 - A root `@import "t.less"` that comes after the same sheet was imported inside a ruleset or an at-rule block (`.wrap { @import "t.less"; }` or `@media print { @import "t.less"; }`) still renders the sheet at the root. Less 4.x skipped the root import.
 
+### Options can also come from a `styles.config`
+
+In Less 4.x the options passed to `less.render()` or `lessc` were the whole configuration. Less 5 also reads a `styles.config.*` file, and works the options out for each file it compiles, imported files included:
+
+- A file uses every `styles.config.*` in its own folder and the folders above it, up to its package root (the first folder up with a `package.json`), merged, the nearest winning setting by setting: a subfolder's config only needs the settings that differ. An imported file in another folder uses the configs above it. No config is loaded for a file under `node_modules`.
+- An option you pass to `less.render()` or `lessc` wins over the same option in that config; the config supplies the options you leave unset. With no config file, the options you pass are the whole configuration, as in Less 4.x.
+- A file's settings are its language's defaults, under the config's `compile` block, under the block for its language (`language.less` for a `.less` file). The options you pass are `language.less` options, so they reach `.less` files only: an imported `.jess` or `.scss` file keeps its own defaults and settings.
+
+See [Less.js Options](./less-options#cross-platform-options).
+
 ### Safer JavaScript execution model
 
 One surprising behavior for some teams is that legacy Less workflows could execute JavaScript (including via `.js` imports). That became a real security concern in setups where front-end input was passed directly into a Less compiler.
