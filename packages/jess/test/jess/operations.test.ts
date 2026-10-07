@@ -17,9 +17,6 @@
  * what is wrong.
  */
 import { describe, expect, it } from 'vitest';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 
 /** Render one `.jess` declaration value and return just the value bytes. */
@@ -46,7 +43,7 @@ const body = async (src: string) => {
  * warnings the render reports to its CALLER — because §4.7 makes a claim about
  * BOTH ("every rung warns except the one that throws") and a row that checked only
  * the bytes is exactly how the silent rungs stayed silent. An `undefined` mode
- * renders under the entry dialect's own default.
+ * renders under the dialect's own default.
  */
 type UnitMode = 'loose' | 'preserve' | 'strict';
 
@@ -260,31 +257,10 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
     await expect(warningsIn('$(1px + 3em)', 'preserve')).resolves.toEqual(['eval/unexpressible-unit']);
   });
 
-  it('with no `unitMode` given, the ENTRY\'s dialect supplies the rung for every partial', async () => {
-    /*
-     * The `.jess` default is a compile setting (the plugin's dialect default),
-     * not a node fact, so like every dialect default the entry file supplies it
-     * for the whole render (ledger C19): `strict` under a `.jess` entry,
-     * `preserve` under a `.less` one. Whether an evaluation mode should follow
-     * the file each construct was written in instead is the owner question C19
-     * leaves open; this pins today's answer so a change to it is seen.
-     */
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-unit-entry-default-'));
-    fs.writeFileSync(path.join(dir, 'part.jess'), '.j { k: $(1px + 3em); }');
-    fs.writeFileSync(path.join(dir, 'part.less'), '.l { k: 1px + 3em; }');
-    const render = async (source: string, extension: '.less' | '.jess') => {
-      const result = await new Compiler({ quiet: true })
-        .renderToResult({ source, filePath: path.join(dir, `entry${extension}`), extension }, { quiet: true });
-      return { css: result.css.replace(/\s+/g, ' ').trim(), warnings: result.warnings.map(w => w.code), errors: result.errors.map(w => w.code) };
-    };
-    try {
-      expect(await render('@import \'part.jess\';', '.less'))
-        .toEqual({ css: '.j { k: calc(1px + 3em); }', warnings: ['eval/unexpressible-unit'], errors: [] });
-      expect((await render('@-import \'./part.less\';', '.jess')).errors).toEqual(['eval/invalid-unit-arithmetic']);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  /*
+   * With no `unitMode` given, each file answers its own dialect's default
+   * whichever file imported it (ledger C19): `test/settings-precedence.test.ts`.
+   */
 
   it('`.jess` has no arithmetic spelling OUTSIDE `$( … )` — ledger P13(d), enforced by the GRAMMAR', async () => {
     await expect(valueIn('1px * 2px', 'preserve')).rejects.toMatchObject({ code: 'parse/syntax-error' });

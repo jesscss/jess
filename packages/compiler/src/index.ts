@@ -23,11 +23,13 @@ import {
   removeSourceMapBasepath,
   type PreparedImports,
   type PluginInterface,
-  type Position
+  type Position,
+  type SourceSettings
 } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
+  layerOptions,
   applyStrictPreset,
   inferLanguage,
   type StylesConfig,
@@ -308,6 +310,12 @@ type ResolvedRenderConfig = {
   language?: string;
   optionsFor(language?: string): Record<string, unknown>;
   configFileOptionsFor(language?: string): Record<string, unknown>;
+
+  /** The compile modes set explicitly, by the compiler or the render: global. */
+  explicitModes: NonNullable<StylesConfig['compile']>;
+
+  /** The settings covering one source file; see `ContextOptions.sourceOptions`. */
+  sourceOptions(filePath: string, language: string): SourceSettings;
 };
 
 const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
@@ -632,23 +640,57 @@ export class Compiler {
     const { config: loadedFileConfig, configFilePath } = filePath
       ? getConfigWithMeta(path.dirname(filePath))
       : { config: {}, configFilePath: undefined };
+    const explicitConfig: ConfigOptions = mergeWith(
+      createBaseConfig(),
+      this.baseOptsNormalized,
+      renderOptions || {},
+      arrayConcatCustomizer
+    );
     const effectiveConfig: ConfigOptions = mergeWith(
       createBaseConfig(),
       loadedFileConfig,
-      this.baseOptsNormalized,
-      renderOptions || {},
+      explicitConfig,
       arrayConcatCustomizer
     );
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the
-     * bundle it sets (unitMode/allowLeakyScope/allowCallerScope/allowOverloadedImport)
-     * reaches eval via `context.opts` (contextOptions spreads compile). Individual
-     * options already set always win.
+     * non-mode option it sets (`allowOverloadedImport`) reaches the Context; the
+     * modes it sets are read per source file, below. Individual options already
+     * set always win.
      */
     if (effectiveConfig.compile?.strict) {
       effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
     }
+
+    /*
+     * Compile settings resolve per source file (DESIGN-DECISIONS C19). The
+     * compile modes passed to the compiler or the render are global: they are
+     * the Context's own mode options and win everywhere. A folder's
+     * `styles.config` and the `language.<lang>` settings reach only the files
+     * they cover, through `sourceOptions`, which the Context asks for once per
+     * parsed file; the explicit settings win over the file's config (O13). The
+     * `strict` preset is not itself a mode: it fills the modes a file's settings
+     * leave unset, so an explicit language setting still wins over it.
+     */
+    const explicitModes = explicitConfig.compile ?? {};
+    const sourceOptions = (sourcePath: string, sourceLanguage: string): SourceSettings => {
+      /*
+       * A config file is code: one in an installed package's folder is not
+       * loaded, so compiling a project never runs a dependency's config.
+       */
+      const folder = sourcePath === filePath
+        ? { config: loadedFileConfig, configFilePath }
+        : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
+          ? getConfigWithMeta(path.dirname(sourcePath))
+          : { config: {}, configFilePath: undefined };
+      const params = { language: sourceLanguage, input: sourcePath };
+      const folderOptions = getOptions(folder.config, params);
+      return {
+        options: layerOptions(folderOptions, getOptions(explicitConfig, params)),
+        configFile: folder.configFilePath === undefined ? undefined : { path: folder.configFilePath, options: folderOptions }
+      };
+    };
     const jsPluginConfig: JsPluginConfig = {
       jsReadRoot: resolveJsReadRoot(filePath, configFilePath, effectiveConfig.compile?.jsReadRoot)
     };
@@ -754,6 +796,8 @@ export class Compiler {
       jsPluginConfig,
       printOptions,
       language,
+      explicitModes,
+      sourceOptions,
       optionsFor: (targetLanguage?: string) =>
         getOptions(effectiveConfig, {
           language: targetLanguage,
@@ -1027,10 +1071,29 @@ export class Compiler {
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
     const searchPaths = getSearchPaths(resolved.activeOptions)
       ?? getSearchPaths(resolved.effectiveConfig.compile ?? {});
+    const explicit = resolved.explicitModes;
     const contextOptions: ContextOptions & Record<string, unknown> = {
       ...resolved.effectiveConfig.compile,
       ...resolved.activeOptions,
-      ...(searchPaths ? { searchPaths } : {})
+      ...(searchPaths ? { searchPaths } : {}),
+
+      /*
+       * The Context's mode options are the global tier alone; the entry's config
+       * file and language settings reach the entry like any other file, through
+       * `sourceOptions`, so its modes never reach the files it imports. A parser
+       * reads its other per-file settings (the selector policies) from
+       * `sourceOptions` too, so the entry's copies spread above are never read
+       * for another file.
+       */
+      mathMode: explicit.mathMode,
+      unitMode: explicit.unitMode,
+      functionMode: explicit.functionMode,
+      allowLeakyScope: explicit.allowLeakyScope,
+      leakyScope: explicit.leakyScope,
+      allowCallerScope: explicit.allowCallerScope,
+      bubbleRootAtRules: undefined,
+      processImports: explicit.processImports,
+      sourceOptions: resolved.sourceOptions
     };
 
     /*

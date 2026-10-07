@@ -419,10 +419,20 @@ describe('V19 one-evaluator projection ratchet', () => {
     // -1 function: parens are dropped when the calculation in them is resolved,
     // inside a math function too (owner 2026-10-07), so no group is judged by
     // where it is read and `heldByBoundary` is gone.
-    expect(occurrences(/^function |^async function /gmu)).toBe(574);
+    // +4 functions and +1 `new WeakMap` (owner 2026-10-07, ledger C19: each file
+    // answers its own resolved settings): `modes` follows the source owner across
+    // a document boundary (`withPolicy`, `inDocument`), seeded once per walk
+    // (`initialPolicy`), with one `modes` object per policy (`modesOf`, `policyModes`).
+    // +5 (same ruling): the policy, now with the evaluator, also follows a
+    // definition written in another file to wherever it is called, its guard, a
+    // root variable's value and a value a reference reaches (`definitionOwner`,
+    // `frameOwner`, `changesPolicy`, `enterPolicy`, `whileReachedFrom` and one
+    // `withPolicy` overload line), less `rememberImportedCallableBodies`: every
+    // document records its root definitions when it is parsed.
+    expect(occurrences(/^function |^async function /gmu)).toBe(583);
     expect(occurrences(/new Map/gu)).toBe(91);
     expect(occurrences(/new Set/gu)).toBe(44);
-    expect(occurrences(/new WeakMap/gu)).toBe(10);
+    expect(occurrences(/new WeakMap/gu)).toBe(11);
     expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 

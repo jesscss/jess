@@ -1,22 +1,24 @@
 import type { Statement, Stylesheet } from './ast/nodes.js';
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
-import type { Context, ContextOptions, ResolvedOptions } from './context.js';
+import type { Context, ContextOptions, ResolvedOptions, SourceOptions, SourceSettings } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
+import type { ValueEvaluator } from './ast/value-eval.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
   document?: Stylesheet;
 
   /**
-   * Dialect-owned defaults proposed by a successful parser. Context accepts the
-   * entry parser's set once, folds constructor-supplied compile options over it,
-   * and retains that immutable policy for the session. Imported parsers cannot
-   * reconfigure the live Context.
+   * This document's dialect defaults: the parsing plugin's own settings over its
+   * language's implicit defaults. Context resolves the document's policy from
+   * them once, under the settings scoped to the source and the Context's
+   * explicit options (DESIGN-DECISIONS C19), so a document keeps its own
+   * language's defaults whichever document imported it.
    */
   dialectDefaults?: Readonly<Partial<ResolvedOptions>>;
 
@@ -61,6 +63,18 @@ export type SafeParseOptions = {
     allowApplySelectors?: ApplySelectorKind[];
   };
   importOptions?: ImportOptions;
+
+  /**
+   * The settings that cover this source (its folder's `styles.config`, then its
+   * language's settings, then the compile's own), when the host supplies them.
+   * A plugin reads the settings for this document from them in place of
+   * `compilerOptions`, and over its own constructor options, so a setting
+   * reaches only the files it covers.
+   */
+  sourceOptions?: SourceOptions;
+
+  /** The `styles.config` file `sourceOptions` were read from ({@link SourceSettings.configFile}). */
+  sourceConfigFile?: SourceSettings['configFile'];
 };
 
 /**
@@ -224,6 +238,13 @@ export interface PluginInterface {
    * outer scope and owns `with`/`set` propagation.
    */
   applyModuleConfig?(request: ModuleConfigRequest): readonly ModuleConfigRejection[] | void;
+
+  /**
+   * The value evaluator for the documents this plugin parses: its language's
+   * built-in functions and value semantics. A document is evaluated with its
+   * own plugin's evaluator, whichever document imported it (DESIGN-DECISIONS C19).
+   */
+  readonly valueEvaluator?: ValueEvaluator;
 
   /** Optional compiler hooks used by compatibility plugins. */
   setContext?(context: Context): void;

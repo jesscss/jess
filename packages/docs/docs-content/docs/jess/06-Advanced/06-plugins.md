@@ -80,9 +80,8 @@ canonical AST v2 `Stylesheet` (omit it when parsing failed):
 
 - `document` — the parsed `Stylesheet` root.
 - `dialectDefaults` — an optional readonly set of evaluation defaults proposed
-  by the dialect. The entry parser's defaults establish the session fallback;
-  explicit compiler options win, and imported parsers cannot reconfigure the
-  active session.
+  by the dialect for this document. They apply to this document only, under the
+  settings that cover it and the compiler's own options.
 - `errors` — an array of error diagnostics; a non-empty array aborts compilation of
   the file.
 - `warnings` — non-fatal diagnostics (for example deprecation notices).
@@ -138,8 +137,19 @@ export default myPlugin;
 
 If those defaults affect evaluation, return a frozen readonly projection as
 `dialectDefaults` on each successful parse result. Do not mutate `Context` from
-`setContext`; Context resolves the entry dialect's defaults once and keeps the
-result immutable for the compilation session.
+`setContext`; Context resolves each document's policy once, from that document's
+own `dialectDefaults`, so a file keeps your language's defaults whichever file
+imports it. When the host passes `sourceOptions` to `safeParse` (the settings
+that cover that file: its folder's `styles.config`, the settings for your
+language and the compiler's own), read them over the factory's options: they
+win where they set a value. `sourceConfigFile` names the `styles.config` they
+came from, so an invalid value it set can name that file.
+
+Give the plugin a `valueEvaluator` (built with `buildEvaluator`) for your
+language's built-in functions and value semantics. Each document is evaluated
+with its own plugin's evaluator, so a `.less` file imported by a `.jess` file
+still has the Less functions, and a `.jess` file imported by a `.less` file
+does not.
 
 ## Bundler integration
 

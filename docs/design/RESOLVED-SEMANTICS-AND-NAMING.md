@@ -1066,13 +1066,13 @@ demanded an expressible result whatever `unitMode` said. Now:
 - **The default is a compile setting, not a node fact.** The `.jess` plugin
   supplies `strict` as its dialect default (`jess-plugin-jess`
   `dialectDefaults`); an explicit compile `unitMode` overrides it
-  (`resolveOptions`, `context.ts`). Like every dialect default, the ENTRY
-  file's dialect supplies it for the whole compile (ledger C19): a `.less`
-  partial under a `.jess` entry is strict by default, a `.jess` partial under
-  a `.less` entry is `preserve`. Whether an evaluation mode should instead
-  follow the file each construct was written in is the owner question C19
-  leaves open; `.jess` is the first dialect whose `unitMode` default differs,
-  so that question now changes output in a mixed-dialect compile.
+  (`resolveOptions`, `context.ts`). Like every dialect default, it belongs to
+  each file (ledger C19, owner 2026-10-07): a `.jess` file is strict by default
+  under a `.less` entry, and a `.less` file keeps `preserve` under a `.jess`
+  entry. Math follows the file it is written in wherever it is read: a root
+  variable's value, a mixin body and its guard, and a member a reference
+  reaches answer the policy of the document that wrote them. A `unitMode`
+  passed to the compile is global and applies to every file.
 - **Equality never raises (§4.1).** `strict` raises on units that do not
   reconcile in arithmetic and in a RELATIONAL comparison (`$(1em > 1px)`, as
   dart-sass does); `$(1em = 1px)` (§4 row `j2`) and `$(1em == 1px)` are

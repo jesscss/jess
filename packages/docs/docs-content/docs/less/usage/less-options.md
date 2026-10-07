@@ -7,7 +7,15 @@ origin: less
 ---
 ## Cross-Platform Options
 
-Less 5 also reads a `styles.config.*` file beside (or above) the file it compiles. An option passed to `less.render()` or `lessc` wins over the same option in that file's `language.less` block and over a `compile` mode (including the `strict` preset); the config file applies to the options the call leaves unset.
+Less 5 also reads a `styles.config.*` file in the folder of the file it compiles. An option passed to `less.render()` or `lessc` wins over the same option in that file's `language.less` block and over a `compile` mode (including the `strict` preset); the config file applies to the options the call leaves unset.
+
+The mode options (`math`, `unitMode`, `strictUnits`, …) are worked out for each file the compile reads, so an imported file compiles the same way whichever file imports it:
+
+- An option passed to `less.render()` or `lessc` applies to every file, imported `.jess` and `.scss` files included.
+- A `styles.config.*` applies to the files in its own folder; an imported file in another folder uses that folder's config, not the entry's. Its `language.less` block applies only to `.less` files, and wins over its `compile` block. A config in an installed package's folder (under `node_modules`) is not loaded.
+- With neither, each file uses its own language's defaults, or the options the Less plugin was built with: a `.less` file uses `unitMode: 'preserve'`, while a `.jess` file imported by it keeps `.jess`'s default, where `$(1px + 3em)` is an error.
+- Math follows the file it is written in: a variable declared in a `.jess` file and read in a `.less` file, or a mixin and its guard defined in one folder and called from another, keep the settings of the file that declares them. A file also keeps its own language's built-in functions, so `percentage()` works in a `.less` file imported by a `.jess` file.
+- A deprecated spelling (`strictUnits`, `math`, `strictMath`) counts where it is written: `strictUnits` in a `language.less` block wins over a `unitMode` in the same config's `compile` block. Each one warns, once, wherever it is set.
 
 The mode options (`math`, `unitMode`, `moduleMode`) accept only the values listed for them. Any other value is an error, not a fallback to another mode.
 
