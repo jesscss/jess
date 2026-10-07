@@ -217,8 +217,8 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
     // The failing operation of a chain, not the first one.
     await expect(at('.a {\n  k: $(1 + 1px + 3em);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:16']);
 
-    // A comparison of two units that do not convert: the comparison itself.
-    await expect(at('.a {\n  k: $(1em > 1px);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:8']);
+    // An order over two units that do not convert: the comparison's operator.
+    await expect(at('.a {\n  k: $(1em > 1px);\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:12']);
 
     // Inside a math function, the same operation inside the `$( … )`.
     await expect(at('.a {\n  k: calc(100% - $(1px + 3em));\n}')).resolves.toEqual(['eval/invalid-unit-arithmetic@2:24']);

@@ -87,6 +87,7 @@ import type {
   Comment,
   ComplexSelector,
   CompoundSelector,
+  Condition,
   Declaration,
   AnonymousMixin,
   ValueBlock,
@@ -4222,8 +4223,8 @@ function rememberUnitOwner(value: Value, node: Operation): Value {
   return value;
 }
 
-function isOperationNode(node: object): node is Operation {
-  return 'type' in node && node.type === 'Operation';
+function isOperatorSite(node: object): node is Operation | Condition {
+  return 'type' in node && (node.type === 'Operation' || node.type === 'Condition');
 }
 
 /** True when a `+`/`-` operator is GLUED to the right operand in source (a leading
@@ -4251,9 +4252,20 @@ const operationSignGlued = (node: Operation): boolean => {
   return opEnd - opStart === leftWidth + 1 + node.operator.length + rightWidth;
 };
 
+/**
+ * Where a unit diagnostic points: at the operator of the operation or of the
+ * value-position comparison (`$(1em > 1px)`) that raised it, between its two
+ * operands' spans; anything else at its own start.
+ */
 function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof callSiteLocation> {
   const location = callSiteLocation(node, e);
-  if (!isOperationNode(node)) {
+  if (!isOperatorSite(node)) {
+    return location;
+  }
+  const sides = node.type === 'Operation'
+    ? node
+    : node.guard.g === 'cmp' ? { operator: node.guard.op, left: node.guard.left, right: node.guard.right } : undefined;
+  if (sides === undefined) {
     return location;
   }
   const source = location.ctx.file?.source;
@@ -4261,13 +4273,13 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof cal
   if (source === undefined || span === undefined) {
     return location;
   }
-  const leftEndSlot = sourceEndOf(node.left);
-  const rightStartSlot = sourceStartOf(node.right);
+  const leftEndSlot = sourceEndOf(sides.left);
+  const rightStartSlot = sourceStartOf(sides.right);
   const leftEnd = leftEndSlot === NO_SPAN ? span.start : leftEndSlot;
   const rightStart = rightStartSlot === NO_SPAN ? span.end : rightStartSlot;
   const searchStart = Math.max(span.start, leftEnd);
   const searchEnd = Math.min(span.end, rightStart);
-  const operatorOffset = source.indexOf(node.operator, searchStart);
+  const operatorOffset = source.indexOf(sides.operator, searchStart);
   if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
     return location;
   }
