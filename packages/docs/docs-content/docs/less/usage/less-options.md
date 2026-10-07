@@ -30,7 +30,7 @@ Allows you to add a path to every generated import and url in your css. This doe
 
 For instance, if all the images the css use are in a folder called resources, you can use this option to add this on to the URL's and then have the name of that folder configurable.
 
-An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so no URL option changes it: neither `rootpath` nor `rewriteUrls` rewrites its path, and `urlArgs` adds no argument to it.
+An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so `rootpath`, `rewriteUrls` and `urlArgs` all leave it as written. Less 4 rewrote it, which could write a broken URL: under `rootpath: 'r/'`, `url(~"'b.png'")` became `url(r/'b.png')`. Use a quoted string (`url("@{base}/x.png")`) when you want the options to apply.
 
 ### Rewrite URLs
 
@@ -98,14 +98,14 @@ _Released v3.7.0_
 
 Less has re-built math options to offer an in-between feature between the previous `strictMath` setting, which required parentheses all the time, and the default, which performed math in all situations.
 
-In order to cause fewer conflicts with CSS, which now liberally uses the `/` symbol between values, there is now a math mode that _only_ requires parentheses for division. (This is now the default in Less 4.) "Strict math" has also been tweaked to operate more intuitively, although the legacy behavior is supported.
+In order to cause fewer conflicts with CSS, which now liberally uses the `/` symbol between values, there is now a math mode that _only_ requires parentheses for division. (This is now the default in Less 4.) "Strict math" has also been tweaked to operate more intuitively.
 
 The four options available for `math` are:
 
 - `always`  (3.x default) - Less does math eagerly
-- `parens-division` **(4.0 default)** - No division is performed outside of parens using `/` operator (but can be "forced" outside of parens with `./` operator - `./` is deprecated)
+- `parens-division` **(4.0 default)** - No division is performed outside of parens using `/` operator. (Less 4 also let the `./` operator force a division outside parens; Less 5 removed it, and `2px ./ 2` is a parse error.)
 - `parens` | `strict` - Parens required for all math expressions.
-- `strict-legacy` (removed in 4.0) - In some cases, math will not be evaluated if any part of the expression cannot be evaluated.
+- `strict-legacy` (removed in 4.0) - Still accepted, and means `parens`, as in Less 4.
 
 **always**
 Example:
@@ -113,8 +113,7 @@ Example:
 .math {
   a: 1 + 1;
   b: 2px / 2;
-  c: 2px ./ 2;
-  d: (2px / 2);
+  c: (2px / 2);
 }
 ```
 Outputs:
@@ -123,7 +122,6 @@ Outputs:
   a: 2;
   b: 1px;
   c: 1px;
-  d: 1px;
 }
 ```
 
@@ -134,8 +132,7 @@ Example:
 .math {
   a: 1 + 1;
   b: 2px / 2;
-  c: 2px ./ 2;
-  d: (2px / 2);
+  c: (2px / 2);
 }
 ```
 Outputs:
@@ -144,7 +141,6 @@ Outputs:
   a: 2;
   b: 2px / 2;
   c: 1px;
-  d: 1px;
 }
 ```
 
@@ -165,26 +161,6 @@ Output:
 }
 ```
 
-**strict-legacy**
-
-In legacy `strictMath` mode, mixed expressions outside of parentheses means entire parentheses won't evaluate. (Probably not what you want.)
-
-```less
-.math {
-  a: 1 + 1;
-  b: 2px / 2;
-  c: (2px / 2) + (3px / 1);
-}
-```
-Output:
-```css
-.math {
-  a: 1 + 1;
-  b: 2px / 2;
-  c: (2px / 2) + (3px / 1);
-}
-```
-
 #### Strict Math (Deprecated)
 
 | | |
@@ -201,7 +177,7 @@ _This has been replaced by the [`math`](#math) option._ Less 5 still accepts it 
 |---|---|
 | `lessc -ru`<br>`lessc --relative-urls` | `{ relativeUrls: true }` |
 
-_Has been replaced by `rewriteUrls: "all"`_
+_Has been replaced by `rewriteUrls: "all"`._ Less 5 ignores `relativeUrls`, without a warning, so setting it rewrites nothing, and `lessc` no longer accepts `--relative-urls`.
 
 
 ### Unit Mode
@@ -257,7 +233,7 @@ In modern mode a Less built-in must be imported, for example `@use "#less";` and
 |---|---|
 | `lessc --ie-compat` | `{ ieCompat: true }` |
 
-False by default starting in v3.0.0. Currently only used for the data-uri function to ensure that images aren't created that are too large for the browser to handle.
+Less 5 ignores `ieCompat`, and `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
 
 #### Enable Inline JavaScript (Deprecated)
 
@@ -291,7 +267,7 @@ As opposed to the global variable option, this puts the declaration at the end o
 |---|---|
 | `lessc --url-args="cache726357"` | `{ urlArgs: 'cache726357' }` |
 
-This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. An escaped `url(~"…")` body is left as written, so it gets no argument: in `url(~"'e.png'")` it would land after the closing quote, `url('e.png'?v=1)`, which is not a valid URL.
+This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. An escaped `url(~"…")` body is left as written, so it gets no argument (Less 4 appended one): in `url(~"'e.png'")` it would land after the closing quote, `url('e.png'?v=1)`, which is not a valid URL.
 
 #### Line Numbers (Deprecated)
 
@@ -375,7 +351,7 @@ Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hos
 |---|---|
 | `lessc --insecure` | `{ insecure: true }` |
 
-Has no effect in Less 5, and setting it reports a deprecation warning. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
+Less 5 ignores `insecure`, and `lessc` no longer accepts `--insecure`. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
 
 
 ## Source Map Options
