@@ -178,6 +178,9 @@ export interface EvalErrorFrame {
   endLine?: number;
   endColumn?: number;
   lines?: Record<number, string>;
+
+  /** {@link INJECTED_TEXT_NOTE} when the position is in text the host added around the file. */
+  note?: string;
 }
 
 /**
@@ -202,6 +205,7 @@ export function evalErrorFrameFrom(err: unknown): EvalErrorFrame | undefined {
     column,
     endLine: end?.line,
     endColumn: end?.column,
-    lines: extractRelevantLines(source, line, 1, owner)
+    lines: extractRelevantLines(source, line, 1, owner),
+    ...(owner === loc.file ? {} : { note: INJECTED_TEXT_NOTE })
   };
 }
