@@ -332,6 +332,17 @@ sign-off; do not rebaseline unilaterally.
 - The `@less/test-data` symlink is location-relative; under `/tmp` it
   resolves short without erroring.
 
+## Landing order (cross-repo)
+
+- **Merged `styles.config` files (ledger C19, O19)** need the less.js fork branch
+  `lane/v5-tests-unit-config` to land in fork `alpha` with or before them. That branch
+  keeps one `tests-unit/styles.config.cjs` with `mathMode: 'parens-division'` and deletes
+  `tests-unit/styles.config.ts` (`mathMode: 'always'`). Against a corpus that still has
+  the `.ts`, the merge applies `'always'` to every `tests-unit` fixture and three cases
+  fail: `tests-unit/calc/calc.less` and `tests-unit/operations/operations-advanced.less`
+  in the Less fixture lane, and the `tests-unit/color-functions/modern-syntax.less`
+  round trip in `packages/jess/test/jess/less-jess-equivalence.test.ts`.
+
 ## Current Focus
 
 No active debugging focus is recorded here.
