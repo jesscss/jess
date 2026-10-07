@@ -85,6 +85,26 @@ describe('min()/max() per dialect', () => {
     expect(await render(compiler, expr, '.scss'), `${expr} in .scss`).toBe(sassExpected);
     expect(await render(compiler, expr, '.less'), `${expr} in .less`).toBe(lessExpected);
   });
+
+  /*
+   * A unitless argument is comparable with one that has a unit in every
+   * `unitMode`, `strict` included, as a unitless `+`/`-` operand adopts the
+   * other unit (ledger V27, C20; orchestrator judgment under owner delegation
+   * 2026-10-06). The winner is written as authored. Only two different real
+   * units are not comparable.
+   */
+  it('compares a unitless argument with a unit in every unitMode', async () => {
+    for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
+      const moded = new Compiler({ compile: { unitMode } });
+      for (const extension of FOLDING_DIALECTS) {
+        const at = `${unitMode} ${extension}`;
+        expect(await render(moded, 'max(4, 3px)', extension), at).toBe('4');
+        expect(await render(moded, 'min(1, 2px)', extension), at).toBe('1');
+        expect(await render(moded, 'max(1, 2px)', extension), at).toBe('2px');
+        expect(await render(moded, 'max(1px, 2em)', extension), at).toBe('max(1px, 2em)');
+      }
+    }
+  });
 });
 
 describe('min()/max() are ordinary CSS calls in .jess', () => {
