@@ -48,6 +48,14 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  */
 const jessValueEvaluator = buildEvaluator(createFnRegistry());
 
+/**
+ * `.jess` arithmetic is strict about units by default: `$(1 + 2px)`,
+ * `$(1px + 3em)` and `$(1px * 2px)` are errors (owner 2026-10-06). It is a
+ * default, not a rule — an explicit compile `unitMode` wins over it, as it
+ * does over every dialect's default (`resolveOptions`).
+ */
+const JESS_DIALECT_DEFAULTS = Object.freeze({ unitMode: 'strict' as const });
+
 /** Parses `.jess` source into the canonical AST-v2 `Stylesheet` document. */
 export class JessPlugin extends AbstractPlugin {
   name = 'jess';
@@ -62,7 +70,12 @@ export class JessPlugin extends AbstractPlugin {
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     try {
-      return { document: parse(source, parseOptionsFromSafeParse(parseOptions)), errors: [], warnings: [] };
+      return {
+        document: parse(source, parseOptionsFromSafeParse(parseOptions)),
+        errors: [],
+        warnings: [],
+        dialectDefaults: JESS_DIALECT_DEFAULTS
+      };
     } catch (error) {
       return {
         errors: [parserDiagnostic({ dialect: 'Jess', error, filePath, source })],

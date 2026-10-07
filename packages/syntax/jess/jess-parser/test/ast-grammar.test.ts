@@ -3753,6 +3753,28 @@ describe('Jess AST grammar facts', () => {
  * `@supportsé` is one unknown at-keyword rather than `@supports` with an `é`
  * prelude. @see https://drafts.csswg.org/css-syntax/#ident-token-diagram
  */
+describe('`$( … )` arithmetic', () => {
+  it('spans each operation of a run, so a unit diagnostic points at it', () => {
+    const source = '.a { k: $(1 + 2px + 3em); }';
+    const ruleset = parse(source).rules[0];
+    const declaration = ruleset?.type === 'Ruleset' ? ruleset.rules[0] : undefined;
+    const value = declaration?.type === 'Declaration' ? declaration.value : undefined;
+    const part = value !== undefined && !Array.isArray(value) && value.type === 'Interpolation' ? value.parts[0] : undefined;
+    const outer = part !== undefined && 'ref' in part && part.ref.type === 'Expression' ? part.ref.value : undefined;
+    if (outer === undefined || Array.isArray(outer) || outer.type !== 'Operation') {
+      throw new TypeError('expected an operation inside $( … )');
+    }
+    expect(source.slice(sourceSpanOf(outer)!.start, sourceSpanOf(outer)!.end)).toBe('1 + 2px + 3em');
+    expect(source.slice(sourceSpanOf(outer.left)!.start, sourceSpanOf(outer.left)!.end)).toBe('1 + 2px');
+  });
+
+  it('leaves a unitless `+`/`-` to `unitMode`, as Less does (owner 2026-10-06)', () => {
+    expect(bare(parse('$w: $(1 + 2px);'))).toMatchObject({
+      rules: [{ value: { parts: [{ ref: { value: { type: 'Operation', operator: '+', unitlessAdoptsUnit: false } } }] } }]
+    });
+  });
+});
+
 describe('keyword boundaries run to full ident-continue', () => {
   it('continues an at-keyword through a non-ASCII ident character', () => {
     for (const name of ['@supportsé', '@mediaé', '@containeré']) {

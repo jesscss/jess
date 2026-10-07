@@ -53,20 +53,9 @@ function unwrapInterpolatedExpression(value: unknown): unknown {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, unwrapInterpolatedExpression(item)]));
 }
 
-/*
- * A `+`/`-` records whether a unitless operand takes the other side's unit in
- * every `unitMode` (`Operation.unitlessAdoptsUnit`). `.jess` says yes
- * (RESOLVED-SEMANTICS §4 rows b, c); `.less` leaves it to `unitMode` (owner
- * 2026-10-06). Whether that ruling reaches `.jess` is an open owner question.
- */
-const UNITLESS_SUM = `${INTERPOLATED_EXPRESSION}; and a \`+\`/\`-\` differs in \`unitlessAdoptsUnit\`, the open .jess unitless ± unit question`;
-function withoutUnitlessFact(value: unknown): unknown {
-  return JSON.parse(JSON.stringify(unwrapInterpolatedExpression(value), (key, item: unknown) => (key === 'unitlessAdoptsUnit' ? undefined : item)));
-}
-
 const ROWS: Row[] = [
   { less: '@w: @a * 2;', jess: '$w: $($a * 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
-  { less: '@w: @a + 2;', jess: '$w: $($a + 2);', gap: { reason: UNITLESS_SUM, normalize: withoutUnitlessFact } },
+  { less: '@w: @a + 2;', jess: '$w: $($a + 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: @a * 2 / @b;', jess: '$w: $($a * 2) / $b;', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: (@a * 2 / @b);', jess: '$w: $($a * 2 / $b);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: 'a { font: 12px/1.5 Arial; }', jess: 'a { font: 12px/1.5 Arial; }' },

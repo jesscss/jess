@@ -88,7 +88,6 @@ import type {
   ComplexSelector,
   CompoundSelector,
   Declaration,
-  Expression,
   AnonymousMixin,
   ValueBlock,
   Dimension,
@@ -194,7 +193,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError, type TreeContextLike } from '../error/jess-error.js';
 import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -4367,17 +4366,16 @@ function validateValueGroupUnits(
   value: ValueGroup,
   modes: EvalModes,
   owner: object,
-  e: EvalCtx,
-  demandExpressible: boolean
+  e: EvalCtx
 ): void {
   if (isValueGroupArray(value)) {
     for (const item of value) {
-      validateValueGroupUnits(item, modes, owner, e, demandExpressible);
+      validateValueGroupUnits(item, modes, owner, e);
     }
     return;
   }
   try {
-    validateFinalUnits(value, modes, demandExpressible);
+    validateFinalUnits(value, modes);
   } catch (error) {
     throwUnitArithmetic(error, unitOwners.get(value) ?? owner, e);
   }
@@ -4387,11 +4385,8 @@ function validateValueGroupUnits(
    * `strict` throws on. `inCalc` is exempt: an operation the author WROTE inside
    * a math function is preserved because they asked for it (§4.6), not because
    * we declined to fabricate a unit, so there is nothing to report.
-   *
-   * A `demandExpressible` boundary has already thrown or passed, and it offers no
-   * lenient rung to warn ABOUT — so it never reaches here.
    */
-  if (!demandExpressible && modes.unitMode !== 'strict' && !modes.inCalc) {
+  if (modes.unitMode !== 'strict' && !modes.inCalc) {
     const unexpressible = findFinalValue(value, isUnexpressible);
     if (unexpressible !== undefined) {
       warnUnexpressibleUnit(unexpressible, owner, e);
@@ -4415,7 +4410,7 @@ function validateItemUnits(items: readonly EvalValue[], sources: readonly (Value
     const item = items[index]!;
     if (!isLiteral(item)) {
       const source = sources[index];
-      validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? owner : source, e, false);
+      validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? owner : source, e);
     }
   }
 }
@@ -4779,17 +4774,15 @@ function evalTyped(
        * quoted template is a `Quoted` (see above).
        * - `.jess` `$( … )` (a lone `Expression` ref) is the computation's own
        *   value — unquoted, as the splice is, so a string result is opaque text
-       *   (ledger V3);
+       *   (ledger V3). Its units are checked where the value is consumed, as a
+       *   Less computation's are, so a later operation can still cancel them;
        * - any other template (Less `@{n}px`, an interpolated custom-property
        *   value) is opaque bytes, exactly as its `.jess` spelling `~"…"` is (V3).
        */
       const first = node.parts[0];
       if (node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
-        const ref = first.ref;
-        return mapMaybe(evalTyped(ref, frame, e), (value) => {
-          validateValueGroupUnits(value, e.modes, ref, e, true);
-          return first.unquote && !isValueGroupArray(value) && value.type === 'Quoted' ? makeAny(value.value) : value;
-        });
+        return mapMaybe(evalTyped(first.ref, frame, e), value =>
+          first.unquote && !isValueGroupArray(value) && value.type === 'Quoted' ? makeAny(value.value) : value);
       }
       return mapMaybe(evalInterp(node, frame, e), bytes => isLiteral(bytes) ? makeAny(bytes) : bytes);
     }
@@ -5011,16 +5004,6 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: E
 function keptOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
   const bytes = emitValue(value);
   return isLiteral(value) || isValueGroupArray(value) ? bytes : operandAsWritten(value, parent.operator, child === parent.right, bytes);
-}
-
-/**
- * An `Expression` the author spelled as a paren group — its span opens at the
- * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
- * bare Less computation starts where its value starts, so neither prints parens.
- */
-function isAuthoredGroupExpression(node: Expression): boolean {
-  const start = sourceStartOf(node);
-  return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
 }
 
 /**
@@ -5725,11 +5708,8 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        * Emitting a typed value to bytes IS consuming it, so this splice is a final
        * typed-value boundary in exactly the sense `validateFinalUnits` is written
        * over, and the `unitMode` ladder must answer here too: `strict` throws,
-       * `loose`/`preserve` warn.
-       *
-       * UNLESS THE REF IS AN `Expression` — the `$( … )` computation boundary,
-       * which DEMANDS an expressible result and consults no mode. See the note on
-       * `demandExpressible` below.
+       * `loose`/`preserve` warn. A `.jess` `$( … )` answers to the same ladder;
+       * its dialect only changes the default rung to `strict` (owner 2026-10-06).
        *
        * Without this the ladder was reachable only through a code path, not over a
        * construct (SEMANTIC-INVARIANTS 1), and one value printed different bytes in
@@ -5741,26 +5721,8 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        * F7(b) hole, and §4.7's table is written in the `$( … )` spelling, so the
        * rung that throws had no reachable site at all.
        */
-      /*
-       * `unitMode` IS A LESS-COMPAT LEVER, AND `.jess` IS NOT ON THE LADDER.
-       *
-       * The scoping is carried by WHAT THE NODE SAYS, not by a dialect check: an
-       * `Expression` ref IS the `$( … )` computation boundary (`nodes.ts` {@link
-       * Expression}), which means "compute this and give me the value". When the
-       * result has no CSS spelling there is no value to give, so the three rungs
-       * have nothing to choose between — `loose`'s fabricated unit and
-       * `preserve`'s `calc(…)` are both answers to a question the author did not
-       * ask. It errors, and no mode is consulted.
-       *
-       * That statement mentions no dialect, yet it scopes `unitMode` out of
-       * `.jess` EXACTLY, because `$( … )` is `.jess`'s ONLY arithmetic spelling
-       * (ledger P13(d)) — the grammar makes bare `1px * 2px` a PARSE ERROR there,
-       * so no `.jess` arithmetic can reach a boundary that would consult a mode.
-       * `.less`/`.scss` are untouched: their grammars build `Expression` only
-       * around a `condition(…)`, whose result is a Bool and never carries a unit.
-       */
       if (!isLiteral(value)) {
-        validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
+        validateValueGroupUnits(value, e.modes, part.ref, e);
       }
       bytes += emitSplice(value);
     }
@@ -7427,7 +7389,7 @@ function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
  */
 function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
   return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
-    validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+    validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e);
     const bytes = emitValue(value);
     const bound = argumentSnapshot(bytes, source, frame, e);
     carrySnapshot(bound, value, e, bound.src !== bytes);
@@ -7477,7 +7439,7 @@ function snapshotEvaluatedMixinValue(
  * declaration's would be.
  */
 function writtenBytes(value: ValueGroup, source: CallValue, e: EvalCtx): string {
-  validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+  validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e);
   return emitAsWritten(value);
 }
 
@@ -8709,7 +8671,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
   const elideSink = e.elideSink;
   return mapMaybe(evalValueSlot(node, frame, e), (value) => {
     if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e, false);
+      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e);
       if (elideSink !== undefined && isElided(value)) {
         elideSink.elided = true;
       }

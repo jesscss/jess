@@ -74,21 +74,25 @@ such as `$w + 1px`.
 
 ## Units
 
-An expression computes with units. A unitless number added to or subtracted
-from a dimension takes the dimension's unit, and like units cancel:
+An expression computes with units. Multiplying or dividing by a unitless
+number keeps the unit, compatible units convert, and like units cancel:
 
 ```less
-value: $(1 + 2px);       // 3px
-value: $(2px * 3);       // 6px
-value: $(2px / 1px);     // 2
+value: $(2px * 3);         // 6px
+value: $(1cm + 10mm);      // 2cm
+value: $(2px / 1px);       // 2
 value: $(1px * 1px / 1px); // 1px
 ```
 
-A result whose unit CSS cannot express — an area such as `$(1px * 2px)` or a
-reciprocal such as `$(1 / 2px)` — is an error, whatever the `unitMode` compile
-option says: `unitMode` is a Less compatibility setting.
+Mixing units is an error by default. Adding a unitless number to a dimension
+(`$(1 + 2px)`), adding units that do not convert (`$(1px + 3em)`), and a result
+whose unit CSS cannot express — an area such as `$(1px * 2px)` or a reciprocal
+such as `$(1 / 2px)` — each stop the compile with `eval/invalid-unit-arithmetic`
+at the operation that mixed them. Give both operands the unit you mean
+(`$(1px + 2px)`), or write `calc(1px + 3em)` when the browser should resolve it.
 
-One case does still follow `unitMode`: adding or subtracting dimensions whose
-units do not convert. `$(1px + 3em)` is `4px` under `loose`, `calc(1px + 3em)`
-under `preserve` (the default) and an error under `strict`. Write
-`calc(1px + 3em)` when that is what you mean; it is the same in every mode.
+The `unitMode` compile option changes that default, exactly as it does for
+Less: `preserve` keeps the expression as written and warns
+(`eval/unexpressible-unit`), and `loose` computes Less 4.x's answer
+(`$(1 + 2px)` is `3px`, `$(1px + 3em)` is `4px`). Without the option, `.jess`
+uses `strict`.

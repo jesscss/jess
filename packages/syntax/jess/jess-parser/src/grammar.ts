@@ -932,7 +932,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       expressionProductSymbol,
       expressionBoundary
     )),
-    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+    (children, _fields, span) => ({ value: requireToken(children[1]).value, src: tokenSource(children), start: span.start })
   );
   const ExpressionSumOperator = node<JessOperatorFact>(
     'ExpressionSumOperator',
@@ -941,7 +941,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       expressionSumSymbol,
       expressionBoundary
     )),
-    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+    (children, _fields, span) => ({ value: requireToken(children[1]).value, src: tokenSource(children), start: span.start })
   );
   const ExpressionCompareOperator = node<JessOperatorFact>(
     'ExpressionCompareOperator',
@@ -950,7 +950,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       expressionCompareSymbol,
       expressionBoundary
     )),
-    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+    (children, _fields, span) => ({ value: requireToken(children[1]).value, src: tokenSource(children), start: span.start })
   );
   const ExpressionDeclarationReference = node<ExpressionFact>(
     'ExpressionDeclarationReference',
@@ -1135,7 +1135,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.ExpressionAtom
       ))
     )),
-    children => foldExpression(children)
+    (children, _fields, span) => foldExpression(children, span)
   );
   const ExpressionSum = node<ExpressionFact>(
     'ExpressionSum',
@@ -1146,7 +1146,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.ExpressionProduct
       ))
     )),
-    children => foldExpression(children)
+    (children, _fields, span) => foldExpression(children, span)
   );
   const ExpressionCompare = node<ExpressionFact>(
     'ExpressionCompare',
@@ -3405,7 +3405,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             denominator,
             false,
             cssBaseMathOutsideParens('/'),
-            true
+            false
           );
     }
   );
@@ -3487,7 +3487,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             values[0]!,
             false,
             cssBaseMathOutsideParens(operators[0]!),
-            true
+            false
           )
         : operation(
             operators[0]!,
@@ -3495,7 +3495,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             propertyFact.property,
             false,
             cssBaseMathOutsideParens(operators[0]!),
-            true
+            false
           );
       if (operators.length === 2) {
         const trailing = values.at(-1);
@@ -3508,7 +3508,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           trailing,
           false,
           cssBaseMathOutsideParens(operators[1]!),
-          true
+          false
         );
       }
       return block(result);
@@ -3762,7 +3762,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         requireValueNode(children[3]),
         false,
         cssBaseMathOutsideParens(':'),
-        true
+        false
       )]
     )
   );

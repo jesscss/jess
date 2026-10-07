@@ -44,7 +44,7 @@ import { isCssColorCall, pseudoArgumentText, selectorBranchCanonical } from './n
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import { renderCombinator } from './node.js';
-import { NO_SPAN, bodyEndOf, bodyStartOf, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
 export interface EmitJessOptions {
@@ -962,7 +962,11 @@ class JessPrinter {
     return `(${this.value(node.value, at)})`;
   }
 
-  /** `Expression`: `$( … )`, the only `.jess` math boundary. */
+  /**
+   * `Expression`: `$( … )`, the only `.jess` math boundary. A Less paren group
+   * is the boundary AND the author's parens, which the value keeps where its
+   * math is kept as written (J16), so it prints as `$(( … ))`.
+   */
   expression(node: Expression, at: At): string {
     if (at === At.Expr) {
       return gap('Expression', 'a nested `$( … )`: `ExpressionAtom` has no `$(` arm');
@@ -970,7 +974,8 @@ class JessPrinter {
     if (at === At.Prelude) {
       return gap('Expression', '`$( … )` inside an at-rule prelude');
     }
-    return `$(${this.value(node.value, At.Expr)})`;
+    const inner = this.value(node.value, At.Expr);
+    return isAuthoredGroupExpression(node) ? `$((${inner}))` : `$(${inner})`;
   }
 
   /**

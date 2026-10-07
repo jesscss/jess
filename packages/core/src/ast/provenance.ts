@@ -1,4 +1,5 @@
 import type { Trivia, TriviaMap } from '../types/index.js';
+import type { Expression } from './nodes.js';
 
 /**
  * Parser-authored source spans for canonical AST nodes.
@@ -404,6 +405,18 @@ export function sourceStartOf(node: object): number {
 /** The parser-authored end offset, or {@link NO_SPAN}. The hot-path reader. */
 export function sourceEndOf(node: object): number {
   return (node as Partial<SpanSlots>)._e ?? NO_SPAN;
+}
+
+/**
+ * An `Expression` the author spelled as a paren group — its span opens at the
+ * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
+ * bare Less computation starts where its value starts, so neither is one. The
+ * evaluator keeps such a group's parens around math kept as written, and the
+ * `.jess` printer writes it as `$(( … ))`, the same group inside the boundary.
+ */
+export function isAuthoredGroupExpression(node: Expression): boolean {
+  const start = sourceStartOf(node);
+  return start !== NO_SPAN && !Array.isArray(node.value) && start < sourceStartOf(node.value);
 }
 
 /**

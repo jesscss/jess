@@ -523,16 +523,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements'
   }],
-  ['all-less:tests-config/units/loose/loose.less', {
-    cause: 'cannot-express',
-    outcome: 'arm-b-error',
-    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
-  }],
-  ['all-less:tests-config/units/no-strict/no-strict.less', {
-    cause: 'cannot-express',
-    outcome: 'arm-b-error',
-    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
-  }],
   ['all-less:tests-config/url-args/urls.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -567,6 +557,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
+  }],
+  ['all-less:tests-unit/calc/calc.less', {
+    cause: 'cannot-express',
+    outcome: 'css-mismatch',
+    reason: 'a computed paren group read through a variable inside `calc()` keeps its parens in `.jess` (`$c: $(($v + 30px))`, `calc(100% - $c)` → `calc(100% - (40px))`): the group is judged in the reader\'s math context, not where it was written'
   }],
   ['all-less:tests-unit/color-functions/rgba.less', {
     cause: 'lost-info',
@@ -762,11 +757,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'VariableDeclaration: bound to a mixin call: no `.jess` value spelling for a call\'s output (+1 more)'
-  }],
-  ['all-less:tests-unit/operations/operations-advanced.less', {
-    cause: 'cannot-express',
-    outcome: 'arm-b-error',
-    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
   }],
   ['all-less:tests-unit/operations/operations.less', {
     cause: 'cannot-express',
@@ -1037,26 +1027,44 @@ describe('spellings the emitter names instead of printing', () => {
   });
 });
 
+describe('a Less paren group lowers to a group inside the boundary', () => {
+  it('prints `(@a + 3px)` as `$(($^a + 3px))` and bare `@a + 3px` as `$($^a + 3px)`', () => {
+    /*
+     * Less parens are the computation boundary AND the author's parens, which
+     * the value keeps where its math is kept as written (J16). `$( … )` alone
+     * is only the boundary, so the group is written inside it.
+     */
+    expect(emitJess(parseLess('.a {\n  b: (@a + 3px);\n  c: @a + 3px;\n}\n')))
+      .toBe('.a {\n  b: $(($^a + 3px));\n  c: $($^a + 3px);\n}\n');
+  });
+});
+
 /*
- * The corpus cannot see this divergence: every fixture that holds a unitless
- * number ± a unit is already listed in KNOWN for another cause, so the
- * ratchet stays green whichever way `.jess` answers. `.less` keeps `4 + 3px`
- * as written outside `unitMode: 'loose'` (owner 2026-10-06), while `.jess`
- * computes `$(4 + 3px)` to `7px` (RESOLVED-SEMANTICS §4 rows b, c). Whether the
- * ruling reaches `.jess` is an open owner question; this pins both arms so
- * the answer cannot change unseen, and becomes an equality once it is given.
+ * The corpus cannot see this case: every fixture that holds a unitless number
+ * ± a unit is already listed in KNOWN for another cause, so the ratchet stays
+ * green whichever way `.jess` answers. Kept math lowers into `$( … )` like all
+ * Less math (P35), and `.jess` answers the compile's `unitMode` as `.less` does
+ * (owner 2026-10-06) — `strict` is only its default — so under the one pinned
+ * configuration both arms keep the same math and warn the same.
  */
 describe('targeted round trip: a unitless number ± a unit', () => {
-  it('records the open divergence: `.less` keeps the math as written, `.jess` computes it', async () => {
-    const less = '@a: 4;\n.a {\n  b: (@a + 3px);\n  c: @a * 2px;\n}\n';
+  it('`.less` and its `.jess` lowering keep the same math, with the same warnings', async () => {
+    const less = '@a: 4;\n.a {\n  b: (@a + 3px);\n  c: @a * 2px;\n  d: @a + 3px;\n}\n';
     const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
     const render = async (source: string, extension: '.less' | '.jess') => {
       const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
         .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
-      return result.css.replace(/\s+/g, ' ').trim();
+      return {
+        css: result.css.replace(/\s+/g, ' ').trim(),
+        warnings: result.warnings.map(w => w.code),
+        errors: result.errors.map(e => e.code)
+      };
     };
-    expect(await render(less, '.less')).toBe('.a { b: (4 + 3px); c: 8px; }');
-    expect(await render(jess, '.jess')).toBe('.a { b: 7px; c: 8px; }');
+    const lessArm = await render(less, '.less');
+    expect(lessArm.errors).toEqual([]);
+    expect(lessArm.warnings).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
+    expect(lessArm.css).toContain('4 + 3px');
+    expect(await render(jess, '.jess')).toEqual(lessArm);
   });
 });
 

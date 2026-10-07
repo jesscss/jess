@@ -9,6 +9,13 @@ describe('@jesscss/plugin-jess', () => {
     expect(result.document?.type).toBe('Stylesheet');
   });
 
+  it('defaults `unitMode` to `strict`, as a frozen dialect default a compile option overrides', () => {
+    const result = jessPlugin().safeParse!('entry.jess', '.entry { k: $(1 + 2px); }');
+
+    expect(result.dialectDefaults).toEqual({ unitMode: 'strict' });
+    expect(Object.isFrozen(result.dialectDefaults)).toBe(true);
+  });
+
   it('returns the direct parser failure at its actual source location', () => {
     const source = '.before { color: red; }\n!broken';
     const result = jessPlugin().safeParse!('entry.jess', source);
