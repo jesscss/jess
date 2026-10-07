@@ -33,11 +33,42 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
   const filled = { ...opts };
   filled.unitMode ??= 'strict';
 
-  /* Fill the canonical name; a deprecated `leakyScope` still resolves downstream. */
-  filled.allowLeakyScope ??= false;
+  /* A deprecated `leakyScope` is set too: fill the canonical name only when neither is. */
+  if (filled.leakyScope === undefined) {
+    filled.allowLeakyScope ??= false;
+  }
   filled.allowCallerScope ??= false;
   filled.allowOverloadedImport ??= false;
   return filled;
+}
+
+/** Each mode with its deprecated spellings ({@link layerOptions}). */
+const MODE_SPELLINGS: ReadonlyArray<readonly string[]> = [
+  ['unitMode', 'strictUnits'],
+  ['mathMode', 'math', 'strictMath'],
+  ['allowLeakyScope', 'leakyScope']
+];
+
+/**
+ * `upper`'s settings over `lower`'s; a value `upper` leaves undefined keeps
+ * `lower`'s. A mode `upper` sets in any spelling replaces every spelling of it
+ * in `lower`, so a deprecated spelling keeps the precedence of the place it is
+ * written in (`language.less.strictUnits` wins over `compile.unitMode`).
+ */
+export function layerOptions(lower: object, upper: object): Record<string, any> {
+  const layered: Record<string, unknown> = { ...lower };
+  const set = Object.entries(upper).filter(([, value]) => value !== undefined);
+  for (const spellings of MODE_SPELLINGS) {
+    if (set.some(([name]) => spellings.includes(name))) {
+      for (const name of spellings) {
+        delete layered[name];
+      }
+    }
+  }
+  for (const [name, value] of set) {
+    layered[name] = value;
+  }
+  return layered;
 }
 
 /**
@@ -198,8 +229,7 @@ export function getOptions(
    * 3. matched input
    * 4. matched output
    */
-  return {
-    // Start with compile-level settings
+  const base = {
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
     functionMode: compile.functionMode,
@@ -210,15 +240,7 @@ export function getOptions(
     allowApplySelectors: compile.allowApplySelectors,
     processImports: compile.processImports,
     disableScriptModules: compile.disableScriptModules ?? compile.disablePluginRule,
-    paths: compile.searchPaths,
-
-    // Override with language-specific settings
-    ...languageOptions,
-
-    // Override with matched input settings
-    ...matchedInput,
-
-    // Override with matched output settings
-    ...matchedOutput
+    paths: compile.searchPaths
   };
+  return layerOptions(layerOptions(layerOptions(base, languageOptions), matchedInput), matchedOutput);
 }

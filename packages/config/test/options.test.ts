@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getOptions, applyStrictPreset } from '../src/options.js';
+import { getOptions, applyStrictPreset, layerOptions } from '../src/options.js';
 import type { StylesConfig } from '../src/types.js';
 
 describe('getOptions', () => {
@@ -87,12 +87,23 @@ describe('getOptions', () => {
       expect(getOptions(config)).toMatchObject({
         unitMode: 'strict',
         functionMode: 'error',
-        allowLeakyScope: false,
+        allowLeakyScope: undefined,
         leakyScope: true,
         allowCallerScope: false
       });
       expect(getOptions({ ...config, language: { less: { unitMode: 'loose' } } }, { language: 'less' }).unitMode)
         .toBe('loose');
+    });
+
+    it('lets a mode a layer sets in any spelling replace every spelling of it below', () => {
+      const config: StylesConfig = {
+        compile: { unitMode: 'loose', mathMode: 'always', allowLeakyScope: true },
+        language: { less: { strictUnits: true, math: 'parens', leakyScope: false } }
+      };
+      const options = getOptions(config, { language: 'less' });
+      expect(options).toMatchObject({ strictUnits: true, math: 'parens', leakyScope: false });
+      expect([options.unitMode, options.mathMode, options.allowLeakyScope]).toEqual([undefined, undefined, undefined]);
+      expect(layerOptions({ unitMode: 'loose', strictUnits: true }, { unitMode: undefined })).toEqual({ unitMode: 'loose', strictUnits: true });
     });
 
     it('should override compile options with language options', () => {
