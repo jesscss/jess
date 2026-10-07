@@ -3937,11 +3937,10 @@ interface EvalCtx {
   optional?: boolean;
 
   /*
-   * [calc] `calc(…)` nesting depth. It decides how a paren group inside the
-   * math function is spelled ({@link groupComputation}) and admits an operation
-   * no math mode would run there; it never changes the unit answer of an
-   * operation that computes — an operation written inside a math function is
-   * kept by its own `inMathFunction` fact instead.
+   * [calc] `calc(…)` nesting depth. It admits an operation no math mode would
+   * run there; it never changes the unit answer of an operation that computes —
+   * an operation written inside a math function is kept by its own
+   * `inMathFunction` fact instead.
    */
   calcDepth?: number;
 
@@ -3987,15 +3986,6 @@ interface EvalCtx {
    * every context of it; empty unless a parent carries a pseudo-element.
    */
   pseudoElementLists: Map<readonly string[], Uint8Array>;
-
-  /*
-   * The paren group a computation boundary holds as its whole value (`.jess`
-   * `$(( … ))`, Less `(( … ))`). It and any group directly inside it are judged
-   * where the boundary is written, so each is consumed when what it holds
-   * computes even when the value is read inside a math function
-   * ({@link groupComputation}).
-   */
-  boundaryGroup?: Block;
 
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
@@ -4856,7 +4846,7 @@ function evalTyped(
       if (!e.ev) {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
-      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true, boundaryGroup: isParenGroup(node.value) ? node.value : undefined }, projectMixinValues, argument);
+      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Interpolation': {
@@ -4904,11 +4894,11 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
  * every dialect, so valid CSS emits the bytes css does
  * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
- * 2026-10-06). Inside a math function every paren authored there is kept
- * (ledger P35); the group a computation boundary holds is written at the
- * boundary, so read through a variable inside `calc()` it still computes
- * (`$c: $(($v + 30px))`, `calc(100% - $c)` → `calc(100% - 40px)`). A
- * computing consumer — an operand of math that operates, an argument a
+ * 2026-10-06). A math function is no exception: parens are dropped when the
+ * calculation in them is resolved (owner 2026-10-07), so
+ * `calc(100% - ((min(@a + @b))))` is `calc(100% - 20px)`, while the math
+ * written there computes nothing and keeps every paren around it (ledger P35:
+ * `calc(100% - (((@a + @b))))`). A computing consumer — an operand of math that operates, an argument a
  * callable reads — still reads the value inside the group, through the typed
  * lane, and an operand of math kept as written keeps the group's spelling
  * ({@link spelledOperand}).
@@ -4922,17 +4912,7 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * parens.
  */
 function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNode | null {
-  return (e.calcDepth ?? 0) > 0 && !heldByBoundary(node, e) ? null : slotComputation(node.value, frame, e);
-}
-
-/** `node` is the group a computation boundary holds, or a group directly inside it (`$((( … )))`). */
-function heldByBoundary(node: Block, e: EvalCtx): boolean {
-  for (let group: ValueSlot | undefined = e.boundaryGroup; group !== undefined && isParenGroup(group); group = group.value) {
-    if (group === node) {
-      return true;
-    }
-  }
-  return false;
+  return slotComputation(node.value, frame, e);
 }
 
 const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
@@ -5510,7 +5490,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          */
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
-      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true, boundaryGroup: isParenGroup(node.value) ? node.value : undefined });
+      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Condition':
@@ -7178,25 +7158,26 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
  * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; a fully
  * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
  * collapse to a bare Dimension). An argument written as a paren group around
- * one value keeps its parens and so its wrapper ({@link unconsumedParens}): a
- * dimension carries them as its spelling (`calc((10vh))` is `10vh` spelled
- * `(10vh)`), so every position prints the same bytes and a typed consumer still
- * reads `10vh`; any other value is the kept `calc(…)` expression. A kept
- * `calc(…)` is written out as-is, so a group around it keeps its parens
- * ({@link groupComputation}).
+ * one value nothing computes keeps its parens and so its wrapper
+ * ({@link writtenParens}): a dimension carries them as its spelling
+ * (`calc((10vh))` is `10vh` spelled `(10vh)`), so every position prints the
+ * same bytes and a typed consumer still reads `10vh`; any other value is the
+ * kept `calc(…)` expression. A group around a calculation that resolves is
+ * dropped (owner 2026-10-07), so `calc((percentage(0.5)))` reads as
+ * `calc(percentage(0.5))` does; a group around kept math or a call written out
+ * as-is keeps its parens ({@link groupComputation}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
   const arg = node.args[0]!.value;
-  const authored = unconsumedParens(arg);
+  const authored = writtenParens(arg, frame, ce);
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
-    if (authored > 0) {
+    /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
+    const kept = isParenGroup(arg) && !isValueGroupArray(v) ? keptMathOf(v) : undefined;
+    if (authored > 0 || kept !== undefined) {
       if (!isValueGroupArray(v) && v.type === 'Dimension') {
         return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
       }
-
-      /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
-      const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
       return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored)})`), v, v));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {

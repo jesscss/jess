@@ -70,7 +70,9 @@ its own. A group reached through a variable, a mixin parameter, a member
 lookup or an interpolation is its value wherever it is read: `@a: (10px)` gives
 `margin: @a @a` → `10px 10px`, `.x-@{a}` → `.x-10px`, `calc(@a * 2)` →
 `calc(10px * 2)` and `@media (min-width: @a)` → `(min-width: 10px)`. Parens
-written inside a math function stay, whoever reads it.
+written inside a math function around math or one value stay, whoever reads it;
+parens there around something that computes are dropped as anywhere else
+(`calc(100% - ((min(@a, 20px))))` → `calc(100% - 10px)`).
 
 ```less
 @a: #a80000; @b: #00000b;

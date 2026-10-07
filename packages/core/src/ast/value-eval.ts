@@ -79,8 +79,8 @@ export interface Dimension {
    *
    * The same spelling is carried, in every unit mode, by a `calc()` written as a
    * paren group around one value (`calc((10px))` is `10px` spelled `(10px)`):
-   * every paren authored inside a math function is kept (owner 2026-10-06), and
-   * a typed consumer still reads the magnitude.
+   * a paren authored inside a math function around a value nothing computes is
+   * kept (owner 2026-10-06), and a typed consumer still reads the magnitude.
    */
   readonly preserved?: string;
 

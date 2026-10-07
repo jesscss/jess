@@ -398,7 +398,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // with the `.jess` printer (`isAuthoredGroupExpression`).
     // +1 function: the group a computation boundary holds is judged at the
     // boundary, not by the `calc()` that reads it (`heldByBoundary`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(566);
+    // -1 function: parens are dropped when the calculation in them is resolved,
+    // inside a math function too (owner 2026-10-07), so no group is judged by
+    // where it is read and `heldByBoundary` is gone.
+    expect(occurrences(/^function |^async function /gmu)).toBe(565);
     expect(occurrences(/new Map/gu)).toBe(87);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

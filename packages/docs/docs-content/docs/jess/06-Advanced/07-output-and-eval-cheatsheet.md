@@ -63,7 +63,9 @@ expression computes — math, or a function that runs — the parens do not surv
 to output. (A no-space `keyword(expr)` is the function shape above and stays
 verbatim.) Parens around something that computes nothing — one value, a CSS
 function such as `var()`, math kept as written — stay as you wrote them, as they
-do in plain CSS.
+do in plain CSS. The same holds inside a math function: math written in `calc()`
+is not computed, so `calc(100% - ((1px + 2px)))` keeps its parens, while
+`calc(100% - (($(1px + 2px))))` is `calc(100% - 3px)`.
 
 ```jess
 $a: #a80000; $b: #00000b;

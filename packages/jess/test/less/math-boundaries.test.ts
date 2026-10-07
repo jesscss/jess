@@ -41,8 +41,8 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * Nothing computes inside a math function, so nothing consumes a paren written
-   * there: every authored group is kept, redundant or not — owner 2026-10-06,
+   * Math written inside a math function computes nothing, so a group around it,
+   * or around one value, keeps its parens, redundant or not — owner 2026-10-06,
    * "no reason to drop parens. the user wanted to write it that way for a reason."
    */
   it('keeps every paren authored inside calc(), in .less and .jess', async () => {
@@ -54,6 +54,35 @@ describe('Less math boundaries', () => {
       .toBe('.x { w: calc(100% - ((10px * 3) + (10px * 2))); }');
     expect(await renderJess('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }'))
       .toBe('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }');
+  });
+
+  /*
+   * Parens are dropped when the calculation in them is resolved (owner
+   * 2026-10-07), inside a math function as anywhere else: a call a callable
+   * computes, or a variable bound to math that computed, loses every level of
+   * parens around it, so `calc((x))` reads as `calc(x)` does. Math written in
+   * the math function computes nothing, and neither does a call written out
+   * as-is or math kept as written, so their groups keep their parens.
+   */
+  it('drops the parens around a calculation resolved inside calc()', async () => {
+    expect(await render('@a: 10px; @b: 10px; @c: 10px + 20px; .x { one: calc(100% - ((min(@a + @b)))); two: calc(100% - (((@a + @b)))); '
+      + 'q: calc((percentage(0.5))); q2: calc(percentage(0.5)); s: calc(1px + (min(1px, 2px))); u: calc(100% - ((@c))); '
+      + 'v: calc((var(--a)) + 1px); w: calc((var(--a))); m: calc((min(1px, 2em))); }'))
+      .toBe('.x { one: calc(100% - 20px); two: calc(100% - (((10px + 10px)))); q: 50%; q2: 50%; s: calc(1px + 1px); '
+        + 'u: calc(100% - 30px); v: calc((var(--a)) + 1px); w: calc((var(--a))); m: calc((min(1px, 2em))); }');
+    expect(await render('@k: 1px + 1em; .x { a: calc((@k)); b: calc(100% - ((@k))); }'))
+      .toBe('.x { a: calc((1px + 1em)); b: calc(100% - ((1px + 1em))); }');
+    expect(await renderIn('.scss', '$a: 10px; .x { one: calc(100% - ((min($a + $a)))); }'))
+      .toBe('.x { one: calc(100% - 20px); }');
+    expect(await renderJess('@-from "#less" import (percentage); .x { a: calc(100% - (($percentage(0.5)))); b: calc(100% - ((min(10px, 1px)))); }'))
+      .toBe('.x { a: calc(100% - 50%); b: calc(100% - ((min(10px, 1px)))); }');
+    expect(await renderJess('@-from "#less" import (percentage); .x { a: calc(($percentage(0.5))); b: calc((($(1px + 2px)))); c: calc((var(--a))); }'))
+      .toBe('.x { a: 50%; b: 3px; c: calc((var(--a))); }');
+
+    /* CSS computes nothing: its bytes are kept as written, and `.jess` writes valid CSS the same. */
+    const css = '.x { a: calc(100% - ((min(10px, 20px)))); b: calc((var(--a))); c: calc(100% - ((1px + 2px))); }';
+    expect(await renderCss(css)).toBe(css);
+    expect(await renderJess(css)).toBe(css);
   });
 
   /*
