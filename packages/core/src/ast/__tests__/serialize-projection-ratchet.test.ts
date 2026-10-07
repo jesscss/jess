@@ -382,7 +382,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (ledger X18): a plain import after a visible `(multiple)` one
     // is import-once's no-op, asked by the planner and the render walk alike
     // (`isVisibleMultiple`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(559);
+    // +1 function: a paren group around one value reached through a reference
+    // evaluates to its value (judgment under owner delegation 2026-10-06;
+    // `groupsOneValue`, the flag set by `withExcluded`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(560);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

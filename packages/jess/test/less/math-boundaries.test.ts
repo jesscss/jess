@@ -200,12 +200,24 @@ describe('Less math boundaries', () => {
     expect(await render('.x { a: (10px) + 1em; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
   });
 
-  /* A parameter stands for its argument as written, as a variable does (SEMANTIC-INVARIANTS 2). */
-  it('binds a mixin argument written as a group with its parens', async () => {
+  /*
+   * A paren group around one value keeps its parens where it is written directly
+   * in a declaration value or inside a math function; one reached through a
+   * variable, a parameter or an interpolation evaluates to its value, Less
+   * grouping (orchestrator judgment under owner delegation 2026-10-06; ledger
+   * J16). A parameter stands for its argument as a variable does.
+   */
+  it('evaluates a group reached through a variable, a parameter or an interpolation to its value', async () => {
     expect(await render('@g: (10px); .m(@x) { a: @x; b: @x * 2; } .d(@x: (10px)) { a: @x; } .x { a: @g; .m((10px)); .d(); }'))
-      .toBe('.x { a: (10px); a: (10px); b: 20px; a: (10px); }');
-    expect(await renderIn('.scss', '@mixin m($x) { a: $x; } .x { @include m((10px)); }')).toBe('.x { a: (10px); }');
-    expect(await renderIn('.less', '.m(@x) { b: @x; } .x { .m((0.5px)); c: (0.5px); }', true)).toBe('.x{b:(0.5px);c:(0.5px)}');
+      .toBe('.x { a: 10px; a: 10px; b: 20px; a: 10px; }');
+    expect(await render('@a: (10px); .x-@{a} { s: ~"@{a}"; m: @a @a; c: (10px); k: calc((10px)); p: (@a); } @c: calc((10px)); .y { c: @c; }'))
+      .toBe('.x-10px { s: 10px; m: 10px 10px; c: (10px); k: calc((10px)); p: (10px); } .y { c: calc((10px)); }');
+    expect(await render('@a: (10px) (red); @b: @a; .x { a: @b; w: 1px; v: $w; } .y { w: (1px); v: $w; }'))
+      .toBe('.x { a: 10px red; w: 1px; v: 1px; } .y { w: (1px); v: 1px; }');
+    expect(await renderIn('.scss', '$a: (10px); @mixin m($x) { a: $x; } .x-#{$a} { @include m((10px)); s: "#{$a}"; m: $a $a; c: (10px); }'))
+      .toBe('.x-10px { a: 10px; s: "10px"; m: 10px 10px; c: (10px); }');
+    expect(await renderJess('$a: (10px);\n.x { m: $a $a; c: (10px); }')).toBe('.x { m: 10px 10px; c: (10px); }');
+    expect(await renderIn('.less', '.m(@x) { b: @x; } .x { .m((0.5px)); c: (0.5px); }', true)).toBe('.x{b:.5px;c:(0.5px)}');
   });
 
   it('still consumes the parens of Less math outside a math function', async () => {

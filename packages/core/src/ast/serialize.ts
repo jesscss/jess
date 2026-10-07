@@ -3720,13 +3720,30 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: EvalCtx): bool
  * begins, removed the instant that call returns SYNCHRONOUSLY (the `finally` runs
  * on the sync return, NOT on a later promise settle — so accumulation is correct
  * down a sync descent, and two overlapping async reads of the same decl do not
- * falsely block each other). `run` returns whatever the caller's fold produces. */
-function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
+ * falsely block each other). `run` returns whatever the caller's fold produces.
+ *
+ * [paren-group] `reached` marks the binding as one a reference reached — a
+ * variable, an `@@name`, a property, and so an interpolation of one — and sets
+ * {@link EvalCtx.reached} over the same span: a paren group around one value in
+ * it evaluates to its value, Less grouping (`@a: (10px)` → `.x-@{a}` is
+ * `.x-10px`, `margin: @a @a` is `10px 10px`), while one written directly in a
+ * declaration value, or inside a math function, keeps its parens (ledger J16;
+ * orchestrator judgment under owner delegation 2026-10-06).
+ *
+ * ponytail: a group the binding evaluates only after an await keeps its parens;
+ * carry the flag through the continuation if a plugin value needs it.
+ */
+function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T, reached = false): T {
   e.excluded.add(node);
+  const was = e.reached;
+  if (reached) {
+    e.reached = true;
+  }
   try {
     return run();
   } finally {
     e.excluded.delete(node);
+    e.reached = was;
   }
 }
 
@@ -3930,6 +3947,14 @@ interface EvalCtx {
    * dialects that have no such boundary are untouched.
    */
   exprBoundary?: boolean;
+
+  /**
+   * [paren-group] Set while a binding a reference reached is evaluated
+   * ({@link withExcluded}): a paren group around one value evaluates to its
+   * value there, while one written directly in a declaration value keeps its
+   * parens (ledger J16; orchestrator judgment under owner delegation 2026-10-06).
+   */
+  reached?: boolean;
 
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
@@ -4598,7 +4623,7 @@ function evalTyped(
         const hit = resolvePropAccessor(node, frame, e);
         return hit.merged
           ? mergedPropertyValue(hit.merged, e, projectMixinValues, argument)
-          : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument));
+          : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument), true);
       }
       if (node.kind !== 'var') {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
@@ -4615,7 +4640,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), true);
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4680,6 +4705,9 @@ function evalTyped(
        * the written-out policy inside a group that computes, so an F5 color
        * call there is still written as authored.
        */
+      if (e.reached === true && (e.calcDepth ?? 0) === 0 && groupsOneValue(node) && !groupComputes(node, frame, e)) {
+        return evalTypedSlot(node.value, frame, e, projectMixinValues, argument);
+      }
       if (isInertGroup(node) || (writtenAsAuthored(argument) && !groupComputes(node, frame, e))) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`));
       }
@@ -4964,6 +4992,19 @@ function isComputationSplice(node: Interpolation): boolean {
   return node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression';
 }
 
+/**
+ * Whether a paren group holds one value — not a list, a sequence, a feature
+ * (`(min-width: 640px)`) or an operation — past any parens around it.
+ */
+function groupsOneValue(node: Block): boolean {
+  let inner: ValueSlot = node.value;
+  while (isParenGroup(inner)) {
+    inner = inner.value;
+  }
+  return !isValueSlotArray(inner) && inner.type !== 'Operation' && inner.type !== 'List' && inner.type !== 'Sequence'
+    && inner.type !== 'Condition' && inner.type !== 'Branch';
+}
+
 /** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 function isInertGroup(node: Block): boolean {
   let inner: ValueSlot = node.value;
@@ -5233,7 +5274,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return hit.evaluated ?? withExcluded(
             e,
             hit.value,
-            () => evalBinding(hit.value, hit.frame, e, hit.evaluated)
+            () => evalBinding(hit.value, hit.frame, e, hit.evaluated),
+            true
           );
         });
       }
@@ -5241,7 +5283,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const hit = resolvePropAccessor(node, frame, e);
       return hit.merged
         ? mergedPropertyBytes(hit.merged, e)
-        : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+        : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e), true);
     }
     case 'Important':
       /*
@@ -5343,6 +5385,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return isLiteral(v)
             ? literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`)
             : makeBlock(v, node.delimiter, node.escaped);
+        }
+        if (computation === null && e.reached === true && (e.calcDepth ?? 0) === 0 && groupsOneValue(node)) {
+          return v;
         }
         if (isLiteral(v)) {
           return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
@@ -7378,16 +7423,17 @@ function snapshotPreparedMixinValue(
 }
 
 /**
- * The snapshot an argument binds as: its evaluated bytes, spelled with the
- * parens of a group around one value nothing computes ({@link writtenParens}),
- * as the same group written in a declaration is, and marked when the argument
- * computed ({@link computedArguments}). `source` is the argument as written.
+ * The snapshot an argument binds as: its evaluated bytes, marked when the
+ * argument computed ({@link computedArguments}). A parameter is reached through
+ * a variable, so a group written around one value as the argument evaluates to
+ * that value (`.m((10px))` binds `10px`; {@link withExcluded}). `source` is the
+ * argument as written.
  */
 function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: Frame | null, e: EvalCtx): Any {
+  const bound = any(bytes);
   if (source === undefined) {
-    return any(bytes);
+    return bound;
   }
-  const bound = any(wrapParens(bytes, writtenParens(source, frame, e)));
   if (slotComputation(source, frame, e) !== null) {
     computedArguments.add(bound);
   }
