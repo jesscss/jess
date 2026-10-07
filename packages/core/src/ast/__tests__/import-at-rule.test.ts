@@ -1032,7 +1032,7 @@ describe('StyleImport', () => {
         quoted('"child.css"', 'child.css', '"', false),
         null,
         null,
-        block(operation(':', keyword('min-width'), variableReference('width', 'scoped'), false, false, false))
+        block(operation(':', keyword('min-width'), variableReference('width', 'scoped'), false, false))
       ),
       atRuleBlock('@media', keyword('screen'), [
         authoredImport('@import', quoted('"nested.css"', 'nested.css', '"', false))

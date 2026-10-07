@@ -282,20 +282,6 @@ export function findFinalValue(value: ValueGroup, test: (value: Value) => boolea
 }
 
 /**
- * A unitless number added to or subtracted from a dimension with a unit
- * (`4 + 3px`). Owner 2026-10-06 (ledger P35): it computes only under `loose`,
- * by Less 4.x coercion; `strict` raises it and `preserve` keeps the math as
- * written. Unlike every other preserved clash it gets NO `calc()` wrapper:
- * css-values-4 §10.9 types `<number> + <length>` as a failure, so
- * `calc(4 + 3px)` is itself invalid CSS.
- *
- * "A unit" is one CSS unit. A compound operand (`2em / 1px`) has none to
- * adopt; it is already V18's unexpressible case and keeps that spelling
- * (`calc(2em / 1px + 20)`).
- */
-class UnitlessSumError extends UnitArithmeticError {}
-
-/**
  * Unit-aware dimension arithmetic (dimension ⊕ dimension) — a port of less.js
  * `Dimension.operate`: `+`/`-` unify the RHS to the LHS unit, `*`/`/` compose the
  * numerator/denominator multiset and cancel. The modes part company only where
@@ -306,11 +292,12 @@ class UnitlessSumError extends UnitArithmeticError {}
  * keeps computing so a chain can cancel (`8cats * 9dogs / 4cats` → `18dogs`),
  * with strict validating and preserve spelling it only at the boundary.
  *
- * A unitless `+`/`-` operand against a united one is rejected the same way
- * outside `loose` ({@link UnitlessSumError}), unless the operation's dialect
- * says a unitless operand adopts the other side's unit (`unitlessAdoptsUnit`).
+ * A unitless `+`/`-` operand adopts the other operand's unit in every mode and
+ * every dialect (`4 + 3px` → `7px`, `1.5 - 1rem` → `0.5rem`), as Less 4.x
+ * `strictUnits` and Sass do: `strict` rejects only two different real units
+ * (owner 2026-10-06, ledger V27).
  */
-function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes, unitlessAdoptsUnit: boolean): Dimension {
+function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
   const isStrict = modes.unitMode === 'strict';
   if (b.number === 0 && op === '/') {
     throw new DivisionByZeroError(`${a.bytes} / ${b.bytes}`);
@@ -321,20 +308,12 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
   let value = calculate(a.number, op, b.number);
 
   if (op === '+' || op === '-') {
-    const unitless = u.num.length === 0 && u.den.length === 0;
-    const bUnitless = bu.num.length === 0 && bu.den.length === 0;
-    if (!unitlessAdoptsUnit && modes.unitMode !== 'loose' && (unitless ? singular(bu) : bUnitless && singular(u))) {
-      throw new UnitlessSumError(
-        `A unitless number cannot be ${op === '+' ? 'added to' : 'subtracted from'} a dimension with a unit: ${a.bytes} ${op} ${b.bytes}. `
-        + 'Give both operands a unit, or use unitMode: \'loose\' for Less 4.x coercion.'
-      );
-    }
-    if (unitless) {
+    if (u.num.length === 0 && u.den.length === 0) {
       // Unitless LHS: adopt the RHS unit (keeping the LHS backup if it had one).
       u.num = bu.num;
       u.den = bu.den;
       u.backup = u.backup ?? bu.backup;
-    } else if (bUnitless) {
+    } else if (bu.num.length === 0 && bu.den.length === 0) {
       // Unitless RHS: keep the LHS unit; value already computed on raw magnitudes.
     } else if (singular(u) && singular(bu)) {
       // Both carry one unit: convert the RHS toward the LHS unit before operating.
@@ -506,8 +485,8 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
 
 /**
  * The keywords `operate` produced for an operation `preserve` kept unevaluated:
- * a non-convertible `+`/`-` spelled as `calc(…)` (V18), a unitless `+`/`-`
- * kept as written (owner 2026-10-06), and every keyword composed from one —
+ * a non-convertible `+`/`-` spelled as `calc(…)` (V18), and every keyword
+ * composed from one —
  * each mapped to the kept operation its chain started from. A Keyword carries
  * no unit facts, so the consuming boundary asks this map instead; it is what
  * keeps the additive rung of the §4.7 ladder from being silent
@@ -521,16 +500,16 @@ export const preservedUnitClashes = new WeakMap<Value, Value>();
 /**
  * The keywords kept AS WRITTEN — neither computed nor spelled as a
  * self-delimiting `calc(…)`: an operation `operate` kept (an un-operable keyword
- * operand, `foo + 1`, and a `preserve`d unitless `+`/`-`, `4 + 3px`), and a call
- * no callable computed, written out as-is ({@link keepAsWritten}). Each maps to
- * the operator at its top level, or to `''` when it is self-delimiting (a call,
- * or an authored paren group around one). Such a keyword keeps its precedence
- * wherever it lands: nothing in an authored paren group around it computed, so
- * the group keeps its parens ({@link groupAsWritten}) — `(4 + 3px) * 2` does not
- * print as `4 + 3px * 2`, nor `1px (1px + 2) 3` as `1px 1px + 2 3`, nor
- * `(var(--a))` as `var(--a)`; and as the operand of another operation it is
- * grouped by precedence ({@link operandAsWritten}), so `@x * 2` with
- * `@x: 4 + 3px` is `(4 + 3px) * 2` too.
+ * operand, `foo + 1`), and a call no callable computed, written out as-is
+ * ({@link keepAsWritten}). Each maps to the operator at its top level, or to
+ * `''` when it is self-delimiting (a call, or an authored paren group around
+ * one). Such a keyword keeps its precedence wherever it lands: nothing in an
+ * authored paren group around it computed, so the group keeps its parens
+ * ({@link groupAsWritten}) — `(foo + 1) * 2` does not print as `foo + 1 * 2`,
+ * nor `1px (foo + 1) 3` as `1px foo + 1 3`, nor `(var(--a))` as `var(--a)`;
+ * and as the operand of another operation it is grouped by precedence
+ * ({@link operandAsWritten}), so `@x * 2` with `@x: foo + 1` is
+ * `(foo + 1) * 2` too.
  */
 const keptAsWritten = new WeakMap<Value, string>();
 
@@ -547,8 +526,8 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * `v`'s bytes as the left or right operand of `op`. An operation kept as
  * written is grouped when its own top operator binds looser than `op`, or as
  * loosely on the right of an operator that does not associate (`-`, `/`, `%`),
- * so the bytes say the arithmetic that was kept: `2 * (4 + 3px)`,
- * `10px - (4 + 3px)`, but `4 + 3px + 1px`.
+ * so the bytes say the arithmetic that was kept: `2 * (foo + 1)`,
+ * `10px - (foo + 1)`, but `foo + 1 + 1px`.
  */
 export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = v.bytes): string {
   const inner = keptAsWritten.get(v);
@@ -564,7 +543,7 @@ export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes =
  * A keyword composed from `left` and `right`, kept as written with top-level
  * operator `asWritten` (`null` for a self-delimiting `calc(…)`). A preserved
  * clash in either operand makes the result one too, so the boundary still
- * warns about a chain (`(1px + 3em) * 2`, `(4 + 3px) * 2`) and not only about
+ * warns about a chain (`(1px + 3em) * 2`) and not only about
  * its first link.
  */
 function composedKeyword(bytes: string, left: Value, right: Value, asWritten: string | null): Value {
@@ -596,14 +575,9 @@ export function groupAsWritten(v: Value): Value {
  *   3. inside `calc(…)`, a cross-unit dimension op → flat `calc(l op r)`,
  *   4. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
  *   5. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
- *      `calc(l op r)` fallback, or the bare `l op r` for a unitless `+`/`-`
- *      operand, which `calc()` cannot spell either ({@link UnitlessSumError}).
- *
- * `unitlessAdoptsUnit` is the operation node's dialect fact
- * (`Operation.unitlessAdoptsUnit`, nodes.ts); omitted, it is the CSS and
- * `.less` answer, where `unitMode` decides.
+ *      `calc(l op r)` fallback.
  */
-export function operate(op: string, left: Value, right: Value, modes: EvalModes, unitlessAdoptsUnit = false): Value {
+export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
   /*
    * Guard 1: calc-wrapper keyword operand → flat calc splice.
    * byte-faithful: opaque operand, no structured node — at the seam a calc
@@ -680,7 +654,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
    */
   try {
     if (left.type === 'Dimension' && right.type === 'Dimension') {
-      return dimensionOperate(left, right, op, modes, unitlessAdoptsUnit);
+      return dimensionOperate(left, right, op, modes);
     }
     if (left.type === 'Dimension' && right.type === 'Color') {
       return dimensionAsColor(left, right, op);
@@ -691,10 +665,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
     throw new TypeError(`Cannot operate on ${left.type}`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
-      const expr = `${spliceOperand(left)} ${op} ${spliceOperand(right)}`;
-      const preserved = err instanceof UnitlessSumError
-        ? composedKeyword(expr, left, right, op)
-        : makeKeyword(`calc(${expr})`);
+      const preserved = makeKeyword(`calc(${spliceOperand(left)} ${op} ${spliceOperand(right)})`);
       if (err instanceof UnitArithmeticError) {
         preservedUnitClashes.set(preserved, preserved);
       }

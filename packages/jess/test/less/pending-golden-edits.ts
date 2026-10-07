@@ -140,17 +140,7 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
             ? [[`${grouped(popover, ' .popover-header::before')} {`, `${split(popover, ' .popover-header::before')} {`] as const]
             : [])
         ];
-      }),
-
-      /*
-       * `((@line-height-base - @custom-control-indicator-size) / 2)` is
-       * `((1.5 - 1rem) / 2)`: a unitless number minus a length, kept as written
-       * outside `unitMode: 'loose'` (owner 2026-10-06, ledger P35).
-       */
-      ...['before', 'after'].map((pseudo): readonly [string, string] => [
-        `.custom-control-label::${pseudo} {\n  position: absolute;\n  top: 0.25rem;`,
-        `.custom-control-label::${pseudo} {\n  position: absolute;\n  top: ((1.5 - 1rem) / 2);`
-      ])
+      })
     ]
   ],
 
@@ -231,31 +221,15 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
   ]],
 
   /*
-   * A unitless number added to or subtracted from a dimension with a unit
-   * computes only under `unitMode: 'loose'` (owner 2026-10-06, ledger P35).
-   * Under the default `preserve` the math is kept as written, with the parts
-   * that do compute computed and the author's paren group kept, and warns
-   * `eval/unexpressible-unit`. These goldens hold Less 4.x's coercion.
+   * A slash that does not divide is the loosest separator, so each side is its
+   * own math (ledger P35), and a unitless number adopts the other operand's unit
+   * (owner 2026-10-06, ledger V27): `4px * (1 + 1) / @var + 3px` is
+   * `8px / $(4 + 3px)`, `8px / 7px`. The golden holds Less 4.x's binding, where
+   * `+ 3px` applied to the whole slash.
    */
-  ['tests-unit/operations/operations.less', [
-    ['  color-2: #f8f800;\n  height: 9px;\n  width: 3em;\n', '  color-2: #f8f800;\n  height: (5 + 6px - 2px);\n  width: (8 - 5em);\n'],
-    ['#operations .spacing {\n  height: 9px;\n  width: 3em;\n', '#operations .spacing {\n  height: (5 + 6px - 2px);\n  width: (8 - 5em);\n'],
-    ['  height: 16em;\n  width: 24em;\n  size: 1cm;\n', '  height: (4 + 12em);\n  width: (12 + 12em);\n  size: (5cm - 4);\n'],
-    ['.negative {\n  height: 0px;\n  width: 4px;\n', '.negative {\n  height: (2px + -2);\n  width: (2px - -2);\n']
-  ]],
-  ['tests-unit/variables/variables.less', [
-    ['  width: 14cm;\n  height: 24px;\n', '  width: (13 + 1cm);\n  height: (24 + 0px);\n']
-  ]],
-  ['tests-unit/mixins/mixins.less', [
-    ['.button {\n  padding-left: 44px;\n', '.button {\n  padding-left: ((10px + 12) * 2);\n']
-  ]],
-  ['tests-config/units/no-strict/no-strict.less', [
-    ['    test-division: 7em;\n', '    test-division: 2 + 5em;\n']
-  ]],
-  ...['strict', 'parens-division'].map((mode): [string, ReadonlyArray<readonly [string, string]>] => [`tests-config/math-${mode}/parens.less`, [
-    ['  margin: 1px 3px 16 3;\n', '  margin: 1px (1px + 2) 16 3;\n'],
-    ['  border-radius-parts: 8px / 7px;\n', '  border-radius-parts: 8px / ((4 + 3px));\n']
-  ]])
+  ['tests-config/math-parens-division/parens.less', [
+    ['  border-radius-keep: 8px / 4 + 3px;\n', '  border-radius-keep: 8px / 7px;\n']
+  ]]
 ]);
 
 export function applyPendingGoldenEdits(file: string, golden: string): string {

@@ -302,29 +302,6 @@ export interface Operation extends SpanSlots {
    * {@link inMathFunction}.
    */
   readonly mathOutsideParens: boolean;
-
-  /**
-   * Does a unitless operand of this `+`/`-` take the other operand's unit
-   * (`1 + 2px` → `3px`) in every `unitMode`? A parse-time fact decided by the
-   * dialect whose grammar built the node, like {@link mathOutsideParens}.
-   *
-   * `.scss` says yes: Sass adds a unitless number to any dimension (dart-sass
-   * 1.101.7 `1 + 1px` → `2px`, no warning). `.jess` says yes: its target table
-   * computes `$(1 + 2px)` → `3px` (RESOLVED-SEMANTICS §4 rows b, c). CSS says
-   * no, since calc() types `<number> + <length>` as a failure (css-values-4
-   * §10.9), and so does `.less`, where the `unitMode` ladder decides (owner
-   * 2026-10-06, ledger P35): only `loose` computes it.
-   *
-   * The node carries it, not the evaluator: one render evaluates nodes from
-   * more than one dialect, so a `.scss` partial imported into a `.less` entry
-   * keeps Sass arithmetic and a `.less` partial imported into a `.scss` entry
-   * keeps the Less rule.
-   *
-   * Recorded only where it can apply — a `+` or `-` outside a math function —
-   * and `false` on every other operation, so dialects that agree on an
-   * operation build it in one shape (P35: `@a * 2` and `$($a * 2)` are equal).
-   */
-  readonly unitlessAdoptsUnit: boolean;
 }
 
 /**
@@ -1876,28 +1853,16 @@ export const cssBaseMathOutsideParens = (operator: string): boolean => operator 
  * invisible in testing and wrong under every other mode — the def-field
  * default-collapse trap. Every caller states its answer: `.css`/`.jess`/`.scss`
  * through {@link cssBaseMathOutsideParens}, `.less` through its own
- * mode-resolving helper. `unitlessAdoptsUnit` has no default for the same
- * reason: `false` is the CSS and `.less` answer, `true` the `.scss` and `.jess`
- * one.
+ * mode-resolving helper.
  */
 export const operation = (
   operator: string,
   left: ValueNode,
   right: ValueNode,
   inMathFunction: boolean,
-  mathOutsideParens: boolean,
-  unitlessAdoptsUnit: boolean
-): Operation => ({
-  type: 'Operation',
-  operator,
-  left,
-  right,
-  inMathFunction,
-  mathOutsideParens,
-  unitlessAdoptsUnit: unitlessAdoptsUnit && !inMathFunction && (operator === '+' || operator === '-'),
-  _s: NO_SPAN,
-  _e: NO_SPAN
-});
+  mathOutsideParens: boolean
+): Operation =>
+  ({ type: 'Operation', operator, left, right, inMathFunction, mathOutsideParens, _s: NO_SPAN, _e: NO_SPAN });
 
 /**
  * The ONE construction site for a {@link CallArg}. Every field is written on

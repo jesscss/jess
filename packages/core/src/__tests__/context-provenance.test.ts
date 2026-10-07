@@ -77,8 +77,7 @@ describe('Context canonical document provenance', () => {
               dimension(1, 'px'),
               dimension(2, 'em'),
               false,
-              true,
-              false
+              true
             ))
           ])
         ]),

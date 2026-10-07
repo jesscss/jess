@@ -224,18 +224,7 @@ In this case, things are clearly not right - a length multiplied by a length giv
 - `strict` — assume this is a bug in the calculation and throw an error.
 - `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing, with an `eval/unexpressible-unit` warning; anything `strict` computes, `preserve` computes identically.
 
-A unitless number added to or subtracted from a dimension with a unit is one of the cases only `loose` guesses at. `4 + 3px` is `7px` under `loose` and an error under `strict`; under `preserve` it is kept as written, with the warning. It is not wrapped in `calc()`, because `calc()` rejects a number plus a length too:
-
-```less
-@w: 4;
-.class {
-  a: @w + 3px;        // preserve: 4 + 3px     loose: 7px
-  b: (@w + 3px) * 2;  // preserve: (4 + 3px) * 2
-  c: @w * 3px;        // 12px in every mode
-}
-```
-
-The parts of the expression that do compute are computed, and the kept expression keeps its grouping, whether you wrote the parentheses or it reached an operator through a variable or a mixin argument (`@x * 2` with `@x: 4 + 3px` is `(4 + 3px) * 2`), so it means what you wrote. A guard or a function that reads kept math gets no number from it: the guard does not match and the call is written out as-is, each with the warning. Multiplying or dividing by a unitless number (`2px * 3`, `6px / 2`) is unaffected.
+A unitless number added to or subtracted from a dimension takes the dimension's unit in every mode, as in Less 4 and Sass: `4 + 3px` is `7px` and `1.5 - 1rem` is `0.5rem`, under `strict` too. `strict` keeps its Less 4 meaning — an error only where two different real units meet (`1px + 1em`).
 
 #### Strict Units (deprecated)
 

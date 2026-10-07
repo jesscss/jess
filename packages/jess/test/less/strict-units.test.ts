@@ -62,12 +62,8 @@ describe('Less strict-unit final validation', () => {
       extension: '.less'
     });
 
-    /*
-     * `4 / 2` divides; `2 + 5em` is a unitless number added to a length, which
-     * computes only under `unitMode: 'loose'` (owner 2026-10-06, P35), so the
-     * default `preserve` keeps it as written.
-     */
-    expect(eager).toContain('first: 2 + 5em;');
+    // `4 / 2` divides, and the unitless 2 adopts the `em` of `5em` (ledger V27).
+    expect(eager).toContain('first: 7em;');
 
     /*
      * §4.7 row h — `2 / 5em` is a reciprocal, and there is no `em⁻¹` in CSS, so
@@ -92,10 +88,8 @@ describe('Less strict-unit final validation', () => {
     /*
      * A non-dividing slash is the value's loosest separator and each side keeps
      * its own math (DESIGN-DECISIONS P35): `4 / $(2 + 5em)`, `$(4 + 2) / 5em`.
-     * `2 + 5em` adds a unitless number to a length, kept as written outside
-     * `unitMode: 'loose'` (owner 2026-10-06).
      */
-    expect(parensDivision).toContain('first: 4 / 2 + 5em;');
+    expect(parensDivision).toContain('first: 4 / 7em;');
     expect(parensDivision).toContain('second: 6 / 5em;');
     expect(parensDivision).toContain('same-unit: 2em / 1em;');
     expect(parensDivision).toContain('shorthand: normal small / 20px;');

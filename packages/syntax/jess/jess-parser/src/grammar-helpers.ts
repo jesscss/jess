@@ -232,8 +232,7 @@ function foldExpression(children: readonly unknown[]): ExpressionFact {
         fact.value,
         right.value,
         false,
-        cssBaseMathOutsideParens(operator.value),
-        true
+        cssBaseMathOutsideParens(operator.value)
       ),
       src: `${fact.src}${operator.src}${right.src}`
     };
@@ -278,7 +277,7 @@ function foldLogicalExpression(kind: 'and' | 'or', children: readonly unknown[])
   for (let index = 1; index < facts.length; index += 1) {
     const right = facts[index]!;
     fact = {
-      value: operation(kind, fact.value, right.value, false, cssBaseMathOutsideParens(kind), true),
+      value: operation(kind, fact.value, right.value, false, cssBaseMathOutsideParens(kind)),
       src: `${fact.src} ${kind} ${right.src}`
     };
   }
@@ -522,8 +521,7 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
         keyword(propertyName),
         value,
         false,
-        cssBaseMathOutsideParens(':'),
-        true
+        cssBaseMathOutsideParens(':')
       ));
 }
 
@@ -865,8 +863,7 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
         result,
         child,
         true,
-        cssBaseMathOutsideParens(operator),
-        true
+        cssBaseMathOutsideParens(operator)
       );
       operator = undefined;
       continue;

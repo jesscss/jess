@@ -191,13 +191,13 @@ describe('Less math boundaries', () => {
 
   /*
    * Math kept as written computes nothing, so a group written as one of its
-   * operands keeps its parens (DESIGN-DECISIONS P35, unitless ± unit, owner
-   * 2026-10-06), while math that computes reads the value inside.
+   * operands keeps its parens (ledger J16), while math that computes reads the
+   * value inside: a unitless number adopts the unit (ledger V27).
    */
   it('keeps the parens of an operand of math kept as written', async () => {
-    expect(await render('.x { a: (10px) + 1; c: 1 + (10px); d: ((10px)) + 1; e: foo + (1px); f: (1px) + foo; }'))
-      .toBe('.x { a: (10px) + 1; c: 1 + (10px); d: ((10px)) + 1; e: foo + (1px); f: (1px) + foo; }');
-    expect(await render('.x { a: (10px) + 1; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
+    expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; e: foo + (1px); f: (1px) + foo; g: (10px) + 1; }'))
+      .toBe('.x { a: calc((10px) + 1em); c: calc(1em + (10px)); d: calc(((10px)) + 1em); e: foo + (1px); f: (1px) + foo; g: 11px; }');
+    expect(await render('.x { a: (10px) + 1em; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
   });
 
   /* A parameter stands for its argument as written, as a variable does (SEMANTIC-INVARIANTS 2). */

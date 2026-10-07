@@ -325,9 +325,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // every document an `@import` of any kind placed, created on the first import,
     // so a `(reference)` import of a sheet already loaded is dropped after a
     // `(multiple)` or `(reference)` import as J14 drops it after a plain one.
-    // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
-    // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
-    // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
+    // +1 function (ledger V29): an authored paren group around an operation kept
+    // as written (`(foo + 1)`) keeps its parens in both value lanes
+    // (`keepAuthoredGroup`), so precedence survives.
     // +1 function (ledger X19): the body-form extends the walk applies where a body
     // lands — a mixin definition's, an at-rule block's, a detached ruleset's — are
     // read in one place (`walkAppliedExtends`) by the five extend classifiers.

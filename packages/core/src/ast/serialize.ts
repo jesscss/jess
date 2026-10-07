@@ -4404,7 +4404,7 @@ function validateValueGroupUnits(
  * (`evalBytes`) validates the value it is handed, but a `List`, a `Sequence`
  * and a space-separated value slot emit their items to bytes themselves, so
  * without this an item carrying an unexpressible unit (`$(2px * 3px) / 1px`,
- * `1px (4 + 3px) 2`) would skip the `unitMode` ladder that the same operation
+ * `1px (1px * 3em) 2`) would skip the `unitMode` ladder that the same operation
  * meets on its own.
  */
 function validateItemUnits(items: readonly EvalValue[], sources: readonly (ValueSlot | undefined)[], owner: object, e: EvalCtx): void {
@@ -4425,8 +4425,8 @@ const warnedUnitValues = new WeakSet<Value>();
 
 /**
  * §4.7 where a value is CONSUMED rather than emitted. An operation `preserve`
- * kept unevaluated (`4 + 3px`) has no value to compute with, so a call or a
- * guard that takes one as an operand reads nothing from it: `percentage(4 + 3px)`
+ * kept unevaluated (`1px + 3em`) has no value to compute with, so a call or a
+ * guard that takes one as an operand reads nothing from it: `percentage(1px + 3em)`
  * is written out as-is, a guard comparing it does not match. Unless the
  * consumer hands the kept value on to a later boundary, this is the last place
  * that can say so.
@@ -5006,7 +5006,7 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: E
  * The bytes of one operand of an operation that is kept as written. The value
  * lane already wrote back a group's own parens ({@link writtenParens}); an
  * operand that is itself an operation kept as written (a variable holding
- * `4 + 3px`) is grouped by precedence ({@link operandAsWritten}).
+ * `foo + 1`) is grouped by precedence ({@link operandAsWritten}).
  */
 function keptOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
   const bytes = emitValue(value);
@@ -5026,8 +5026,8 @@ function isAuthoredGroupExpression(node: Expression): boolean {
 /**
  * An authored paren group's value once its math has run. A computed inner is
  * one value and sheds the parens; an operation `operate` kept as written
- * (`4 + 3px` under `preserve`, `foo + 1`) is still an expression and keeps
- * them, or `(4 + 3px) * 2` would print as `4 + 3px * 2`.
+ * (`foo + 1`) is still an expression and keeps
+ * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`.
  */
 function keepAuthoredGroup<T extends EvalValue>(v: T): T | Value {
   return isLiteral(v) || isValueGroupArray(v) ? v : groupAsWritten(v);
@@ -5500,7 +5500,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
         const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
-          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m, node.unitlessAdoptsUnit), node);
+          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
