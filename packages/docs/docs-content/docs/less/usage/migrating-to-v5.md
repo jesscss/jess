@@ -396,7 +396,7 @@ Each sheet is still imported once, with these differences from Less 4.x:
 
 In Less 4.x the options passed to `less.render()` or `lessc` were the whole configuration. Less 5 also reads a `styles.config.*` file, and works the options out for each file it compiles, imported files included:
 
-- A file uses the nearest `styles.config.*` in its own folder or a folder above it, up to its package root (the first folder up with a `package.json`). An imported file in another folder uses its own config. No config is loaded for a file under `node_modules`.
+- A file uses every `styles.config.*` in its own folder and the folders above it, up to its package root (the first folder up with a `package.json`), merged, the nearest winning setting by setting: a subfolder's config only needs the settings that differ. An imported file in another folder uses the configs above it. No config is loaded for a file under `node_modules`.
 - An option you pass to `less.render()` or `lessc` wins over the same option in that config; the config supplies the options you leave unset. With no config file, the options you pass are the whole configuration, as in Less 4.x.
 - A file's settings are its language's defaults, under the config's `compile` block, under the block for its language (`language.less` for a `.less` file). The options you pass are `language.less` options, so they reach `.less` files only: an imported `.jess` or `.scss` file keeps its own defaults and settings.
 

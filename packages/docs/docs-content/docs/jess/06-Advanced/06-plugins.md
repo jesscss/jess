@@ -140,8 +140,8 @@ If those defaults affect evaluation, return a frozen readonly projection as
 `setContext`; Context resolves each document's policy once, from that document's
 own `dialectDefaults`, so a file keeps your language's defaults whichever file
 imports it. When the host passes `sourceOptions` to `safeParse` (the settings
-that cover that file, already worked out for your language: its nearest
-`styles.config` merged under the settings passed to the compiler, `compile`
+that cover that file, already worked out for your language: its
+`styles.config` files merged under the settings passed to the compiler, `compile`
 settings under `language.<your language>`), read them over the factory's
 options: they win where they set a value. `sourceConfigFile` names the `styles.config` they
 came from, so an invalid value it set can name that file.
