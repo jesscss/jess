@@ -3404,7 +3404,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             numerator,
             denominator,
             false,
-            cssBaseMathOutsideParens('/')
+            cssBaseMathOutsideParens('/'),
+            true
           );
     }
   );
@@ -3485,14 +3486,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             propertyFact.property,
             values[0]!,
             false,
-            cssBaseMathOutsideParens(operators[0]!)
+            cssBaseMathOutsideParens(operators[0]!),
+            true
           )
         : operation(
             operators[0]!,
             values[0]!,
             propertyFact.property,
             false,
-            cssBaseMathOutsideParens(operators[0]!)
+            cssBaseMathOutsideParens(operators[0]!),
+            true
           );
       if (operators.length === 2) {
         const trailing = values.at(-1);
@@ -3504,7 +3507,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           result,
           trailing,
           false,
-          cssBaseMathOutsideParens(operators[1]!)
+          cssBaseMathOutsideParens(operators[1]!),
+          true
         );
       }
       return block(result);
@@ -3757,7 +3761,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         keyword(requireToken(children[1]).value),
         requireValueNode(children[3]),
         false,
-        cssBaseMathOutsideParens(':')
+        cssBaseMathOutsideParens(':'),
+        true
       )]
     )
   );

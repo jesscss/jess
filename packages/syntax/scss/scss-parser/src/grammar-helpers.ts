@@ -259,7 +259,8 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
         result,
         child,
         false,
-        cssBaseMathOutsideParens(operator)
+        cssBaseMathOutsideParens(operator),
+        true
       );
       operator = undefined;
       continue;
@@ -584,7 +585,7 @@ export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
   let result = requireValue(values[0]);
   for (let index = 1; index < values.length; index += 1) {
     result = operation(operators[index - 1]!, result, values[index]!, false,
-      cssBaseMathOutsideParens(operators[index - 1]!));
+      cssBaseMathOutsideParens(operators[index - 1]!), true);
   }
   return result;
 }

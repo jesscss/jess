@@ -401,16 +401,18 @@ describe('Operations', () => {
  * unitless number are unaffected.
  */
 describe('Operations — a unitless number ± a dimension with a unit', () => {
-  const render = async (unitMode: 'loose' | 'preserve' | 'strict', body: string, mathMode?: 'always' | 'parens-division') => {
+  const renderSheet = async (unitMode: 'loose' | 'preserve' | 'strict', source: string, mathMode?: 'always' | 'parens-division') => {
     const options = { unitMode, ...(mathMode ? { mathMode } : {}) };
     const result = await new Compiler({ compile: { ...options, plugins: [lessPlugin(options)] }, quiet: true })
-      .renderToResult({ source: `.a { ${body} }`, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+      .renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
     return {
       css: result.css.replace(/\s+/g, ' ').trim(),
       warnings: result.warnings.map(w => w.code),
       errors: result.errors.map(w => w.code)
     };
   };
+  const render = (unitMode: 'loose' | 'preserve' | 'strict', body: string, mathMode?: 'always' | 'parens-division') =>
+    renderSheet(unitMode, `.a { ${body} }`, mathMode);
 
   it('preserve keeps it as written, without calc(), and warns', async () => {
     const { css, warnings } = await render('preserve', 'a: 4 + 3px; b: 3px - 1;');
@@ -443,8 +445,37 @@ describe('Operations — a unitless number ± a dimension with a unit', () => {
     // The parts that do compute still compute: `10px / 2px` is 5 and `1px * 2` is 2px.
     expect(css).toBe('.a { a: (4 + 3px); b: (4 + 3px) * 2; c: 1px (4 + 3px) 2; d: (5 + 6px - 2px); }');
 
-    // The kept math warns through the chain, not only at its first link.
-    expect(warnings.slice(0, 2)).toEqual(['eval/unexpressible-unit', 'eval/unexpressible-unit']);
+    // Every declaration warns once, the chain (b) and the space-list member (c) included.
+    expect(warnings).toEqual(Array(4).fill('eval/unexpressible-unit'));
+  });
+
+  it('kept math reached through a variable or a mixin argument keeps its precedence', async () => {
+    const { css } = await render('preserve', '@w: 4; @x: @w + 3px; a: @x * 2; b: 2 * @x; c: 10px - @x; d: -@x; e: @x + 1px; f: 1px + @x;');
+    expect(css).toBe('.a { a: (4 + 3px) * 2; b: 2 * (4 + 3px); c: 10px - (4 + 3px); d: -1 * (4 + 3px); e: 4 + 3px + 1px; f: 1px + 4 + 3px; }');
+
+    const mixin = await renderSheet('preserve', '@w: 4; .m(@a) { width: @a * 2; } .a { .m(@w + 3px); }');
+    expect(mixin.css).toBe('.a { width: (4 + 3px) * 2; }');
+
+    // One kept operation, one warning: the argument and the declaration reading it are one thing written.
+    expect(mixin.warnings).toEqual(['eval/unexpressible-unit']);
+  });
+
+  it('a call that consumes the kept math warns, whether it is written out or formats it', async () => {
+    const { css, warnings } = await render('preserve', '@w: 4; a: percentage(@w + 3px); b: foo((@w + 3px)); c: e(%("%d", @w + 3px));');
+    expect(css).toBe('.a { a: percentage(4 + 3px); b: foo((4 + 3px)); c: 4 + 3px; }');
+    expect(warnings).toEqual(Array(3).fill('eval/unexpressible-unit'));
+  });
+
+  it('a guard reading the kept math does not match, and says why', async () => {
+    const guard = await renderSheet('preserve', '.m(@a) when (@a + 1px > 5px) { x: y; } .m(@a) when (default()) { x: d; } .b { .m(5); }');
+    expect(guard.css).toBe('.b { x: d; }');
+    expect(guard.warnings).toEqual(['eval/unexpressible-unit']);
+    expect((await renderSheet('loose', '.m(@a) when (@a + 1px > 5px) { x: y; } .m(@a) when (default()) { x: d; } .b { .m(5); }')).css).toBe('.b { x: y; }');
+
+    // In value position the same comparison has no ground and raises (§4.2a).
+    expect((await render('preserve', '@w: 4; a: if((@w + 3px) > 5px, y, n);')).errors).toEqual(['eval/incomparable-operands']);
+    expect((await render('loose', '@w: 4; a: if((@w + 3px) > 5px, y, n);')).css).toBe('.a { a: y; }');
+    expect((await render('strict', '@w: 4; a: if((@w + 3px) > 5px, y, n);')).errors).toEqual(['eval/invalid-unit-arithmetic']);
   });
 
   it('a non-dividing slash keeps each side as written: `4 / 2 + 5em` (P35)', async () => {

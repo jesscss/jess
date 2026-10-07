@@ -34,14 +34,7 @@ export type ScssPluginOptions = {
 
 type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
-/*
- * Sass adds a unitless number to any dimension (dart-sass 1.101.7: `1 + 1px` →
- * `2px`, `2px - 1` → `1px`, no warning), so `.scss` keeps that in every
- * `unitMode`. The 2026-10-06 unitless ruling (ledger P35) is stated for the
- * `unitMode` ladder; whether `.scss` should follow it instead is an open owner
- * question.
- */
-const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { unitlessAdoptsUnit: true });
+const sassValueEvaluator = buildEvaluator(makeSassRegistry());
 
 /**
  * `#sass` and `#sass/<module>` are this plugin's private paths to the Sass

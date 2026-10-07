@@ -16,8 +16,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import { groupAsWritten, operate, preservedUnitClashes, validateFinalUnits } from '../value-operate.js';
-import { buildEvaluator } from '../evaluator.js';
-import { createFnRegistry } from '../value-dispatch.js';
 import { makeBlock, makeDimension, makeList } from '../value-factory.js';
 import { UnitArithmeticError } from '../value-eval.js';
 import type { EvalModes, Value } from '../value-eval.js';
@@ -267,12 +265,12 @@ describe('a unitless number ± a dimension with a unit', () => {
     expect(bytesOf('+', ratio, dim(20))).toBe('calc(2em / 1px + 20)');
   });
 
-  it('a dialect whose unitless operand adopts the unit computes it in every mode', () => {
-    const sass = buildEvaluator(createFnRegistry(), { unitlessAdoptsUnit: true });
+  it('an operation whose dialect says a unitless operand adopts the unit computes it in every mode', () => {
     for (const m of [LOOSE, PRESERVE, STRICT]) {
-      expect(sass.operate('+', dim(4), dim(3, 'px'), m).bytes).toBe('7px');
+      expect(operate('+', dim(4), dim(3, 'px'), m, true).bytes).toBe('7px');
+      expect(operate('-', dim(3, 'px'), dim(1), m, true).bytes).toBe('2px');
     }
-    expect(buildEvaluator(createFnRegistry()).operate('+', dim(4), dim(3, 'px'), PRESERVE).bytes).toBe('4 + 3px');
+    expect(operate('+', dim(4), dim(3, 'px'), PRESERVE, false).bytes).toBe('4 + 3px');
   });
 
   it('an authored paren group keeps its parens around the kept math, and only there', () => {

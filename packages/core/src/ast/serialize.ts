@@ -175,7 +175,7 @@ import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, groupAsWritten, keepAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, findFinalValue, groupAsWritten, isUnexpressible, keepAsWritten, operandAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -3810,7 +3810,22 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
  * synchronous guard costs nothing extra.
  */
 function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
-  return (v: ValueSlot) => evalTypedSlot(v, frame, e);
+  return (v: ValueSlot) => {
+    const value = evalTypedSlot(v, frame, e);
+    if (isThenable(value)) {
+      return value.then((settled) => {
+        warnConsumedOperand(settled, v, e);
+        return settled;
+      });
+    }
+    warnConsumedOperand(value, v, e);
+    return value;
+  };
+}
+
+/** A guard reads its operands and emits none of them, so it consumes a kept operation (§4.7). */
+function warnConsumedOperand(value: ValueGroup, slot: ValueSlot, e: EvalCtx): void {
+  warnConsumedKept(value, undefined, isValueSlotArray(slot) ? (slot[0] ?? {}) : slot, e);
 }
 
 /* ---------------------------------------------------- typed value eval */
@@ -4109,6 +4124,7 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
 
   const values = slot.map(value => evalValueSlot(value, frame, e));
   return combineAll(values, (resolved) => {
+    validateItemUnits(resolved, slot, slot[0] ?? {}, e);
     const separators = valueLayoutOf(slot);
 
     /*
@@ -4188,25 +4204,8 @@ function replayedLayoutOf(node: object): readonly string[] | undefined {
  */
 const unitOwners = new WeakMap<Value, Operation>();
 
-function hasInvalidFinalUnits(value: Value): boolean {
-  /*
-   * V18 — a non-convertible `+`/`-` under `preserve` is an opaque `calc(…)`
-   * keyword with no unit facts of its own; `operate` registers it so this
-   * boundary can still ask the one question and warn (§4.7: no silent rung).
-   */
-  if (value.type === 'Keyword') {
-    return preservedUnitClashes.has(value);
-  }
-  if (value.type !== 'Dimension') {
-    return false;
-  }
-  const numerator = value.numerator ?? (value.unit ? [value.unit] : []);
-  const denominator = value.denominator ?? [];
-  return numerator.length > 1 || denominator.length > 0;
-}
-
 function rememberUnitOwner(value: Value, node: Operation): Value {
-  if (hasInvalidFinalUnits(value)) {
+  if (isUnexpressible(value)) {
     unitOwners.set(value, node);
   }
   return value;
@@ -4281,8 +4280,23 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): ReturnType<typeof cal
  * inside it is a false positive about an expression the author got right.
  */
 function warnUnexpressibleUnit(value: Value, owner: object, e: EvalCtx): void {
-  const site = unitOwners.get(value) ?? owner;
-  e.context?.warn(WARN.unexpressibleUnit({
+  const context = e.context;
+  if (context === undefined) {
+    return;
+  }
+
+  /*
+   * One kept operation, one warning. A kept operation reaches every boundary
+   * its value or a chain built on it crosses — a mixin argument and the
+   * declaration that reads it — but it is one thing the author wrote.
+   */
+  const kept = preservedUnitClashes.get(value) ?? value;
+  if (warnedUnitValues.has(kept)) {
+    return;
+  }
+  warnedUnitValues.add(kept);
+  const site = unitOwners.get(value) ?? unitOwners.get(kept) ?? owner;
+  context.warn(WARN.unexpressibleUnit({
     node: site,
     ...arithmeticSiteLocation(site, e),
     meta: { expr: (value.type === 'Dimension' ? value.preserved : undefined) ?? value.bytes }
@@ -4377,10 +4391,64 @@ function validateValueGroupUnits(
    * A `demandExpressible` boundary has already thrown or passed, and it offers no
    * lenient rung to warn ABOUT — so it never reaches here.
    */
-  if (!demandExpressible && modes.unitMode !== 'strict' && !modes.inCalc && hasInvalidFinalUnits(value)) {
-    warnUnexpressibleUnit(value, owner, e);
+  if (!demandExpressible && modes.unitMode !== 'strict' && !modes.inCalc) {
+    const unexpressible = findFinalValue(value, isUnexpressible);
+    if (unexpressible !== undefined) {
+      warnUnexpressibleUnit(unexpressible, owner, e);
+    }
   }
 }
+
+/**
+ * §4.7 — a list item is a final typed value too. The declaration boundary
+ * (`evalBytes`) validates the value it is handed, but a `List`, a `Sequence`
+ * and a space-separated value slot emit their items to bytes themselves, so
+ * without this an item carrying an unexpressible unit (`$(2px * 3px) / 1px`,
+ * `1px (4 + 3px) 2`) would skip the `unitMode` ladder that the same operation
+ * meets on its own.
+ */
+function validateItemUnits(items: readonly EvalValue[], sources: readonly (ValueSlot | undefined)[], owner: object, e: EvalCtx): void {
+  if (!e.ev) {
+    return;
+  }
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]!;
+    if (!isLiteral(item)) {
+      const source = sources[index];
+      validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? owner : source, e, false);
+    }
+  }
+}
+
+/** The values {@link warnUnexpressibleUnit} has reported, each once. */
+const warnedUnitValues = new WeakSet<Value>();
+
+/**
+ * §4.7 where a value is CONSUMED rather than emitted. An operation `preserve`
+ * kept unevaluated (`4 + 3px`) has no value to compute with, so a call or a
+ * guard that takes one as an operand reads nothing from it: `percentage(4 + 3px)`
+ * is written out as-is, a guard comparing it does not match. Unless the
+ * consumer hands the kept value on to a later boundary, this is the last place
+ * that can say so.
+ */
+function warnConsumedKept(operands: ValueGroup, passedOn: EvalValue | undefined, owner: object, e: EvalCtx): void {
+  if (e.modes.unitMode === 'strict' || e.modes.inCalc
+    || (passedOn !== undefined && !isLiteral(passedOn) && findFinalValue(passedOn, isKept) !== undefined)) {
+    return;
+  }
+  if (!isValueGroupArray(operands)) {
+    const kept = findFinalValue(operands, isKept);
+    if (kept !== undefined) {
+      warnUnexpressibleUnit(kept, owner, e);
+    }
+    return;
+  }
+  for (const operand of operands) {
+    warnConsumedKept(operand, undefined, owner, e);
+  }
+}
+
+const isKept = (value: Value): boolean => preservedUnitClashes.has(value);
 
 /** A typed value that is no function argument. */
 const ARG_NONE = 0;
@@ -4935,6 +5003,17 @@ function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: E
 }
 
 /**
+ * The bytes of one operand of an operation that is kept as written. The value
+ * lane already wrote back a group's own parens ({@link writtenParens}); an
+ * operand that is itself an operation kept as written (a variable holding
+ * `4 + 3px`) is grouped by precedence ({@link operandAsWritten}).
+ */
+function keptOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
+  const bytes = emitValue(value);
+  return isLiteral(value) || isValueGroupArray(value) ? bytes : operandAsWritten(value, parent.operator, child === parent.right, bytes);
+}
+
+/**
  * An `Expression` the author spelled as a paren group — its span opens at the
  * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
  * bare Less computation starts where its value starts, so neither prints parens.
@@ -5174,22 +5253,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       const items = node.value.map(it => evalValueSlot(it, frame, e));
       return combineAll(items, (vals) => {
-        /*
-         * §4.7 — a list item is a final typed value too. The declaration boundary
-         * (`evalBytes`) validates the value it is handed, but a list emits its
-         * items to bytes HERE, so without this an item carrying an
-         * unexpressible unit (`$(2px * 3px) / 1px`) would skip the `unitMode`
-         * ladder that the same operation meets on its own.
-         */
-        if (e.ev) {
-          for (let index = 0; index < vals.length; index += 1) {
-            const item = vals[index]!;
-            if (!isLiteral(item)) {
-              const source = node.value[index];
-              validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? node : source, e, false);
-            }
-          }
-        }
+        validateItemUnits(vals, node.value, node, e);
 
         const compress = e.compress === true;
         const glue = sepGlue(node.sep, compress);
@@ -5405,7 +5469,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const bytes = `${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`;
+          const bytes = `${keptOperand(node, node.left, values[0]!)} ${node.operator} ${keptOperand(node, node.right, values[1]!)}`;
 
           /*
            * An operation preserved because it was authored inside a math
@@ -5431,7 +5495,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
         const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
-          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m), node);
+          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m, node.unitlessAdoptsUnit), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
@@ -8244,9 +8308,14 @@ function dispatchCall(
       : undefined;
     try {
       const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written, node.args);
-      return isThenable(result)
-        ? result.catch(error => invalidFunctionCall(node, error, e))
-        : result;
+      if (isThenable(result)) {
+        return result.then((value) => {
+          warnConsumedKept(vals, value, node, e);
+          return value;
+        }, error => invalidFunctionCall(node, error, e));
+      }
+      warnConsumedKept(vals, result, node, e);
+      return result;
     } catch (error) {
       return invalidFunctionCall(node, error, e);
     }
@@ -8607,6 +8676,7 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
   const authored = valueLayoutOf(node);
   const items = node.parts.map(part => evalValue(part, frame, e));
   return combineAll(items, (values) => {
+    validateItemUnits(values, node.parts, node, e);
     let out = emitValueC(values[0]!, e);
     for (let index = 1; index < values.length; index++) {
       /*

@@ -85,6 +85,10 @@ value: $(1px * 1px / 1px); // 1px
 ```
 
 A result whose unit CSS cannot express — an area such as `$(1px * 2px)` or a
-reciprocal such as `$(1 / 2px)` — is an error. `.jess` has one behaviour here:
-the `unitMode` compile option is a Less compatibility setting and does not
-change `.jess` output.
+reciprocal such as `$(1 / 2px)` — is an error, whatever the `unitMode` compile
+option says: `unitMode` is a Less compatibility setting.
+
+One case does still follow `unitMode`: adding or subtracting dimensions whose
+units do not convert. `$(1px + 3em)` is `4px` under `loose`, `calc(1px + 3em)`
+under `preserve` (the default) and an error under `strict`. Write
+`calc(1px + 3em)` when that is what you mean; it is the same in every mode.

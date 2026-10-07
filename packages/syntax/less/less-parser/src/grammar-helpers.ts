@@ -2498,7 +2498,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
       const left = nextOperands.pop()!;
       const leftSpan = nextSpans.pop();
       const rightSpan = spans[index + 1];
-      const folded = operation(operator, left, operands[index + 1]!, false, lessMathOutsideParens(state, operator));
+      const folded = operation(operator, left, operands[index + 1]!, false, lessMathOutsideParens(state, operator), false);
       const span = leftSpan === undefined || rightSpan === undefined
         ? undefined
         : { start: leftSpan.start, end: rightSpan.end };

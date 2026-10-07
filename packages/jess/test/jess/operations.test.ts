@@ -17,6 +17,9 @@
  * what is wrong.
  */
 import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 
 /** Render one `.jess` declaration value and return just the value bytes. */
@@ -324,6 +327,36 @@ describe('OPERATIONS — a unitless number ± a dimension with a unit, per diale
       await expect(valueIn('4 + 3px', mode, '.scss'), mode).resolves.toBe('7px');
       await expect(valueIn('3px - 1', mode, '.scss'), mode).resolves.toBe('2px');
       await expect(warningsIn('4 + 3px', mode, '.scss'), mode).resolves.toEqual([]);
+    }
+  });
+
+  it('the rule is the operation\'s own dialect\'s, whatever dialect the entry is', async () => {
+    /*
+     * One render evaluates operations written in more than one dialect, so the
+     * operation carries its dialect's answer (`Operation.unitlessAdoptsUnit`):
+     * a `.scss` or `.jess` partial keeps its arithmetic under a `.less` entry,
+     * and a `.less` partial keeps the ladder under a `.scss` entry.
+     */
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-unitless-dialect-'));
+    fs.writeFileSync(path.join(dir, 'part.scss'), '.s { k: 4 + 3px; }');
+    fs.writeFileSync(path.join(dir, 'part.jess'), '.j { k: $(4 + 3px); }');
+    fs.writeFileSync(path.join(dir, 'part.less'), '.l { k: 4 + 3px; }');
+    const render = async (source: string, extension: '.less' | '.scss', unitMode: UnitMode) => {
+      const result = await new Compiler({ compile: { unitMode }, quiet: true })
+        .renderToResult({ source, filePath: path.join(dir, `entry${extension}`), extension }, { quiet: true });
+      return { css: result.css.replace(/\s+/g, ' ').trim(), warnings: result.warnings.map(w => w.code), errors: result.errors.map(w => w.code) };
+    };
+    try {
+      for (const mode of UNIT_MODES) {
+        const fromLess = await render('@import \'part.scss\'; @import \'part.jess\';', '.less', mode);
+        expect(fromLess, mode).toEqual({ css: '.s { k: 7px; } .j { k: 7px; }', warnings: [], errors: [] });
+      }
+      expect(await render('@import \'part.less\';', '.scss', 'preserve'))
+        .toEqual({ css: '.l { k: 4 + 3px; }', warnings: ['eval/unexpressible-unit'], errors: [] });
+      expect((await render('@import \'part.less\';', '.scss', 'strict')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+      expect((await render('@import \'part.less\';', '.scss', 'loose')).css).toBe('.l { k: 7px; }');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

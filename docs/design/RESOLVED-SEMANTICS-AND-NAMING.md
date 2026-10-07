@@ -1098,6 +1098,16 @@ worth recording precisely, because the wrong diagnosis is the plausible one:
 unaffected. It is an INCOMPATIBLE-units conversion, not an unexpressible result,
 so it is not on this ladder and does not warn.
 
+**OPEN — the one `.jess` result `unitMode` still changes.** Because the
+incompatible-units conversion is decided at the operation and not at the
+boundary, "`unitMode` does not change `.jess` output" holds for every row above
+but not for it: `$(1px + 3em)` is `4px` under `loose`, `calc(1px + 3em)` with no
+warning under `preserve`, and an error under `strict` (measured 2026-10-06). The
+owner has not said which single answer `.jess` gives. The candidates are the
+error (the `$( … )` boundary demands one value, and dart-sass errors too) or
+`calc(1px + 3em)` (what `.less` emits under the default, so the
+`.less → .jess → .css` round trip holds).
+
 **No mode is silent.** Silent preservation is the worst option: the author gets
 output that looks fine and never learns the expression was meaningless. Ledger
 **G25** already settled that shape for the `calc()` comment case — *"auto-fixed

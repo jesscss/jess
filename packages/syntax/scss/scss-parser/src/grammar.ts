@@ -1120,7 +1120,8 @@ const scssFactory = (g: ScssInputRules) => {
             ),
             value,
             false,
-            cssBaseMathOutsideParens('*')
+            cssBaseMathOutsideParens('*'),
+            true
           )
         : value;
     }
@@ -1923,7 +1924,8 @@ const scssFactory = (g: ScssInputRules) => {
       keyword(requireToken(children[0]).value),
       requireValue(children[2]),
       false,
-      cssBaseMathOutsideParens(':')
+      cssBaseMathOutsideParens(':'),
+      true
     ))
   );
   const ImportSupports = node<FunctionCall>(
@@ -3102,7 +3104,8 @@ const scssFactory = (g: ScssInputRules) => {
             numerator,
             denominator,
             false,
-            cssBaseMathOutsideParens('/')
+            cssBaseMathOutsideParens('/'),
+            true
           );
     }
   );
@@ -3165,7 +3168,8 @@ const scssFactory = (g: ScssInputRules) => {
           requireValue(values[0]),
           property,
           false,
-          cssBaseMathOutsideParens(requireToken(children[2]).value)
+          cssBaseMathOutsideParens(requireToken(children[2]).value),
+          true
         );
         const upper = values[1];
         if (upper !== undefined) {
@@ -3174,7 +3178,8 @@ const scssFactory = (g: ScssInputRules) => {
             comparison,
             upper,
             false,
-            cssBaseMathOutsideParens(requireToken(children[children.length - 3]).value)
+            cssBaseMathOutsideParens(requireToken(children[children.length - 3]).value),
+            true
           );
         }
         return block(comparison);
@@ -3189,7 +3194,8 @@ const scssFactory = (g: ScssInputRules) => {
         property,
         value,
         false,
-        cssBaseMathOutsideParens(requireToken(children[2]).value)
+        cssBaseMathOutsideParens(requireToken(children[2]).value),
+        true
       ));
     }
   );
@@ -3323,7 +3329,8 @@ const scssFactory = (g: ScssInputRules) => {
             property,
             value,
             false,
-            cssBaseMathOutsideParens(':')
+            cssBaseMathOutsideParens(':'),
+            true
           ));
     }
   );

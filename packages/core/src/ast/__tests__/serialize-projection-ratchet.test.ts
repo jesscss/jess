@@ -368,11 +368,22 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (ledger D22: never re-read parser output): a condition call in a
     // query prelude (`style(--x: @{v})`) is walked as its feature, so a value
     // spliced into it is never scanned or re-spaced (`conditionFeature`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(555);
+    // +2 functions net and +1 `new WeakSet` (§4.7, no silent rung): the
+    // final-unit predicate moved to value-operate (`isUnexpressible`, the one
+    // walk the strict throw also reads); a `List`, a `Sequence` and a
+    // space-separated slot check their items through one helper
+    // (`validateItemUnits`); a call or a guard operand that consumes a kept
+    // operation warns (`warnConsumedKept`, `warnConsumedOperand`); and each
+    // kept operation warns once (`warnedUnitValues`).
+    // +1 function (owner ruling 2026-10-06, unitless ± unit): an operand of an
+    // operation kept inside a math function that is itself kept math reached
+    // through a variable is grouped by precedence (`keptOperand`); the value
+    // lane still writes a group's own parens back.
+    expect(occurrences(/^function |^async function /gmu)).toBe(558);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
-    expect(occurrences(/new WeakSet/gu)).toBe(1);
+    expect(occurrences(/new WeakSet/gu)).toBe(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
     /*

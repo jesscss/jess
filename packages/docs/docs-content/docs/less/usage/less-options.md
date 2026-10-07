@@ -235,7 +235,7 @@ A unitless number added to or subtracted from a dimension with a unit is one of 
 }
 ```
 
-The parts of the expression that do compute are computed, and your parentheses are kept, so the kept expression means what you wrote. Multiplying or dividing by a unitless number (`2px * 3`, `6px / 2`) is unaffected.
+The parts of the expression that do compute are computed, and the kept expression keeps its grouping, whether you wrote the parentheses or it reached an operator through a variable or a mixin argument (`@x * 2` with `@x: 4 + 3px` is `(4 + 3px) * 2`), so it means what you wrote. A guard or a function that reads kept math gets no number from it: the guard does not match and the call is written out as-is, each with the warning. Multiplying or dividing by a unitless number (`2px * 3`, `6px / 2`) is unaffected.
 
 #### Strict Units (deprecated)
 

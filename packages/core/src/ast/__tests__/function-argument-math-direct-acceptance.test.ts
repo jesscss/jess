@@ -16,7 +16,7 @@ describe('direct canonical function-argument math', () => {
    */
   it('evaluates division in Less function arguments when the node says math happens outside parens', () => {
     const alwaysDivides = (left: ReturnType<typeof dimension>, right: ReturnType<typeof dimension>) =>
-      operation('/', left, right, false, true);
+      operation('/', left, right, false, true, false);
     const document = stylesheet([
       rule('.math', [
         decl('rounded', funcCall('round', [alwaysDivides(dimension(32), dimension(3))])),
@@ -34,10 +34,10 @@ describe('direct canonical function-argument math', () => {
     const document = stylesheet([
       rule('.math', [
         decl('rounded', funcCall('round', [
-          block(operation('/', dimension(32), dimension(3), false, cssBaseMathOutsideParens('/')))
+          block(operation('/', dimension(32), dimension(3), false, cssBaseMathOutsideParens('/'), false))
         ])),
         decl('unitless', funcCall('unit', [
-          block(operation('/', operation('*', dimension(4, 'px'), dimension(4, 'em'), false, cssBaseMathOutsideParens('*')), dimension(2, 'cm'), false, cssBaseMathOutsideParens('/')))
+          block(operation('/', operation('*', dimension(4, 'px'), dimension(4, 'em'), false, cssBaseMathOutsideParens('*'), false), dimension(2, 'cm'), false, cssBaseMathOutsideParens('/'), false))
         ]))
       ])
     ]);
@@ -59,11 +59,11 @@ describe('direct canonical function-argument math', () => {
    * answer to both.
    */
   it('a parenthesized preserved sub-expression composes exactly as the unparenthesized one does', () => {
-    const percentSquared = () => operation('*', dimension(100, '%'), dimension(100, '%'), false, cssBaseMathOutsideParens('*'));
+    const percentSquared = () => operation('*', dimension(100, '%'), dimension(100, '%'), false, cssBaseMathOutsideParens('*'), false);
     const document = stylesheet([
       rule('.math', [
-        decl('parenthesized', operation('*', block(percentSquared()), dimension(2), false, cssBaseMathOutsideParens('*'))),
-        decl('bare', operation('*', percentSquared(), dimension(2), false, cssBaseMathOutsideParens('*')))
+        decl('parenthesized', operation('*', block(percentSquared()), dimension(2), false, cssBaseMathOutsideParens('*'), false)),
+        decl('bare', operation('*', percentSquared(), dimension(2), false, cssBaseMathOutsideParens('*'), false))
       ])
     ]);
 
@@ -78,7 +78,7 @@ describe('direct canonical function-argument math', () => {
       rule('.math', [
         decl('width', funcCall('calc', [
           operation('-', quoted('~\'100%\'', '100%', '\'', true), dimension(3), false,
-            cssBaseMathOutsideParens('-'))
+            cssBaseMathOutsideParens('-'), false)
         ]))
       ])
     ]);
