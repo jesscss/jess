@@ -523,11 +523,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements'
   }],
-  ['all-less:tests-config/units/no-strict/no-strict.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'a unitless number ± a unit: `.less` keeps `2 + 5em` as written outside `unitMode: \'loose\'` (V27) while `.jess` adopts the unit (`7em`, V28); the 2026-10-06 ruling that every dialect adopts it closes this'
-  }],
   ['all-less:tests-config/url-args/urls.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
