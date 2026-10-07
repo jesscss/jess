@@ -5,7 +5,7 @@ audiences:
   - jess
 origin: jess
 ---
-Jess reads config from a `styles.config.{ts,js}` file at your project root. Keep it small at first; grow it only when your build needs it.
+Jess reads config from a `styles.config.{ts,js}` file, usually at your project root: a file uses every one in its own folder and the folders above it, up to its package root, so a project's config applies to its subfolders. Keep it small at first; grow it only when your build needs it.
 
 ```js
 // styles.config.js
@@ -32,21 +32,43 @@ that file's settings wherever it ends up: a variable's value, a mixin's body and
 its guard answer the settings of the file they are written in, not the file that
 reads or calls them. A file also keeps its own language's built-in functions.
 
-1. **Set globally:** `compile` settings passed to the compiler or to a render
-   apply to every file, whatever its language, and win over everything below.
+A file's settings come from two places, merged:
+
+1. **Its `styles.config` files:** every one in the file's own folder and the
+   folders above it, merged, the nearest winning setting by setting. A subfolder's
+   config only needs the settings that differ: the rest come from the configs
+   above it. The search stops at the file's package root (the first folder up
+   with a `package.json`, whose config is included), so one package never reads
+   another's config. An imported file in another folder uses the configs above
+   it, not the entry's. No `styles.config` is loaded for a file in an installed
+   package (under `node_modules`).
+2. **The settings passed in:** to the compiler, to a render, or on the command
+   line. They are merged over the `styles.config` files setting by setting: a
+   value passed in wins over the same setting in a config file, and the config
+   files supply everything left unset.
+
+   `compile` and each `language.<lang>` block merge setting by setting. A
+   single `input` or `output` object does too; a list of `output` (or `input`)
+   entries replaces the one above it. Any other key (`lint`, …) is replaced
+   whole by the nearer config.
 
    ```js
    new Compiler({ compile: { unitMode: 'preserve' } });
    compiler.render('main.less', { compile: { unitMode: 'preserve' } });
    ```
 
-2. **Set for a folder or a language:** a `styles.config` applies to the files in
-   its own folder. Its `language.<lang>` block (`language.less`, `language.jess`,
-   `language.scss`) applies only to files of that language and wins over its
-   `compile` block. `language.<lang>` settings passed to the compiler or a render
-   apply to that language's files everywhere and win over a `styles.config`.
-   A `styles.config` in an installed package's folder (under `node_modules`) is not
-   loaded.
+On that merged config, each file's settings are worked out for its language,
+each step over the one before:
+
+1. **Its language's defaults,** or the options its language's plugin was built
+   with (`lessPlugin({ unitMode: 'loose' })`). A `.less` file keeps math over
+   units that do not convert as `calc()` and warns (`unitMode: 'preserve'`); a
+   `.jess` file stops with an error (`strict`). A `.jess` file imported by a
+   `.less` file still errors, and a `.less` file imported by a `.jess` file still
+   writes `calc()`.
+2. **`compile` settings,** which apply to every file, whatever its language.
+3. **`language.<lang>` settings** (`language.less`, `language.jess`,
+   `language.scss`), which apply only to files of that language.
 
    ```js
    // styles.config.js
@@ -56,18 +78,21 @@ reads or calls them. A file also keeps its own language's built-in functions.
    }
    ```
 
-   The `strict` preset is not a mode of its own: it fills the modes a file's
-   settings leave unset, so `language.less.unitMode: 'loose'` still applies beside
-   `compile: { strict: true }`. A deprecated spelling (`strictUnits`, `math`,
-   `strictMath`, `leakyScope`) counts where it is written: `language.less.strictUnits`
-   wins over `compile.unitMode` as `language.less.unitMode` would.
+So a language setting wins over a `compile` setting wherever each is set:
+`language.less.unitMode: 'loose'` in a `styles.config` applies to `.less` files
+even when the render passes `compile: { unitMode: 'strict' }` or
+`compile: { strict: true }`, and `.jess` files get the render's setting. A
+deprecated spelling (`strictUnits`, `math`, `strictMath`, `leakyScope`) counts
+where it is written: `language.less.strictUnits` wins over `compile.unitMode` as
+`language.less.unitMode` would, and passed in, it wins over a
+`language.less.unitMode` in the config file.
 
-3. **Not set:** each file uses its own language's defaults, or the options its
-   language's plugin was built with (`lessPlugin({ unitMode: 'loose' })`). A `.less`
-   file keeps math over units that do not convert as `calc()` and warns
-   (`unitMode: 'preserve'`); a `.jess` file stops with an error (`strict`). A
-   `.jess` file imported by a `.less` file still errors, and a `.less` file imported
-   by a `.jess` file still writes `calc()`.
+The `strict` preset is not a mode of its own. It can be set in `compile` or in
+`language.<lang>`, and the more specific one decides: `language.less.strict`
+wins over `compile.strict` for `.less` files, `false` included. When on, it fills
+the modes left unset where it is written, so `compile: { strict: true }` gives
+way to any mode a language sets, and `language.less.strict: true` makes `.less`
+strict over a `compile.unitMode` while `language.less.unitMode` still wins over it.
 
 ## compile.plugins
 

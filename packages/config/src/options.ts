@@ -11,6 +11,9 @@ export interface StrictPresetOptions {
   unitMode?: 'loose' | 'preserve' | 'strict';
   allowLeakyScope?: boolean;
 
+  /** @deprecated Use `unitMode`. */
+  strictUnits?: boolean;
+
   /** @deprecated Use `allowLeakyScope`. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
@@ -31,9 +34,11 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
     return opts;
   }
   const filled = { ...opts };
-  filled.unitMode ??= 'strict';
 
-  /* A deprecated `leakyScope` is set too: fill the canonical name only when neither is. */
+  /* A deprecated spelling set counts as set: fill the canonical name only when neither is. */
+  if (filled.strictUnits === undefined) {
+    filled.unitMode ??= 'strict';
+  }
   if (filled.leakyScope === undefined) {
     filled.allowLeakyScope ??= false;
   }
@@ -176,60 +181,10 @@ function getMatchingOptions<T extends FileMatchOptions>(
   return result;
 }
 
-/**
- * Get merged options by combining compile, language, input, and output settings.
- *
- * Merge priority (later wins):
- * 1. compile options (base)
- * 2. language-specific options (inferred from input extension or explicitly specified)
- * 3. matched input options (if input path provided and matches)
- * 4. matched output options (if output path provided and matches)
- *
- * @param config - The styles configuration object
- * @param params - Options specifying language, input file, and output file
- * @returns Merged options object
- *
- * @example
- * // Get Less options for a specific input/output (language inferred from .less extension)
- * const options = getOptions(config, {
- *   input: 'src/styles/main.less',
- *   output: 'dist/main.css'
- * });
- *
- * @example
- * // Explicitly specify language
- * const options = getOptions(config, { language: 'less' });
- *
- * @example
- * // Get base options without language-specific settings
- * const options = getOptions(config);
- */
-export function getOptions(
-  config: StylesConfig = {},
-  params: GetOptionsParams = {}
-): Record<string, any> {
-  const { input: inputFile, output: outputFile } = params;
-  const { input, output, language: languageConfig = {} } = config;
-  const compile = applyStrictPreset(config.compile ?? {});
-
-  // Determine language: explicit param > inferred from input extension
-  const language = params.language ?? inferLanguage(inputFile);
-
-  // Get language-specific options if language is determined
-  const languageOptions = language ? (languageConfig[language] ?? {}) : {};
-
-  // Get matched input and output options
-  const matchedInput = getMatchingOptions(input, inputFile);
-  const matchedOutput = getMatchingOptions(output, outputFile);
-
-  /*
-   * Build result with proper merge priority:
-   * 1. compile (base)
-   * 2. language-specific
-   * 3. matched input
-   * 4. matched output
-   */
-  const base = {
+/** The compile settings that reach a file's options ({@link getOptions}). */
+function compileOptions(compile: NonNullable<StylesConfig['compile']>): StrictPresetOptions & Record<string, unknown> {
+  return {
+    strict: compile.strict,
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
     functionMode: compile.functionMode,
@@ -242,5 +197,108 @@ export function getOptions(
     disableScriptModules: compile.disableScriptModules ?? compile.disablePluginRule,
     paths: compile.searchPaths
   };
-  return layerOptions(layerOptions(layerOptions(base, languageOptions), matchedInput), matchedOutput);
+}
+
+/**
+ * Get one file's options from its config (DESIGN-DECISIONS C19).
+ *
+ * Several configs (`[styles.config, options passed in]`) are merged first, field
+ * by field, a later config over an earlier one: each `compile` setting, each
+ * `language.<lang>` setting, and the `input`/`output` entries (concatenated). A
+ * mode a later config sets in any spelling replaces every spelling of it at the
+ * same place in an earlier one ({@link layerOptions}).
+ *
+ * On the merged config, the options are computed for the file's language
+ * (later wins):
+ * 1. compile options
+ * 2. language-specific options (inferred from input extension or explicitly specified)
+ * 3. matched input options (if input path provided and matches)
+ * 4. matched output options (if output path provided and matches)
+ *
+ * The language's own defaults sit below all of these, where a file's modes are
+ * resolved. The `strict` preset is not itself a mode: the most specific place
+ * that sets `strict` decides it, and when true it fills the modes that place
+ * leaves unset, so `language.less.strict` wins over `compile.unitMode` for
+ * `.less` files and `language.less.unitMode` wins over it.
+ *
+ * @param config - The styles configuration object, or the configs to merge, earliest first
+ * @param params - Options specifying language, input file, and output file
+ * @returns Merged options object
+ *
+ * @example
+ * // Get Less options for a specific input/output (language inferred from .less extension)
+ * const options = getOptions(config, {
+ *   input: 'src/styles/main.less',
+ *   output: 'dist/main.css'
+ * });
+ *
+ * @example
+ * // A styles.config under the options passed in
+ * const options = getOptions([fileConfig, passedConfig], { language: 'less' });
+ *
+ * @example
+ * // Get base options without language-specific settings
+ * const options = getOptions(config);
+ */
+export function getOptions(
+  config: StylesConfig | readonly StylesConfig[] = {},
+  params: GetOptionsParams = {}
+): Record<string, any> {
+  const configs: readonly StylesConfig[] = Array.isArray(config) ? config : [config];
+  const { input: inputFile, output: outputFile } = params;
+
+  // Determine language: explicit param > inferred from input extension
+  const language = params.language ?? inferLanguage(inputFile);
+
+  let compile: Record<string, unknown> = {};
+  let languageOptions: Record<string, unknown> = {};
+  for (const { compile: compileConfig, language: languageConfig } of configs) {
+    compile = layerOptions(compile, compileOptions(compileConfig ?? {}));
+    if (language) {
+      languageOptions = layerOptions(languageOptions, languageConfig?.[language] ?? {});
+    }
+  }
+  const tiers: ReadonlyArray<StrictPresetOptions & Record<string, unknown>> = [
+    compile,
+    languageOptions,
+    getMatchingOptions(configs.flatMap(c => c.input ?? []), inputFile),
+    getMatchingOptions(configs.flatMap(c => c.output ?? []), outputFile)
+  ];
+  const decides = tiers.findLastIndex(tier => tier.strict !== undefined);
+  return tiers.reduce<Record<string, any>>((options, tier, index) => {
+    const { strict, ...filled } = applyStrictPreset({ ...tier, strict: index === decides && tier.strict === true });
+    void strict;
+    return layerOptions(options, filled);
+  }, {});
+}
+
+/** One config's `input` or `output` over another's: two single objects merge, a list of entries replaces. */
+function mergeEntries<T extends object>(lower: T | T[] | undefined, upper: T | T[] | undefined): T | T[] | undefined {
+  if (upper === undefined || lower === undefined || Array.isArray(lower) || Array.isArray(upper)) {
+    return upper ?? lower;
+  }
+  return { ...lower, ...upper };
+}
+
+/**
+ * `upper`'s config over `lower`'s, setting by setting, as the `styles.config`
+ * files from a file's folder up to its package root merge (DESIGN-DECISIONS
+ * O19): each `compile` and `language.<lang>` setting ({@link layerOptions}, so a
+ * mode `upper` spells differently replaces `lower`'s spelling), each `input` and
+ * `output` setting when both are single objects (a list of file entries replaces
+ * the other), and any other key whole.
+ */
+export function mergeConfigs(lower: StylesConfig, upper: StylesConfig): StylesConfig {
+  const language: NonNullable<StylesConfig['language']> = { ...lower.language };
+  for (const [name, options] of Object.entries(upper.language ?? {})) {
+    language[name] = layerOptions(lower.language?.[name] ?? {}, options ?? {});
+  }
+  return {
+    ...lower,
+    ...upper,
+    compile: layerOptions(lower.compile ?? {}, upper.compile ?? {}),
+    language,
+    input: mergeEntries(lower.input, upper.input),
+    output: mergeEntries(lower.output, upper.output)
+  };
 }

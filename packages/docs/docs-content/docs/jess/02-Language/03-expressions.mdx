@@ -113,6 +113,6 @@ Less: `preserve` keeps the math as `calc(1px + 3em)` and warns
 unitless number takes the other operand's unit under every setting. The
 default belongs to each file: a `.jess` file uses `strict` even when a `.less`
 file imports it, and a `.less` file imported by a `.jess` file keeps the Less
-default, `preserve`. A `unitMode` passed to the compiler applies to every file;
-one in a folder's `styles.config`, or under `language.jess`, applies only to the
-files it covers (see [Configuration](/docs/getting-started/config#compile-settings)).
+default, `preserve`. A `compile.unitMode` applies to every file a config covers,
+whatever its language; `language.jess.unitMode` applies only to `.jess` files
+and wins over it (see [Configuration](/docs/getting-started/config#compile-settings)).

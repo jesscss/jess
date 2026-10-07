@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { mergeWith } from 'lodash-es';
-import { getConfigWithMeta } from './config.js';
+import { getConfigWithMeta, type ConfigWithMeta } from './config.js';
 import {
   Context,
   type ContextOptions,
@@ -29,7 +29,6 @@ import {
 import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
-  layerOptions,
   applyStrictPreset,
   inferLanguage,
   type StylesConfig,
@@ -311,7 +310,7 @@ type ResolvedRenderConfig = {
   optionsFor(language?: string): Record<string, unknown>;
   configFileOptionsFor(language?: string): Record<string, unknown>;
 
-  /** The compile modes set explicitly, by the compiler or the render: global. */
+  /** The compile modes passed to the compiler or the render; the Context's own. */
   explicitModes: NonNullable<StylesConfig['compile']>;
 
   /** The settings covering one source file; see `ContextOptions.sourceOptions`. */
@@ -637,9 +636,8 @@ export class Compiler {
     renderOptions?: Partial<ConfigOptions>,
     parseInput: { language?: string; extension?: string } = {}
   ): ResolvedRenderConfig {
-    const { config: loadedFileConfig, configFilePath } = filePath
-      ? getConfigWithMeta(path.dirname(filePath))
-      : { config: {}, configFilePath: undefined };
+    const entryFolder: ConfigWithMeta = filePath ? getConfigWithMeta(path.dirname(filePath)) : { config: {} };
+    const { config: loadedFileConfig, configFilePath } = entryFolder;
     const explicitConfig: ConfigOptions = mergeWith(
       createBaseConfig(),
       this.baseOptsNormalized,
@@ -664,31 +662,38 @@ export class Compiler {
     }
 
     /*
-     * Compile settings resolve per source file (DESIGN-DECISIONS C19). The
-     * compile modes passed to the compiler or the render are global: they are
-     * the Context's own mode options and win everywhere. A folder's
-     * `styles.config` and the `language.<lang>` settings reach only the files
-     * they cover, through `sourceOptions`, which the Context asks for once per
-     * parsed file; the explicit settings win over the file's config (O13). The
-     * `strict` preset is not itself a mode: it fills the modes a file's settings
-     * leave unset, so an explicit language setting still wins over it.
+     * Compile settings resolve per source file (DESIGN-DECISIONS C19). A file's
+     * settings are its nearest `styles.config` merged under the settings passed
+     * to the compiler and the render, which win field by field (O13). On that
+     * merge they are computed for the file's language: its language's defaults,
+     * under the `compile` settings (the `strict` preset filling only what nothing
+     * sets), under `language.<lang>`. The Context asks for them once per parsed
+     * file, through `sourceOptions`; the compile modes passed in are its own
+     * mode options only for a source it has no settings for.
      */
     const explicitModes = explicitConfig.compile ?? {};
     const sourceOptions = (sourcePath: string, sourceLanguage: string): SourceSettings => {
       /*
-       * A config file is code: one in an installed package's folder is not
-       * loaded, so compiling a project never runs a dependency's config.
+       * A config file is code: none is loaded for a file in an installed
+       * package, so compiling a project never runs a dependency's config.
        */
-      const folder = sourcePath === filePath
-        ? { config: loadedFileConfig, configFilePath }
+      const folder: ConfigWithMeta = sourcePath === filePath
+        ? entryFolder
         : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
           ? getConfigWithMeta(path.dirname(sourcePath))
-          : { config: {}, configFilePath: undefined };
+          : { config: {} };
       const params = { language: sourceLanguage, input: sourcePath };
-      const folderOptions = getOptions(folder.config, params);
+
+      /*
+       * ponytail: an invalid value is reported against the nearest config file
+       * only when that file sets it itself; one a config above it sets names no
+       * file. Pass every file with its own settings if that location is needed.
+       */
       return {
-        options: layerOptions(folderOptions, getOptions(explicitConfig, params)),
-        configFile: folder.configFilePath === undefined ? undefined : { path: folder.configFilePath, options: folderOptions }
+        options: getOptions([folder.config, explicitConfig], params),
+        configFile: folder.configFilePath === undefined
+          ? undefined
+          : { path: folder.configFilePath, options: getOptions(folder.ownConfig ?? {}, params) }
       };
     };
     const jsPluginConfig: JsPluginConfig = {
@@ -805,7 +810,7 @@ export class Compiler {
           output: resolvedOutputFilePath
         }) as Record<string, unknown>,
       configFileOptionsFor: (targetLanguage?: string) =>
-        getOptions(loadedFileConfig, {
+        getOptions(entryFolder.ownConfig ?? {}, {
           language: targetLanguage,
           input: configInputPath,
           output: resolvedOutputFilePath
@@ -1078,9 +1083,10 @@ export class Compiler {
       ...(searchPaths ? { searchPaths } : {}),
 
       /*
-       * The Context's mode options are the global tier alone; the entry's config
-       * file and language settings reach the entry like any other file, through
-       * `sourceOptions`, so its modes never reach the files it imports. A parser
+       * The Context's mode options are the compile modes passed in alone, for a
+       * source with no settings of its own; every parsed file, the entry
+       * included, gets its settings through `sourceOptions`, so the entry's
+       * config file and language settings never reach the files it imports. A parser
        * reads its other per-file settings (the selector policies) from
        * `sourceOptions` too, so the entry's copies spread above are never read
        * for another file.
