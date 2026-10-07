@@ -299,6 +299,58 @@ describe('collapseNesting native vs compact', () => {
     expect(unrelated).toContain(':is(.a, #b):hover {');
   });
 
+  /*
+   * An extend's expanded placement that leaves a pseudo-element followed by more
+   * (`.a .p::before:hover`) gets a rule of its own in every output mode, nested
+   * included, so Chromium does not drop the list holding it (SETTLED — orchestrator
+   * judgment under owner delegation 2026-10-07, principle O17; ledger O10).
+   */
+  it('writes an extended branch with a pseudo-element followed by more as its own rule, nested output included', async () => {
+    const oneLine = async (src: string, mode: false | 'native' | 'compact'): Promise<string> => (await render(src, mode)).replace(/\s+/g, ' ').trim();
+    for (const mode of [false, 'native', 'compact'] as const) {
+      await expect(oneLine('.a .c:hover { x: 1 } .p::before:extend(.c all) {}', mode), String(mode))
+        .resolves.toBe('.a .c:hover { x: 1; } .a .p::before:hover { x: 1; }');
+      await expect(oneLine('.a .c:hover { x: 1 } .q:extend(.c all) {} .p::before:extend(.c all) {}', mode), String(mode))
+        .resolves.toBe('.a :is(.c, .q):hover { x: 1; } .a .p::before:hover { x: 1; }');
+    }
+    await expect(oneLine('.x { .c:hover { x: 1; .d { y: 1 } } } .p::before:extend(.c all) {}', false))
+      .resolves.toBe('.x { .c:hover { x: 1; .d { y: 1; } } .p::before:hover { x: 1; .d { y: 1; } } }');
+    await expect(oneLine('.x { .a::before:hover, .c:hover { x: 1 } } .q:extend(.zz) {}', false))
+      .resolves.toBe('.x { .a::before:hover, .c:hover { x: 1; } }');
+  });
+
+  /*
+   * An at-rule bubbled out of a rule an extend reaches writes the rule's declarations
+   * in it under the extended header: an extend reaches its target's scope and every
+   * scope nested in it (EXTEND-SEMANTICS §8). This holds for a rule a mixin call
+   * places, and for a rule the extend hoists out of nested output, whose bubbled
+   * at-rule keeps the rule's ancestors (SETTLED — orchestrator judgment under owner
+   * delegation 2026-10-07).
+   */
+  it('gives an at-rule bubbled out of an extended rule its extend', async () => {
+    const oneLine = async (src: string, mode: false | 'native' | 'compact'): Promise<string> => (await render(src, mode)).replace(/\s+/g, ' ').trim();
+    for (const mode of [false, 'native', 'compact'] as const) {
+      await expect(oneLine('.a::before, .b { &:hover { @media print { x: 1 } } } .q:extend(.b:hover all) {}', mode), String(mode))
+        .resolves.toBe('@media print { .a::before:hover { x: 1; } .b:hover, .q { x: 1; } }');
+      await expect(oneLine('.b { &:hover { @media print { x: 1 } } } .q:extend(.b:hover all) {}', mode), String(mode))
+        .resolves.toBe('@media print { .b:hover, .q { x: 1; } }');
+      await expect(oneLine('.a { .b { y: 1; @media print { x: 1 } } } .q:extend(.a .b) {}', mode), String(mode))
+        .resolves.toBe('.a .b, .q { y: 1; } @media print { .a .b, .q { x: 1; } }');
+    }
+    for (const mode of ['native', 'compact'] as const) {
+      await expect(oneLine('.b { @media print { x: 1; .c { y: 1 } } } .q:extend(.b all) {}', mode), mode)
+        .resolves.toBe('@media print { .b, .q { x: 1; } :is(.b, .q) .c { y: 1; } }');
+      await expect(oneLine('.b { @media print { @supports (x: y) { x: 1 } } } .q:extend(.b all) {}', mode), mode)
+        .resolves.toBe('@media print { @supports (x: y) { .b, .q { x: 1; } } }');
+      await expect(oneLine('.m() { .b { @media print { x: 1 } } } .m(); .q:extend(.b all) {}', mode), mode)
+        .resolves.toBe('@media print { .b, .q { x: 1; } }');
+
+      // An extend in a sibling at-rule's scope does not reach it.
+      await expect(oneLine('.b { @media print { x: 1 } } @media screen { .r:extend(.b all) {} }', mode), mode)
+        .resolves.toBe('@media print { .b { x: 1; } }');
+    }
+  });
+
   it(`'false' preserves authored nesting (no :is())`, async () => {
     const out = await render('.a, .b { .c, .d { x: 1 } }', false);
     expect(out).not.toContain(':is(');

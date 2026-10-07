@@ -130,10 +130,11 @@ describe('OPERATIONS §4 — arithmetic', () => {
      * §4.6: an operation authored inside a CSS math function does not fold —
      * operands resolve so the variable substitutes, and the operation returns
      * intact. `$( … )` is the explicit opt-in to fold, and a `calc()` whose
-     * sole argument folds to one value unwraps.
+     * sole argument folds to one value keeps its wrapper, which the property
+     * clamps (ledger V32).
      */
     await expect(body('$val: 8px; k: calc($val / 2);')).resolves.toBe('.a { k: calc(8px / 2); }');
-    await expect(body('$val: 8px; k: calc($($val / 2));')).resolves.toBe('.a { k: 4px; }');
+    await expect(body('$val: 8px; k: calc($($val / 2));')).resolves.toBe('.a { k: calc(4px); }');
     await expect(body('k: calc(2px * 3);')).resolves.toBe('.a { k: calc(2px * 3); }');
   });
 

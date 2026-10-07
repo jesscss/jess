@@ -105,6 +105,49 @@ describe('Less plugin strictMath', () => {
   });
 });
 
+/*
+ * `relativeUrls` is the Less 4.x boolean alias of `rewriteUrls` (orchestrator judgment
+ * under owner delegation 2026-10-07), as `strictMath` is of `math`: `true` rebases an
+ * imported sheet's URLs as `rewriteUrls: 'all'` does, and an explicit `rewriteUrls` wins.
+ */
+describe('Less plugin relativeUrls', () => {
+  const warn = logger.warn;
+  const warned: string[] = [];
+  beforeEach(() => {
+    warned.length = 0;
+    logger.warn = (...args: unknown[]) => {
+      warned.push(args.map(String).join(' '));
+    };
+  });
+  afterEach(() => {
+    logger.warn = warn;
+  });
+  const imported = (opts: LessPluginOptions) => lessPlugin(opts).transformUrl!({
+    value: 'img.png', quoted: true, kind: 'url', fromFilePath: '/p/sub/a.less', entryFilePath: '/p/main.less'
+  });
+
+  it('true means rewriteUrls: \'all\', and warns', () => {
+    expect(imported({ relativeUrls: true })).toBe('sub/img.png');
+    expect(imported({ rewriteUrls: 'all' })).toBe('sub/img.png');
+    expect(warned).toEqual(['relativeUrls is deprecated; use rewriteUrls. relativeUrls: true now means rewriteUrls: \'all\'']);
+  });
+
+  it('false leaves the default, and warns', () => {
+    expect(imported({ relativeUrls: false })).toBe('img.png');
+    expect(warned).toEqual(['relativeUrls is deprecated; use rewriteUrls. relativeUrls: false now means rewriteUrls: \'off\'']);
+  });
+
+  it('loses to an explicit rewriteUrls, without a warning', () => {
+    expect(imported({ relativeUrls: true, rewriteUrls: 'off' })).toBe('img.png');
+    expect(warned).toEqual([]);
+  });
+
+  it('is part of the plugin cache key', () => {
+    const resolver = new LessPluginResolver();
+    expect(resolver.getOrCreate({ relativeUrls: true })).not.toBe(resolver.getOrCreate({}));
+  });
+});
+
 describe('LessPluginResolver cache', () => {
   it('keys on strictMath, so its value is never served from another plugin', () => {
     const resolver = new LessPluginResolver();

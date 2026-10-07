@@ -38,7 +38,7 @@ Allows you to add a path to every generated import and url in your css. This doe
 
 For instance, if all the images the css use are in a folder called resources, you can use this option to add this on to the URL's and then have the name of that folder configurable.
 
-An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so `rootpath`, `rewriteUrls` and `urlArgs` all leave it as written. Less 4 rewrote it, which could write a broken URL: under `rootpath: 'r/'`, `url(~"'b.png'")` became `url(r/'b.png')`. Use a quoted string (`url("@{base}/x.png")`) when you want the options to apply.
+An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so `rootpath`, `rewriteUrls` and `urlArgs` all leave it as written. Less 4 rewrote it, which could write a broken URL: under `rootpath: 'r/'`, `url(~"'b.png'")` became `url(r/'b.png')`. Use a quoted string (`url("@{base}/x.png")`) when you want the options to apply. With `urlArgs` set, each escaped `url()` body that does not get the argument reports an `eval/url-option-skipped` warning naming the URL, since Less 4 added it there.
 
 ### Rewrite URLs
 
@@ -185,7 +185,7 @@ _This has been replaced by the [`math`](#math) option._ Less 5 still accepts it 
 |---|---|
 | `lessc -ru`<br>`lessc --relative-urls` | `{ relativeUrls: true }` |
 
-_Has been replaced by `rewriteUrls: "all"`._ Less 5 ignores `relativeUrls`, without a warning, so setting it rewrites nothing, and `lessc` no longer accepts `--relative-urls`.
+_Has been replaced by `rewriteUrls: "all"`._ Less 5 accepts `relativeUrls` in options and in a `styles.config` as a deprecated spelling of `rewriteUrls`: `true` means `rewriteUrls: "all"`, `false` leaves the default, and an explicit `rewriteUrls` wins. Setting it logs a deprecation warning. `lessc` no longer accepts `--relative-urls`.
 
 
 ### Unit Mode
@@ -241,7 +241,7 @@ In modern mode a Less built-in must be imported, for example `@use "#less";` and
 |---|---|
 | `lessc --ie-compat` | `{ ieCompat: true }` |
 
-Less 5 ignores `ieCompat`, and `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
+Less 5 accepts `ieCompat` and ignores it, reporting a `deprecation/ie-compat-option` warning when it is set to `true`; `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
 
 #### Enable Inline JavaScript (Deprecated)
 

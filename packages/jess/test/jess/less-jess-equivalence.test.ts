@@ -1104,6 +1104,45 @@ describe('targeted round trip: kept math', () => {
   });
 });
 
+/*
+ * Once a sheet is `.jess`, it answers the `.jess` default (owner: "once it is a .jess
+ * file, it should error"): the conversion writes mixed-unit math honestly as `$( … )`,
+ * never in a form that dodges `unitMode: 'strict'`, so the converted sheet stops the
+ * compile where the `.less` one kept the math. The equivalence harness compares the two
+ * under one explicit `unitMode` ({@link PINNED_MODES}), where they agree. A `.less` sheet
+ * imported by a `.jess` one keeps the Less default (DESIGN-DECISIONS C19).
+ */
+describe('targeted round trip: the converted sheet answers the .jess default', () => {
+  it('errors on mixed units by default, and agrees under an explicit unitMode', async () => {
+    const less = '@a: 4px;\n@x: @a + 1em;\n.m(@v) { m: @v; }\n.a {\n  b: (@a + 3em);\n  d: @x;\n  g: 1px + 1em;\n  .m(1px + 1em);\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    for (const honest of ['$($^a + 1em)', '$(($^a + 3em))', '$(1px + 1em)']) {
+      expect(jess).toContain(honest);
+    }
+    const render = async (source: string, extension: '.less' | '.jess', compile: ConfigOptions['compile'] = {}) => {
+      const result = await new Compiler({ compile: { plugins: [lessPlugin(), jessPlugin()], ...compile }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+      return { css: result.css.replace(/\s+/g, ' ').trim(), errors: result.errors.map(e => e.code) };
+    };
+    expect((await render(less, '.less')).errors).toEqual([]);
+    expect((await render(jess, '.jess')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect(await render(jess, '.jess', { unitMode: 'preserve' })).toEqual(await render(less, '.less', { unitMode: 'preserve' }));
+    expect(await render(jess, '.jess', PINNED_COMPILE)).toEqual(await render(less, '.less', PINNED_COMPILE));
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-converted-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'part.less'), less);
+      fs.writeFileSync(path.join(dir, 'entry.jess'), '@-import \'./part.less\';\n');
+      const imported = await new Compiler({ compile: { plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult(path.join(dir, 'entry.jess'), { quiet: true });
+      expect(imported.errors).toEqual([]);
+      expect(imported.css.replace(/\s+/g, ' ').trim()).toBe((await render(less, '.less')).css);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('equivalence ratchet', () => {
   it('every fixture matches its KNOWN entry (or passes when unlisted)', () => {
     const drift: string[] = [];

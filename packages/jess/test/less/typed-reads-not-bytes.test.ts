@@ -28,6 +28,23 @@ describe('typed reads, not byte scans', () => {
       .toBe('.x { a: url(img/x.png); b: url(img); c: url(./y.png); d: url(\'e.png\'); e: url(\'e.png\'); q: url("root/q.png?v=1"); }');
   });
 
+  /*
+   * The author loses the argument Less 4 added to an escaped body, so it is reported,
+   * naming the url (SETTLED — orchestrator judgment under owner delegation
+   * 2026-10-07). A body urlArgs never reaches — a quoted one it does reach, a `data:`
+   * URI — and a render without urlArgs report nothing.
+   */
+  it('warns that urlArgs is not added to an escaped url() body', async () => {
+    const warnings = async (source: string, less: Record<string, unknown>) => {
+      const result = await new Compiler({ language: { less } }).renderToResult({ source, extension: '.less' }, { quiet: true });
+      return result.warnings.filter(w => w.code === 'eval/url-option-skipped').map(w => w.message);
+    };
+    expect(await warnings('.x { a: url(~"e.png"); }', { urlArgs: 'v=1' })).toEqual(['urlArgs is not added to url(e.png)']);
+    expect(await warnings('@e: ~"\'b.png\'"; .x { e: url(@e); }', { urlArgs: 'v=1' })).toEqual(['urlArgs is not added to url(\'b.png\')']);
+    expect(await warnings('.x { q: url("q.png"); d: url(~"data:image/png;base64,AA"); }', { urlArgs: 'v=1' })).toEqual([]);
+    expect(await warnings('.x { a: url(~"e.png"); }', {})).toEqual([]);
+  });
+
   it('names an @@ lookup by the string content of its name', async () => {
     expect(await render('@color: red; @a: color; @b: "color"; @c: ~"color"; .x { a: @@a; b: @@b; c: @@c; }'))
       .toBe('.x { a: red; b: red; c: red; }');

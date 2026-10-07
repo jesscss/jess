@@ -129,6 +129,16 @@ export interface LessOptions {
   insecure?: boolean;
 
   /**
+   * @deprecated Accepted for Less 4.x compatibility, but it has no effect:
+   * `data-uri()` always inlines the file, where Less 4 fell back to `url()` for
+   * a file too large for IE8. Setting it reports a
+   * `deprecation/ie-compat-option` warning.
+   *
+   * @default false
+   */
+  ieCompat?: boolean;
+
+  /**
    * Allows you to add a path to every generated import and url in your css.
    * This does not affect less import statements that are processed, just ones
    * that are left in the output css.
@@ -144,6 +154,14 @@ export interface LessOptions {
    * @default false
    */
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
+
+  /**
+   * @deprecated Use `rewriteUrls` instead. The Less 4.x boolean alias of
+   * `rewriteUrls`: `true` means `rewriteUrls: 'all'`; `false` leaves the default.
+   * An explicit `rewriteUrls` wins; otherwise it warns.
+   * @default undefined
+   */
+  relativeUrls?: boolean;
 
   /**
    * How to process math operations

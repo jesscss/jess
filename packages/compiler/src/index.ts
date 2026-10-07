@@ -1191,6 +1191,20 @@ export class Compiler {
         meta: { what: 'insecure', use: 'https', deprecation }
       }));
     }
+
+    /*
+     * Less 4.x `ieCompat` made `data-uri()` fall back to `url()` for a file too
+     * large for IE8. `data-uri()` always inlines the file, so the option is
+     * accepted and has no effect; a real request warns.
+     */
+    if (contextOptions.ieCompat) {
+      const deprecation = Deprecation.fromId('ie-compat-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"ieCompat" is deprecated and has no effect: data-uri() always inlines the file.',
+        fix: 'Remove the option.',
+        meta: { what: 'ieCompat', use: 'data-uri()', deprecation }
+      }));
+    }
     return context;
   }
 

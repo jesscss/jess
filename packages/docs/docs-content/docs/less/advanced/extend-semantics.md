@@ -185,6 +185,24 @@ media scope; it does not reach the top level or a sibling media. A **top-level**
 reaches everything, including inside nested media. Unlike Less 4.x, 5.x keeps nested
 `@media` blocks nested — it does not merge or flatten them.
 
+That includes an at-rule written inside the rule an extend reaches. When the output is
+flattened, the at-rule is written outside the rule with the rule's selector inside it,
+and that selector carries the extend too:
+
+```less
+.b { &:hover { @media print { color: red; } } }
+.q:extend(.b:hover all) {}
+```
+
+```css
+@media print {
+  .b:hover,
+  .q {
+    color: red;
+  }
+}
+```
+
 ## `@import (reference)` visibility
 
 `@import (reference)` hides the imported sheet's own rules from output. An extend that

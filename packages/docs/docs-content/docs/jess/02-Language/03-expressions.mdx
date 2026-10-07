@@ -96,6 +96,12 @@ The rule follows the expression wherever its value is used:
 `calc(100% - $(1px + 3em))` is the same error, because the math belongs to the
 `$( … )`, not to the `calc()` around it.
 
+A `calc()` around an expression that computes to one number keeps its wrapper:
+`calc($(1px + 2px))` is `calc(3px)`. The browser clamps a math function's result
+to what the property allows and does not clamp a bare value, so
+`padding: calc($(1px - 5px))` stays valid as `calc(-4px)`, where `padding: -4px`
+would be dropped.
+
 Comparing units that do not convert is only an error when you ask for an
 order. `$(1em = 1px)` and `$(1em == 1px)` are `false`, so a mixin guard can
 dispatch on a unit; `$(1em > 1px)` is an error, as it is in Sass.

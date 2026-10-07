@@ -429,8 +429,17 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `frameOwner`, `changesPolicy`, `enterPolicy`, `whileReachedFrom` and one
     // `withPolicy` overload line), less `rememberImportedCallableBodies`: every
     // document records its root definitions when it is parsed.
-    expect(occurrences(/^function |^async function /gmu)).toBe(583);
-    expect(occurrences(/new Map/gu)).toBe(91);
+    // +1 function (orchestrator judgment under owner delegation 2026-10-07): a
+    // condition written into a value is written from its guard tree with its
+    // operands evaluated, so its variables substitute (`writtenCondition`).
+    // +1 `new Map` (orchestrator judgment under owner delegation 2026-10-07): an
+    // at-rule bubbled out of a rule an extend reached writes the rule's extended
+    // header, keyed by the context the rule's body walks under (`extendedContexts`).
+    // +1 function (orchestrator judgment under owner delegation 2026-10-07): an
+    // escaped `url()` body that does not get the plugin's `urlArgs` reports it
+    // where the `url()` is written (`skippedUrlOption`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(585);
+    expect(occurrences(/new Map/gu)).toBe(92);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
     expect(occurrences(/new WeakSet/gu)).toBe(2);

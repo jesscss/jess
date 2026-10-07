@@ -60,23 +60,29 @@ are not real CSS functions.
 ```
 
 ### Grouping parens dissolve after evaluation
-`keyword (expr)` — a **space** then parens — is math grouping. Once the
-expression computes — math, or a function that runs — the parens do not survive
-to output. (A no-space `keyword(expr)` is the function shape above and stays
-verbatim.) Parens written directly in a declaration value around something that
-computes nothing — one value, a CSS function such as `var()` — stay as you
-wrote them, as they do in plain CSS; parens around math kept as `calc()` are
-its own. A group reached through a variable, a mixin parameter, a member
+`keyword (expr)` — a **space** then parens — is math grouping. Parens are
+dropped when the calculation in them is resolved: math that computes, a
+function that runs, or a variable, mixin parameter, property or member lookup
+that names one value (`@w: 10vh; height: (@w)` → `height: 10vh`). (A no-space
+`keyword(expr)` is the function shape above and stays verbatim.) Parens written
+directly in a declaration value around something that computes nothing — one
+value, a CSS function such as `var()`, or a variable that names a list — stay
+as you wrote them, as they do in plain CSS; parens around math kept as `calc()`
+are its own. A group reached through a variable, a mixin parameter, a member
 lookup or an interpolation is its value wherever it is read: `@a: (10px)` gives
 `margin: @a @a` → `10px 10px`, `.x-@{a}` → `.x-10px`, `calc(@a * 2)` →
 `calc(10px * 2)` and `@media (min-width: @a)` → `(min-width: 10px)`. Parens
 written inside a math function around math written there or around one value
-stay, whoever reads it; parens there around something that computes — a
-function that runs, or a variable holding math that ran — are dropped as
-anywhere else (`calc(100% - ((min(@a, 20px))))` → `calc(100% - 10px)`), and the
-`calc()` stays (`calc((min(@a, 20px)))` → `calc(10px)`). Text a function returns
-that is more than one value is not a computed value, so its parens stay
-everywhere: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`.
+stay, whoever reads it; parens there around something that computes are dropped
+as anywhere else (`calc(100% - ((min(@a, 20px))))` → `calc(100% - 10px)`), and
+the `calc()` stays (`calc((min(@a, 20px)))` → `calc(10px)`), also around an
+argument that resolves to one number (`calc(min(@a, 20px))` → `calc(10px)`).
+
+Text is never a computed value: parens around an escaped string — `~"…"`,
+`e()`, `escape()`, or the text an `if()` picks — stay wherever the group is
+read, a variable holding it included, so what surrounds the text never re-reads
+it: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`, `(e("foo"))` →
+`(foo)`, and `@t: (e("1px + 2px")); calc(2 * @t)` → `calc(2 * (1px + 2px))`.
 
 ```less
 @a: #a80000; @b: #00000b;
@@ -88,10 +94,10 @@ everywhere: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`.
 
 ```less
 @w: 10vh;
-.a { height: (@w); width: (percentage(0.5)); top: var(--top, (10px)); }
+.a { height: (@w); width: (percentage(0.5)); top: var(--top, (10px)); left: (10px); }
 ```
 ```css
-.a { height: (10vh); width: 50%; top: var(--top, (10px)); }
+.a { height: 10vh; width: 50%; top: var(--top, (10px)); left: (10px); }
 ```
 
 ### CSS-shaped color functions pass through un-operated
@@ -99,7 +105,9 @@ everywhere: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`.
 operation emit verbatim; the function only runs when the value is operated on or
 given a Less overload / variable argument. Less one-/two-slot overloads such as
 `rgba(#5F59)` dispatch normally, and malformed numeric arities reach the regular
-call-level error/preserve policy.
+call-level error/preserve policy. A call written out this way still substitutes
+its variables, in a comparison too: with `@a: 3px`, `rgb(@a > 2px, 1, 2)` is
+written `rgb(3px > 2px, 1, 2)`.
 
 ```less
 .a { color: hsl(200, 50%, 40%); }        // verbatim

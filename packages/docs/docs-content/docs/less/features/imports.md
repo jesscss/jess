@@ -126,7 +126,7 @@ outputs
 
 ### once
 
-The default behavior of `@import` statements. It means the file is imported only once in a scope, and subsequent import statements for that file in the same scope will be ignored. A scope is the root of the stylesheet, one ruleset, or one at-rule block such as `@media`; a mixin call imports into the scope it is called in, and an imported file's root belongs to the scope of the `@import` that brought it in. A copy placed in another scope does not count, so the file is not hidden where you import it again:
+The default behavior of `@import` statements. It means the file is imported only once in a scope, and subsequent import statements for that file in the same scope will be ignored. A scope is the root of the stylesheet, one ruleset, or one at-rule block such as `@media`; a mixin call imports into the scope it is called in, a ruleset whose selector is a bare `&` (`& { … }` or `& when (…) { … }`) imports into its parent's scope, and an imported file's root belongs to the scope of the `@import` that brought it in. A copy placed in another scope does not count, so the file is not hidden where you import it again:
 
 ```less
 @media print {
@@ -178,6 +178,8 @@ Outputs
   color: green;
 }
 ```
+
+A `(multiple)` import of a file that is still being imported around it would add copies without end, so it stops the compile with an `import/cycle` error in the file that writes it. Any other import of such a file is ignored, as above.
 
 ### optional
 

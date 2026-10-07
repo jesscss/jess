@@ -117,4 +117,15 @@ describe('Less logical / conditional functions', () => {
 }
 `);
   });
+
+  /*
+   * A condition nothing consumes — here an argument of a CSS colour call, which
+   * is written out as authored — is written with its variables substituted,
+   * never as its source text (SETTLED — orchestrator judgment under owner
+   * delegation 2026-10-07): `@a` in a written-out value is always its value.
+   */
+  it('writes a condition nothing consumes with its variables substituted', async () => {
+    const css = await render('@a: 3px; .y { b: rgb(@a > 2px, 1, 2); c: hsl((@a > 2px) and (@a < 5px), 1%, 2%); d: rgb(not (@a = 3px), 1, 2); }');
+    expect(css).toBe('.y {\n  b: rgb(3px > 2px, 1, 2);\n  c: hsl((3px > 2px) and (3px < 5px), 1%, 2%);\n  d: rgb(not (3px = 3px), 1, 2);\n}\n');
+  });
 });

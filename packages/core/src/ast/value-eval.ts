@@ -811,4 +811,13 @@ export interface ValueEvaluator {
 
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
   typeCheck(name: string, args: ValueGroup, modes: EvalModes): boolean;
+
+  /**
+   * Whether a `calc()` this dialect writes is a Sass calculation (dart-sass),
+   * as in `.scss`: one that resolves to one number is that number
+   * (`calc(percentage(0.5))` is `50%`), and a paren group around a string in it
+   * keeps its parens (`calc(2 * (unquote("1px + 2px")))`). Elsewhere a
+   * `calc()` is written out as a `calc()` (ledger V32). Absent means `false`.
+   */
+  readonly sassCalculations?: boolean;
 }

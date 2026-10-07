@@ -167,6 +167,8 @@ import {
   type ValueEvaluator,
   type ValueGroup,
   type Value,
+  type Any as TextValue,
+  type Keyword as KeywordValue,
   type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
@@ -176,7 +178,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isLooseText, isLooseValue, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -463,15 +465,18 @@ function importScopeOf(frame: Frame): Frame {
  * a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once` import
  * already placed there, or a `(reference)` re-import ({@link isReferenceReimport}) — else
  * records the placement. A scope is the root, one ruleset or one at-rule block; a mixin
- * call or loop iteration places in the scope it runs in ({@link importScopeOf}), and an
- * imported sheet's own root is its importer's scope. A copy placed in another scope never
+ * call or loop iteration places in the scope it runs in ({@link importScopeOf}), a bare-`&`
+ * rule in its parent's, and an imported sheet's own root is its importer's scope. A copy placed in another scope never
  * makes an import a no-op: `@media print { @import "t"; } @import "t";` renders the root
  * copy (orchestrator judgment under owner delegation 2026-10-07). A sheet an enclosing
  * import is still placing (`expanding`) counts as placed in every scope, so a sheet that
  * imports itself, directly or through others, ends. `placed` maps a scope's sheets to
  * whether a `once` import placed them. The import planner (a scope is the enclosing node)
  * and the render walk (its frame) both ask this in document order, an import inside a
- * ruleset included, so they agree on which imports place a sheet.
+ * ruleset included, so they agree on which imports place a sheet. A `(multiple)` import
+ * of a sheet still being placed is an import cycle, which they raise before asking
+ * ({@link importCycles}); any other import of one is a no-op, one inside a `(multiple)`
+ * sheet included.
  */
 function importIsNoOp(
   placed: Map<object, Map<string, boolean>>,
@@ -482,8 +487,11 @@ function importIsNoOp(
   options: string | null,
   inMultiple: boolean
 ): boolean {
+  if (expanding.has(key)) {
+    return true;
+  }
   let here = placed.get(scope);
-  const prior = expanding.has(key) || here?.get(key);
+  const prior = here?.get(key);
   const once = !inMultiple && importsOnce(options);
   if (once ? prior === true : isReferenceReimport(node, options, inMultiple, prior !== undefined)) {
     return true;
@@ -496,6 +504,16 @@ function importIsNoOp(
   }
   return false;
 }
+
+/**
+ * Whether `@import` of the sheet `key` with `options` asks for a `(multiple)` copy of a
+ * sheet an enclosing import is still placing: each copy would import another without end
+ * (`ms.less` = `.s { a: 1 } @import (multiple) "ms.less";`), so it is an import cycle,
+ * raised where the import is written (orchestrator judgment under owner delegation
+ * 2026-10-07). Any other import of such a sheet is a no-op ({@link importIsNoOp}).
+ */
+const importCycles = (expanding: ReadonlySet<string>, key: string, options: string | null): boolean =>
+  importHasOption(options, 'multiple') && expanding.has(key);
 
 /**
  * Whether an import takes part in import-once: every `@import` but a `(multiple)` one, which
@@ -805,9 +823,9 @@ export interface Frame {
   mixinSplice?: boolean;
 
   /**
-   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame: the
-   * frame whose import-once scope its imports count in ({@link importScopeOf}), since
-   * its output lands in the scope it runs in.
+   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame, and a
+   * bare-`&` rule's: the frame whose import-once scope its imports count in
+   * ({@link importScopeOf}), since its output lands in the scope it runs in.
    */
   importScope?: Frame;
 
@@ -4903,7 +4921,7 @@ function evalTyped(
        * call there is still written as authored.
        */
       if (e.reached && groupsOneValue(node)) {
-        return evalTypedSlot(node.value, frame, e, projectMixinValues, argument);
+        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e));
       }
       if (isInertGroup(node) || (writtenAsAuthored(argument) && !groupComputes(node, frame, e))) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
@@ -4914,7 +4932,7 @@ function evalTyped(
         { ...e, parenFrames: pushParenFrame(e, true) },
         projectMixinValues,
         writtenAsAuthored(argument) ? argument : ARG_NONE
-      ), keepAuthoredGroup);
+      ), v => keepAuthoredGroup(v, e));
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -5007,7 +5025,7 @@ function evalTyped(
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
-      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, v => keepAuthoredGroup(v, e)) : computed;
     }
     case 'Interpolation': {
       /*
@@ -5041,35 +5059,39 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
   !isValueSlotArray(slot) && slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true;
 
 /*
- * A paren group is consumed when what it holds computes — math (`(1px + 2px)` is
- * `3px`), a comparison (`.jess` `$((1 > 0))` is `true`), a call a callable
- * computes (`(percentage(0.5))` is `50%`, `.jess` `($percentage(0.5))` too), or
- * anything a reference names that is one of those: a variable (`@a`, `@@name`),
- * a mixin parameter, a property (`$w`) or a member (`@m[v]`, `#ns[@v]`,
- * `.m()[@r]`) (ledger F4: once computed, the parens do not survive). A `.jess`
- * `$( … )` computes when what it holds does, so `($(10px))` keeps its parens as
- * `(10px)` does. Every other group keeps its parens
- * wherever it is written — around one value (`c: (10vh)`, `(@w)` with `@w:
- * 10px`), around a call written out as-is (`(var(--a))`) or a CSS colour call
- * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
- * every dialect, so valid CSS emits the bytes css does
- * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
- * 2026-10-06). A math function is no exception: parens are dropped when the
- * calculation in them is resolved (owner 2026-10-07), so
- * `calc(100% - ((min(@a + @b))))` is `calc(100% - 20px)`, while the math
- * written there computes nothing and keeps every paren around it (ledger P35:
- * `calc(100% - (((@a + @b))))`). Text a call returns that is more than one
- * value (`e("1px + 2px")`) is not a resolved calculation either, so a group
- * around it keeps its parens ({@link isLooseValue}). A computing consumer — an
- * operand of math that operates, an argument a callable reads — still reads
- * the value inside the group, through the typed lane, and an operand of math
- * kept as written keeps the group's spelling ({@link spelledOperand}).
+ * Parens are dropped when the calculation in them is resolved (owner
+ * 2026-10-07). A paren group is consumed when what it holds computes — math
+ * (`(1px + 2px)` is `3px`), a comparison (`.jess` `$((1 > 0))` is `true`), a
+ * call a callable computes (`(percentage(0.5))` is `50%`, `.jess`
+ * `($percentage(0.5))` too) — or is a reference that resolves: a variable
+ * (`(@w)` with `@w: 10px` is `10px`, `@@name` too), a mixin parameter, a
+ * property (`$w`) or a member (`@m[v]`, `#ns[@v]`, `.m()[@r]`) (ledger F4: once
+ * computed, the parens do not survive). A `.jess` `$( … )` computes when what
+ * it holds does, so `($(10px))` keeps its parens as `(10px)` does. Every other
+ * group keeps its parens wherever it is written — around one value
+ * (`c: (10vh)`), around a call written out as-is (`(var(--a))`) or a CSS colour
+ * call (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes —
+ * in every dialect, so valid CSS emits the bytes css does (SEMANTIC-INVARIANTS
+ * 4; orchestrator judgment under owner delegation 2026-10-06). A math function
+ * is no exception, so `calc(100% - ((min(@a + @b))))` is `calc(100% - 20px)`,
+ * while the math written there computes nothing and keeps every paren around it
+ * (ledger P35: `calc(100% - (((@a + @b))))`).
+ *
+ * Text is never a resolved calculation: a group whose content is opaque text
+ * keeps its parens wherever it is read, a reference reaching it included
+ * ({@link isOpaqueText}, {@link textGroup}). Its value is the text spelled with
+ * them, so math around it reads `2 * (1px + 2px)`, never `2 * 1px + 2px`.
+ * Every other kept group only changes the spelling: a computing consumer — an
+ * operand of math that operates, an argument a callable reads — reads the value
+ * inside it through the typed lane, and an operand of math kept as written keeps
+ * the group's spelling ({@link spelledOperand}).
  */
 
 /**
  * What computes in the group (see above), or `null`: the operation, comparison,
  * `$( … )`, call or conditional it holds, directly or through what its
- * references name. A call counts here, and one no callable computed comes back
+ * references name, else the reference itself when one resolves to a value that
+ * computes nothing. A call counts here, and one no callable computed comes back
  * marked as written out as-is, which {@link keepAuthoredGroup} keeps in its
  * parens.
  */
@@ -5084,11 +5106,16 @@ const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean =>
  * through the references it reads. A reference is resolved by the resolver its
  * evaluation uses, so every way of reading a value classifies it alike. A
  * `$( … )` or authored group expression stands for what it holds, and is
- * returned when that computes, so the group reads the splice typed.
+ * returned when that computes, so the group reads the splice typed. A reference
+ * that resolves is a calculation resolved, so when what it names is one value
+ * that computes nothing the first reference read is returned; one that does not
+ * resolve, or names a list, is not. `references: false` asks only what
+ * computes ({@link argumentSnapshot}).
  */
-function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx): ValueNode | null {
+function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, references = true): ValueNode | null {
   let inner = slot;
   let scope = frame;
+  let reference: Lookup | Reference | null = null;
 
   /* ponytail: a reference cycle raises when the group evaluates; the cap only bounds this walk. */
   for (let hops = 0; hops < 32; hops += 1) {
@@ -5111,23 +5138,31 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Valu
         named = resolveReferenceResult(inner, scope, e);
         break;
       case 'Expression':
-        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }) === null ? null : inner;
+        return slotComputation(inner.value, scope, e.exprBoundary === true ? e : { ...e, exprBoundary: true }, references) === null ? reference : inner;
 
       /* A comparison computes where a value-position one is evaluated: at a `.jess` `$( … )` boundary (§7.1). */
       case 'Condition':
-        return e.exprBoundary === true ? inner : null;
+        return e.exprBoundary === true ? inner : reference;
       case 'Interpolation': {
         const first = inner.parts[0];
         return isComputationSplice(inner) && first !== undefined && 'ref' in first
-          && slotComputation(first.ref, scope, e) !== null
+          && slotComputation(first.ref, scope, e, references) !== null
           ? inner
-          : null;
+          : reference;
       }
+
+      /* A list is not one value: dropped, the parens would let what surrounds it re-read it (`100% / (@v)` with `@v: 50vh/2`). */
+      case 'List':
+      case 'Sequence':
+        return null;
       default:
-        return computationIn(inner);
+        return computationIn(inner) ?? reference;
     }
     if (named === null || named === undefined || isMixinCallValue(named.value)) {
       return null;
+    }
+    if (references) {
+      reference ??= inner;
     }
     inner = named.value;
     scope = named.frame;
@@ -5243,23 +5278,34 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number
   return !e.reached && isParenGroup(slot) && !groupComputes(slot, frame, e) ? unconsumedParens(slot) : 0;
 }
 
-/** The parens written around `slot` when it is a group whose call returned loose text ({@link isLooseValue}), or 0. */
-const looseParens = (slot: ValueSlot, v: ValueGroup): number =>
-  isParenGroup(slot) && !isValueGroupArray(v) && isLooseValue(v) ? unconsumedParens(slot) : 0;
+/**
+ * Whether `v` is opaque text, which no paren group around it ever loses: an
+ * escaped string — `~"…"`, `e()`, `escape()`, an interpolated template, the
+ * value-domain `Any` (ledger V3) — in every dialect. In a Sass calculation
+ * ({@link ValueEvaluator.sassCalculations}) an unquoted string is text too, as
+ * dart-sass keeps a parenthesized string in one (`calc(2 * (unquote("1px + 2px")))`
+ * is `calc(2 * (1px + 2px))`, `calc(2 * ($k))` with `$k: foo` is
+ * `calc(2 * (foo))`). The test is the value's type, never its bytes.
+ */
+const isOpaqueText = (v: Value, e: EvalCtx): v is TextValue | KeywordValue =>
+  v.type === 'Any' || (v.type === 'Keyword' && (e.calcDepth ?? 0) > 0 && e.ev?.sassCalculations === true);
+
+/** A paren group around opaque text ({@link isOpaqueText}): the text spelled with its parens, still text. */
+const textGroup = (v: TextValue | KeywordValue): Value => v.type === 'Any' ? makeAny(`(${v.bytes})`, v.escapedQuote) : makeKeyword(`(${v.bytes})`);
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
  * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
- * 'preserve'`), while math that computes reads only the value. A group whose
- * call returned loose text keeps it too ({@link isLooseValue}):
- * `(e("1px + 2px")) * 2` is not `1px + 2px * 2`. A named-colour keyword stays
- * bare, since `operate` reads it as a colour, and kept math already carries the
- * group in its arithmetic ({@link groupAsWritten}): wrapped again it would be a
- * nested `calc()` (`calc(100% - ($x))`).
+ * 'preserve'`), while math that computes reads only the value. Text already
+ * carries its group ({@link textGroup}): `(e("1px + 2px")) * 2` is
+ * `calc((1px + 2px) * 2)`. A named-colour keyword stays bare, since `operate`
+ * reads it as a colour, and kept math already carries the group in its
+ * arithmetic ({@link groupAsWritten}): wrapped again it would be a nested
+ * `calc()` (`calc(100% - ($x))`).
  */
 function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: EvalCtx): Value {
-  const depth = writtenParens(node, frame, e) || looseParens(node, value);
-  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined))
+  const depth = writtenParens(node, frame, e);
+  return depth === 0 || (value.type === 'Keyword' && (namedColor(value.bytes) !== undefined || keptMathOf(value) !== undefined)) || isOpaqueText(value, e)
     ? value
     : { ...value, bytes: wrapParens(value.bytes, depth) };
 }
@@ -5292,11 +5338,19 @@ function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: E
  * An authored paren group's value once its math has run. A computed inner is
  * one value and sheds the parens; an operation `operate` kept as written
  * (`foo + 1`) is still an expression and keeps
- * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`.
+ * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`; and text keeps them
+ * as part of the text ({@link textGroup}).
  */
-function keepAuthoredGroup<T extends EvalValue>(v: T): T | Value {
-  return isLiteral(v) || isValueGroupArray(v) ? v : groupAsWritten(v);
+function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx): T | Value {
+  if (isLiteral(v) || isValueGroupArray(v)) {
+    return v;
+  }
+  const grouped = groupAsWritten(v);
+  return grouped === v && isOpaqueText(v, e) ? textGroup(v) : grouped;
 }
+
+/** A group a reference reached, around one value: the value, unless it is text, which keeps the parens ({@link whileReached}). */
+const reachedGroup = (v: ValueGroup, e: EvalCtx): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e) ? textGroup(v) : v;
 
 /**
  * A paren group nothing in computes, around its evaluated content: the group
@@ -5309,6 +5363,50 @@ function writtenGroup(v: EvalValue): Value {
   return !isLiteral(v) && !isValueGroupArray(v) && keptMathOf(v) !== undefined
     ? groupAsWritten(v)
     : makeKeyword(`(${emitValue(v)})`);
+}
+
+/**
+ * A condition written into a value — one no guard, `if()` or `.jess` `$( … )`
+ * consumes — as its guard tree holds it, each operand evaluated, so its
+ * variables substitute: `(@a > 2px)` with `@a: 3px` is `(3px > 2px)` (SETTLED —
+ * orchestrator judgment under owner delegation 2026-10-07). A term under
+ * `and`, `or` or `not` is written in the parens Less's condition syntax
+ * requires: `(3px > 2px) and (3px < 5px)`.
+ */
+function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx, nested: boolean): MaybePromise<string> {
+  const term = (bytes: string): string => nested ? `(${bytes})` : bytes;
+  switch (guard.g) {
+    case 'cmp':
+    case 'match':
+      return combineAll([evalValueSlot(guard.left, frame, e), evalValueSlot(guard.right, frame, e)], ([left, right]) =>
+        term(`${emitValueC(left!, e)} ${guard.op} ${emitValueC(right!, e)}`));
+    case 'and':
+    case 'or':
+      return combineAll([writtenCondition(guard.left, frame, e, true), writtenCondition(guard.right, frame, e, true)], ([left, right]) =>
+        `${left!} ${guard.g} ${right!}`);
+    case 'not':
+      return mapMaybe(writtenCondition(guard.inner, frame, e, true), inner => `not ${inner}`);
+    case 'truth':
+      return mapMaybe(evalValueSlot(guard.value, frame, e), v => term(emitValueC(v, e)));
+    case 'call':
+      return combineAll(guard.args.map(arg => evalValueSlot(arg, frame, e)), args =>
+        term(`${guard.name}(${args.map(arg => emitValueC(arg, e)).join(', ')})`));
+    case 'default':
+      return term('default()');
+  }
+}
+
+/**
+ * Report the URL option an escaped `url()` body does not get, where the `url()` is
+ * written ({@link Context.escapedUrlSkips}): with `urlArgs: 'v=1'`, `url(~"e.png")`
+ * stays `url(e.png)`, and the author loses the argument Less 4 added (SETTLED —
+ * orchestrator judgment under owner delegation 2026-10-07; ledger V3).
+ */
+function skippedUrlOption(node: Url, content: string, e: EvalCtx): void {
+  const option = e.context?.escapedUrlSkips(content);
+  if (option !== undefined) {
+    e.context!.warnAtNode('eval/url-option-skipped', 'eval', node, { url: `url(${content})`, option });
+  }
 }
 
 /** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
@@ -5460,6 +5558,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
            * 2026-10-06 and 2026-10-07).
            */
           if (body.escaped) {
+            skippedUrlOption(node, content, e);
             return literal(`url(${content})`);
           }
           const target = e.context?.transformUrl(content, true) ?? content;
@@ -5484,7 +5583,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return literal(`url(${value.quote}${target}${value.quote})`);
         }
         if (!isValueGroupArray(value) && (value.type === 'Quoted' || (value.type === 'Any' && value.escapedQuote !== ''))) {
-          return literal(`url(${emitValue(value)})`);
+          const content = emitValue(value);
+          skippedUrlOption(node, content, e);
+          return literal(`url(${content})`);
         }
         const raw = emitValue(value);
         const target = e.context?.transformUrl(raw, false) ?? raw;
@@ -5595,10 +5696,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return evalValueSlot(node.value, frame, e);
       }
       const computation = node.delimiter === 'paren' ? groupComputation(node, frame, e) : null;
+      const reached = node.delimiter === 'paren' && e.reached && groupsOneValue(node);
       const ctx = node.delimiter === 'paren' ? { ...e, parenFrames: pushParenFrame(e, true) } : e;
 
-      /* A `.jess` `$( … )` splice is read typed, so math it kept as written is still the kept expression. */
-      const inner = computation !== null && computation.type === 'Interpolation' && e.ev
+      /*
+       * Read typed where the value's type decides the spelling: a `.jess` `$( … )`
+       * splice, so math it kept as written is still the kept expression; and a
+       * group a reference reached or one around a reference, a conditional or a
+       * computed mixin argument, so text in it keeps the parens
+       * ({@link isOpaqueText}). A call and math say their own type on this lane.
+       */
+      const inner = e.ev && (reached || (computation !== null && computation.type !== 'FunctionCall'
+        && computation.type !== 'Operation' && computation.type !== 'Expression'))
         ? evalTypedSlot(node.value, frame, ctx)
         : evalValueSlot(node.value, frame, ctx);
 
@@ -5612,13 +5721,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        *
        * A paren group is consumed only by what computes in it
        * ({@link groupComputation}): `(1px + 2px)` is `3px`, while math `operate`
-       * kept and a call written out as-is keep the parens
-       * ({@link groupAsWritten}), as does text a call returned that is more than
-       * one value ({@link isLooseValue}), and so does every group nothing
+       * kept, a call written out as-is ({@link groupAsWritten}) and text
+       * ({@link textGroup}) keep the parens, and so does every group nothing
        * computes in. Bytes from a call or an operation are what nothing
-       * computed — a call re-emitted as written, math on the non-evaluating
-       * lane; a conditional or a computed mixin argument computes to its bytes,
-       * which keep the parens when they are more than one value.
+       * computed — a call re-emitted as written, math on the non-evaluating lane.
        */
       return mapMaybe(inner, (v) => {
         if (node.delimiter !== 'paren') {
@@ -5626,18 +5732,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             ? literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`)
             : makeBlock(v, node.delimiter, node.escaped);
         }
-        if (e.reached && groupsOneValue(node)) {
-          return v;
+        if (reached) {
+          return isLiteral(v) ? v : reachedGroup(v, e);
         }
         if (isLiteral(v)) {
-          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation' || isLooseText(v)
+          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
             ? literal(`(${v})`)
             : v;
         }
-        if (computation === null) {
-          return writtenGroup(v);
-        }
-        return isValueGroupArray(v) ? v : isLooseValue(v) ? keepAsWritten(makeKeyword(`(${v.bytes})`)) : groupAsWritten(v);
+        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e);
       });
     }
     case 'Expression': {
@@ -5663,7 +5766,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
       const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
-      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, v => keepAuthoredGroup(v, e)) : computed;
     }
     case 'Condition':
       /*
@@ -5683,7 +5786,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (e.ev && e.exprBoundary) {
         return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
       }
-      return literal(node.src);
+      return writtenCondition(node.guard, frame, e, false);
     case 'Operation': {
       if (node.operator === 'and' || node.operator === 'or') {
         return evalLogicalOperation(node, frame, e);
@@ -7335,18 +7438,22 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
 /**
  * `calc(…)` fold: evaluate the single argument in calc mode, then decide the
  * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
- * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; an argument
- * that resolved to one number (`calc(percentage(0.5))` → `50%`, `calc(@v)` with
- * `@v: 5px`) drops the wrapper (less.js `calc()` collapse to a bare Dimension),
- * and every other value keeps it. An argument written as a paren group keeps
- * the wrapper: around one value nothing computes it keeps its parens too
- * ({@link writtenParens}), and a dimension carries them as its spelling
- * (`calc((10vh))` is `10vh` spelled `(10vh)`), so every position prints the
- * same bytes and a typed consumer still reads `10vh`; any other value is the
- * kept `calc(…)` expression. Around a calculation that resolves only the parens
- * are dropped (owner 2026-10-07): `calc((min(-5px, 1px)))` is `calc(-5px)`,
- * which the property clamps (P35); a group around kept math or a call written
- * out as-is keeps its parens ({@link groupComputation}).
+ * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped. In `.less`
+ * and `.jess` the `calc()` always keeps its wrapper, also around an argument
+ * that resolved to one number (ledger V32): the property clamps a math
+ * function's result and not a bare value (P35), so `padding: calc(min(-5px,
+ * 1px))` is `calc(-5px)`, never the invalid `-5px`, and `calc(percentage(0.5))`
+ * is `calc(50%)`. The number is spelled `calc(…)` ({@link makeSpelledDimension}),
+ * so every position prints the same bytes and a typed consumer still reads it.
+ * A Sass calculation ({@link ValueEvaluator.sassCalculations}) is that number,
+ * as dart-sass simplifies it. An argument written as a paren group around one
+ * value nothing computes keeps its parens too ({@link writtenParens}): a
+ * dimension carries them as its spelling (`calc((10vh))` is `10vh` spelled
+ * `(10vh)`); any other value is the kept `calc(…)` expression. Around a
+ * calculation that resolves only the parens are dropped (owner 2026-10-07):
+ * `calc((min(-5px, 1px)))` is `calc(-5px)`; a group around kept math or a call
+ * written out as-is keeps its parens ({@link groupComputation}), and text keeps
+ * them always ({@link textGroup}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
@@ -7355,28 +7462,28 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
     if (isParenGroup(arg)) {
       if (!isValueGroupArray(v) && v.type === 'Dimension') {
-        return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
+        return authored === 0 && e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
       }
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
-      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), authored || looseParens(arg, v))})`), v, v));
+      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${v.bytes})`), v, v));
     }
 
     /*
-     * `calc(x)` drops its wrapper only when `x` resolved to ONE number. A list
-     * (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math mode),
-     * a space run, or escaped text (`calc(~"100% - @{a}")`, opaque per V3) is
-     * not a `<calc-sum>` result, so unwrapping it would emit `100% - 2px` as the
-     * property value — no longer a calculation at all.
+     * A list (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math
+     * mode), a space run, or escaped text (`calc(~"100% - @{a}")`, opaque per
+     * V3) is not a `<calc-sum>` result, so even a Sass calculation keeps it in
+     * its `calc()`: unwrapped it would emit `100% - 2px` as the property value,
+     * no longer a calculation at all (V31).
      */
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
       return keepAsWritten(makeKeyword(`calc(${emitValueC(v, e)})`));
     }
-    return v;
+    return e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
 }
 
@@ -7681,7 +7788,7 @@ function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: F
   if (source === undefined) {
     return bound;
   }
-  if (slotComputation(source, frame, e) !== null) {
+  if (slotComputation(source, frame, e, false) !== null) {
     computedArguments.add(bound);
   }
   return bound;
@@ -10156,6 +10263,14 @@ interface Emit extends EvalCtx {
   /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
   splitBlocks: SplitBlock[] | null;
 
+  /**
+   * [extend] The header an extend wrote for a rule, keyed by the composed context its
+   * body walks under: an at-rule bubbled out of the rule writes its declarations
+   * under it ({@link emitBubbleBody}). Its branch flags, when a branch is a rule of
+   * its own, are in `pseudoElementLists`. Null until a rule's header is extended.
+   */
+  extendedContexts: Map<readonly string[], string[]> | null;
+
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
   moduleActivations: Map<string, Frame> | null;
 
@@ -10280,6 +10395,7 @@ function scratchEmit(e: EvalCtx): Emit {
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13213,6 +13329,9 @@ function planImportedFacts(
           seen.set(loaded.key, false);
         }
       } else if (loaded.key !== undefined) {
+        if (importCycles(expanding, loaded.key, options)) {
+          throw ERR.importCycle({ node: st, ...callSiteLocation(st, e), meta: { specifier } });
+        }
         if ((once && seen.get(loaded.key) === false) || importIsNoOp(placed, expanding, importScope, loaded.key, st, options, multipleImportDepth)) {
           return;
         }
@@ -13529,6 +13648,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -13633,6 +13753,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
     prepublishedModuleImports: null,
@@ -14970,7 +15091,6 @@ function foldDynamicExtends(e: Emit): void {
   }
   let revealed: number[] | null = null;
   const splitBlocks = e.splitBlocks;
-  let splitCursor = 0;
   let foldedSplits: SplitBlock[] | null = null;
   for (const slot of dyn.slots) {
     let visible: string[] | null;
@@ -15021,23 +15141,29 @@ function foldDynamicExtends(e: Emit): void {
     /*
      * [nesting] The rewritten header is the extend's list, and its suffixed branches get
      * rules of their own ({@link splitFlags}): the block the walk registered takes them,
-     * or one is registered now. Slots and registered blocks both ascend by header chunk.
+     * or one is registered now. Registered blocks ascend by header chunk; a nested
+     * rule's slot is recorded after its children's, so it is found by a binary search.
      */
-    if (!slot.nested) {
-      const flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
-      let block: SplitBlock | undefined;
-      if (splitBlocks !== null) {
-        while (splitCursor < splitBlocks.length && splitBlocks[splitCursor]!.header < slot.chunkIndex) {
-          splitCursor++;
+    const flags = extendedSplitFlags(visible, placementProjection(resolved!, slot.token)?.suffixedByRule?.get(slot.rule));
+    let block: SplitBlock | undefined;
+    if (splitBlocks !== null) {
+      let lo = 0;
+      let hi = splitBlocks.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (splitBlocks[mid]!.header < slot.chunkIndex) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
         }
-        block = splitBlocks[splitCursor]?.header === slot.chunkIndex ? splitBlocks[splitCursor] : undefined;
       }
-      if (block !== undefined) {
-        block.branches = visible;
-        block.flags = flags ?? NO_SPLIT;
-      } else if (flags !== undefined) {
-        (foldedSplits ??= []).push({ header: slot.chunkIndex, end: slot.blockEnd, indent: slot.indent, branches: visible, flags });
-      }
+      block = splitBlocks[lo]?.header === slot.chunkIndex ? splitBlocks[lo] : undefined;
+    }
+    if (block !== undefined) {
+      block.branches = visible;
+      block.flags = flags ?? NO_SPLIT;
+    } else if (flags !== undefined) {
+      (foldedSplits ??= []).push({ header: slot.chunkIndex, end: slot.blockEnd, indent: slot.indent, branches: visible, flags });
     }
   }
   if (foldedSplits !== null) {
@@ -15206,7 +15332,7 @@ function expandRule(
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null });
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource });
       return;
     }
   }
@@ -15351,15 +15477,28 @@ function flattenResolved(
 /** Establish one ordinary visible ruleset activation for either writer. */
 function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
   const priorPlacement = frame.rulePlacements?.get(rule);
-  const childFrame: Frame = priorPlacement?.parent === frame
-    ? priorPlacement
-    : {
-        parent: frame,
-        mixins: collectMixins(rule.rules),
-        declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-        statements: rule.rules,
-        sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
-      };
+  let childFrame: Frame;
+  if (priorPlacement?.parent === frame) {
+    childFrame = priorPlacement;
+  } else {
+    childFrame = {
+      parent: frame,
+      mixins: collectMixins(rule.rules),
+      declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
+      statements: rule.rules,
+      sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
+    };
+
+    /*
+     * A rule whose selector is a bare `&` (`& { … }`, `& when (…) { … }`) writes into its
+     * parent's selector, so its imports count in its parent's import-once scope
+     * (orchestrator judgment under owner delegation 2026-10-07; ledger J14).
+     */
+    const selectors = rule.selector.selectors;
+    if (selectors.length === 1 && selectors[0]!.type === 'SimpleSelector' && selectors[0]!.text === '&') {
+      childFrame.importScope = importScopeOf(frame);
+    }
+  }
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   return childFrame;
 }
@@ -15514,6 +15653,19 @@ function flattenWithHeader(
   /* `header` is non-null below; the reference-ancestor lane returned above. */
   const visible = header!;
   const split = splitFlags(rule, visible, headerComposed, projection, e);
+
+  /*
+   * [extend] An at-rule bubbled out of a rule an extend reached writes the rule's
+   * declarations in it under the extended header: an extend reaches its target's
+   * scope and every scope nested in it (EXTEND-SEMANTICS §8), so `.q:extend(.b all)`
+   * gives `@media print { .b, .q { … } }` for `.b { @media print { … } }`.
+   */
+  if (visible !== headerComposed && childComposed !== null) {
+    (e.extendedContexts ??= new Map()).set(childComposed, visible);
+    if (split !== undefined) {
+      e.pseudoElementLists.set(visible, split);
+    }
+  }
   const group: Leaf[] = [];
   const flush = (): MaybePromise<void> => {
     if (group.length || e.pendingLeafBlockCommentOwner === group) {
@@ -16211,11 +16363,14 @@ function walkBody(
               if (!passes) {
                 return;
               }
+
+              /* Its body is this block's, so its imports count in this block's import-once scope. */
               const selfFrame: Frame = {
                 parent: frame,
                 mixins: collectMixins(rule.rules),
                 declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-                statements: rule.rules
+                statements: rule.rules,
+                importScope: importScopeOf(frame)
               };
               return walkBody(
                 rule.rules,
@@ -19145,7 +19300,9 @@ interface SplitBlock {
  * `(reference)` block) is left as it is.
  */
 function splitOwnRules(e: Emit): void {
-  for (const block of e.splitBlocks!) {
+  /* An inner block first (nested output nests them), so an outer block copies a body already split. */
+  const blocks = e.splitBlocks!.sort((a, b) => b.header - a.header);
+  for (const block of blocks) {
     if (e.chunks[block.header] === '') {
       continue;
     }
@@ -21087,6 +21244,10 @@ function expandStyleImport(
             seen.set(emitOnceKey, bodyFrame);
           }
         } else if (loaded.key !== undefined) {
+          if (e.importsExpanding !== null && importCycles(e.importsExpanding, loaded.key, request.options)) {
+            throw ERR.importCycle({ node, ...callSiteLocation(node, e), meta: { specifier: request.specifier } });
+          }
+
           /* A sheet composed as a module is not also folded in by `@import`. */
           const composed = emitOnceKey !== undefined ? e.loadedImports?.get(loaded.key) : undefined;
           if ((composed !== undefined && composed !== null)
@@ -22485,8 +22646,13 @@ function emitBubbleBody(
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
 
-  /* [nesting] The context's parent units that are rules of their own ({@link SplitBlock}). */
-  const ctxSplit = ctx === null ? undefined : composedSplitFlags(ctx, e);
+  /*
+   * [nesting] The context's parent units that are rules of their own ({@link SplitBlock}).
+   * A context whose rule an extend reached writes the rule's extended header
+   * ({@link Emit.extendedContexts}).
+   */
+  const directHeader = ctx === null ? null : e.extendedContexts?.get(ctx) ?? ctx;
+  const ctxSplit = directHeader === null ? undefined : composedSplitFlags(directHeader, e);
   const group: Leaf[] = [];
 
   /*
@@ -22511,14 +22677,27 @@ function emitBubbleBody(
       return;
     }
     if (ctx !== null) {
-      // Wrap the direct declarations in the propagated selector context.
+      /*
+       * Wrap the direct declarations in the propagated selector context. While the
+       * walk records extends, the rule open on its path is the rule the at-rule
+       * bubbled out of: the header is a slot of that rule, which the deferred fold
+       * rewrites as it rewrites the rule's own header.
+       */
+      const dyn = e.dynamicExtend;
+      const owner = dyn === null ? undefined : dyn.pathRules[dyn.pathRules.length - 1];
       e.depth++;
       const emitted = flushBlock(
-        ctx, group, e, undefined, undefined, trailingBlockComments, ctxSplit
+        directHeader!, group, e, owner?.selector, undefined, trailingBlockComments, ctxSplit
       );
+      const slot = (): void => {
+        if (owner !== undefined) {
+          recordDynExtendSlot(e, owner, frame, directHeader!, false);
+        }
+      };
       if (isThenable(emitted)) {
         return emitted.then(
           () => {
+            slot();
             e.depth--;
             group.length = 0;
           },
@@ -22528,6 +22707,7 @@ function emitBubbleBody(
           }
         );
       }
+      slot();
       e.depth--;
     } else {
       const mergeMode = mergeGroupMode(group);
@@ -23017,6 +23197,9 @@ interface HoistEntry {
   frame: Frame;
   bubble: number;
 
+  /** The context the rule was written under, which its flattened body composes against ({@link emitHoisted}). */
+  source: NestedHeaderSource | null;
+
   /**
    * The at-rules the entry has risen out of, outermost first, or null. An at-rule is
    * not a rule block (it does not count toward `bubble`), but the rule still belongs
@@ -23040,7 +23223,7 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   }
   return extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
     ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
-    : emitHoisted(h.rule, h.frame, e);
+    : emitHoisted(h.rule, h.frame, e, h.source);
 }
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
@@ -23292,7 +23475,8 @@ function writeNestedRule(
    * called as a mixin is spliced under its caller, where it is an ordinary nested
    * rule with its authored header (jess#345), as the flat writer has it.
    */
-  const staticPlan = extendProjection(e)?.nestedPlan.get(rule);
+  const projection = extendProjection(e);
+  const staticPlan = projection?.nestedPlan.get(rule);
   const plan = staticPlan === undefined || reachedViaMixinSplice(frame) ? undefined : staticPlan;
   if (plan?.collapseTransparent) {
     /*
@@ -23315,7 +23499,7 @@ function writeNestedRule(
      * Fallback (a top-level rule never flattens; a body-nested one is deferred by
      * the nested projection's hoist queue). Emit via the flat path with compaction.
      */
-    return emitHoisted(rule, frame, e);
+    return emitHoisted(rule, frame, e, source);
   }
 
   /*
@@ -23401,6 +23585,10 @@ function writeNestedRule(
       : null;
     const header = composeSelectorHeader(e, own, idt, authoredHeader);
 
+    /* [nesting] An extended header's branches that carry a pseudo-element followed by more get rules of their own ({@link SplitBlock}). */
+    const split = plan === undefined ? undefined : extendedSplitFlags(own, projection?.suffixedByRule?.get(rule));
+    let splitBlock: SplitBlock | undefined;
+
     /*
      * Less only coalesces this nested-output root seam after an authored header
      * has been evaluated. Static same-selector root rules remain distinct.
@@ -23422,6 +23610,10 @@ function writeNestedRule(
       }
       const selStart = e.chunks.length;
       headerChunkIndex = e.chunks.length;
+      if (split !== undefined) {
+        splitBlock = { header: headerChunkIndex, end: -1, indent: idt, branches: own, flags: split };
+        (e.splitBlocks ??= []).push(splitBlock);
+      }
       put(e, header);
       if (e.positions) {
         e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.chunks.length, source: srcFile(e) });
@@ -23450,8 +23642,14 @@ function writeNestedRule(
         if (e.positions) {
           e.positions.length = markPos;
         }
+        if (splitBlock !== undefined) {
+          e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(splitBlock), 1);
+        }
       } else {
         emitBlockClose(e, idt, lb);
+        if (splitBlock !== undefined) {
+          splitBlock.end = e.chunks.length;
+        }
         if (e.positions) {
           e.positions.push({ node: rule, type: rule.type, start, end: e.chunks.length, source: srcFile(e) });
         }
@@ -23508,7 +23706,7 @@ function writeNestedRule(
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
           if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers });
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source });
             continue;
           }
           const emitted = emitHoistEntry(h, e, imp);
@@ -23527,12 +23725,17 @@ function writeNestedRule(
   });
 }
 
-/** Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
- * using the nested-mode hoist header (flat composition + `:is()`-compaction). */
-function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
+/**
+ * Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
+ * using the nested-mode hoist header (flat composition + `:is()`-compaction). Its
+ * body composes against the context it was written under (`source`), so a child
+ * or an at-rule bubbled out of it keeps the rule's ancestors: `.a { .b { @media
+ * print { … } } }` hoisting `.b` writes `@media print { .a .b { … } }`.
+ */
+function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  const emitted = expandRule(rule, null, null, frame, e);
+  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e);
   if (isThenable(emitted)) {
     return emitted.then(
       () => {
@@ -23569,7 +23772,7 @@ function writeNestedAtRuleBlock(
     }
     const wrapper: HoistWrapper = { node, prelude };
     for (const h of hoist) {
-      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers] });
+      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source });
     }
   };
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(
