@@ -1316,6 +1316,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
       if (!inside || !candidate.has(s)) {
         continue;
       }
+      recordAstExtendProfile?.('astExtend.emit.bubbleSolves');
       const { list, changed } = solveComposed(rawOf(s), { scope: b.scope, boundary: s.boundary }, plan, contribMemo);
       const own = flatBySubject.get(s) ?? rawOf(s);
       if (!changed || (list.length === own.length && list.every((branch, index) => branchText(branch) === branchText(own[index]!)))) {

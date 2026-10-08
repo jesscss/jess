@@ -307,6 +307,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
   }
 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);
+  recordAstExtendProfile?.('astExtend.plan.bubbles', bubbles.length);
   recordAstExtendProfile?.('astExtend.plan.instructions', instructions.length);
   return { subjects, instructions, bubbles, targetAtoms };
 }
