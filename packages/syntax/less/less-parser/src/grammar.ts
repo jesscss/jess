@@ -40,6 +40,7 @@ import {
   lessBranchSegments,
   callArgumentSource,
   combinatorTailReducer,
+  selectorBranchFactFrom,
   queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
@@ -5182,19 +5183,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const SelectorBranch = node(
     'SelectorBranch',
     sequence(ExtendComplex, selectorBranchContinuation),
-    (children) => {
-      const subject = children.find(isLessSelectorBranch)!;
-      const extensions = children
-        .filter(Array.isArray)
-        .flatMap(child => child.filter(isExtendTargetFact))
-        .map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }));
-      return { selector: subject, extensions };
-    }
+    selectorBranchFactFrom
   );
+  /*
+   * A branch the static extend subject cannot read — an interpolation, an
+   * interpolated attribute or pseudo — is the full `ComplexSelector`, and an
+   * inline `:extend(…)` after it extends from it the same way
+   * (`@{s} .r:extend(.z)`).
+   */
   const DynamicSelectorBranch = node(
     'SelectorBranch',
-    g.ComplexSelector,
-    children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
+    sequence(g.ComplexSelector, selectorBranchContinuation),
+    selectorBranchFactFrom
   );
   const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
   const SelectorBranchTail = node(
@@ -5231,8 +5231,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       oneOrMoreSep(
         choice(SelectorBranch, node(
           'SelectorBranch',
-          g.RelativeSelector,
-          children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
+          sequence(g.RelativeSelector, selectorBranchContinuation),
+          selectorBranchFactFrom
         )),
         literal(',')
       )

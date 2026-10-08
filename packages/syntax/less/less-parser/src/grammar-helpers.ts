@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -1730,6 +1730,19 @@ function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruct
   return out ?? NO_BODY_EXTENSIONS;
 }
 
+/**
+ * A selector branch and the inline `:extend(…)` targets that follow it, each of
+ * which extends from that branch (an inline extend binds to its own branch).
+ */
+function selectorBranchFactFrom(children: readonly unknown[]): SelectorBranchFact {
+  const subject = children.find(isLessSelectorBranch)!;
+  const extensions = children
+    .filter(Array.isArray)
+    .flatMap(child => child.filter(isExtendTargetFact))
+    .map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }));
+  return { selector: subject, extensions };
+}
+
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
   return typeof value === 'object' && value !== null
     && 'selector' in value && isLessSelectorBranch(value.selector)
@@ -2696,6 +2709,7 @@ export {
   callArgumentSource,
   callWithLayout,
   combinatorTailReducer,
+  selectorBranchFactFrom,
   queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,

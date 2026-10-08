@@ -43,6 +43,18 @@ describe('Interpolated Names', () => {
       expect(await compiler.renderString('@s: q; @{s} .r { a: b }', { language: 'less' }))
         .toBe('q .r {\n  a: b;\n}\n');
     });
+
+    /*
+     * An inline extend on a selector an interpolation leads extends from the
+     * resolved selector, as an interpolated extender does (X7); lessc 4.9.1
+     * parses it and drops the extend.
+     */
+    it('should extend from a selector an interpolation leads', async () => {
+      expect(await compiler.renderString('@s: ~".q"; @{s} .r:extend(.z) { c: 1; } .z { d: 2; }', { language: 'less' }))
+        .toBe('.q .r {\n  c: 1;\n}\n.z,\n.q .r {\n  d: 2;\n}\n');
+      expect(await compiler.renderString('@s: q; .p { @{s} > .r:extend(.z) { c: 1; } } .z { d: 2; }', { language: 'less' }))
+        .toBe('.p {\n  q > .r {\n    c: 1;\n  }\n}\n.z,\n.p q > .r {\n  d: 2;\n}\n');
+    });
   });
 
   describe('Lookup', () => {

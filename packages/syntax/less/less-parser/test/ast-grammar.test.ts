@@ -9283,6 +9283,25 @@ describe('Less AST grammar facts', () => {
     expect(parsesCompleteStylesheet('@ns: q; @{ns}|a { a: b; }')).toBe(false);
   });
 
+  it('collects an inline extend on a selector an interpolation leads', () => {
+    const extendsOf = (source: string, nested = false) => {
+      const result = run(lessGrammar.Document, `@s: ~".q"; ${nested ? `.p { ${source} { a: b; } }` : `${source} { a: b; }`}`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      const rule = stylesheet(result.value).rules[1] as Ruleset;
+      return (nested ? rule.rules[0] as Ruleset : rule).extendInstructions;
+    };
+    const target = (text: string, partial = false) => ({ partial, target: { selectors: [{ text }] } });
+
+    expect(extendsOf('@{s} .r:extend(.z)')).toMatchObject([target('.z')]);
+    expect(extendsOf('@{s}:extend(.z all)')).toMatchObject([target('.z', true)]);
+    expect(extendsOf('div @{s}:extend(.z), .t')).toMatchObject([target('.z')]);
+    expect(extendsOf('.@{s} .r:extend(.y, .z)')).toMatchObject([target('.y'), target('.z')]);
+    expect(extendsOf('@{s} > .r:extend(.z)', true)).toMatchObject([target('.z')]);
+  });
+
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
     const source =
       '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
@@ -9445,10 +9464,9 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps malformed, whitespace-split, and extend selector interpolation out of the ambiguous selector route', () => {
+  it('keeps malformed, whitespace-split selector interpolation out of the ambiguous selector route', () => {
     for (const source of [
-      '. @{name}-item { color: red; }',
-      '.@{name}:extend(.target) { color: red; }'
+      '. @{name}-item { color: red; }'
     ]) {
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
