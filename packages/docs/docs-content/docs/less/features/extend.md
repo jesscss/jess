@@ -460,6 +460,58 @@ compiles into:
 }
 ```
 
+A `@media` written inside a ruleset holds that ruleset's declarations, so an extend written inside that `@media` reaches them:
+
+```less
+.b {
+  @media print {
+    y: 1;
+    .q:extend(.b) {}
+  }
+}
+```
+
+compiles into:
+
+```css
+@media print {
+  .b,
+  .b .q {
+    y: 1;
+  }
+}
+```
+
+### Exact extend of a ruleset with nested rulesets
+
+An exact extend (no `all`) reaches only the target's own declarations, never its nested rulesets. When the target has nested rulesets, the extending selector gets a ruleset of its own with the target's declarations; in nested output (the default) it is written at the top level when its selector is a top-level one:
+
+```less
+.a {
+  .b {
+    y: 1;
+    .c { x: 1; }
+  }
+}
+.q:extend(.a .b) {}
+```
+
+compiles into:
+
+```css
+.a {
+  .b {
+    y: 1;
+    .c {
+      x: 1;
+    }
+  }
+}
+.q {
+  y: 1;
+}
+```
+
 ### Duplication Detection
 
 Currently there is no duplication detection.

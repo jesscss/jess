@@ -115,7 +115,7 @@ extender with no shared ancestor is unchanged.
 
 **Flatten triggers.** Re-nesting cannot express an extend match that **crosses the
 `&`** — the join between a parent context and a child-appended compound. When that
-happens the rule (and its descendants) flatten to a top-level block instead. Three
+happens the rule (and its descendants) flatten to a top-level block instead. These
 triggers force a flatten:
 
 - **A nested rule that itself carries `:extend()`.** Its extender contribution
@@ -126,7 +126,11 @@ triggers force a flatten:
   context changed under it. A *uniform* alias that also rewrites the child's own
   compound does **not** cross and stays nested.
 - **A nested rule whose whole composed complex is matched exactly by an extender that
-  does not descend from its parent** (a hoisted whole-complex sibling).
+  does not descend from its parent** (a hoisted whole-complex sibling), unless the rule
+  has nested children (then the extender splits out, see below).
+- **A rule with an at-rule inside it whose own extend reaches the rule's declarations
+  in that at-rule** (see `@media` scoping below). The rule is written as flattened
+  output writes it.
 
 When there is **no** shared prefix to strip and the match does not cross the `&`, the
 whole complex simply flattens. A flatten whose subject still has surviving nested
@@ -157,6 +161,31 @@ the exact target has surviving nested children, the extender **splits out** to a
 separate sibling rule carrying only the target's *direct* declarations (dropped if
 empty) — it does not fold into the block header and leak into the children. An
 `all`-extender folds into the header and does propagate to children.
+
+In nested output, an extender nested under the target's parent splits out beside the
+target. One with a top-level selector splits out at the top level, inside any
+`@media` the target sits in:
+
+```less
+.a { .b { y: 1; .c { x: 1; } } }
+.q:extend(.a .b) {}
+```
+
+```css
+.a {
+  .b {
+    y: 1;
+    .c {
+      x: 1;
+    }
+  }
+}
+.q {
+  y: 1;
+}
+```
+
+Flattened output has no nested children to protect, so it writes `.a .b, .q { y: 1; }`.
 
 ## Fixpoint: chained and circular extends
 
@@ -199,6 +228,23 @@ and that selector carries the extend too:
   .b:hover,
   .q {
     color: red;
+  }
+}
+```
+
+The declarations written in that at-rule are the rule's, in the at-rule's scope, so an
+extend written inside the at-rule reaches them too. Nested output writes such a rule
+the way flattened output does:
+
+```less
+.b { @media print { y: 1; .q:extend(.b) {} } }
+```
+
+```css
+@media print {
+  .b,
+  .b .q {
+    y: 1;
   }
 }
 ```

@@ -351,6 +351,25 @@ describe('collapseNesting native vs compact', () => {
     }
   });
 
+  /*
+   * An extend written in the at-rule's own scope reaches the rule's declarations
+   * written in that at-rule (EXTEND-SEMANTICS §8): the bubbled block writes the
+   * extended header, beside what an extend from outside adds (lessc 4.9.1 also
+   * writes `.b .q`). Nested output cannot spell the fold in the at-rule's
+   * implicit `&` block, so the rule is written as the flat output writes it.
+   */
+  it('folds an extend in a bubbled at-rule\'s own scope into its declarations', async () => {
+    const oneLine = async (src: string, mode: false | 'native' | 'compact'): Promise<string> => (await render(src, mode)).replace(/\s+/g, ' ').trim();
+    for (const mode of [false, 'native', 'compact'] as const) {
+      await expect(oneLine('.b { @media print { y: 1; .q:extend(.b) {} } }', mode), String(mode))
+        .resolves.toBe('@media print { .b, .b .q { y: 1; } }');
+      await expect(oneLine('.b { @media print { y: 1; .q:extend(.b all) {} } } .r:extend(.b) {}', mode), String(mode))
+        .resolves.toBe('@media print { .b, .b .q, .r { y: 1; } }');
+      await expect(oneLine('.a { .b { @media print { y: 1; .q:extend(.a .b) {} } } }', mode), String(mode))
+        .resolves.toBe('@media print { .a .b, .a .b .q { y: 1; } }');
+    }
+  });
+
   it(`'false' preserves authored nesting (no :is())`, async () => {
     const out = await render('.a, .b { .c, .d { x: 1 } }', false);
     expect(out).not.toContain(':is(');

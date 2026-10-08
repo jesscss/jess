@@ -132,9 +132,24 @@ export interface PlanReferenceAtRule {
   placement?: object;
 }
 
+/**
+ * An at-rule block written in a rule (`.b { @media print { y: 1; } }`): its own
+ * declarations are the rule's, in the at-rule's scope. Flat output writes them in
+ * a block under the rule's header (bubbling), and an extend in that scope reaches
+ * them there (EXTEND-SEMANTICS §8).
+ */
+export interface PlanBubble {
+  atRule: AtRuleBlock;
+  subject: PlanSubject;
+  scope: number[];
+}
+
 export interface Plan {
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
+
+  /** Every at-rule block written in a rule, in document order. */
+  bubbles: PlanBubble[];
 
   /**
    * The UNION of every instruction target's individual simple atoms (graft-
@@ -152,6 +167,9 @@ export interface PlanOverlay {
 
   /** Render-scoped at-rule scope ids the preflight assigned; see {@link atRuleScope}. */
   readonly atRuleScopes: AtRuleScopes | null;
+
+  /** At-rule blocks written in the overlay's rules ({@link PlanBubble}). */
+  readonly bubbles?: readonly PlanBubble[];
 }
 
 /**
@@ -180,6 +198,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
   recordAstExtendProfile?.('astExtend.plan.calls');
   const subjects: PlanSubject[] = [];
   const instructions: PlanInstruction[] = [];
+  const bubbles: PlanBubble[] = [];
   const targetAtoms = new Set<string>();
   let order = 0;
   const scopeIds = overlay?.atRuleScopes ?? new Map<AtRuleBlock, number>();
@@ -235,7 +254,11 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
         }
         walk(rule.rules, rulePath, scope, subject);
       } else if (st.type === 'AtRuleBlock') {
-        walk(st.rules, path, atRuleScope(scope, st, scopeIds), parent);
+        const inner = atRuleScope(scope, st, scopeIds);
+        if (parent !== null) {
+          bubbles.push({ atRule: st, subject: parent, scope: inner });
+        }
+        walk(st.rules, path, inner, parent);
       }
 
       // MixinDefinition / MixinCall / declarations / at-rule statements: no extend surface.
@@ -255,6 +278,12 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
     }
     for (let index = 0; index < overlay.instructions.length; index++) {
       instructions.push(overlay.instructions[index]!);
+    }
+    const overlayBubbles = overlay.bubbles;
+    if (overlayBubbles !== undefined) {
+      for (let index = 0; index < overlayBubbles.length; index++) {
+        bubbles.push(overlayBubbles[index]!);
+      }
     }
     for (const instruction of overlay.instructions) {
       collectBranchAtoms(instruction.target, targetAtoms);
@@ -279,7 +308,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);
   recordAstExtendProfile?.('astExtend.plan.instructions', instructions.length);
-  return { subjects, instructions, targetAtoms };
+  return { subjects, instructions, bubbles, targetAtoms };
 }
 
 /**

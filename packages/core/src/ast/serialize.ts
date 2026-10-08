@@ -188,7 +188,7 @@ import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type V
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
-import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
+import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
@@ -12821,6 +12821,7 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
 interface ImportPlanOverlay {
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
+  bubbles: PlanBubble[];
   atRuleScopes: AtRuleScopes;
 
   /** The ONE boundary of each composed module, by module identity (ledger X14). */
@@ -12953,7 +12954,11 @@ function planImportedStaticExtend(
       const owner = hidden
         ? { node: statement, parent: referenceAtRule, placement }
         : referenceAtRule;
-      planImportedStaticExtend(statement.rules, e, overlay, path, atRuleScope(scope, statement, overlay.atRuleScopes), parent, hidden, boundary, owner, placement);
+      const inner = atRuleScope(scope, statement, overlay.atRuleScopes);
+      if (parent !== null) {
+        overlay.bubbles.push({ atRule: statement, subject: parent, scope: inner });
+      }
+      planImportedStaticExtend(statement.rules, e, overlay, path, inner, parent, hidden, boundary, owner, placement);
     } else if (statement.type === 'StyleImport') {
       /*
        * An import inside a ruleset lands where the walk places it (see ExtendClass).
@@ -13213,6 +13218,7 @@ function planImportedFacts(
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
+    bubbles: [],
     atRuleScopes: new Map(),
     moduleBoundaries: new Map(),
     importPlacements: null,
@@ -15123,7 +15129,8 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
   const overlay: PlanOverlay = {
     subjects: [...dyn.baseOverlay.subjects, ...subjects],
     instructions: [...dyn.baseOverlay.instructions, ...dyn.instructions],
-    atRuleScopes: dyn.atRuleScopes
+    atRuleScopes: dyn.atRuleScopes,
+    bubbles: dyn.baseOverlay.bubbles
   };
   return computeExtends(dyn.root, overlay, guardedNesting);
 }
@@ -15388,7 +15395,7 @@ function expandRule(
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource });
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource, split: null });
       return;
     }
   }
@@ -22693,7 +22700,7 @@ function emitBubbleBody(
   ctx: string[] | null,
   frame: Frame,
   e: Emit,
-  owner?: object,
+  owner?: AtRuleBlock,
   inlineTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
   /* The body's comments, replayed as {@link emitAtRuleBody} replays them. */
@@ -22705,9 +22712,12 @@ function emitBubbleBody(
   /*
    * [nesting] The context's parent units that are rules of their own ({@link SplitBlock}).
    * A context whose rule an extend reached writes the rule's extended header
-   * ({@link Emit.extendedContexts}).
+   * ({@link Emit.extendedContexts}); an extend in the at-rule's own scope that
+   * reaches the declarations here gives them their own ({@link ExtendResults.bubbleHeaders}).
    */
-  const directHeader = ctx === null ? null : e.extendedContexts?.get(ctx) ?? ctx;
+  const directHeader = ctx === null
+    ? null
+    : (owner === undefined ? undefined : extendProjection(e)?.bubbleHeaders?.get(owner)) ?? e.extendedContexts?.get(ctx) ?? ctx;
   const ctxSplit = directHeader === null ? undefined : composedSplitFlags(directHeader, e);
   const group: Leaf[] = [];
 
@@ -23263,11 +23273,23 @@ interface HoistEntry {
    * (`.a { @media q { .b { e } } }` hoists `e` as `@media q { … }` beside `.a`).
    */
   wrappers: HoistWrapper[] | null;
+
+  /**
+   * A split-out exact extender rising in place of the rule ({@link NestedRulePlan.rootSplits}):
+   * its header and the rule's evaluated direct declarations, written as one block where
+   * it lands. Null for a hoisted rule.
+   */
+  split: HoistSplit | null;
 }
 
 interface HoistWrapper {
   node: AtRuleBlock;
   prelude: string;
+}
+
+interface HoistSplit {
+  header: string[];
+  leaves: Leaf[];
 }
 
 /** Emit a hoisted rule where it lands, inside the at-rules it rose out of. */
@@ -23276,6 +23298,9 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   if (wrappers !== null && wrapper < wrappers.length) {
     const { node, prelude } = wrappers[wrapper]!;
     return nestedAtRuleShell(node, prelude, e, () => emitHoistEntry(h, e, imp, wrapper + 1));
+  }
+  if (h.split !== null) {
+    return flushBlock(h.split.header, h.split.leaves, e);
   }
   return extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
     ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
@@ -23730,11 +23755,22 @@ function writeNestedRule(
        * sibling rules carrying only the target's DIRECT declarations (empty → drop).
        */
       const direct: Leaf[] = [];
-      if (plan && plan.splits.length > 0) {
+      const rootSplits = plan?.rootSplits;
+      if (plan && (plan.splits.length > 0 || (rootSplits !== undefined && rootSplits.length > 0))) {
         for (const st of rule.rules) {
           if (st.type === 'Declaration' || st.type === 'Comment') {
             direct.push(evaluatedLeaf(st, childFrame));
           }
+        }
+      }
+
+      /*
+       * A split whose header is a top-level selector rises out of every rule block
+       * this rule nests in, inside the at-rules it nests in ({@link HoistEntry.split}).
+       */
+      if (rootSplits !== undefined && direct.length > 0) {
+        for (const header of rootSplits) {
+          (outerHoist ?? hoist).push({ rule, frame, bubble: Number.POSITIVE_INFINITY, wrappers: null, source, split: { header, leaves: direct } });
         }
       }
       const emitSplits = (index: number): MaybePromise<void> => {
@@ -23762,7 +23798,7 @@ function writeNestedRule(
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
           if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source });
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source, split: h.split });
             continue;
           }
           const emitted = emitHoistEntry(h, e, imp);
@@ -23828,7 +23864,7 @@ function writeNestedAtRuleBlock(
     }
     const wrapper: HoistWrapper = { node, prelude };
     for (const h of hoist) {
-      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source });
+      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source, split: h.split });
     }
   };
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(

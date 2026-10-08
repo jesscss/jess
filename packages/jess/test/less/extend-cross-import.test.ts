@@ -257,6 +257,13 @@ describe('extend across @import', () => {
      * A hidden rule inside a hidden `@media` that only a walk-recorded extend reveals
      * surfaces in its `@media`; the `@media` goes when nothing in it is revealed.
      */
+    /* An extend in the scope of an at-rule an imported rule holds reaches the rule's declarations there, as inlined. */
+    it('an imported rule\'s at-rule block takes the extend written in its own scope', async () => {
+      const expected = ['@media print {', '  .b,', '  .b .q {', '    y: 1;', '  }', '}'].join('\n');
+      expect(await renderFile('bubble-scope-main.less')).toBe(expected);
+      expect(await renderFile('bubble-scope-main.less', false)).toBe(expected);
+    });
+
     it('(reference) import, @media rule revealed by an extender in a mixin body', async () => {
       const revealed = ['@media print {', '  .x {', '    b: 2;', '  }', '}'].join('\n');
       expect(await renderFile('ref-media-reveal-main.less')).toBe(revealed);
