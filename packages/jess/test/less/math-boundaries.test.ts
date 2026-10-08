@@ -93,31 +93,45 @@ describe('Less math boundaries', () => {
   /*
    * Text is not a resolved calculation: a group around an escaped string —
    * `e("…")`, `~"…"`, the text an `if()` picks — keeps the parens written
-   * around it, wherever the group is read and however long the text is, so
-   * what surrounds it never re-reads its bytes: `2 * (1px + 2px)` is not
-   * `2 * 1px + 2px` (SETTLED — orchestrator judgment under owner delegation
-   * 2026-10-07). The test is the value's type, never its bytes. A variable
-   * holding such a group holds the text with its parens. In `.scss`, a
-   * `calc()` is a Sass calculation, which keeps a parenthesized string, as
-   * dart-sass does; outside one Sass parens group and drop.
+   * around it wherever it is written into math, however the group is reached
+   * and however long the text is, so the math around it never re-reads its
+   * bytes: `2 * (1px + 2px)` is not `2 * 1px + 2px`. Anywhere else the group
+   * yields its text (ledger J16, SETTLED — orchestrator judgment under owner
+   * delegation 2026-10-07). The test is the value's type, never its bytes. A
+   * variable holding such a group holds the text and the group. In `.scss`
+   * an unquoted string is text: a `calc()` keeps a parenthesized one, as
+   * dart-sass does, and so does math outside one, which dart-sass rejects.
    */
-  it('keeps the parens around text, however it is reached', async () => {
+  it('keeps the parens around text written into math, however it is reached', async () => {
     expect(await render('@v: e("1px + 2px"); .x { a: calc(2 * (e("1px + 2px"))); b: calc(2 * (@v)); '
       + 'c: calc(2 * (if(true, ~"1px + 2px", 1px))); d: calc(2 / (e("1px/2"))); f: calc(2 * (e("foo"))); '
       + 'g: calc((e("1px + 2px"))); h: calc(2 * (~"1px + 2px")); k: calc(1px + (e("var(--a, 1px)"))); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (1px + 2px)); d: calc(2 / (1px/2)); '
         + 'f: calc(2 * (foo)); g: calc((1px + 2px)); h: calc(2 * (1px + 2px)); k: calc(1px + (var(--a, 1px))); }');
-    expect(await render('@v: e("1px + 2px"); .x { a: (e("1px + 2px")) * 2; a2: (~"1px + 2px") * 2; b: 2 - (@v); d: (e("1px + 2px")); e: (e("foo")); }'))
-      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: (1px + 2px); e: (foo); }');
+    expect(await render('@v: e("1px + 2px"); .x { a: (e("1px + 2px")) * 2; a2: (~"1px + 2px") * 2; b: 2 - (@v); d: (e("1px + 2px")); e: (e("foo")); f: ((~"x")); }'))
+      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: 1px + 2px; e: foo; f: x; }');
     expect(await render('@a: (e("1px + 2px")); @s: ~"a b"; .m(@x) { m: (@x); n: calc(2 * (@x)); } '
-      + '.x { a: calc(2 * @a); b: @a; c: (@s); s: ~"@{a}"; .m(e("1px + 2px")); .m(~"a b"); }'))
-      .toBe('.x { a: calc(2 * (1px + 2px)); b: (1px + 2px); c: (a b); s: (1px + 2px); m: (1px + 2px); n: calc(2 * (1px + 2px)); m: (a b); n: calc(2 * (a b)); }');
-    const scss = '$v: unquote("1px + 2px"); $k: foo; .x { a: calc(2 * (unquote("1px + 2px"))); b: calc(2 * ($v)); '
-      + 'c: calc(2 * (unquote("foo"))); d: calc(2 * ($k)); e: (unquote("1px + 2px")); f: ($k); }';
+      + '.x { a: calc(2 * @a); b: @a; c: (@s); s: ~"@{a}"; t: calc(@a); .m(e("1px + 2px")); .m(~"a b"); }'))
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: 1px + 2px; c: a b; s: 1px + 2px; t: calc((1px + 2px)); m: 1px + 2px; n: calc(2 * (1px + 2px)); m: a b; n: calc(2 * (a b)); }');
+    const scss = '$v: unquote("1px + 2px"); $k: foo; $g: (unquote("1px + 2px")); .x { a: calc(2 * (unquote("1px + 2px"))); b: calc(2 * ($v)); '
+      + 'c: calc(2 * (unquote("foo"))); d: calc(2 * ($k)); e: (unquote("1px + 2px")); f: ($k); g: (unquote("1px + 2px")) * 2; h: $g * 2; i: $g; }';
     expect(await renderIn('.scss', scss))
-      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (foo)); d: calc(2 * (foo)); e: 1px + 2px; f: foo; }');
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (foo)); d: calc(2 * (foo)); e: 1px + 2px; f: foo; '
+        + 'g: calc((1px + 2px) * 2); h: calc((1px + 2px) * 2); i: 1px + 2px; }');
     expect(await renderJess('@-from "#less" import (e); .x { a: calc(2 * ($e("1px + 2px"))); b: calc(2 * (($e("1px + 2px")))); c: ($e("foo")); }'))
-      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); c: (foo); }');
+      .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); c: foo; }');
+  });
+
+  /*
+   * Outside math a group around text yields the text (ledger J16): an
+   * interpolation into a selector, a property name or a string, an argument a
+   * callable reads, a call written out as-is, a list. A math function's
+   * argument is math, so text there keeps its group.
+   */
+  it('gives the text of a group around text outside math', async () => {
+    expect(await render('@a: (~"x"); @t: (e("1px + 2px")); .x-@{a} { @{a}-p: 1; s: "@{a}"; e: escape((e("a b"))); '
+      + 'f: foo((e("x"))); l: (e("x")), (~"y") 1px; i: (if(true, ~"a b", 1px)); m: min((e("1px + 2px")), 3px); n: max(@t, 3px); }'))
+      .toBe('.x-x { x-p: 1; s: "x"; e: a%20b; f: foo(x); l: x, y 1px; i: a b; m: min((1px + 2px), 3px); n: max((1px + 2px), 3px); }');
   });
 
   /*

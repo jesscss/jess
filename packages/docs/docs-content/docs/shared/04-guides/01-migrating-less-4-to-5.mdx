@@ -300,7 +300,7 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `min(100% - 30px)` | `70%` | **`min(100% - 30px)`** | The same rule inside a math function: the browser resolves the percentage. |
 | `max(4, 3px)` | `4` | **`4px`** | The unitless `4` was compared as `4px`, as `4 + 3px` is `7px`, so it is written as the length it was compared as. |
 | `percentage(~"0.5")` | *error* | **`percentage(0.5)`** | An escaped string is text and is never read back as a number. A built-in that cannot use its argument is written out as-is. |
-| `calc(2 * @t)` with `@t: (e("1px + 2px"))` | `calc(2 * 1px + 2px)` | **`calc(2 * (1px + 2px))`** | Text is not a computed value, so the parentheses written around it stay wherever it is read. Less 4 dropped them and changed the arithmetic. `(e("foo"))` is `(foo)` for the same reason. |
+| `calc(2 * @t)` with `@t: (e("1px + 2px"))` | `calc(2 * 1px + 2px)` | **`calc(2 * (1px + 2px))`** | Text is not a computed value, so the parentheses written around it stay wherever it is written into math. Less 4 dropped them and changed the arithmetic. Outside math they give the text, as in Less 4: `(e("foo"))` is `foo`. |
 | `@media print { @import "t"; } @import "t";` | `t` inside `@media print` only | **`t` there and at the root** | An import is skipped only after a copy of the same file **in the same scope** (the root, one ruleset or one at-rule block; a mixin call imports into the scope it is called in, and a bare `&` ruleset into its parent's). Less 4 skipped it after a copy anywhere, so the root never got the styles — or the mixins — the author imported there. A file that imports itself, directly or through another file, still stops there. |
 
 ### Truthiness is unchanged — with one exception

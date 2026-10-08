@@ -69,8 +69,9 @@ inside a math function: math written in `calc()` is not computed, so
 `calc(100% - ((1px + 2px)))` keeps its parens, while
 `calc(100% - (($(1px + 2px))))` is `calc(100% - 3px)` and `calc(($(1px + 2px)))`
 is `calc(3px)`. Text is never a computed value: parens around an escaped string,
-such as `$e("1px + 2px")`, stay wherever it is read, so
-`calc(2 * ($e("1px + 2px")))` is `calc(2 * (1px + 2px))`.
+such as `$e("1px + 2px")`, stay wherever it is written into math, so
+`calc(2 * ($e("1px + 2px")))` is `calc(2 * (1px + 2px))`; anywhere else the
+group gives its text, so `($e("foo"))` is `foo`.
 
 ```jess
 $a: #a80000; $b: #00000b;
