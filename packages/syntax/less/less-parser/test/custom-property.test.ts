@@ -92,7 +92,9 @@ describe('Less custom properties', () => {
     ['a variable', 'var(@v)', { type: 'Lookup', kind: 'var', name: 'v' }],
     ['an indirect variable', 'var(@@v)', { type: 'Lookup', kind: 'var', raw: '@@v' }],
     ['an escape', 'var(~"--x")', { type: 'Quoted', escaped: true, value: '--x' }],
-    ['a call', 'var(e("--x"))', { type: 'FunctionCall', name: 'e' }]
+    ['a call', 'var(e("--x"))', { type: 'FunctionCall', name: 'e' }],
+    ['an identifier', 'var(foo)', { type: 'Keyword', src: 'foo' }],
+    ['a string', 'var("--x")', { type: 'Quoted', escaped: false, value: '--x' }]
   ])('keeps %s written as the var() name for evaluation to resolve', (_label, call, name) => {
     expect(parse(`a { b: ${call}; }`)).toMatchObject({
       rules: [{ rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'var', args: [{ value: name }] } }] }]
