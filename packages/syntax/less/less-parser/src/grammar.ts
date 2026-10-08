@@ -582,8 +582,9 @@ const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(
 const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 // A bare `@{name}` is one selector simple, so a combinator, another compound,
 // a glued simple, a guard, `,` or `{` may follow it (`@{s} > .r`, `.r @{s} .t`).
-// Only a glued `|` is refused: that `@{ns}` is the namespace prefix of an
-// unmodelled namespace selector (`@{ns}|a`), not a simple of its own.
+// Only a glued `|` is refused: that `@{ns}` is the namespace prefix of a
+// namespaced type selector (`@{ns}|a`, `NamespaceTypeSelector`), not a simple of
+// its own.
 const bareInterpolatedSelectorEnd = regex(/(?!\|)/);
 // Semantically identical to the production Less `ampToken` terminal. A static ampersand
 // is already the canonical AST representation: `SimpleSelector.text` retains `&` and
@@ -4833,10 +4834,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ]));
     }
   );
+  /*
+   * The css `ns|E` type selector (selectors-4 §5.1) over css's own
+   * `AttributeNamespace` prefix; Less adds one slot, a prefix written as an
+   * interpolation (`@{ns}|a`), which stays one simple: an interpolation with
+   * its `|E` as literal text.
+   */
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
-    sequence(g.AttributeNamespace, choice(staticIdentifier, literal('*'))),
-    children => simpleSelector(children.map(requireTerminalText).join(''))
+    sequence(
+      choice(g.AttributeNamespace, noTrivia(sequence(g.VariableInterpolation, literal('|')))),
+      choice(staticIdentifier, literal('*'))
+    ),
+    children => children.some(isInterpolationFact)
+      ? interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+      : simpleSelector(children.map(requireTerminalText).join(''))
   );
   // Less's attribute name/value interpolation is one complete selector token.
   // Keep every literal delimiter and every interpolation reference (`@{…}` and

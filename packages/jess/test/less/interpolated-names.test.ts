@@ -44,6 +44,11 @@ describe('Interpolated Names', () => {
         .toBe('q .r {\n  a: b;\n}\n');
     });
 
+    it('should write an interpolated namespace prefix as the namespace', async () => {
+      expect(await compiler.renderString('@ns: svg; @{ns}|a { c: 1; } .x @{ns}|* { c: 2; }', { language: 'less' }))
+        .toBe('svg|a {\n  c: 1;\n}\n.x svg|* {\n  c: 2;\n}\n');
+    });
+
     /*
      * An inline extend on a selector an interpolation leads extends from the
      * resolved selector, as an interpolated extender does (X7); lessc 4.9.1

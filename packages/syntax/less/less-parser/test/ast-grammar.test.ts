@@ -9278,9 +9278,31 @@ describe('Less AST grammar facts', () => {
     expect(selectorOf('@{s}:hover')).toMatchObject({
       selectors: [{ type: 'CompoundSelector', value: [interpolated, { text: ':hover' }] }]
     });
+  });
 
-    // A glued `|` makes `@{ns}` a namespace prefix, which is not modelled.
-    expect(parsesCompleteStylesheet('@ns: q; @{ns}|a { a: b; }')).toBe(false);
+  it('reads an interpolated namespace prefix as one namespaced type selector', () => {
+    const selectorOf = (source: string) => {
+      const result = run(lessGrammar.Document, `@ns: svg; ${source} { a: b; }`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return (stylesheet(result.value).rules[1] as Ruleset).selector;
+    };
+    const namespaced = (lit: string) => ({
+      type: 'SimpleSelector',
+      text: null,
+      interp: { parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'ns' }, unquote: true }, { lit }] }
+    });
+
+    expect(selectorOf('@{ns}|a')).toMatchObject({ selectors: [namespaced('|a')] });
+    expect(selectorOf('@{ns}|*')).toMatchObject({ selectors: [namespaced('|*')] });
+    expect(selectorOf('.x @{ns}|a')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [{ text: '.x' }, ' ', namespaced('|a')] }]
+    });
+    expect(selectorOf('@{ns}|a.b')).toMatchObject({
+      selectors: [{ type: 'CompoundSelector', value: [namespaced('|a'), { text: '.b' }] }]
+    });
   });
 
   it('collects an inline extend on a selector an interpolation leads', () => {
@@ -10504,8 +10526,7 @@ describe('Less AST grammar facts', () => {
     );
 
     for (const invalid of [
-      '.card[@{ spaced }=button] { color: red; }',
-      '@{namespace}|a { color: red; }'
+      '.card[@{ spaced }=button] { color: red; }'
     ]) {
       const direct = run(lessGrammar.Document, invalid, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
