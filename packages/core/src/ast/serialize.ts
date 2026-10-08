@@ -74,7 +74,8 @@ import {
   simpleTokenHasInterp,
   textHoldsParentRef,
   branchTextIsPlaceholder,
-  isCssColorCall
+  isCssColorCall,
+  colorAlphaSlash
 } from './nodes.js';
 import type {
   Any,
@@ -4421,6 +4422,30 @@ function evalTypedSlot(
 }
 
 /**
+ * A CSS colour function's modern slot, typed, with its alpha slash a separator
+ * ({@link colorAlphaSlash}): `0 128 255 / 50%` is the channels and the slash
+ * list `255 / 50%`, as the slot reads where the math policy leaves a slash
+ * alone, never `255` divided by `50%`.
+ */
+function colorChannels(
+  slot: ValueSlot,
+  alpha: Operation,
+  frame: Frame | null,
+  e: EvalCtx,
+  argument: ArgumentMode
+): MaybePromise<ValueGroup> {
+  if (!isValueSlotArray(slot)) {
+    return evalTypedSlot(slot, frame, e, true, argument);
+  }
+  const last = slot.length - 1;
+  const values = slot.map((item, index) => index < last
+    ? evalTypedSlot(item, frame, e, true, argument)
+    : combineAll([evalTypedSlot(alpha.left, frame, e, true, argument), evalTypedSlot(alpha.right, frame, e, true, argument)], sides => makeList(sides, '/')));
+  const layout = replaysLayout(argument) ? replayedLayoutOf(slot) : undefined;
+  return combineAll(values, resolved => layout === undefined ? resolved : withValueLayout(resolved, layout));
+}
+
+/**
  * The authored layout of a group when pretty output replays a run of it (a
  * line break or a block comment), else `undefined`: a binding carries only the
  * layout that changes its written bytes ({@link emitAsWritten}).
@@ -8721,7 +8746,10 @@ function dispatchCall(
    * (ledger F11) rather than inputs.
    */
   const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument));
+  const alpha = colorAlphaSlash(node);
+  const typed = alpha === null
+    ? node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument))
+    : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
   return combineAll(typed, (vals) => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {

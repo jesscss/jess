@@ -263,6 +263,10 @@ side effect does not rewrite an already-evaluated sibling declaration.
   accepted as `math: 'parens'`, with a deprecation warning.
 - `strict-legacy` was removed in Less 4.0; it is still accepted and means `parens`.
 - `math=always` still works; `parens-division` is the default.
+- Under `math=always`, the slash before the alpha in a CSS colour function
+  (`rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`)
+  is a separator, never a division: `rgb(0 128 255 / 50%)` stays as written,
+  where Less 4.x divided it. Converted to `.jess`, it stays a separator too.
 - The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
 
 ```bash

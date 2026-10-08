@@ -27,7 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
-import { NO_SPAN, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
+import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -339,17 +339,59 @@ const CSS_COLOR_CONSTRUCTORS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
  * a three-or-more item nested slot is the equivalent CSS channel shape.
  */
 export function isCssColorCall(node: FunctionCall): boolean {
-  if (!CSS_COLOR_CONSTRUCTORS.has(node.name.toLowerCase())) {
-    return false;
-  }
+  return CSS_COLOR_CONSTRUCTORS.has(node.name.toLowerCase()) && hasColorChannels(node);
+}
+
+/**
+ * The CSS colour functions, each of whose modern syntax ends in an optional
+ * `/ <alpha-value>` (css-color-4 §5–§10): the F5 constructors and `hwb()`,
+ * `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`.
+ */
+const CSS_COLOR_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color']);
+
+/** Three or more channel slots, or one modern slot of three or more items (see {@link isCssColorCall}). */
+function hasColorChannels(node: FunctionCall): boolean {
   if (node.args.length >= 3) {
     return true;
   }
+  const slot = node.args.length === 1 ? node.args[0]!.value : undefined;
+  return Array.isArray(slot) && slot.length >= 3;
+}
+
+/**
+ * Whether `node` is a CSS colour function written in its channel shape
+ * (`color(srgb 1 0 0)`, `hwb(1 2% 3%)`, and every {@link isCssColorCall}): a
+ * CSS value no Less callable computes in that shape, so the `.jess` converter
+ * writes it as a plain CSS call in a property's value (ledger F5).
+ */
+export function isCssColorFunction(node: FunctionCall): boolean {
+  return CSS_COLOR_FUNCTIONS.has(node.name.toLowerCase()) && hasColorChannels(node);
+}
+
+/**
+ * The slash before the alpha in a CSS colour function's modern syntax, when a
+ * math policy lowered it to a division (Less `math: always` reads
+ * `rgb(0 128 255 / 50%)`'s last item as `$(255 / 50%)`), else `null`. That
+ * slash is the function's separator, never division (css-color-4 §5), so it is
+ * written `255 / 50%`. Decided by the call's structure: one modern slot of
+ * three or more items whose last item is a computation of a bare `/`. A paren
+ * group the author wrote around the division (`(255 / 50%)`) is math.
+ */
+export function colorAlphaSlash(node: FunctionCall): Operation | null {
   if (node.args.length !== 1) {
-    return false;
+    return null;
   }
   const slot = node.args[0]!.value;
-  return Array.isArray(slot) && slot.length >= 3;
+  if (!Array.isArray(slot) || slot.length < 3) {
+    return null;
+  }
+  const last = slot[slot.length - 1]!;
+  if (Array.isArray(last) || last.type !== 'Expression' || Array.isArray(last.value) || last.value.type !== 'Operation'
+    || isAuthoredGroupExpression(last)) {
+    return null;
+  }
+  const slash = last.value;
+  return slash.operator === '/' && slash.mathOutsideParens && CSS_COLOR_FUNCTIONS.has(node.name.toLowerCase()) ? slash : null;
 }
 
 /**

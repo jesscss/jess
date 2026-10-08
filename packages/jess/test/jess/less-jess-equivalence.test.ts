@@ -1116,6 +1116,34 @@ describe('targeted round trip: kept math', () => {
  * under one explicit `unitMode` ({@link PINNED_MODES}), where they agree. A `.less` sheet
  * imported by a `.jess` one keeps the Less default (DESIGN-DECISIONS C19).
  */
+/*
+ * The slash before the alpha in a CSS colour function's modern syntax is a
+ * separator, never division (css-color-4 §4, ledger F5): under `math: always`
+ * Less lowers `255 / 50%` to a computation, and neither arm divides it, so
+ * the converter prints it as the separator (`rgb(0 128 255 / 50%)`, never
+ * `rgb(0 128 $(255 / 50%))`). A `/` anywhere else, a paren group the author
+ * wrote around one included, is still Less math.
+ */
+describe('targeted round trip: the alpha slash of a colour function', () => {
+  it('neither arm divides it under `math: always`, and the converter prints it as a separator', async () => {
+    const colours = ['rgb(0 128 255 / 50%)', 'rgba(0 128 255 / 0.5)', 'hsl(198deg 28% 50% / 50%)', 'hsla(198 28% 50% / 0.5)',
+      'hwb(1 2% 3% / 0.5)', 'lab(50% 40 59.5 / 0.5)', 'lch(52.2% 72.2 50 / 0.5)', 'oklab(59% 0.1 0.1 / 0.5)',
+      'oklch(60% 0.15 50 / 0.5)', 'color(srgb 1 0 0 / 50%)', 'color(display-p3 1 0.5 0 / 0.5)'];
+    const less = `@a: 50%; .a {\n${colours.map((c, i) => `  c${i}: ${c};\n`).join('')}  v: rgb(0 128 255 / @a);\n  p: hwb(1 2% (6% / 2));\n  d: 10px / 2;\n}\n`;
+    const jess = emitJess(parseLess(less, { mathMode: 'always' }), { functions: LESS_FUNCTIONS });
+    for (const colour of colours) {
+      expect(jess).toContain(colour);
+    }
+    expect(jess).toContain('v: rgb(0 128 255 / $^a);');
+    expect(jess).toContain('d: $(10px / 2);');
+    const render = async (source: string, extension: '.less' | '.jess'): Promise<string> =>
+      new Compiler({ compile: { ...PINNED_COMPILE, mathMode: 'always' } }).renderString(source, { extension });
+    const css = await render(less, '.less');
+    expect(await render(jess, '.jess')).toBe(css);
+    expect(css).toBe(`.a {\n${colours.map((c, i) => `  c${i}: ${c};\n`).join('')}  v: rgb(0 128 255 / 50%);\n  p: hwb(1 2% 3%);\n  d: 5px;\n}\n`);
+  });
+});
+
 describe('targeted round trip: the converted sheet answers the .jess default', () => {
   it('errors on mixed units by default, and agrees under an explicit unitMode', async () => {
     const less = '@a: 4px;\n@x: @a + 1em;\n.m(@v) { m: @v; }\n.a {\n  b: (@a + 3em);\n  d: @x;\n  g: 1px + 1em;\n  .m(1px + 1em);\n}\n';
