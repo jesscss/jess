@@ -2132,7 +2132,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(WithClause),
       literal(';')
     ),
-    (children) => {
+    (children, _fields, span) => {
       const path = children[1];
       if (!isQuoted(path) || path.interp !== null) {
         throw new TypeError('SCSS @use requires a quoted module path.');
@@ -2154,7 +2154,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       if (path.value.startsWith('sass:')) {
         const rewritten = `#sass/${path.value.slice('sass:'.length)}`;
-        return moduleImport(
+        return withSourceSpan(moduleImport(
           quoted(
             `${path.quote}${rewritten}${path.quote}`,
             rewritten,
@@ -2163,9 +2163,9 @@ const scssFactory = (g: ScssInputRules) => {
           ),
           'use',
           namespace
-        );
+        ), span);
       }
-      return isScriptModulePath(path.value)
+      return withSourceSpan(isScriptModulePath(path.value)
         ? moduleImport(
             path,
             'use',
@@ -2183,7 +2183,7 @@ const scssFactory = (g: ScssInputRules) => {
              * shared-vs-per-edge instead of scattering dialect checks through eval.
              */
             config: configBindings.length > 0 ? { kind: 'set', bindings: configBindings } : null
-          });
+          }), span);
     }
   );
 
@@ -2198,11 +2198,11 @@ const scssFactory = (g: ScssInputRules) => {
       g.Quoted,
       literal(';')
     ),
-    (children) => {
+    (children, _fields, span) => {
       if (!isQuoted(children[1]) || children[1].interp !== null) {
         throw new TypeError('SCSS @forward requires a quoted module path.');
       }
-      return styleImport('@-export', children[1], { mode: 'compose', forward: true });
+      return withSourceSpan(styleImport('@-export', children[1], { mode: 'compose', forward: true }), span);
     }
   );
 

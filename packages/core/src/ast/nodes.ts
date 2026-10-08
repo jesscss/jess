@@ -119,8 +119,9 @@ export interface Any extends SpanSlots {
  * A CSS `url(…)` value. The wrapper is syntax, while the content remains an
  * ordinary structured value: a quoted literal, an interpolation template, or
  * an opaque unquoted URL token. This avoids a dialect-specific path model.
+ * Its span is where a diagnostic about the URL points.
  */
-export interface Url {
+export interface Url extends SpanSlots {
   readonly type: 'Url';
   readonly value: ValueNode;
 }
@@ -1547,7 +1548,7 @@ export interface ModuleImportSpecifier {
 }
 
 /** A compile-time JavaScript/TypeScript module dependency; plugins resolve it. */
-export interface ModuleImport {
+export interface ModuleImport extends SpanSlots {
   readonly type: 'ModuleImport';
   readonly path: Quoted;
   readonly mode: 'use' | 'from';
@@ -1604,7 +1605,7 @@ export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
  *  beyond its own identity, so it never allocates. */
 export const NULL_NODE: Null = { type: 'Null', src: 'null' };
 export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
-export const url = (value: ValueNode): Url => ({ type: 'Url', value });
+export const url = (value: ValueNode): Url => ({ type: 'Url', value, _s: NO_SPAN, _e: NO_SPAN });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
   ({ type: 'SelectorCapture', branches, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
@@ -2115,5 +2116,5 @@ export const moduleImport = (
   namespace: string | null = null,
   imports: readonly ModuleImportSpecifier[] = [],
   defaultImport: string | null = null
-): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports });
+): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports, _s: NO_SPAN, _e: NO_SPAN });
 export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules, _s: NO_SPAN, _e: NO_SPAN, _trivia: undefined });

@@ -1146,19 +1146,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(urlBoundaryWhitespace),
       literal(')')
     )),
-    (_children, fields) => {
+    (_children, fields, span) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
         throw new TypeError('Less plain URL produced repeated body facts.');
       }
       const body = captured?.value;
-      if (body === undefined) {
-        return url(any(''));
-      }
-      if (isQuoted(body) || isInterp(body)) {
-        return url(body);
-      }
-      return url(any(requireTerminalText(body)));
+      return withSourceSpan(url(body === undefined
+        ? any('')
+        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
     }
   );
   // Bare `@name` and `@{name}` URL bodies are structural Less values, not
@@ -1175,12 +1171,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const VariableUrl = node(
     'Url',
     sequence(urlFunctionOpen, choice(g.UrlInterpolation, g.VariableReference), literal(')')),
-    children => url(requireValueNode(children[1]))
+    (children, _fields, span) => withSourceSpan(url(requireValueNode(children[1])), span)
   );
   const RoutedVariableUrl = node(
     'Url',
     sequence(routed(), choice(g.UrlInterpolation, g.VariableReference), literal(')')),
-    children => url(requireValueNode(children[1]))
+    (children, _fields, span) => withSourceSpan(url(requireValueNode(children[1])), span)
   );
   const RoutedPlainUrl = node(
     'Url',
@@ -1191,19 +1187,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(urlBoundaryWhitespace),
       literal(')')
     )),
-    (_children, fields) => {
+    (_children, fields, span) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
         throw new TypeError('Less routed plain URL produced repeated body facts.');
       }
       const body = captured?.value;
-      if (body === undefined) {
-        return url(any(''));
-      }
-      if (isQuoted(body) || isInterp(body)) {
-        return url(body);
-      }
-      return url(any(requireTerminalText(body)));
+      return withSourceSpan(url(body === undefined
+        ? any('')
+        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
     }
   );
   const UrlTarget = choice(g.VariableUrl, g.PlainUrl);
@@ -1386,13 +1378,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const UseStatement = node<ModuleImport>(
     'ModuleImport',
     sequence(useKeyword, g.Quoted, optional(literal(';'))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const path = children[1];
       if (!isQuoted(path) || path.interp !== null) {
         throw new TypeError('Less @use requires a quoted module path.');
       }
       closeAmbientFunctions(state);
-      return moduleImport(path, 'use', null);
+      return withSourceSpan(moduleImport(path, 'use', null), span);
     }
   );
   const ImportStatement = node(
@@ -1454,11 +1446,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
             throw new LessImportPostludeError(span.start, span.end);
           }
           return withSourceSpan(
-            atRuleBlock('@media', tail, [styleImport(keyword.value, target, { options, mode: 'import' })]),
+            atRuleBlock('@media', tail, [withSourceSpan(styleImport(keyword.value, target, { options, mode: 'import' }), span)]),
             span
           );
         }
-        return styleImport(keyword.value, target, { options, mode: 'import' });
+        return withSourceSpan(styleImport(keyword.value, target, { options, mode: 'import' }), span);
       }
       return withImportSourceSpan(
         withImportTailStart(
