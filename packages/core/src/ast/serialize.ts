@@ -5147,10 +5147,13 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, refer
        * boundary (§7.1), and on the typed lane, which reads an argument of a call
        * written out as-is (`unknown((@a > 1))` is `unknown(true)`). Anywhere else
        * the value lane writes it ({@link writtenCondition}), so a group around it
-       * keeps its parens.
+       * keeps its parens; a reference naming it resolves to that one written
+       * value, so a group around the reference does not, and the condition it
+       * returns tells the group to read on the value lane, which writes it
+       * (`b: (@x)` with `@x: (@a > 2px)` is `(3px > 2px)`; ledger J20).
        */
       case 'Condition':
-        return typed || e.exprBoundary === true ? inner : reference;
+        return typed || e.exprBoundary === true || reference !== null ? inner : null;
       case 'Interpolation': {
         const first = inner.parts[0];
         return isComputationSplice(inner) && first !== undefined && 'ref' in first
@@ -5712,10 +5715,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * splice, so math it kept as written is still the kept expression; and a
        * group a reference reached or one around a reference, a conditional or a
        * computed mixin argument, so text in it keeps the parens
-       * ({@link isOpaqueText}). A call and math say their own type on this lane.
+       * ({@link isOpaqueText}). A call and math say their own type on this lane,
+       * and a written condition a reference names is written by it.
        */
       const inner = e.ev && (reached || (computation !== null && computation.type !== 'FunctionCall'
-        && computation.type !== 'Operation' && computation.type !== 'Expression'))
+        && computation.type !== 'Operation' && computation.type !== 'Expression' && computation.type !== 'Condition'))
         ? evalTypedSlot(node.value, frame, ctx)
         : evalValueSlot(node.value, frame, ctx);
 
