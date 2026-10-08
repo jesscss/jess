@@ -2136,10 +2136,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * have their own productions above; do not widen this value position into a
    * permissive raw list. The group is read once, and the token after its first
    * operand decides what it is, as in `FunctionConditionTerm`: `)` closes a
-   * math group, and a comparison continues it as a group around the `a > b`
-   * condition `if()` and `boolean()` read (`@x: (1px > 2px)` holds that group;
-   * written out, it keeps its parens and its variables substitute).
+   * math group, and a comparison, `and` or `or` continues it as a group around
+   * the condition `if()` and `boolean()` read, as does a leading `not`
+   * (`@x: (1px > 2px)`, `@x: ((1px > 2px) and (1 = 1))`, `@x: (not (1px > 2px))`
+   * hold that group; written out, it keeps its parens and its variables
+   * substitute). A term is the `FunctionConditionTerm` shape over a math
+   * operand: `not`?, an operand, an optional comparison.
    */
+  const parenConditionTerm = sequence(
+    optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
+    g.MathSum,
+    optional(sequence(functionConditionOperator, g.MathSum))
+  );
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
@@ -2148,8 +2156,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(
       literal('('),
       optional(whitespace),
-      g.MathSum,
-      optional(sequence(functionConditionOperator, g.MathSum)),
+      parenConditionTerm,
+      many(sequence(choice(functionConditionAnd, functionConditionOr), parenConditionTerm)),
       optional(whitespace),
       literal(')')
     )),

@@ -4197,24 +4197,51 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads and / or / not in a value paren group as a group around one condition', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@w: (1px > 2px and 1 = 1); @x: ((1px > 2px) and (1 = 1)); @y: (not (1px > 2px)); @z: (1 < 0 or 1 > 0 and 2 > 1); @v: (not);',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const cmp = (op: string, left: string, right: string) => ({ g: 'cmp', op, left: { src: left }, right: { src: right } });
+    const group = (guard: object) => ({ type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard } });
+    expect(result.value).toMatchObject({
+      rules: [
+        { name: 'w', value: group({ g: 'and', left: cmp('>', '1px', '2px'), right: cmp('=', '1', '1') }) },
+        { name: 'x', value: group({ g: 'and', left: cmp('>', '1px', '2px'), right: cmp('=', '1', '1') }) },
+        { name: 'y', value: group({ g: 'not', inner: cmp('>', '1px', '2px') }) },
+        { name: 'z', value: group({ g: 'or', left: cmp('<', '1', '0'), right: { g: 'and', left: cmp('>', '1', '0'), right: cmp('>', '2', '1') } }) },
+        { name: 'v', value: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'not' } } }
+      ]
+    });
+  });
+
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
     expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
   });
 
+  /*
+   * A comparison joined by `and` / `or` needs no group of its own in a value
+   * position, as in Less 4.x (lessc 4.9.1: `if(1 > 0 and 2 > 1, y, n)` is `y`);
+   * a `not` still takes a grouped operand.
+   */
   it('enforces Less function condition grouping for boolean() and if()', () => {
     const accepts = [
       'x: boolean(1 = 1);',
       'x: boolean(not (1 = 1));',
       'x: boolean((1 = 1) and (2 = 2));',
+      'x: boolean(1 = 1 and (2 = 2));',
       'x: if(1 = 1, yes, no);',
       'x: if(not (1 = 1), yes, no);',
-      'x: if((1 = 1) and (2 = 2), yes, no);'
+      'x: if((1 = 1) and (2 = 2), yes, no);',
+      'x: if(1 = 1 and (2 = 2), yes, no);',
+      'x: if((1 = 1) or (2 = 2) and (3 = 3), yes, no);'
     ];
     const rejects = [
       'x: boolean(not 1 = 1);',
-      'x: boolean(1 = 1 and (2 = 2));',
-      'x: if(not 1 = 1, yes, no);',
-      'x: if(1 = 1 and (2 = 2), yes, no);'
+      'x: if(not 1 = 1, yes, no);'
     ];
 
     for (const source of accepts) {

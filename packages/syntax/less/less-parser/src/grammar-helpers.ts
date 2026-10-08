@@ -2246,26 +2246,80 @@ function isMathOperand(value: unknown): value is ValueNode | LessMathRun {
   return isValueNode(value) || isLessMathRun(value);
 }
 
+/** A `not` token among a group's children; a value child never is one. */
+function isParenNot(value: unknown): boolean {
+  return !isMathOperand(value) && isFunctionConditionNot(value);
+}
+
+/** The `and` / `or` token joining two terms of a value paren group. */
+function parenLogicalWord(value: unknown): 'and' | 'or' | null {
+  if (typeof value !== 'object' || value === null || 'type' in value || !('value' in value) || typeof value.value !== 'string') {
+    return null;
+  }
+  const word = value.value.trim().toLowerCase();
+  return word === 'and' || word === 'or' ? word : null;
+}
+
+/**
+ * One term of a value paren group, read by the `FunctionConditionTerm` reducer:
+ * `not`?, an operand, and an optional comparison. An operand standing alone that
+ * is itself a group around a condition (`((a > b) and (c > d))`) is that
+ * condition, grouped, as `FunctionConditionParen` reads `(a > b)`.
+ */
+function parenConditionTermFrom(children: readonly unknown[], state: unknown): FunctionConditionFact {
+  const lead = children.filter(isParenNot);
+  const [left, right] = children.filter(isMathOperand);
+  if (right !== undefined) {
+    const operator = children.find(child => !isMathOperand(child) && guardOperatorText(child) !== null);
+    return functionConditionTermFrom([
+      ...lead,
+      functionConditionOperandFrom([left], state),
+      operator,
+      functionConditionOperandFrom([right], state)
+    ], [], state);
+  }
+  const value = lessMathInValue(left!, state);
+  const inner = value.type === 'Block' && value.delimiter === 'paren' && isValueNode(value.value) && value.value.type === 'Condition'
+    ? value.value
+    : null;
+  return functionConditionTermFrom([
+    ...lead,
+    inner === null ? value : { guard: inner.guard, src: functionConditionSource(value), grouped: true, hasComparison: true }
+  ], [], state);
+}
+
 /**
  * A value-position `Paren`'s reduction: a paren group around its content. One
- * operand is a math group. Two, with a comparison between them, are a group
- * around the `a > b` condition `if()` and `boolean()` read: the same term
- * reducer builds it, so `(a > b)` replays the same condition source whichever
- * production reads it, and a condition written into a value keeps the group's
- * parens. Its left operand is never a group fact, so the term reducer's
- * raw-children path is not reached.
+ * operand is a math group. Anything more is a group around the condition
+ * `if()` and `boolean()` read: terms joined by `and`, which binds tighter, and
+ * `or`, folded as `FunctionConditionAnd` / `FunctionConditionOr` fold them, so
+ * `(a > b)` replays the same condition source whichever production reads it,
+ * and a condition written into a value keeps the group's parens.
  */
 function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
-  const [left, right] = children.filter(isMathOperand);
-  if (right === undefined) {
-    return withSourceSpan(block(lessMathInGroup(left!, state)), span);
+  const operands = children.filter(isMathOperand);
+  if (operands.length === 1 && !children.some(isParenNot)) {
+    return withSourceSpan(block(lessMathInGroup(operands[0]!, state)), span);
   }
-  const operator = children.find(child => guardOperatorText(child) !== null);
-  const fact = functionConditionTermFrom([
-    functionConditionOperandFrom([left], state),
-    operator,
-    functionConditionOperandFrom([right], state)
-  ], [], state);
+  const ors: FunctionConditionFact[] = [];
+  let ands: FunctionConditionFact[] = [];
+  let term: unknown[] = [];
+  for (const child of children) {
+    const logical = parenLogicalWord(child);
+    if (logical === null) {
+      term.push(child);
+      continue;
+    }
+    ands.push(parenConditionTermFrom(term, state));
+    term = [];
+    if (logical === 'or') {
+      ors.push(foldFunctionCondition('and', ands));
+      ands = [];
+    }
+  }
+  ands.push(parenConditionTermFrom(term, state));
+  ors.push(foldFunctionCondition('and', ands));
+  const fact = foldFunctionCondition('or', ors);
   return withSourceSpan(block(condition(fact.guard, fact.src)), span);
 }
 
@@ -2282,9 +2336,6 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
   }
   let guard = first.guard;
   let src = first.src;
-  if (facts.some(fact => fact.hasComparison && !fact.grouped)) {
-    throw new TypeError('Less function condition comparisons must be grouped before logical operators.');
-  }
   let hasComparison = first.hasComparison;
   for (const right of facts.slice(1)) {
     guard = { g: kind, left: guard, right: right.guard };
