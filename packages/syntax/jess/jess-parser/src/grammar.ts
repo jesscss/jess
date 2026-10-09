@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { any, anonymousMixin, authoredSource, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
 import type { Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -309,6 +309,9 @@ type SharedSyntax = {
    */
   QueryPrelude: Combinator<ValueNode>;
 
+  /* Inherited from the CSS base: a function-form `<general-enclosed>`, kept as written. */
+  QueryFunction: Combinator<FunctionCall>;
+
   /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments and the `<an+b>` fact. */
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
@@ -366,6 +369,8 @@ type SharedSyntax = {
   CustomDoubleQuoted: Combinator<string>;
   QueryAndOr: Combinator<string>;
   QueryNot: Combinator<string>;
+  QueryGluedConnective: Combinator<string>;
+  LogicalNot: Combinator<string>;
   LogicalAnd: Combinator<string>;
   LogicalOr: Combinator<string>;
   QueryOnly: Combinator<string>;
@@ -1197,7 +1202,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const ExpressionNot = node<ExpressionFact>(
     'ExpressionNot',
     sequence(
-      g.QueryNot,
+      g.LogicalNot,
       literal('('),
       g.ExpressionLogical,
       literal(')')
@@ -1308,7 +1313,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'GuardPrimary',
     choice(
       sequence(
-        g.QueryNot,
+        g.LogicalNot,
         literal('('),
         g.MixinGuard,
         literal(')')
@@ -3666,13 +3671,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * A `@page` header is an optional page name followed by one or more
    * `<pseudo-page>`s — `:first`, `:left`, `:right`, `:blank` (css-page-3 §3).
    * They are header atoms, not selector syntax, so the whole header reduces to
-   * one `Any` joined without a separator — `@page wide:left` emits `wide:left`,
-   * byte-identical to the css/scss base (whose `@page` prelude is raw text). A
-   * spaced value list would instead emit `wide :left`, a valid-CSS byte
-   * divergence. `PagePseudo` mirrors the Less base's atom name and drives
-   * recognition; the header requires at least one pseudo so a bare page name
-   * (`@page wide`) still falls through to the query clause, and a generic query
-   * prelude keeps abandoning a stray top-level `:`.
+   * one `Any` of its authored bytes — `@page wide:left` emits `wide:left`,
+   * byte-identical to the css/scss base (whose `@page` prelude is raw text).
+   * No whitespace is allowed between the productions of a `<page-selector>`
+   * (css-page-3 §3), so `wide :left` matches no page and is written as authored
+   * too, never respaced either way. `PagePseudo` mirrors the Less base's atom
+   * name and drives recognition; the header requires at least one pseudo so a
+   * bare page name (`@page wide`) still falls through to the query clause, and
+   * a generic query prelude keeps abandoning a stray top-level `:`.
    */
   const PagePseudo = node<ValueNode>(
     'PagePseudo',
@@ -3682,10 +3688,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const pageHeader = node<ValueNode>(
     'PageHeader',
     sequence(optional(g.Keyword), oneOrMore(PagePseudo)),
-    children => any(children
-      .filter(isValueNode)
-      .map(value => value.type === 'Keyword' || value.type === 'Any' ? value.src : '')
-      .join(''))
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => any(authoredSource(span, state, 'A @page header'))
   );
   const atRulePreludeClause = choice(g.DottedAtRuleKeyword, pageHeader, g.AtRulePreludeClause);
   const AtRulePrelude = node<ValueNode | null>(
@@ -3798,7 +3801,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     choice(
       g.ContainerQueryInParens,
       g.QueryFeature,
-      g.ContainerStyleQuery
+      g.ContainerStyleQuery,
+      g.QueryFunction
     ),
     children => requireValueNode(children[0])
   );
@@ -3821,7 +3825,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          g.QueryAndOr,
+          choice(
+            g.QueryAndOr,
+            peek(g.QueryGluedConnective)
+          ),
           g.ContainerQueryAtom
         ))
       )
@@ -4131,11 +4138,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(')')
       )
     ),
-    children => children.length === 4
-      ? funcCall(
+    (children, _fields, span) => children.length === 4
+      ? withGluedKeywordSpan(funcCall(
           requireToken(children[0]).value,
           [requireInterpolation(children[2])]
-        )
+        ), span)
       : block(requireInterpolation(children[1]))
   );
   const SupportsNot = node<Keyword>(
@@ -4204,7 +4211,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         g.SupportsInParens,
         many(sequence(
-          g.SupportsLogical,
+          choice(
+            g.SupportsLogical,
+            peek(g.QueryGluedConnective)
+          ),
           g.SupportsInParens
         ))
       )
@@ -5450,7 +5460,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'IfGuardPrimary',
     choice(
       sequence(
-        g.QueryNot,
+        g.LogicalNot,
         literal('('),
         g.IfGuard,
         literal(')')

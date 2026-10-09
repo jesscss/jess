@@ -1,5 +1,5 @@
 import type { Trivia, TriviaMap } from '../types/index.js';
-import type { Expression } from './nodes.js';
+import type { Expression, FunctionCall, ValueNode } from './nodes.js';
 
 /**
  * Parser-authored source spans for canonical AST nodes.
@@ -618,6 +618,25 @@ export function withGeneralEnclosedTemplate<T extends object>(value: T): T {
 /** Whether the parser marked this value a `<general-enclosed>` interpolated template. */
 export function isGeneralEnclosedTemplate(value: object): boolean {
   return layouts.get(value)?.[generalEnclosedTemplateKey] === true;
+}
+
+/*
+ * A condition keyword glued to its `(`: `and(`, `or(`, `not(`. CSS reads it as
+ * one `<function-token>` (css-syntax-3 §4.3.4), so in a condition it is a
+ * `<general-enclosed>` call, never the keyword, and the condition matches
+ * nothing (media-queries-4 §3.2). The parser keeps it as that call, written as
+ * authored, with its span; the condition emitter warns there.
+ */
+const GLUED_CONDITION_KEYWORDS = new Set(['and', 'or', 'not']);
+
+/** Whether a condition operand is a glued `and(` / `or(` / `not(` call. */
+export function isGluedConditionKeyword(value: ValueNode): value is FunctionCall {
+  return value.type === 'FunctionCall' && GLUED_CONDITION_KEYWORDS.has(value.name.toLowerCase());
+}
+
+/** A glued condition keyword keeps its span: its warning points at it. */
+export function withGluedKeywordSpan<T extends ValueNode>(value: T, span: AstSourceSpan): T {
+  return isGluedConditionKeyword(value) ? withSourceSpan(value, span) : value;
 }
 
 /** The recorded source bytes of a structured `<general-enclosed>` group, if any. */

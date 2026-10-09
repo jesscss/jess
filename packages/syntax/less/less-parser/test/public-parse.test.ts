@@ -2896,7 +2896,10 @@ describe('public Less parse()', () => {
     ).toBe(
       '@media only screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container sidebar (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
-    expect(() => parse('@container selector(.card) { .card { color: red; } }')).toThrow(SyntaxError);
+
+    /* A function the container grammar does not define is `<general-enclosed>`, written as authored, as in css (ledger N17). */
+    expect(serialize(parse('@container selector(.card) { .card { color: red; } }')).css)
+      .toBe('@container selector(.card) {\n  .card {\n    color: red;\n  }\n}\n');
 
     /* A media type and a group side by side are one media query list, as in css and lessc 4.9.1. */
     expect(serialize(parse('@media screen (width > 10px) { .card { color: red; } }')).css)

@@ -66,7 +66,8 @@ export type JessErrorCode =
   | 'resolve/unused-variable'
   | 'selector/duplicate'
   | 'selector/parentless-ampersand'
-  | 'selector/comma-list-interpolation';
+  | 'selector/comma-list-interpolation'
+  | 'css/glued-condition-keyword';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -407,6 +408,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '${option} is not added to ${url}',
       reason: '${url} has an escaped body, which no URL option changes, so ${option} is not added to it.',
       fix: 'Write the URL as a quoted string, url("…"), to have ${option} added, or write it into the escaped string.'
+    }
+  ],
+  [
+    'css/glued-condition-keyword',
+    {
+      summary: '`${keyword}(` is read by CSS as a function, so this condition never matches — write `${keyword} (` if you meant the keyword',
+      reason: 'An identifier glued to "(" is one function token (CSS Syntax 3 §4.3.4), so `${keyword}(` is an unknown function, not the `${keyword}` keyword, and a condition holding it matches nothing (Media Queries 4 §3.2). It is written as authored.',
+      fix: 'Write `${keyword} (`, with a space, if you meant the keyword.'
     }
   ],
   [

@@ -267,22 +267,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@container with a boolean style() feature',
     group: 'at-rule',
-    source: '@container style(--x) { a { color: red } }',
-    brokenIn: ['less', 'jess'],
-    defect:
-      'css-conditional-5 lets a style feature be a bare custom-property name '
-      + '(true when its computed value is not the initial one); css and SCSS '
-      + 'accept `style(--x)`. Less and .jess require the `:` and a value.'
+    source: '@container style(--x) { a { color: red } }'
   },
   {
     id: '@container with an empty style() value',
     group: 'at-rule',
-    source: '@container style(--x:) { a { color: red } }',
-    brokenIn: ['jess'],
-    defect:
-      'A custom property may hold the empty value (css-variables-1 §2), and css, '
-      + 'Less and SCSS accept `style(--x:)` and `style(--x: )`. .jess rejects both '
-      + '(`Expected: ")"`).'
+    source: '@container style(--x:) { a { color: red } }'
   },
   {
     id: '@keyframes with percentage and to selectors',

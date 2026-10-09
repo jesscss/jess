@@ -361,10 +361,9 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * Strict at-rule preludes: a top-level bare `@variable` in a non-value at-rule
    * prelude/name/identifier is a fatal unsupported-syntax diagnostic (4.x only
-   * warned). These upstream 4.x fixtures use the bare form (`@media @smartphone`,
-   * `@media @smartphone`); the parser should recognize the removed form well
-   * enough to report the exact `@{…}` interpolation migration target, and a `@var`
-   * inside `(...)` stays valid. Kept running (asserted to fail) so a change to the
+   * warned). This upstream 4.x fixture uses the bare form; the parser should
+   * recognize the removed form well enough to report the exact `@{…}`
+   * interpolation migration target, and a `@var` inside `(...)` stays valid. Kept running (asserted to fail) so a change to the
    * ruling trips the marker; goldens are the external less.js 4.x oracle, unedited.
    * (layer.less GRADUATED — it uses the `@{layer-name}` interpolation form, not the
    * bare `@var` prelude, so it renders byte-identical to the maintained `.css`.)
@@ -373,9 +372,14 @@ const expectedFailureFixtures = new Map<string, string>([
     'tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less',
     'deprecated bare @var at-rule preludes/names/identifiers are rejected; use @{var} interpolation'
   ],
+
+  /*
+   * media.less used the bare form too; it now interpolates (`@media @{smartphone}`)
+   * and fails on three other lines, untriaged.
+   */
   [
     'tests-unit/media/media.less',
-    'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
+    'three lines differ from the golden: the escaped feature value `~"2/1"` is written as authored (`2/1`, golden `2 / 1`), `(min-width: (@some-var + 1))` is evaluated (`61px`, golden `(60px + 1)`), and the `@media` a mixin call places inside `@media (min-width: 768px)` is indented (golden writes it at column 0)'
   ],
 
   /*

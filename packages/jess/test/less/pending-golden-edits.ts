@@ -280,6 +280,28 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       '.mixin {\n  height: 10px;\n  color: red;\n}\n.test-rule-f {',
       '.mixin {\n  height: 10px;\n  color: red;\n}\nbody {\n  width: 100%;\n}\n.test-rule-f {'
     ]
+  ]],
+
+  /*
+   * A glued `and(` / `size(` is one function token (css-syntax-3 §4.3.4): a
+   * `<general-enclosed>` condition, never `and` / a container name before a
+   * group, so it is written as authored (ledger N17). Spacing it changes what
+   * the query means (media-queries-4 §3; css-conditional-5 `@container`).
+   */
+  ['tests-unit/media/media.less', [
+    // OWNER-ACCEPTED 2026-10-09 (glued condition keywords as authored)
+    ['@media screen and (max-width: 1280px) {', '@media screen and(max-width: 1280px) {'],
+
+    /*
+     * No whitespace is allowed inside a `<page-selector>` (css-page-3 §3), so
+     * `Test :first` matches no page; the authored `Test:first` is written as is.
+     */
+    // OWNER-ACCEPTED 2026-10-09 (page selector as authored)
+    ['@page Test :first {', '@page Test:first {']
+  ]],
+  ['tests-unit/container/container.less', [
+    // OWNER-ACCEPTED 2026-10-09 (glued condition keywords as authored)
+    ['@container size (min-width: 60ch) {', '@container size(min-width: 60ch) {']
   ]]
 ]);
 
