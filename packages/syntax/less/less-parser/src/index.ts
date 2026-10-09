@@ -11,6 +11,7 @@ export {
   LessImportPostludeError,
   LessInlineJavaScriptError,
   LessLeadingSeparatorValueError,
+  LessMixinArgumentError,
   LessParseError,
   LessSourceImportSyntaxError,
   LessUncalledMixinReferenceError,

@@ -6725,6 +6725,7 @@ describe('Less AST grammar facts', () => {
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
 
+    /* Each comma run is stored as the `~( … )` node (ledger P45). */
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -6740,24 +6741,34 @@ describe('Less AST grammar facts', () => {
               args: [
                 {
                   value: {
-                    type: 'List',
-                    sep: ',',
-                    value: [
-                      { type: 'Keyword', src: 'a' },
-                      { type: 'Keyword', src: 'b' },
-                      { type: 'Keyword', src: 'c' }
-                    ]
+                    type: 'Block',
+                    delimiter: 'paren',
+                    escaped: true,
+                    value: {
+                      type: 'List',
+                      sep: ',',
+                      value: [
+                        { type: 'Keyword', src: 'a' },
+                        { type: 'Keyword', src: 'b' },
+                        { type: 'Keyword', src: 'c' }
+                      ]
+                    }
                   }
                 },
                 {
                   value: {
-                    type: 'List',
-                    sep: ',',
-                    value: [
-                      { type: 'Keyword', src: 'a' },
-                      { type: 'Keyword', src: 'b' },
-                      { type: 'Keyword', src: 'c' }
-                    ]
+                    type: 'Block',
+                    delimiter: 'paren',
+                    escaped: true,
+                    value: {
+                      type: 'List',
+                      sep: ',',
+                      value: [
+                        { type: 'Keyword', src: 'a' },
+                        { type: 'Keyword', src: 'b' },
+                        { type: 'Keyword', src: 'c' }
+                      ]
+                    }
                   }
                 }
               ]

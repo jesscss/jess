@@ -1175,6 +1175,59 @@ describe('targeted round trip: the converted sheet answers the .jess default', (
   });
 });
 
+/*
+ * Less's `;` rule (owner 2026-10-09, ledger P45) stores each comma run of a `;`
+ * mixin list as the node `~( … )` builds, so a `;` list converts exactly as its
+ * escaped spelling does. `.jess` has no spelling for that node yet and the
+ * converter names it, so these round trips are held by that one gap, not by the
+ * `;` form: the `.less` arm renders, and both spellings name the same gap.
+ */
+describe('targeted round trip: a `;` mixin list converts as its `~( … )` spelling', () => {
+  const TAKES = '.t1(@a) { one: @a; }\n.t2(@a; @b) { one: @a; two: @b; }\n';
+  const gapsOf = (source: string): string[] => {
+    try {
+      emitJess(parseLess(source), { functions: LESS_FUNCTIONS });
+      return [];
+    } catch (error) {
+      if (!(error instanceof NoJessSpelling)) {
+        throw error;
+      }
+      return error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
+    }
+  };
+  const render = async (source: string) => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+    expect(result.errors).toEqual([]);
+    return result.css.replace(/\s+/g, ' ').trim();
+  };
+  const ESCAPED_BLOCK_GAP = 'Block: escaped `~( … )` block: no `.jess` production';
+
+  it.each([
+    ['.x { .t2(@a : a; @b : b, c); }', '.x { .t2(@a: a, @b: ~(b, c)); }', '.x { one: a; two: b, c; }'],
+    ['.x { .t2(@a : d, e; @b : f); }', '.x { .t2(@a: ~(d, e), @b: f); }', '.x { one: d, e; two: f; }'],
+    ['.x { .t2(o, p; q); }', '.x { .t2(~(o, p), q); }', '.x { one: o, p; two: q; }'],
+    ['.x { .t2(r, s; t;); }', '.x { .t2(~(r, s), t); }', '.x { one: r, s; two: t; }'],
+    ['.x { .t1(m, n;); }', '.x { .t1(~(m, n)); }', '.x { one: m, n; }'],
+    [
+      '.d(@c; @p; @m: 2, 2, 2, 2) { margin: @m; }\n.x { .d(#33acfe; 4); }',
+      '.d(@c, @p, @m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(#33acfe, 4); }',
+      '.x { margin: 2, 2, 2, 2; }'
+    ],
+    ['.d(@m: 2, 2, 2, 2;) { margin: @m; }\n.x { .d(); }', '.d(@m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(); }', '.x { margin: 2, 2, 2, 2; }']
+  ])('%s', async (semicolons, escaped, expected) => {
+    expect(await render(TAKES + semicolons)).toBe(expected);
+    expect(await render(TAKES + escaped)).toBe(expected);
+    expect(gapsOf(TAKES + semicolons)).toEqual([ESCAPED_BLOCK_GAP]);
+    expect(gapsOf(TAKES + escaped)).toEqual([ESCAPED_BLOCK_GAP]);
+  });
+
+  it('converts a `;` list that holds no comma run', () => {
+    expect(emitJess(parseLess(`${TAKES}.x { .t2(@a: h; @b: i;); }`), { functions: LESS_FUNCTIONS }))
+      .toBe(emitJess(parseLess(`${TAKES}.x { .t2(@a: h, @b: i); }`), { functions: LESS_FUNCTIONS }));
+  });
+});
+
 describe('equivalence ratchet', () => {
   it('every fixture matches its KNOWN entry (or passes when unlisted)', () => {
     const drift: string[] = [];

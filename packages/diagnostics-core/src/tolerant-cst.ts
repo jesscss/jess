@@ -307,6 +307,10 @@ const MIXIN_DEFINITION_TYPES = new Set([
   'MixinDefinitionRule',
   'MixinOrQualifiedRule'
 ]);
+
+/** A Less mixin argument/parameter list, and the item nodes it holds between its separator leaves. */
+const LESS_MIXIN_LIST_TYPES = new Set(['MixinInterior', 'MixinArguments']);
+const LESS_MIXIN_LIST_ITEM_TYPES = new Set(['MixinBinding', 'MixinRestParam', 'MixinArgument']);
 const ATRULE_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
@@ -714,6 +718,58 @@ function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
 function isQuotedCstNode(node: CssCstNode): boolean {
   return node.grammarType === 'Quoted';
 }
+
+function hasLeafChild(node: CssCstNode, value: string): boolean {
+  return cstChildrenOf(node).some(child => child._tag === 'leaf' && child.value === value);
+}
+
+/**
+ * The items of a Less mixin list that its `;` makes invalid (ledger P45). A list
+ * holding a `;` folds every `,` into a comma-list value: a `@name:` may only lead
+ * such a value, and a spread or rest cannot be part of one. Read from the list's
+ * own item nodes and separator leaves, in source order.
+ */
+function lessMixinListProblems(list: CssCstNode): { readonly item: CssCstNode; readonly problem: 'named' | 'rest' }[] {
+  if (!hasLeafChild(list, ';')) {
+    return [];
+  }
+  const problems: { item: CssCstNode; problem: 'named' | 'rest' }[] = [];
+  let group: CssCstNode[] = [];
+  const closeGroup = () => {
+    if (group.length > 1) {
+      group.forEach((item, index) => {
+        if (item.grammarType === 'MixinRestParam' || (item.grammarType === 'MixinBinding' && hasLeafChild(item, '...'))) {
+          problems.push({ item, problem: 'rest' });
+        } else if (index > 0 && item.grammarType === 'MixinBinding' && hasLeafChild(item, ':')) {
+          problems.push({ item, problem: 'named' });
+        }
+      });
+    }
+    group = [];
+  };
+  for (const child of cstChildrenOf(list)) {
+    if (isCstNode(child) && LESS_MIXIN_LIST_ITEM_TYPES.has(child.grammarType)) {
+      group.push(child);
+    } else if (child._tag === 'leaf' && child.value === ';') {
+      closeGroup();
+    }
+  }
+  closeGroup();
+  return problems;
+}
+
+const LESS_MIXIN_LIST_PROBLEMS = {
+  named: {
+    message: 'A named argument must start its ;-separated argument.',
+    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A name can only begin an argument.',
+    fix: 'Put a ";" before the named argument.'
+  },
+  rest: {
+    message: 'A spread or rest argument cannot be part of a comma list.',
+    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A spread or rest is not a value.',
+    fix: 'Separate it from the comma list with ";".'
+  }
+} as const;
 
 function forwardPreludeOf(node: CssCstNode, src: string): string | null {
   let afterPath = false;
@@ -5519,6 +5575,21 @@ export function cstLintDiagnostics(
           fix: `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`
         }
       );
+    }
+
+    /*
+     * The strict AST raises the FIRST item a `;` makes invalid in a mixin list;
+     * this twin reports every one, each at its own item (ledger P45).
+     */
+    if (language === 'less' && LESS_MIXIN_LIST_TYPES.has(gt)) {
+      for (const { item, problem } of lessMixinListProblems(node)) {
+        const text = LESS_MIXIN_LIST_PROBLEMS[problem];
+        pushDiagnostic('parse/invalid-mixin-argument', 'error', text.message, item.span, {
+          phase: 'parse',
+          reason: text.reason,
+          fix: text.fix
+        });
+      }
     }
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;

@@ -2456,4 +2456,17 @@ describe('collectTolerantDiagnostics', () => {
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
   });
+
+  it('reports every item a `;` makes invalid in a Less mixin list, each at its item (P45)', () => {
+    const source = '.x { .t(@a: 1, @b: 2; c, @d...); @r: .t(a, b; c, ...); .ok(@a: 1, @b: 2); }';
+    const found = collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === 'parse/invalid-mixin-argument')
+      .map(diagnostic => [diagnostic.message, source.slice(diagnostic.start, diagnostic.end)]);
+
+    expect(found).toEqual([
+      ['A named argument must start its ;-separated argument.', '@b: 2'],
+      ['A spread or rest argument cannot be part of a comma list.', '@d...'],
+      ['A spread or rest argument cannot be part of a comma list.', '...']
+    ]);
+  });
 });
