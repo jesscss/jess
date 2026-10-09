@@ -29,15 +29,35 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 - 2026-10-09 — implementation note, moved from the row: **Fixed (2026-10-05, `lane/v5-4-serialize-eval`):** early publication does not count as a load (a nested `set` compose it was observed on is now the not-top-level error, owner 2026-10-09).
 
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"`@compose` is different because it can't be nested in other rulesets and such"* (owner 2026-10-09): A `@compose`/`@-compose` anywhere but the top level of a stylesheet — inside a ruleset, an at-rule block, a mixin, detached-ruleset, guard or loop body, or in a sheet `@import`ed into one of those — is the error `compose/not-top-level` at the compose; `@import` and `@use` nesting are unchanged.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"`@compose` is different because it can't be nested in other rulesets and such"* (owner 2026-10-09): The 2026-10-05 clause of (a), "a plain compose nested in a rule or at-rule that comes before a document-root `set` compose of the same identity loads first, so that `set` is rejected too", is void: such a compose is now the not-top-level error.
+
 ## J13
 
 - 2026-10-09 — agent rationale, moved from the row (the clause is now attributed to the owner's 2026-10-09 words): The owner's 2026-07-23/24 rule is that a `&` glued to a name is Less concatenation, not CSS nesting: CSS nesting reads `.block { &__el {} }` as `&` then the type selector `__el`, and a browser drops `&-1`, so the authored form is silently dead CSS.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"doesn't form a new name, so it's a plain reference to the parent, which follows CSS nesting"* and the accepted written forms (owner 2026-10-09): A `&` is a plain reference to its parent, `:is(parent)`, as in CSS nesting; it builds a name only where the text glued after it and the parent's last simple fuse into one identifier (`&__el`, `&-x`).
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"doesn't form a new name, so it's a plain reference to the parent, which follows CSS nesting"* and the accepted written forms (owner 2026-10-09): Under a parent of several compounds, the compound that opens the selector (nothing before it, not even a combinator) writes the parent in place, the compound's other simples joined to the parent's LAST compound with a type or universal selector leading it: `&::before` gives `P::before`, `div&` under `.a .b` gives `.a div.b` — the meaning and specificity of `.active:is(P)`, written without the one-item `:is()` around a leading parent.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"doesn't form a new name, so it's a plain reference to the parent, which follows CSS nesting"* and the accepted written forms (owner 2026-10-09): Anywhere else the parent stays one unit, since `A B + A B` is not `:is(A B) + :is(A B)`: `.c &` → `.c :is(.a .b)`, `& + &` → `.a .b + :is(.a .b)`, `.c &.x` → `.c :is(.a .b).x`, `&&` → `.a .b:is(.a .b)`, `:not(.c &)` → `:not(.c :is(.a .b))`; so does a parent whose last compound names an element where the glued simple does too (`div&` under `.a span` → `div:is(.a span)`).
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"doesn't form a new name, so it's a plain reference to the parent, which follows CSS nesting"* and the accepted written forms (owner 2026-10-09): A name built on a parent of several compounds is placed the same way (`&__el` → `.a .b__el`, `.c &-x` → `.c :is(.a .b-x)`). A single-compound parent is written as before (`.x&` → `.x.a`). Each parent of several compounds in a list a `&` distributes over follows the same rule; a list holding a parent that ends with a pseudo-element keeps every parent as written (O10's parent amendment, O17: `:is()` cannot hold it).
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"doesn't form a new name, so it's a plain reference to the parent, which follows CSS nesting"* and the accepted written forms (owner 2026-10-09): Extend composes the same selector (X5), so `.a .b { .c & {} }` is extended as `.c :is(.a .b)`; an alternative an extend splits out of a one-arm `:is()` that does not lead its selector keeps that `:is()` (`.c :is(.a .b)` + `#z:extend(.a all)` → `.c :is(#z .b)`), and one that leads is written in place (`:is(.c.k, .z) .d` + `.p .q:extend(.c all)` → `.p .q.k .d`); an `:is()` of several arms keeps J11. The default nested output writes a `&` that references its parent as authored.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"&-1, &__el, &1, &-el, these all flatten / combine & and their suffix, regardless of nest flattening settings."* (owner 2026-10-09): A rule whose `&` builds a name (`&__el`, `&--mod`, `&-x`, `&-1`, `&2`, `&@{x}`, `.scss` `&` then `__el`) is written flattened in nested output, the name built. It is written where it stands: it rises out of every open rule block, inside the at-rules it is in, and those blocks are closed before it and opened again after it, so the nested output keeps the collapsed output's order and cascade (`.btn { &--primary { color: white } color: black }` → `.btn--primary { color: white; } .btn { color: black; }`); its children are written under the built name, flattened; a part of a block left empty is dropped, and when the rule writes nothing the blocks stay whole.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"how do you know it's a prefix? that's why we can't do that"* (owner 2026-10-09): In `.fruit-cap-&` over an ident-led parent, `.fruit-cap-` is a complete class and the `&` is a parent reference, as in `.active&`. Only a suffix glued after a `&` builds a name.
 
 ## J16
 
 - 2026-10-09 — implementation note, moved from the row: The text value carries the group in its `groups` field (`value-eval.ts` `Any.groups`; `emitValue`/`writtenText` write it, `readText` reads without it).
 
 - 2026-10-09 — agent judgment 2026-10-09, awaiting owner (the SCSS reading has no owner words): A `.scss` unquoted string is text inside a calculation and, from a call in a group that math reads, outside one (`(unquote("1px + 2px")) * 2` → `calc((1px + 2px) * 2)`); its group is written only in math, and any other `.scss` keyword in a group is an identifier (`(foo) * 2` stays `(foo) * 2`, `$g * 2` with `$g: (foo)` is `foo * 2`).
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"everywhere that is text should print AS WRITTEN"* (owner 2026-10-09): a paren group the author wrote around an escaped string is written wherever the text is written — a declaration value (`d: (~"a b")` → `(a b)`, `(e("foo"))` → `(foo)`), a list item (`(e("x")), (~"y") 1px` → `(x), (y) 1px`), a call written out as-is (`foo((e("x")))` → `foo((x))`), a group around a reference (`c: (@s)` with `@s: ~"a b"` → `(a b)`), a variable read (`b: @a` with `@a: (e("1px + 2px"))` → `(1px + 2px)`), a mixin argument (`.m((e("1px + 2px")))` with `n: calc(2 * @x)` → `calc(2 * (1px + 2px))`), and math (`calc((1px + 2px) * 2)`). The group is dropped only where the text is spliced or read: selector and property interpolation (`.x-@{a}` → `.x-x`), string interpolation (`"@{a}"` → `"x"`), and a callable reading its argument (`escape((e("a b")))` → `a%20b`).
 
 ## X7
 
@@ -48,6 +68,8 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 - 2026-10-09 — implementation note, moved from the row: Implementation: `serialize.ts` `refGroupInterp` (only a `*[…]` capture is a group).
 
 - 2026-10-09 — golden bookkeeping, moved from the row: The parse-interpolation edits the owner accepted 2026-10-09 are registered in `pending-golden-edits.ts`.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"everywhere that is text should print AS WRITTEN"*; *"in Less, we promise ~"" as a 'dump whatever you want as-is'"* (owner 2026-10-09): (a) applies to STRUCTURED lists only — a `*[…]` capture and a written list. Escaped text (`~'…'`, `e()`, an escaped interpolated template) used in a selector is printed exactly as written and never read as selector syntax: no splitting into branches (`.m { @{s} {} }` with `@s: ~".s1, .s2"` is `.s1, .s2` on one line nested, `.m .s1, .s2` collapsed), no `:is()` wrapping (`.q@{s}&:hover` is `.q.a, .b, .c&:hover`, `@{c}@{d}` with `~'.a, .b'`, `~'.c, .d'` is `.a, .b.c, .d`), and no `&` substitution inside it (`input.quoted { @{t} {} }` with `@t: ~'&[class="text"], &.text'` is `input.quoted &[class="text"], &.text` collapsed). A lone text extender appends its text as one branch (`@s: ~".q, .w"; @{s}:extend(.z) {}` gives `.z,` / `.q, .w`, in the root sheet as from an imported sheet or a mixin). (b) stands. A structural interpolation part inside a name (`.col@{infix}`) is still part of that name.
 
 ## N11
 
@@ -61,6 +83,8 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 - 2026-10-09 — agent judgment 2026-10-09, awaiting owner (scope of the warning): **Exempt:** conditions the compiler evaluates and never writes — Less guards (`when (@a) and(@b)`, `when not(@a)`), `if()` / `boolean()` arguments, Sass `@if` and `not()`, `.jess` guards and `$if` — keep reading `and(` / `not(` as the keyword before a group (`LogicalNot` / `LogicalAnd` / `LogicalOr`) and do not warn. **Not covered (no structure to warn from):** the raw-text `@import` tail in css, Less and `.jess`, and `@custom-media`, are written as authored without a warning; so is a glued keyword among the component values of a media `<general-enclosed>` group (`@media ((a) and(b))`).
 
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"output them as authored BUT give a warning for and( / or( / not("* (owner 2026-10-09): **A condition keyword glued to its `(` — `and(`, `or(`, `not(`, in any case — is a `<general-enclosed>` function in every CSS condition (`@media`, `@container`, `@supports`, in all four dialects), written exactly as authored, with one `css/glued-condition-keyword` warning where it is written.** An identifier immediately followed by `(` is one `<function-token>` (CSS Syntax 3 §4.3.4), so `and(` / `or(` / `not(` is never the keyword. Media Queries 4 §3 requires whitespace between `not` / `and` / `or` and a following `(`, and a query that does not match the grammar is `not all` (§3.2), so `@media screen and(max-width: 1280px)` never applies. In CSS Conditional 5 `@container`, `size(min-width: 60ch)` is `<general-enclosed>` (unknown, false) while `size (min-width: 60ch)` is the container name `size` and a size query; `@supports not(display: grid)` is `<general-enclosed>`, and Chrome drops `@supports (a) and(b) {…}`. A space inserted there changes what the author's condition means, so it is never inserted.
+
 ## P2
 
 - 2026-10-09 — history, moved from the row: **Restored 2026-10-09 (`fix/v5-custom-property-literal`):** 849d09a1b (2026-07-27) had made the Less custom-property value read a bare `@var` as a variable, so `@c: red; --x: @c` gave `--x: red` and `--x: @nope` was an eval error; the owner reaffirmed this row on 2026-10-09.
@@ -70,6 +94,10 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 - 2026-10-09 — implementation note, moved from the row: The fallback keeps its own production (less grammar `VarFallbackPart`/`VarFallbackInnerPart`/`VarFallbackGroup`), unchanged in behaviour from before this fix: variable reads and `@{…}` resolve, and nothing computes.
 
 - 2026-10-09 — state and fixture bookkeeping, moved from the row (the fixture-source decision was relayed from the owner 2026-10-09; no verbatim words in tree): Valid CSS `--x: @c` now emits the same bytes in all four dialects (SEMANTIC-INVARIANTS 4). Pinned in `packages/jess/test/custom-property-literal.test.ts`; the two fixtures that wrote a bare `@var` in a custom property move their SOURCES to the v5 spelling `@{var}` and keep their goldens' real values (owner 2026-10-09): bootstrap4 through the `bootstrap-less-port` patch (`_root.less`), `tests-config/namespacing/namespacing-8` through the less.js fork test-data, with a temporary edit in `packages/jess/test/less/pending-golden-edits.ts` until that lands. SCSS (`#{}` only) and `.jess` (`${}` only) already kept a bare variable literal.
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"A `@c` in a custom property is output AS-IS"* (owner 2026-10-09): A Less custom-property value yields literal text and `@{…}` parts only, so a bare `@var`, `@@var`, `@m[k]`, a call, math and an escape are written as authored and never looked up — in a custom-property declaration (a `var()` written inside it included: `--y: var(--x, @c)` stays as is) and in a `style()` or `@supports` custom-property value alike (`--x: @{c}` → `--x: red`).
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"it's a CSS function"* (owner 2026-10-09): A Less variable in an ordinary-declaration `var()` fallback is read as in `rgb(@r, 0, 0)`; `var(--x, calc(@c + 1px))` → `calc(red + 1px)`.
 
 ## P46
 
@@ -86,3 +114,7 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 ## A18
 
 - 2026-10-09 — implementation note, moved from the row: The option is not on a Jess-native surface (`input` entries); the Jess-only `'error'` value is gone. The less.js wrapper accepts `strictImports` and `lessc --strict-imports` and passes them through.
+
+## J14
+
+- 2026-10-09 — derivation (agent, 2026-10-09) from *"once counts per scope, if the output would be different"* (owner 2026-10-09): A scope is the OUTPUT CONTEXT the copy renders into: the chain of rule selectors and at-rule preludes from the root (the empty context) to the import, each written as the walk writes it — a rule's selector list, an at-rule's resolved prelude (`@media (max-width: @w)` with `@w: 768px` is `@media (max-width: 768px)`). A re-import whose copy would land in the same output context as a copy already placed is a no-op; another context places its own copy. `.a { @import "t"; } .a { @import "t"; }` and `@media print { @import "t"; } @media print { @import "t"; }` place one copy; `.a { … } .b { … }`, `@media print` and `@media screen`, and `.a` and `.x .a` place one each. A rule whose selector is interpolated, and a composed module's root, are each a context of their own. A mixin call, applied ruleset, detached-ruleset call or loop iteration imports into the context it runs in, and an imported sheet's root belongs to its importer's.
