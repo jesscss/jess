@@ -222,8 +222,9 @@ includes ordinary declaration values and media feature values:
 
 A custom property's value is CSS text. Less 5.x writes it exactly as you wrote
 it and adds only `@{…}` interpolation, so a bare variable is **no longer
-replaced** — Less 4.x replaced it. This also holds in a `var()` fallback and in
-a `style()` query value. Write `@{…}` where you want the variable's value:
+replaced** — Less 4.x replaced it. This also holds in a `style()` query value
+and for a `var()` written inside a custom property. Write `@{…}` where you want
+the variable's value:
 
 ```less
 @brand: #0af;
@@ -232,13 +233,16 @@ a `style()` query value. Write `@{…}` where you want the variable's value:
   --x: @brand;                // 5.x: --x: @brand;   (4.x: --x: #0af;)
   --y: @{brand};              // 5.x: --y: #0af;
   --z: calc(@{brand} + 1px);  // 5.x: --z: calc(#0af + 1px);
-  color: var(--x, @{brand});  // 5.x: color: var(--x, #0af);
+  color: var(--x, @brand);    // 5.x: color: var(--x, #0af);
 }
 ```
 
 Because the variable is never looked up, an undefined `@name` in a custom
 property is written as is rather than reported. Escapes (`~"…"`), function calls
 and math in a custom property are written as they are, too.
+
+In an ordinary declaration such as `color` above, `var()` is a CSS function: its
+fallback is an argument, so a bare variable there is still replaced.
 
 ## `extend` and the `!all` flag
 

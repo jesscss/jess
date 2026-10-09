@@ -431,12 +431,16 @@ describe('Less math boundaries', () => {
     expect(await render('@media (min-width: 2*3px) { .y { k: 1; } }')).toBe('@media (min-width: 6px) { .y { k: 1; } }');
   });
 
-  /* Ledger P2: only `@{…}` interpolates in a <declaration-value>; a bare `@a` is text. */
+  /*
+   * Ledger P2: in a style() value only `@{…}` interpolates and a bare `@a` is
+   * text. An ordinary declaration's var() is a CSS function, so its fallback
+   * reads `@a`; neither computes.
+   */
   it('leaves a <declaration-value> payload literal: style() and var() fallbacks', async () => {
     expect(await render('@a: 3; @container style(--x: @a * 2) { .y { k: 1; } } @container style(--x: @{a} * 2) { .y { k: 1; } }'))
       .toBe('@container style(--x: @a * 2) { .y { k: 1; } } @container style(--x: 3 * 2) { .y { k: 1; } }');
-    expect(await render('@a: 3; .x { w: var(--y, @a * 2); i: var(--y, @{a} * 2); v: var(--y, 4 / 2 + 5em); }'))
-      .toBe('.x { w: var(--y, @a * 2); i: var(--y, 3 * 2); v: var(--y, 4 / 2 + 5em); }');
+    expect(await render('@a: 3; .x { w: var(--y, @a * 2); v: var(--y, 4 / 2 + 5em); }'))
+      .toBe('.x { w: var(--y, 3 * 2); v: var(--y, 4 / 2 + 5em); }');
     expect(await render('.x { w: var(--y, 1/2); }', { mathMode: 'always' })).toBe('.x { w: var(--y, 1/2); }');
   });
 });

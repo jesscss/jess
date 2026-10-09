@@ -89,7 +89,7 @@ type RulesetTailFact = {
   readonly bodySpan?: SourceSpan;
   readonly terminated?: true;
 };
-type CustomValuePart = string | InterpolationFact | readonly CustomValuePart[];
+type CustomValuePart = string | InterpolationFact | Lookup | readonly CustomValuePart[];
 type EnclosedNameFact = { readonly name: string };
 type FunctionConditionFact = {
   readonly guard: MixinGuard;
@@ -1079,6 +1079,9 @@ function customValueFromParts(parts: readonly CustomValuePart[], triviaLog: read
     } else if (isInterpolationFact(part)) {
       hasInterpolation = true;
       interpolationParts.push({ ref: part.ref, unquote: true });
+    } else if (isVarRef(part)) {
+      hasInterpolation = true;
+      interpolationParts.push({ ref: part, unquote: false });
     } else {
       throw new TypeError('Less custom value retained an untyped grammar part.');
     }
@@ -1149,6 +1152,8 @@ function customPartsFromChildren(children: readonly unknown[]): CustomValuePart[
   const parts: CustomValuePart[] = [];
   for (const child of children) {
     if (isInterpolationFact(child)) {
+      parts.push(child);
+    } else if (isVarRef(child)) {
       parts.push(child);
     } else if (Array.isArray(child)) {
       parts.push(customPartsFromChildren(child));

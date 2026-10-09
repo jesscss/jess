@@ -343,11 +343,12 @@ Less 4.x stopped with an error on `percentage(~"@{x}")`. To compute with a value
 | `--y: calc(@c + 1px);` | `--y: calc(red + 1px);` | `--y: calc(@c + 1px);` |
 | `--y: ~"red";` | `--y: red;` | `--y: ~"red";` |
 | `--z: percentage(0.5);` | `--z: 50%;` | `--z: percentage(0.5);` |
-| `a: var(--x, @c);` | `a: var(--x, red);` | `a: var(--x, @c);` |
 | `a: var(--x, e("red"));` | `a: var(--x, red);` | `a: var(--x, e("red"));` |
 | `a: var(--x, (1px + 2px));` | `a: var(--x, 3px);` | `a: var(--x, (1px + 2px));` |
 
-A `var()` fallback and the value in a `style()` query (`@container style(--x: @{c})`) are read the same way. Because the variable is never looked up, an undefined one is not an error: `--x: @nope` is written as is, where Less 4.x stopped with `variable @nope is undefined`. To compute the value, compute it in a variable and interpolate the variable: `@p: percentage(0.5); .a { --z: @{p}; }` gives `--z: 50%`.
+The value in a `style()` query (`@container style(--x: @{c})`) is read the same way, and so is a `var()` written inside a custom property (`--y: var(--x, @c)` is written as is). Because the variable is never looked up, an undefined one is not an error: `--x: @nope` is written as is, where Less 4.x stopped with `variable @nope is undefined`. To compute the value, compute it in a variable and interpolate the variable: `@p: percentage(0.5); .a { --z: @{p}; }` gives `--z: 50%`.
+
+In an ordinary declaration, `var()` is a CSS function, so its fallback is an argument and a Less variable in it is still replaced: `color: var(--x, @c)` gives `color: var(--x, red)`. Escapes, function calls and math in a fallback are written as they are, as the last two rows of the table show.
 
 CSS has no `//` comment, so `//` inside a custom property is part of the value:
 
@@ -558,7 +559,7 @@ Migration guidance:
 
 1. Upgrade on a feature branch and run your full Less compile + snapshot diff suite.
 2. Resolve parser/runtime deprecation warnings first, then look at every `eval/unexpressible-unit` warning: each marks math Less 4.x guessed at and Less 5.x keeps as `calc()`.
-3. Search custom properties (`--name: …`), `var()` fallbacks and `style()` queries for a bare `@variable`: Less 5.x writes it as is, with no warning, so write `@{variable}` where you want its value.
+3. Search custom properties (`--name: …`) and `style()` queries for a bare `@variable`: Less 5.x writes it as is, with no warning, so write `@{variable}` where you want its value.
 4. Re-test nesting and `extend` output in selector-heavy code.
 5. Verify plugin behavior, especially if JS execution was used previously.
 6. Reconfirm source-map and minification outputs in CI.
