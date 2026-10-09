@@ -1,10 +1,5 @@
-import {
-  type IRecognitionException,
-  type ILexingError,
-  type ILexingResult
-} from 'chevrotain';
 import type { Deprecation } from '../deprecation.js';
-import { type JessErrorCode, type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
+import { type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
 import { INJECTED_TEXT_NOTE, authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
 import {
   JessError,
@@ -47,10 +42,6 @@ export interface ErrorDiagnostic {
    * (error line + before/after context), e.g. `{ 55: 'before', 56: 'err', 57: 'after' }`.
    */
   lines?: Record<number, string>;
-
-  // Raw error data (for parser/lexer errors)
-  errors?: ReadonlyArray<IRecognitionException | JessError>;
-  lexerErrors?: ILexingResult['errors'];
 }
 
 /**
@@ -684,9 +675,7 @@ export function makeJessErrorFromDiagnostic(
     endColumn: diagnostic.endColumn,
     reason: diagnostic.reason,
     fix: diagnostic.fix,
-    note: diagnostic.note,
-    errors: diagnostic.errors,
-    lexerErrors: diagnostic.lexerErrors
+    note: diagnostic.note
   });
 }
 
@@ -1131,99 +1120,13 @@ export const WARN = {
   }
 };
 
-/* =========================
- * Chevrotain adapter
- * ========================= */
-
-function hasObjectShape(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function isLexerError(
-  error: IRecognitionException | ILexingError | JessError
-): error is ILexingError {
-  return !('token' in error);
-}
-
-function lexerTokenText(error: ILexingError): string {
-  const match = error.message.match(/unexpected character:\s*->([^<-]+)<-/i);
-  return match?.[1] ?? '/';
-}
-
-/**
- * Converts a Chevrotain parser/lexer error into a friendly diagnostic.
- * If you pass `ctx`, the error will be clickable and include a code-frame.
- *
- * @param errors Chevrotain recognition errors
- * @param lexerErrors Chevrotain lexing result errors
- * @param filePath Absolute path to the file (legacy fallback)
- * @param source File contents (legacy fallback)
- * @param ctx Optional TreeContext to auto-fill file/line/col/source
- */
-export function getErrorFromParser(
-  errors: ReadonlyArray<IRecognitionException | JessError>,
-  lexerErrors: ILexingResult['errors'] | undefined,
-  filePath: string,
-  source: string,
-  ctx?: TreeContextLike
-): JessError {
-  const error = lexerErrors?.[0] ?? errors[0];
-  if (!error) {
-    return new JessError({
-      code: 'parse/syntax-error',
-      phase: 'parse',
-      filePath,
-      source,
-      ctx
-    });
-  }
-
-  const record: Record<string, unknown> = hasObjectShape(error) ? error : {};
-  const token = 'token' in error ? error.token : undefined;
-  const line = finiteNumber(token?.startLine) ?? finiteNumber(record.line);
-  const column =
-    finiteNumber(token?.startColumn) ?? finiteNumber(record.column);
-  const message = typeof record.message === 'string' ? record.message : '';
-
-  let code: JessErrorCode = 'parse/syntax-error';
-  let meta: Record<string, unknown> = {};
-
-  if (isLexerError(error)) {
-    code = 'parse/unexpected-token';
-    meta = { token: lexerTokenText(error) };
-  } else if (/unterminated|string not closed/i.test(message)) {
-    code = 'parse/unterminated-string';
-  } else if (/expecting/i.test(message)) {
-    code = 'parse/unexpected-syntax';
-    const m = message.match(/expecting\s+([^,]+).*?but found\s+'?([^']+)'?/i);
-    meta = m
-      ? { expected: m[1], got: m[2] }
-      : { expected: 'token', got: 'other' };
-  }
-
-  return new JessError({
-    code,
-    phase: 'parse',
-    meta,
-    ctx,
-    filePath,
-    source,
-    line: line ?? 1,
-    column: column ?? 1,
-    errors,
-    lexerErrors
-  });
-}
-
 /**
  * Converts a JessError to a normalized ErrorDiagnostic or WarningDiagnostic,
  * extracting the source lines around the site for code-frame display.
+ *
+ * Both shapes are the same object; the diagnostic does not record which one it
+ * is. A caller routing it to an errors or warnings list decides by
+ * `error.severity`, never by inspecting the result's keys.
  */
 export function toDiagnostic(
   error: JessError,
@@ -1253,7 +1156,7 @@ export function toDiagnostic(
       }
     : undefined;
 
-  const base = {
+  return {
     code: error.code,
     phase: error.phase,
     message: error.message,
@@ -1268,13 +1171,4 @@ export function toDiagnostic(
     endColumn: error.endColumn ?? endLc?.column,
     lines
   };
-
-  if (error.severity === 'error') {
-    return {
-      ...base,
-      errors: error.errors,
-      lexerErrors: error.lexerErrors
-    } as ErrorDiagnostic;
-  }
-  return base as WarningDiagnostic;
 }

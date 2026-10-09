@@ -1907,7 +1907,7 @@ export class Context {
    * locates to a URL is never read: as in Less 4.x, these functions read local
    * files only, so it is missing and `data-uri()` keeps its `url()` fallback.
    */
-  async readBinary(importPath: string): Promise<Buffer> {
+  async readBinary(importPath: string): Promise<Uint8Array> {
     const cleanPath = importPath.split(/[?#]/)[0]!;
     const { resolvedPath } = await this._getPath(cleanPath);
     if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {

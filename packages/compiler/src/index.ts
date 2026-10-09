@@ -215,7 +215,7 @@ function appendThrownJessDiagnostic(
   error: JessError
 ): void {
   const diagnostic = toDiagnostic(error);
-  const target = 'errors' in diagnostic ? errors : warnings;
+  const target = error.severity === 'error' ? errors : warnings;
   if (!target.some(existing => sameDiagnosticSite(existing, diagnostic))) {
     target.push(diagnostic);
   }

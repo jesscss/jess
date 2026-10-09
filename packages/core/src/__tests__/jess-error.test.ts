@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createToken, createTokenInstance, NoViableAltException } from 'chevrotain';
 import {
-  getErrorFromParser,
   makeJessErrorFromDiagnostic,
   parserDiagnostic,
   toDiagnostic,
@@ -73,9 +71,7 @@ describe('JessError diagnostics', () => {
       line: 2,
       column: 10,
       endLine: 2,
-      endColumn: 11,
-      errors: [],
-      lexerErrors: []
+      endColumn: 11
     };
 
     const error = makeJessErrorFromDiagnostic(diagnostic);
@@ -87,45 +83,11 @@ describe('JessError diagnostics', () => {
     expect(error.column).toBe(10);
     expect(error.endLine).toBe(2);
     expect(error.endColumn).toBe(11);
-    expect(error.errors).toBe(diagnostic.errors);
-    expect(error.lexerErrors).toBe(diagnostic.lexerErrors);
 
     expect(toDiagnostic(error)).toMatchObject({
       endLine: 2,
       endColumn: 11
     });
-  });
-
-  it('normalizes non-finite Chevrotain parse positions before diagnostics', () => {
-    const tokenType = createToken({ name: 'SyntheticEof', pattern: /./u });
-    const token = createTokenInstance(
-      tokenType,
-      '',
-      Number.NaN,
-      Number.NaN,
-      Number.NaN,
-      Number.NaN,
-      Number.NaN,
-      Number.NaN
-    );
-    const parseError = new NoViableAltException('Expecting token but found EOF', token, token);
-
-    const diagnostic = toDiagnostic(getErrorFromParser(
-      [parseError],
-      undefined,
-      'virtual.jess',
-      '.a {\n  color: blue;\n'
-    ));
-
-    expect(diagnostic).toMatchObject({
-      code: 'parse/unexpected-syntax',
-      phase: 'parse',
-      filePath: 'virtual.jess',
-      line: 1,
-      column: 1
-    });
-    expect(Number.isFinite(diagnostic.line)).toBe(true);
-    expect(Number.isFinite(diagnostic.column)).toBe(true);
   });
 
   it('summarizes value-production expected sets without leaking parser internals', () => {

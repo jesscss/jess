@@ -3,7 +3,6 @@ import {
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';
 import { type Operator } from '../util/calculate.js';
-import type { AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
   getPrintOptions,
@@ -163,6 +162,19 @@ function sourceRootOf(node: Node): Rules | undefined {
   return undefined;
 }
 
+/**
+ * A class, abstract or concrete, whose instances are `T`: type-fest's
+ * `AbstractClass`, restated so core's published declarations import only
+ * packages core depends on.
+ *
+ * The arguments stay `any[]`, as in type-fest and `lib.d.ts`'s
+ * `InstanceType`: it is the only parameter type that every constructor is
+ * assignable to AND that `InstanceType` / `ConstructorParameters` still match.
+ * `unknown[]` rejects every class with a typed constructor; `never[]` accepts
+ * them but makes `InstanceType<AbstractClass<Node>>` resolve to `any`.
+ */
+type AbstractClass<T> = (abstract new (...args: any[]) => T) & { prototype: Pick<T, keyof T> };
+
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
@@ -211,8 +223,6 @@ export const defineType = <
 };
 
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
-
-export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;

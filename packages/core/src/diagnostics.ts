@@ -15,7 +15,6 @@
 export {
   ERR,
   WARN,
-  getErrorFromParser,
   makeJessError,
   makeJessErrorFromDiagnostic,
   parserDiagnostic,

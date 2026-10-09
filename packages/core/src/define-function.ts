@@ -1,5 +1,4 @@
 import { isPlainObject } from 'lodash-es';
-import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
@@ -9,7 +8,21 @@ import { List, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 import { JessError } from './jess-error.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
-export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
+
+/*
+ * Local restatements of the type-fest helpers this module used, so core's
+ * published declarations import only packages core depends on.
+ */
+
+/** Any class, abstract or concrete. */
+type AnyClass = abstract new (...args: never[]) => unknown;
+
+/** `T` without its index signatures (type-fest's `OmitIndexSignature`). */
+type OmitIndexSignature<T> = {
+  [K in keyof T as {} extends Record<K, unknown> ? never : K]: T[K];
+};
+
+export type ArgType = PrimitiveType | AnyClass;
 export type Lazy<T> = () => MaybePromise<T>;
 
 /**
@@ -102,7 +115,7 @@ type GetArgType<T extends ArgType> =
           ? null
           : T extends 'undefined'
             ? undefined
-            : T extends Class<any> | AbstractClass<any>
+            : T extends AnyClass
               ? InstanceType<T>
               : never;
 

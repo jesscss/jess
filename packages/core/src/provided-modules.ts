@@ -1,4 +1,14 @@
 /**
+ * The part of a CommonJS `require` that {@link ProvidedModules} uses. Node's
+ * `createRequire(import.meta.url)` satisfies it; spelled out here so core's
+ * published declarations do not need `@types/node`.
+ */
+export interface ProvidedModuleLoader {
+  (id: string): unknown;
+  resolve(id: string): string;
+}
+
+/**
  * The private module paths a dialect plugin provides — `#less`, `#sass/math` —
  * each an alias of a package module the plugin itself depends on.
  *
@@ -19,7 +29,7 @@ export class ProvidedModules {
   /** `aliases` pairs each private path with the package module it names. */
   constructor(
     aliases: ReadonlyArray<readonly [alias: string, packageModule: string]>,
-    private readonly load: NodeJS.Require
+    private readonly load: ProvidedModuleLoader
   ) {
     this.#aliases = new Map(aliases);
     this.#packageModules = new Set(this.#aliases.values());

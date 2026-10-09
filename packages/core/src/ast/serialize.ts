@@ -9125,7 +9125,7 @@ function pluginCallFailure(
       meta: { name: node.name, reason }
     });
     const collected = toDiagnostic(diagnostic);
-    if ('errors' in collected) {
+    if (diagnostic.severity === 'error') {
       e.context.errors.push(collected);
     } else {
       e.context.warn(collected);
