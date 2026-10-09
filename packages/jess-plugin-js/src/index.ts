@@ -872,21 +872,28 @@ export class JsPlugin extends AbstractPlugin {
    * SIGTERM, and a synchronous runaway loop never services a signal handler.
    */
   private abortRuntime(reason: Error) {
-    this.shutdown('SIGKILL');
+    this.shutdown();
     this.rejectAllPending(reason);
     if (this.runtimeState.status !== 'disposed') {
       this.runtimeState = { status: 'idle' };
     }
   }
 
-  private shutdown(signal?: NodeJS.Signals) {
+  /**
+   * Tear the worker down. Always SIGKILL: the worker is a sandbox with no state
+   * worth flushing, and a sandboxed script can register a `SIGTERM` handler
+   * (`Deno.addSignalListener` needs no permission) to trap a graceful signal and
+   * keep background work — e.g. a spinning Web Worker — running. SIGKILL cannot
+   * be trapped, so idle and dispose teardown stop the process unconditionally.
+   */
+  private shutdown() {
     this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
       this.shuttingDown = true;
       this.worker.stdin.destroy();
       this.worker.stdout.destroy();
       this.worker.stderr.destroy();
-      this.worker.kill(signal);
+      this.worker.kill('SIGKILL');
     }
     this.worker = undefined;
     if (this.brokerServer) {

@@ -278,6 +278,42 @@ describe('@jesscss/plugin-js security', () => {
     expect(await workerExited()).toBe(true);
   }, 15000);
 
+  it('SIGKILLs the worker on dispose even when the script traps SIGTERM', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'trap.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        /* Trap SIGTERM (no permission needed) and keep the loop alive, so a graceful signal would leave the worker running. */
+        'try { Deno.addSignalListener("SIGTERM", () => {}); } catch { /* ignore */ }',
+        'setInterval(() => {}, 1000);',
+        'export function ok() { return 1; }'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.ok()).resolves.toBe(1);
+    const pid = plugin['worker']?.pid;
+    expect(typeof pid).toBe('number');
+
+    plugin.dispose();
+
+    const workerExited = async () => {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        try {
+          process.kill(pid!, 0);
+        } catch {
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return false;
+    };
+    expect(await workerExited()).toBe(true);
+  }, 15000);
+
   it('self-heals after a script exits the worker (one script must not brick the plugin)', async () => {
     const root = makeTmpDir('jess-js-root-');
     const boomPath = path.join(root, 'boom.ts');
