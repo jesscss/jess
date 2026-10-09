@@ -28,6 +28,79 @@ async function render(source: string, collapseNesting: CollapseNesting = false):
   return String(await compiler.renderString(source, { filePath: 'entry.less', extension: '.less', suppressWarnings: true }));
 }
 
+/** Compile `source` as the dialect `extension` names (`.less`, `.scss`, `.jess`), nested output. */
+async function compile(source: string, extension: '.less' | '.scss' | '.jess'): Promise<string> {
+  return String(await new Compiler().renderString(source, { filePath: `entry${extension}`, extension, suppressWarnings: true }));
+}
+
+/*
+ * P45: well-formed input parses and evaluates in every dialect. Each `it.fails`
+ * below stops with a parse error today; it turns red when the grammar lane
+ * fixes it. The assertion is deliberately loose about bytes: what is ruled is
+ * that the document compiles and keeps the construct.
+ */
+describe('P45 (owner 2026-10-09): well-formed input never stops the pipeline', () => {
+  it.fails('P45 (owner 2026-10-09): SCSS gives a parenthesized comparison its Sass meaning, `x: (3px > 2px)` is `x: true`', async () => {
+    await expect(compile('.a { x: (3px > 2px); }', '.scss')).resolves.toContain('x: true');
+  });
+
+  it.fails('P45 (owner 2026-10-09): SCSS gives a bare comparison its Sass meaning, `x: 3px > 2px` is `x: true`', async () => {
+    await expect(compile('.a { x: 3px > 2px; }', '.scss')).resolves.toContain('x: true');
+  });
+
+  it.fails('P45 (owner 2026-10-09): Less parses `@supports selector(a > b)`', async () => {
+    await expect(compile('@supports selector(a > b) { .x { y: z; } }', '.less')).resolves.toContain('@supports selector(a > b)');
+  });
+
+  it.fails('P45 (owner 2026-10-09): .jess parses a comment between two values, `b: x /**/ y`', async () => {
+    await expect(compile('.a { b: x /**/ y; }', '.jess')).resolves.toContain('b: x');
+  });
+
+  it.fails('P45 (owner 2026-10-09): .jess parses `@media (min-width: calc(100px + 1px))`', async () => {
+    await expect(compile('@media (min-width: calc(100px + 1px)) { .a { b: c; } }', '.jess')).resolves.toContain('@media');
+  });
+
+  it.fails('P45 (owner 2026-10-09): .jess parses an unknown at-rule statement, `@foo 1 + 2;`', async () => {
+    await expect(compile('@foo 1 + 2;', '.jess')).resolves.toContain('@foo');
+  });
+
+  it.fails('P45 (owner 2026-10-09): SCSS parses a line comment inside a call, `max(1px, // c` then `2px)`', async () => {
+    await expect(compile('.a { b: max(1px, // c\n 2px); }', '.scss')).resolves.toContain('b:');
+  });
+
+  it.fails('P45 (owner 2026-10-09): SCSS parses `var(--x, /img)`', async () => {
+    await expect(compile('.a { b: var(--x, /img); }', '.scss')).resolves.toContain('var(--x, /img)');
+  });
+
+  it.fails('P45 (owner 2026-10-09): SCSS parses a comment inside a compound selector, `.e/*y*/.f`', async () => {
+    await expect(compile('.e/*y*/.f { a: b; }', '.scss')).resolves.toMatch(/\.e[^{]*\.f/);
+  });
+
+  it.fails('P45 (owner 2026-10-09): SCSS parses `url( "a b.png" )`', async () => {
+    await expect(compile('.a { b: url( "a b.png" ); }', '.scss')).resolves.toContain('url(');
+  });
+
+  it.fails('P45 (owner 2026-10-09): .jess parses `url( "a b.png" )`', async () => {
+    await expect(compile('.a { b: url( "a b.png" ); }', '.jess')).resolves.toContain('url(');
+  });
+
+  it.fails('P45 (owner 2026-10-09): SCSS parses the ident `--` as a value, `d: --`', async () => {
+    await expect(compile('.a { d: --; }', '.scss')).resolves.toContain('d: --');
+  });
+
+  it.fails('P45 (owner 2026-10-09): .jess parses the ident `--` as a value, `d: --`', async () => {
+    await expect(compile('.a { d: --; }', '.jess')).resolves.toContain('d: --');
+  });
+
+  it.fails('P45 (owner 2026-10-09): Less parses a general-enclosed container query, `@container ( foo(x) )`', async () => {
+    await expect(compile('@container ( foo(x) ) { .a { b: c; } }', '.less')).resolves.toContain('@container');
+  });
+
+  it.fails('P45 (owner 2026-10-09): .jess parses a general-enclosed container query, `@container ( foo(x) )`', async () => {
+    await expect(compile('@container ( foo(x) ) { .a { b: c; } }', '.jess')).resolves.toContain('@container');
+  });
+});
+
 describe('owner rulings (Less 5)', () => {
   it.fails('P2 (owner, reaffirmed 2026-10-09): a bare @var in a custom property is written as authored', async () => {
     await expect(render('@c: red;\n.a { --x: @c; }')).resolves.toBe('.a {\n  --x: @c;\n}\n');
