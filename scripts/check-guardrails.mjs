@@ -49,6 +49,7 @@
  *                                It never adds one.
  */
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
@@ -334,24 +335,26 @@ const REFERENCE_SKIP = [
   /^packages\/syntax\/less\/jess-plugin-less-compat\//, // the 4.x plugin API IS the contract (A9, A12, C15)
   /^packages\/jess-plugin-js\//, // legacy @plugin ABI sandbox (A12)
   /^docs\/releases\//,
-  /(^|\/)(node_modules|lib|dist|\.cache|coverage)\//
+  /(^|\/)(node_modules|lib|dist)\//
 ];
 const REFERENCE_EXT = /\.(md|mdc|mdx|ts|mts|cts|mjs|js)$/;
 const REFERENCE_BASELINE = 'scripts/check-guardrails.reference-baseline.json';
 
-function referenceFiles(rel) {
-  const abs = join(root, rel);
-  if (!existsSync(abs)) {
-    return [];
-  }
-  const isDir = statSync(abs).isDirectory();
-  if (REFERENCE_SKIP.some(re => re.test(isDir ? `${rel}/` : rel))) {
-    return [];
-  }
-  if (!isDir) {
-    return REFERENCE_EXT.test(rel) ? [rel] : [];
-  }
-  return readdirSync(abs).flatMap(name => referenceFiles(`${rel}/${name}`));
+/*
+ * The files git sees (tracked, plus untracked and not ignored): generated
+ * output such as `lib/`, `*.d.ts` or `packages/jess/temp/` is never scanned, so
+ * a local build cannot make the result differ from CI's.
+ */
+function referenceFiles() {
+  const listed = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 1 << 28
+  }).split('\0');
+  return [...new Set(listed)].filter(rel => REFERENCE_EXT.test(rel)
+    && REFERENCE_SCAN_ROOTS.some(r => rel === r || rel.startsWith(`${r}/`))
+    && !REFERENCE_SKIP.some(re => re.test(rel))
+    && existsSync(join(root, rel)));
 }
 
 /* Markdown: paragraph / list item / table row. Code: one comment block, or one test-title line. */
@@ -415,40 +418,38 @@ const normalizeSentence = s => s.replace(/\s+/g, ' ').trim();
 
 function scanReferenceReasons() {
   const hits = [];
-  for (const entry of REFERENCE_SCAN_ROOTS) {
-    for (const rel of referenceFiles(entry)) {
-      const lines = readFileSync(join(root, rel), 'utf8').split('\n');
-      for (const parts of referenceBlocks(rel, lines)) {
-        let text = '';
-        const offsets = [];
-        for (const p of parts) {
-          offsets.push([text.length, p.i]);
-          text += `${p.text} `;
-        }
-        if (REFERENCE_MARKERS.test(text)) {
-          continue;
-        }
-        const lineAt = k => offsets.reduce((ln, [o, i]) => (o <= k ? i : ln), parts[0].i);
-        const seen = new Set();
-        REFERENCE_PATTERNS.forEach((re, pattern) => {
-          re.lastIndex = 0;
-          for (let m = re.exec(text); m; m = re.exec(text)) {
-            /* In user docs, "as in Less 4.x" tells a migrating reader nothing changed: continuity, not a reason. */
-            if (insideShortQuote(text, m.index) || (pattern === 0 && rel.startsWith('packages/docs/docs-content/'))) {
-              continue;
-            }
-            const start = text.lastIndexOf('. ', m.index) + 1;
-            const endRaw = text.indexOf('. ', m.index + m[0].length);
-            const sentence = normalizeSentence(text.slice(start, endRaw < 0 ? text.length : endRaw + 1));
-            if (REFERENCE_DISCLAIM.test(sentence) || seen.has(sentence)) {
-              continue;
-            }
-            seen.add(sentence);
-            const line = lineAt(m.index + Math.max(0, m[0].search(REF_RE))) + 1;
-            hits.push({ file: rel, line, pattern, match: m[0], sentence });
-          }
-        });
+  for (const rel of referenceFiles()) {
+    const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+    for (const parts of referenceBlocks(rel, lines)) {
+      let text = '';
+      const offsets = [];
+      for (const p of parts) {
+        offsets.push([text.length, p.i]);
+        text += `${p.text} `;
       }
+      if (REFERENCE_MARKERS.test(text)) {
+        continue;
+      }
+      const lineAt = k => offsets.reduce((ln, [o, i]) => (o <= k ? i : ln), parts[0].i);
+      const seen = new Set();
+      REFERENCE_PATTERNS.forEach((re, pattern) => {
+        re.lastIndex = 0;
+        for (let m = re.exec(text); m; m = re.exec(text)) {
+          /* In user docs, "as in Less 4.x" tells a migrating reader nothing changed: continuity, not a reason. */
+          if (insideShortQuote(text, m.index) || (pattern === 0 && rel.startsWith('packages/docs/docs-content/'))) {
+            continue;
+          }
+          const start = text.lastIndexOf('. ', m.index) + 1;
+          const endRaw = text.indexOf('. ', m.index + m[0].length);
+          const sentence = normalizeSentence(text.slice(start, endRaw < 0 ? text.length : endRaw + 1));
+          if (REFERENCE_DISCLAIM.test(sentence) || seen.has(sentence)) {
+            continue;
+          }
+          seen.add(sentence);
+          const line = lineAt(m.index + Math.max(0, m[0].search(REF_RE))) + 1;
+          hits.push({ file: rel, line, pattern, match: m[0], sentence });
+        }
+      });
     }
   }
   return hits;
@@ -474,11 +475,6 @@ for (const hit of referenceHits) {
   }
 }
 const staleBaseline = [...remaining].flatMap(([file, sentences]) => sentences.map(sentence => ({ file, sentence })));
-
-if (listReferenceReasons) {
-  console.log(JSON.stringify(referenceHits, null, 1));
-  process.exit(0);
-}
 
 if (pruneReferenceBaseline && staleBaseline.length > 0) {
   const pruned = {};
@@ -580,21 +576,25 @@ if (!rulings.lock) {
 
 /* ------------------------------------------------------------------ */
 
-if (failures.length > 0) {
+/* exitCode, not exit(): a piped stdout/stderr is asynchronous on macOS and exit() truncates it. */
+if (listReferenceReasons) {
+  console.log(JSON.stringify(referenceHits, null, 1));
+} else if (failures.length > 0) {
   console.error('\ncheck:guardrails FAILED\n');
   for (const f of failures) {
     console.error(f);
     console.error('');
   }
   console.error(
-    'Rule: docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md, "An agent may not\n'
-    + 'redefine, narrow, or close an owner requirement". Requirements: docs/OWNER-REQUIREMENTS.md.\n'
+    'Rules: AGENTS.md, first two sections; docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md, "An agent\n'
+    + 'may not redefine, narrow, or close an owner requirement". Requirements: docs/OWNER-REQUIREMENTS.md.\n'
+    + 'Owner rulings: docs/architecture/core/DESIGN-DECISIONS.md, locked in owner-rulings.lock.json.\n'
   );
-  process.exit(1);
+  process.exitCode = 1;
+} else {
+  console.log(
+    `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
+    + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined); `
+    + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}.`
+  );
 }
-
-console.log(
-  `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
-  + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined); `
-  + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}.`
-);
