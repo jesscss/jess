@@ -169,4 +169,21 @@ describe('Less logical / conditional functions', () => {
     ].join(' '));
     expect(css).toBe('.y {\n  a: ((3px > 2px) and (3px < 5px));\n  b: ((3px > 2px) and (3px < 5px));\n  c: (not (3px > 2px));\n  d: true;\n  e: no;\n  f: true;\n  g: yes;\n}\n');
   });
+
+  /*
+   * A bare operand under `and`, `or` or `not` evaluates as `== true` (Less's
+   * condition lowering), but that comparison is how it is read, not what was
+   * written: the operand is written as the author wrote it, its variables
+   * substituted (J20). A consumer still asks "is it literally `true`".
+   */
+  it('writes a bare operand of a written condition as authored', async () => {
+    const css = await render([
+      '@a: 3px;',
+      '@x: (1 and 2);',
+      '@y: (@a and 2 or 4);',
+      '@z: (not 1);',
+      '.y { a: @x; b: @y; c: @z; d: rgb(1 and 2, 3, 4); e: boolean(@x); f: if((true and true), yes, no); g: (@a > 2px and true); }'
+    ].join(' '));
+    expect(css).toBe('.y {\n  a: (1 and 2);\n  b: (3px and 2 or 4);\n  c: (not 1);\n  d: rgb(1 and 2, 3, 4);\n  e: false;\n  f: yes;\n  g: ((3px > 2px) and true);\n}\n');
+  });
 });

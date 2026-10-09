@@ -1646,6 +1646,15 @@ export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
 /** The `null` literal node — ONE frozen instance; the literal carries no fact
  *  beyond its own identity, so it never allocates. */
 export const NULL_NODE: Null = { type: 'Null', src: 'null' };
+
+/**
+ * The `true` a dialect's condition lowering compares a bare operand against: Less's
+ * `when (@x)` and `(1 and 2)` ask `@x == true` (§4.4.2). ONE instance, so its identity
+ * marks the comparison as the lowering, not an authored `== true`, and a written
+ * condition writes the operand as the author wrote it (ledger J20). Evaluation reads
+ * it as any `true` keyword.
+ */
+export const IMPLIED_TRUE: Keyword = { type: 'Keyword', src: 'true' };
 export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
 export const url = (value: ValueNode): Url => ({ type: 'Url', value, _s: NO_SPAN, _e: NO_SPAN });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>

@@ -41,6 +41,7 @@ import {
   keyword,
   list,
   NULL_NODE,
+  IMPLIED_TRUE,
   spaced,
   variableDeclaration,
   variableReference,
@@ -5422,13 +5423,18 @@ function writtenGroup(v: EvalValue): Value {
  * variables substitute: `(@a > 2px)` with `@a: 3px` is `(3px > 2px)` (SETTLED —
  * orchestrator judgment under owner delegation 2026-10-07). A term under
  * `and`, `or` or `not` is written in the parens Less's condition syntax
- * requires: `(3px > 2px) and (3px < 5px)`.
+ * requires: `(3px > 2px) and (3px < 5px)`. A bare operand is written as the
+ * author wrote it: the `== true` a dialect lowers it to ({@link IMPLIED_TRUE}) is
+ * how it evaluates, never what was written, so `(1 and 2)` stays `(1 and 2)`.
  */
 function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx, nested: boolean): MaybePromise<string> {
   const term = (bytes: string): string => nested ? `(${bytes})` : bytes;
   switch (guard.g) {
     case 'cmp':
     case 'match':
+      if (guard.right === IMPLIED_TRUE) {
+        return mapMaybe(evalValueSlot(guard.left, frame, e), left => emitValueC(left, e));
+      }
       return combineAll([evalValueSlot(guard.left, frame, e), evalValueSlot(guard.right, frame, e)], ([left, right]) =>
         term(`${emitValueC(left!, e)} ${guard.op} ${emitValueC(right!, e)}`));
     case 'and':

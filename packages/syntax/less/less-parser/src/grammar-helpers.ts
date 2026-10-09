@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { IMPLIED_TRUE, NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -1899,16 +1899,20 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
  *
  * `==` is load-bearing: with the loose `=` a `"true"` string would ground
  * against `true` and come out TRUE, which Less says it is not.
+ *
+ * The `true` is the shared {@link IMPLIED_TRUE}, which tells a written
+ * condition that the comparison is this lowering: `(1 and 2)` is written as
+ * authored, never `((1 == true) and (2 == true))`.
  */
 function lessTruth(value: ValueSlot): MixinGuard {
-  return { g: 'cmp', op: '==', left: value, right: keyword('true') };
+  return { g: 'cmp', op: '==', left: value, right: IMPLIED_TRUE };
 }
 
 /** {@link lessTruth} in `when` position — the same lowering, as a MATCH test
  *  (§4.2a), so a `when` tree contains no value-position assertion. `==` never
  *  raises, so this changes no answer; it keeps the invariant readable. */
 function lessGuardTruth(value: ValueSlot): MixinGuard {
-  return { g: 'match', op: '==', left: value, right: keyword('true') };
+  return { g: 'match', op: '==', left: value, right: IMPLIED_TRUE };
 }
 
 function isMixinGuard(value: unknown): value is MixinGuard {
