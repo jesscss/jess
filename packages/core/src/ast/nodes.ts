@@ -157,12 +157,19 @@ export interface Sequence {
  * `value`; a consumer never re-splits joined source bytes. `sep` is the one
  * canonical separator fact. Delimiters are represented by the separate `Block`
  * wrapper, not by a second list flag.
+ *
+ * `;` only occurs inside a function body, where it separates the branches of
+ * css-values-5 §8.3 `if()`. An empty entry `[]` is a group the author left
+ * empty (`if(media(print): 1px;)`).
  */
 export interface List {
   readonly type: 'List';
   readonly value: ValueSlot[];
-  readonly sep: ',' | '/';
+  readonly sep: ListSeparator;
 }
+
+/** The separators a {@link List} can carry. */
+export type ListSeparator = ',' | '/' | ';';
 
 /** The binding store a variable operation addresses. */
 export type VariableLookup = 'live' | 'scoped';
@@ -302,15 +309,35 @@ export interface FunctionCall extends SpanSlots, FunctionScopeSlot {
   readonly modern: boolean;
 }
 
-/** A delimiter-bearing value, e.g. `(#aaa * 3)` or `[a, b]`. */
+/**
+ * A delimiter-bearing value, e.g. `(#aaa * 3)`, `[a, b]` or the css-values-5
+ * §3.1.1 `{}`-wrapped argument `{a, b}` (`curly`).
+ */
 export interface Block extends SpanSlots {
   readonly type: 'Block';
   readonly value: ValueSlot;
-  readonly delimiter: 'paren' | 'square';
+  readonly delimiter: BlockDelimiter;
 
   /** Less `~(...)` emits without the authored delimiters. */
   readonly escaped?: boolean;
 }
+
+/**
+ * One branch of a function argument list (ledger P38) — css-values-5 §8.3's
+ * "statement ... consisting of a condition followed by a colon followed by a
+ * value", parsed as `<if-args-branch> = <declaration-value> : <declaration-value>?`
+ * (`if(style(--scheme: dark): white; else: black)`). The colon is this node's
+ * own syntax. A call's branches are one `;` List argument, or the Branch itself
+ * when there is one. `value` is the empty slot `[]` when omitted.
+ */
+export interface Branch {
+  readonly type: 'Branch';
+  readonly condition: ValueSlot;
+  readonly value: ValueSlot;
+}
+
+/** The delimiter pairs a {@link Block} can carry. */
+export type BlockDelimiter = 'paren' | 'square' | 'curly';
 
 /**
  * A COMPUTATION BOUNDARY — jess's `$( … )`. The `$(` and `)` are the marker that
@@ -566,6 +593,7 @@ export type ValueNode =
   | Operation
   | FunctionCall
   | Block
+  | Branch
   | Expression
   | Condition
   | IfValue
@@ -1759,6 +1787,7 @@ export const funcCall = (
 };
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
+export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ type: 'Branch', condition, value });
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>

@@ -493,13 +493,13 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
 
     /*
-     * The canonical Operation renderer owns normal whitespace around the
-     * declaration-condition colon. The typed tree, not source-byte replay, is
-     * the public contract.
+     * The canonical Operation renderer owns the whitespace around the
+     * declaration-condition colon, spelled `name: value` as a query prelude
+     * spells it. The typed tree, not source-byte replay, is the public contract.
      */
-    expect(serialize(simple).css).toBe('@import "theme.css" supports((display : grid));\n');
-    expect(serialize(supported).css).toBe('@import "theme.css" supports((display : grid));\n');
-    expect(serialize(layered).css).toBe('@import "theme.css" layer(tokens) supports((display : grid)) screen;\n');
+    expect(serialize(simple).css).toBe('@import "theme.css" supports((display: grid));\n');
+    expect(serialize(supported).css).toBe('@import "theme.css" supports((display: grid));\n');
+    expect(serialize(layered).css).toBe('@import "theme.css" layer(tokens) supports((display: grid)) screen;\n');
 
     for (const unsupported of [
       '@import "theme.css" supports(#{$feature});'
@@ -532,7 +532,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       }]
     });
     expect(serialize(root)).toEqual({
-      css: '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
+      css: '@import "theme.css" layer(tokens) supports((display: grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     });
     expect(parse('@import "theme.css" (color) or (monochrome);')).toMatchObject({
       rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
