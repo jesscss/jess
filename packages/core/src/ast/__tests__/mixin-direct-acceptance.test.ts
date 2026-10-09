@@ -335,7 +335,8 @@ describe('Mixin canonical AST emission', () => {
    * A ruleset mixin's rules keep their authored `&` headers inside the caller,
    * every one of them, as authored nesting does (jess#345).
    */
-  it('keeps a ruleset mixin\'s ampersand headers authored in nested output', () => {
+  /* A `&` a ruleset mixin's body places names the caller (jess#345); one that builds a name is written flattened (ledger J13). */
+  it('builds a ruleset mixin\'s ampersand names on the caller in nested output', () => {
     const rulesetMixin = rule('.shell', [
       rule('.ordinary', [decl('state', keyword('literal'))]),
       rule('&-active', [decl('state', keyword('on'))]),
@@ -351,28 +352,26 @@ describe('Mixin canonical AST emission', () => {
       + '  .ordinary {\n'
       + '    state: literal;\n'
       + '  }\n'
-      + '  &-active {\n'
-      + '    state: on;\n'
-      + '  }\n'
-      + '  &-later {\n'
-      + '    state: literal;\n'
-      + '  }\n'
+      + '}\n'
+      + '.shell-active {\n'
+      + '  state: on;\n'
+      + '}\n'
+      + '.shell-later {\n'
+      + '  state: literal;\n'
       + '}\n'
       + '.host {\n'
       + '  .ordinary {\n'
       + '    state: literal;\n'
       + '  }\n'
-      + '  &-active {\n'
-      + '    state: on;\n'
-      + '  }\n'
-      + '  &-later {\n'
-      + '    state: literal;\n'
-      + '  }\n'
       + '}\n'
-      + '.authored {\n'
-      + '  &-local {\n'
-      + '    state: literal;\n'
-      + '  }\n'
+      + '.host-active {\n'
+      + '  state: on;\n'
+      + '}\n'
+      + '.host-later {\n'
+      + '  state: literal;\n'
+      + '}\n'
+      + '.authored-local {\n'
+      + '  state: literal;\n'
       + '}\n');
   });
 
@@ -439,9 +438,11 @@ describe('Mixin canonical AST emission', () => {
     const nested = render(document, false)!;
     expect(nested).toContain('.host-one {\n  .inside {\n    x: 1;\n  }\n}\n');
     expect(nested).toContain('.host-two {\n  .inside {\n    x: 1;\n  }\n}\n');
-    expect(nested).toContain('.authored {\n  &-literal {\n    x: 3;\n  }\n}\n');
-    expect(nested).toContain('.explicit-host {\n  &-literal {\n    x: 2;\n  }\n}\n');
-    expect(nested).toContain('.multi {\n  &-literal {\n    .inside {\n      x: 1;\n    }\n    .inside {\n      x: 1;\n    }\n  }\n}\n');
+
+    // Any other rule whose `&` builds a name is written flattened, the name built (ledger J13).
+    expect(nested).toContain('.authored-literal {\n  x: 3;\n}\n');
+    expect(nested).toContain('.explicit-host-literal {\n  x: 2;\n}\n');
+    expect(nested).toContain('.multi-literal .inside {\n  x: 1;\n}\n.multi-literal .inside {\n  x: 1;\n}\n');
     expect(render(document)).toContain('.host-one .inside {\n  x: 1;\n}\n');
   });
 

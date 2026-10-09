@@ -64,16 +64,14 @@ b {
     color: teal;
   }
 }
-.block {
-  &__el {
-    color: blue;
-  }
-  &--mod {
-    color: red;
-  }
-  &-suffix {
-    color: green;
-  }
+.block__el {
+  color: blue;
+}
+.block--mod {
+  color: red;
+}
+.block-suffix {
+  color: green;
 }
 .block-1 {
   color: teal;

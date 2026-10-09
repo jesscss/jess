@@ -9793,11 +9793,12 @@ function resolveCompoundAmp(
  * which is no selector.
  */
 function continuesName(sim: SimpleToken | undefined): boolean {
-  if (sim?.type !== 'SimpleSelector' || sim.text === null || sim.text.length === 0) {
-    return false;
-  }
-  const c = sim.text.charCodeAt(0);
-  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
+  return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
+}
+
+/** Whether `c` continues a name glued to a `&`: a name code point (CSS Syntax 3 §4.2) or the backslash of an escape. */
+function isNameCode(c: number): boolean {
+  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c === 0x5C /* \ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
 }
 
 /**
@@ -10571,6 +10572,9 @@ interface Emit extends EvalCtx {
   /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
   splitBlocks: SplitBlock[] | null;
 
+  /** The nested writer's open blocks, outermost first ({@link OpenBlock}); null until one opens. */
+  openBlocks: OpenBlock[] | null;
+
   /**
    * [extend] The header an extend wrote for a rule, keyed by the composed context its
    * body walks under: an at-rule bubbled out of the rule writes its declarations
@@ -10707,6 +10711,7 @@ function scratchEmit(e: EvalCtx): Emit {
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    openBlocks: null,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -14010,6 +14015,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    openBlocks: null,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -14118,6 +14124,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    openBlocks: null,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -15682,24 +15689,48 @@ function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
 }
 
 /**
- * Whether a branch of `list` builds a name on its parent that is not a selector once
- * written after a nesting `&`: a `&`-led token whose continuation is no identifier
- * start (`&-1`, `&2`), as CSS Syntax 3 §4.3.9 defines one. `&-x` and `&__x` are
- * identifiers there. Allocates nothing.
+ * Whether a branch of `list` builds a name on its parent: a `&` with a name glued after
+ * it (`&__el`, `&--m`, `&-1`, `&2`, `&@{x}`; `.scss` reads `&__el` as `&` then `__el`),
+ * in a pseudo's argument too. Less name concatenation, not CSS nesting, which reads
+ * `&__el` as `&` then the type selector `__el` (owner 2026-07-23/24, ledger J13).
+ * Allocates nothing.
  */
-function selectorBuildsInvalidNestedName(list: SelectorList): boolean {
+function selectorBuildsName(list: SelectorList): boolean {
   for (const c of list.selectors) {
-    const parts = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value : null;
-    for (let k = 0; k < (parts === null ? 1 : parts.length); k++) {
-      const part = parts === null ? c : parts[k]!;
-      if (typeof part === 'string') {
+    if (selectorBranchHasAmpersand(c) && branchBuildsName(c)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function branchBuildsName(c: SelectorBranch): boolean {
+  const parts = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value : null;
+  for (let k = 0; k < (parts === null ? 1 : parts.length); k++) {
+    const part = parts === null ? c : parts[k]!;
+    if (typeof part === 'string') {
+      continue;
+    }
+    const n = part.type === 'CompoundSelector' ? part.value.length : 1;
+    for (let i = 0; i < n; i++) {
+      const sim = part.type === 'CompoundSelector' ? part.value[i]! : part;
+      if (sim.type === 'PseudoSelector') {
+        if (sim.args !== null && sim.args.selectors.some(branchBuildsName)) {
+          return true;
+        }
         continue;
       }
-      const n = part.type === 'CompoundSelector' ? part.value.length : 1;
-      for (let i = 0; i < n; i++) {
-        const sim = part.type === 'CompoundSelector' ? part.value[i]! : part;
-        const text = sim.type === 'SimpleSelector' ? sim.text : null;
-        if (text !== null && text.length > 1 && text.charCodeAt(0) === 0x26 /* & */ && !startsIdentifier(text, 1)) {
+      if (sim.type !== 'SimpleSelector') {
+        continue;
+      }
+      const next = part.type === 'CompoundSelector' ? part.value[i + 1] : undefined;
+      if (sim.text !== null && textHoldsParentRef(sim.text) && gluesName(sim.text, false, next)) {
+        return true;
+      }
+      const interp = sim.interp?.parts;
+      for (let p = 0; interp !== undefined && p < interp.length; p++) {
+        const lit = interp[p]!;
+        if ('lit' in lit && lit.lit.charCodeAt(0) !== 0x5B /* [ */ && gluesName(lit.lit, p + 1 < interp.length, next)) {
           return true;
         }
       }
@@ -15708,14 +15739,17 @@ function selectorBuildsInvalidNestedName(list: SelectorList): boolean {
   return false;
 }
 
-/** Whether `text` from `at` starts an identifier (CSS Syntax 3 §4.3.9): a name-start code point, or `-` then one or `-`. */
-function startsIdentifier(text: string, at: number): boolean {
-  const c = text.charCodeAt(at);
-  if (c === 0x2D /* - */) {
-    const d = text.charCodeAt(at + 1);
-    return d === 0x2D || d === 0x5C /* \ */ || d === 0x5F /* _ */ || d >= 0x80 || ((d | 32) >= 0x61 && (d | 32) <= 0x7A);
+/**
+ * Whether a `&` in `text` has a name glued after it: a name code point, or, at the end
+ * of `text`, an interpolation (`more`) or the next token's name ({@link continuesName}).
+ */
+function gluesName(text: string, more: boolean, next: SimpleToken | undefined): boolean {
+  for (let at = text.indexOf('&'); at !== -1; at = text.indexOf('&', at + 1)) {
+    if (at + 1 < text.length ? isNameCode(text.charCodeAt(at + 1)) : more || continuesName(next)) {
+      return true;
+    }
   }
-  return c === 0x5C || c === 0x5F || c >= 0x80 || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
+  return false;
 }
 
 /**
@@ -15734,22 +15768,19 @@ function expandRule(
   nestedSource?: NestedHeaderSource | null,
   nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
+  /*
+   * A rule whose `&` builds a name is written flattened, the name built (`.block { &__el
+   * {} }` → `.block__el`), where it stands: nested, CSS would read it as no rule of the
+   * block's (ledger J13, O17).
+   */
+  if (nestedSource !== undefined && nestedSource !== null && selectorBuildsName(rule.selector)) {
+    return riseOut(rule, frame, e, imp, nestedSource);
+  }
   if (nestedSource !== undefined && nestedHoist !== undefined) {
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
       nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource, split: null });
-      return;
-    }
-
-    /*
-     * A name a `&` builds that is no CSS selector written as nested (`&-1`: `-1` is not
-     * an identifier, so `.col { &-1 {} }` would be dropped) is written flattened at the
-     * top, `.col-1`, its at-rules around it (ledger O17: output is never made more
-     * invalid; the name concatenation is Less's, not CSS nesting).
-     */
-    if (nestedSource !== null && selectorBuildsInvalidNestedName(rule.selector)) {
-      nestedHoist.push({ rule, frame, bubble: HOIST_TO_ROOT, wrappers: null, source: nestedSource, split: null });
       return;
     }
   }
@@ -23673,6 +23704,189 @@ interface HoistWrapper {
   prelude: string;
 }
 
+/**
+ * [nesting] A block the nested writer has open ({@link Emit.openBlocks}): what it takes
+ * to close it where a rule rises out of it ({@link riseOut}) and to open it again after,
+ * a part of its own. `mark`, `markPos`, `headerChunk`, `body` and `split` are the
+ * current part's.
+ */
+interface OpenBlock {
+  /** The at-rule's name and prelude; null for a rule, whose header is its `own` list. */
+  header: string | null;
+  idt: string;
+  depth: number;
+
+  /** The rule the block is the body of; null for an at-rule. */
+  rule: Ruleset | null;
+  frame: Frame | null;
+  own: string[] | null;
+
+  /** The header is a target slot a dynamic extend fold may rewrite ({@link recordNestedDynExtendSlot}). */
+  slot: boolean;
+  split: SplitBlock | null;
+  mark: number;
+  markPos: number;
+
+  /** The header's chunk; -1 where the part continues a block written before it (adjacent merge). */
+  headerChunk: number;
+  body: number;
+}
+
+/** Record the block whose header and `{` were just written, its body starting here. */
+function openBlock(
+  e: Emit,
+  header: string | null,
+  idt: string,
+  rule: Ruleset | null,
+  frame: Frame | null,
+  own: string[] | null,
+  slot: boolean,
+  split: SplitBlock | null,
+  mark: number,
+  markPos: number,
+  headerChunk: number
+): OpenBlock {
+  const block: OpenBlock = { header, idt, depth: e.depth, rule, frame, own, slot, split, mark, markPos, headerChunk, body: e.chunks.length };
+  (e.openBlocks ??= []).push(block);
+  return block;
+}
+
+/** Drop the current part of `block`, which wrote nothing: its header and `{`. */
+function dropBlockPart(block: OpenBlock, e: Emit): void {
+  e.chunks.length = block.mark;
+  if (e.positions) {
+    e.positions.length = block.markPos;
+  }
+  if (block.split !== null) {
+    e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(block.split), 1);
+  }
+}
+
+/** Open `block` again at `e.depth`, a new part of it. */
+function reopenBlock(block: OpenBlock, e: Emit): void {
+  const idt = blockIndent(e);
+  block.idt = idt;
+  block.mark = e.chunks.length;
+  block.markPos = e.positions ? e.positions.length : 0;
+  if (idt) {
+    put(e, idt);
+  }
+  block.headerChunk = e.chunks.length;
+  if (block.split !== null) {
+    block.split = { header: block.headerChunk, end: -1, indent: idt, branches: block.split.branches, flags: block.split.flags };
+    (e.splitBlocks ??= []).push(block.split);
+  }
+  put(e, block.header ?? composeSelectorHeader(e, block.own!, idt, null));
+  if (block.rule !== null && e.positions) {
+    e.positions.push({ node: block.rule.selector, type: block.rule.selector.type, start: block.headerChunk, end: e.chunks.length, source: srcFile(e) });
+  }
+  put(e, blockOpen(e));
+  block.body = e.chunks.length;
+}
+
+/**
+ * [nesting] Write `rule`, whose `&` builds a name ({@link selectorBuildsName}), flattened
+ * where it stands: it rises out of every open rule block, inside the at-rules it is in,
+ * and those blocks are closed before it and opened again after it, so whatever follows
+ * it in them still follows it, as in the collapsed output (`.b { a: 1; &__e { c: 2 } d:
+ * 3 }` → `.b { a: 1; } .b__e { c: 2; } .b { d: 3; }`). A part left with nothing in it
+ * is dropped; when the rule writes nothing, the blocks stay whole.
+ */
+function riseOut(rule: Ruleset, frame: Frame, e: Emit, imp: boolean, source: NestedHeaderSource): MaybePromise<void> {
+  const open = e.openBlocks;
+  let first = 0;
+  while (open !== null && first < open.length && open[first]!.rule === null) {
+    first++;
+  }
+  if (open === null || first === open.length) {
+    return emitHoisted(rule, frame, e, source, imp);
+  }
+  const depth = e.depth;
+  let top = open.length;
+  while (top > first && e.chunks.length === open[top - 1]!.body && open[top - 1]!.headerChunk >= 0) {
+    dropBlockPart(open[--top]!, e);
+  }
+
+  /* [compress] The `;` a close drops from the last declaration, put back if the blocks stay whole. */
+  let semi = -1;
+  if (e.compress === true) {
+    semi = e.chunks.length - 1;
+    while (semi >= 0 && e.chunks[semi] === '') {
+      semi--;
+    }
+    semi = semi >= 0 && e.chunks[semi] === ';' ? semi : -1;
+  }
+  const closesFrom = e.chunks.length;
+  const posFrom = e.positions ? e.positions.length : 0;
+  const ends: number[] = [];
+  for (let i = top - 1; i >= first; i--) {
+    emitBlockClose(e, open[i]!.idt);
+    ends.push(e.chunks.length);
+  }
+  const closed = e.chunks.length;
+  e.depth = open[first]!.depth;
+  return mapMaybe(insideAtRules(open, first + 1, e, () => emitHoisted(rule, frame, e, source, imp)), () => {
+    let from = first;
+    if (e.chunks.length === closed) {
+      e.chunks.length = closesFrom;
+      if (e.positions) {
+        e.positions.length = posFrom;
+      }
+      if (semi >= 0) {
+        e.chunks[semi] = ';';
+      }
+      from = top;
+    } else {
+      for (let i = top - 1; i >= first; i--) {
+        const block = open[i]!;
+        const end = ends[top - 1 - i]!;
+        if (block.split !== null) {
+          block.split.end = end;
+        }
+        if (block.slot && block.headerChunk >= 0 && e.dynamicExtend !== null) {
+          recordNestedDynExtendSlot(e, block.rule!, block.frame!, block.headerChunk, block.idt, block.own!, end);
+        }
+      }
+    }
+    for (let i = from; i < open.length; i++) {
+      e.depth = open[i]!.depth;
+      reopenBlock(open[i]!, e);
+    }
+    e.depth = depth;
+  });
+}
+
+/** Write `body` inside the at-rules of `open` from `index` on, each dropped when it holds nothing. */
+function insideAtRules(open: OpenBlock[], index: number, e: Emit, body: () => MaybePromise<void>): MaybePromise<void> {
+  while (index < open.length && open[index]!.header === null) {
+    index++;
+  }
+  if (index === open.length) {
+    return body();
+  }
+  const mark = e.chunks.length;
+  const markPos = e.positions ? e.positions.length : 0;
+  const idt = blockIndent(e);
+  if (idt) {
+    put(e, idt);
+  }
+  put(e, open[index]!.header!);
+  put(e, blockOpen(e));
+  const after = e.chunks.length;
+  e.depth++;
+  return mapMaybe(insideAtRules(open, index + 1, e, body), () => {
+    e.depth--;
+    if (e.chunks.length === after) {
+      e.chunks.length = mark;
+      if (e.positions) {
+        e.positions.length = markPos;
+      }
+    } else {
+      emitBlockClose(e, idt);
+    }
+  });
+}
+
 interface HoistSplit {
   header: string[];
   leaves: Leaf[];
@@ -23898,19 +24112,18 @@ function emitTransparentShells(
       if (idt) {
         put(e, idt);
       }
+      const headerChunk = e.chunks.length;
       put(e, composeSelectorHeader(e, header, idt, null));
       put(e, blockOpen(e));
-      const afterHeader = e.chunks.length;
+      const block = openBlock(e, null, idt, shell.rule, null, header, false, null, markChunks, markPos, headerChunk);
       e.depth++;
       const finish = (): void => {
         e.depth--;
-        if (e.chunks.length === afterHeader) {
-          e.chunks.length = markChunks;
-          if (e.positions) {
-            e.positions.length = markPos;
-          }
+        e.openBlocks!.pop();
+        if (e.chunks.length === block.body) {
+          dropBlockPart(block, e);
         } else {
-          emitBlockClose(e, idt);
+          emitBlockClose(e, block.idt);
         }
       };
       const emitted = mapMaybe(
@@ -23976,7 +24189,6 @@ function writeNestedRule(
    */
   const markChunks = e.chunks.length;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.chunks.length;
   const idt = blockIndent(e);
 
   /*
@@ -24054,7 +24266,7 @@ function writeNestedRule(
 
     /* [nesting] An extended header's branches that carry a pseudo-element followed by more get rules of their own ({@link SplitBlock}). */
     const split = plan === undefined ? undefined : extendedSplitFlags(own, projection?.suffixedByRule?.get(rule));
-    let splitBlock: SplitBlock | undefined;
+    let splitBlock: SplitBlock | null = null;
 
     /*
      * Less only coalesces this nested-output root seam after an authored header
@@ -24087,7 +24299,7 @@ function writeNestedRule(
       }
       put(e, blockOpen(e));
     }
-    const afterHeader = e.chunks.length;
+    const block = openBlock(e, null, idt, rule, frame, own, rewritable, splitBlock, markChunks, markPos, headerChunkIndex);
     const childFrame = activateRuleFrame(rule, frame, e);
     const childSource: NestedHeaderSource = { parent: source, selector: resolved ?? rule.selector, frame };
 
@@ -24100,25 +24312,20 @@ function writeNestedRule(
     e.depth++;
     const finish = (): MaybePromise<void> => {
       e.depth--;
-      if (e.chunks.length === afterHeader) {
+      e.openBlocks!.pop();
+      if (e.chunks.length === block.body) {
         /*
          * Nothing emitted in the block, not even a comment (the walk writes the
          * body's own): drop the header/braces (rewind, ledger O6).
          */
-        e.chunks.length = markChunks;
-        if (e.positions) {
-          e.positions.length = markPos;
-        }
-        if (splitBlock !== undefined) {
-          e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(splitBlock), 1);
-        }
+        dropBlockPart(block, e);
       } else {
-        emitBlockClose(e, idt, lb);
-        if (splitBlock !== undefined) {
-          splitBlock.end = e.chunks.length;
+        emitBlockClose(e, block.idt, lb);
+        if (block.split !== null) {
+          block.split.end = e.chunks.length;
         }
         if (e.positions) {
-          e.positions.push({ node: rule, type: rule.type, start, end: e.chunks.length, source: srcFile(e) });
+          e.positions.push({ node: rule, type: rule.type, start: block.mark, end: e.chunks.length, source: srcFile(e) });
         }
         if (rootSibling) {
           lb.parentKey = frame;
@@ -24131,8 +24338,8 @@ function writeNestedRule(
          * [extend/dynamic] The surviving nested block's header is a rewritable target
          * slot: the deferred fold overwrites it in place if dynamic extenders fold in.
          */
-        if (e.dynamicExtend && headerChunkIndex >= 0 && rewritable) {
-          recordNestedDynExtendSlot(e, rule, frame, headerChunkIndex, idt, own, e.chunks.length);
+        if (e.dynamicExtend && block.headerChunk >= 0 && rewritable) {
+          recordNestedDynExtendSlot(e, rule, frame, block.headerChunk, block.idt, own, e.chunks.length);
         }
       }
 
@@ -24210,10 +24417,10 @@ function writeNestedRule(
  * or an at-rule bubbled out of it keeps the rule's ancestors: `.a { .b { @media
  * print { … } } }` hoisting `.b` writes `@media print { .a .b { … } }`.
  */
-function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null): MaybePromise<void> {
+function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null, imp = false): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e);
+  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e, imp);
   if (isThenable(emitted)) {
     return emitted.then(
       () => {
@@ -24268,32 +24475,29 @@ function nestedAtRuleShell(
 ): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.chunks.length;
   const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
   }
-  put(e, node.name);
-  if (prelude.length > 0) {
-    put(e, e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
-    put(e, prelude);
-  }
+  const header = prelude.length > 0
+    ? node.name + (e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ') + prelude
+    : node.name;
+  const headerChunk = e.chunks.length;
+  put(e, header);
   put(e, blockOpen(e));
-  const afterHeader = e.chunks.length;
+  const block = openBlock(e, header, idt, null, null, null, false, null, markChunks, markPos, headerChunk);
   e.depth++;
   const finish = (): void => {
     e.depth--;
-    if (e.chunks.length === afterHeader) {
+    e.openBlocks!.pop();
+    if (e.chunks.length === block.body) {
       /* Nothing emitted, not even a comment (the walk writes the body's own). */
-      e.chunks.length = markChunks;
-      if (e.positions) {
-        e.positions.length = markPos;
-      }
+      dropBlockPart(block, e);
       return;
     }
-    emitBlockClose(e, idt);
+    emitBlockClose(e, block.idt);
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start: block.mark, end: e.chunks.length, source: srcFile(e) });
     }
   };
   return mapMaybe(body(), finish);

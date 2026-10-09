@@ -251,10 +251,11 @@ describe('Jess parser plugin render-through', () => {
       }
     });
 
-    it('preserves `&` verbatim in the default nested output until a boundary collapses', async () => {
+    it('preserves a parent-reference `&` verbatim in the default nested output until a boundary collapses', async () => {
       /*
-       * `.jess` output is nested by DEFAULT. `&` only resolves where a boundary
-       * is collapsed, so the authored form survives to the emitted CSS.
+       * `.jess` output is nested by DEFAULT. A `&` that references its parent only
+       * resolves where a boundary is collapsed, so the authored form survives to the
+       * emitted CSS.
        */
       expect(await nested('.a { &:hover { color: red; } }'))
         .toBe('.a {\n  &:hover {\n    color: red;\n  }\n}\n');
@@ -262,20 +263,20 @@ describe('Jess parser plugin render-through', () => {
         .toBe('.a,\n#b {\n  & + & {\n    color: red;\n  }\n}\n');
       expect(await nested('.a { :not(&) { color: red; } }'))
         .toBe('.a {\n  :not(&) {\n    color: red;\n  }\n}\n');
-      expect(await nested('.block { &__el { color: red; } }'))
-        .toBe('.block {\n  &__el {\n    color: red;\n  }\n}\n');
 
       /*
-       * The `&(X)` spelling normalizes to the fused form it is sugar for; `&-1` written
-       * nested would be no selector (`-1` is no identifier), so it is written flattened
-       * (ledger O17).
+       * A `&` that builds a name is not CSS nesting, which would read `&__el` as `&` then
+       * the type selector `__el`: the rule is written flattened, the name built (ledger
+       * J13). The `&(X)` spelling normalizes to the fused form it is sugar for.
        */
+      expect(await nested('.block { &__el { color: red; } }'))
+        .toBe('.block__el {\n  color: red;\n}\n');
       expect(await nested('.button { &(-1) { color: red; } }'))
         .toBe('.button-1 {\n  color: red;\n}\n');
 
-      // A `${…}` template still evaluates; only the parent reference is deferred.
+      // A `${…}` template glued after the `&` builds a name too.
       expect(await nested('$t: primary; .a { &-${t} { color: red; } }'))
-        .toBe('.a {\n  &-primary {\n    color: red;\n  }\n}\n');
+        .toBe('.a-primary {\n  color: red;\n}\n');
     });
 
     it('hoists `&` per collapsed boundary rather than per document', async () => {

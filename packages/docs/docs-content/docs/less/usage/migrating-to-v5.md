@@ -178,6 +178,30 @@ Compiles to:
 }
 ```
 
+This holds in the default nested output too, and for every name built on the parent (`&__el`, `&--mod`, `&-suffix`): CSS nesting has no name concatenation, and a browser would read a nested `&__el` as `&` followed by an element named `__el`. Such a rule is written flattened where it stands, so the rest of its parent's block keeps its order around it:
+
+```less
+.btn {
+  color: black;
+  &--primary {
+    color: white;
+  }
+  border: 0;
+}
+```
+
+```css
+.btn {
+  color: black;
+}
+.btn--primary {
+  color: white;
+}
+.btn {
+  border: 0;
+}
+```
+
 Less 5.x also makes the parent-template model explicit:
 
 - `&()` keeps the parent selector but hoists the nested selector to root
