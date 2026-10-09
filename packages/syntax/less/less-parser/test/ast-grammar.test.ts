@@ -6597,19 +6597,7 @@ describe('Less AST grammar facts', () => {
                       {
                         type: 'Declaration',
                         name: '--foo',
-                        value: {
-                          type: 'Interpolation',
-                          parts: [
-                            {
-                              ref: {
-                                type: 'Lookup', kind: 'var',
-                                name: 'replace',
-                                raw: '@replace',
-                                scope: 'scoped'
-                              }
-                            }
-                          ]
-                        },
+                        value: { type: 'Any', src: '@replace' },
                         important: true
                       }
                     ]
@@ -8389,15 +8377,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: '--literal',
-              value: {
-                type: 'Interpolation',
-                parts: [
-                  {
-                    ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name', scope: 'scoped' },
-                    unquote: false
-                  }
-                ]
-              }
+              value: { type: 'Any', src: '@name' }
             },
             {
               type: 'Declaration',

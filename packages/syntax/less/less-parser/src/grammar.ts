@@ -241,12 +241,15 @@ type LessRules = {
   ImportantValue: Combinator<Important>;
   ValueListWithPriority: Combinator<ValueSlot>;
   CustomPropertyName: Combinator<string | Interpolation>;
-  CustomAtKeywordText: Combinator<string>;
   CustomPart: Combinator<CustomValuePart>;
   CustomInnerPart: Combinator<CustomValuePart>;
   CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
+  VarFallbackGroup: Combinator<readonly CustomValuePart[]>;
+  CustomAtKeywordText: Combinator<string>;
+  VarFallbackInnerPart: Combinator<CustomValuePart>;
+  VarFallbackPart: Combinator<CustomValuePart>;
   VarFallback: Combinator<ValueNode>;
   VarFunction: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
@@ -2498,10 +2501,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   // Less custom properties retain CSS declaration-value text.  The direct
-  // route therefore treats every ordinary byte run as literal `Any` content,
-  // but lets the shared strict `@{…}` grammar surface interpolation as typed
-  // AST facts.  Delimiters and strings are grammar children—not a captured
-  // source span—while block comments stay in Parseman's trivia log.
+  // route therefore treats every ordinary byte run — a bare `@name` included —
+  // as literal `Any` content, and only the shared strict `@{…}` grammar
+  // surfaces interpolation as typed AST facts (ledger P2).  Delimiters and
+  // strings are grammar children—not a captured source span—while block
+  // comments stay in Parseman's trivia log.
   // Gating note: the static and interpolated `--*` name arms share `-`; keep the
   // public name branches explicit until the custom-property family has a shared
   // opener that preserves both AST construction and CST ownership.
@@ -2535,11 +2539,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => customPartsFromChildren(children)
   );
-  const CustomAtKeywordText = node(
-    'CustomAtKeywordText',
-    g.CustomValueAtKeyword,
-    children => requireToken(children[0]).value
-  );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     BacktickJavaScript,
@@ -2547,8 +2546,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
     g.CustomGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
+    g.CustomValueAtName
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
@@ -2557,8 +2555,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
     g.CustomGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
+    g.CustomValueAtName
   );
   /*
    * The value runs under comment-only trivia, so a comment written before its
@@ -2580,10 +2577,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // same one the at-rule prelude custom-property branch produces for the
   // identical token in an at-rule header.
   /*
-   * Overrides the CSS base's `var()` fallback slot, and only that slot. A
-   * fallback is a `<declaration-value>` (css-variables-1 §3), so in Less it is
-   * the custom-property value a `--x:` declaration takes (ledger P2): variable
-   * reads and `@{}` interpolation resolve, and nothing computes.
+   * Overrides the CSS base's `var()` fallback slot, and only that slot. In an
+   * ordinary declaration `var()` is a CSS function, so its fallback is an
+   * argument, and a Less variable is read there as in any argument (ledger P2,
+   * owner 2026-10-09). The fallback is otherwise the custom-property token
+   * stream: `@{}` interpolation resolves and nothing computes. A typed
+   * at-keyword (`@media`) stays text. Inside a custom-property value the whole
+   * value, a `var()` included, is `CustomValue` text.
    *
    * BLOCKED from overriding only the slot: routing `var(` to the inherited css
    * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
@@ -2592,10 +2592,50 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * The gap after the comma is the custom-property value's own gap, so a `//`
    * that opens the fallback is value text (see CustomDeclaration).
    */
+  const VarFallbackGroup = node(
+    'VarFallbackGroup',
+    parser(
+      { trivia: customValueCommentTrivia },
+      choice(
+        sequence(literal('('), many(g.VarFallbackInnerPart), literal(')')),
+        sequence(literal('['), many(g.VarFallbackInnerPart), literal(']')),
+        sequence(literal('{'), many(g.VarFallbackInnerPart), literal('}'))
+      )
+    ),
+    children => customPartsFromChildren(children)
+  );
+  const CustomAtKeywordText = node(
+    'CustomAtKeywordText',
+    g.CustomValueAtKeyword,
+    children => requireToken(children[0]).value
+  );
+  const VarFallbackInnerPart: Combinator<CustomValuePart> = choice(
+    g.Interpolation,
+    BacktickJavaScript,
+    g.CustomValueInnerContent,
+    g.CustomValueSingleQuoted,
+    g.CustomValueDoubleQuoted,
+    g.VarFallbackGroup,
+    g.CustomAtKeywordText,
+    g.VariableReference
+  );
+  const VarFallbackPart: Combinator<CustomValuePart> = choice(
+    g.Interpolation,
+    BacktickJavaScript,
+    g.CustomValueOuterContent,
+    g.CustomValueSingleQuoted,
+    g.CustomValueDoubleQuoted,
+    g.VarFallbackGroup,
+    g.CustomAtKeywordText,
+    g.VariableReference
+  );
   const VarFallback = node(
     'VarFallback',
-    g.CustomValue,
-    children => trimCustomValueEnd(requireValueNode(children[0]))
+    parser({ trivia: customValueCommentTrivia }, many(g.VarFallbackPart)),
+    (children, _fields, span, _rawChildren, triviaLog) => trimCustomValueEnd(withSourceSpan(
+      customValueFromParts(customPartsFromChildren(children), triviaLog),
+      span
+    ))
   );
   /**
    * The `var()` name: css's `<custom-property-name>`, or a Less form that
@@ -5531,11 +5571,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ImportantValue,
     ValueListWithPriority,
     CustomPropertyName,
-    CustomAtKeywordText,
     CustomPart,
     CustomInnerPart,
     CustomGroup,
     CustomValue,
+    VarFallbackGroup,
+    CustomAtKeywordText,
+    VarFallbackInnerPart,
+    VarFallbackPart,
     VarFallback,
     VarFunction,
     CustomPropertyValue,

@@ -44,9 +44,12 @@ describe('Less: branch arguments (P38)', () => {
         .resolves.toBe('a {\n  width: if(media(print): 1px;);\n}\n');
     });
 
+    /* A style() value is a custom-property value (P2): only `@{…}` interpolates there. */
     it(`${mode}: variables inside a branch are substituted`, async () => {
-      await expect(render(`${prefix}@v: dark;\n@c: white;\na { color: if(style(--scheme: @v): @c; else: black); }`))
+      await expect(render(`${prefix}@v: dark;\n@c: white;\na { color: if(style(--scheme: @{v}): @c; else: black); }`))
         .resolves.toBe('a {\n  color: if(style(--scheme: dark): white; else: black);\n}\n');
+      await expect(render(`${prefix}@v: dark;\n@c: white;\na { color: if(style(--scheme: @v): @c; else: black); }`))
+        .resolves.toBe('a {\n  color: if(style(--scheme: @v): white; else: black);\n}\n');
     });
 
     it(`${mode}: media() and supports() tests are query syntax, emitted as written`, async () => {
