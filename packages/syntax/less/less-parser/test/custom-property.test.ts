@@ -101,8 +101,13 @@ describe('Less custom properties', () => {
     });
   });
 
-  it('parses raw Less variables inside custom-property values structurally', () => {
-    const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; }');
+  /*
+   * Ledger P2 (owner, reaffirmed 2026-10-09): a custom-property value is CSS
+   * text, so a bare `@name` — and `@@name`, `@m[k]`, `@d()`, anything after an
+   * `@` — is literal bytes, never a variable read. Only `@{…}` interpolates.
+   */
+  it('keeps a bare Less variable inside a custom-property value as literal text', () => {
+    const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; --calc: calc(@value + 1px); --forms: @@value @value[k] @value(); --missing: @nope; }');
 
     expect(document).toMatchObject({
       rules: [
@@ -110,39 +115,28 @@ describe('Less custom properties', () => {
         {
           type: 'Ruleset',
           rules: [
-            {
-              type: 'Declaration',
-              name: '--color',
-              value: {
-                type: 'Interpolation',
-                parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }]
-              }
-            },
-            {
-              type: 'Declaration',
-              name: '--fallback',
-              value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: 'solid ' },
-                  { ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }
-                ]
-              }
-            }
+            { type: 'Declaration', name: '--color', value: { type: 'Any', src: '@value' } },
+            { type: 'Declaration', name: '--fallback', value: { type: 'Any', src: 'solid @value' } },
+            { type: 'Declaration', name: '--calc', value: { type: 'Any', src: 'calc(@value + 1px)' } },
+            { type: 'Declaration', name: '--forms', value: { type: 'Any', src: '@@value @value[k] @value()' } },
+            { type: 'Declaration', name: '--missing', value: { type: 'Any', src: '@nope' } }
           ]
         }
       ]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       ':root {\n'
-      + '  --color: #fff;\n'
-      + '  --fallback: solid #fff;\n'
+      + '  --color: @value;\n'
+      + '  --fallback: solid @value;\n'
+      + '  --calc: calc(@value + 1px);\n'
+      + '  --forms: @@value @value[k] @value();\n'
+      + '  --missing: @nope;\n'
       + '}\n'
     );
   });
 
-  it('keeps strict custom-property interpolation unquoted while raw variables preserve quotes', () => {
-    const document = parse('@value: "red"; :root { --raw: @value; --strict: @{value}; }');
+  it('interpolates only a strict @{…} in a custom-property value, unquoted', () => {
+    const document = parse('@value: "red"; :root { --raw: @value; --strict: @{value}; --mixed: @{value} @value; }');
 
     expect(document).toMatchObject({
       rules: [
@@ -150,16 +144,18 @@ describe('Less custom properties', () => {
         {
           type: 'Ruleset',
           rules: [
-            { type: 'Declaration', name: '--raw', value: { type: 'Interpolation', parts: [{ unquote: false }] } },
-            { type: 'Declaration', name: '--strict', value: { type: 'Interpolation', parts: [{ unquote: true }] } }
+            { type: 'Declaration', name: '--raw', value: { type: 'Any', src: '@value' } },
+            { type: 'Declaration', name: '--strict', value: { type: 'Interpolation', parts: [{ unquote: true }] } },
+            { type: 'Declaration', name: '--mixed', value: { type: 'Interpolation', parts: [{ unquote: true }, { lit: ' @value' }] } }
           ]
         }
       ]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       ':root {\n'
-      + '  --raw: "red";\n'
+      + '  --raw: @value;\n'
       + '  --strict: red;\n'
+      + '  --mixed: red @value;\n'
       + '}\n'
     );
   });

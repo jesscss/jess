@@ -310,16 +310,21 @@ describe('Less block comments at a statement boundary inside a block', () => {
 
   /*
    * Ledger F12: a comment at either edge of a custom property's value stays in
-   * place when the value reads a variable too, so is written out evaluated.
+   * place when the value interpolates a variable too, so is written out
+   * evaluated; a bare `@c` is literal text (P2) and keeps them as well.
    */
   it('keeps the edge comments of a custom property value that reads a variable', async () => {
     await bothEmitters(
-      '@c: red; a { --a: @c /* k */; --b: @c/* k */; --c: a @c /* k */; --d: @c b /* k */; --e: (@c) /* k */; z: 1; }',
+      '@c: red; a { --a: @{c} /* k */; --b: @{c}/* k */; --c: a @{c} /* k */; --d: @{c} b /* k */; --e: (@{c}) /* k */; z: 1; }',
       'a { --a: red /* k */; --b: red/* k */; --c: a red /* k */; --d: red b /* k */; --e: (red) /* k */; z: 1; }'
     );
     await bothEmitters(
-      '@c: red; a { --f: @c /* k */ !important; --g: /* k */ @c; --h: /* j */ @c /* k */; z: 1; }',
+      '@c: red; a { --f: @{c} /* k */ !important; --g: /* k */ @{c}; --h: /* j */ @{c} /* k */; z: 1; }',
       'a { --f: red /* k */ !important; --g: /* k */ red; --h: /* j */ red /* k */; z: 1; }'
+    );
+    await bothEmitters(
+      '@c: red; a { --a: @c /* k */; --g: /* k */ @c; --h: /* j */ @c /* k */ !important; z: 1; }',
+      'a { --a: @c /* k */; --g: /* k */ @c; --h: /* j */ @c /* k */ !important; z: 1; }'
     );
   });
 

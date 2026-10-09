@@ -5735,7 +5735,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'Branch':
       /*
-       * [P38] A branch argument (`style(--x: @v): @c`) keeps its shape: the
+       * [P38] A branch argument (`style(--x: @{v}): @c`) keeps its shape: the
        * condition and value are evaluated like any value, and the colon is the
        * branch's own syntax. An omitted value keeps the bare colon (`cond:`).
        */
@@ -22135,7 +22135,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
           [{ bytes: `${node.name}(${content})`, protected: true }]);
       }
 
-      /* A condition call (`style(--x: @v)`) holds a feature: it is walked as the feature in parens is. */
+      /* A condition call (`style(--x: @{v})`) holds a feature: it is walked as the feature in parens is. */
       const feature = conditionFeature(node);
       return feature === null
         ? mapMaybe(evalBytes(node, frame, e), plain)
@@ -22237,7 +22237,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
 }
 
 /**
- * The feature a condition call holds — `style(--x: @v)`, `scroll-state(stuck:
+ * The feature a condition call holds — `style(--x: @{v})`, `scroll-state(stuck:
  * top)` — when the grammar built it as one query relation, or `null`.
  */
 function conditionFeature(node: FunctionCall): Operation | null {

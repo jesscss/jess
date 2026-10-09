@@ -116,13 +116,14 @@ describe('typed reads, not byte scans', () => {
   /*
    * A `style()` query's `--x: value` is a custom-property value, written as the
    * same value in a declaration is (DESIGN-DECISIONS P2, SEMANTIC-INVARIANTS 2):
-   * a variable is substituted and an escaped string is kept as written.
+   * a bare variable and an escaped string are kept as written, and only `@{…}`
+   * interpolates.
    */
   it('writes a style() query value as the same custom-property value in a declaration', async () => {
-    expect(await render('@a: 3; .d { --x: @a; --y: ~"a/b"; --z: ~\'a b\'; }'))
-      .toBe('.d { --x: 3; --y: ~"a/b"; --z: ~\'a b\'; }');
-    expect(await render('@a: 3; @container style(--x: @a) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }'))
-      .toBe('@container style(--x: 3) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }');
+    expect(await render('@a: 3; .d { --x: @a; --y: ~"a/b"; --z: ~\'a b\'; --i: @{a}; }'))
+      .toBe('.d { --x: @a; --y: ~"a/b"; --z: ~\'a b\'; --i: 3; }');
+    expect(await render('@a: 3; @container style(--x: @a) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } } @container style(--i: @{a}) { .a { b: c; } }'))
+      .toBe('@container style(--x: @a) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } } @container style(--i: 3) { .a { b: c; } }');
   });
 
   /*

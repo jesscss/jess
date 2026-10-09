@@ -757,6 +757,11 @@ class JessPrinter {
         if (node.src.includes('$')) {
           return gap('Any', 'opaque bytes containing `$`, which `.jess` reads as a sigil');
         }
+
+        // A Less `var()` fallback keeps a bare `@c` as text (ledger P2); a `.jess` value has no `@` token.
+        if (node.src.includes('@')) {
+          return gap('Any', 'opaque bytes containing `@`, which a `.jess` value does not read');
+        }
         return node.src;
       case 'Url':
         if (node.value.type === 'Any' && /[ \t\n\r\f]/u.test(node.value.src)) {

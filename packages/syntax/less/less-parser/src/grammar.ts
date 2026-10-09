@@ -241,7 +241,6 @@ type LessRules = {
   ImportantValue: Combinator<Important>;
   ValueListWithPriority: Combinator<ValueSlot>;
   CustomPropertyName: Combinator<string | Interpolation>;
-  CustomAtKeywordText: Combinator<string>;
   CustomPart: Combinator<CustomValuePart>;
   CustomInnerPart: Combinator<CustomValuePart>;
   CustomGroup: Combinator<readonly CustomValuePart[]>;
@@ -309,7 +308,7 @@ type LessRules = {
   AtRuleBlock: Combinator<AtRuleBlock>;
   UnknownAtPrelude: Combinator<string | null>;
   AtRuleName: Combinator<string>;
-  CustomValueAtKeyword: Combinator<string>;
+  TypedBlockAtKeyword: Combinator<string>;
   StaticAtRuleStatementName: Combinator<string>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
   AtRuleStatement: Combinator<AtRuleStatement>;
@@ -491,7 +490,6 @@ const importKeyword = keywords(
   ['@-import', '@import'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-/* `customValueAtKeyword` is now the composed `g.CustomValueAtKeyword` rule. */
 // Quoted-string skippers for the grammar-level ambient `scanSkip`.
 // `scanTo`/`balanced` with no per-call skip consults these so a delimiter hidden
 // inside a string is never matched. Consumes quote-to-quote including escapes;
@@ -2498,10 +2496,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   // Less custom properties retain CSS declaration-value text.  The direct
-  // route therefore treats every ordinary byte run as literal `Any` content,
-  // but lets the shared strict `@{…}` grammar surface interpolation as typed
-  // AST facts.  Delimiters and strings are grammar children—not a captured
-  // source span—while block comments stay in Parseman's trivia log.
+  // route therefore treats every ordinary byte run — a bare `@name` included —
+  // as literal `Any` content, and only the shared strict `@{…}` grammar
+  // surfaces interpolation as typed AST facts (ledger P2).  Delimiters and
+  // strings are grammar children—not a captured source span—while block
+  // comments stay in Parseman's trivia log.
   // Gating note: the static and interpolated `--*` name arms share `-`; keep the
   // public name branches explicit until the custom-property family has a shared
   // opener that preserves both AST construction and CST ownership.
@@ -2535,20 +2534,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => customPartsFromChildren(children)
   );
-  const CustomAtKeywordText = node(
-    'CustomAtKeywordText',
-    g.CustomValueAtKeyword,
-    children => requireToken(children[0]).value
-  );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     BacktickJavaScript,
     g.CustomValueInnerContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
-    g.CustomGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
+    g.CustomGroup
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
@@ -2556,9 +2548,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueOuterContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
-    g.CustomGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
+    g.CustomGroup
   );
   /*
    * The value runs under comment-only trivia, so a comment written before its
@@ -2582,8 +2572,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * Overrides the CSS base's `var()` fallback slot, and only that slot. A
    * fallback is a `<declaration-value>` (css-variables-1 §3), so in Less it is
-   * the custom-property value a `--x:` declaration takes (ledger P2): variable
-   * reads and `@{}` interpolation resolve, and nothing computes.
+   * the custom-property value a `--x:` declaration takes (ledger P2): only
+   * `@{}` interpolation resolves; a bare `@var` is text, and nothing computes.
    *
    * BLOCKED from overriding only the slot: routing `var(` to the inherited css
    * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
@@ -4366,9 +4356,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * The at-rule names Less routes to a TYPED production, in one place. Every
    * name here is defined by the leaf that also matches it positively -- Less's
-   * own compiler namespace plus cssSyntax's shared CSS leaves -- so the
-   * positive form (`CustomValueAtKeyword`) and the two negative forms below
-   * cannot drift. This replaced three hand-spelled copies of the same set.
+   * own compiler namespace plus cssSyntax's shared CSS leaves -- so the typed
+   * productions and the two negative forms below (`StaticAtRuleStatementName`,
+   * `AtRuleName`) cannot drift. This replaced three hand-spelled copies of the same set.
    *
    * The set is split in two because the statement name and the opaque-block
    * name exclude different halves of it. These three may never take the generic
@@ -4392,12 +4382,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * plain at-rule statement there. Excluding it here was what made Less the one
    * dialect that refused it.
    */
-  const CustomValueAtKeyword = token(noTrivia(choice(
+  const TypedBlockAtKeyword = token(noTrivia(choice(
     NonStatementAtKeyword,
     g.KeyframesAtKeyword
   )));
   /*
-   * `@charset` is excluded HERE and not from `CustomValueAtKeyword`, because the
+   * `@charset` is excluded HERE and not from `TypedBlockAtKeyword`, because the
    * two negatives mean different things: `CharsetStatement` below is the only
    * STATEMENT route for the name, so the generic statement must not re-admit a
    * prelude that route refused (`@charset url(utf-8);` used to parse for exactly
@@ -4414,7 +4404,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.AtIdentifier
   )));
   const AtRuleName = token(noTrivia(sequence(
-    not(CustomValueAtKeyword),
+    not(TypedBlockAtKeyword),
     not(g.LayerAtKeyword),
     g.AtIdentifier
   )));
@@ -5531,7 +5521,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ImportantValue,
     ValueListWithPriority,
     CustomPropertyName,
-    CustomAtKeywordText,
     CustomPart,
     CustomInnerPart,
     CustomGroup,
@@ -5597,7 +5586,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     AtRuleBlock,
     UnknownAtPrelude,
     AtRuleName,
-    CustomValueAtKeyword,
+    TypedBlockAtKeyword,
     StaticAtRuleStatementName,
     UnknownAtRuleBlock,
     AtRuleStatement,

@@ -14,6 +14,27 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
      */
     'tests-config/3rd-party/bootstrap4.less',
     [
+      /*
+       * A bare `@var` in a custom-property value is written as authored; only
+       * `@{var}` inserts the value (ledger P2, owner reaffirmed 2026-10-09).
+       * bootstrap-less-port `_root.less` writes `--@{color}: @value;` and
+       * `--font-family-sans-serif: @font-family-sans-serif;`; the golden holds
+       * the substituted values.
+       */
+      ((colors: ReadonlyArray<readonly [string, string]>, fonts: ReadonlyArray<readonly [string, string]>): readonly [string, string] => [
+        [...colors.map(([name, value]) => `  --${name}: ${value};`), ...fonts.map(([name, value]) => `  --${name}: ${value};`)].join('\n'),
+        [...colors.map(([name]) => `  --${name}: @value;`), ...fonts.map(([name]) => `  --${name}: @${name};`)].join('\n')
+      ])([
+        ['blue', '#007bff'], ['indigo', '#6610f2'], ['purple', '#6f42c1'], ['pink', '#e83e8c'], ['red', '#dc3545'],
+        ['orange', '#fd7e14'], ['yellow', '#ffc107'], ['green', '#28a745'], ['teal', '#20c997'], ['cyan', '#17a2b8'],
+        ['white', '#fff'], ['gray', '#6c757d'], ['gray-dark', '#343a40'], ['primary', '#007bff'], ['secondary', '#6c757d'],
+        ['success', '#28a745'], ['info', '#17a2b8'], ['warning', '#ffc107'], ['danger', '#dc3545'], ['light', '#f8f9fa'],
+        ['dark', '#343a40'], ['breakpoint-xs', '0'], ['breakpoint-sm', '576px'], ['breakpoint-md', '768px'],
+        ['breakpoint-lg', '992px'], ['breakpoint-xl', '1200px']
+      ], [
+        ['font-family-sans-serif', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"'],
+        ['font-family-monospace', 'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace']
+      ]),
       ['.form-control-plaintext.form-control-lg {\n', [
         '.form-control-plaintext.form-control-lg,',
         ...['sm', 'lg'].flatMap(size => [
@@ -219,6 +240,11 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
    */
   ['tests-unit/functions/functions.less', [
     ['  length-1: 1;\n', '  length-1: 3;\n']
+  ]],
+
+  // As in bootstrap4: `each(@vars, { --@{key}: @value; })` writes `@value` as authored (ledger P2).
+  ['tests-config/namespacing/namespacing-8.less', [
+    [':root {\n  --background-color: black;\n  --color: #fff;\n}', ':root {\n  --background-color: @value;\n  --color: @value;\n}']
   ]],
 
   /*
