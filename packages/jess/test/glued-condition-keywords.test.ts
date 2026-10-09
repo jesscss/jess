@@ -35,6 +35,8 @@ const GLUED: ReadonlyArray<readonly [prelude: string, column: number]> = [
   ['@media not(color)', 8],
   ['@media (not(hover))', 9],
   ['@media only screen AND(color)', 20],
+  ['@media ((a: b) and(c: d))', 16],
+  ['@media ((a) or(b))', 13],
   ['@container (min-width: 1px) and(max-width: 2px)', 29],
   ['@container card (min-width: 1px) or(orientation: portrait)', 34],
   ['@container not(width > 1px)', 12],

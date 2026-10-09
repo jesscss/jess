@@ -17,6 +17,8 @@ const GLUED: ReadonlyArray<readonly [prelude: string, call: string]> = [
   ['@media not(color)', 'not(color)'],
   ['@media (not(hover))', 'not(hover)'],
   ['@media only screen and(color)', 'and(color)'],
+  ['@media ((a: b) and(c: d))', 'and(c: d)'],
+  ['@media ((a) or(b))', 'or(b)'],
   ['@container (a) and(b)', 'and(b)'],
   ['@container not(width > 1px)', 'not(width > 1px)'],
   ['@container ((a) and(b))', 'and(b)'],
