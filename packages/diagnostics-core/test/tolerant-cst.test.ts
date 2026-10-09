@@ -1806,6 +1806,19 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  /* Owner 2026-10-09, verbatim: "`all` only applies to target right before, `!all` is supposed to apply to the entire seletor list". */
+  it('reads every target of a `!all` extend list as partial, and `all` as its own target only', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.hit {}\n.a:extend(.maybe, .hit !all) {}\n.b { &:extend(.gone, .hit !ALL); }\n.c:extend(.missing, .hit all) {}',
+      language: 'less'
+    });
+    expect(less.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deadExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target ".missing" does not match any same-file selector', 4, 11]
+    ]);
+  });
+
   it('reports exact static extend targets that do not match same-file selectors', () => {
     const less = collectTolerantDiagnostics({
       source: '.hit {}\n.a:extend(.hit) {}\n.b:extend(.missing) {}\n.c:extend(.maybe all) {}',

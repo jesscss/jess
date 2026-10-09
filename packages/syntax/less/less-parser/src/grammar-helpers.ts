@@ -66,6 +66,8 @@ type MixinInteriorFact = {
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
+/** One target as its `:extend(…)` list reads it: `wholeList` when it carries `!all`, which makes the whole list partial. */
+type ExtendTargetListFact = ExtendTargetFact & { readonly wholeList: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = {
@@ -1793,6 +1795,10 @@ function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
     && 'partial' in value && typeof value.partial === 'boolean';
 }
 
+function isExtendTargetListFact(value: unknown): value is ExtendTargetListFact {
+  return isExtendTargetFact(value) && 'wholeList' in value && typeof value.wholeList === 'boolean';
+}
+
 function isBodyExtendFact(value: unknown): value is BodyExtendFact {
   return typeof value === 'object' && value !== null
     && 'bodyExtensions' in value && Array.isArray(value.bodyExtensions)
@@ -2996,6 +3002,7 @@ export {
   isLessDeclaration,
   isExtendInstruction,
   isExtendTargetFact,
+  isExtendTargetListFact,
   isFor,
   isFunctionCall,
   isFunctionConditionFact,
@@ -3123,6 +3130,7 @@ export type {
   CustomValuePart,
   EnclosedNameFact,
   ExtendTargetFact,
+  ExtendTargetListFact,
   FunctionConditionFact,
   IndirectRef,
   InterpolationAccessorFact,

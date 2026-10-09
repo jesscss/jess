@@ -4602,10 +4602,20 @@ function forEachExtendTarget(
   language: JessLanguage,
   fn: (target: CssCstNode, exact: boolean) => void
 ): void {
-  if (node.grammarType === 'ExtendTarget') {
-    const target = firstChildNodeMatching(node, EXTEND_TARGET_TYPES);
-    if (target !== undefined) {
-      fn(target, !isLessPartialExtendTarget(source.slice(absoluteStart(node), absoluteEnd(node))));
+  if (node.grammarType === 'ExtendPseudo') {
+    /*
+     * Owner 2026-10-09, verbatim: "`all` only applies to target right before,
+     * `!all` is supposed to apply to the entire seletor list" — so a `!all` on
+     * any target makes every target of this list partial, as the Less grammar's
+     * `ExtendPseudo` reads it.
+     */
+    const targets = cstChildrenOf(node).filter((child): child is CssCstNode => isCstNode(child) && child.grammarType === 'ExtendTarget');
+    const wholeList = targets.some(target => cstChildrenOf(target).some(child => child._tag === 'leaf' && child.value.toLowerCase() === '!all'));
+    for (const extendTarget of targets) {
+      const target = firstChildNodeMatching(extendTarget, EXTEND_TARGET_TYPES);
+      if (target !== undefined) {
+        fn(target, !wholeList && !isLessPartialExtendTarget(source.slice(absoluteStart(extendTarget), absoluteEnd(extendTarget))));
+      }
     }
     return;
   }

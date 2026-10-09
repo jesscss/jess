@@ -68,6 +68,7 @@ import {
   isComplexTailFact,
   isLessDeclaration,
   isExtendTargetFact,
+  isExtendTargetListFact,
   isFunctionCall,
   isFunctionConditionFact,
   isInterp,
@@ -161,7 +162,7 @@ import type {
   BodyExtendFact,
   CustomValuePart,
   EnclosedNameFact,
-  ExtendTargetFact,
+  ExtendTargetListFact,
   FunctionConditionFact,
   InterpolationAccessorFact,
   InterpolationFact,
@@ -346,7 +347,7 @@ type LessRules = {
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
-  ExtendTarget: Combinator<ExtendTargetFact>;
+  ExtendTarget: Combinator<ExtendTargetListFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
@@ -5195,9 +5196,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
       target: selist(children.find(isLessSelectorBranch)!),
-      partial: children.some(child => isLessTerminalText(child, 'all') || isLessTerminalText(child, '!all'))
+      partial: children.some(child => isLessKeyword(child, 'all') || isLessKeyword(child, '!all')),
+      wholeList: children.some(child => isLessKeyword(child, '!all'))
     })
   );
+
+  /*
+   * Owner 2026-10-09, verbatim: "`all` only applies to target right before,
+   * `!all` is supposed to apply to the entire seletor list". So `!all` on any
+   * target makes every target of this `:extend(…)` a partial match, and `all`
+   * only its own.
+   */
   const ExtendPseudo = node(
     'ExtendPseudo',
     sequence(
@@ -5208,7 +5217,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ),
       literal(')')
     ),
-    children => children.filter(isExtendTargetFact)
+    (children) => {
+      const targets = children.filter(isExtendTargetListFact);
+      const wholeList = targets.some(target => target.wholeList);
+      return targets.map(target => ({ target: target.target, partial: wholeList || target.partial }));
+    }
   );
   const selectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
   // A body-form `&:extend(...)` applies to the WHOLE carrying rule selector, so
