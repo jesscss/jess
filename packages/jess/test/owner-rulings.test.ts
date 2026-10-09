@@ -48,7 +48,7 @@ describe('P45 (owner 2026-10-09): well-formed input never stops the pipeline', (
     await expect(compile('.a { x: 3px > 2px; }', '.scss')).resolves.toContain('x: true');
   });
 
-  it.fails('P45 (owner 2026-10-09): Less parses `@supports selector(a > b)`', async () => {
+  it('P45 (owner 2026-10-09): Less parses `@supports selector(a > b)`', async () => {
     await expect(compile('@supports selector(a > b) { .x { y: z; } }', '.less')).resolves.toContain('@supports selector(a > b)');
   });
 
@@ -92,17 +92,17 @@ describe('P45 (owner 2026-10-09): well-formed input never stops the pipeline', (
     await expect(compile('.a { d: --; }', '.jess')).resolves.toContain('d: --');
   });
 
-  it.fails('P45 (owner 2026-10-09): Less parses a general-enclosed container query, `@container ( foo(x) )`', async () => {
+  it('P45 (owner 2026-10-09): Less parses a general-enclosed container query, `@container ( foo(x) )`', async () => {
     await expect(compile('@container ( foo(x) ) { .a { b: c; } }', '.less')).resolves.toContain('@container');
   });
 
-  it.fails('P45 (owner 2026-10-09): .jess parses a general-enclosed container query, `@container ( foo(x) )`', async () => {
+  it('P45 (owner 2026-10-09): .jess parses a general-enclosed container query, `@container ( foo(x) )`', async () => {
     await expect(compile('@container ( foo(x) ) { .a { b: c; } }', '.jess')).resolves.toContain('@container');
   });
 });
 
 describe('owner rulings (Less 5)', () => {
-  it.fails('P2 (owner, reaffirmed 2026-10-09): a bare @var in a custom property is written as authored', async () => {
+  it('P2 (owner, reaffirmed 2026-10-09): a bare @var in a custom property is written as authored', async () => {
     await expect(render('@c: red;\n.a { --x: @c; }')).resolves.toBe('.a {\n  --x: @c;\n}\n');
   });
 
@@ -111,12 +111,12 @@ describe('owner rulings (Less 5)', () => {
     expect(out).toContain('.active:is(.first-level .second-level)');
   });
 
-  it.fails('owner 2026-10-09 (golden review): escaped selector text before & is written as authored, not :is()-wrapped', async () => {
+  it('owner 2026-10-09 (golden review): escaped selector text before & is written as authored, not :is()-wrapped', async () => {
     const out = await render('@cq: ~\'.a, .b, .c\';\n.bar2 {\n  .q@{cq}&:hover { color: green; }\n}');
     expect(out).toContain('.q.a, .b, .c&:hover {');
   });
 
-  it.fails('owner 2026-10-09 (golden review): two adjacent escaped selector texts are written as authored, not :is()-wrapped', async () => {
+  it('owner 2026-10-09 (golden review): two adjacent escaped selector texts are written as authored, not :is()-wrapped', async () => {
     const out = await render('@c: ~\'.a, .b\';\n@d: ~\'.c, .d\';\n@{c}@{d} { foo: bar; }');
     expect(out).toContain('.a, .b.c, .d {');
   });

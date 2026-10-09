@@ -19,10 +19,10 @@
     "throw new SyntaxError('A keyword argument cannot be a branch condition.');",
     "throw new SyntaxError('Less mixin calls require a class or id selector path.');",
     "throw new SyntaxError('Less mixin definitions require one class or id name.');",
-    "throw new SyntaxError('Less mixin parameter defaults must be values.');",
-    "throw new SyntaxError('Less mixin pattern parameters must be values.');",
-    "throw new SyntaxError('Less mixin calls cannot use an anonymous rest argument.');",
-    "throw new SyntaxError('Less comma-list mixin argument groups cannot use named or spread arguments.');"
+    "throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'value');",
+    "throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'rest');",
+    "throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'named');",
+    "throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'anonymousRest');"
   ],
   "packages/syntax/less/less-parser/src/grammar.ts": [
     "throw new LessBareVariableInterpolationError(span.start, span.end, name);",

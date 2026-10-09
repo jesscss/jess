@@ -230,7 +230,7 @@ the variable's value:
 @brand: #0af;
 
 .card {
-  --x: @brand;                // 5.x: --x: @brand;   (4.x: --x: #0af;)
+  --x: @brand;                // 5.x: --x: @brand;   (Less 4.x wrote --x: #0af;)
   --y: @{brand};              // 5.x: --y: #0af;
   --z: calc(@{brand} + 1px);  // 5.x: --z: calc(#0af + 1px);
   color: var(--x, @brand);    // 5.x: color: var(--x, #0af);

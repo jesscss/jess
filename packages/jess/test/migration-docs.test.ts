@@ -46,13 +46,7 @@ const DOCS = new URL('../../docs/docs-content/docs/', import.meta.url);
 const GUIDES = ['less/usage/migrating-to-v5.md', 'shared/04-guides/01-migrating-less-4-to-5.mdx'];
 
 /* `<guide> :: <input>` → why it is skipped. Each entry is drift between the guide and the code. */
-const DRIFT = new Map<string, string>([
-  [
-    'less/usage/migrating-to-v5.md :: .col { &-1 { width: 8.333%; } &-2 { width: 16.666%; } }',
-    'UNRESOLVED, escalate to the owner: the default (nested) output writes `.col { &-1 { … } }`, which is not CSS; the guide documents `.col-1`. '
-    + '`&`-concatenation is a parent-NAME concat (owner 2026-07-23, memory jess-nesting-spec-faithful-except-ampersand-concat), but no ledger row says how nested output writes it (O1/O17 bear on it).'
-  ]
-]);
+const DRIFT = new Map<string, string>([]);
 
 type CollapseNesting = false | 'native' | 'compact';
 
