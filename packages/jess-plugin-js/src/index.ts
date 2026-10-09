@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+import { isPathInside, trustedFnsRealPath } from './trust.js';
 
 /**
  * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
@@ -173,11 +174,6 @@ export const sanitizeSpawnEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.P
   return clean;
 };
 
-const isPathInside = (candidatePath: string, rootPath: string): boolean => {
-  const rel = path.relative(rootPath, candidatePath);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-};
-
 const canonicalPath = (p: string): string => {
   try {
     return fs.realpathSync.native(p);
@@ -200,52 +196,6 @@ const normalizePermissionPath = (value: string | null): string | null => {
   return value;
 };
 
-/**
- * The one package we load in this Node process instead of the Deno sandbox:
- * the built-in `@jesscss/fns`. We identify it by the REALPATH of the copy this
- * plugin itself resolves through its own dependency edge — never by a package
- * name or a path spelling, both of which a script author controls. A
- * `package.json` can name itself `@jesscss/fns`, and a directory or a symlink
- * can be spelled `@jesscss/fns`, but the realpath of the dependency we resolve
- * from our own location cannot be forged. Resolved once; `undefined` when
- * `@jesscss/fns` is not installed beside this plugin, in which case nothing is
- * trusted and every script runs sandboxed (fail closed).
- */
-const trustedFnsRoot: string | undefined = (() => {
-  try {
-    const manifest = createRequire(import.meta.url).resolve('@jesscss/fns/package.json');
-    return fs.realpathSync.native(path.dirname(manifest));
-  } catch {
-    return undefined;
-  }
-})();
-
-/**
- * The canonical realpath of `importPath` when it is a file inside the trusted
- * `@jesscss/fns` package, else `undefined`. Both the candidate and the trusted
- * root are canonicalized with `realpathSync.native`, so a symlink, a `..`
- * segment, or a case-variant spelling on a case-insensitive filesystem cannot
- * pass off a file as trusted that does not physically live in the resolved
- * package. A path that cannot be canonicalized (it does not exist) is untrusted.
- *
- * The caller both DECIDES trust and IMPORTS this returned realpath, so the file
- * checked and the file loaded are the same inode-path — a symlink component
- * swapped between a lexical check and the import cannot redirect the load.
- *
- * Exported for the trust-boundary regression test, not as a public API.
- */
-export const trustedFnsRealPath = (importPath: string): string | undefined => {
-  if (trustedFnsRoot === undefined) {
-    return undefined;
-  }
-  let realPath: string;
-  try {
-    realPath = fs.realpathSync.native(path.resolve(importPath));
-  } catch {
-    return undefined;
-  }
-  return isPathInside(realPath, trustedFnsRoot) ? realPath : undefined;
-};
 
 const isJsonValue = (value: unknown) => {
   try {
@@ -773,7 +723,7 @@ export class JsPlugin extends AbstractPlugin {
     const socketPath = await this.startBroker();
     try {
       await this.startWorker(socketPath);
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.shutdown();
       throw err instanceof Error ? err : new Error(String(err));
     }

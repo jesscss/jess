@@ -4,7 +4,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
-import jsPlugin, { JsPlugin, sanitizeSpawnEnv, trustedFnsRealPath } from '../src/index.js';
+import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
+import { trustedFnsRealPath } from '../src/trust.js';
 import { registered } from './registered.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
