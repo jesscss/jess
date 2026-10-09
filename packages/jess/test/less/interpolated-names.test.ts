@@ -60,6 +60,50 @@ describe('Interpolated Names', () => {
       expect(await compiler.renderString('@s: q; .p { @{s} > .r:extend(.z) { c: 1; } } .z { d: 2; }', { language: 'less' }))
         .toBe('.p {\n  q > .r {\n    c: 1;\n  }\n}\n.z,\n.p q > .r {\n  d: 2;\n}\n');
     });
+
+    /*
+     * A branch that is one interpolated simple resolves to a token of its own; the
+     * inline extend follows it, so it extends from the resolved selector exactly as
+     * the same selector written out does (X7), never from an empty extender
+     * (`.z, {`, ledger O17). Inside a mixin the walk resolves it the same way.
+     */
+    it('should extend from a branch that is one interpolated simple', async () => {
+      const render = (less: string) => compiler.renderString(less, { language: 'less' });
+      expect(await render('@s: ~".q"; @{s}:extend(.z) { c: 1; } .z { d: 2; }'))
+        .toBe('.q {\n  c: 1;\n}\n.z,\n.q {\n  d: 2;\n}\n');
+      expect(await render('@v: q; .@{v}:extend(.b) {} .b { d: 2; }'))
+        .toBe('.b,\n.q {\n  d: 2;\n}\n');
+      expect(await render('@s: ~".q"; @{s}.r:extend(.z) {} .z { d: 2; }'))
+        .toBe('.z,\n.q.r {\n  d: 2;\n}\n');
+      expect(await render('@s: ~".q"; .a, @{s}:extend(.z) {} .z { d: 2; }'))
+        .toBe('.z,\n.q {\n  d: 2;\n}\n');
+      expect(await render('@s: ~".q"; .p { @{s}:extend(.z) { c: 1; } } .z { d: 2; }'))
+        .toBe('.p {\n  .q {\n    c: 1;\n  }\n}\n.z,\n.p .q {\n  d: 2;\n}\n');
+      expect(await render('@v: q; .m() { .@{v}:extend(.b) { c: 1; } } .m(); .b { d: 2; }'))
+        .toBe('.q {\n  c: 1;\n}\n.b,\n.q {\n  d: 2;\n}\n');
+
+      /* An interpolation that resolved to empty text is resolved (bootstrap's `.col@{infix}`). */
+      expect(await render('@i: ~""; .col@{i}:extend(.g) {} .r { .col@{i} { &:extend(.g); } } .g { d: 2; }'))
+        .toBe('.g,\n.col,\n.r .col {\n  d: 2;\n}\n');
+    });
+
+    /*
+     * A lone `@{list}` is a whole selector list the static extend plan cannot read
+     * (it stays as authored, see `resolveSelectorInterpForExtend`). Its extend is
+     * skipped rather than written as an empty or parentless extender, which drops
+     * or widens the target's rule (ledger O17); a resolved sibling still extends.
+     */
+    it('never writes an empty extender for a lone interpolated selector list', async () => {
+      const render = (less: string) => compiler.renderString(less, { language: 'less' });
+      expect(await render('@s: ~".q, .w"; @{s}:extend(.z) {} .z { d: 2; }'))
+        .toBe('.z {\n  d: 2;\n}\n');
+      expect(await render('@s: ~".q, .w"; @{s} { &:extend(.z); } .z { d: 2; }'))
+        .toBe('.z {\n  d: 2;\n}\n');
+      expect(await render('@s: ~".q, .w"; @{s}, .a { &:extend(.z); } .z { d: 2; }'))
+        .toBe('.z,\n.a {\n  d: 2;\n}\n');
+      expect(await render('@s: ~".q, .w"; @{s} { .c:extend(.z) { x: 1; } } .z { d: 2; }'))
+        .toBe('.q, .w {\n  .c {\n    x: 1;\n  }\n}\n.z {\n  d: 2;\n}\n');
+    });
   });
 
   describe('Lookup', () => {

@@ -7,7 +7,8 @@
 
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
 import type { Branch, Level } from './ir.js';
-import type { ExtendInstruction, Stylesheet, Ruleset, Statement } from '../nodes.js';
+import { selectorBranchHasInterp } from '../nodes.js';
+import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
 
 /**
@@ -180,8 +181,21 @@ export interface PlanOverlay {
  */
 export type AtRuleScopes = Map<AtRuleBlock, number>;
 
-function instructionTargets(inst: ExtendInstruction): Branch[] {
-  return inst.target.selectors.map(branchFromSelector);
+/**
+ * `own` — the IR of `list` — without the branches whose interpolation the extend
+ * pre-pass left unresolved (a lone `@{list}`, which the header expands; one that
+ * failed to resolve), or null when none is left. Their IR has no text (an
+ * interpolated token is `''`), so an extender built from one wrote an empty branch
+ * (`.z, {`) or lost a parent (`.z, .c {` for `.c` under one), dropping or widening
+ * the target's rule (ledger O17). Read from the AST's own interpolation flag, since a
+ * token that resolved to empty text is `''` too. `own` itself when nothing is left out.
+ */
+function writableLevel(list: SelectorList, own: Level): Level | null {
+  if (!list.selectors.some(selectorBranchHasInterp)) {
+    return own;
+  }
+  const kept = own.filter((_, index) => !selectorBranchHasInterp(list.selectors[index]!));
+  return kept.length > 0 ? kept : null;
 }
 
 /** The scope of the statements inside `node`, entered from `scope`. */
@@ -203,9 +217,15 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
   let order = 0;
   const scopeIds = overlay?.atRuleScopes ?? new Map<AtRuleBlock, number>();
 
+  /*
+   * `ext` is `path` as an extender may be written from it ({@link writableLevel}): the
+   * same levels unless an ancestor holds an unresolved branch, and null when one holds
+   * nothing else, so no extend under it is written.
+   */
   const walk = (
     statements: Statement[],
     path: Level[],
+    ext: Level[] | null,
     scope: number[],
     parent: PlanSubject | null
   ): void => {
@@ -214,6 +234,8 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
         const rule = st;
         const own = levelFromSelectorList(rule.selector);
         const rulePath = [...path, own];
+        const ownExt = ext === null ? null : writableLevel(rule.selector, own);
+        const ruleExt = ext === null || ownExt === null ? null : ext === path && ownExt === own ? rulePath : [...ext, ownExt];
         const subject: PlanSubject = {
           rule,
           path: rulePath,
@@ -236,9 +258,17 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
              * body-form `&:extend` (no subject) keeps the whole rule selector.
              */
             const extenderPath = inst.subject
-              ? [...path, levelFromSelectorList(inst.subject)]
-              : rulePath;
-            for (const targetBranch of instructionTargets(inst)) {
+              ? ext === null || inst.subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, levelFromSelectorList(inst.subject)]
+              : ruleExt;
+            if (extenderPath === null) {
+              continue;
+            }
+            for (const sel of inst.target.selectors) {
+              /* An unresolved target names nothing, and its `''` would match an unresolved subject. */
+              if (selectorBranchHasInterp(sel)) {
+                continue;
+              }
+              const targetBranch = branchFromSelector(sel);
               instructions.push({
                 target: targetBranch,
                 partial: inst.partial,
@@ -252,20 +282,21 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
             }
           }
         }
-        walk(rule.rules, rulePath, scope, subject);
+        walk(rule.rules, rulePath, ruleExt, scope, subject);
       } else if (st.type === 'AtRuleBlock') {
         const inner = atRuleScope(scope, st, scopeIds);
         if (parent !== null) {
           bubbles.push({ atRule: st, subject: parent, scope: inner });
         }
-        walk(st.rules, path, inner, parent);
+        walk(st.rules, path, ext, inner, parent);
       }
 
       // MixinDefinition / MixinCall / declarations / at-rule statements: no extend surface.
     }
   };
 
-  walk(root.rules, [], [], null);
+  const top: Level[] = [];
+  walk(root.rules, top, top, [], null);
 
   if (overlay) {
     /*

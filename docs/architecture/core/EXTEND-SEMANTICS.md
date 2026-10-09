@@ -721,10 +721,19 @@ adjacent/child targets each match their respective combinator form.
   rule's selector resolve to the one token `.c-1.k` (mid-compound `.a.c-@{n}.k` keeps
   `.k` apart), and `.x:extend(.c-1 all)` misses it where lessc 4.9.1 matches. An
   inline `:extend` parses on any interpolated selector branch and extends from the
-  resolved branch (`@{s} .r:extend(.z)`, `div @{s}:extend(.z)`), but a branch that is
-  one interpolated simple (`@{s}:extend(.z)`, `.@{v}:extend(.b)`, `@{s}.r:extend(.z)`)
-  adds an extender whose own part is EMPTY to the target's header (`.z, {` at the
-  root, `.z, .p  {` under `.p`). A body-form `&:extend()` on the same rule works.
+  resolved branch (`@{s} .r:extend(.z)`, `div @{s}:extend(.z)`, and a branch that is
+  one interpolated simple: `@{s}:extend(.z)`, `.@{v}:extend(.b)`, `@{s}.r:extend(.z)`,
+  `.z, .p .q` under `.p`). The pre-pass that resolves a rule's selector points the
+  inline extend at the resolved branch (`resolveSelectorInterpForExtend`). A lone
+  `@{list}` naming a selector LIST stays as authored, so the static plan cannot read
+  it: an extend from it — inline, body-form, or from a rule nested under it — is
+  skipped, never written as an empty or parentless extender (`.z, {`, `.z, .c {`),
+  which would drop or widen the target's rule (ledger O17; `extend/plan.ts`
+  `writableLevel`). Placed by a mixin call, the walk records the same rule from
+  its written header and extends from it (`.z, .q, .w`). Still open for such a lone
+  list: flattened output (`collapseNesting`) composes a rule nested under it from the
+  unresolved IR, so `@{list} { .c {} } .y:extend(.c all)` writes ` :is(.c, .y)` with
+  the parent lost (the header writer itself writes `.q, .w .c` there).
   (See §12 for the interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility

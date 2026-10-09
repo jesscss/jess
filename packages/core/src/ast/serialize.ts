@@ -12502,7 +12502,22 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           if (loneGroupInterp(c, frame, e) !== null) {
             continue;
           }
-          list.selectors[index] = resolveSelectorBranchInterpInPlace(c, frame, e);
+          const resolved = resolveSelectorBranchInterpInPlace(c, frame, e);
+          list.selectors[index] = resolved;
+
+          /*
+           * An inline `:extend()` holds its own branch — the parser's object, shared with
+           * this list. A lone interpolated simple resolves to a NEW token, so the extend
+           * is pointed at it too, or it extends from the unresolved branch, whose IR
+           * writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
+           */
+          if (resolved !== c) {
+            for (const inst of st.extendInstructions ?? []) {
+              if (inst.subject?.selectors[0] === c) {
+                inst.subject.selectors[0] = resolved;
+              }
+            }
+          }
         } catch (error) {
           /*
            * An AWAITABLE interp is a capability gap, not an unresolvable branch:
