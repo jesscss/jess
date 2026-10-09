@@ -5,6 +5,11 @@ alwaysApply: true
 
 # Global rules (Jess monorepo)
 
+## Less 4.x is never the reason — owner rulings are locked
+- Owner, 2026-10-09: *"Less v5 is NEW. Jess is a NEW ENGINE. The fact it acts different IS. THE. POINT. (usually)"* A difference from Less 4.x is not evidence of a bug, and sameness with Less 4.x is not a goal or a reason: each behaviour stands on its ledger row, the CSS spec, or an owner ruling.
+- lessc / Less 4.x output is **never a reason and never a correction source**. When it differs from a ledger row or owner ruling, the ruling wins. When code disagrees with a ruling, the CODE is the defect: fix it or escalate. Never edit the ruling, its conformance test, a `.css` golden or the docs to match lessc or the code.
+- **These files change only with the owner's explicit instruction in the current conversation:** `docs/OWNER-REQUIREMENTS.md`, `docs/architecture/core/owner-rulings.lock.json`, `packages/jess/test/owner-rulings.test.ts`, and running `pnpm rulings:lock`. The same holds for the gates themselves (`scripts/check-guardrails.mjs`, `scripts/check-guardrails.reference-baseline.json`, `scripts/rulings-lock.mjs`) — the baseline may only shrink (`--prune-reference-baseline`). `pnpm check:guardrails` enforces the rest; see the first section of `AGENTS.md`.
+
 ## Owner requirements are not yours to close
 - **An agent may not redefine, narrow, or close an owner requirement.** When a requirement conflicts with a tool constraint, technical limit, or implementation difficulty, **STOP AND ESCALATE**. Record the constraint, the evidence, the options and a recommendation. Do NOT record the decision.
 - Specifically forbidden (`CLOSURE-QUOTED:` — quoted as prohibitions, not used): rewriting a requirement into something achievable; narrowing its scope so the constraint no longer binds; writing "this is settled" / "do not re-propose" / "do not revisit" / "do not reopen" about anything the owner asked for.
