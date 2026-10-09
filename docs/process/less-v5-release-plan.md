@@ -212,8 +212,10 @@ API/diagnostic tests added first.
   in both the Jess and Less parsers; there is no remaining selector-capture
   feature work in this fixture. Its final mismatch is an **intended output-policy
   divergence** (owner ruling 2026-08-22): local `collapseNesting:false` preserves
-  the captured parent/suffix-ampersand child boundary, while explicit collapse
-  produces the golden `.fruit-cap-apple, …` branches. Less `each()` is the opt-in
+  the captured parent/suffix-ampersand child boundary. Flattened, the `&` is a
+  plain reference to each captured parent and `.fruit-cap-` a class of its own
+  (owner 2026-10-09: "how do you know it's a prefix? that's why we can't do
+  that"), not the golden's `.fruit-cap-apple, …` branches. Less `each()` is the opt-in
   for one emitted rule per ordinary list item without changing global nesting.
   The same fixture also exposed the two O8 output-policy questions, now ruled
   (owner 2026-10-04, ledger **O8**): an interpolated multi-branch nested header

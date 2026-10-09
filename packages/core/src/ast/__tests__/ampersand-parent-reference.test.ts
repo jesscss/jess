@@ -105,6 +105,40 @@ describe('a `&` is a plain reference to a parent of several compounds', () => {
       .toBe(`.amp-test-h,\n.amp-test-c ${x}.amp-test-f + :is(.amp-test-c ${x}).amp-test-g {\n  t: 1;\n}\n`);
   });
 
+  /*
+   * A selector glued before a `&` never builds a name, under any parent (owner
+   * 2026-10-09: `.active&` "doesn't form a new name, so it's a plain reference to the
+   * parent"; of `.fruit-cap-&`: "how do you know it's a prefix? that's why we can't do
+   * that"). A one-compound parent that opens with a type or universal selector keeps it
+   * first, since only that simple may lead a compound (Selectors 4 §3.1): glued after
+   * `.active`, `li` would fuse into the class `.activeli`.
+   */
+  const ELEMENT_PARENTS: ReadonlyArray<readonly [parent: string, child: string, written: string]> = [
+    ['li { K }', '.active&', 'li.active'],
+    ['a { K }', '.btn&:hover', 'a.btn:hover'],
+    ['div { K }', '#id&', 'div#id'],
+    ['div { K }', '[x]&', 'div[x]'],
+    ['div { K }', ':hover&', 'div:hover'],
+    ['apple { K }', '.fruit-cap-&', 'apple.fruit-cap-'],
+    ['li { K }', '.x&.y', 'li.x.y'],
+    ['li { K }', '.c .x&', '.c li.x'],
+    ['li { K }', '&&', 'li:is(li)'],
+    ['li { K }', 'div&', 'div:is(li)'],
+    ['* { K }', '.x&', '*.x']
+  ];
+
+  for (const [parent, child, written] of ELEMENT_PARENTS) {
+    it(`writes \`${child}\` under ${parent.replace(' K ', ' … ')} as \`${written}\`, flattened and extended`, () => {
+      expect(headers(parent, child)).toEqual({ own: written, extended: written });
+    });
+  }
+
+  it('places a selector glued before `&` on each parent of a list that opens with an element', () => {
+    /* Extend holds a parent list as one `:is()` unit (J11): the same elements. */
+    expect(headers('apple, pear { K }', '.fruit-cap-&')).toEqual({ own: 'apple.fruit-cap-, pear.fruit-cap-', extended: '.fruit-cap-:is(apple, pear)' });
+    expect(headers('li, .a { K }', '.x&').own).toBe('li.x, .x.a');
+  });
+
   it('keeps a complex alternative an extend splits out of a one-unit parent wrapped', () => {
     expect(flat('.a .b { .c & { m: 1 } } #z:extend(.a all) {}'))
       .toBe('.c :is(.a .b),\n.c :is(#z .b) {\n  m: 1;\n}\n');

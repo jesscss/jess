@@ -178,9 +178,18 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       continue;
     }
     const value: Simple[] = [];
+    let ref = -1;
+    let refEnd = -1;
+    let refToken: Simple | undefined;
     for (const s of seg.compound.value) {
       if (s.t !== 'text' || !textHoldsParentRef(s.text)) {
         value.push(withParent(s, parent));
+        continue;
+      }
+      const at = value.length;
+      if (ref !== -1 && at > 0 && leadsWithElement(branchText(parent), 0)) {
+        /* A later `&` glued after another simple is one unit (`&&` under `li` → `li:is(li)`), as the serializer writes it. */
+        value.push(isSimple([namedParent(parent, s)], false));
         continue;
       }
       if (s.text === '&') {
@@ -190,6 +199,11 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         if (structuredParent !== null) {
           for (let index = 0; index < structuredParent.length; index++) {
             value.push(structuredParent[index]!);
+          }
+          if (ref === -1) {
+            ref = at;
+            refEnd = value.length;
+            refToken = s;
           }
           continue;
         }
@@ -201,6 +215,14 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       value.push(s.text === '&'
         ? textSimple(parentStr, undefined, parent.segments[0]!.compound)
         : joinedSimple(s.text.split('&').join(parentStr), s.text, parentValue.length === 1 ? parentValue[0] : undefined));
+      if (ref === -1) {
+        ref = at;
+        refEnd = value.length;
+        refToken = s;
+      }
+    }
+    if (ref > 0) {
+      leadParentElement(value, ref, refEnd, parent, refToken!);
     }
 
     /* A fused/own segment is the ruleset's own element target, own-local (`bnd = 0`). */
@@ -208,6 +230,29 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
     outBnd.push(0);
   }
   return withBnd(mkBranch(outSegs), outBnd);
+}
+
+/**
+ * A one-compound parent a `&` glued after other simples stands for (`value[ref..refEnd)`),
+ * placed as the serializer places it (`serialize.ts` `placeParent`; owner 2026-10-09:
+ * `.active&` "doesn't form a new name, so it's a plain reference to the parent"): a
+ * type or universal selector it opens with leads the compound (Selectors 4 §3.1), so
+ * `.active&` under `li` is `li.active`, never the class `.activeli`; where the simples
+ * before it open with one too, the parent is one unit (`div&` under `li` →
+ * `div:is(li)`).
+ */
+function leadParentElement(value: Simple[], ref: number, refEnd: number, parent: Branch, token: Simple): void {
+  const element = value[ref]!;
+  if (element.t !== 'text' || !leadsWithElement(element.text, 0)) {
+    return;
+  }
+  const first = value[0]!;
+  if (first.t === 'text' && leadsWithElement(first.text, 0)) {
+    value.splice(ref, refEnd - ref, isSimple([namedParent(parent, token)], false));
+    return;
+  }
+  value.splice(ref, 1);
+  value.unshift(element);
 }
 
 function compoundHasAmp(value: readonly Simple[]): boolean {
