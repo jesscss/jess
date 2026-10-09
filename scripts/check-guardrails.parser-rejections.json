@@ -1,0 +1,59 @@
+{
+  "packages/syntax/css/css-parser/src/parse-with.ts": [
+    "throw new CssParseError(",
+    "throw new CssParseError(result.span.start, result.expected, lineOptions(input, result.span));",
+    "throw new CssParseError(result.unconsumedFrom, [], {",
+    "throw new CssParseError(result.unconsumedFrom, [], {",
+    "throw new CssParseError(result.span.end, [], {"
+  ],
+  "packages/syntax/jess/jess-parser/src/parse-with.ts": [
+    "throw selectorPolicyError(`${label} selector is not allowed by allowExtendSelectors.`);",
+    "throw selectorPolicyError('$apply target is not allowed by allowApplySelectors.');",
+    "throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
+    "throw new JessParseError(result.unconsumedFrom, [], {",
+    "throw new JessParseError(result.unconsumedFrom, [], {",
+    "throw new JessParseError(result.span.end, [], {"
+  ],
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts": [
+    "throw new LessUnsupportedVariableNameError(start, end, unsupported);",
+    "throw new SyntaxError('A keyword argument cannot be a branch condition.');",
+    "throw new SyntaxError('Less mixin calls require a class or id selector path.');",
+    "throw new SyntaxError('Less mixin definitions require one class or id name.');",
+    "throw new SyntaxError('Less mixin parameter defaults must be values.');",
+    "throw new SyntaxError('Less mixin pattern parameters must be values.');",
+    "throw new SyntaxError('Less mixin calls cannot use an anonymous rest argument.');",
+    "throw new SyntaxError('Less comma-list mixin argument groups cannot use named or spread arguments.');"
+  ],
+  "packages/syntax/less/less-parser/src/grammar.ts": [
+    "throw new LessBareVariableInterpolationError(span.start, span.end, name);",
+    "throw new LessUnsupportedVariableNameError(span.start, span.end, '-');",
+    "throw new LessSourceImportSyntaxError(span.start, span.end);",
+    "throw new LessImportPostludeError(span.start, span.end);",
+    "throw new LessLeadingSeparatorValueError(span.start, span.end);",
+    "throw new LessUncalledMixinReferenceError(span.start, span.end, name);",
+    "throw new LessInlineJavaScriptError(span.start, span.end);",
+    "throw new LessUnparenthesizedMixinGuardError(span.start, span.end);",
+    "throw new LessUnsupportedMixinNameError(span.start, span.end);",
+    "throw new LessDynamicCharsetError(span.start, span.end);"
+  ],
+  "packages/syntax/less/less-parser/src/parse-state.ts": [
+    "throw new LessBareVariableInterpolationError(start, end, name);"
+  ],
+  "packages/syntax/less/less-parser/src/parse-with.ts": [
+    "throw new LessParseError(",
+    "throw new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));",
+    "throw new LessParseError(result.unconsumedFrom, [], {",
+    "throw new LessParseError(result.unconsumedFrom, [], {",
+    "throw new LessParseError(result.span.end, [], {"
+  ],
+  "packages/syntax/scss/scss-parser/src/grammar-helpers.ts": [
+    "throw new ScssImportPostludeError(span.start, span.end);"
+  ],
+  "packages/syntax/scss/scss-parser/src/parse-with.ts": [
+    "throw new ScssParseError(",
+    "throw new ScssParseError(result.span.start, result.expected, lineOptions(input, result.span));",
+    "throw new ScssParseError(result.unconsumedFrom, [], {",
+    "throw new ScssParseError(result.unconsumedFrom, [], {",
+    "throw new ScssParseError(result.span.end, [], {"
+  ]
+}

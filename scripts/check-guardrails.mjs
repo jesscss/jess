@@ -15,7 +15,7 @@
  * A rule written in a document does not stop that: the next agent can edit the
  * document exactly as the last one edited the spec. So the rule is also a gate.
  *
- * TWO ASSERTIONS, both mechanical:
+ * FIVE ASSERTIONS, all mechanical:
  *
  *   1. `docs/OWNER-REQUIREMENTS.md` is byte-frozen against a hash recorded in
  *      this file. Any edit fails the build. Updating the hash is the owner's
@@ -37,6 +37,11 @@
  *      hash in `docs/architecture/core/owner-rulings.lock.json`. Updating the
  *      lock (`pnpm rulings:lock`) is an owner-approved act.
  *
+ *   5. Parser rejections only shrink (ledger P45): every author-facing `throw`
+ *      in a parser package is baselined in
+ *      `scripts/check-guardrails.parser-rejections.json`; a new one fails unless
+ *      it is marked `NOT-WELL-FORMED:`.
+ *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
  * the closure rests on. An agent that types `OWNER-RULED:` over its own opinion
@@ -45,8 +50,9 @@
  * Flags:
  *   --list-reference-reasons     print every assertion-3 hit (baselined or not)
  *                                as JSON, with its current file:line, and exit.
- *   --prune-reference-baseline   drop baseline entries that no longer occur.
- *                                It never adds one.
+ *   --prune-baselines            drop entries that no longer occur from the
+ *                                assertion-3 and assertion-5 baselines. It never
+ *                                adds one.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -345,13 +351,14 @@ const REFERENCE_BASELINE = 'scripts/check-guardrails.reference-baseline.json';
  * output such as `lib/`, `*.d.ts` or `packages/jess/temp/` is never scanned, so
  * a local build cannot make the result differ from CI's.
  */
+const gitFiles = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+  cwd: root,
+  encoding: 'utf8',
+  maxBuffer: 1 << 28
+}).split('\0'))];
+
 function referenceFiles() {
-  const listed = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
-    cwd: root,
-    encoding: 'utf8',
-    maxBuffer: 1 << 28
-  }).split('\0');
-  return [...new Set(listed)].filter(rel => REFERENCE_EXT.test(rel)
+  return gitFiles.filter(rel => REFERENCE_EXT.test(rel)
     && REFERENCE_SCAN_ROOTS.some(r => rel === r || rel.startsWith(`${r}/`))
     && !REFERENCE_SKIP.some(re => re.test(rel))
     && existsSync(join(root, rel)));
@@ -457,45 +464,55 @@ function scanReferenceReasons() {
 
 const referenceHits = scanReferenceReasons();
 const listReferenceReasons = process.argv.includes('--list-reference-reasons');
-const pruneReferenceBaseline = process.argv.includes('--prune-reference-baseline');
+const pruneBaselines = process.argv.includes('--prune-baselines');
 
-/* Baseline: file → sentences (a multiset; line numbers are deliberately not part of the key). */
-const baselinePath = join(root, REFERENCE_BASELINE);
-const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : {};
-const remaining = new Map(Object.entries(baseline).map(([file, sentences]) => [file, [...sentences]]));
-const newReferenceHits = [];
-for (const hit of referenceHits) {
-  const left = remaining.get(hit.file);
-  const at = left ? left.indexOf(hit.sentence) : -1;
-  hit.baselined = at >= 0;
-  if (at >= 0) {
-    left.splice(at, 1);
-  } else {
-    newReferenceHits.push(hit);
+/*
+ * A shrink-only baseline: file → entries (a multiset; line numbers are
+ * deliberately not part of the key). Returns the hits it does not hold and the
+ * entries no hit matched. `--prune-baselines` drops the stale entries; nothing
+ * ever adds one.
+ */
+function ratchet(hits, baselineRel) {
+  const path = join(root, baselineRel);
+  const baseline = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+  const remaining = new Map(Object.entries(baseline).map(([file, entries]) => [file, [...entries]]));
+  const fresh = [];
+  for (const hit of hits) {
+    const left = remaining.get(hit.file);
+    const at = left ? left.indexOf(hit.sentence) : -1;
+    if (at >= 0) {
+      left.splice(at, 1);
+    } else {
+      fresh.push(hit);
+    }
   }
-}
-const staleBaseline = [...remaining].flatMap(([file, sentences]) => sentences.map(sentence => ({ file, sentence })));
-
-if (pruneReferenceBaseline && staleBaseline.length > 0) {
+  const stale = [...remaining].flatMap(([file, entries]) => entries.map(sentence => ({ file, sentence })));
+  if (!pruneBaselines || stale.length === 0) {
+    return { fresh, stale };
+  }
   const pruned = {};
-  for (const [file, sentences] of Object.entries(baseline)) {
-    const stale = staleBaseline.filter(s => s.file === file).map(s => s.sentence);
-    const kept = sentences.filter((s) => {
-      const at = stale.indexOf(s);
+  for (const [file, entries] of Object.entries(baseline)) {
+    const dropped = [...(remaining.get(file) ?? [])];
+    const out = entries.filter((e) => {
+      const at = dropped.indexOf(e);
       if (at < 0) {
         return true;
       }
-      stale.splice(at, 1);
+      dropped.splice(at, 1);
       return false;
     });
-    if (kept.length > 0) {
-      pruned[file] = kept;
+    if (out.length > 0) {
+      pruned[file] = out;
     }
   }
-  writeFileSync(baselinePath, `${JSON.stringify(pruned, null, 2)}\n`);
-  console.log(`Pruned ${staleBaseline.length} stale entr${staleBaseline.length === 1 ? 'y' : 'ies'} from ${REFERENCE_BASELINE}.`);
-  staleBaseline.length = 0;
+  writeFileSync(path, `${JSON.stringify(pruned, null, 2)}\n`);
+  console.log(`Pruned ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} from ${baselineRel}.`);
+  return { fresh, stale: [] };
 }
+
+const reference = ratchet(referenceHits, REFERENCE_BASELINE);
+const newReferenceHits = reference.fresh;
+const staleBaseline = reference.stale;
 
 const REFERENCE_REASON_MESSAGE = [
   '  Less 4.x / lessc behaviour is not a reason. Less v5 is a breaking release — cite the',
@@ -530,7 +547,7 @@ if (staleBaseline.length > 0) {
       `${staleBaseline.length} baselined reference-reason entr${staleBaseline.length === 1 ? 'y no longer occurs' : 'ies no longer occur'}.`,
       '',
       `  Good — remove ${staleBaseline.length === 1 ? 'it' : 'them'} from ${REFERENCE_BASELINE} so the baseline only`,
-      '  shrinks: `node scripts/check-guardrails.mjs --prune-reference-baseline`.',
+      '  shrinks: `node scripts/check-guardrails.mjs --prune-baselines`.',
       '  (A reworded sentence that still uses lessc as a reason shows up above as new.)',
       '',
       ...staleBaseline.map(s => `    ${s.file}\n      ${s.sentence.slice(0, 240)}`)
@@ -574,6 +591,71 @@ if (!rulings.lock) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Assertion 5 — well-formed input never stops the pipeline (P45).
+ * ------------------------------------------------------------------ */
+
+/*
+ * Ledger P45 (owner 2026-10-09): every parser accepts every well-formed shape;
+ * what a dialect rejects is a diagnostic, and parsing continues. A grammar that
+ * stops recognizing a shape is caught by the conformance tests and the review
+ * (GRAMMAR-REVIEW-STANDARD item 17), not here. What this catches cheaply is the
+ * other route: a new author-facing `throw` in a parser package. Invariant
+ * throws (`TypeError`, `Error`, `RangeError`: "the grammar produced an
+ * impossible shape") are not counted. The baselined sites may only shrink.
+ */
+const PARSER_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/.+(?<!\.d)\.ts$/;
+const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)\s*\(/;
+const INVARIANT_THROW = new Set(['TypeError', 'Error', 'RangeError']);
+const NOT_WELL_FORMED = /NOT-WELL-FORMED:/;
+const PARSER_REJECTION_BASELINE = 'scripts/check-guardrails.parser-rejections.json';
+
+const rejectionHits = [];
+for (const rel of gitFiles.filter(f => PARSER_SOURCE.test(f) && existsSync(join(root, f)))) {
+  const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    const m = THROW_SITE.exec(line);
+    if (!m || INVARIANT_THROW.has(m[1]) || /^\s*(?:\*|\/\/)/.test(line)
+      || NOT_WELL_FORMED.test(line) || NOT_WELL_FORMED.test(lines[i - 1] ?? '')) {
+      return;
+    }
+    rejectionHits.push({ file: rel, line: i + 1, sentence: normalizeSentence(line) });
+  });
+}
+const rejections = ratchet(rejectionHits, PARSER_REJECTION_BASELINE);
+
+if (rejections.fresh.length > 0) {
+  failures.push(
+    [
+      `${rejections.fresh.length} new author-facing throw(s) in a parser package.`,
+      '',
+      '  Ledger P45 (owner 2026-10-09): every parser accepts every WELL-FORMED shape (CSS',
+      '  Syntax 3: it tokenizes, blocks and functions balance, structurally valid position).',
+      '  What a dialect rejects or cannot give meaning to is a DIAGNOSTIC at its span, and',
+      '  parsing and evaluation continue. A hard stop on well-formed input is a defect.',
+      '',
+      '  Report a diagnostic instead of throwing. Only if the input this refuses is not',
+      '  well-formed at all, say why on the throw line or the line above:',
+      '    // NOT-WELL-FORMED: <why, per CSS Syntax 3>',
+      '',
+      ...rejections.fresh.map(h => `    ${h.file}:${h.line}\n      ${h.sentence}`)
+    ].join('\n')
+  );
+}
+
+if (rejections.stale.length > 0) {
+  failures.push(
+    [
+      `${rejections.stale.length} baselined parser throw site(s) no longer occur.`,
+      '',
+      `  Good — remove ${rejections.stale.length === 1 ? 'it' : 'them'} from ${PARSER_REJECTION_BASELINE} so the count only shrinks:`,
+      '  `node scripts/check-guardrails.mjs --prune-baselines`.',
+      '',
+      ...rejections.stale.map(s => `    ${s.file}\n      ${s.sentence}`)
+    ].join('\n')
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 /* exitCode, not exit(): a piped stdout/stderr is asynchronous on macOS and exit() truncates it. */
@@ -595,6 +677,7 @@ if (listReferenceReasons) {
   console.log(
     `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
     + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined); `
-    + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}.`
+    + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}; `
+    + `no new parser throw (${rejectionHits.length} baselined).`
   );
 }
