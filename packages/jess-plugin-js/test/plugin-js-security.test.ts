@@ -254,6 +254,53 @@ describe('@jesscss/plugin-js security', () => {
     expect(await workerExited()).toBe(true);
   }, 15000);
 
+  it('self-heals after a script exits the worker (one script must not brick the plugin)', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const boomPath = path.join(root, 'boom.ts');
+    fs.writeFileSync(
+      boomPath,
+      'export function ok() { return 1; }\nexport function boom() { Deno.exit(7); }',
+      'utf8'
+    );
+    const goodPath = path.join(root, 'good.ts');
+    fs.writeFileSync(goodPath, 'export const value = 5;', 'utf8');
+
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+
+    const mod = await plugin.import(boomPath);
+    await expect(mod.ok()).resolves.toBe(1);
+    await expect(mod.boom()).rejects.toThrow(/exited unexpectedly/);
+
+    // Before the fix the plugin latched to `failed` here and rejected forever.
+    const good = await plugin.import(goodPath);
+    expect(good.value).toBe(5);
+  }, 15000);
+
+  it('stops restarting a worker that dies on every start (bounded)', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const crashPath = path.join(root, 'crash.ts');
+
+    // Top-level exit: the worker dies while loading the module, every time.
+    fs.writeFileSync(crashPath, 'Deno.exit(7);\nexport const x = 1;', 'utf8');
+
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await expect(plugin.import(crashPath)).rejects.toThrow(/exited unexpectedly/);
+    }
+
+    /*
+     * The bound engaged: the plugin latched to `failed` instead of
+     * spin-restarting, so even a healthy module is now rejected.
+     */
+    expect(plugin['runtimeState'].status).toBe('failed');
+    const goodPath = path.join(root, 'good.ts');
+    fs.writeFileSync(goodPath, 'export const value = 5;', 'utf8');
+    await expect(plugin.import(goodPath)).rejects.toThrow(/exited unexpectedly/);
+  }, 20000);
+
   it('runs the workspace @jesscss/fns package in-process when deno command is unavailable', async () => {
     const modulePath = fileURLToPath(new URL('../../fns/src/util/mime.ts', import.meta.url));
     const plugin = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;

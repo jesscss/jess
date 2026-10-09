@@ -133,6 +133,14 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
 /**
+ * Consecutive unexpected worker deaths (with no successful reply between) after
+ * which the plugin stops auto-restarting and latches to `failed`. Bounds a
+ * worker that crashes on every start (a broken binary, a poisoned module that
+ * kills on load) instead of spin-restarting it forever.
+ */
+const MAX_WORKER_DEATHS = 3;
+
+/**
  * Environment variables that inject a Node.js debugger/inspector bootloader
  * into child processes (VS Code / Cursor "Auto Attach", `node --inspect`, etc.).
  *
@@ -691,9 +699,22 @@ export class JsPlugin extends AbstractPlugin {
       }
       const err = new Error('Deno worker exited unexpectedly.');
       this.rejectAllPending(err);
-      if (this.runtimeState.status !== 'failed') {
-        this.runtimeState = { status: 'failed', error: err };
+      if (this.runtimeState.status === 'disposed') {
+        return;
       }
+
+      /*
+       * An unexpected exit (a script calling `Deno.exit()`, an OOM, a panic)
+       * must not brick the plugin: reset to `idle` so the next call starts a
+       * clean worker, exactly as the request-timeout path does. A worker that
+       * dies on every start would otherwise spin-restart forever, so after
+       * MAX_WORKER_DEATHS consecutive deaths with no successful reply in between
+       * we latch to `failed`. The counter resets on the next delivered reply.
+       */
+      this.consecutiveWorkerDeaths++;
+      this.runtimeState = this.consecutiveWorkerDeaths > MAX_WORKER_DEATHS
+        ? { status: 'failed', error: err }
+        : { status: 'idle' };
     });
     return new Promise<void>((resolve, reject) => {
       let stderrText = '';
@@ -778,6 +799,9 @@ export class JsPlugin extends AbstractPlugin {
       }
       this.pending.delete(parsed.id);
       clearTimeout(pending.timeout);
+
+      // A delivered reply proves the worker is healthy, so clear the death streak.
+      this.consecutiveWorkerDeaths = 0;
       pending.resolve(parsed);
       if (this.pending.size === 0) {
         this.scheduleIdleShutdown();
