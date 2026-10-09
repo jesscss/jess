@@ -143,8 +143,10 @@ const DEBUG_ENV_VALUE_RE = /js-debug|bootloader/i;
  * The Deno permission sandbox is untouched; this only stops leaking the debugger
  * into it.
  */
-export const sanitizeSpawnEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => {
-  const clean: NodeJS.ProcessEnv = {};
+export const sanitizeSpawnEnv = (
+  env: Readonly<Record<string, string | undefined>> = process.env
+): Record<string, string | undefined> => {
+  const clean: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(env)) {
     if (DEBUG_ENV_KEY_RE.test(key)) {
       continue;

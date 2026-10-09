@@ -163,22 +163,28 @@ function sourceRootOf(node: Node): Rules | undefined {
 }
 
 /**
- * A class, abstract or concrete, whose instances are `T`: type-fest's
- * `AbstractClass`, restated so core's published declarations import only
+ * A class, abstract or concrete, whose instances are `T`. Declared here rather
+ * than imported from type-fest so core's published declarations import only
  * packages core depends on.
  *
- * The arguments stay `any[]`, as in type-fest and `lib.d.ts`'s
- * `InstanceType`: it is the only parameter type that every constructor is
- * assignable to AND that `InstanceType` / `ConstructorParameters` still match.
- * `unknown[]` rejects every class with a typed constructor; `never[]` accepts
- * them but makes `InstanceType<AbstractClass<Node>>` resolve to `any`.
+ * The argument list is `never`: every constructor accepts it, so every class
+ * whose instances are `T` matches whatever its own constructor takes.
  */
-type AbstractClass<T> = (abstract new (...args: any[]) => T) & { prototype: Pick<T, keyof T> };
+type AbstractClass<T> = (abstract new (...args: never) => T) & { prototype: Pick<T, keyof T> };
+
+/*
+ * The instance and argument types of an `AbstractClass`. lib's `InstanceType`
+ * and `ConstructorParameters` cannot be used: they match a constructor that
+ * accepts `any` arguments, which a `never`-argument constructor does not, so
+ * they degrade to `any` / `never` for the constraint inside `defineType`.
+ */
+type InstanceOf<C> = C extends abstract new (...args: never) => infer I ? I : never;
+type ArgumentsOf<C> = C extends abstract new (...args: infer A) => unknown ? A : never;
 
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
-  P extends ConstructorParameters<T> = ConstructorParameters<T>
+  P extends ArgumentsOf<T> = ArgumentsOf<T>
 >(
   Clazz: T,
   type: string,
@@ -213,12 +219,12 @@ export const defineType = <
   // The abstract-class constraint is a compile-time nicety; every class passed
   // here is concrete, so construct it directly instead of through Reflect.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const Concrete = Clazz as unknown as new (...args: Args) => InstanceType<T>;
-  return (...args: Args): InstanceType<T> => {
+  const Concrete = Clazz as unknown as new (...args: Args) => InstanceOf<T>;
+  return (...args: Args): InstanceOf<T> => {
     const node = new Concrete(...args);
 
     // Invariant 7: the factory parents one level; the raw constructor did not.
-    return args.length > 0 ? (node.parentChildren() as InstanceType<T>) : node;
+    return args.length > 0 ? (node.parentChildren() as InstanceOf<T>) : node;
   };
 };
 

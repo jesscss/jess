@@ -78,7 +78,13 @@ function parseSvg(buffer: Buffer): ImageSize | undefined {
   return undefined;
 }
 
-export function getImageDimensions(buffer: Buffer): ImageSize {
+/**
+ * The pixel size an image file's header declares (PNG, GIF, JPEG or SVG).
+ * Takes plain bytes so the published declaration does not need `@types/node`;
+ * the parsers read them through a `Buffer` view of the same memory, not a copy.
+ */
+export function getImageDimensions(bytes: Uint8Array): ImageSize {
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   return (
     parsePng(buffer)
     ?? parseGif(buffer)

@@ -47,7 +47,9 @@ describe('Extend render', () => {
       throw new Error('ExtendList.render should not call child render');
     };
     const node = extendList([child]);
-    node.evalNode = () => {
+
+    // ExtendList inherits Node's protected `evalNode`; element access reaches it.
+    node['evalNode'] = () => {
       throw new Error('ExtendList.render should not materialize public eval output');
     };
 
@@ -83,7 +85,7 @@ describe('Extend render', () => {
 
     await expect(Promise.resolve(extend({ target: el('.base') }).evalNode(context)))
       .resolves.toHaveProperty('type', 'Nil');
-    expect(extendList([]).evalNode(context)).toBeInstanceOf(ExtendList);
+    expect(extendList([])['evalNode'](context)).toBeInstanceOf(ExtendList);
     expect(extend({ target: el('.base') })).toBeInstanceOf(Extend);
   });
 

@@ -86,5 +86,4 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-export const extendList = defineType(ExtendList as any, 'ExtendList');
+export const extendList = defineType(ExtendList, 'ExtendList');
