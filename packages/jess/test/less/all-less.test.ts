@@ -225,7 +225,7 @@ const skippedFixtures: SkippedFixture[] = (
     },
     {
       file: 'tests-unit/functions/legacy/functions.less',
-      reason: 'non-Less `$list` parameter syntax is deliberately unsupported'
+      reason: 'INTENDED DIVERGENCE (owner 2026-10-09): `~( … )` escapes a value list, and the `;`-separated form the fixture passes (`.mixin($list-1, ~(7; 8; 9))`) is not supported — "the parens are supposed to be around a valueList"; `$list-1` is the property accessor and works'
     },
     {
       file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
@@ -327,7 +327,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/functions/legacy/functions.less',
-    'this legacy fixture\'s non-Less $list parameter/reference syntax is not supported'
+    'INTENDED DIVERGENCE (owner 2026-10-09): `~( … )` escapes a value list; the fixture\'s `;`-separated `~(7; 8; 9)` is not supported ("the parens are supposed to be around a valueList"), while its `$list-1` property accessor works'
   ],
   [
     'tests-unit/plugin-preeval/plugin-preeval.less',
