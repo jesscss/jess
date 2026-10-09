@@ -1727,15 +1727,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * it was, as in `MixinGuardTerm`: the rest of a math run makes it an operand
    * (`if(((1 + 1) * 2 = 4), …)`), and a comparison compares the value it holds.
    */
+  const functionConditionGroupLed = sequence(g.FunctionConditionParen, noTrivia(mathRunTail));
+  const functionConditionCompared = optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)));
+  /*
+   * `not` negates a group, which a comparison may follow (`not (1) > 2`), or a
+   * bare operand, which none may: `not 1 > 2` does not say what `not` negates,
+   * so it stops at the operator and fails there, as any unexpected token does.
+   */
   const FunctionConditionTerm = node(
     'FunctionConditionTerm',
-    sequence(
-      optional(functionConditionNot),
-      choice(
-        sequence(g.FunctionConditionParen, noTrivia(mathRunTail)),
-        g.FunctionConditionOperand
-      ),
-      optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)))
+    choice(
+      sequence(functionConditionNot, choice(sequence(functionConditionGroupLed, functionConditionCompared), g.FunctionConditionOperand)),
+      sequence(choice(functionConditionGroupLed, g.FunctionConditionOperand), functionConditionCompared)
     ),
     (children, _fields, _span, rawChildren, _triviaLog, state) => functionConditionTermFrom(children, rawChildren, state)
   );
@@ -2144,12 +2147,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * (`@x: (1px > 2px)`, `@x: ((1px > 2px) and (1 = 1))`, `@x: (not (1px > 2px))`
    * hold that group; written out, it keeps its parens and its variables
    * substitute). A term is the `FunctionConditionTerm` shape over a math
-   * operand: `not`?, an operand, an optional comparison.
+   * operand: `not`?, an operand, an optional comparison — which, after `not`,
+   * only an operand led by a group takes (`(not (1px) > 2px)`; `(not 1px > 2px)`
+   * fails at its `>`).
    */
-  const parenConditionTerm = sequence(
-    optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
-    g.MathSum,
-    optional(sequence(functionConditionOperator, g.MathSum))
+  const parenConditionCompared = optional(sequence(functionConditionOperator, g.MathSum));
+  const parenConditionTerm = choice(
+    sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace), choice(
+      sequence(peek(literal('(')), g.MathSum, parenConditionCompared),
+      g.MathSum
+    )),
+    sequence(g.MathSum, parenConditionCompared)
   );
   const Paren = node(
     'Block',

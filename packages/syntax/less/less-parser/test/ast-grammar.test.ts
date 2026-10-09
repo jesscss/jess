@@ -4223,9 +4223,10 @@ describe('Less AST grammar facts', () => {
   });
 
   /*
-   * A comparison joined by `and` / `or` needs no group of its own in a value
-   * position, as in Less 4.x (lessc 4.9.1: `if(1 > 0 and 2 > 1, y, n)` is `y`);
-   * a `not` still takes a grouped operand.
+   * A comparison binds tighter than `and` / `or`, so it needs no group of its
+   * own in a condition (`if(1 > 0 and 2 > 1, y, n)`); a `not` followed by a
+   * comparison takes a grouped operand, since `not 1 = 1` does not say what it
+   * negates — in a function condition and in a value paren group alike.
    */
   it('enforces Less function condition grouping for boolean() and if()', () => {
     const accepts = [
@@ -4241,7 +4242,8 @@ describe('Less AST grammar facts', () => {
     ];
     const rejects = [
       'x: boolean(not 1 = 1);',
-      'x: if(not 1 = 1, yes, no);'
+      'x: if(not 1 = 1, yes, no);',
+      'x: (not 1 = 1);'
     ];
 
     for (const source of accepts) {

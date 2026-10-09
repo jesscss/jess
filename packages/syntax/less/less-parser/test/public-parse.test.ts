@@ -3704,6 +3704,39 @@ describe('final declaration without a trailing semicolon', () => {
 });
 
 /*
+ * `not` negates a group, which a comparison may follow, or a bare operand,
+ * which none may: `not 1 > 2` does not say what `not` negates. The grammar
+ * states it, so the input fails as a positioned parse error where the
+ * comparison starts, never as an error thrown while building the tree.
+ */
+describe('a `not` before a bare compared operand', () => {
+  const thrownBy = (source: string): unknown => {
+    try {
+      parse(source);
+    } catch (error) {
+      return error;
+    }
+    return undefined;
+  };
+
+  it('is a parse error at the comparison', () => {
+    for (const [source, column] of [['a { b: boolean(not 1 > 2); }', 22], ['a { b: if(not 1 > 2, y, n); }', 17]] as const) {
+      const thrown = thrownBy(source);
+      expect(thrown, source).toBeInstanceOf(LessParseError);
+      expect(thrown, source).toMatchObject({ line: 1, column });
+    }
+    expect(thrownBy('@x: (not 1px > 2px);')).toBeInstanceOf(LessParseError);
+    expect(thrownBy('@x: (1 and not 2 > 1);')).toBeInstanceOf(LessParseError);
+  });
+
+  it('accepts a group or an uncompared operand after it', () => {
+    for (const source of ['@x: (not (1px) > 2px);', '@x: (not 1);', 'a { b: boolean(not (1) > 2); c: boolean(not false); }']) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+  });
+});
+
+/*
  * A keyword ends at the css-syntax-3 §4.3.11 ident-continue boundary, which
  * includes every non-ASCII ident character. An ASCII-only boundary recognized
  * the keyword and then failed on the remainder, turning valid CSS into a Less

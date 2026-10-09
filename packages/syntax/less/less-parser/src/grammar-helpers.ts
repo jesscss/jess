@@ -2273,9 +2273,6 @@ function functionConditionTermFrom(
     }
     return { ...left, grouped };
   }
-  if (negated && !groupLed) {
-    throw new TypeError('Less function condition `not` requires a grouped condition operand.');
-  }
   const right = functionConditionOperandFact(children[index + 1], state);
   const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
   const src = `${left.src} ${operator} ${right.src}`;
