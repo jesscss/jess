@@ -764,9 +764,10 @@ Hiding follows the import placement, not the rule. Each `(reference)` or `(multi
 import is its own placement of the sheet's rules, so an extend inside one `@media` block
 reaches only that block's copy — a `(reference)` import inside a sheet imported
 `(multiple)` twice is placed once per copy. Import-once counts only a copy placed in the
-same scope — the root, one ruleset or one at-rule block, a mixin call or loop iteration
-counting in the scope it runs in and an imported sheet's root in its importer's (J14 as
-amended, orchestrator judgment under owner delegation 2026-10-07). An import of a sheet an
+same output context — the chain of rule selectors and at-rule preludes the copy renders
+into, a mixin call or loop iteration counting in the context it runs in and an imported
+sheet's root in its importer's (J14 as amended; owner 2026-10-09: once counts per scope,
+if the output would be different). An import of a sheet an
 enclosing import is still placing is a no-op in every scope, so a sheet that imports
 itself through a nested scope ends. Import-once drops a `(reference)` import of a sheet any `@import`
 already placed in its scope — plain, `(multiple)` or `(reference)` — (ledger J14,
@@ -786,7 +787,7 @@ delegation 2026-10-07: a sheet the author asked to see is never hidden). A copy 
 another scope never makes an import a no-op: after `.wrap { @import "t.less"; }` or
 `@media print { @import "t.less"; }`, a root `@import "t.less";` renders the sheet at the
 root and makes its mixins callable there, and a root `@import (reference) "t.less";` places
-its hidden copy there (lessc 4.9.1 drops both, leaving `.mx` undefined at the root). The
+its hidden copy there. The
 other way round, a scoped import after a root one places its own copy too. A sheet a `(reference)` sheet imports is
 referenced too, and a reference sheet's rule called as a mixin from outside the import
 renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the

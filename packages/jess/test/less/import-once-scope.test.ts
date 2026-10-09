@@ -1,8 +1,9 @@
 /**
- * Import-once is counted per scope: the root, one ruleset or one at-rule block, where a
- * mixin call or loop iteration belongs to the scope it is called in, a bare-`&` rule to its
- * parent's, and an imported
- * sheet's root to its importer's. A copy placed in another scope never makes an import a
+ * Import-once is counted per output context: the chain of rule selectors and at-rule
+ * preludes a copy would render into, the root being the empty one (owner 2026-10-09: once
+ * counts per scope, if the output would be different). A mixin call or loop iteration
+ * belongs to the context it is called in, a bare-`&` rule to its parent's, and an imported
+ * sheet's root to its importer's. A copy placed in another context never makes an import a
  * no-op, and an `@import` of a sheet an enclosing `@import` is still placing is always one,
  * so a sheet that imports itself, directly or through another sheet, ends.
  */
@@ -101,5 +102,30 @@ describe('import-once scope', () => {
     // Calls from two rulesets are two scopes.
     await expect(renderFiles([['main.less', '.m() { @import "t.less"; } .x { .m(); } .y { .m(); }'], t]))
       .resolves.toBe('.x .t {\n  a: 1;\n}\n.y .t {\n  a: 1;\n}');
+  });
+
+  it('places one copy per output context', async () => {
+    // Two rules with one selector, or two at-rules with one prelude, are one context.
+    await expect(renderFiles([['main.less', '.a { @import "t.less"; } .a { @import "t.less"; }'], t]))
+      .resolves.toBe('.a .t {\n  a: 1;\n}');
+    await expect(renderFiles([['main.less', '@media print { @import "t.less"; } @media print { @import "t.less"; }'], t]))
+      .resolves.toBe('@media print {\n  .t {\n    a: 1;\n  }\n}');
+    await expect(renderFiles([['main.less', '@w: 768px; @media (max-width: @w) { @import "t.less"; } @media (max-width:768px) { @import "t.less"; }'], t]))
+      .resolves.toBe('@media (max-width: 768px) {\n  .t {\n    a: 1;\n  }\n}');
+
+    // Another selector, prelude or nesting is another context.
+    await expect(renderFiles([['main.less', '.a { @import "t.less"; } .b { @import "t.less"; }'], t]))
+      .resolves.toBe('.a .t {\n  a: 1;\n}\n.b .t {\n  a: 1;\n}');
+    await expect(renderFiles([['main.less', '@media print { @import "t.less"; } @media screen { @import "t.less"; } @import "t.less";'], t]))
+      .resolves.toBe(`@media print {\n  .t {\n    a: 1;\n  }\n}\n@media screen {\n  .t {\n    a: 1;\n  }\n}\n${tRule}`);
+    await expect(renderFiles([['main.less', '.a { @import "t.less"; } .x { .a { @import "t.less"; } }'], t]))
+      .resolves.toBe('.a .t {\n  a: 1;\n}\n.x .a .t {\n  a: 1;\n}');
+  });
+
+  it('places the root copy of a mixins-only sheet a ruleset imported first', async () => {
+    await expect(renderFiles([
+      ['main.less', '.container { @import "mx.less"; .mx(); } @import "mx.less"; .root { .mx(); }'],
+      ['mx.less', '.mx() { m: 1; }']
+    ])).resolves.toBe('.container {\n  m: 1;\n}\n.root {\n  m: 1;\n}');
   });
 });

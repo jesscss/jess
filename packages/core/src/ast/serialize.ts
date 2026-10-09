@@ -465,27 +465,70 @@ function importScopeOf(frame: Frame): Frame {
 }
 
 /**
- * Import-once, per scope (ledgers J14, X18): whether `@import` `node` of the sheet `key` is
- * a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once` import
- * already placed there, or a `(reference)` re-import ({@link isReferenceReimport}) — else
- * records the placement. A scope is the root, one ruleset or one at-rule block; a mixin
- * call or loop iteration places in the scope it runs in ({@link importScopeOf}), a bare-`&`
- * rule in its parent's, and an imported sheet's own root is its importer's scope. A copy placed in another scope never
- * makes an import a no-op: `@media print { @import "t"; } @import "t";` renders the root
- * copy (orchestrator judgment under owner delegation 2026-10-07). A sheet an enclosing
+ * The output context an import in `scope` ({@link importScopeOf}) places its sheet in, for
+ * import-once ({@link importIsNoOp}): the chain of rule selectors and at-rule preludes from
+ * the root, `''`, to `scope`, so `.a { @import "t"; } .a { @import "t"; }` places one copy
+ * (owner 2026-10-09: once counts per scope, if the output would be different). Each part
+ * is written as the walk writes it — a rule's selector list, an at-rule's resolved
+ * prelude, read once per scope and cached on it. A scope whose output context the walk
+ * does not write from these parts (a composed module's root, a rule whose selector is
+ * interpolated) is its own context: the frame itself.
+ *
+ * ponytail: an interpolated selector is its own context rather than its resolved text;
+ * resolving it here is the upgrade if two such rules ever need one copy.
+ */
+function importContextKey(scope: Frame): object | string {
+  if (scope.importContext !== undefined) {
+    return scope.importContext;
+  }
+  const of = scope.outputOf;
+  if (of === undefined || scope.parent === null) {
+    return scope;
+  }
+  const outer = importContextKey(importScopeOf(scope.parent));
+  if (typeof outer !== 'string') {
+    return scope;
+  }
+  let part: string;
+  if (of.type === 'AtRuleBlock') {
+    part = of.name + ' ' + scope.outputPrelude!;
+  } else {
+    part = '';
+    for (const branch of of.selector.selectors) {
+      if (selectorBranchHasInterp(branch)) {
+        return scope;
+      }
+      part += (part === '' ? '' : ', ') + selectorBranchCanonical(branch);
+    }
+  }
+  return scope.importContext = outer + '\n' + part;
+}
+
+/**
+ * Import-once, per output context (ledgers J14, X18): whether `@import` `node` of the sheet
+ * `key` is a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once`
+ * import already placed in the same output context, or a `(reference)` re-import
+ * ({@link isReferenceReimport}) — else records the placement. The output context is the
+ * chain of rule selectors and at-rule preludes the copy would render into
+ * ({@link importContextKey}); a mixin call or loop iteration places in the context it runs
+ * in ({@link importScopeOf}), a bare-`&` rule in its parent's, and an imported sheet's own
+ * root in its importer's. A copy placed in another context never makes an import a no-op:
+ * `@media print { @import "t"; } @import "t";` renders the root copy, while
+ * `.a { @import "t"; } .a { @import "t"; }` renders one (owner 2026-10-09: once counts per
+ * scope, if the output would be different). A sheet an enclosing
  * import is still placing (`expanding`) counts as placed in every scope, so a sheet that
- * imports itself, directly or through others, ends. `placed` maps a scope's sheets to
- * whether a `once` import placed them. The import planner (a scope is the enclosing node)
- * and the render walk (its frame) both ask this in document order, an import inside a
+ * imports itself, directly or through others, ends. `placed` maps a context's sheets to
+ * whether a `once` import placed them. The import planner (which walks the root and its
+ * at-rule blocks) and the render walk both ask this in document order, an import inside a
  * ruleset included, so they agree on which imports place a sheet. A `(multiple)` import
  * of a sheet still being placed is an import cycle, which they raise before asking
  * ({@link importCycles}); any other import of one is a no-op, one inside a `(multiple)`
  * sheet included.
  */
 function importIsNoOp(
-  placed: Map<object, Map<string, boolean>>,
+  placed: Map<object | string, Map<string, boolean>>,
   expanding: ReadonlySet<string>,
-  scope: object,
+  scope: object | string,
   key: string,
   node: StyleImport,
   options: string | null,
@@ -832,6 +875,15 @@ export interface Frame {
    * ({@link importScopeOf}), since its output lands in the scope it runs in.
    */
   importScope?: Frame;
+
+  /**
+   * The ruleset or at-rule block whose body this frame is, and an at-rule's written
+   * prelude: what {@link importContextKey} reads for the output context its imports land
+   * in. `importContext` caches that key; the walk's root frame is `''`.
+   */
+  outputOf?: Ruleset | AtRuleBlock;
+  outputPrelude?: string;
+  importContext?: string;
 
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDefinition[]> | null;
@@ -10492,8 +10544,8 @@ interface Emit extends EvalCtx {
    */
   loadedImports: Map<string, Frame | null> | null;
 
-  /** The sheets each scope's `@import`s placed, keyed by the scope's frame ({@link importIsNoOp}). */
-  importScopes: Map<Frame, Map<string, boolean>> | null;
+  /** The sheets each output context's `@import`s placed ({@link importIsNoOp}, {@link importContextKey}). */
+  importScopes: Map<object | string, Map<string, boolean>> | null;
 
   /** The sheets the `@import`s enclosing the walk's position are placing ({@link importIsNoOp}). */
   importsExpanding: Set<string> | null;
@@ -13408,7 +13460,7 @@ function planImportedFacts(
    * at-rule block, or by the document root the walk began at. The planner never walks into
    * a ruleset, and no import it plans shares a ruleset's scope.
    */
-  const placed = new Map<object, Map<string, boolean>>();
+  const placed = new Map<object | string, Map<string, boolean>>();
 
   /* The sheets the imports enclosing the walk's position are placing ({@link importIsNoOp}). */
   const expanding = new Set<string>();
@@ -13522,8 +13574,12 @@ function planImportedFacts(
     hidden = false,
     placement: object | undefined = undefined,
 
-    /* The import-once scope of `statements` ({@link importIsNoOp}): the at-rule block, or the root. */
-    importScope: object = scope
+    /*
+     * The import-once output context of `statements` ({@link importIsNoOp}): the root,
+     * `''`, and each at-rule block's prelude after it, as {@link importContextKey} writes
+     * it; a composed module's root is its own.
+     */
+    importScope: object | string = ''
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     const deferredSites: number[] = [];
@@ -13768,7 +13824,10 @@ function planImportedFacts(
          * — and ledger A10's `@import "lib" screen;` desugar lands exactly here.
          * Those facts keep publication order (see {@link importSiteRank}).
          */
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement, st);
+        const context = typeof importScope === 'string' && bodyHasPlannedImport(st.rules)
+          ? importScope + '\n' + st.name + ' ' + await atRulePreludeBytes(st, scope, e)
+          : st;
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement, context);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -13944,7 +14003,8 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     reassign: null,
     statements: root.rules,
     fns: rootFns,
-    sourceOwner: e.context?.currentSourceOwner?.() ?? null
+    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
+    importContext: ''
   };
   if (rootFns) {
     rootFrame.fnScope = rootFrame;
@@ -14052,7 +14112,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     declIndex: collectDeclIndex(root.rules), cells: null, reassign: null,
     statements: root.rules,
     fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
-    sourceOwner: e.context?.currentSourceOwner?.() ?? null
+    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
+    importContext: ''
   };
   if (rootFns) {
     rootFrame.fnScope = rootFrame;
@@ -15746,7 +15807,8 @@ function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
       mixins: collectMixins(rule.rules),
       declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
       statements: rule.rules,
-      sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
+      sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
+      outputOf: rule
     };
 
     /*
@@ -21511,7 +21573,7 @@ function expandStyleImport(
           /* A sheet composed as a module is not also folded in by `@import`. */
           const composed = emitOnceKey !== undefined ? e.loadedImports?.get(loaded.key) : undefined;
           if ((composed !== undefined && composed !== null)
-            || importIsNoOp(e.importScopes ??= new Map(), e.importsExpanding ??= new Set(), importScopeOf(frame), loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
+            || importIsNoOp(e.importScopes ??= new Map(), e.importsExpanding ??= new Set(), importContextKey(importScopeOf(frame)), loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
             return;
           }
           if (emitOnceKey !== undefined && composed === undefined) {
@@ -22572,7 +22634,9 @@ function expandAtRuleBlock(
       parent: frame,
       mixins: collectMixins(node.rules),
       declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
-      statements: node.rules
+      statements: node.rules,
+      outputOf: node,
+      outputPrelude: prelude
     };
     const write = (): MaybePromise<void> => nestedSource === undefined
       ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)

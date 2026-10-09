@@ -446,7 +446,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // opens the selector, the compound's other simples joined to its last
     // compound (`placeParent`, `lastCompoundStart`), found without allocating
     // (`ampNeedsPlacement`, `termNeedsPlacement`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(590);
+    // +1 function (owner 2026-10-09: import-once counts per scope, if the output
+    // would be different): an import's scope is the output context it renders
+    // into, its rule selectors and at-rule preludes (`importContextKey`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(591);
     expect(occurrences(/new Map/gu)).toBe(92);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
