@@ -38,6 +38,36 @@ describe('a mixin call with a `;` passes each comma run as one list value (P46)'
   });
 });
 
+/*
+ * A `;` list gives `@a` the comma list `d, e` (owner 2026-10-09), stored as the `~( … )`
+ * node (P46), and `~( … )` holds a value list (owner 2026-10-09: "the parens are supposed
+ * to be around a valueList"), so a parameter bound to one is that list to the list
+ * functions and to a guard.
+ */
+describe('a comma run a `;` list passes is a list value (P46)', () => {
+  it('counts and indexes it as a list', async () => {
+    await expect(css('.t(@a; @b) { one: length(@a); two: extract(@a, 2); } .x { .t(d, e, f; g); }'))
+      .resolves.toBe('.x {\n  one: 3;\n  two: e;\n}\n');
+    await expect(css('.t(@a) { one: length(@a); } .x { .t(~(1, 2, 3)); }')).resolves.toBe('.x {\n  one: 3;\n}\n');
+    await expect(css('.d(@c; @m: 2, 3, 4) { n: length(@m); o: extract(@m, 2); } .x { .d(1); }'))
+      .resolves.toBe('.x {\n  n: 3;\n  o: 3;\n}\n');
+  });
+
+  it('iterates it with each()', async () => {
+    await expect(css('.t(@a; @b) { each(@a, { v-@{value}: @index; }); } .x { .t(d, e; f); }'))
+      .resolves.toBe('.x {\n  v-d: 1;\n  v-e: 2;\n}\n');
+  });
+
+  it('reads it in a guard', async () => {
+    await expect(css('.t(@a) when (length(@a) = 2) { ok: yes; } .x { .t(d, e;); }')).resolves.toBe('.x {\n  ok: yes;\n}\n');
+  });
+
+  it('does not order the two comma runs a `;` list passes in a guard (golden mixins-guards)', async () => {
+    const generic = '.g(@a, @b) when (@a < @b) { lt: yes; } .g(@a, @b) when (@a > @b) { gt: yes; } .g(@a, @b) when not (@a = @b) { ne: yes; } ';
+    await expect(css(`${generic}.x { .g(a, b, c; a, b, d); }`)).resolves.toBe('.x {\n  ne: yes;\n}\n');
+  });
+});
+
 describe('a mixin definition with a `;` takes each comma run as one value (P46)', () => {
   it('reads a comma-list default after `;` parameters', async () => {
     await expect(css(

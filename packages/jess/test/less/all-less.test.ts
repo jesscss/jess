@@ -383,15 +383,6 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
 
   /*
-   * Ledger P46 stores `.generic(a, b, c; a, b, d)`'s comma runs as the `~( … )`
-   * node, and a guard orders two `~( … )` lists by their bytes, so `when (@a < @b)`
-   * matches. It does at the base for `.generic(~(a, b, c), ~(a, b, d))` and for
-   * lists bound to variables; only a bare `List` argument was unordered. That
-   * ordering is an evaluator question, open under ledger P46.
-   */
-  ['tests-unit/mixins-guards/mixins-guards.less', 'a guard orders two `~( … )` comma lists by their bytes: `.generic(a, b, c; a, b, d)` adds `a, b, c is less than a, b, d` and `a, b, d is greater than a, b, c too`'],
-
-  /*
    * The math-mode fixtures (see goldenFor). They ran for the first time when
    * the lane started pairing them with their goldens, and are untriaged:
    * jess#351 says what each one does.

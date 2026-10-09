@@ -441,6 +441,15 @@ export function isTypedCallValue(v: CallValue): v is ValueSlot {
   if (v.type === 'List') {
     return v.value.every(isTypedCallValue);
   }
+
+  /*
+   * `~( … )` is a value list (owner 2026-10-09: "the parens are supposed to be around a
+   * valueList"), the node a `;` list stores each comma run as (P46), so it binds as the
+   * `List` it holds does.
+   */
+  if (v.type === 'Block' && v.escaped === true) {
+    return isTypedCallValue(v.value);
+  }
   return v.type === 'Sequence' && v.parts.every(isTypedCallValue);
 }
 

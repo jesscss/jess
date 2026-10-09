@@ -4968,6 +4968,16 @@ function evalTyped(
     }
     case 'Block':
       /*
+       * `~( … )` holds a value list (owner 2026-10-09: "the parens are supposed to be
+       * around a valueList"), its parens escaped where it is written: read typed it is
+       * that list, so `length`, `extract`, `each` and a guard see its items — a mixin
+       * parameter a `;` list bound to it (P46) included.
+       */
+      if (node.escaped === true) {
+        return evalTypedSlot(node.value, frame, e, projectMixinValues, argument);
+      }
+
+      /*
        * A typed function argument still needs the surrounding-parenthesis math
        * context.  `round((@r / 3))` and `unit((4px * 4em / 2cm))` consume the
        * inner value through this path; dropping the paren frame made their
