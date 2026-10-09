@@ -90,7 +90,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "!lib/**/*.d.ts.map"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
