@@ -13,7 +13,7 @@
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
-  "description": "Jess LESS parser",
+  "description": "Less parser for Jess, layered on the Jess CSS parser",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
@@ -93,6 +93,7 @@
     "lib",
     "!lib/**/*.d.ts.map"
   ],
+  "sideEffects": false,
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",

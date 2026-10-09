@@ -34,6 +34,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"

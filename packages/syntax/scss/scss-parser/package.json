@@ -8,7 +8,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "",
+  "description": "SCSS parser for Jess, layered on the Jess CSS parser (experimental)",
   "version": "2.0.0-alpha.5",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -91,6 +91,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",

@@ -13,7 +13,7 @@
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
-  "description": "Jess CSS base parser",
+  "description": "CSS parser for Jess, and the base the Less, SCSS and Jess parsers compose onto",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
@@ -107,6 +107,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
     "ci": "pnpm build && pnpm test",

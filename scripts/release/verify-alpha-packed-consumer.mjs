@@ -130,6 +130,17 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
       `${pkg.name}: packed scripts.${hook} runs at consumer install: ${manifest.scripts?.[hook]}`
     );
   }
+
+  /*
+   * MIT requires the notice to travel with every copy. Packages without their
+   * own LICENSE get the workspace root's from `pnpm pack`/`pnpm publish`;
+   * check the tarball rather than trusting that implicit copy.
+   */
+  const listing = spawnSync('tar', ['-tzf', tarball], { encoding: 'utf8', shell: process.platform === 'win32' });
+  assert(
+    listing.status === 0 && listing.stdout.split('\n').includes('package/LICENSE'),
+    `${pkg.name}: packed tarball has no LICENSE`
+  );
 }
 
 function packageDirFor(pkgName) {

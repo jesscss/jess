@@ -12,7 +12,7 @@
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
-  "description": "Jess parser with direct canonical AST parsing and an explicit language-service CST entry",
+  "description": "Parser for the Jess language, layered on the Jess CSS parser",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
@@ -91,6 +91,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
@@ -101,8 +102,12 @@
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
-  "author": "Matthew Dean",
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
