@@ -1176,7 +1176,7 @@ describe('targeted round trip: the converted sheet answers the .jess default', (
 });
 
 /*
- * Less's `;` rule (owner 2026-10-09, ledger P45) stores each comma run of a `;`
+ * Less's `;` rule (owner 2026-10-09, ledger P46) stores each comma run of a `;`
  * mixin list as the node `~( … )` builds, so a `;` list converts exactly as its
  * escaped spelling does. `.jess` has no spelling for that node yet and the
  * converter names it, so these round trips are held by that one gap, not by the

@@ -2457,7 +2457,7 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
   });
 
-  it('reports every item a `;` makes invalid in a Less mixin list, each at its item (P45)', () => {
+  it('reports every item a `;` makes invalid in a Less mixin list, each at its item (P46)', () => {
     const source = '.x { .t(@a: 1, @b: 2; c, @d...); @r: .t(a, b; c, ...); .ok(@a: 1, @b: 2); }';
     const found = collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
       .filter(diagnostic => diagnostic.code === 'parse/invalid-mixin-argument')

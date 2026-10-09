@@ -4,7 +4,7 @@ import lessPlugin from '@jesscss/plugin-less';
 
 /**
  * Less's `;` rule for mixin calls and definitions (owner 2026-10-09, ledger
- * P45): when the list holds any `;`, `;` separates its arguments and EVERY `,`,
+ * P46): when the list holds any `;`, `;` separates its arguments and EVERY `,`,
  * before or after the `;`, belongs to a comma-list value.
  */
 const compiler = new Compiler({ compile: { plugins: [lessPlugin()] }, quiet: true });
@@ -20,7 +20,7 @@ const css = async (source: string) => {
 
 const TAKES = '.mixin-takes-one(@a) { one: @a; }\n.mixin-takes-two(@a; @b) { one: @a; two: @b; }\n';
 
-describe('a mixin call with a `;` passes each comma run as one list value (P45)', () => {
+describe('a mixin call with a `;` passes each comma run as one list value (P46)', () => {
   it.each([
     ['.mixin-takes-two(@a : a; @b : b, c);', 'one: a;\n  two: b, c;'],
     ['.mixin-takes-two(@a : d, e; @b : f);', 'one: d, e;\n  two: f;'],
@@ -38,7 +38,7 @@ describe('a mixin call with a `;` passes each comma run as one list value (P45)'
   });
 });
 
-describe('a mixin definition with a `;` takes each comma run as one value (P45)', () => {
+describe('a mixin definition with a `;` takes each comma run as one value (P46)', () => {
   it('reads a comma-list default after `;` parameters', async () => {
     await expect(css(
       '.mixin-comma-default1(@color; @padding; @margin: 2, 2, 2, 2) { margin: @margin; }\n'
@@ -59,7 +59,7 @@ describe('a mixin definition with a `;` takes each comma run as one value (P45)'
   });
 });
 
-describe('a `;` list error is reported at the argument (P45)', () => {
+describe('a `;` list error is reported at the argument (P46)', () => {
   it('places a named argument inside a comma list at that argument', async () => {
     const result = await render(`${TAKES}.x {\n  .mixin-takes-two(@a: 1, @b: 2; 3);\n}`);
     expect(result.errors).toHaveLength(1);

@@ -724,7 +724,7 @@ function hasLeafChild(node: CssCstNode, value: string): boolean {
 }
 
 /**
- * The items of a Less mixin list that its `;` makes invalid (ledger P45). A list
+ * The items of a Less mixin list that its `;` makes invalid (ledger P46). A list
  * holding a `;` folds every `,` into a comma-list value: a `@name:` may only lead
  * such a value, and a spread or rest cannot be part of one. Read from the list's
  * own item nodes and separator leaves, in source order.
@@ -5579,7 +5579,7 @@ export function cstLintDiagnostics(
 
     /*
      * The strict AST raises the FIRST item a `;` makes invalid in a mixin list;
-     * this twin reports every one, each at its own item (ledger P45).
+     * this twin reports every one, each at its own item (ledger P46).
      */
     if (language === 'less' && LESS_MIXIN_LIST_TYPES.has(gt)) {
       for (const { item, problem } of lessMixinListProblems(node)) {

@@ -3365,7 +3365,7 @@ describe('public Less parse()', () => {
     ].join('\n'));
 
     /* Both lists hold a `;`, so each comma run is ONE comma-list value, stored as
-     * the `~( … )` node (ledger P45): in the definition it is a pattern. */
+     * the `~( … )` node (ledger P46): in the definition it is a pattern. */
     const commaList = (...names: string[]) => ({
       type: 'Block',
       delimiter: 'paren',

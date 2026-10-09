@@ -5,7 +5,7 @@ import { bare } from '../../../../../test/provenance-free.js';
 
 /**
  * Less's `;` rule for mixin calls and definitions (owner 2026-10-09, ledger
- * P45): when the list holds any `;`, `;` separates its arguments and EVERY `,`,
+ * P46): when the list holds any `;`, `;` separates its arguments and EVERY `,`,
  * before or after the `;`, belongs to a comma-list value. Without a `;`, `,`
  * separates arguments. The comma list is stored as the node `~( … )` builds,
  * so each `;` form parses to exactly what its escaped spelling does.
@@ -30,7 +30,7 @@ const rejection = (source: string) => {
   throw new Error(`expected ${source} to be rejected`);
 };
 
-describe('Less mixin calls with a `;` (P45)', () => {
+describe('Less mixin calls with a `;` (P46)', () => {
   it.each([
     ['.x { .t(@a : a; @b : b, c); }', '.x { .t(@a: a, @b: ~(b, c)); }'],
     ['.x { .t(@a : d, e; @b : f); }', '.x { .t(@a: ~(d, e), @b: f); }'],
@@ -62,7 +62,7 @@ describe('Less mixin calls with a `;` (P45)', () => {
   });
 });
 
-describe('Less mixin definitions with a `;` (P45)', () => {
+describe('Less mixin definitions with a `;` (P46)', () => {
   it.each([
     ['.m(@color; @padding; @margin: 2, 2, 2, 2) { margin: @margin; }', '.m(@color, @padding, @margin: ~(2, 2, 2, 2)) { margin: @margin; }'],
     ['.m(@margin: 2, 2, 2, 2;) { margin: @margin; }', '.m(@margin: ~(2, 2, 2, 2)) { margin: @margin; }'],

@@ -6725,7 +6725,7 @@ describe('Less AST grammar facts', () => {
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
 
-    /* Each comma run is stored as the `~( … )` node (ledger P45). */
+    /* Each comma run is stored as the `~( … )` node (ledger P46). */
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({

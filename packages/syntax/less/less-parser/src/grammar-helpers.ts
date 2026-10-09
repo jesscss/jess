@@ -58,7 +58,7 @@ type MixinInteriorFact = {
   readonly items: readonly MixinInteriorCapture[];
   /** `separators[i]` follows `items[i]`. */
   readonly separators: readonly (',' | ';')[];
-  /** Whether any separator, the trailing one included, is `;` (ledger P45). */
+  /** Whether any separator, the trailing one included, is `;` (ledger P46). */
   readonly semicolons: boolean;
   /** Each separator with its authored trivia, kept only when `semicolons`: a comma
    *  folded into a list value keeps the spelling `~( … )` would have recorded. */
@@ -636,7 +636,7 @@ function mixinInteriorSeparatorOf(capture: FieldCapture): ',' | ';' {
 /**
  * The single forward pass over a mixin argument or parameter list, kept as its
  * items (with their spans) and separators. Whether a `,` separates arguments or
- * belongs to a comma list is known only once the list has ended (ledger P45), so
+ * belongs to a comma list is known only once the list has ended (ledger P46), so
  * the list is reassembled from these facts afterwards, never re-parsed.
  */
 function mixinInteriorFromFields(
@@ -1959,7 +1959,7 @@ function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean):
 }
 
 /**
- * Less's `;` rule for mixin calls and definitions (owner 2026-10-09, ledger P45).
+ * Less's `;` rule for mixin calls and definitions (owner 2026-10-09, ledger P46).
  * When the list holds any `;`, `;` separates its arguments and EVERY `,`, before
  * or after the `;`, belongs to a comma-list value; without one, `,` separates
  * arguments. A group of two or more items is ONE argument whose value is the node

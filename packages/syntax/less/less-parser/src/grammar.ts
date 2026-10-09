@@ -2898,7 +2898,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const mixinInteriorSeparator = parser({ trivia: mixinSignatureTrivia }, commaOrSemicolon);
   // Items and separators only: whether a `,` separates arguments or belongs to a
-  // comma-list value is decided once the list has ended (ledger P45), by the
+  // comma-list value is decided once the list has ended (ledger P46), by the
   // reducer that reassembles it, so the list is read forward exactly once.
   const mixinInteriorItems = oneOrMoreSep(
     field('item', mixinInteriorItem),

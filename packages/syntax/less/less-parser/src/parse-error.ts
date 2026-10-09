@@ -223,7 +223,7 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
 
 /**
  * What is wrong with one item of a mixin argument or parameter list. `named` and
- * `rest` exist only because the list holds a `;` (ledger P45): every `,` then
+ * `rest` exist only because the list holds a `;` (ledger P46): every `,` then
  * belongs to a comma-list value, which a name or a spread cannot be part of.
  */
 export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value';
