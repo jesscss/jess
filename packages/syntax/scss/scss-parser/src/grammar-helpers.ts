@@ -524,7 +524,7 @@ export function mapKeyValue(node: ValueNode): ValueSlot {
  * `.less` is unaffected — `when (@x)` still lowers to `$if($x == true)`.
  */
 export function scssTruth(value: ValueSlot): GuardNode {
-  return { g: 'truth', value };
+  return { g: 'truth', value, parens: 0 };
 }
 
 /**
@@ -532,8 +532,8 @@ export function scssTruth(value: ValueSlot): GuardNode {
  * falsy". Under §4.4.6 that is exactly jess's `not($x)`, so it is the truth node
  * under a `not` wrapper and cannot drift from the positive form.
  */
-export function scssNegation(value: ValueSlot): GuardNode {
-  return { g: 'not', inner: scssTruth(value) };
+export function scssNegation(value: ValueSlot, word: string): GuardNode {
+  return { g: 'not', inner: scssTruth(value), word, parens: 0 };
 }
 
 /**

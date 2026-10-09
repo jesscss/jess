@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -95,6 +95,7 @@ import {
   isSimpleSelector,
   isLessSimpleToken,
   isStatement,
+  isLessKeyword,
   isLessTerminalText,
   isUrl,
   isValueNode,
@@ -106,6 +107,7 @@ import {
   lessMathOutsideParens,
   lessMathRun,
   lessParenFrom,
+  parenLogicalFrom,
   requireMathSum,
   lowerLogicalCallStatement,
   mixinArgumentSource,
@@ -133,6 +135,8 @@ import {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rulesetExtensions,
+  selectorListWithExtendsFrom,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,
@@ -1729,15 +1733,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * it was, as in `MixinGuardTerm`: the rest of a math run makes it an operand
    * (`if(((1 + 1) * 2 = 4), …)`), and a comparison compares the value it holds.
    */
+  const functionConditionGroupLed = sequence(g.FunctionConditionParen, noTrivia(mathRunTail));
+  const functionConditionCompared = optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)));
+  /*
+   * `not` negates a group, which a comparison may follow (`not (1) > 2`), or a
+   * bare operand, which none may: `not 1 > 2` does not say what `not` negates,
+   * so it stops at the operator and fails there, as any unexpected token does.
+   */
   const FunctionConditionTerm = node(
     'FunctionConditionTerm',
-    sequence(
-      optional(functionConditionNot),
-      choice(
-        sequence(g.FunctionConditionParen, noTrivia(mathRunTail)),
-        g.FunctionConditionOperand
-      ),
-      optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)))
+    choice(
+      sequence(functionConditionNot, choice(sequence(functionConditionGroupLed, functionConditionCompared), g.FunctionConditionOperand)),
+      sequence(choice(functionConditionGroupLed, g.FunctionConditionOperand), functionConditionCompared)
     ),
     (children, _fields, _span, rawChildren, _triviaLog, state) => functionConditionTermFrom(children, rawChildren, state)
   );
@@ -2146,12 +2153,33 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * (`@x: (1px > 2px)`, `@x: ((1px > 2px) and (1 = 1))`, `@x: (not (1px > 2px))`
    * hold that group; written out, it keeps its parens and its variables
    * substitute). A term is the `FunctionConditionTerm` shape over a math
-   * operand: `not`?, an operand, an optional comparison.
+   * operand: `not`?, an operand, an optional comparison — which, after `not`,
+   * only an operand led by a group takes (`(not (1px) > 2px)`; `(not 1px > 2px)`
+   * fails at its `>`).
+   *
+   * Each term owns the gap after its operands, read once, so the operator and
+   * the `and` / `or` after it are matched where they start. `and` and `or` are
+   * their own facts, so the reduction folds them without reading their bytes;
+   * a group with neither, nor a comparison or `not`, is the ordinary math group
+   * and its tree is unchanged.
    */
-  const parenConditionTerm = sequence(
-    optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
-    g.MathSum,
-    optional(sequence(functionConditionOperator, g.MathSum))
+  const parenConditionCompared = optional(sequence(mixinGuardOperator, optional(whitespace), g.MathSum, optional(whitespace)));
+  const parenConditionTerm = choice(
+    sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace), choice(
+      sequence(peek(literal('(')), g.MathSum, optional(whitespace), parenConditionCompared),
+      sequence(g.MathSum, optional(whitespace))
+    )),
+    sequence(g.MathSum, optional(whitespace), parenConditionCompared)
+  );
+  const parenConditionAnd = node(
+    'ParenConditionAnd',
+    lessCaseWord('and'),
+    children => parenLogicalFrom('and', children)
+  );
+  const parenConditionOr = node(
+    'ParenConditionOr',
+    lessCaseWord('or'),
+    children => parenLogicalFrom('or', children)
   );
   const Paren = node(
     'Block',
@@ -2162,8 +2190,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('('),
       optional(whitespace),
       parenConditionTerm,
-      many(sequence(choice(functionConditionAnd, functionConditionOr), parenConditionTerm)),
-      optional(whitespace),
+      many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm)),
       literal(')')
     )),
     (children, _fields, span, _rawChildren, _triviaLog, state) => lessParenFrom(children, span, state)
@@ -3298,7 +3325,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MixinGuardTerm = node(
     'MixinGuardTerm',
     sequence(
-      optional(lessWord('not')),
+      optional(lessCaseWord('not')),
       choice(
         sequence(literal('('), g.MixinGuardOr, literal(')'), mixinGuardGroupTail),
         sequence(not(literal('(')), g.MixinGuardOperand, optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))
@@ -3308,24 +3335,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinGuardAnd = node(
     'MixinGuardAnd',
-    sequence(g.MixinGuardTerm, many(sequence(lessWord('and'), g.MixinGuardTerm))),
+    sequence(g.MixinGuardTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTerm))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('and', children, state)
   );
   const MixinGuardOr = node(
     'MixinGuardOr',
-    sequence(g.MixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardAnd))),
+    sequence(g.MixinGuardAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardAnd))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('or', children, state)
   );
   const unparenthesizedMixinGuard = node(
     'UnparenthesizedMixinGuard',
     choice(
       sequence(
-        optional(lessWord('not')),
+        optional(lessCaseWord('not')),
         choice(mixinGuardDefaultOperand, g.Call),
         optional(sequence(mixinGuardOperator, g.MixinGuardOperand))
       ),
       sequence(
-        optional(lessWord('not')),
+        optional(lessCaseWord('not')),
         g.MixinGuardOperand,
         mixinGuardOperator,
         g.MixinGuardOperand
@@ -3342,23 +3369,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // otherwise read every `(` as a math group first, fail at the comparison,
     // and leave the group to be read again.
     choice(
-      sequence(optional(lessWord('not')), literal('('), g.MixinGuardOr, literal(')')),
+      sequence(optional(lessCaseWord('not')), literal('('), g.MixinGuardOr, literal(')')),
       unparenthesizedMixinGuard,
-      sequence(lessWord('not'), g.MixinGuardTerm)
+      sequence(lessCaseWord('not'), g.MixinGuardTerm)
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state): MixinGuard => {
-      const guard = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
-      return children.some(child => isLessTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
+      const term = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
+      const guard = children.some(child => isLessTerminalText(child, '(')) ? inParens(term) : term;
+      const not = children.find(child => isLessKeyword(child, 'not'));
+      return not === undefined ? guard : { g: 'not', inner: guard, word: requireTerminalText(not), parens: 0 };
     }
   );
   const MixinGuardTopAnd = node(
     'MixinGuardTopAnd',
-    sequence(g.MixinGuardTopTerm, many(sequence(lessWord('and'), g.MixinGuardTopTerm))),
+    sequence(g.MixinGuardTopTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTopTerm))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, state), state)
   );
   const MixinGuardTopOr = node(
     'MixinGuardTopOr',
-    sequence(g.MixinGuardTopAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardTopAnd))),
+    sequence(g.MixinGuardTopAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardTopAnd))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, state), state)
   );
   const MixinGuard = node(
@@ -5228,6 +5257,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         .map(target => ({ target: target.target, partial: target.partial }))
     })
   );
+  /*
+   * The static branch must end at a list boundary, which is what sends a branch
+   * it cannot read whole to the dynamic one. The dynamic and relative branches
+   * are the last arm, so the list or ruleset that holds them consumes the
+   * delimiter after them, and they peek for nothing.
+   */
   const selectorBranchContinuation = choice(
     sequence(ExtendPseudo, selectorBranchBoundary),
     selectorBranchBoundary
@@ -5245,7 +5280,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const DynamicSelectorBranch = node(
     'SelectorBranch',
-    sequence(g.ComplexSelector, selectorBranchContinuation),
+    sequence(g.ComplexSelector, optional(ExtendPseudo)),
     selectorBranchFactFrom
   );
   const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
@@ -5269,12 +5304,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         literal(',')
       )
     ),
-    (children, _fields, span) => ({
-      selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
-        ? [child.selector]
-        : [])), span),
-      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
-    })
+    (children, _fields, span) => selectorListWithExtendsFrom(children, span)
   );
   const relativeSelectorListWithExtends = node(
     'SelectorListWithExtends',
@@ -5283,33 +5313,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       oneOrMoreSep(
         choice(SelectorBranch, node(
           'SelectorBranch',
-          sequence(g.RelativeSelector, selectorBranchContinuation),
+          sequence(g.RelativeSelector, optional(ExtendPseudo)),
           selectorBranchFactFrom
         )),
         literal(',')
       )
     ),
-    (children, _fields, span) => ({
-      selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
-        ? [child.selector]
-        : [])), span),
-      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
-    })
+    (children, _fields, span) => selectorListWithExtendsFrom(children, span)
   );
   const RulesetWithExtends = node(
     'Ruleset',
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = bodyExtensionsOf(children);
-      const extensions = [...selectorFact.extensions, ...bodyExtensions];
+      const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
         rule(
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
           // the braces. This validates that fact list; it never reparses body text.
           requireRulesetBody(children.filter(isStatement)),
-          extensions.length === 0 ? undefined : extensions,
+          extensions,
           children.find(isMixinGuard)
         ),
         rawChildren
@@ -5322,13 +5346,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = bodyExtensionsOf(children);
-      const extensions = [...selectorFact.extensions, ...bodyExtensions];
+      const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
         rule(
           selectorFact.selector,
           requireRulesetBody(children.filter(isStatement)),
-          extensions.length === 0 ? undefined : extensions,
+          extensions,
           children.find(isMixinGuard)
         ),
         rawChildren

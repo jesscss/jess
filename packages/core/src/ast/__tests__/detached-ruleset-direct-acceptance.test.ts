@@ -39,7 +39,7 @@ describe('variable-call canonical AST emission', () => {
       variableDeclaration('enabled', keyword('true'), { mode: 'declare' }),
       variableDeclaration('content', ifValue([
         {
-          guard: { g: 'truth', value: variableReference('enabled', 'scoped') },
+          guard: { g: 'truth', value: variableReference('enabled', 'scoped'), parens: 0 },
           value: anonymousMixin([decl('display', keyword('grid'))])
         },
         { guard: null, value: anonymousMixin([decl('display', keyword('none'))]) }

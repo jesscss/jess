@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { IMPLIED_TRUE, NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -278,6 +278,26 @@ function isLessTerminalText(value: unknown, text: string): boolean {
    */
   return (typeof value === 'string' && value === text)
     || (typeof value === 'object' && value !== null && !('type' in value) && 'value' in value && value.value === text);
+}
+
+/** The text of a raw grammar terminal ({@link isLessTerminalText}), or `null` for anything else. */
+function lessTerminalText(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return typeof value === 'object' && value !== null && !('type' in value) && 'value' in value && typeof value.value === 'string'
+    ? value.value
+    : null;
+}
+
+/**
+ * A terminal spelling the lowercase keyword `word` in any ASCII case: `and`,
+ * `or` and `not` are keywords wherever a Less condition is written, and a CSS
+ * keyword is ASCII case-insensitive (CSS Values 4 §6.1).
+ */
+function isLessKeyword(value: unknown, word: string): boolean {
+  const text = lessTerminalText(value);
+  return text !== null && text.length === word.length && text.toLowerCase() === word;
 }
 
 function requireField(fields: FieldMap | undefined, name: string): FieldCapture {
@@ -1269,8 +1289,12 @@ function callWithLayout(
  * the STRING `"true"` are all false under it.
  */
 function lessConditionGuard(arg: ValueSlot): MixinGuard {
-  const inner = !Array.isArray(arg) && isValueNode(arg) && arg.type === 'Block' && arg.delimiter === 'paren' ? arg.value : arg;
-  return !Array.isArray(inner) && isValueNode(inner) && inner.type === 'Condition' ? inner.guard : lessTruth(arg);
+  const grouped = !Array.isArray(arg) && isValueNode(arg) && arg.type === 'Block' && arg.delimiter === 'paren';
+  const inner = grouped ? arg.value : arg;
+  if (!Array.isArray(inner) && isValueNode(inner) && inner.type === 'Condition') {
+    return grouped ? inParens(inner.guard) : inner.guard;
+  }
+  return lessTruth(arg);
 }
 
 /**
@@ -1311,14 +1335,14 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value) }),
+      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, parens: 0 }),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
       return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
-      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first) }) : call;
+      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, parens: 0 }) : call;
     case 'and':
       return boundaryCondition(fold('and'));
     case 'or':
@@ -1713,7 +1737,8 @@ function isBodyExtendFact(value: unknown): value is BodyExtendFact {
     && value.bodyExtensions.every(isExtendInstruction);
 }
 
-const NO_BODY_EXTENSIONS: readonly ExtendInstruction[] = [];
+/** The shared empty extension list: a selector or body without an extend allocates nothing. */
+const NO_EXTENSIONS: readonly ExtendInstruction[] = [];
 
 /**
  * The body-form `&:extend()`s among a ruleset or mixin-definition body's reduced
@@ -1727,7 +1752,7 @@ function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruct
       (out ??= []).push(...child.bodyExtensions);
     }
   }
-  return out ?? NO_BODY_EXTENSIONS;
+  return out ?? NO_EXTENSIONS;
 }
 
 /**
@@ -1736,11 +1761,42 @@ function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruct
  */
 function selectorBranchFactFrom(children: readonly unknown[]): SelectorBranchFact {
   const subject = children.find(isLessSelectorBranch)!;
-  const extensions = children
-    .filter(Array.isArray)
-    .flatMap(child => child.filter(isExtendTargetFact))
-    .map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }));
-  return { selector: subject, extensions };
+  let extensions: ExtendInstruction[] | undefined;
+  for (const child of children) {
+    if (!Array.isArray(child)) {
+      continue;
+    }
+    for (const target of child) {
+      if (isExtendTargetFact(target)) {
+        (extensions ??= []).push({ target: target.target, partial: target.partial, subject: selist(subject) });
+      }
+    }
+  }
+  return { selector: subject, extensions: extensions ?? NO_EXTENSIONS };
+}
+
+/**
+ * `SelectorListWithExtends`' reduction: the branches as one selector list, and
+ * the inline extends of every branch, in order — the shared empty list when
+ * no branch has one.
+ */
+function selectorListWithExtendsFrom(children: readonly unknown[], span: SourceSpan): SelectorListWithExtendsFact {
+  const branches: SelectorBranch[] = [];
+  let extensions: ExtendInstruction[] | undefined;
+  for (const child of children) {
+    if (isSelectorBranchFact(child)) {
+      branches.push(child.selector);
+      if (child.extensions.length !== 0) {
+        (extensions ??= []).push(...child.extensions);
+      }
+    }
+  }
+  return { selector: withSourceSpan(selist(...branches), span), extensions: extensions ?? NO_EXTENSIONS };
+}
+
+/** A ruleset's extends: its selector's inline ones, then its body's; none when it has neither. */
+function rulesetExtensions(selector: readonly ExtendInstruction[], body: readonly ExtendInstruction[]): ExtendInstruction[] | undefined {
+  return selector.length === 0 && body.length === 0 ? undefined : [...selector, ...body];
 }
 
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
@@ -1900,19 +1956,19 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
  * `==` is load-bearing: with the loose `=` a `"true"` string would ground
  * against `true` and come out TRUE, which Less says it is not.
  *
- * The `true` is the shared {@link IMPLIED_TRUE}, which tells a written
- * condition that the comparison is this lowering: `(1 and 2)` is written as
- * authored, never `((1 == true) and (2 == true))`.
+ * The comparison is `implied`: the lowering, never what the author wrote, so a
+ * written condition writes the operand, and `(1 and 2)` is written as authored,
+ * never `(1 == true and 2 == true)` (ledger J20).
  */
 function lessTruth(value: ValueSlot): MixinGuard {
-  return { g: 'cmp', op: '==', left: value, right: IMPLIED_TRUE };
+  return { g: 'cmp', op: '==', left: value, right: keyword('true'), implied: true, parens: 0 };
 }
 
 /** {@link lessTruth} in `when` position — the same lowering, as a MATCH test
  *  (§4.2a), so a `when` tree contains no value-position assertion. `==` never
  *  raises, so this changes no answer; it keeps the invariant readable. */
 function lessGuardTruth(value: ValueSlot): MixinGuard {
-  return { g: 'match', op: '==', left: value, right: IMPLIED_TRUE };
+  return { g: 'match', op: '==', left: value, right: keyword('true'), implied: true, parens: 0 };
 }
 
 function isMixinGuard(value: unknown): value is MixinGuard {
@@ -1984,8 +2040,8 @@ function isLessGuardOperand(value: unknown): value is LessGuardOperand {
 function bareOperandGuard(value: ValueNode): MixinGuard {
   if (isFunctionCall(value)) {
     return isDefaultGuardCall(value)
-      ? { g: 'default' }
-      : { g: 'call', name: value.name, args: value.args.map(arg => requireValueNode(arg.value)) };
+      ? { g: 'default', parens: 0 }
+      : { g: 'call', name: value.name, args: value.args.map(arg => requireValueNode(arg.value)), parens: 0 };
   }
   return lessGuardTruth(value);
 }
@@ -2016,7 +2072,7 @@ function guardGroupValue(inner: unknown, span: SourceSpan, state: unknown): Valu
   if (source === undefined) {
     throw new TypeError('Less guard group lost its source.');
   }
-  return withSourceSpan(condition(requireGuardTerm(inner, state), source.slice(span.start, span.end)), span);
+  return withSourceSpan(condition(inParens(requireGuardTerm(inner, state)), source.slice(span.start, span.end)), span);
 }
 
 /**
@@ -2051,7 +2107,7 @@ function mixinGuardTermFrom(
   rawChildren: readonly unknown[],
   state: unknown
 ): MixinGuard | LessGuardOperand {
-  const negated = isLessTerminalText(children[0], 'not');
+  const negated = isLessKeyword(children[0], 'not');
   let index = negated ? 1 : 0;
   let left: ValueNode | LessMathRun;
   let term: MixinGuard | LessGuardOperand | undefined;
@@ -2066,9 +2122,9 @@ function mixinGuardTermFrom(
     if (index + 3 === children.length) {
       /* A lone group is transparent as a guard and a math group as a value. */
       term = isLessGuardOperand(inner)
-        ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: requireGuardTerm(inner, state) }
-        : requireGuardTerm(inner, state);
-      return negated ? { g: 'not', inner: requireGuardTerm(term, state) } : term;
+        ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: inParens(requireGuardTerm(inner, state)) }
+        : inParens(requireGuardTerm(inner, state));
+      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
     }
     const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
     left = operand.run;
@@ -2094,10 +2150,12 @@ function mixinGuardTermFrom(
       g: 'match',
       op: operator,
       left: lessMathInValue(left, state),
-      right: lessMathInValue(requireMathOperand(children[index + 1]), state)
+      right: lessMathInValue(requireMathOperand(children[index + 1]), state),
+      implied: false,
+      parens: 0
     };
   }
-  return negated ? { g: 'not', inner: requireGuardTerm(term, state) } : term;
+  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
 }
 
 /** One `MathSum` reduction: an operand, or an unfolded run. */
@@ -2113,17 +2171,20 @@ function requireMathOperand(value: unknown): ValueNode | LessMathRun {
  * bare operand reaches an enclosing group still able to be read as a value.
  */
 function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
-  const terms = children.filter(child => isMixinGuard(child) || isLessGuardOperand(child));
-  const head = terms[0];
-  if (head === undefined) {
+  let result: MixinGuard | LessGuardOperand | undefined;
+  let word: string = kind;
+  for (const child of children) {
+    if (isMixinGuard(child) || isLessGuardOperand(child)) {
+      result = result === undefined
+        ? child
+        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, parens: 0 };
+    } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
+      /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
+      word = requireTerminalText(child);
+    }
+  }
+  if (result === undefined) {
     throw new TypeError('Less grammar produced an empty logical guard.');
-  }
-  if (terms.length === 1) {
-    return head;
-  }
-  let result = requireGuardTerm(head, state);
-  for (let index = 1; index < terms.length; index++) {
-    result = { g: kind, left: result, right: requireGuardTerm(terms[index], state) };
   }
   return result;
 }
@@ -2183,7 +2244,7 @@ function functionConditionParenFrom(children: readonly unknown[], span: SourceSp
   if (inner === undefined) {
     throw new TypeError('Less function condition lost its parenthesized operand.');
   }
-  const fact = { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
+  const fact = { guard: inParens(inner.guard), src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
   return inner.raw === undefined || inner.hasComparison
     ? fact
     : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) };
@@ -2219,6 +2280,7 @@ function functionConditionTermFrom(
   state: unknown
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
+  const notWord = negated ? requireTerminalText(children[0]) : '';
   let index = negated ? 1 : 0;
   let left = functionConditionOperandFact(children[index], state);
   const groupLed = left.grouped;
@@ -2239,23 +2301,20 @@ function functionConditionTermFrom(
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return { guard: { g: 'not', inner: left.guard }, src: `not(${left.src})`, grouped, hasComparison: left.hasComparison };
+      return { guard: { g: 'not', inner: left.guard, word: notWord, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
     }
     return { ...left, grouped };
   }
-  if (negated && !groupLed) {
-    throw new TypeError('Less function condition `not` requires a grouped condition operand.');
-  }
   const right = functionConditionOperandFact(children[index + 1], state);
-  const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state) };
+  const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
   const src = `${left.src} ${operator} ${right.src}`;
   return negated
-    ? { guard: { g: 'not', inner: guard }, src: `not(${src})`, grouped: false, hasComparison: true }
+    ? { guard: { g: 'not', inner: guard, word: notWord, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
 }
 
 function isFunctionConditionNot(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && 'value' in value && value.value === 'not';
+  return isLessKeyword(value, 'not');
 }
 
 /** One `MathSum` reduction among other children. */
@@ -2268,13 +2327,20 @@ function isParenNot(value: unknown): boolean {
   return !isMathOperand(value) && isFunctionConditionNot(value);
 }
 
-/** The `and` / `or` token joining two terms of a value paren group. */
-function parenLogicalWord(value: unknown): 'and' | 'or' | null {
-  if (typeof value !== 'object' || value === null || 'type' in value || !('value' in value) || typeof value.value !== 'string') {
-    return null;
-  }
-  const word = value.value.trim().toLowerCase();
-  return word === 'and' || word === 'or' ? word : null;
+/** The `and` / `or` joining two terms of a value paren group, as the author spelled it. */
+interface LessParenLogical {
+  readonly kind: 'less-paren-logical';
+  readonly logical: 'and' | 'or';
+  readonly word: string;
+}
+
+function isLessParenLogical(value: unknown): value is LessParenLogical {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'less-paren-logical';
+}
+
+/** `ParenConditionAnd` / `ParenConditionOr`'s reduction: which keyword, and its spelling. */
+function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[]): LessParenLogical {
+  return { kind: 'less-paren-logical', logical, word: requireTerminalText(children[0]) };
 }
 
 /**
@@ -2301,7 +2367,7 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
     : null;
   return functionConditionTermFrom([
     ...lead,
-    inner === null ? value : { guard: inner.guard, src: functionConditionSource(value), grouped: true, hasComparison: true }
+    inner === null ? value : { guard: inParens(inner.guard), src: functionConditionSource(value), grouped: true, hasComparison: true }
   ], [], state);
 }
 
@@ -2314,24 +2380,35 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
  * and a condition written into a value keeps the group's parens.
  */
 function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
-  const operands = children.filter(isMathOperand);
-  if (operands.length === 1 && !children.some(isParenNot)) {
-    return withSourceSpan(block(lessMathInGroup(operands[0]!, state)), span);
+  /* One walk, allocating nothing: one operand and no `not` or keyword is a math group. */
+  let operand: ValueNode | LessMathRun | undefined;
+  let conditional = false;
+  for (const child of children) {
+    if (isMathOperand(child)) {
+      conditional ||= operand !== undefined;
+      operand = child;
+    } else if (isLessParenLogical(child) || isFunctionConditionNot(child)) {
+      conditional = true;
+    }
   }
-  const ors: FunctionConditionFact[] = [];
-  let ands: FunctionConditionFact[] = [];
+  if (!conditional && operand !== undefined) {
+    return withSourceSpan(block(lessMathInGroup(operand, state)), span);
+  }
+  const ors: unknown[] = [];
+  let ands: unknown[] = [];
   let term: unknown[] = [];
   for (const child of children) {
-    const logical = parenLogicalWord(child);
-    if (logical === null) {
+    if (!isLessParenLogical(child)) {
       term.push(child);
       continue;
     }
     ands.push(parenConditionTermFrom(term, state));
     term = [];
-    if (logical === 'or') {
-      ors.push(foldFunctionCondition('and', ands));
+    if (child.logical === 'or') {
+      ors.push(foldFunctionCondition('and', ands), child);
       ands = [];
+    } else {
+      ands.push(child);
     }
   }
   ands.push(parenConditionTermFrom(term, state));
@@ -2340,24 +2417,43 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
   return withSourceSpan(block(condition(fact.guard, fact.src)), span);
 }
 
+/**
+ * Fold an `and` / `or` chain of condition facts, each joined by the keyword
+ * before it, kept as the author spelled it (`AND`): a value paren group's
+ * {@link LessParenLogical}, or a function condition's keyword token.
+ */
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
-  const facts = children.filter(isFunctionConditionFact);
-  const first = facts[0];
-  if (first === undefined) {
+  let first: FunctionConditionFact | undefined;
+  let guard: MixinGuard | undefined;
+  let src = '';
+  let hasComparison = false;
+  let word: string = kind;
+  for (const child of children) {
+    if (!isFunctionConditionFact(child)) {
+      const text = isLessParenLogical(child) ? child.word : lessTerminalText(child)?.trim();
+      if (text !== undefined && text !== null) {
+        word = text;
+      }
+      continue;
+    }
+    if (first === undefined || guard === undefined) {
+      first = child;
+      guard = child.guard;
+      src = child.src;
+      hasComparison = child.hasComparison;
+      continue;
+    }
+    guard = { g: kind, left: guard, right: child.guard, word, parens: 0 };
+    src += ` ${word} ${child.src}`;
+    hasComparison ||= child.hasComparison;
+  }
+  if (first === undefined || guard === undefined) {
     throw new TypeError('Less function condition lost its first term.');
   }
-  if (facts.length === 1) {
+  if (guard === first.guard) {
     return first.raw === undefined
-      ? { guard: first.guard, src: first.src, grouped: false, hasComparison: first.hasComparison }
-      : { guard: first.guard, src: first.src, grouped: false, hasComparison: first.hasComparison, raw: first.raw };
-  }
-  let guard = first.guard;
-  let src = first.src;
-  let hasComparison = first.hasComparison;
-  for (const right of facts.slice(1)) {
-    guard = { g: kind, left: guard, right: right.guard };
-    src += ` ${kind} ${right.src}`;
-    hasComparison ||= right.hasComparison;
+      ? { guard, src, grouped: false, hasComparison }
+      : { guard, src, grouped: false, hasComparison, raw: first.raw };
   }
   return { guard, src, grouped: false, hasComparison };
 }
@@ -2732,6 +2828,7 @@ export {
   lessMathInGroup,
   lessMathInValue,
   lessParenFrom,
+  parenLogicalFrom,
   lessMathRun,
   requireMathSum,
   functionCallFromChildren,
@@ -2792,6 +2889,7 @@ export {
   isLessSimpleToken,
   isStatement,
   isStyleImport,
+  isLessKeyword,
   isLessTerminalText,
   isUnsupportedVariableNameFact,
   isUrl,
@@ -2840,6 +2938,8 @@ export {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rulesetExtensions,
+  selectorListWithExtendsFrom,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,

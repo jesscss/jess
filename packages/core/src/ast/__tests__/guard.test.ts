@@ -9,7 +9,9 @@ describe('guardUsesDefault', () => {
       g: 'cmp',
       op: '=',
       left: list([[keyword('left'), funcCall('default', [])]], ','),
-      right: keyword('right')
+      right: keyword('right'),
+      implied: false,
+      parens: 0
     })).toBe(true);
   });
 
@@ -18,7 +20,9 @@ describe('guardUsesDefault', () => {
       g: 'cmp',
       op: '=',
       left: list([[keyword('left'), funcCall('other', [])]], ','),
-      right: keyword('right')
+      right: keyword('right'),
+      implied: false,
+      parens: 0
     })).toBe(false);
   });
 });
@@ -26,7 +30,7 @@ describe('guardUsesDefault', () => {
 describe('evalGuard', () => {
   it('resolves a recursive value slot as one truth operand', () => {
     const value = [keyword('true')];
-    expect(evalGuard({ g: 'truth', value }, {
+    expect(evalGuard({ g: 'truth', value, parens: 0 }, {
       resolveTyped(slot) {
         expect(slot).toBe(value);
         return { type: 'Keyword', text: 'true', bytes: 'true' };
