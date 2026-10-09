@@ -44,6 +44,7 @@ Default behavior example (`collapseNesting: false`):
 
 Compiles to:
 
+<!-- v5-example -->
 ```css
 .card {
   padding: 1rem;
@@ -58,6 +59,7 @@ Compiles to:
 
 With `collapseNesting: 'native'`, the same source flattens to the shape Less 4.x wrote:
 
+<!-- v5-example {"collapseNesting": "native"} -->
 ```css
 .card {
   padding: 1rem;
@@ -86,6 +88,7 @@ When you flatten, a nested rule under a selector list is written the way a brows
 }
 ```
 
+<!-- v5-example {"collapseNesting": "native"} -->
 ```css
 /* Less 4.x */
 .a .c, #b .c { color: red; }
@@ -106,6 +109,7 @@ No flatten style folds a child branch with a pseudo-element into `:is()`. A pare
 }
 ```
 
+<!-- v5-example {"collapseNesting": "native"} -->
 ```css
 /* Less 4.x: one list. A browser that rejects .a::before:hover drops all of it, .b:hover included. */
 .a::before:hover, .b:hover, .c:hover { color: red; }
@@ -169,6 +173,7 @@ Example:
 
 Compiles to:
 
+<!-- v5-example -->
 ```css
 .col-1 {
   width: 8.333%;
@@ -220,6 +225,7 @@ An `all` extend that matches part of a selector adds the extender inside an `:is
 #e:extend(.c all) {}
 ```
 
+<!-- v5-example -->
 ```css
 /* Less 4.x */
 .a .c, .a .d, .a #e { color: red; }
@@ -269,6 +275,7 @@ A larger example:
 
 Less 5.x writes, in every output mode:
 
+<!-- v5-example -->
 ```css
 :is(.sidebar, .sidebar2) .box,
 .type1 .sidebar3 .box {
@@ -303,6 +310,7 @@ Example:
 
 Less 5.x compiles this to:
 
+<!-- v5-example -->
 ```css
 .tiny-scope {
   color: blue;
@@ -329,6 +337,7 @@ Most values compile exactly as before. These are the changes you can see in the 
 
 **Two different units are kept as `calc()`.** A unitless number added to or subtracted from a dimension takes its unit, as in Less 4.x (`4 + 3px` is `7px`, `1.5 - 1rem` is `0.5rem`), whatever `unitMode` is set. Two units that do not convert are no longer guessed at:
 
+<!-- v5-example-table {"template": ".a { v: $$; }"} -->
 | expression | Less 4.x | Less 5.x (default) |
 | --- | --- | --- |
 | `1px + 1em` | `2px` | `calc(1px + 1em)` |
@@ -360,11 +369,12 @@ Less 4.x stopped with an error on `percentage(~"@{x}")`. To compute with a value
 
 **Breaking change.** A custom property's value is CSS text, written as you wrote it. Less adds only `@{…}` interpolation: a bare variable, an escape, a function call and math are all written as they are. In Less 4.x, `--x: @c` was replaced with the variable's value; in Less 5.x it is written `--x: @c`. Write `--x: @{c}` to insert the value:
 
-| With `@c: red;` | Less 4.x | Less 5.x |
+<!-- v5-example-table {"template": ".a { $$ }"} -->
+| | Less 4.x | Less 5.x |
 | --- | --- | --- |
-| `--x: @c;` | `--x: red;` | `--x: @c;` |
-| `--x: @{c};` | `--x: red;` | `--x: red;` |
-| `--y: calc(@c + 1px);` | `--y: calc(red + 1px);` | `--y: calc(@c + 1px);` |
+| `--x: @c;` with `@c: red` | `--x: red;` | `--x: @c;` |
+| `--x: @{c};` with `@c: red` | `--x: red;` | `--x: red;` |
+| `--y: calc(@c + 1px);` with `@c: red` | `--y: calc(red + 1px);` | `--y: calc(@c + 1px);` |
 | `--y: ~"red";` | `--y: red;` | `--y: ~"red";` |
 | `--z: percentage(0.5);` | `--z: 50%;` | `--z: percentage(0.5);` |
 | `a: var(--x, e("red"));` | `a: var(--x, red);` | `a: var(--x, e("red"));` |

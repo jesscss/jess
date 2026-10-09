@@ -1,11 +1,12 @@
 name: CI
 
-# The blocking PR gate. TWO jobs, run in parallel, that together prove the repo
+# The blocking PR gate. THREE jobs, run in parallel, that together prove the repo
 # is healthy along every axis — build, lint, types, tests, structural/perf
-# invariants — and are dialect-AGNOSTIC by construction: per-dialect correctness
-# is not a separate "Less readiness" headline, it lives in each parser's own
-# suite, all of which run across the two jobs here:
+# invariants, owner rulings — and are dialect-AGNOSTIC by construction:
+# per-dialect correctness is not a separate "Less readiness" headline, it lives
+# in each parser's own suite, all of which run across the jobs here:
 #
+#   owner-rulings — `pnpm check:guardrails` (no install, seconds). Add it too.
 #   verify       — full clean build + lint + strict types + the jess ratchet
 #                  (the CLI app's corpus/plugin suite, which needs BUILT artifacts)
 #                  + every structural/perf gate. Add THIS to branch protection.
@@ -63,6 +64,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Owner rulings are not reversible by an agent: `pnpm check:guardrails` fails
+  # on an edited owner requirement, an unattributed closure, Less 4.x / lessc
+  # behaviour offered as a reason, or an owner-ruled ledger row / conformance
+  # test changed without docs/architecture/core/owner-rulings.lock.json. Node
+  # built-ins only, so no install: it reports in seconds. The conformance tests
+  # and the executed migration-guide examples run in `verify` (they need the
+  # build). Add THIS job to branch protection too.
+  owner-rulings:
+    name: Owner rulings · guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: pnpm check:guardrails
+        run: node scripts/check-guardrails.mjs
+
   verify:
     name: Build · lint · types · tests · gates
     runs-on: ubuntu-latest
@@ -76,6 +99,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Also run inside this already-required check, so the owner-ruling gate
+      # blocks a merge even before `owner-rulings` is added to branch protection.
+      - name: Owner rulings — pnpm check:guardrails
+        run: node scripts/check-guardrails.mjs
 
       - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
         uses: actions/checkout@v4
@@ -196,6 +224,14 @@ jobs:
       # the real @less/test-data corpus from BUILT artifacts, so it is genuinely
       # build-bound. Its full suite — public-API contract, path resolution,
       # AST-v2 ratchet, CLI — runs inside test:ratchet.
+      # Named on its own so a reversed owner ruling is visible in the check list:
+      # the owner-ruling conformance tests (it.fails entries pass while the code
+      # still contradicts the ruling) and every marked example of the two Less
+      # 4 -> 5 migration guides, compiled and compared with the documented output.
+      # Explicit file paths: a vitest run that matches no file exits 1.
+      - name: Owner rulings — conformance tests + migration-guide examples
+        run: pnpm --filter jess exec cross-env TEST=true vitest run test/owner-rulings.test.ts test/migration-docs.test.ts
+
       - name: Jess suite (known-failures ratchet)
         run: pnpm --filter jess run test:ratchet
 

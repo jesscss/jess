@@ -1,0 +1,357 @@
+{
+  "docs/architecture/core/BENCHMARK-EXTEND-EVIDENCE.md": [
+    "Eval emits the **bare fragment `p`** (over-matches every `<p>`); spine emits the composed `.prose p`, byte-identical to Less 4.x.",
+    "**Verdict (case 5 overall):** The spine's extend fold is correct in the v5-default (nested) representation and matches Less 4.x semantically."
+  ],
+  "docs/architecture/core/DESIGN-DECISIONS.md": [
+    "| J9 | **The Less 4.x-compatible option surface derives the default source-map annotation the way 4.x `parse-tree.js` does:** `sourceMapURL`, else `sourceMapFilename`, else `sourceMapOutputFilename + '.map'`, else `<input basename>.css.map`.",
+    "A `&` with a simple fused BEFORE it (`.active&` under `.first-level .second-level`) is not an unwrap: the serializer writes `.active.first-level .second-level` (the simple joins the parent's FIRST compound, as Less 4.x writes it), which matches other elements than `.active:is(.first-level .second-level)`; extend now composes that same selector, so the extended header and the serializer's own header agree (coherence, SEMANTIC-INVARIANTS invariant 2).",
+    "| J14 | **Import-once drops a `(reference)` re-import of a sheet already imported plainly**, as Less 4.x does: `@import \"t.less\"; @import (reference) \"t.less\"; .x:extend(.sm) {}` renders only `.sm, .x { b: 2; }`.",
+    "lessc's recursion detector gives the same.",
+    "| J15 | **A body-form `&:extend()` written directly in a mixin definition is carried on the `MixinDefinition` (`extendInstructions`) and applied by each call site to the rule the call's body lands in**, as lessc copies the Extend into the caller.",
+    "| J21 | **An at-rule bubbled out of an extended rule writes the rule's EXTENDED header.** An at-rule nested in a rule is a scope nested in the rule's, so an extend that reaches the rule reaches the at-rule too: `.b { &:hover { @media print { x: 1 } } } .q:extend(.b:hover all) {}` gives `@media print { .b:hover, .q { x: 1; } }` in every output mode (lessc 4.9.1 also writes `.q`), and a rule nested output hoists for an extend keeps its ancestors there (`.a { .b { @media print { x: 1 } } } .q:extend(.a .b) {}` → `@media print { .a .b, .q { x: 1; } }`).",
+    "`m+: 0.25; percentage($m)` → `25%`, and `length` of two members → `2`, as lessc 4.9.1.",
+    "A member that cannot sit in a group (pseudo-element, unlisted pseudo-class, a token without parser provenance, a complex member the group does not lead) is written in the Less 4.x expanded placement: the simples before the group join the member's first compound and those after it its last — `.m.c .d` + `.p .q:extend(.c all)` → `.m.p .q .d`, as lessc 4.9.1 writes it.",
+    "| X7 | **AMENDED (owner 2026-10-05): a rule with an interpolated selector (`.@{v} {}`, `.c-@{n} {}`) IS an extend target once resolved — at the root, in imported sheets and in mixin/loop bodies alike (lessc 4.9.1 behaviour).** An interpolated EXTENDER selector works.",
+    "The DEFINED case (`.z` alone) is byte-identical to 4.x (`.visible + .visible`).",
+    "| X16 | **Where a body-form `&:extend()` written directly in a mixin definition lives in the AST.** Answered by J15: a `MixinDefinition`-level `extendInstructions` that the call site applies to the enclosing rule (lessc copies the Extend into the caller), not a synthetic `&` rule (the reverted `305ac2948`).",
+    "| X19 | **A body-form `&:extend()` parses and applies in a detached-ruleset body and in an at-rule block nested in a rule or mixin (lessc 4.9.1 behaviour).** This covers a detached ruleset (including one passed as a mixin argument or a parameter default), an `each()` callback, and an at-rule block nested in a rule or mixin.",
+    "Consequences: `sqrt(-4)`, `asin(2)`, `acos(2)`, `pow(-1, .5)` and `mod(1, 0)` now FAIL the call, so `functionMode` decides the output (default `preserve` → verbatim call bytes; `error` → `Invalid function call`, matching 4.x's rejection); an arithmetic overflow (`1e400 + 1`) is a hard eval error, since it is not a call and has no `functionMode` to fall back to.",
+    "| V8 | **Rounding TIE DIRECTION = half AWAY FROM ZERO, as in Less 4.x and dart-sass.** Owner 2026-10-05: \"The Less function should behave the same as it has.\" Examples, each matching lessc 4.9.1 output: `round(-0.5)` -> `-1`, `round(-1.5)` -> `-2`, `round(-2.5)` -> `-3`, `round(2.5)` -> `3`, `round(-1.55, 1)` -> `-1.6`, `round(1.55, 1)` -> `1.6`.",
+    "A negative value that rounds to zero emits `0` (`round(-0.4)`), as in 4.x.",
+    "A unitless operand, including a fully cancelled value, is a wildcard compared on raw magnitude, so `(1in/1px) = 1` is true and `= 96` is false (lessc 4.x).",
+    "The number is spelled `calc(…)`, so a typed consumer still reads it (`@c: calc(percentage(0.5)); @c * 2` → `100%`) and every position writes the same bytes; lessc 4.9.1 writes each of these the same.",
+    "`<url>` is `sourceMapURL`, else `sourceMapFilename`, else `<output>.css.map` (`<input>.css` when no output name is known), with `sourceMapBasepath` (default: the input file's directory) stripped from its front as from every source, the way Less 4.x `source-map-builder.js` does `removeBasepath(this.sourceMapURL)` (a plain prefix match, as in Less).",
+    "This matches 4.x, where render options are the whole configuration.",
+    "Matching Less 4 exactly means single-line serialization, which only moves the error.",
+    "| O18 | **OPEN — an extended top-level header in the default nested output (`collapseNesting: false`) still joins a branch carrying a pseudo-element plus a suffix to valid branches**, as Less 4 does.",
+    "A comment between a selector and its `{` is not written (lessc 4.9.1 drops it too).",
+    "**OPEN — text vs implementation (recorded 2026-10-07; the wording needs reconciling by the owner):** a bare `@var` inside a custom-property value is substituted, not kept literal (`@c: red; --x: @c` gives `--x: red`, as in 4.x), pinned in `typed-reads-not-bytes.test.ts` (\"a variable is substituted and an escaped string is kept as written\"); the migration guide documents substitution.",
+    "| G32 | **Less folds a one-sided comment-padded operator like lessc — `1px/**/-2px` and `1px-/**/2px` are `-1px`, not a two-item list.** A block comment where whitespace is allowed is trivia and must not defeat operand-adjacency; the glued arithmetic arms use a `(?![0-9.])` lookahead that currently sees the `/` of the comment, so assert operand adjacency via `notAdjacent()` ignoring the comment.",
+    "A spaced `@theme .elevate();` stays an unknown at-rule, and whitespace after `@` (`@ detached();`) is rejected, as lessc 4.9.1 does.",
+    "| A10 | A **media query** on a compile-time legacy `@import`/`@-import` is DESUGARED at parse time, restoring lessc 4.x: it wraps the postlude-free `StyleImport` in a `@media <query>` `AtRuleBlock`, so the loaded/inlined document renders inside the media block.",
+    "This media desugar is OWNER-AUTHORIZED (2026-09-02); it restores the Less 4.x media case that an earlier UNAUTHORIZED agent deviation had regressed by rejecting every postlude outright (dev commit `3159bfbbe`, wrongly stamped \"(owner ruling)\").",
+    "`addPlugins` accepts any array-like, as in 4.x.",
+    "The `@plugin` sandbox's map-declaration `tree.Anonymous` reading aid, when a plugin returns it unchanged, crosses back as the typed value it carried (`facadeValues`), so bootstrap's `darken(theme-color(primary), 15%)` computes `#0056b3`, as lessc 4.x does and as the `bootstrap4` golden records.",
+    "| A17 | **`@import (css) ~\"a.css\"` (and its interpolating form) writes `@import a.css;`**, unquoted like the escaped value it is (was the Less spelling `~\"a.css\"` for the literal); matches lessc 4.x."
+  ],
+  "docs/architecture/core/EXTEND-SEMANTICS.md": [
+    "For a detached ruleset this is lessc 4.9.1's output (ledger X19).",
+    "lessc 4.9.1 agrees inside `@media` and `@supports`, but applies one inside `@container` to the whole sheet, which the §8 scope does not.",
+    "- A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside the standard allowlist, a token held as composed header text (its kind would have to be read back out of serialized text), an `&` concatenation that does not continue a one-simple class, id or type name (`.x&`; `&-x` under `.a.b`) — one that does (`&-primary` under `.btn`) stands for that parent's token —, a resolved interpolation that holds more than one simple (`@v: ~\"x.y\"; .@{v}`), or a complex member the group does not lead with (ledger X17 records this reading of X3's provenance clause) — is written as its own branch in the Less 4.x expanded form: the simples before the group join the member's FIRST compound and those after it its LAST compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`).",
+    "An alternative is written in place in the 4.x placement, a complex one too (`.p .q:extend(.c all)` gives `.p .q.k .d`), never as a one-arm `:is()`.",
+    "A body-form extend the called definition carries — written directly in a mixin definition's body, or in the body of a ruleset called as a mixin, with or without parentheses — extends the rule the call's body lands in, as if written in that rule's own body (ledger X16, J15; lessc copies the Extend into the caller).",
+    "Flattened, the at-rule is written outside the rule with the rule's selector inside it (bubbling), and that selector is the rule's EXTENDED header (orchestrator judgment under owner delegation 2026-10-07): `.a::before, .b { &:hover { @media print { x: 1 } } } .q:extend(.b:hover all) {}` gives `@media print { .a::before:hover { x: 1 } .b:hover, .q { x: 1 } }`, in every output mode, and lessc 4.9.1 also writes `.q` there.",
+    "The declarations an at-rule block written in a rule holds are the rule's, in the at-rule's scope, so an extend written in that scope reaches them too (lessc 4.9.1 writes the same): `.b { @media print { y: 1; .q:extend(.b) {} } }` gives `@media print { .b, .b .q { y: 1; } }`, beside what an extend from outside adds.",
+    "- **Interpolated selectors** — a rule whose selector is interpolated (`.@{v} {}`, `.c-@{n} {}`) IS an extend target once resolved, at the root, in imported sheets and in mixin/loop bodies alike (ledger X7, amended by the owner 2026-10-05, as lessc 4.9.1 behaves; it closes X15)."
+  ],
+  "docs/architecture/core/HANDOFF.md": [
+    "Fixes from review of the first two commits: a prelude's escaped string is a protected part (spliced quotes no longer corrupt it; `@import (css) ~\"a.css\"` writes `a.css`), a comma-grouped selector string groups the same interpolating or not, a merged `+:` accessor is its members' typed values (`length` 2 for two members, as lessc), the `@plugin` sandbox hands back a map value it returns unchanged as the typed value it carried.",
+    "Corpus renders against def29ef87: Less (214 files × nested/flat × compress) changes only `functions.less` `length($list-1)` (proposal), compressed `media.less` (an escaped prelude is an opaque run, like its literal) and the sandboxed `bootstrap-less-port` render (map colours now compute, as the `bootstrap4` golden and lessc 4.x); SCSS (2,404 sass-spec inputs × 2) and `.jess` (22 files × 4) are unchanged.",
+    "- Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05: extend's own `:is()` groups follow the same keep-native-specificity rule as the `'native'` nesting fold, in every output mode; a member that cannot fold is written in the Less 4.x expanded form; branch order inside one selector list may change, so equal-specificity branches group across non-adjacent positions).",
+    "- Hot-path cost contracts: ```json [ { \"id\": \"ast-semantic-runtime-cutover\", \"verdict\": \"accepted\", \"performanceClaim\": \"none\", \"owner\": \"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover\", \"cases\": [ \"ValueSlot-array-evaluation-and-authored-layout\", \"List-value-separator-and-Block-delimiter-facts\", \"reference-index-and-For-array-access\", \"Collection-spread-computed-key-overlay-and-iteration\", \"Less-lazy-color-call-demand-boundary\", \"defineFunction-typed-positional-named-and-lazy-binding\", \"module-callable-explicit-reference-and-css-call-separation\", \"mixin-dispatch-ValueSlot-argument-resolution\", \"ValueLayout-provenance-side-table\", \"preserve-mode-calc-result-composition\", \"extend-composition-plan-and-fixpoint-solve\", \"Less-eager-bare-slash-precedence-and-parens-division\", \"recursive-ValueGroup-final-unit-validation\", \"async-declaration-dedup-output-order\" ], \"why\": \"Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode, writes an unfoldable member in the Less 4.x expanded form, and a flattened nested rule rises to the top level with the at-rules it crossed."
+  ],
+  "docs/architecture/core/LESS-4X-FEATURE-TRIAGE.md": [
+    "| `IMPLEMENTED` | reachable under the name/spelling a user writes, and behaviour matches 4.x (or the licensed v5 divergence) |",
+    "| 4 | URL rewriting options | **WRONG — these are IMPLEMENTED** | `output.rewriteUrls:'all'` on `@import \"sub/inner.less\"` gives `url(\"sub/rel.png\")`, byte-identical to `lessc --rewrite-urls=all`.",
+    "> - Matching lessc on **valid** input is the contract."
+  ],
+  "docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md": [
+    "Add at-rule-ordering rejection tests (`@charset` not-first, `@import` after rule) — low priority, matches less.js."
+  ],
+  "docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md": [
+    "`data-uri()` and `image-size()` read local bytes only, as in Less 4.x: a path that locates to a URL is reported missing, so `data-uri()` keeps its `url()` fallback and nothing is fetched.",
+    "It proves remote `(reference)` imports (a query included) render like 4.x through the real claim → locate → fetch → parse route; it proves nothing about network I/O, which the tests above own."
+  ],
+  "docs/design/RESOLVED-SEMANTICS-AND-NAMING.md": [
+    "**AMENDED (owner, 2026-10-06).** Rows `b` and `c` hold in every `unitMode`: a unitless operand of `+`/`-` adopts the other side's unit, in every dialect, as dart-sass and Less 4.x do.",
+    "Both oracles agree: lessc 4.6.3 emits the non-match, and the owner-maintained `tests-unit/mixins-guards/mixins-guards.css` expects `1 is not equal to true` with no `less than` / `greater than` row and no error.",
+    "- **Equality never raises (§4.1).** `strict` raises on units that do not reconcile in arithmetic and in a RELATIONAL comparison (`$(1em > 1px)`, as dart-sass does); `$(1em = 1px)` (§4 row `j2`) and `$(1em == 1px)` are `false` in every mode, as in Less 4.x `strictUnits` and dart-sass."
+  ],
+  "docs/state/fns-dialect-classification-audit.md": [
+    "Registered `shared/math/abs.ts` gives `45deg`, matching Less 4.8 and dart-sass."
+  ],
+  "docs/state/GRAMMAR-DEDUP-LOG.md": [
+    "- **jess on DEV already matches lessc row-for-row** — no hex-vs-named asymmetry on base.",
+    "Fix (audit-spec'd, now in flight on the NamedColor agent): add `coerceNamedColorKeyword` at `appendBareSlashTokens:2881` (reuse existing helper) → `red / 2` folds like `#ff0000 / 2`, `foo / 2` preserves naturally (`namedColor('foo')` undefined), symmetric, matches lessc, no special-casing."
+  ],
+  "docs/state/jess-known-failures-fix-plan.md": [
+    "No code change; jess already matched Less 4.x."
+  ],
+  "docs/state/less-4x-function-triage.md": [
+    "**\"`isurl` and `style` are the only 2 not reachable.\"** `style()` produces the **same output as 4.x** — `@v: 1; style(@v)` → `style(1)` in both — because verbatim preservation lands on 4.x's own result shape (§5).",
+    "`~(1, 2)` matches 4.x.",
+    "Status key: **OK** = call-verified byte-identical to 4.x; **OK\\*** = call-verified, differs from 4.x by a SETTLED v5 ruling (evidence column names the ruling); **FIXED** = a previously recorded divergence now covered by a regression and a named ledger row; **BUG** = call-verified divergence with no ruling behind it; **MISSING** = does not dispatch.",
+    "| `round` | `(n, f=0)` | OK / §6-B | `less/round.ts` → `packages/core/src/ast/round.ts` breaks ties away from zero, as 4.x's `toFixed` does: `round(-0.5)`→`-1`, `round(-1.5)`→`-2`, `round(-2.5)`→`-3`, `round(-1.55, 1)`→`-1.6`, `round(1.55, 1)`→`1.6`, identical to lessc 4.9.1.",
+    "| `min` | `(...)` | OK | `less/min.ts:5` — `min(5,1,3,2)`→`1`; incomparable units preserved verbatim, matching 4.x |",
+    "| `convert` | `(val, unit)` | OK | `less/convert.ts:10` — `convert(9s,\"ms\")`→`9000ms`; incompatible unit returns input, matching 4.x |",
+    "| `extract` | `(list, i)` | OK | `less/extract.ts:12` — `extract(1px solid black, 2)`→`solid`; out-of-range and `0` both preserve verbatim, matching 4.x |",
+    "| `contrast` | `(c, dark?, light?, thr?)` | OK | `less/contrast.ts:13` — 1-arg and 4-arg verified; non-colour first arg preserved verbatim, matching 4.x |",
+    "`multiply` `less/multiply.ts:9` · `screen` `less/screen.ts:9` · `overlay` `less/overlay.ts:14` · `softlight` `less/softlight.ts:17` · `hardlight` `less/hardlight.ts:10` · `difference` `less/difference.ts:9` · `exclusion` `less/exclusion.ts:9` · `average` `less/average.ts:9` · `negation` `less/negation.ts:9` — **all nine OK**, byte-identical to 4.x on `(#ff6600, #000000)`.",
+    "| `svg-gradient` | `(dir, ...stops)` | OK | `less/svg-gradient.ts:9` — the full 400-byte data-URI is byte-identical to 4.x |",
+    "> **ALL FOUR RULED AND LANDED 2026-07-30** (`docs/architecture/core/DESIGN-DECISIONS.md`): > §7-A → **V7** (SETTLED), §7-B → **V8** (SETTLED by the owner 2026-10-05: ties round > away from zero, as in 4.x; see §6-B), §7-C → **V10** (SETTLED).",
+    "**RESOLVED — ledger V8, owner ruling 2026-10-05:** \"The Less function should behave the same as it has.\" Ties round away from zero: `round(-0.5)` → `-1`, `round(-1.5)` → `-2`, `round(-2.5)` → `-3`, `round(-1.55, 1)` → `-1.6`, `round(1.55, 1)` → `1.6`, `round(2.5)` → `3`, each identical to lessc 4.9.1.",
+    "A negative value that rounds to zero emits `0` (`round(-0.4)`), as 4.x does."
+  ],
+  "docs/state/less-v5-alpha-readiness.md": [
+    "`color-func-invalid-color.less` and `svg-gradient1.less` through `svg-gradient6.less` now surface errors under the Less-4-parity error options used by `all-less-error.test.ts`; the remaining accepted color fixture is `color-func-invalid-color-2.less`, intentionally preserved because `darken(var(--x), ...)` cannot be evaluated at build time."
+  ],
+  "packages/compiler/src/index.ts": [
+    "Like Less 4.x (`source-map-builder.js`), the basepath is stripped from the annotation URL as from every source.",
+    "ponytail: positions index into the serialized CSS; a postprocessor that rewrites `css` desyncs the map (same limitation as Less 4.x, whose map is also built pre-postprocess)."
+  ],
+  "packages/config/src/types.ts": [
+    "- 'preserve': render the call as-is (like an unknown CSS function) + warn - 'error': throw the underlying function error (Less 4.x behavior) Unknown function names always render as-is regardless."
+  ],
+  "packages/core/src/ast/__tests__/extend-mixin-loop-body.test.ts": [
+    "Ledger X7 (amended by the owner 2026-10-05): a rule with an interpolated selector is an extend target once resolved, at the root and in mixin and loop bodies alike, part by part like any other rule (lessc 4.9.1 behaves the same)."
+  ],
+  "packages/core/src/ast/__tests__/extend-root-ampersand.test.ts": [
+    "Every expectation below is Less 4.6.3's output for the equivalent Less source.",
+    "An `all` match of a target of several compounds keeps the simples the span's first compound has beyond the target before it and those its last compound has after it, for the extender as for the matched selector (lessc 4.9.1 writes the same)."
+  ],
+  "packages/core/src/ast/__tests__/import-at-rule.test.ts": [
+    "Matches Less 4.x.",
+    "The raw bytes are this rule's body (lessc 4.x: `.source-only { .from-inline … }`), not hoisted to document root; the async read completes via an async-patch chunk.",
+    "A `&` inside an attribute value is attribute text, not a parent reference, so `[title=\"&\"]` nests as a descendant and the `all` extend reaches it (lessc 4.9.1 writes the same)."
+  ],
+  "packages/core/src/ast/__tests__/mixin-dispatch-arguments.test.ts": [
+    "Oracle: less@4.6.3. .mixin(@a, @b: 20px, @c: 30px) { args: @arguments; } .mixin(@b: 2px, @a: 1px) => 1px 2px 30px (named-only) .mixin(1px, 2px) => 1px 2px 30px (omits a defaulted slot) .mixin(1px, @c: 9px) => 1px 20px 9px (mixed positional + named) .mixin(1px, 2px, 3px) => 1px 2px 3px (all-positional; unchanged) Each expectation below was captured from `npx less@4.6.3`.",
+    ".mixin(@a, @b: 20px, @c: 30px) { args: @arguments; } .mixin(@b: 2px, @a: 1px) => 1px 2px 30px (named-only) .mixin(1px, 2px) => 1px 2px 30px (omits a defaulted slot) .mixin(1px, @c: 9px) => 1px 20px 9px (mixed positional + named) .mixin(1px, 2px, 3px) => 1px 2px 3px (all-positional; unchanged) Each expectation below was captured from `npx less@4.6.3`.",
+    ".mixin(red, @a) called as .mixin(red, 5px) => \"5px\" (less@4.6.3)"
+  ],
+  "packages/core/src/ast/__tests__/round.test.ts": [
+    "Every expectation except the decimal-shift block at the end is lessc 4.9.1 output for the same calls."
+  ],
+  "packages/core/src/ast/__tests__/value-operate-units.test.ts": [
+    "Owner 2026-10-06 (ledger V27): a unitless number added to or subtracted from a dimension with a unit adopts that unit in every mode, `strict` included, as Less 4.x `strictUnits` and dart-sass do."
+  ],
+  "packages/core/src/ast/at-rule.ts": [
+    "The prelude is a value node so a `@{…}` interpolation resolves through scope (`@charset \"UTF-@{Eight}\"` → `@charset \"UTF-8\"`, `@namespace @{ns} \"…\"` → `@namespace less \"…\"`, matching Less 4.x)."
+  ],
+  "packages/core/src/ast/css-grammar-helpers.ts": [
+    "Contents that read a binding — the dialect's interpolation (SCSS `(#{$q})`, Less `(foo: @{x} baz)`) or a variable reference (SCSS `(foo: $bar baz)`) — have no authored bytes to print: the binding is evaluated (P16), so the value stays structured and the emitter substitutes it, as dart-sass and lessc 4.9.1 write `(foo: 1px baz)`."
+  ],
+  "packages/core/src/ast/evaluator.ts": [
+    "This mirrors less.js, which keeps such calls verbatim."
+  ],
+  "packages/core/src/ast/extend/compose.ts": [
+    "A `&` fused into `seg`'s compound under a parent of several compounds, spliced the way the serializer composes it (and Less 4.x writes it): the simples before the `&` join the parent's first compound, the parent's inner compounds follow, and the simples after it join the parent's last compound — `&.q` under `.b .p` is `.b .p.q`, `.q&` is `.q.b .p`."
+  ],
+  "packages/core/src/ast/extend/emit.ts": [
+    "Members of one group share one specificity (equal-specificity members gather however far apart they are, in order of first appearance), and a member that cannot sit inside `:is()` — a pseudo-element, an unlisted pseudo-class, a complex member the group does not lead with — is written as its own branch, the way Less 4.x expands an `all` match ({@link spliceMember}).",
+    "`b` with the group at `b.segments[k]`, simple `p`, replaced by one member, written the way Less 4.x expands an `all` match: the simples before the group join the member's first compound and those after it join its last compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`)."
+  ],
+  "packages/core/src/ast/extend/ir.ts": [
+    "Chaining an extend off a HIDDEN extender branch yields a hidden result (matching less.js's per-chain `visibilityInfo`), whereas an extend off an original hidden seed keeps the extender's own visibility — so the two must be told apart."
+  ],
+  "packages/core/src/ast/nodes.ts": [
+    "Only a COMPILE-TIME (resolved) import becomes a `StyleImport`, and its resolved content cannot carry a verbatim tail: a media query is DESUGARED — as Less 4.x does — into a `@media <query>` `AtRuleBlock` wrapping this postlude-free `StyleImport` (less grammar `ImportStatement`), while a `supports(...)`/`layer` tail is deferred as non-trivial (owner-accepted 2026-09-02) and the author wraps it in an explicit `@media`/`@layer`/`@supports` block."
+  ],
+  "packages/core/src/ast/serialize.ts": [
+    "Mirrors less@4's `mixin === context.frames[f]` check, scoped to ruleset-mixins.",
+    "Re-resolve any `@{ident}` token that EMERGED after a first-pass splice, matching less.js's iterative `Quoted.eval` (`@{box-@{suffix}}` → `@{box-large}` → `100px`; `@{box}-@{suffix}}` where `@box` is `@{box` → `@{box-large}` → `100px`).",
+    "The two maps never fall back to each other (Less 4.x: `#ns[a]` errors when only `@a` exists).",
+    "Pretty keeps every comment; compress keeps only `/*! … *&#47;` bang comments (license headers), matching Less 4.x / dart-sass / cssnano / lightningcss.",
+    "The rule the body lands in — the innermost open rule — extends, at the walk's current scope, as if the extend were written in that rule's own body (lessc copies the Extend into the caller).",
+    "It mirrors less@4 mixin-call.js `isRecursive` (a candidate that is NOT a parametric MixinDefinition and equals a ruleset currently in `context.frames` is skipped).",
+    "[scope-leak] after expansion the mixin's own `@x:` declarations unlock into the caller scope (visible to later siblings), matching less@4. Keep this continuation outside Context's source scope: only the shared source body owns that scope; the lexical caller owns its published facts.",
+    "Mirrors legacy jess / Less 4.x: first charset wins, rest dropped.",
+    "`importThroughContext` is the only reader of `node.options`; it never reaches output, matching Less 4.x."
+  ],
+  "packages/core/src/ast/value-eval.ts": [
+    "There is nothing to operate on, and no spelling of the operation that is not a hole (`calc( + 1px)`), so it raises in every unit mode — Less 4.x rejects it too (\"Operation on an invalid type\")."
+  ],
+  "packages/core/src/ast/value-guards.ts": [
+    "Whether an operand carries a dedicated `.compare` (less.js: Dimension/Color/Quoted)."
+  ],
+  "packages/core/src/ast/value-operate.ts": [
+    "A unitless `+`/`-` operand adopts the other operand's unit in every mode and every dialect (`4 + 3px` → `7px`, `1.5 - 1rem` → `0.5rem`), as Less 4.x `strictUnits` and Sass do: `strict` rejects only two different real units (owner 2026-10-06, ledger V27)."
+  ],
+  "packages/core/src/context.ts": [
+    "A URL with none is fetched as written, as Less 4.x does, and parsed in the importing document's language.",
+    "A path that locates to a URL is never read: as in Less 4.x, these functions read local files only, so it is missing and `data-uri()` keeps its `url()` fallback."
+  ],
+  "packages/core/src/tree/__tests__/extend-eval-integration.test.ts": [
+    "These assert exact CSS so core matches real Less behavior; Jess must pass these."
+  ],
+  "packages/core/src/tree/__tests__/extend-rules.test.ts": [
+    "The extend is a no-op (the target IS the subject), so both blocks stream unchanged — the STRUCTURALLY-CORRECT form, matching Less 4.x's two-block output (`.btn:hover, .btn:hover { color: red } .btn:hover { background: blue }`; Less adds a self-duplicate branch to the first block, an inert self-extend quirk the spine omits)."
+  ],
+  "packages/core/src/tree/rules.ts": [
+    "Unlike the eval path the surface is NOT pre-evaluated, so each leaked value is bound through a cell that resolves the declaration's value against the SURFACE frame (its wired lexical/param bindings), so a param-dependent leak (`@x: @a`) reads the bound param, byte-identical to the less@4 leak (a shape jess EVAL itself throws on)."
+  ],
+  "packages/core/src/tree/util/__tests__/extend-selector-algorithm.test.ts": [
+    ".b.c cannot consume the 2nd `.b` (stranded) → NOT a full match (Less 4.x parity)."
+  ],
+  "packages/core/src/tree/util/callable-candidate-output.ts": [
+    "Inject the evaluated output's leaked vars into the ROOT frame at the call's source index so a LATER root sibling ruleset (`.heightIsSet { height: @height }`) resolves the leak — byte-identical to less@4. Zero-cost off leaky mode; only a root-level spine call reaches here."
+  ],
+  "packages/core/src/tree/util/emit-walk.ts": [
+    "RECURSION (a self / mutual name-cycle) with a FRAME-DEPENDENT arg (`.loop((@n-1))`) now folds too (the frame-threaded arg-binding rung, §7): each level's freshly-bound param frame is threaded through the recursive call's arg-binding eval AND the spliced body decls' dedup-key + emit resolution (`computeDeclKey` / `processNode` push the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n` producing level N-1's surface, byte-identical to eval / less@4. `callMap` bounds it.",
+    "`runSpineMixinExpansion`'s `distinctFoldChild` now splices a DISTINCT per-level copy (reusing scalar leaves) on a container child's 2nd+ occurrence — mirroring the loop fold's per-iteration `copyWithReusableLeaves` — so each level emits its own `.wrap a{…}` block, byte-identical to eval / less@4. The recursion gate is therefore lifted entirely; an unfoldable recursive sub-shape (a non-spine-simple body) still falls back to the eval terminal per-call (`isSpineSimpleMixinSurface` → `anyRejected` → kind:'eval').",
+    "The injection is scoped to the caller frame (a later out-of-scope sibling sees the outer binding, byte-identical to less@4)."
+  ],
+  "packages/docs/docs-content/docs/less/advanced/compressed-output.md": [
+    "All comments are removed **except** \"bang\" comments (`/*! … */`), which are preserved for license headers — matching Less 4.x, dart-sass, cssnano, and lightningcss."
+  ],
+  "packages/docs/docs-content/docs/less/advanced/extend-is-wrapping.md": [
+    "Alternatives that differ in specificity form separate equal-specificity groups, and an alternative that cannot join a group is written out as its own selector — the Less 4.x expanded form, where the selector parts before the match attach to the alternative's first part and those after it to its last part (`.a > .m.c` extended by `.p .q` gives `.a > .m.p .q`)."
+  ],
+  "packages/docs/docs-content/docs/less/usage/sourcemaps.md": [
+    "- **`sourceMapBasepath` is removed from the `sourceMappingURL` annotation**, as from every source path, the way Less 4.x does."
+  ],
+  "packages/fns/src/less/__tests__/color-serialize.test.ts": [
+    "an OPAQUE hex (`#rgb` / `#rrggbb`) that becomes translucent serializes as `rgba(…)`, NOT 8-digit hex (Less 4.x/v5 parity); 2."
+  ],
+  "packages/fns/src/less/__tests__/min-max.test.ts": [
+    "A unitless winner takes the reference unit, as a unitless `+`/`-` operand does (ledger C20, V27; orchestrator judgment under owner delegation 2026-10-06), where lessc 4.8.0 returns it bare; every other expectation is lessc's."
+  ],
+  "packages/fns/src/less/__tests__/round.test.ts": [
+    "it('breaks an exact tie away from zero, at any precision, as Less 4.x does', () => {"
+  ],
+  "packages/fns/src/less/color-helper.ts": [
+    "A `#`-hex input keeps HEX format ONLY when the literal already encoded an alpha channel (`#rgba` / `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment it becomes translucent (Less 4.x/v5 parity — e.g."
+  ],
+  "packages/fns/src/less/e.ts": [
+    "The result is an escaped string, written with `\"` as Less 4.x writes it."
+  ],
+  "packages/fns/src/less/escape.ts": [
+    "Returns raw text (`Any`), as Less 4.x returns an `Anonymous`, so it is also valid standing alone as a statement, like `e()`."
+  ],
+  "packages/fns/src/less/hsl.ts": [
+    "ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it round-trips through rgb — hue + saturation collapse to `0` and the authored unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`)."
+  ],
+  "packages/fns/src/util/mime.ts": [
+    "Mirrors Less 4.x `environment.mimeLookup` + `charsetLookup`."
+  ],
+  "packages/jess/test/jess/selector-comment-adjacency.test.ts": [
+    "This now matches lessc 4.x, the CSS dialect and the Less dialect, all of which give `.e.f` for the same bytes."
+  ],
+  "packages/jess/test/less/all-less-error.test.ts": [
+    "Jess must ALSO error (produce ≥1 diagnostic or throw).",
+    "Less 4.x-parity error surfacing: this corpus asks \"does Jess error where Less 4.x errors\"."
+  ],
+  "packages/jess/test/less/all-less.test.ts": [
+    "So the fixture proves remote `(reference)` imports (query included) render like 4.x; it proves nothing about network I/O.",
+    "Owner 2026-09-02 restored the 4.x behavior: a media query on a legacy compile-time `@import` now desugars to a `@media <query>` wrapper around the spliced document, AND the spliced rules indent inside the wrapper exactly like an authored `@media` body (less grammar `ImportStatement` + `serialize.ts` `emitBubbleBody`; docs/architecture/core/DESIGN-DECISIONS.md A10).",
+    "Owner 2026-09-02 restored the 4.x wrap: a media query on a legacy compile-time `@import` now desugars to `@media <query>` instead of raising a parse error, so these two import fixtures no longer surface a diagnostic — they still differ from the external golden only on render layout (see the expected-failure reasons), not on a parse error."
+  ],
+  "packages/jess/test/less/basic-variables.test.ts": [
+    "An identifier or a plain string is no custom-property name; Less 4.x writes it as authored, and so does Less 5."
+  ],
+  "packages/jess/test/less/bootstrap-clean-repro.test.ts": [
+    "The default render is nested/expanded (not compressed), so the custom property carries a space after the colon — byte-for-byte what lessc 4.x emits."
+  ],
+  "packages/jess/test/less/collapse-nesting-mode.test.ts": [
+    "An extend written in the at-rule's own scope reaches the rule's declarations written in that at-rule (EXTEND-SEMANTICS §8): the bubbled block writes the extended header, beside what an extend from outside adds (lessc 4.9.1 also writes `.b .q`)."
+  ],
+  "packages/jess/test/less/compat-color-shortform.test.ts": [
+    "A colour that passes UNMODIFIED through a legacy `@plugin` JS function must keep its authored short-form spelling (`#fff`), matching lessc 4.x.",
+    "A colour the plugin CONSTRUCTS (`new tree.Color('fff')`) has no authored form and serialises to 6-digit hex — also matching lessc 4.x.",
+    "Oracle: lessc 4.2.0 on this exact fixture emits `#fff` for the pass-through and `#ffffff` for the constructed.",
+    "Oracle: lessc 4.9.1 on `channels.less`.",
+    "A plain identifier reaches a plugin as a `tree.Keyword`, as in less.js, so `node.type` and `instanceof tree.Keyword` checks see the same node type.",
+    "Oracle: lessc 4.9.1 on `types.less`."
+  ],
+  "packages/jess/test/less/extend-cross-import.test.ts": [
+    "less 4.x renders the same: .grid-column, .col-1, .col-2, .col-3 { color: red; } An IMPORTED mixin whose body carries `&:extend()` (Bootstrap's `#make-grid-columns()` grid-column shape) must arm walk-time dynamic extend recording — the imported extend-admission gate has to descend into MixinDefinition bodies, not just loops.",
+    "Import-once drops a `(reference)` re-import of a sheet already imported plainly, as Less 4.x does (orchestrator judgment 2026-10-05, jess#359): the sheet is placed once."
+  ],
+  "packages/jess/test/less/extend-is-grouping.test.ts": [
+    "Extend's own `:is()` groups — the `all` graft (ledger X3) and sibling compaction (EXTEND-SEMANTICS §7c) — follow the shared `:is()` grouping guard in EVERY output mode (owner 2026-10-05): members of different specificity split into equal-specificity groups, and a member that cannot sit inside `:is()` is written as its own branch (the Less 4.x expanded form).",
+    "it('expands a complex member into a partial compound the way 4.x does', async () => {"
+  ],
+  "packages/jess/test/less/extend-public-contract.test.ts": [
+    "Cross-import closure and reference-import visibility already live in `extend-cross-import.test.ts` with real files and Less 4 output oracles."
+  ],
+  "packages/jess/test/less/function-assignment-argument.test.ts": [
+    "Expectations are lessc 4.8.1's, except where noted."
+  ],
+  "packages/jess/test/less/function-mode.test.ts": [
+    "Default `'preserve'` keeps it as a call, silently, with its arguments evaluated and canonically spaced (`unit(80/16,rem)` → `unit(80 / 16, rem)`); `'error'` throws the underlying error (Less 4.x parity)."
+  ],
+  "packages/jess/test/less/functions.test.ts": [
+    "it('rounds an exact tie away from zero, as Less 4.x does', async () => {",
+    "Expected bytes are lessc 4.9.1 output for the same input."
+  ],
+  "packages/jess/test/less/import-media-query.test.ts": [
+    "import-media-query.test.ts — a MEDIA QUERY on a compile-time legacy `@import` desugars to a `@media <query>` wrapper around the loaded document (owner ruling 2026-09-02, restoring lessc 4.x behavior)."
+  ],
+  "packages/jess/test/less/import-source-fold-order.test.ts": [
+    "Every expectation here is `lessc 4.9.1` output for the same input."
+  ],
+  "packages/jess/test/less/logical-conditional.test.ts": [
+    "Written out, each term under them keeps the parens Less's condition syntax requires (J20), so `(@a > 2px and @a < 5px)` is written `((3px > 2px) and (3px < 5px))` where Less 4.x keeps the ungrouped text; a group written with its terms grouped, and a `not` group, are written as Less 4.x writes them."
+  ],
+  "packages/jess/test/less/mixin-color-arg-typed.test.ts": [
+    "Oracle: lessc 4.x evaluates these fully."
+  ],
+  "packages/jess/test/less/mixin-public-semantics.test.ts": [
+    "jess#356 (ledger X16, J15): a body-form `&:extend()` written directly in a mixin definition is carried on the definition and extends the rule the mixin is called into, as if written in that rule's own body (lessc copies the Extend into the caller), in the default nested output as in collapsed output.",
+    "lessc 4.9.1 gives the same output.",
+    "A ruleset called as a mixin, with or without parentheses, carries its body-form extend into the caller the same way; an inline `:extend()` on its selector stays its own (lessc 4.9.1 gives the same output)."
+  ],
+  "packages/jess/test/less/negative-variable-space-list.test.ts": [
+    "Oracle: lessc 4.x keeps them as a space list."
+  ],
+  "packages/jess/test/less/operations.test.ts": [
+    "A named color folds under `/` exactly like a hex color (lessc 4.x parity): `red / 2` → `#800000`, `#ff0000 / 2` → `#800000`."
+  ],
+  "packages/jess/test/less/operator-comment-boundary.test.ts": [
+    "The Less grammar now uses a `lessDimensionUnit` terminal that also refuses a `-` before a comment opener (`/*` or `//`), so the dimension stops at `px` and the operator folds to `-1px` like lessc.",
+    "it('folds a glued-before pad like lessc', async () => {",
+    "lessc reads the same dash as an operator, so this is the operator's error, not a regression toward the old `px-` unit."
+  ],
+  "packages/jess/test/less/quoted-slash-value.test.ts": [
+    "Oracle: lessc 4.x emits `content: \"/\"`."
+  ],
+  "packages/jess/test/less/root-ampersand-block.test.ts": [
+    "The `&`-RESOLUTION expectations are plain selector composition, where Less 4.x is a legitimate reference and jess is byte-identical to `lessc` 4.6.3."
+  ],
+  "packages/jess/test/less/selector-comment-adjacency.test.ts": [
+    "it('keeps two compound parts compound across a comment, matching lessc 4.x', async () => {"
+  ],
+  "packages/jess/test/less/sourcemaps.test.ts": [
+    "What must agree: - `file`, `sources` and `sourcesContent`, exactly (path-variant fixtures); - every mapping holds at its exact generated and authored columns: the same token on both sides, or one of the named kinds in `mappingKind` (a computed value mapped to the expression that produced it, a flattened header mapped to the rule that owns it), each judged at both columns; - where the CSS is byte-identical to the golden, every line Less 4.x maps is mapped by jess too, to an authored line Less 4.x also attributes to it."
+  ],
+  "packages/jess/test/less/spine-guarded-mixin-forfold.test.ts": [
+    "Byte-identical to less@4 / eval: one bound ruleset per iteration, the loop key resolved in BOTH the interpolated selector and the mixin arg."
+  ],
+  "packages/jess/test/namedcolor-convergence.test.ts": [
+    "A named color reaching an operation materializes to its Color and computes, identically to a hex color and matching lessc 4.x."
+  ],
+  "packages/jess/test/path-resolution.test.ts": [
+    "A (reference) import suppresses its whole subtree from output, the nested (inline) payload included — matches lessc 4.x (verified 4.6.3)."
+  ],
+  "packages/jess/test/sourcemap.test.ts": [
+    "Less 4.x defaults: `<output>.map`, appended with no trailing newline."
+  ],
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts": [
+    "`.generic(1, true) when (@a < @b)` has no ordering and therefore does not match; lessc 4.6.3 agrees, and so does the owner-maintained expected CSS."
+  ],
+  "packages/syntax/less/less-parser/src/grammar.ts": [
+    "`sumOperatorChar` matches a `+`/`-` UNLESS it is that sign: the first arm takes any operator not glued to a digit; the second takes one glued to a digit only when the byte before it is not whitespace — a comment is trivia, not that whitespace, so a comment-padded `1px/**\\/-2px` folds to `-1px` like lessc while `1px -2px` stays a list (G32, pinned in `packages/jess/test/less/operator-comment-boundary.test.ts`).",
+    "Rejecting a `-` before a comment opener (`/*` or `//`) as well stops the dimension at `px`, so the operator folds `1px-/**\\/2px` to `-1px` like lessc while `1px-2px` (`-` glued to a digit) and `1px- /**\\/2px` (`-` glued to whitespace, then a comment) are untouched.",
+    "The option clause is import machinery with no CSS meaning, so it is simply absent from that statement — exactly as Less 4.x emits it.",
+    "The legacy `@import`/`@-import` form carrying a MEDIA QUERY is desugared — as Less 4.x does — into a `@media <query>` wrapper around the spliced `StyleImport`, so the loaded document renders inside the media block.",
+    "The parser keeps the shape; evaluation supplies the name, as Less 4.x does (`var(@v)` with `@v: --x` is `var(--x)`).",
+    "Leading with that arm is the whole disambiguation needed — a bare `default` is an ordinary ident SHAPE and reduces to a Keyword, as less.js does (`@a: default; .m() when (@a = default)` matches there).",
+    "Every other operand is a math run (`g.MathSum`, the operand of an `if()` condition too), as Less 4's `atomicCondition` reads an `addition()`: `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute."
+  ],
+  "packages/syntax/less/less-parser/src/parse-error.ts": [
+    "A MEDIA query is instead DESUGARED into a `@media <query>` wrapper (restoring Less 4.x; less grammar `ImportStatement`), so it does not throw."
+  ],
+  "packages/syntax/less/less-parser/test/ast-grammar.test.ts": [
+    "lessc 4.x folds this to `-1px`, so the old answer was also a byte divergence from the oracle.",
+    "Terms juxtaposed with no connective (`@{media} screen`, two glued interpolations) and a `{}` block inside a group are that grammar's — a query that matches nothing is `not all`, never a syntax error — so each parses as a typed query list, as in css and lessc 4.9.1, and a compile-time import wraps itself in `@media`.",
+    "A comparison joined by `and` / `or` needs no group of its own in a value position, as in Less 4.x (lessc 4.9.1: `if(1 > 0 and 2 > 1, y, n)` is `y`); a `not` still takes a grouped operand."
+  ],
+  "packages/syntax/less/less-parser/test/public-parse.test.ts": [
+    "The same target with a media postlude is a legacy `@import` carrying a media query: it desugars to a `@media screen` wrapper around the compile- time StyleImport (owner 2026-09-02), matching Less 4.x, not rejected.",
+    "The tail is the CSS base's media query list, whose terms may stand side by side with no connective, so an interpolation beside a type is one list, as in css and lessc 4.9.1.",
+    "Owner 2026-09-02: the legacy `@import` form wraps the postlude-free StyleImport in `@media <query>`, matching Less 4.x.",
+    "A media type and a group side by side are one media query list, as in css and lessc 4.9.1.",
+    "lessc 4.x rejects whitespace inside the variable name of a statement call too."
+  ]
+}

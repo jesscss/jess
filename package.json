@@ -66,6 +66,7 @@
     "check:reducer-purity": "node scripts/probe/parseman-compose-reducer-census.mjs --check",
     "check:compose-fused": "node scripts/probe/compose-fused-check.mjs",
     "check:guardrails": "node scripts/check-guardrails.mjs",
+    "rulings:lock": "node scripts/rulings-lock.mjs",
     "check:record-map": "node scripts/check-record-map.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "test:grammar-variant-graph": "node --test scripts/__tests__/grammar-variant-graph.test.mjs",
