@@ -104,10 +104,14 @@ describe('an escaped string is one string, interpolating or not', () => {
     expect(less('@import (css) ~"foo.css";')).toBe('@import foo.css;\n');
   });
 
-  it('expands a comma-grouped selector string the same, interpolating or not', () => {
-    // The interpolating form spliced `.x, .b` bare, so `.b` left the parent nesting.
+  /*
+   * Escaped text in a selector is printed as written, glued where it stands,
+   * interpolating or not (owner 2026-10-09: "everywhere that is text should
+   * print AS WRITTEN"): its comma is a character, so `.b` is outside `.p`.
+   */
+  it('glues a selector string with a comma as written, interpolating or not', () => {
     const literal = less('@s: ~".x, .b";\n.p { @{s} { c: d; .k { e: f; } } }', false, true);
-    expect(literal).toBe('.p :is(.x, .b) {\n  c: d;\n}\n.p :is(.x, .b) .k {\n  e: f;\n}\n');
+    expect(literal).toBe('.p .x, .b {\n  c: d;\n}\n.p .x, .b .k {\n  e: f;\n}\n');
     expect(less('@a: x; @s: ~".@{a}, .b";\n.p { @{s} { c: d; .k { e: f; } } }', false, true)).toBe(literal);
     expect(jess('$a: x; $s: ~".${a}, .b";\n.p { ${s} { c: d; .k { e: f; } } }', true)).toBe(literal);
   });

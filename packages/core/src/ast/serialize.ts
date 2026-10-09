@@ -9360,20 +9360,19 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
 
 /**
  * [selector-capture] A GROUP interpolation: a lone bare `@{name}` in a selector
- * whose variable resolves to a `*[…]` selector-list CAPTURE, or to an escaped
- * `~'…'` selector string carrying a top-level comma. Both interpolate a multi-
- * branch selector group, routed through the SAME expansion — a comma-separated
- * branch list at whole-selector position, a `:is(…)` compaction in compound
- * position. `capture` marks a `*[…]` (its branches are parser-owned and expand at
- * whole-selector position); a quoted string's commas are opaque bytes that stay a
- * single verbatim branch there. Returns null for any non-group interpolation
- * (`.a-@{n}`, `@{n}` bound to a plain value) — the byte-splice path is unchanged.
+ * whose variable resolves to a `*[…]` selector-list CAPTURE, whose branches are
+ * parser-owned: a comma-separated branch list at whole-selector position, a
+ * `:is(…)` compaction in compound position. Escaped text (`~'.a, .b'`) is never
+ * a group: it is printed as written, its commas, `&` and combinators being
+ * characters (owner 2026-10-09: "everywhere that is text should print AS
+ * WRITTEN"; "in Less, we promise ~"" as a 'dump whatever you want as-is'"), so
+ * it splices on the byte path like any other value. Returns null for any
+ * non-group interpolation (`.a-@{n}`, `@{n}` bound to a plain value or text).
  */
-interface GroupInterp { branches: string[]; multi: boolean; capture: boolean }
+interface GroupInterp { branches: string[]; multi: boolean }
 
 /** [selector-capture] The group a single interpolation REF resolves to: a `*[…]`
- *  selector CAPTURE, or an escaped `~'…'` selector string with a top-level comma.
- *  Any other ref (a plain value, a comma-less string) is null. */
+ *  selector CAPTURE. Any other ref (a plain value, escaped text) is null. */
 function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupInterp | null {
   if (ref.type !== 'Lookup' || ref.kind !== 'var') {
     return null;
@@ -9388,24 +9387,7 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
   }
   if (bound.type === 'SelectorCapture') {
     const branches = bound.branches.slice();
-    return { branches, multi: branches.length > 1, capture: true };
-  }
-  if (bound.type === 'Quoted' && bound.escaped) {
-    /*
-     * One escaped string, interpolating or not: its content decides the group.
-     * A comma-less string returns null and splices on the byte path, which
-     * evaluates an interpolating one again there.
-     */
-    const content = bound.interp === null ? bound.value : withExcluded(e, bound, () => evalBytes(bound, hit.frame, e));
-    if (isThenable(content)) {
-      // ponytail: an async hole in a selector string falls back to the byte splice, without grouping.
-      observeRejectedThenable(content);
-      return null;
-    }
-    if (hasTopLevelComma(content)) {
-      /* The whitespace an escaped selector opens or closes with is canonicalized away (ledger O8(b)). */
-      return { branches: [content.trim()], multi: true, capture: false };
-    }
+    return { branches, multi: branches.length > 1 };
   }
   return null;
 }
@@ -9450,23 +9432,23 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
  *  A lone whole-selector `*[…]` capture EXPANDS to one branch per captured
- *  selector. A lone quoted group stays a single verbatim branch at a root
- *  header, and contributes its branches one per line to a `nested` header
- *  (ledger O8(a)). Every other complex resolves to exactly one string (a
- *  compound-embedded group compacts to `:is(…)` inside `resolveComplex`). */
-function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx, nested = false): MaybePromise<string[]> {
+ *  selector, one per line in a nested header (ledger O8(a)). Every other complex
+ *  resolves to exactly one string (a compound-embedded group compacts to `:is(…)`
+ *  inside `resolveComplex`), escaped text included, as written: `~'.a, .b'` is
+ *  the one branch `.a, .b` (owner 2026-10-09). */
+function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const g = loneGroupInterp(c, frame, e);
   if (g !== null) {
-    return g.capture ? g.branches : nested ? splitListBytes(g.branches[0]!) : g.branches;
+    return g.branches;
   }
 
   return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, EXCEPT a group ref (a `*[…]` capture or `~'…'` comma
- *  string) embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
- *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
+ *  part folds to its bytes, escaped text as written, EXCEPT a `*[…]` capture
+ *  embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to
+ *  a single `:is(…)` group; a single-branch capture splices its lone branch bare. */
 function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
@@ -10262,7 +10244,7 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
 }
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e, true)), values => values.flat());
+  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e)), values => values.flat());
 }
 
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -18497,48 +18479,6 @@ interface EvaluatedForItems {
 }
 
 type ForItems = ForItem[] | EvaluatedForItems | CollectionOverlay<ValueCollectionEntry> | ValueCollection;
-
-/**
- * Split `text` at the TOP level on `,` (comma list) else a whitespace run (space
- * list), skipping anything nested in `()[]{}` or inside a quoted string. Mirrors
- * Less's value model: a comma binds looser than a space, so a top-level comma
- * makes a comma list, otherwise the whitespace runs make a space list. Returns the
- * trimmed non-empty pieces (a single-element array when there is no separator).
- */
-function splitListBytes(text: string): string[] {
-  const comma = hasTopLevelComma(text);
-  const parts: string[] = [];
-  let depth = 0;
-  let quote = '';
-  let start = 0;
-  const push = (end: number): void => {
-    const piece = text.slice(start, end).trim();
-    if (piece !== '') {
-      parts.push(piece);
-    }
-  };
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
-    if (quote !== '') {
-      if (c === quote) {
-        quote = '';
-      }
-      continue;
-    }
-    if (c === '"' || c === '\'') {
-      quote = c;
-    } else if (c === '(' || c === '[' || c === '{') {
-      depth++;
-    } else if (c === ')' || c === ']' || c === '}') {
-      depth--;
-    } else if (depth === 0 && (comma ? c === ',' : c === ' ' || c === '\t' || c === '\n' || c === '\r')) {
-      push(i);
-      start = i + 1;
-    }
-  }
-  push(text.length);
-  return parts;
-}
 
 /** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
 function hasTopLevelComma(text: string): boolean {

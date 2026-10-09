@@ -209,6 +209,34 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
     ['.qux.foo .bar,\n.qux.foo .baz {', '.foo .bar.qux,\n.foo .baz.qux {'],
     ['.foo:not(.tst.only-nested .level2:hover) {', '.foo:not(.only-nested .level2.tst:hover) {']
   ]],
+  ['tests-unit/parse-interpolation/parse-interpolation.less', [
+    // OWNER-ACCEPTED 2026-10-09
+    /*
+     * Escaped text in a selector prints as written, never read as selector syntax
+     * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"), so
+     * `~'.a, .b, .c'` after `.q` is glued as written, not wrapped in `:is()`; the
+     * header's written comma before `baz-quoted` is structure, one branch per line
+     * in a nested header (ledger O8(a)).
+     */
+    ['  .q:is(.a, .b, .c)&:hover, baz-quoted {', '  .q.a, .b, .c&:hover,\n  baz-quoted {'],
+
+    // OWNER-ACCEPTED 2026-10-09
+    /* `@{c-quoted}@{d-quoted}`: two escaped texts glued as written. */
+    [':is(.a, .b):is(.c, .d) {\n  + .e-quoted {', '.a, .b.c, .d {\n  + .e-quoted {'],
+
+    /*
+     * PENDING OWNER REVIEW: a `*[…]` capture is a structured list, one branch per
+     * line in a nested header (ledger O8(a), owner 2026-10-04); the golden predates
+     * the ruling.
+     */
+    ['  .d:is(.a, .b, .c)&:hover, baz-cap {', '  .d:is(.a, .b, .c)&:hover,\n  baz-cap {'],
+
+    /*
+     * PENDING OWNER REVIEW: the golden says `foo: bar` where the quoted case's
+     * source says `foo: baz` (a fixture typo awaiting the owner's reconciliation).
+     */
+    ['  + .e-quoted {\n    foo: bar;', '  + .e-quoted {\n    foo: baz;']
+  ]],
   ['tests-unit/extend-selector/extend-selector.less', [
     // `.foo`, `.ext3`, `.ext4` (0,1,0); `.ext1 .ext2` (0,2,0).
     [

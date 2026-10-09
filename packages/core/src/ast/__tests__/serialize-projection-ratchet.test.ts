@@ -473,7 +473,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // into, its rule selectors and at-rule preludes (`importContextKey`).
     // +1 function (owner 2026-10-09: `@compose` is document-root only): the
     // planner and the walk raise the same error (`composeNotTopLevel`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(592);
+    // -1 function (owner 2026-10-09: text prints as written): escaped text is
+    // never split into a nested header's branches (`splitListBytes`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(591);
     expect(occurrences(/new Map/gu)).toBe(92);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);

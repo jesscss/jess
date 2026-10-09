@@ -351,7 +351,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. O8 is ruled (owner 2026-10-04): an interpolated multi-branch nested header prints one branch per line, and leading whitespace from an escaped quoted selector at the header boundary is canonicalized away. Jess prints both (test/less/selector-capture-output.test.ts), and the golden already has O8(b); its nested `.bar`/`.bar2`, `input.quoted` and `.master-page-quoted` headers still join their branches with `, ` where O8(a) prints one per line, which is an owner golden update. The maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`; that fixture typo still needs owner reconciliation'
+    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. Everything else matches the golden with its pending edits (pending-golden-edits.ts), which the stale-skip gate applies: escaped text prints as written (owner 2026-10-09; the `.bar2` and quoted `@{c}@{d}` headers are owner-accepted), a `*[…]` capture prints one branch per line in a nested header (O8(a)), and the quoted case\'s `foo: baz` golden typo awaits owner reconciliation'
   ],
   [
     'tests-unit/permissive-parse/permissive-parse.less',
@@ -649,8 +649,10 @@ describe('Skipped Less fixtures are still failing', () => {
       const lessPath = path.join(testData, file);
       const [testCase] = getTestCases(lessPath, path.join(testData, goldenFor(file)));
       let matched = false;
+
+      /* Outside the try: a pending golden edit that no longer applies must fail loudly. */
+      const expectedCss = applyPendingGoldenEdits(file, readFileSync(testCase.expectedFile, 'utf8'));
       try {
-        const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
         const result = await withFixtureTimeout(file, () => new Compiler({
           ...baseCompiler.opts,
           ...testCase.config,
