@@ -21,14 +21,16 @@ import {
   cloneSimple,
   descendantBranch,
   isSimple,
+  levelFromSelectorList,
   mkBranch,
   simpleText,
   textSimple
 } from './ir.js';
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
-import { textHoldsParentRef } from '../nodes.js';
-import type { SimpleToken } from '../nodes.js';
+import { pseudoJoin, textHoldsParentRef } from '../nodes.js';
+import type { PseudoSelector, SimpleToken } from '../nodes.js';
 import { irEndsWithPseudoElement, isUserActionPseudoClass } from '../is-grouping.js';
+import { leadsWithElement } from './conflict.js';
 
 /**
  * The parser token a name continuation of `s` stands for: `s` is a text token the
@@ -131,11 +133,13 @@ function structuredParentValue(parent: Branch): Simple[] | null {
  * whose `bnd` records each output segment's origin. A STANDALONE `&` (its own
  * segment) splices the parent's SEGMENTS in place — separate `SelectorPart`s carrying
  * `bnd = parentBnd + 1` — so a multi-segment parent (`.outer .mid`) stays matchable
- * per segment. A `&` FUSED into a compound under a MULTI-segment parent splices it
- * too, as the serializer composes it ({@link spliceFusedAmp}). A single-compound
- * structured parent keeps its `:is()` graft typed so the extend matcher can still
- * cross its arms; an ordinary text-only parent keeps the direct string substitution.
- * Own segments are `bnd = 0`.
+ * per segment — where it opens the selector. Anywhere else a MULTI-segment parent is
+ * one `:is(parent)` unit, and a `&` FUSED into a compound under one is placed as the
+ * serializer composes it ({@link placeFusedAmp}); a parent ending with a pseudo-element
+ * keeps the old splice ({@link spliceFusedAmp}), since `:is()` cannot hold it. A
+ * single-compound structured parent keeps its `:is()` graft typed so the extend matcher
+ * can still cross its arms; an ordinary text-only parent keeps the direct string
+ * substitution. Own segments are `bnd = 0`.
  */
 function substituteAmp(child: Branch, parent: Branch): Branch {
   const parentMultiSeg = parent.segments.length > 1;
@@ -143,7 +147,17 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
   let structuredParent: Simple[] | null | undefined;
   const outSegs: SelectorPart[] = [];
   const outBnd: number[] = [];
-  for (const seg of child.segments) {
+  const place = parentMultiSeg && !irEndsWithPseudoElement(parent);
+  for (let i = 0; i < child.segments.length; i++) {
+    const seg = child.segments[i]!;
+
+    /* The compound that opens the selector: nothing, not even a combinator, before it. */
+    const head = i === 0 && seg.combinator === ' ';
+    if (place && !head && isBareAmp(seg)) {
+      outSegs.push({ combinator: seg.combinator, compound: { value: [isSimple([parent], false)] } });
+      outBnd.push(bndAt(parent, parent.segments.length - 1) + 1);
+      continue;
+    }
     if (isBareAmp(seg)) {
       /*
        * Splice the parent's segments in. The first spliced segment takes THIS `&`
@@ -158,13 +172,15 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       continue;
     }
     if (parentMultiSeg && compoundHasAmp(seg.compound.value)) {
-      spliceFusedAmp(seg, parent, outSegs, outBnd);
+      if (!place || !placeFusedAmp(seg, head, parent, outSegs, outBnd)) {
+        spliceFusedAmp(seg, parent, outSegs, outBnd);
+      }
       continue;
     }
     const value: Simple[] = [];
     for (const s of seg.compound.value) {
       if (s.t !== 'text' || !textHoldsParentRef(s.text)) {
-        value.push(cloneSimple(s));
+        value.push(withParent(s, parent));
         continue;
       }
       if (s.text === '&') {
@@ -204,14 +220,150 @@ function compoundHasAmp(value: readonly Simple[]): boolean {
 }
 
 /**
- * A `&` fused into `seg`'s compound under a parent of several compounds, spliced the
- * way the serializer composes it (and Less 4.x writes it): the simples before the `&`
- * join the parent's first compound, the parent's inner compounds follow, and the simples
- * after it join the parent's last compound — `&.q` under `.b .p` is `.b .p.q`, `.q&` is
- * `.q.b .p`. A suffix glued to the `&` token (`&-foo`) continues the parent's last
- * simple (`.b .p-foo`, {@link joinedSimple}). A segment holding any
- * of the child's own simples is own-local (`bnd = 0`); a parent compound spliced alone
- * keeps the parent's origin + 1.
+ * A `&` fused into `seg`'s compound under a parent of several compounds, as the serializer
+ * composes it (`serialize.ts` `placeParent`; owner 2026-10-09): the `&` is a plain reference
+ * to the parent, `:is(parent)`. In the compound that opens the selector (`head`) the first
+ * `&` writes the parent in place, the compound's other simples joined to its LAST compound,
+ * a type or universal selector leading it — `.q&` and `&.q` under `.b .p` are `.b .p.q`,
+ * `div&` is `.b div.p`. Every other `&` is one `:is(parent)` simple where it stands
+ * (`.c .q&` → `.c .q:is(.b .p)`), as is the first where the parent's last compound and the
+ * simples before the `&` both hold an element selector (`div&` under `.b span`). A `&-x`
+ * stands for the parent with `-x` continuing its last simple ({@link namedParent}). A pseudo
+ * whose argument holds a `&` composes that argument ({@link withParent}). False, writing
+ * nothing, for a token holding a `&` after other text (`.q&` read as one token), which keeps
+ * {@link spliceFusedAmp}. A segment holding the child's own simples is own-local
+ * (`bnd = 0`); a parent compound written alone keeps the parent's origin + 1.
+ */
+function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs: SelectorPart[], outBnd: number[]): boolean {
+  const value = seg.compound.value;
+  let at = -1;
+  for (let p = 0; p < value.length; p++) {
+    const s = value[p]!;
+    if (s.t !== 'text' || !textHoldsParentRef(s.text) || pseudoWithArgs(s) !== null) {
+      continue;
+    }
+    if (s.text.charCodeAt(0) !== 0x26 /* & */ || s.text.indexOf('&', 1) !== -1) {
+      return false;
+    }
+    if (head && at === -1) {
+      at = p;
+    }
+  }
+  const named = at === -1 ? null : namedParent(parent, value[at]!);
+  const ps = named?.segments;
+  const last = ps === undefined ? 0 : ps.length - 1;
+  const lead = at > 0 && leadsWithElement(simpleText(value[0]!), 0);
+  if (named === null || ps === undefined || (lead && leadsWithElement(simpleText(ps[last]!.compound.value[0]!), 0))) {
+    outSegs.push({ combinator: seg.combinator, compound: { value: value.map(s => withParent(s, parent)) } });
+    outBnd.push(0);
+    return true;
+  }
+  for (let k = 0; k < last; k++) {
+    outSegs.push({ combinator: k === 0 ? seg.combinator : ps[k]!.combinator, compound: { value: ps[k]!.compound.value.map(cloneSimple) } });
+    outBnd.push(bndAt(parent, k) + 1);
+  }
+  const tail: Simple[] = lead ? [cloneSimple(value[0]!)] : [];
+  for (const s of ps[last]!.compound.value) {
+    tail.push(cloneSimple(s));
+  }
+  for (let p = lead ? 1 : 0; p < value.length; p++) {
+    if (p !== at) {
+      tail.push(withParent(value[p]!, parent));
+    }
+  }
+  outSegs.push({ combinator: ps[last]!.combinator, compound: { value: tail } });
+  outBnd.push(value.length > 1 || named !== parent ? 0 : bndAt(parent, last) + 1);
+  return true;
+}
+
+/** The structured pseudo a text token was built from, when its argument is a selector list. */
+function pseudoWithArgs(s: Simple): PseudoSelector | null {
+  return s.t === 'text' && s.src !== undefined && !('value' in s.src) && s.src.type === 'PseudoSelector' && s.src.args !== null
+    ? s.src
+    : null;
+}
+
+/**
+ * One simple of a compound composed under a parent of several compounds where it stands:
+ * a `&` is `:is(parent)`, a pseudo whose selector argument holds a `&` has each argument
+ * branch composed ({@link argWithParent}; `:not(.c &)` → `:not(.c :is(.b .p))`), any other
+ * simple is itself.
+ */
+function withParent(s: Simple, parent: Branch): Simple {
+  if (s.t === 'is') {
+    return branchesHaveAmp(s.branches) ? { t: 'is', branches: argsWithParent(s.branches, parent), fold: s.fold } : cloneSimple(s);
+  }
+  if (!holdsAmp(s)) {
+    return cloneSimple(s);
+  }
+  const pseudo = pseudoWithArgs(s);
+  if (pseudo === null) {
+    return isSimple([namedParent(parent, s)], false);
+  }
+  return textSimple(pseudoJoin(pseudo, argsWithParent(levelFromSelectorList(pseudo.args!), parent).map(branchText)));
+}
+
+function branchesHaveAmp(branches: readonly Branch[]): boolean {
+  for (const b of branches) {
+    if (branchHasAmp(b)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The branches of a selector argument (`:is(…)`, `:not(…)`) with each `&` composed against
+ * `parent`. An argument is a whole selector, so a branch without a `&` is itself, and a
+ * branch that is only `&` stands for the parent's own list where the parent is one `:is()`
+ * (`:is(&)` under `.a, .c .d` → `:is(.a, .c .d)`, as the serializer writes it).
+ */
+function argsWithParent(branches: readonly Branch[], parent: Branch): Branch[] {
+  const out: Branch[] = [];
+  for (const b of branches) {
+    if (!branchHasAmp(b)) {
+      out.push(b);
+      continue;
+    }
+    const only = parent.segments.length === 1 && parent.segments[0]!.compound.value.length === 1 ? parent.segments[0]!.compound.value[0]! : null;
+    if (only !== null && only.t === 'is' && b.segments.length === 1 && isBareAmp(b.segments[0]!) && b.segments[0]!.combinator === ' ') {
+      for (const arm of only.branches) {
+        out.push(arm);
+      }
+      continue;
+    }
+    const composed = substituteAmp(b, parent);
+    composed.bnd = undefined;
+    out.push(composed);
+  }
+  return out;
+}
+
+/** The selector a `&` token stands for: the parent itself, or for `&-x` the parent with
+ * `-x` continuing its last simple (`.b .p-x`). */
+function namedParent(parent: Branch, s: Simple): Branch {
+  const text = simpleText(s);
+  if (text.length === 1) {
+    return parent;
+  }
+  const segments = parent.segments.slice();
+  const last = segments.length - 1;
+  const value = segments[last]!.compound.value.slice();
+  const tail = value[value.length - 1]!;
+  value[value.length - 1] = joinedSimple(simpleText(tail) + text.slice(1), text, tail);
+  segments[last] = { combinator: segments[last]!.combinator, compound: { value } };
+  return mkBranch(segments);
+}
+
+/**
+ * A `&` fused into `seg`'s compound under a parent of several compounds that ends with a
+ * pseudo-element (or a token holding a `&` after other text), spliced as the serializer
+ * writes that parent's text in place (ledger X5; the parent cannot sit in `:is()`, O17):
+ * the simples before the `&` join the parent's first compound, the parent's inner
+ * compounds follow, and the simples after it join the parent's last compound. A suffix
+ * glued to the `&` token (`&-foo`) continues the parent's last simple
+ * ({@link joinedSimple}). A segment holding any of the child's own simples is own-local
+ * (`bnd = 0`); a parent compound spliced alone keeps the parent's origin + 1.
  */
 function spliceFusedAmp(seg: SelectorPart, parent: Branch, outSegs: SelectorPart[], outBnd: number[]): void {
   const ps = parent.segments;

@@ -68,6 +68,7 @@ import {
   selectorBranchHasInterp,
   selectorBranchOf,
   selectorTermCanonical,
+  selectorTermHasAmpersand,
   selectorTermHasInterp,
   selectorTermOf,
   selist,
@@ -192,6 +193,7 @@ import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [exte
 import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
+import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
@@ -9645,11 +9647,20 @@ function parentUnits(parents: readonly string[], flags: Uint8Array): string[] {
  *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
  *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
  *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
- *  fused append (`&__el`) or a `&` merged after a preceding name (`.qux&`,
- *  `.fruit-&`) — is a name concatenation and DISTRIBUTES per parent (a group cannot
- *  splice into a name; `:is(.foo .bar)` would also relocate the subject). Returns
- *  one variant per distribution — the branch-multiplying case. */
-function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: readonly string[], first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<readonly string[]> {
+ *  fused append (`&__el`) or a `&` after another simple (`.qux&`, `.fruit-&`) —
+ *  DISTRIBUTES per parent. Where `complex` is given (each parent's {@link lastCompoundStart}), a
+ *  parent of several compounds is one unit, `:is(.a .b)`: this `&` is not the one
+ *  that opens its selector ({@link placeParent}). Returns one variant per
+ *  distribution — the branch-multiplying case. */
+function resolveTokenAmp(
+  sim: SimpleToken,
+  parents: string[],
+  subs: readonly string[],
+  first: boolean,
+  complex: Int32Array | null,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<readonly string[]> {
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
@@ -9661,42 +9672,194 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: readonly str
       return [text];
     }
     if (first && text === '&') {
-      return subs;
+      return complex !== null && parents.length === 1 && complex[0]! > 0 ? [`:is(${subs[0]!})`] : subs;
     }
-    return parents.map(p => text.split('&').join(p));
+    return parents.map((p, i) => complex !== null && complex[i]! > 0
+      ? `:is(${text.split('&').join(p)})`
+      : text.split('&').join(p));
   });
 }
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
- *  a distributing `&` (append/merge) multiplies its variants (cartesian). */
-function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], subs: readonly string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0, frame, e));
+ *  a distributing `&` (append/merge) multiplies its variants (cartesian). In the
+ *  compound that opens its selector (`head`), the first `&` writes a parent of
+ *  several compounds in place ({@link placeParent}). */
+function resolveCompoundAmp(
+  cmp: CompoundSelector,
+  parents: string[],
+  subs: readonly string[],
+  head: boolean,
+  complex: Int32Array | null,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<string[]> {
+  let ref = -1;
+  for (let i = 0; head && complex !== null && ref === -1 && i < cmp.value.length; i++) {
+    const sim = cmp.value[i]!;
+    if (!(sim.type === 'PseudoSelector' && sim.args !== null) && selectorTermHasAmpersand(sim)) {
+      ref = i;
+    }
+  }
+  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0, i === ref ? null : complex, frame, e));
   return combineAll(tokens, (lists) => {
+    /* The simples before the first `&` hold none, so each is one variant: `before`. */
+    let before = '';
     let acc = [''];
-    for (const variants of lists) {
+    for (let i = 0; i < lists.length; i++) {
+      if (i === ref) {
+        before = acc[0]!;
+        acc = [''];
+        continue;
+      }
       const next: string[] = [];
       for (const head of acc) {
-        for (const v of variants) {
+        for (const v of lists[i]!) {
           next.push(head + v);
         }
       }
       acc = next;
     }
-    return acc;
+    if (ref === -1) {
+      return acc;
+    }
+    const lead = ref > 0 && leadsWithElement(lists[0]![0]!, 0) ? lists[0]![0]! : '';
+    const out: string[] = [];
+    for (const parent of lists[ref]!) {
+      for (const after of acc) {
+        out.push(placeParent(parent, before, lead, after));
+      }
+    }
+    return out;
   });
 }
 
-function resolveTermAmp(term: SelectorTerm, parents: string[], subs: readonly string[], frame: Frame | null, e: EvalCtx): MaybePromise<readonly string[]> {
+/**
+ * [nesting] A `&` that is a plain reference to its parent follows CSS nesting
+ * (owner 2026-10-09): it stands for `:is(parent)`. Where the compound holding it
+ * opens its selector, a parent of several compounds is written in place, with the
+ * compound's other simples (`before` and `after` the `&`) joined to its LAST
+ * compound — `.active&` under `.a .b` is `.a .b.active`, `&.x` is `.a .b.x`, the
+ * meaning and specificity of `.active:is(.a .b)`. A type or universal selector
+ * (`lead`, the start of `before`) leads that compound (`div&` → `.a div.b`); where
+ * the parent's last compound opens with one too, the parent stays one unit
+ * (`div:is(.a span)`). A name built on the parent (`&-x`, `parent` is then
+ * `.a .b-x`) is placed the same way. A single-compound parent is written as it was.
+ */
+function placeParent(parent: string, before: string, lead: string, after: string): string {
+  const at = lastCompoundStart(parent);
+  if (at === 0) {
+    return before + parent + after;
+  }
+  if (lead.length === 0) {
+    return parent + before + after;
+  }
+  if (leadsWithElement(parent, at)) {
+    return before + ':is(' + parent + ')' + after;
+  }
+  return parent.slice(0, at) + lead + parent.slice(at) + before.slice(lead.length) + after;
+}
+
+/**
+ * [nesting] Where the last compound of a composed selector begins: past its last
+ * top-level combinator, `0` for a single compound.
+ *
+ * ponytail: reads a composed parent's text, since parents reach their children as
+ * text (SEMANTIC-INVARIANTS 6); carrying each composed branch's compound boundaries
+ * is the upgrade. Only a `&` that does not open its selector ({@link ampNeedsPlacement})
+ * pays for it.
+ */
+function lastCompoundStart(text: string): number {
+  let depth = 0;
+  let quote = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x5C /* \ */) {
+      i++;
+    } else if (quote !== 0) {
+      if (c === quote) {
+        quote = 0;
+      }
+    } else if (c === 0x22 /* " */ || c === 0x27 /* ' */) {
+      quote = c;
+    } else if (c === 0x28 /* ( */ || c === 0x5B /* [ */) {
+      depth++;
+    } else if (c === 0x29 /* ) */ || c === 0x5D /* ] */) {
+      depth--;
+    } else if (depth === 0 && (c === 0x20 || c === 0x3E /* > */ || c === 0x2B /* + */ || c === 0x7E /* ~ */ || c === 0x0A || c === 0x09)) {
+      start = i + 1;
+    }
+  }
+  return start;
+}
+
+/**
+ * [nesting] Whether a `&` of `c` sits where a parent of several compounds cannot be
+ * written as it is: in a compound after the first or after a leading combinator
+ * (`.c &`, `> &`), after another simple of the first compound (`.x&`), or as a second
+ * `&` in it (`&&`) — inside a pseudo's argument too (`:not(.c &)`). A `&` that opens
+ * its selector (`&`, `&.x`, `& + .y`, `&-el`) takes the parent as written. Allocates
+ * nothing.
+ */
+function ampNeedsPlacement(c: SelectorBranch): boolean {
+  if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
+    return termNeedsPlacement(c, true);
+  }
+  let head = c.type === 'ComplexSelector';
+  for (const part of c.value) {
+    if (typeof part === 'string') {
+      continue;
+    }
+    if (termNeedsPlacement(part, head)) {
+      return true;
+    }
+    head = false;
+  }
+  return false;
+}
+
+/** {@link ampNeedsPlacement} for one compound; `head` when it opens the selector. */
+function termNeedsPlacement(term: SelectorTerm, head: boolean): boolean {
+  const n = term.type === 'CompoundSelector' ? term.value.length : 1;
+  let refs = 0;
+  for (let i = 0; i < n; i++) {
+    const sim = term.type === 'CompoundSelector' ? term.value[i]! : term;
+    if (sim.type === 'PseudoSelector' && sim.args !== null) {
+      if (pseudoHasAmpersand(sim) && sim.args.selectors.some(ampNeedsPlacement)) {
+        return true;
+      }
+    } else if (selectorTermHasAmpersand(sim)) {
+      if (!head || i > 0 || refs > 0) {
+        return true;
+      }
+      refs++;
+    }
+  }
+  return false;
+}
+
+function resolveTermAmp(
+  term: SelectorTerm,
+  parents: string[],
+  subs: readonly string[],
+  head: boolean,
+  complex: Int32Array | null,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<readonly string[]> {
   return term.type === 'CompoundSelector'
-    ? resolveCompoundAmp(term, parents, subs, frame, e)
-    : resolveTokenAmp(term, parents, subs, true, frame, e);
+    ? resolveCompoundAmp(term, parents, subs, head, complex, frame, e)
+    : resolveTokenAmp(term, parents, subs, true, head ? null : complex, frame, e);
 }
 
 /** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
  *  position-aware substitution — the spec-faithful CSS-Nesting parent resolution
  *  that replaces the old context-blind cartesian odometer. A whole selector branch
  *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
- *  interior `&` resolves by role in `resolveCompoundAmp`. */
+ *  interior `&` resolves by role in `resolveCompoundAmp`. A parent of several
+ *  compounds is written in place only by the `&` that opens the selector
+ *  ({@link placeParent}); a parent list holding one that ends with a pseudo-element
+ *  (`flags`) keeps every parent as written, since `:is()` cannot hold it (O17). */
 function resolveSelectorBranchAmp(
   c: SelectorBranch,
   parents: string[],
@@ -9714,7 +9877,17 @@ function resolveSelectorBranchAmp(
   const subs = [ampSub(parents)];
   const last = terms.length - 1;
   const lastSubs = flags !== undefined && keepsPseudoElementLast(terms[last]!) ? parentUnits(parents, flags) : subs;
-  return combineAll(terms.map((term, i) => resolveTermAmp(term, parents, i === last ? lastSubs : subs, frame, e)), (variants) => {
+  let complex: Int32Array | null = null;
+  if (flags === undefined && ampNeedsPlacement(c)) {
+    for (let i = 0; i < parents.length; i++) {
+      const at = lastCompoundStart(parents[i]!);
+      if (at > 0) {
+        (complex ??= new Int32Array(parents.length))[i] = at;
+      }
+    }
+  }
+  const relative = c.type === 'RelativeSelector';
+  return combineAll(terms.map((term, i) => resolveTermAmp(term, parents, i === last ? lastSubs : subs, i === 0 && !relative, complex, frame, e)), (variants) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     const lead = c.type === 'RelativeSelector'
       ? renderCombinator(combinators[0]!).trimStart()
@@ -9763,7 +9936,9 @@ function branchHasAttributeAmp(c: SelectorBranch): boolean {
  * take an implicit descendant prefix, one branch per parent. A SINGLE parent — the
  * common BEM/`&:hover` nesting — keeps the fast `joinAmpersand` string splice (byte-
  * identical to the structural walk for one parent), which also carries the legacy
- * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
+ * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`), except
+ * where a parent of several compounds is referenced by a `&` that does not open the
+ * selector ({@link ampNeedsPlacement}): that takes the structural walk too. */
 function composeOne(parents: string[], child: SelectorBranch, frame: Frame | null, e: EvalCtx, flags: Uint8Array | undefined): MaybePromise<string[]> {
   if (!selectorBranchHasAmpersand(child)) {
     /*
@@ -9775,7 +9950,8 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
     return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
       parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
   }
-  if ((parents.length >= 2 || branchHasAttributeAmp(child)) && !parents.some(hasTopLevelComma)) {
+  if ((parents.length >= 2 || branchHasAttributeAmp(child) || (flags === undefined && ampNeedsPlacement(child) && lastCompoundStart(parents[0]!) > 0))
+    && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
   return mapMaybe(resolveSelectorBranch(child, frame, e), (text) => {

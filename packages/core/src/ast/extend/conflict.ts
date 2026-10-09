@@ -47,11 +47,11 @@ const enum Kind {
  * `BasicSelector.isTag` / `isId`: `#` ⇒ id, `.`/`[`/`:`/`&`/`*`/empty ⇒ non-conflicting,
  * everything else (a bare ident head) ⇒ an element type selector.
  */
-function classify(text: string): Kind {
-  if (text.length === 0) {
+function classify(text: string, at = 0): Kind {
+  if (text.length <= at) {
     return Kind.Other;
   }
-  switch (text.charCodeAt(0)) {
+  switch (text.charCodeAt(at)) {
     case 0x23 /* # */:
       return Kind.Id;
     case 0x2e /* . */:
@@ -126,9 +126,17 @@ export function wouldConflict(surrounding: readonly string[], extenderTerminal: 
   return false;
 }
 
+/**
+ * True when the selector text from `at` opens with a type or universal selector, the
+ * simple that must lead its compound.
+ */
+export function leadsWithElement(text: string, at: number): boolean {
+  return text.charCodeAt(at) === 0x2A /* * */ || classify(text, at) === Kind.Type;
+}
+
 /** True for a text token that must lead its compound: a type or universal selector. */
 function leadsCompound(text: string): boolean {
-  return text.charCodeAt(0) === 0x2A /* * */ || isTypeSelector(text);
+  return leadsWithElement(text, 0);
 }
 
 export const NO_SIMPLES: readonly Simple[] = [];

@@ -807,8 +807,19 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   }
   const out: Branch[] = [];
   pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
+  const unit = arms.length === 1 && !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
   for (const alternative of alone ?? []) {
-    /* Written in place, never as a one-arm `:is()` (ledger X3's 4.x placement). */
+    /*
+     * Written in place (ledger X3's placement; `:is(.c.k, .z) .d` → `.p .q.k .d`), except
+     * a complex alternative of a one-arm `:is()` that does not lead the selector: that
+     * `:is()` is one unit — a `&` referencing a parent of several compounds, or the
+     * author's — and written in place it would change what the selector matches
+     * (`.c :is(#z .b)` is not `.c #z .b`; owner 2026-10-09).
+     */
+    if (unit && alternative.segments.length > 1) {
+      pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [alternative], fold: false }), root, k, p + 1);
+      continue;
+    }
     const spliced = spliceMember(b, k, p, alternative);
     if (spliced !== null) {
       pushRegrouped(out, spliced, root, k, p);

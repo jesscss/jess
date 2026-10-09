@@ -124,9 +124,11 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
         return [
           [`${grouped(tooltip, ' .arrow')} {`, `${split(tooltip, ' .arrow')} {`],
 
+          // OWNER-ACCEPTED 2026-10-09
           /*
-           * A `&` fused under the two-compound parent `<owner> .arrow` is that parent
-           * spliced in place, never a one-arm `:is()` (orchestrator judgment 2026-10-05).
+           * `&::before` under the two-compound parent `<owner> .arrow` opens its
+           * selector, so the parent is written in place, never in a one-item `:is()`
+           * (owner 2026-10-09, ledger J13).
            */
           [`:is(${grouped(tooltip, ' .arrow')})::before {`, `${split(tooltip, ' .arrow::before')} {`],
           [`${grouped(popover, ' .arrow')} {`, `${split(popover, ' .arrow')} {`],
@@ -176,22 +178,36 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       ':is(.sidebar, .sidebar2) .box,\n:is(.type1 .sidebar3, .type2.sidebar4) .box {'
     ],
 
+    // OWNER-ACCEPTED 2026-10-09
     /*
-     * A `&` fused under a parent of several compounds is that parent spliced in place,
-     * as the rule's own selector composes, never a one-arm `:is()` (orchestrator
-     * judgment 2026-10-05).
+     * A `&` is a plain reference to its parent, `:is(parent)` (owner 2026-10-09): the
+     * `&` that opens the selector writes a parent of several compounds in place, the
+     * compound's other simples joined to its last compound; the `&` after the `+`
+     * keeps the parent one unit.
      */
     ((parent: string): readonly [string, string] => [
       `.amp-test-f:is(${parent}) + :is(${parent}).amp-test-g {`,
-      `.amp-test-f${parent} + ${parent}.amp-test-g {`
+      `${parent}.amp-test-f + :is(${parent}).amp-test-g {`
     ])('.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e')
   ]],
   ['tests-unit/selectors/selectors.less', [
-    // As in extend-nest: `.active&` and `&.active2` under `.first-level .second-level`.
+    // OWNER-ACCEPTED 2026-10-09
+    /* As in extend-nest: `.active&` and `&.active2` under `.first-level .second-level`. */
     [
       '.active:is(.first-level .second-level),\n:is(.first-level .second-level).active2 {',
-      '.active.first-level .second-level,\n.first-level .second-level.active2 {'
-    ]
+      '.first-level .second-level.active,\n.first-level .second-level.active2 {'
+    ],
+
+    // PENDING OWNER REVIEW (2026-10-09 &-reference ruling)
+    /*
+     * `.qux&` under `.foo .bar, .foo .baz` and `.tst&:hover` inside `:not()` under
+     * `.only-nested .level2` reference the parent: each parent of several compounds
+     * is written in place with `.qux` (`.tst`) joined to its last compound, the
+     * meaning of `.qux:is(.foo .bar, .foo .baz)`, where the golden puts `.qux` on
+     * the ancestor.
+     */
+    ['.qux.foo .bar,\n.qux.foo .baz {', '.foo .bar.qux,\n.foo .baz.qux {'],
+    ['.foo:not(.tst.only-nested .level2:hover) {', '.foo:not(.only-nested .level2.tst:hover) {']
   ]],
   ['tests-unit/extend-selector/extend-selector.less', [
     // `.foo`, `.ext3`, `.ext4` (0,1,0); `.ext1 .ext2` (0,2,0).

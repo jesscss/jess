@@ -441,7 +441,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (ledger F5, O17): a CSS colour function's arguments read the
     // slash before its alpha as a separator, never division, under `math:
     // always` too (`colorChannels`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(586);
+    // +4 functions (owner 2026-10-09): a `&` is a plain reference to its parent,
+    // so a parent of several compounds is written in place only by the `&` that
+    // opens the selector, the compound's other simples joined to its last
+    // compound (`placeParent`, `lastCompoundStart`), found without allocating
+    // (`ampNeedsPlacement`, `termNeedsPlacement`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(590);
     expect(occurrences(/new Map/gu)).toBe(92);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
