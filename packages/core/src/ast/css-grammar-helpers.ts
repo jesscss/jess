@@ -1651,7 +1651,7 @@ export function isValueSlotOf(value: unknown, isOperand: (value: unknown) => val
 
 /** A guard tree whose operands `isOperand` accepts. */
 export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => value is ValueNode): value is GuardNode {
-  if (typeof value !== 'object' || value === null || !('g' in value)) {
+  if (typeof value !== 'object' || value === null || !('g' in value) || !('parens' in value) || typeof value.parens !== 'number') {
     return false;
   }
   switch (value.g) {
@@ -1662,6 +1662,7 @@ export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => val
     case 'cmp':
     case 'match':
       return 'op' in value && typeof value.op === 'string'
+        && 'implied' in value && typeof value.implied === 'boolean'
         && 'left' in value && isOperand(value.left)
         && 'right' in value && isOperand(value.right);
     case 'call':

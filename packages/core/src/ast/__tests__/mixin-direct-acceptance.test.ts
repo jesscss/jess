@@ -72,7 +72,9 @@ describe('Mixin canonical AST emission', () => {
       decl('step', variableReference('n', 'scoped')),
       call('.loop', [{ value: operation('-', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('-')) }])
     ], {
-      g: 'cmp', op: '>', left: variableReference('n', 'scoped'), right: dimension(0)
+      g: 'cmp', op: '>', left: variableReference('n', 'scoped'), right: dimension(0),
+      implied: false,
+      parens: 0
     });
     const document = stylesheet([loop, rule('.out', [call('.loop', [{ value: dimension(3) }])])]);
 
@@ -94,11 +96,11 @@ describe('Mixin canonical AST emission', () => {
     const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('+')) }], [
       decl('kind', { type: 'Keyword', src: 'small' }),
       decl('gap', variableReference('gap', 'scoped'))
-    ], { g: 'cmp', op: '<', left: variableReference('n', 'scoped'), right: dimension(10) });
+    ], { g: 'cmp', op: '<', left: variableReference('n', 'scoped'), right: dimension(10), implied: false, parens: 0 });
     const large = mixin('.space', [{ name: 'n' }, { name: 'gap', default: dimension(99) }], [
       decl('kind', { type: 'Keyword', src: 'large' }),
       decl('gap', variableReference('gap', 'scoped'))
-    ], { g: 'cmp', op: '>=', left: variableReference('n', 'scoped'), right: dimension(10) });
+    ], { g: 'cmp', op: '>=', left: variableReference('n', 'scoped'), right: dimension(10), implied: false, parens: 0 });
     const document = stylesheet([
       small,
       large,
@@ -112,13 +114,19 @@ describe('Mixin canonical AST emission', () => {
 
   it('compares a false parameter against default() as the typed Less keyword', () => {
     const trueCase = mixin('.m', [{ name: 'x' }], [decl('case', variableReference('x', 'scoped'))], {
-      g: 'cmp', op: '=', left: variableReference('x', 'scoped'), right: keyword('true')
+      g: 'cmp', op: '=', left: variableReference('x', 'scoped'), right: keyword('true'),
+      implied: false,
+      parens: 0
     });
     const falseCase = mixin('.m', [{ name: 'x' }], [decl('case', variableReference('x', 'scoped'))], {
-      g: 'cmp', op: '=', left: variableReference('x', 'scoped'), right: keyword('false')
+      g: 'cmp', op: '=', left: variableReference('x', 'scoped'), right: keyword('false'),
+      implied: false,
+      parens: 0
     });
     const defaultCase = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], {
-      g: 'cmp', op: '=', left: variableReference('x', 'scoped'), right: funcCall('default', [])
+      g: 'cmp', op: '=', left: variableReference('x', 'scoped'), right: funcCall('default', []),
+      implied: false,
+      parens: 0
     });
     const document = stylesheet([
       trueCase,
@@ -133,7 +141,8 @@ describe('Mixin canonical AST emission', () => {
   it('does not select not(default()) when no ordinary overload matches', () => {
     const exact = mixin('.m', [{ pattern: dimension(1) }], [decl('case', dimension(1))]);
     const nonDefault = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], {
-      g: 'not', inner: { g: 'default' }
+      g: 'not', inner: { g: 'default', parens: 0 },
+      parens: 0
     });
     const document = stylesheet([
       exact,
@@ -147,7 +156,7 @@ describe('Mixin canonical AST emission', () => {
 
   it('runs a synchronous Context-owned default-guard body once', () => {
     const exact = mixin('.m', [{ pattern: dimension(1) }], [decl('case', dimension(1))]);
-    const fallback = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], { g: 'default' });
+    const fallback = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], { g: 'default', parens: 0 });
     const document = stylesheet([exact, fallback, rule('.out', [call('.m', [{ value: dimension(1) }])])]);
     const context = new Context();
     context.withDocumentBody = <T>(_body: object, run: () => T): T => run();
@@ -157,7 +166,7 @@ describe('Mixin canonical AST emission', () => {
   });
 
   it('runs an asynchronous Context-owned default-guard body once', async () => {
-    const fallback = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], { g: 'default' });
+    const fallback = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], { g: 'default', parens: 0 });
     const document = stylesheet([fallback, rule('.out', [call('.m', [{ value: dimension(2) }])])]);
     const context = new Context();
     context.withDocumentBody = <T>(_body: object, run: () => T): Promise<T> => Promise.resolve().then(run);
@@ -186,13 +195,18 @@ describe('Mixin canonical AST emission', () => {
    */
   it('keeps an escaped quoted guard operand typed instead of re-materializing its bytes', () => {
     const less = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('order', keyword('less'))], {
-      g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
+      g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped'),
+      implied: false,
+      parens: 0
     });
     const greater = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('order', keyword('greater'))], {
-      g: 'cmp', op: '>', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
+      g: 'cmp', op: '>', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped'),
+      implied: false,
+      parens: 0
     });
     const unequal = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('order', keyword('unequal'))], {
-      g: 'not', inner: { g: 'cmp', op: '=', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped') }
+      g: 'not', inner: { g: 'cmp', op: '=', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped'), implied: false, parens: 0 },
+      parens: 0
     });
     const document = stylesheet([
       less,
@@ -206,7 +220,9 @@ describe('Mixin canonical AST emission', () => {
 
   it('preserves typed space-list units through a mixin guard binding', () => {
     const equal = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('match', keyword('yes'))], {
-      g: 'cmp', op: '=', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
+      g: 'cmp', op: '=', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped'),
+      implied: false,
+      parens: 0
     });
     const document = stylesheet([
       equal,
@@ -231,15 +247,21 @@ describe('Mixin canonical AST emission', () => {
 
   it('filters guarded and parametric namespace containers before mixin descent', () => {
     const active = mixin('#guarded', [], [mixin('.mixin', [], [decl('active', keyword('yes'))])], {
-      g: 'cmp', op: '>', left: variableReference('namespaceGuard', 'scoped'), right: dimension(0)
+      g: 'cmp', op: '>', left: variableReference('namespaceGuard', 'scoped'), right: dimension(0),
+      implied: false,
+      parens: 0
     });
     const needsArgument = mixin('#guarded', [{ name: 'value' }], [mixin('.mixin', [], [decl('argument', keyword('wrong'))])]);
     const inactive = mixin('#guarded', [], [mixin('.mixin', [], [decl('guard', keyword('wrong'))])], {
-      g: 'cmp', op: '<', left: variableReference('namespaceGuard', 'scoped'), right: dimension(0)
+      g: 'cmp', op: '<', left: variableReference('namespaceGuard', 'scoped'), right: dimension(0),
+      implied: false,
+      parens: 0
     });
     const guardedRule = rule('#top', [
       rule('#deeper', [mixin('.mixin', [], [decl('rule-guard', keyword('wrong'))])], undefined, {
-        g: 'cmp', op: '<', left: variableReference('namespaceGuard', 'scoped'), right: dimension(0)
+        g: 'cmp', op: '<', left: variableReference('namespaceGuard', 'scoped'), right: dimension(0),
+        implied: false,
+        parens: 0
       }),
       rule('#deeper', [mixin('.mixin', [{ name: 'value' }], [decl('nested', variableReference('value', 'scoped'))])])
     ]);
@@ -460,10 +482,11 @@ describe('Mixin canonical AST emission', () => {
     const left = variableReference('a', 'scoped');
     const right = variableReference('b', 'scoped');
     const document = stylesheet([
-      mixin('.generic', params, [decl('content', keyword('less'))], { g: 'match', op: '<', left, right }),
-      mixin('.generic', params, [decl('content', keyword('greater'))], { g: 'match', op: '>', left, right }),
+      mixin('.generic', params, [decl('content', keyword('less'))], { g: 'match', op: '<', left, right, implied: false, parens: 0 }),
+      mixin('.generic', params, [decl('content', keyword('greater'))], { g: 'match', op: '>', left, right, implied: false, parens: 0 }),
       mixin('.generic', params, [decl('content', keyword('unequal'))], {
-        g: 'not', inner: { g: 'match', op: '=', left, right }
+        g: 'not', inner: { g: 'match', op: '=', left, right, implied: false, parens: 0 },
+        parens: 0
       }),
       rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
     ]);
@@ -479,7 +502,9 @@ describe('Mixin canonical AST emission', () => {
   it('still errors for the same groundless pair in value position', () => {
     const document = stylesheet([
       mixin('.generic', [{ name: 'a' }, { name: 'b' }], [decl('content', keyword('less'))], {
-        g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
+        g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped'),
+        implied: false,
+        parens: 0
       }),
       rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
     ]);

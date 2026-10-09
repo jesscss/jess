@@ -689,7 +689,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
  * positions genuinely differ (§4.2a) and it gets a reducer each, below.
  */
 function reduceGuardTruth(children: readonly unknown[]): GuardNode {
-  return { g: 'truth', value: requireExpressionFact(children[0]).value };
+  return { g: 'truth', value: requireExpressionFact(children[0]).value, parens: 0 };
 }
 
 /*
@@ -706,7 +706,9 @@ function reduceIfCompare(children: readonly unknown[]): GuardNode {
     g: 'cmp',
     op: requireToken(children[1]).value.trim(),
     left: requireExpressionFact(children[0]).value,
-    right: requireExpressionFact(children[2]).value
+    right: requireExpressionFact(children[2]).value,
+    implied: false,
+    parens: 0
   };
 }
 function reduceGuardCompare(children: readonly unknown[]): GuardNode {
@@ -714,20 +716,22 @@ function reduceGuardCompare(children: readonly unknown[]): GuardNode {
     g: 'match',
     op: requireToken(children[1]).value.trim(),
     left: requireExpressionFact(children[0]).value,
-    right: requireExpressionFact(children[2]).value
+    right: requireExpressionFact(children[2]).value,
+    implied: false,
+    parens: 0
   };
 }
 function reduceGuardAnd(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
+    result = { g: 'and', left: result, right: requireGuardNode(children[index]), parens: 0 };
   }
   return result;
 }
 function reduceGuardOr(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
+    result = { g: 'or', left: result, right: requireGuardNode(children[index]), parens: 0 };
   }
   return result;
 }

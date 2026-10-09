@@ -27,7 +27,8 @@ import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
 
 /**
- * A guard condition tree. Never serialized to CSS — evaluated to a boolean.
+ * A guard condition tree, evaluated to a boolean; one that nothing consumes is
+ * written as the author wrote it (ledger J20).
  *
  * `cmp` and `match` are the SAME comparison in the two positions §4.2a
  * distinguishes, and carry the identical shape so they are one hidden class:
@@ -42,16 +43,28 @@ import { isTruthy } from './value-truth.js';
  * Which one a comparison is, is decided by the front end at PARSE time from the
  * position it was written in (§12.0 — lower to the `.jess` you want, then read
  * off the node). Nothing at eval time inspects context or a mode to choose.
+ *
+ * Two facts the parser records so a written condition is written as authored
+ * (ledger J20). Evaluation never reads them, and every instance carries them,
+ * so each kind keeps one hidden class:
+ *
+ *  - `parens` — how many paren groups the author wrote around exactly this
+ *    condition: `((1 = 1) or 2)` gives the `or` none and its `cmp` one.
+ *  - `implied` — the comparison is a dialect's lowering of a bare operand
+ *    (Less's `== true`, §4.4.2), not one the author wrote.
  */
 export type GuardNode =
-  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
-  | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
-  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode }
-  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
-  | { readonly g: 'not'; readonly inner: GuardNode }
-  | { readonly g: 'truth'; readonly value: ValueSlot }
-  | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[] }
-  | { readonly g: 'default' };
+  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
+  | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
+  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode; readonly parens: number }
+  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode; readonly parens: number }
+  | { readonly g: 'not'; readonly inner: GuardNode; readonly parens: number }
+  | { readonly g: 'truth'; readonly value: ValueSlot; readonly parens: number }
+  | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[]; readonly parens: number }
+  | { readonly g: 'default'; readonly parens: number };
+
+/** `guard` inside one more paren group the author wrote around it (same shape, so the same hidden class). */
+export const inParens = (guard: GuardNode): GuardNode => ({ ...guard, parens: guard.parens + 1 });
 
 /**
  * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.

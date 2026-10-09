@@ -41,7 +41,6 @@ import {
   keyword,
   list,
   NULL_NODE,
-  IMPLIED_TRUE,
   spaced,
   variableDeclaration,
   variableReference,
@@ -5419,37 +5418,45 @@ function writtenGroup(v: EvalValue): Value {
 
 /**
  * A condition written into a value — one no guard, `if()` or `.jess` `$( … )`
- * consumes — as its guard tree holds it, each operand evaluated, so its
- * variables substitute: `(@a > 2px)` with `@a: 3px` is `(3px > 2px)` (SETTLED —
- * orchestrator judgment under owner delegation 2026-10-07). A term under
- * `and`, `or` or `not` is written in the parens Less's condition syntax
- * requires: `(3px > 2px) and (3px < 5px)`. A bare operand is written as the
- * author wrote it: the `== true` a dialect lowers it to ({@link IMPLIED_TRUE}) is
- * how it evaluates, never what was written, so `(1 and 2)` stays `(1 and 2)`.
+ * consumes — written as the author wrote it, each operand evaluated so its
+ * variables substitute: `(@a > 2px)` with `@a: 3px` is `(3px > 2px)`. Every
+ * paren group the author wrote around a condition is kept and none is added
+ * (the guard's `parens`), so `((1 = 2) and ((1 = 1) or (1 = 1)))` keeps the
+ * grouping that gives it its meaning and `(3px > 2px and 3px < 5px)` is
+ * written as css writes it; an implied truth test is written as its bare
+ * operand (`implied`), so `(1 and 2)` stays `(1 and 2)` (ledger J20 —
+ * orchestrator judgment under owner delegation 2026-10-09; SEMANTIC-INVARIANTS
+ * 4). The operands are written in the condition, not reached, so a group the
+ * author wrote around one keeps its parens however the condition is read, as a
+ * math function's arguments do ({@link whileReached}).
  */
-function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx, nested: boolean): MaybePromise<string> {
-  const term = (bytes: string): string => nested ? `(${bytes})` : bytes;
+function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  if (e.reached) {
+    return writtenCondition(guard, frame, { ...e, reached: false });
+  }
+  const parens = guard.parens;
+  const written = (bytes: string): string => parens === 0 ? bytes : `${'('.repeat(parens)}${bytes}${')'.repeat(parens)}`;
   switch (guard.g) {
     case 'cmp':
     case 'match':
-      if (guard.right === IMPLIED_TRUE) {
-        return mapMaybe(evalValueSlot(guard.left, frame, e), left => emitValueC(left, e));
+      if (guard.implied) {
+        return mapMaybe(evalValueSlot(guard.left, frame, e), left => written(emitValueC(left, e)));
       }
       return combineAll([evalValueSlot(guard.left, frame, e), evalValueSlot(guard.right, frame, e)], ([left, right]) =>
-        term(`${emitValueC(left!, e)} ${guard.op} ${emitValueC(right!, e)}`));
+        written(`${emitValueC(left!, e)} ${guard.op} ${emitValueC(right!, e)}`));
     case 'and':
     case 'or':
-      return combineAll([writtenCondition(guard.left, frame, e, true), writtenCondition(guard.right, frame, e, true)], ([left, right]) =>
-        `${left!} ${guard.g} ${right!}`);
+      return combineAll([writtenCondition(guard.left, frame, e), writtenCondition(guard.right, frame, e)], ([left, right]) =>
+        written(`${left!} ${guard.g} ${right!}`));
     case 'not':
-      return mapMaybe(writtenCondition(guard.inner, frame, e, true), inner => `not ${inner}`);
+      return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`not ${inner}`));
     case 'truth':
-      return mapMaybe(evalValueSlot(guard.value, frame, e), v => term(emitValueC(v, e)));
+      return mapMaybe(evalValueSlot(guard.value, frame, e), v => written(emitValueC(v, e)));
     case 'call':
       return combineAll(guard.args.map(arg => evalValueSlot(arg, frame, e)), args =>
-        term(`${guard.name}(${args.map(arg => emitValueC(arg, e)).join(', ')})`));
+        written(`${guard.name}(${args.map(arg => emitValueC(arg, e)).join(', ')})`));
     case 'default':
-      return term('default()');
+      return written('default()');
   }
 }
 
@@ -5845,7 +5852,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (e.ev && e.exprBoundary) {
         return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
       }
-      return writtenCondition(node.guard, frame, e, false);
+      return writtenCondition(node.guard, frame, e);
     case 'Operation': {
       if (node.operator === 'and' || node.operator === 'or') {
         return evalLogicalOperation(node, frame, e);

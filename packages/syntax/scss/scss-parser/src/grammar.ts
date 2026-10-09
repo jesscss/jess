@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { anonymousMixin, any, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -1334,10 +1334,12 @@ const scssFactory = (g: ScssInputRules) => {
         g: 'cmp' as const,
         op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
         left: requireValue(left),
-        right: requireValue(right)
+        right: requireValue(right),
+        implied: false,
+        parens: 0
       };
       return callArg(expression(condition(
-        operator === '!=' ? { g: 'not', inner: comparison } : comparison,
+        operator === '!=' ? { g: 'not', inner: comparison, parens: 0 } : comparison,
         `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
       )));
     }
@@ -2781,9 +2783,11 @@ const scssFactory = (g: ScssInputRules) => {
         g: 'cmp' as const,
         op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
         left,
-        right
+        right,
+        implied: false,
+        parens: 0
       };
-      return operator === '!=' ? { g: 'not', inner: comparison } : comparison;
+      return operator === '!=' ? { g: 'not', inner: comparison, parens: 0 } : comparison;
     }
   );
   const IfAtom = node<GuardNode>(
@@ -2811,11 +2815,11 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const nested = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
       if (nested !== undefined) {
-        return nested;
+        return children.some(child => isToken(child) && child.value === '(') ? inParens(nested) : nested;
       }
       const value = children.find(isScssValue);
       return value === undefined
-        ? { g: 'truth', value: keyword(requireToken(children[0]).value.toLowerCase()) }
+        ? { g: 'truth', value: keyword(requireToken(children[0]).value.toLowerCase()), parens: 0 }
         : scssTruth(value);
     }
   );
@@ -2831,7 +2835,7 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS @if term lost its guard.');
       }
       return children.some(child => isToken(child) && child.value.toLowerCase() === 'not')
-        ? { g: 'not', inner: atom }
+        ? { g: 'not', inner: atom, parens: 0 }
         : atom;
     }
   );
@@ -2847,7 +2851,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]) };
+        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), parens: 0 };
       }
       return guard;
     }
@@ -2864,7 +2868,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]) };
+        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), parens: 0 };
       }
       return guard;
     }

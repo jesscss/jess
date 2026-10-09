@@ -91,7 +91,9 @@ describe('canonical authored AST traversal', () => {
       g: 'cmp',
       op: '>',
       left: dimension(1),
-      right: dimension(0)
+      right: dimension(0),
+      implied: false,
+      parens: 0
     } as const;
     const target = selist(sel('.target'));
     const subject = selist(sel('.subject'));

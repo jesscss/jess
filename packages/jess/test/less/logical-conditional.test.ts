@@ -1,4 +1,8 @@
+import { createRequire } from 'node:module';
 import { describe, it, expect } from 'vitest';
+import { serialize } from '@jesscss/core';
+import { parse as parseCss } from '@jesscss/css-parser';
+import { parse as parseLess } from '@jesscss/less-parser';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
@@ -153,11 +157,9 @@ describe('Less logical / conditional functions', () => {
 
   /*
    * `and`, `or` and `not` in a value paren group make one condition, as a
-   * comparison does. Written out, each term under them keeps the parens Less's
-   * condition syntax requires (J20), so `(@a > 2px and @a < 5px)` is written
-   * `((3px > 2px) and (3px < 5px))` where Less 4.x keeps the ungrouped text;
-   * a group written with its terms grouped, and a `not` group, are written as
-   * Less 4.x writes them. A consumer reads the condition.
+   * comparison does. Written out, it is written as the author wrote it — the
+   * groups the author wrote kept, none added (J20) — and a consumer reads the
+   * condition.
    */
   it('reads and / or / not in a value paren group as one condition', async () => {
     const css = await render([
@@ -167,7 +169,7 @@ describe('Less logical / conditional functions', () => {
       '@z: (not (@a > 2px));',
       '.y { a: @x; b: @y; c: @z; d: boolean(@x); e: if(@z, yes, no); f: boolean((@a < 1px or @a > 2px and @a < 5px)); g: if((@a > 2px and @a < 5px), yes, no); }'
     ].join(' '));
-    expect(css).toBe('.y {\n  a: ((3px > 2px) and (3px < 5px));\n  b: ((3px > 2px) and (3px < 5px));\n  c: (not (3px > 2px));\n  d: true;\n  e: no;\n  f: true;\n  g: yes;\n}\n');
+    expect(css).toBe('.y {\n  a: (3px > 2px and 3px < 5px);\n  b: ((3px > 2px) and (3px < 5px));\n  c: (not (3px > 2px));\n  d: true;\n  e: no;\n  f: true;\n  g: yes;\n}\n');
   });
 
   /*
@@ -184,6 +186,75 @@ describe('Less logical / conditional functions', () => {
       '@z: (not 1);',
       '.y { a: @x; b: @y; c: @z; d: rgb(1 and 2, 3, 4); e: boolean(@x); f: if((true and true), yes, no); g: (@a > 2px and true); }'
     ].join(' '));
-    expect(css).toBe('.y {\n  a: (1 and 2);\n  b: (3px and 2 or 4);\n  c: (not 1);\n  d: rgb(1 and 2, 3, 4);\n  e: false;\n  f: yes;\n  g: ((3px > 2px) and true);\n}\n');
+    expect(css).toBe('.y {\n  a: (1 and 2);\n  b: (3px and 2 or 4);\n  c: (not 1);\n  d: rgb(1 and 2, 3, 4);\n  e: false;\n  f: yes;\n  g: (3px > 2px and true);\n}\n');
+  });
+
+  /*
+   * Every group the author wrote around a written condition is kept, so its
+   * grouping — which decides what it means — survives being written; none is
+   * added (J20; orchestrator judgment under owner delegation 2026-10-09).
+   */
+  it('keeps the grouping the author wrote in a written condition', async () => {
+    const css = await render([
+      '@a: 1; @b: 2; @c: 3;',
+      '@x: ((1 = 2) and ((1 = 1) or (1 = 1)));',
+      '@n: (not (1 or 2));',
+      '.y { d: if(@x, y, n); e: @x; f: @n; g: boolean(@n); h: rgb(not ((1 = 1) or (2 = 2)), 3, 4);',
+      'i: (@a and (@b or @c)); j: ((@a or @b) and @c); k: (((1 = 1)) or 2); l: rgb(((1 = 1)) or 2, 3, 4); }'
+    ].join(' '));
+    expect(css).toBe([
+      '.y {',
+      '  d: n;',
+      '  e: ((1 = 2) and ((1 = 1) or (1 = 1)));',
+      '  f: (not (1 or 2));',
+      '  g: true;',
+      '  h: rgb(not ((1 = 1) or (2 = 2)), 3, 4);',
+      '  i: (1 and (2 or 3));',
+      '  j: ((1 or 2) and 3);',
+      '  k: (((1 = 1)) or 2);',
+      '  l: rgb(((1 = 1)) or 2, 3, 4);',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  /*
+   * A group the author wrote around a bare operand is a group in the condition,
+   * so it keeps its parens however the condition is read — directly, through a
+   * variable, or in a call written as authored — and the operand still
+   * evaluates as Less's truth test (J20, J16).
+   */
+  it('keeps a group around a bare operand however the condition is read', async () => {
+    const css = await render('@x: ((1) and (2)); .y { a: ((1) and (2)); b: @x; c: rgb((1) and (2), 3, 4); d: rgb(((1) and (2)), 3, 4); e: boolean(@x); f: boolean(((true) and (true))); }');
+    expect(css).toBe('.y {\n  a: ((1) and (2));\n  b: ((1) and (2));\n  c: rgb((1) and (2), 3, 4);\n  d: rgb(((1) and (2)), 3, 4);\n  e: false;\n  f: true;\n}\n');
+  });
+
+  /*
+   * The implied truth test is a field the parser sets on the comparison, not
+   * the identity of a shared `true` node, so an AST parsed by one module
+   * instance (the CJS build) and written by another (the ESM serializer)
+   * writes the operand as authored.
+   */
+  it('writes a bare operand as authored when the parser and serializer are separate module instances', async () => {
+    const cjs = createRequire(import.meta.url)('@jesscss/less-parser') as { parse: typeof parseLess };
+    const result = await serialize(cjs.parse('@x: (1 and 2); .y { a: @x; b: rgb(1 and 2, 3, 4); }'), { collapseNesting: true });
+    expect(result.css).toBe('.y {\n  a: (1 and 2);\n  b: rgb(1 and 2, 3, 4);\n}\n');
+  });
+});
+
+/*
+ * A paren group of comparisons joined by `and` / `or` is valid CSS, and valid
+ * CSS writes the same bytes in every dialect (SEMANTIC-INVARIANTS 4): Less
+ * reads it as a condition and writes it as authored, adding no parens.
+ */
+describe('a written condition is dialect-invariant valid CSS', () => {
+  const source = '.y { x: (3px > 2px and 3px < 5px); a: (a and (b or c)); b: ((a or b) and c); c: (not (1 or 2)); }';
+  const expected = '.y {\n  x: (3px > 2px and 3px < 5px);\n  a: (a and (b or c));\n  b: ((a or b) and c);\n  c: (not (1 or 2));\n}\n';
+
+  it('writes the same bytes from css, less and .jess', async () => {
+    const jess = new Compiler({ output: { collapseNesting: true } });
+    expect((await serialize(parseCss(source), { collapseNesting: true })).css).toBe(expected);
+    expect(await render(source)).toBe(expected);
+    expect(await jess.renderString(source, { extension: '.jess' })).toBe(expected);
   });
 });
