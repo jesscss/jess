@@ -221,24 +221,30 @@ const trustedFnsRoot: string | undefined = (() => {
 })();
 
 /**
- * Whether `importPath` is a file inside the trusted `@jesscss/fns` package.
- * Both the candidate and the trusted root are canonicalized with
- * `realpathSync.native`, so a symlink, a `..` segment, or a case-variant
- * spelling on a case-insensitive filesystem cannot pass off a file as trusted
- * that does not physically live in the resolved package. A path that cannot be
- * canonicalized (it does not exist) is untrusted.
+ * The canonical realpath of `importPath` when it is a file inside the trusted
+ * `@jesscss/fns` package, else `undefined`. Both the candidate and the trusted
+ * root are canonicalized with `realpathSync.native`, so a symlink, a `..`
+ * segment, or a case-variant spelling on a case-insensitive filesystem cannot
+ * pass off a file as trusted that does not physically live in the resolved
+ * package. A path that cannot be canonicalized (it does not exist) is untrusted.
+ *
+ * The caller both DECIDES trust and IMPORTS this returned realpath, so the file
+ * checked and the file loaded are the same inode-path — a symlink component
+ * swapped between a lexical check and the import cannot redirect the load.
+ *
+ * Exported for the trust-boundary regression test, not as a public API.
  */
-const isFnsPath = (importPath: string): boolean => {
+export const trustedFnsRealPath = (importPath: string): string | undefined => {
   if (trustedFnsRoot === undefined) {
-    return false;
+    return undefined;
   }
   let realPath: string;
   try {
     realPath = fs.realpathSync.native(path.resolve(importPath));
   } catch {
-    return false;
+    return undefined;
   }
-  return isPathInside(realPath, trustedFnsRoot);
+  return isPathInside(realPath, trustedFnsRoot) ? realPath : undefined;
 };
 
 const isJsonValue = (value: unknown) => {
@@ -927,7 +933,8 @@ export class JsPlugin extends AbstractPlugin {
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}"`);
     }
-    if (!isFnsPath(absoluteFilePath)) {
+    const fnsRealPath = trustedFnsRealPath(absoluteFilePath);
+    if (fnsRealPath === undefined) {
       this.assertAllowedPath(absoluteFilePath);
       await this.ensureRuntime();
       const modulePath = path.resolve(absoluteFilePath);
@@ -959,15 +966,18 @@ export class JsPlugin extends AbstractPlugin {
     }
 
     /*
-     * Trust boundary: everything above runs in the Deno sandbox. We fall through
-     * to a direct in-process `import()` ONLY for a file whose realpath is inside
-     * the `@jesscss/fns` package this plugin itself resolved ({@link isFnsPath}),
-     * because that code is ours and must call compiler internals a sandboxed
-     * worker cannot reach. Any script a user imports — including one that names
-     * or symlinks itself `@jesscss/fns` — fails `isFnsPath` and is sandboxed
-     * above; it never reaches this line.
+     * Trust boundary: everything above runs in the Deno sandbox. We reach here
+     * ONLY for a file whose realpath is inside the `@jesscss/fns` package this
+     * plugin itself resolved (`trustedFnsRealPath`), because that code is ours
+     * and must call compiler internals a sandboxed worker cannot reach. Any
+     * script a user imports — including one that names or symlinks itself
+     * `@jesscss/fns` — resolves to `undefined` and is sandboxed above.
+     *
+     * We import the CANONICAL realpath we just checked, not the lexical input,
+     * so the file loaded is the exact file whose trust we verified — a symlink
+     * component swapped after the check cannot redirect the load to other code.
      */
-    const modulePath = pathToFileURL(path.resolve(absoluteFilePath)).href;
+    const modulePath = pathToFileURL(fnsRealPath).href;
     const module = await import(modulePath);
     const safeModule: Record<string, any> = {};
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dynamic import returns any; entries are validated below

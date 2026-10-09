@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
-import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
+import jsPlugin, { JsPlugin, sanitizeSpawnEnv, trustedFnsRealPath } from '../src/index.js';
 import { registered } from './registered.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -205,6 +205,30 @@ describe('@jesscss/plugin-js security', () => {
     const plugin = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
     plugins.push(plugin);
     await expect(plugin.import(path.join(link, 'index.js'))).rejects.toThrow(/Deno runtime is required/);
+  });
+
+  it('resolves the trusted fns import to its canonical realpath (check and load agree)', () => {
+    const realFns = path.dirname(fileURLToPath(new URL('../../fns/package.json', import.meta.url)));
+    const realFile = fs.realpathSync.native(path.join(realFns, 'src', 'util', 'mime.ts'));
+    const root = makeTmpDir('jess-js-root-');
+    const link = path.join(root, 'fns-link');
+    fs.symlinkSync(realFns, link, 'dir');
+
+    /*
+     * A symlink INTO fns resolves to the real file inside the package — and the
+     * returned path is that realpath, not the lexical symlink path, so import()
+     * loads the exact file whose trust was checked.
+     */
+    const viaLink = path.join(link, 'src', 'util', 'mime.ts');
+    expect(trustedFnsRealPath(viaLink)).toBe(realFile);
+    expect(fs.realpathSync.native(viaLink)).toBe(realFile);
+
+    // A symlink spelled like fns but pointing outside resolves to undefined.
+    const impostor = makeTmpDir('jess-js-impostor-');
+    fs.writeFileSync(path.join(impostor, 'evil.js'), 'export const x = 1;', 'utf8');
+    const evilLink = path.join(root, 'evil-link');
+    fs.symlinkSync(impostor, evilLink, 'dir');
+    expect(trustedFnsRealPath(path.join(evilLink, 'evil.js'))).toBeUndefined();
   });
 
   it('runs the real @jesscss/fns in-process when reached through a symlink', async () => {
