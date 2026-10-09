@@ -107,7 +107,8 @@ BENCH_CASES=benchmark.less /usr/bin/time -l node packages/syntax/less/less-parse
 ```
 
 parse-bench times both surfaces, so the quotient is one AST parse plus one CST
-parse. Measured 2026-10-05 at load averages of 10–85, where interleaved
+parse; `BENCH_SURFACES=ast` (or `cst`) times one, for a per-surface count. The
+css-parser `test/parse-bench.mjs` takes the same two variables. Measured 2026-10-05 at load averages of 10–85, where interleaved
 timings swung ±8% on identical libs:
 
 - the spread across runs of one lib was under ±1%;
