@@ -29,7 +29,8 @@
  * genuinely-invalid-CSS case tree-v1 rejects is still rejected here.
  */
 
-import type { Simple } from './ir.js';
+import type { Combinator } from '../node.js';
+import type { SelectorPart, Simple } from './ir.js';
 
 const enum Kind {
   /** A type/element selector (`div`, `a`) — at most one per compound. */
@@ -140,6 +141,35 @@ function leadsCompound(text: string): boolean {
 }
 
 export const NO_SIMPLES: readonly Simple[] = [];
+
+/**
+ * A selector of several compounds, `x`, written in place of one simple of a compound
+ * that opens its selector, `others` being that compound's other simples (owner
+ * 2026-10-09: they describe the same element as the simple `x` stands in for, so they
+ * join `x`'s LAST compound — same element, same compound): `x`'s compounds in order,
+ * the first taking `first` as its combinator, the last holding its own simples then
+ * `others`, made valid by {@link mergeCompound} (`.active` + `.toolbar .tool` →
+ * `.toolbar .tool.active`; `div` + `.a .b` → `.a div.b`). The meaning and specificity
+ * are those of `:is(x)` with `others`. Null where two element types would meet.
+ * Where the compound does not open its selector the caller keeps `x` one unit,
+ * `:is(x)`, instead: `.c .m:is(.a .b)` is not `.c .a .b.m`. A `&` that references a
+ * parent of several compounds (`compose.ts` `placeFusedAmp`) and an `all` extender
+ * written in place of the simple it matched (`emit.ts` `spliceMember`) both place by
+ * this rule.
+ */
+export function placeComplex(x: readonly SelectorPart[], others: readonly Simple[], first: Combinator): SelectorPart[] | null {
+  const n = x.length;
+  const tail = mergeCompound(NO_SIMPLES, x[n - 1]!.compound.value, others);
+  if (tail === null) {
+    return null;
+  }
+  const out: SelectorPart[] = [];
+  for (let k = 0; k < n - 1; k++) {
+    out.push(k === 0 ? { combinator: first, compound: x[0]!.compound } : x[k]!);
+  }
+  out.push({ combinator: n === 1 ? first : x[n - 1]!.combinator, compound: { value: tail } });
+  return out;
+}
 
 /**
  * `before`, `member` and `after` as one valid compound: the type (or universal)

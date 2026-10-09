@@ -241,21 +241,30 @@ the extend engine both call it.
   (`&-primary` under `.btn`) stands for that parent's token —, a resolved interpolation
   that holds more than one simple (`@v: ~"x.y"; .@{v}`), or a
   complex member the group does not lead with (ledger X17 records this reading of X3's
-  provenance clause) — is written as its own branch in the Less 4.x expanded form: the simples
-  before the group join the member's FIRST compound and those after it its LAST
-  compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made
-  valid: the type selector leads and a repeated type is written once (`div` + `div.b`
-  → `div.b`, where 4.x wrote `divdiv.b`); a member that would need two element types
-  matches no element and is dropped (4.x wrote `divspan`).
+  provenance clause) — is written as its own branch where the group was. The
+  compound's other simples describe the same element as the matched simple, the one a
+  complex member's LAST compound names (owner 2026-10-09: same element ⇒ same
+  compound): where the compound opens a top-level header the member is written in
+  place, those simples joining its last compound (`.active.btn .icon` +
+  `.toolbar .tool:extend(.btn all)` → `.toolbar .tool.active .icon`); anywhere else it
+  stays one `:is()` unit where the group was (`.a > .m:is(.c, .p .q).n` →
+  `.a > .m:is(.p .q).n`), the position rule a `&` referencing a parent of several
+  compounds follows too (ledger J13; `conflict.ts` `placeComplex`). A one-compound member
+  joins them in place, and a member that is the whole compound it stands in is written
+  in its place. Each joined compound is made valid: the type selector leads and a
+  repeated type is written once (`div` + `div.b` → `div.b`, never `divdiv.b`); a member
+  that would need two element types or two ids matches no element and is dropped
+  (`div.c` + `.p span:extend(.c all)`).
 - A group may hold a complex member only where it leads the whole selector: first in
   the head compound of a top-level header. Only there `:is(.t .b).k .box` matches what
-  the expanded `.t .b.k .box` does; `.p :is(.x .y)` would let `.x` sit above `.p`, and
-  `.m:is(.p .q)` is `.p .m.q` where 4.x's `.m.p .q` is meant. A nested header has an
-  implicit `&` before it, so it never leads.
+  `.t .b.k .box` does; elsewhere a group would let the member's own compounds sit
+  across the combinator before it (`.p :is(.x .y)` lets `.x` sit above `.p`). A nested
+  header has an implicit `&` before it, so it never leads.
 - A group nested in a member (a chained extend, `.j.k:extend(.c all)` then
   `.p .q:extend(.j all)`) is checked as an `:is()` argument first, and again where the
   member lands when the outer group splits: with `.r .s:extend(.j all)` too,
-  `.a > .c` gives `.a > .p .q.k, .a > .r .s.k`, never `.a > :is(.p .q, .r .s).k`.
+  `.a > .c` gives `.a > :is(.p .q).k, .a > :is(.r .s).k`, never
+  `.a > :is(.p .q, .r .s).k`.
 - The solve keeps each group whole (later instructions chain through it as one set of
   alternatives); the split happens once, as a header is emitted (`emit.ts`
   `groupedBranches`). Only extend-built groups (`Simple.fold`) split. An authored

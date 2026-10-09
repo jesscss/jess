@@ -30,7 +30,7 @@ import type { Branch, Level, SelectorPart, Simple } from './ir.js';
 import { pseudoJoin, textHoldsParentRef } from '../nodes.js';
 import type { PseudoSelector, SimpleToken } from '../nodes.js';
 import { irEndsWithPseudoElement, isUserActionPseudoClass } from '../is-grouping.js';
-import { leadsWithElement } from './conflict.js';
+import { leadsWithElement, placeComplex } from './conflict.js';
 
 /**
  * The parser token a name continuation of `s` stands for: `s` is a text token the
@@ -258,21 +258,21 @@ function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs
     outBnd.push(0);
     return true;
   }
-  for (let k = 0; k < last; k++) {
-    outSegs.push({ combinator: k === 0 ? seg.combinator : ps[k]!.combinator, compound: { value: ps[k]!.compound.value.map(cloneSimple) } });
-    outBnd.push(bndAt(parent, k) + 1);
-  }
-  const tail: Simple[] = lead ? [cloneSimple(value[0]!)] : [];
-  for (const s of ps[last]!.compound.value) {
-    tail.push(cloneSimple(s));
-  }
-  for (let p = lead ? 1 : 0; p < value.length; p++) {
+  const others: Simple[] = [];
+  for (let p = 0; p < value.length; p++) {
     if (p !== at) {
-      tail.push(withParent(value[p]!, parent));
+      others.push(withParent(value[p]!, parent));
     }
   }
-  outSegs.push({ combinator: ps[last]!.combinator, compound: { value: tail } });
-  outBnd.push(value.length > 1 || named !== parent ? 0 : bndAt(parent, last) + 1);
+
+  /* No element selector meets another here (checked above), so it is placed. */
+  const placed = placeComplex(ps, others, seg.combinator)!;
+  for (let k = 0; k < last; k++) {
+    outSegs.push(placed[k]!);
+    outBnd.push(bndAt(parent, k) + 1);
+  }
+  outSegs.push(placed[last]!);
+  outBnd.push(others.length > 0 || named !== parent ? 0 : bndAt(parent, last) + 1);
   return true;
 }
 

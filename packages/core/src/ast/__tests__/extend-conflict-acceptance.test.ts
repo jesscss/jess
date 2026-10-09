@@ -182,22 +182,22 @@ describe('extend element/id conflict guard', () => {
   });
 
   /*
-   * A complex extender that cannot sit in the group is written in the Less 4.x placement
-   * (ledger X3): the simples before the match join its FIRST compound, those after it
-   * its LAST. So the guard checks each side against the compound it lands in.
+   * The simples around the match describe the same element as the matched simple, the
+   * one a complex extender's LAST compound names (ledger X3; owner 2026-10-09: same
+   * element ⇒ same compound), so the guard checks them against that compound: two
+   * element types or two ids there match no element, and the extender is dropped.
    */
-  it('checks a complex extender\'s first compound against the simples before the match', () => {
+  it('checks a complex extender\'s last compound against the simples around the match', () => {
     const renderLess = (src: string): string | undefined => render(parseLess(src));
 
-    // `div` joins `.p`: lessc 4.9.1 writes `div.p span`, a valid selector.
-    expect(renderLess('div.c { m: 1 } .p span:extend(.c all) {}'))
-      .toBe('div.c,\ndiv.p span {\n  m: 1;\n}\n');
-    expect(renderLess('#a.c .d { m: 1 } .q #b:extend(.c all) {}'))
-      .toBe('#a.c .d,\n#a.q #b .d {\n  m: 1;\n}\n');
-
-    // Still rejected where the simples meet a conflicting compound on either side.
-    expect(renderLess('div.c { m: 1 } span.p .q:extend(.c all) {}')).toBe('div.c {\n  m: 1;\n}\n');
+    // `div` and `span`, `#a` and `#b`, would name one element.
+    expect(renderLess('div.c { m: 1 } .p span:extend(.c all) {}')).toBe('div.c {\n  m: 1;\n}\n');
+    expect(renderLess('#a.c .d { m: 1 } .q #b:extend(.c all) {}')).toBe('#a.c .d {\n  m: 1;\n}\n');
     expect(renderLess('.c#a { m: 1 } .q #b:extend(.c all) {}')).toBe('.c#a {\n  m: 1;\n}\n');
+
+    // The first compound names an ancestor: `div` with `span.p .q` is `span.p div.q`.
+    expect(renderLess('div.c { m: 1 } span.p .q:extend(.c all) {}'))
+      .toBe('div.c,\nspan.p div.q {\n  m: 1;\n}\n');
   });
 
   it('allows extending #foo#foo.class with .bar (single distinct id → no conflict)', () => {

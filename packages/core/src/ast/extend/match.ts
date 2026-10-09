@@ -833,12 +833,12 @@ function sideText(
 
 /**
  * ELEMENT/ID CONFLICT GUARD. The matched compound is about to be wrapped as
- * `<before>:is(<matched>, <extenders…>)<after>`; each extender is written with `before`
- * joining its FIRST compound and `after` its LAST (the Less 4.x placement, ledger X3; a
- * one-compound extender takes both), so an extender whose compound there would hold a
- * SECOND distinct element type or a SECOND distinct id forms invalid CSS and must NOT be
- * wrapped. Returns the extenders that survive. The authored simples are valid on their
- * own, so a conflict across `before` and `after` together is a conflict on one side.
+ * `<before>:is(<matched>, <extenders…>)<after>`. `before` and `after` describe the same
+ * element as the matched simple (owner 2026-10-09: same element ⇒ same compound), the
+ * one an extender's LAST compound names (ledger X3), so an extender whose last compound
+ * there would hold a SECOND distinct element type or a SECOND distinct id matches no
+ * element and must NOT be wrapped. Returns the extenders that survive. The authored
+ * simples are valid on their own.
  *
  * The rejection is PER EXTENDER, not all-or-nothing: a folded group can pair a benign
  * extender (`.b`) with a conflicting one (`span`), and only the conflicting one is
@@ -851,9 +851,8 @@ function nonConflictingExtenders(before: readonly string[], after: readonly stri
   for (let i = 0; i < extenders.length; i++) {
     const e = extenders[i]!;
     const n = e.segments.length;
-    const first = n > 0 ? textSimpleTokens(e.segments[0]!.compound) : NO_TEXT;
-    const last = n > 1 ? textSimpleTokens(e.segments[n - 1]!.compound) : first;
-    if (wouldConflict(before, first) || wouldConflict(after, last)) {
+    const last = n > 0 ? textSimpleTokens(e.segments[n - 1]!.compound) : NO_TEXT;
+    if (wouldConflict(after.length === 0 ? before : before.length === 0 ? after : [...before, ...after], last)) {
       // First conflict: materialize the survivors seen so far, then skip this one.
       kept ??= extenders.slice(0, i);
     } else if (kept !== null) {

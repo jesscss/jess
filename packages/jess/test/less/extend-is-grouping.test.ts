@@ -3,8 +3,10 @@
  * compaction (EXTEND-SEMANTICS §7c) — follow the shared `:is()` grouping guard
  * in EVERY output mode (owner 2026-10-05): members of different specificity
  * split into equal-specificity groups, and a member that cannot sit inside
- * `:is()` is written as its own branch (the Less 4.x expanded form). Unlike the
- * nesting fold, extend grouping does not depend on `collapseNesting`.
+ * `:is()` is written as its own branch where the group was (ledger X3), the
+ * simples around the match joining the member's last compound (owner
+ * 2026-10-09: same element ⇒ same compound). Unlike the nesting fold, extend
+ * grouping does not depend on `collapseNesting`.
  */
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
@@ -65,20 +67,24 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
       .resolves.toBe('.intrusion .error, .intrusion .type1 .sidebar3');
   });
 
-  it('expands a complex member into a partial compound the way 4.x does', async () => {
-    /*
-     * The simples before the match join the member's first compound and those after it
-     * its last compound. `.a > .p .m.q` (the rest merged into the last compound) would
-     * match a `.m.q` whose `.p` is the child of `.a`, which neither form does.
-     */
+  /*
+   * The simples around the match describe the same element as the matched simple, the
+   * one a complex member's last compound names (owner 2026-10-09: same element ⇒ same
+   * compound). Leading a top-level header the member is written in place, those
+   * simples joining its last compound; after a combinator it stays one `:is()` unit,
+   * since `.a > .p .q.m` would make `.p`, not the `.m` element, the child of `.a`.
+   */
+  it('places a complex member on the element its match names', async () => {
     await expect(extendHeader('.a > .m.c { m: 1 } .p .q:extend(.c all) {}'))
-      .resolves.toBe('.a > .m.c, .a > .m.p .q');
+      .resolves.toBe('.a > .m.c, .a > .m:is(.p .q)');
     await expect(extendHeader('.a > .m.c.n { m: 1 } .p > .r .q:extend(.c all) {}'))
-      .resolves.toBe('.a > .m.c.n, .a > .m.p > .r .q.n');
+      .resolves.toBe('.a > .m.c.n, .a > .m:is(.p > .r .q).n');
+    await expect(extendHeader('.active.btn .icon { m: 1 } .toolbar .tool:extend(.btn all) {}'))
+      .resolves.toBe('.active.btn .icon, .toolbar .tool.active .icon');
 
-    // At the head too: `.m:is(.p .q)` is `.p .m.q`, not 4.x's `.m.p .q`.
+    // At the head: `.m` joins the member's last compound, `.p .q.m`, the meaning of `.m:is(.p .q)`.
     await expect(extendHeader('.m.c .d { m: 1 } .p .q:extend(.c all) {} .y:extend(.c all) {}'))
-      .resolves.toBe('.m:is(.c, .y) .d, .m.p .q .d');
+      .resolves.toBe('.m:is(.c, .y) .d, .p .q.m .d');
 
     // Leading the head compound, a complex member is the same selector inside `:is()`.
     await expect(extendHeader('.c.k .d { m: 1 } .p .q:extend(.c all) {} .r .s:extend(.c all) {}'))
@@ -86,9 +92,9 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
   });
 
   it('checks a chained group again where its member is spliced', async () => {
-    // `.a > :is(.p .q, .r .s).k` would match a `.p` above `.a`.
+    // A complex member may not join a group after `>`, so each is its own branch, one `:is()` unit.
     await expect(extendHeader('.a > .c { m: 1 } .j.k:extend(.c all) {} .p .q:extend(.j all) {} .r .s:extend(.j all) {}'))
-      .resolves.toBe('.a > .c, .a > .j.k, .a > .p .q.k, .a > .r .s.k');
+      .resolves.toBe('.a > .c, .a > .j.k, .a > :is(.p .q).k, .a > :is(.r .s).k');
   });
 
   it('never returns a split alternative to an authored :is() list', async () => {

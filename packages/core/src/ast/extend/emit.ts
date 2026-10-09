@@ -52,7 +52,7 @@ import {
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import type { Combinator } from '../node.js';
 import { branchHasAmp, composePath } from './compose.js';
-import { mergeCompound, NO_SIMPLES } from './conflict.js';
+import { mergeCompound, NO_SIMPLES, placeComplex } from './conflict.js';
 import { extendBranchSpecificity, irPseudoElementCarriesSuffix, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
@@ -553,13 +553,14 @@ function sameCompound(a: readonly Simple[], b: readonly Simple[]): boolean {
  * one group share one specificity (equal-specificity members gather however far
  * apart they are, in order of first appearance), and a member that cannot sit inside
  * `:is()` — a pseudo-element, an unlisted pseudo-class, a complex member the group
- * does not lead with — is written as its own branch, the way Less 4.x expands an
- * `all` match ({@link spliceMember}).
+ * does not lead with — is written as its own branch where the group was, the
+ * compound's other simples on the element they describe ({@link spliceMember}; owner
+ * 2026-10-09: same element ⇒ same compound).
  *
  * `root` is set for a top-level header. A complex member may stay in a group only
  * where the group leads the whole selector — first in the head compound of a
- * top-level header — because only there `:is(.t .b).k .box` matches what the
- * expanded `.t .b.k .box` does. A nested header has an implicit `&` before it.
+ * top-level header — because only there `:is(.t .b).k .box` matches what
+ * `.t .b.k .box` does. A nested header has an implicit `&` before it.
  * Returns `list` itself when no group splits.
  */
 function groupedBranches(list: Branch[], root: boolean): Branch[] {
@@ -711,7 +712,7 @@ function splitGroup(b: Branch, k: number, p: number, group: Simple & { t: 'is' }
       continue;
     }
     if (sizes[g] === 1) {
-      const spliced = spliceMember(b, k, p, members[i]!);
+      const spliced = spliceMember(b, k, p, members[i]!, root);
       if (spliced !== null) {
         pushRegrouped(out, spliced, root, k, p);
       }
@@ -810,17 +811,17 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   const unit = arms.length === 1 && !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
   for (const alternative of alone ?? []) {
     /*
-     * Written in place (ledger X3's placement; `:is(.c.k, .z) .d` → `.p .q.k .d`), except
+     * Written where the `:is()` stood, by X3's placement ({@link spliceMember}), except
      * a complex alternative of a one-arm `:is()` that does not lead the selector: that
      * `:is()` is one unit — a `&` referencing a parent of several compounds, or the
      * author's — and written in place it would change what the selector matches
-     * (`.c :is(#z .b)` is not `.c #z .b`; owner 2026-10-09).
+     * (`.c :is(#z .b)` is not `.c #z .b`; owner 2026-10-09, ledger J13).
      */
     if (unit && alternative.segments.length > 1) {
-      pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [alternative], fold: false }), root, k, p + 1);
+      pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [mkBranch(alternative.segments)], fold: false }), root, k, p + 1);
       continue;
     }
-    const spliced = spliceMember(b, k, p, alternative);
+    const spliced = spliceMember(b, k, p, alternative, root);
     if (spliced !== null) {
       pushRegrouped(out, spliced, root, k, p);
     }
@@ -848,39 +849,51 @@ function withSimple(b: Branch, k: number, p: number, simple: Simple): Branch {
 }
 
 /**
- * `b` with the group at `b.segments[k]`, simple `p`, replaced by one member, written
- * the way Less 4.x expands an `all` match: the simples before the group join the
- * member's first compound and those after it join its last compound
- * (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made valid
- * by {@link mergeCompound}; null when one would need two element types — no element
- * matches it, so the member contributes no branch. A member that leads with the
- * whole context before the group is written without it twice ({@link sharedContext}).
+ * `b` with the group at `b.segments[k]`, simple `p`, replaced by one member, as an `all`
+ * extender is written where it cannot sit in a group (ledger X3). The compound's other
+ * simples describe the same element as the simple the member stands in for (owner
+ * 2026-10-09: same element ⇒ same compound): a one-compound member joins them in place
+ * (`.m.c .d` + `.x:extend(.c all)` → `.m.x .d`); a member of several compounds is
+ * written in place where the compound opens a top-level header, those simples joining
+ * its LAST compound (`.active.btn .icon` + `.toolbar .tool:extend(.btn all)` →
+ * `.toolbar .tool.active .icon`; {@link placeComplex}), and anywhere else stays one
+ * `:is()` unit where the group was (`.x .m.c .d` + `.p .q:extend(.c all)` →
+ * `.x .m:is(.p .q) .d`), since written in place it would put them on another element.
+ * A nested header has an implicit `&` before it, so it never opens. A member that is
+ * the whole compound it stands in (no other simples, as a span a multi-compound target
+ * matched is) is written in its place. Each joined compound is made valid by
+ * {@link mergeCompound}; null when one would need two element types — no element
+ * matches it, so the member contributes no branch. A member that leads with the whole
+ * context before the group is written without it twice ({@link sharedContext}).
  */
-function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch | null {
+function spliceMember(b: Branch, k: number, p: number, member: Branch, root: boolean): Branch | null {
   const segment = b.segments[k]!;
   const value = segment.compound.value;
   const drop = sharedContext(b, k, member);
   const arm = drop === 0 ? member.segments : member.segments.slice(drop);
   const n = arm.length;
-  const before = value.slice(0, p);
-  const after = value.slice(p + 1);
-  const head = mergeCompound(before, arm[0]!.compound.value, n === 1 ? after : NO_SIMPLES);
-  const tail = n === 1 ? head : mergeCompound(NO_SIMPLES, arm[n - 1]!.compound.value, after);
-  if (head === null || tail === null) {
+  const combinator = k === 0 && segment.combinator === ' '
+    ? arm[0]!.combinator
+    : drop > 0 && member.segments.length > k ? narrower(segment.combinator, arm[0]!.combinator)! : segment.combinator;
+  let placed: SelectorPart[] | null;
+  if (n === 1 || value.length === 1) {
+    const head = mergeCompound(value.slice(0, p), arm[0]!.compound.value, n === 1 ? value.slice(p + 1) : NO_SIMPLES);
+    placed = head === null ? null : [{ combinator, compound: { value: head } }];
+    for (let j = 1; j < n && placed !== null; j++) {
+      placed.push(arm[j]!);
+    }
+  } else if (drop > 0 || (root && k === 0 && segment.combinator === ' ')) {
+    placed = placeComplex(arm, [...value.slice(0, p), ...value.slice(p + 1)], combinator);
+  } else {
+    /* The unit is the member's selector, not an arm an extend appended: no second split. */
+    return withSimple(b, k, p, { t: 'is', branches: [mkBranch(member.segments)], fold: false });
+  }
+  if (placed === null) {
     return null;
   }
   const segments = b.segments.slice(0, k);
-  segments.push({
-    combinator: k === 0 && segment.combinator === ' '
-      ? arm[0]!.combinator
-      : drop > 0 && member.segments.length > k ? narrower(segment.combinator, arm[0]!.combinator)! : segment.combinator,
-    compound: { value: head }
-  });
-  for (let j = 1; j < n - 1; j++) {
-    segments.push(arm[j]!);
-  }
-  if (n > 1) {
-    segments.push({ combinator: arm[n - 1]!.combinator, compound: { value: tail } });
+  for (const part of placed) {
+    segments.push(part);
   }
   for (let j = k + 1; j < b.segments.length; j++) {
     segments.push(b.segments[j]!);
