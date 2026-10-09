@@ -4197,24 +4197,51 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads and / or / not in a value paren group as a group around one condition', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@w: (1px > 2px and 1 = 1); @x: ((1px > 2px) and (1 = 1)); @y: (not (1px > 2px)); @z: (1 < 0 or 1 > 0 and 2 > 1); @v: (not);',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const cmp = (op: string, left: string, right: string) => ({ g: 'cmp', op, left: { src: left }, right: { src: right } });
+    const group = (guard: object) => ({ type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard } });
+    expect(result.value).toMatchObject({
+      rules: [
+        { name: 'w', value: group({ g: 'and', left: cmp('>', '1px', '2px'), right: cmp('=', '1', '1') }) },
+        { name: 'x', value: group({ g: 'and', left: cmp('>', '1px', '2px'), right: cmp('=', '1', '1') }) },
+        { name: 'y', value: group({ g: 'not', inner: cmp('>', '1px', '2px') }) },
+        { name: 'z', value: group({ g: 'or', left: cmp('<', '1', '0'), right: { g: 'and', left: cmp('>', '1', '0'), right: cmp('>', '2', '1') } }) },
+        { name: 'v', value: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'not' } } }
+      ]
+    });
+  });
+
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
     expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
   });
 
+  /*
+   * A comparison joined by `and` / `or` needs no group of its own in a value
+   * position, as in Less 4.x (lessc 4.9.1: `if(1 > 0 and 2 > 1, y, n)` is `y`);
+   * a `not` still takes a grouped operand.
+   */
   it('enforces Less function condition grouping for boolean() and if()', () => {
     const accepts = [
       'x: boolean(1 = 1);',
       'x: boolean(not (1 = 1));',
       'x: boolean((1 = 1) and (2 = 2));',
+      'x: boolean(1 = 1 and (2 = 2));',
       'x: if(1 = 1, yes, no);',
       'x: if(not (1 = 1), yes, no);',
-      'x: if((1 = 1) and (2 = 2), yes, no);'
+      'x: if((1 = 1) and (2 = 2), yes, no);',
+      'x: if(1 = 1 and (2 = 2), yes, no);',
+      'x: if((1 = 1) or (2 = 2) and (3 = 3), yes, no);'
     ];
     const rejects = [
       'x: boolean(not 1 = 1);',
-      'x: boolean(1 = 1 and (2 = 2));',
-      'x: if(not 1 = 1, yes, no);',
-      'x: if(1 = 1 and (2 = 2), yes, no);'
+      'x: if(not 1 = 1, yes, no);'
     ];
 
     for (const source of accepts) {
@@ -9251,9 +9278,50 @@ describe('Less AST grammar facts', () => {
     expect(selectorOf('@{s}:hover')).toMatchObject({
       selectors: [{ type: 'CompoundSelector', value: [interpolated, { text: ':hover' }] }]
     });
+  });
 
-    // A glued `|` makes `@{ns}` a namespace prefix, which is not modelled.
-    expect(parsesCompleteStylesheet('@ns: q; @{ns}|a { a: b; }')).toBe(false);
+  it('reads an interpolated namespace prefix as one namespaced type selector', () => {
+    const selectorOf = (source: string) => {
+      const result = run(lessGrammar.Document, `@ns: svg; ${source} { a: b; }`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return (stylesheet(result.value).rules[1] as Ruleset).selector;
+    };
+    const namespaced = (lit: string) => ({
+      type: 'SimpleSelector',
+      text: null,
+      interp: { parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'ns' }, unquote: true }, { lit }] }
+    });
+
+    expect(selectorOf('@{ns}|a')).toMatchObject({ selectors: [namespaced('|a')] });
+    expect(selectorOf('@{ns}|*')).toMatchObject({ selectors: [namespaced('|*')] });
+    expect(selectorOf('.x @{ns}|a')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [{ text: '.x' }, ' ', namespaced('|a')] }]
+    });
+    expect(selectorOf('@{ns}|a.b')).toMatchObject({
+      selectors: [{ type: 'CompoundSelector', value: [namespaced('|a'), { text: '.b' }] }]
+    });
+  });
+
+  it('collects an inline extend on a selector an interpolation leads', () => {
+    const extendsOf = (source: string, nested = false) => {
+      const result = run(lessGrammar.Document, `@s: ~".q"; ${nested ? `.p { ${source} { a: b; } }` : `${source} { a: b; }`}`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      const rule = stylesheet(result.value).rules[1] as Ruleset;
+      return (nested ? rule.rules[0] as Ruleset : rule).extendInstructions;
+    };
+    const target = (text: string, partial = false) => ({ partial, target: { selectors: [{ text }] } });
+
+    expect(extendsOf('@{s} .r:extend(.z)')).toMatchObject([target('.z')]);
+    expect(extendsOf('@{s}:extend(.z all)')).toMatchObject([target('.z', true)]);
+    expect(extendsOf('div @{s}:extend(.z), .t')).toMatchObject([target('.z')]);
+    expect(extendsOf('.@{s} .r:extend(.y, .z)')).toMatchObject([target('.y'), target('.z')]);
+    expect(extendsOf('@{s} > .r:extend(.z)', true)).toMatchObject([target('.z')]);
   });
 
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
@@ -9418,10 +9486,9 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps malformed, whitespace-split, and extend selector interpolation out of the ambiguous selector route', () => {
+  it('keeps malformed, whitespace-split selector interpolation out of the ambiguous selector route', () => {
     for (const source of [
-      '. @{name}-item { color: red; }',
-      '.@{name}:extend(.target) { color: red; }'
+      '. @{name}-item { color: red; }'
     ]) {
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -10459,8 +10526,7 @@ describe('Less AST grammar facts', () => {
     );
 
     for (const invalid of [
-      '.card[@{ spaced }=button] { color: red; }',
-      '@{namespace}|a { color: red; }'
+      '.card[@{ spaced }=button] { color: red; }'
     ]) {
       const direct = run(lessGrammar.Document, invalid, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE

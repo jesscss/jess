@@ -1601,7 +1601,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         )
       )
     ),
-    (children) => {
+    (children, _fields, span) => {
       const source = requireToken(children[0]).value;
       const path = requireLiteralQuoted(children[1]);
       const names = children.slice(2).filter(isToken)
@@ -1611,17 +1611,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           (child): child is StyleImportConfig =>
             typeof child === 'object' && child !== null && !('type' in child) && 'kind' in child && 'bindings' in child
         ) ?? null;
-        return styleImport('@-compose', path, {
+        return withSourceSpan(styleImport('@-compose', path, {
           mode: 'compose',
           namespace: names.find(name => name !== 'as' && name !== ';') ?? null,
           config
-        });
+        }), span);
       }
       if (source === '@-export') {
-        return styleImport('@-export', path, { mode: 'compose', forward: true });
+        return withSourceSpan(styleImport('@-export', path, { mode: 'compose', forward: true }), span);
       }
       if (source === '@-import') {
-        return styleImport('@-import', path, { mode: 'import' });
+        return withSourceSpan(styleImport('@-import', path, { mode: 'import' }), span);
       }
       throw new TypeError('Jess grammar produced an unknown style import form.');
     }
@@ -1694,17 +1694,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         )
       )
     ),
-    (children) => {
+    (children, _fields, span) => {
       const source = requireToken(children[0]).value;
       const path = requireLiteralQuoted(children[1]);
       if (source === '@-use') {
         const names = children.slice(2).filter(isToken)
           .map(requireToken).map(token => token.value);
-        return moduleImport(
+        return withSourceSpan(moduleImport(
           path,
           'use',
           names.find(name => name !== 'as' && name !== ';') ?? null
-        );
+        ), span);
       }
       if (source !== '@-from') {
         throw new TypeError('Jess grammar produced an unknown module import form.');
@@ -1714,11 +1714,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         const tokens = children.filter(isToken)
           .map(requireToken).map(token => token.value);
         const asIndex = tokens.indexOf('as');
-        return moduleImport(
+        return withSourceSpan(moduleImport(
           path,
           'from',
           asIndex >= 0 ? tokens[asIndex + 1] ?? null : null
-        );
+        ), span);
       }
       const imports = children.filter((child): child is ModuleImportSpecifier => typeof child === 'object' && child !== null && 'name' in child && 'alias' in child);
       const hasNamedGroup = children.some(child => isToken(child) && child.value === '(');
@@ -1726,16 +1726,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         if (imports.length !== 1) {
           throw new TypeError('Jess grammar produced invalid default module import bindings.');
         }
-        return moduleImport(
+        return withSourceSpan(moduleImport(
           path,
           'from',
           null,
           [],
           imports[0]!.name
-        );
+        ), span);
       }
       const commaBeforeNamedGroup = children.some((child, index) => index > 0 && isToken(child) && child.value === ',' && children.slice(index + 1).some(next => isToken(next) && next.value === '('));
-      return commaBeforeNamedGroup
+      return withSourceSpan(commaBeforeNamedGroup
         ? moduleImport(
             path,
             'from',
@@ -1748,7 +1748,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             'from',
             null,
             imports
-          );
+          ), span);
     }
   );
   const ExpressionQuoted = node<ExpressionFact>(

@@ -168,6 +168,42 @@ describe('Eval error source location', () => {
     expect(err.lines?.[2]).toContain('$missing-width');
   });
 
+  /*
+   * An import statement and a `url()` carry their source span, so a missing or
+   * cyclic import and a skipped URL option point at the statement or the
+   * `url()`, in every dialect that writes one.
+   */
+  it('points import and url() diagnostics at the statement, not 1:1', async () => {
+    /* Render `main.<ext>` (plus any further files) and report each diagnostic's code and place. */
+    const located = async (ext: string, source: string, more: Array<[string, string]> = [], options = {}) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-diagnostic-'));
+      for (const [name, text] of [[`main.${ext}`, source] as [string, string], ...more]) {
+        fs.writeFileSync(path.join(dir, name), text);
+      }
+      try {
+        const result = await new Compiler(options).renderToResult(path.join(dir, `main.${ext}`), { quiet: true });
+        return [...result.errors, ...result.warnings]
+          .map(d => `${d.code} ${path.basename(d.filePath ?? '')}:${d.line}:${d.column}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const missing = 'import/not-found main';
+    expect(await located('less', '.a { b: 1; }\n\n@import "missing.less";\n')).toEqual([`${missing}.less:3:1`]);
+    expect(await located('less', '.a { b: 1; }\n\n  @import url("missing.less");\n')).toEqual([`${missing}.less:3:3`]);
+    expect(await located('less', '.a { b: 1; }\n\n@import "missing.less" screen;\n')).toEqual([`${missing}.less:3:1`]);
+    expect(await located('less', '.a { b: 1; }\n\n@use "./missing.js";\n')).toEqual([`${missing}.less:3:1`]);
+    expect(await located('less', '.a { b: 1; }\n@import (multiple) "c1.less";\n', [['c1.less', '.c1 { a: 1; }\n\n@import (multiple) "main.less";\n']]))
+      .toEqual(['import/cycle main.less:2:1']);
+    expect(await located('less', '.a { b: 1; }\n\n.x { a: url(~"e.png"); }\n', [], { language: { less: { urlArgs: 'v=1' } } }))
+      .toEqual(['eval/url-option-skipped main.less:3:9']);
+    expect(await located('scss', '.a { b: 1; }\n\n@import "missing";\n')).toEqual([`${missing}.scss:3:1`]);
+    expect(await located('scss', '\n\n@use "missing";\n')).toEqual([`${missing}.scss:3:1`]);
+    expect(await located('scss', '\n\n@forward "missing";\n')).toEqual([`${missing}.scss:3:1`]);
+    expect(await located('jess', '.a { b: 1; }\n\n@-import "missing.jess";\n')).toEqual([`${missing}.jess:3:1`]);
+    expect(await located('jess', '\n\n@-compose "missing.jess";\n')).toEqual([`${missing}.jess:3:1`]);
+  });
+
   it('points a missing namespace member at the accessor chain', async () => {
     const source = [
       '#namespace {',

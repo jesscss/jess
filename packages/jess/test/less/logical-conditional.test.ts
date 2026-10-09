@@ -150,4 +150,23 @@ describe('Less logical / conditional functions', () => {
     const css = await render('@a: 3px; @x: (@a > 2px); .y { b: (@x); c: ((@x)); d: (@x) 1px; e: if((@x), yes, no); f: unknown((@x)); }');
     expect(css).toBe('.y {\n  b: (3px > 2px);\n  c: (3px > 2px);\n  d: (3px > 2px) 1px;\n  e: yes;\n  f: unknown(true);\n}\n');
   });
+
+  /*
+   * `and`, `or` and `not` in a value paren group make one condition, as a
+   * comparison does. Written out, each term under them keeps the parens Less's
+   * condition syntax requires (J20), so `(@a > 2px and @a < 5px)` is written
+   * `((3px > 2px) and (3px < 5px))` where Less 4.x keeps the ungrouped text;
+   * a group written with its terms grouped, and a `not` group, are written as
+   * Less 4.x writes them. A consumer reads the condition.
+   */
+  it('reads and / or / not in a value paren group as one condition', async () => {
+    const css = await render([
+      '@a: 3px;',
+      '@x: (@a > 2px and @a < 5px);',
+      '@y: ((@a > 2px) and (@a < 5px));',
+      '@z: (not (@a > 2px));',
+      '.y { a: @x; b: @y; c: @z; d: boolean(@x); e: if(@z, yes, no); f: boolean((@a < 1px or @a > 2px and @a < 5px)); g: if((@a > 2px and @a < 5px), yes, no); }'
+    ].join(' '));
+    expect(css).toBe('.y {\n  a: ((3px > 2px) and (3px < 5px));\n  b: ((3px > 2px) and (3px < 5px));\n  c: (not (3px > 2px));\n  d: true;\n  e: no;\n  f: true;\n  g: yes;\n}\n');
+  });
 });

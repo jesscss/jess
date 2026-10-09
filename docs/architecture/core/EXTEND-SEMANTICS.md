@@ -720,7 +720,11 @@ adjacent/child targets each match their respective combinator form.
   the interpolation is not a part of its own — `.c-@{n}.k` and `@{n}.k` at the head of a
   rule's selector resolve to the one token `.c-1.k` (mid-compound `.a.c-@{n}.k` keeps
   `.k` apart), and `.x:extend(.c-1 all)` misses it where lessc 4.9.1 matches. An
-  `:extend` attached to an interpolated selector (`.@{v}:extend(.b) {}`) does not parse.
+  inline `:extend` parses on any interpolated selector branch and extends from the
+  resolved branch (`@{s} .r:extend(.z)`, `div @{s}:extend(.z)`), but a branch that is
+  one interpolated simple (`@{s}:extend(.z)`, `.@{v}:extend(.b)`, `@{s}.r:extend(.z)`)
+  adds an extender whose own part is EMPTY to the target's header (`.z, {` at the
+  root, `.z, .p  {` under `.p`). A body-form `&:extend()` on the same rule works.
   (See §12 for the interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility

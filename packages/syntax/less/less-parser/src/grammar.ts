@@ -40,6 +40,7 @@ import {
   lessBranchSegments,
   callArgumentSource,
   combinatorTailReducer,
+  selectorBranchFactFrom,
   queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
@@ -581,8 +582,9 @@ const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(
 const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 // A bare `@{name}` is one selector simple, so a combinator, another compound,
 // a glued simple, a guard, `,` or `{` may follow it (`@{s} > .r`, `.r @{s} .t`).
-// Only a glued `|` is refused: that `@{ns}` is the namespace prefix of an
-// unmodelled namespace selector (`@{ns}|a`), not a simple of its own.
+// Only a glued `|` is refused: that `@{ns}` is the namespace prefix of a
+// namespaced type selector (`@{ns}|a`, `NamespaceTypeSelector`), not a simple of
+// its own.
 const bareInterpolatedSelectorEnd = regex(/(?!\|)/);
 // Semantically identical to the production Less `ampToken` terminal. A static ampersand
 // is already the canonical AST representation: `SimpleSelector.text` retains `&` and
@@ -1146,19 +1148,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(urlBoundaryWhitespace),
       literal(')')
     )),
-    (_children, fields) => {
+    (_children, fields, span) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
         throw new TypeError('Less plain URL produced repeated body facts.');
       }
       const body = captured?.value;
-      if (body === undefined) {
-        return url(any(''));
-      }
-      if (isQuoted(body) || isInterp(body)) {
-        return url(body);
-      }
-      return url(any(requireTerminalText(body)));
+      return withSourceSpan(url(body === undefined
+        ? any('')
+        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
     }
   );
   // Bare `@name` and `@{name}` URL bodies are structural Less values, not
@@ -1175,12 +1173,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const VariableUrl = node(
     'Url',
     sequence(urlFunctionOpen, choice(g.UrlInterpolation, g.VariableReference), literal(')')),
-    children => url(requireValueNode(children[1]))
+    (children, _fields, span) => withSourceSpan(url(requireValueNode(children[1])), span)
   );
   const RoutedVariableUrl = node(
     'Url',
     sequence(routed(), choice(g.UrlInterpolation, g.VariableReference), literal(')')),
-    children => url(requireValueNode(children[1]))
+    (children, _fields, span) => withSourceSpan(url(requireValueNode(children[1])), span)
   );
   const RoutedPlainUrl = node(
     'Url',
@@ -1191,19 +1189,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(urlBoundaryWhitespace),
       literal(')')
     )),
-    (_children, fields) => {
+    (_children, fields, span) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
         throw new TypeError('Less routed plain URL produced repeated body facts.');
       }
       const body = captured?.value;
-      if (body === undefined) {
-        return url(any(''));
-      }
-      if (isQuoted(body) || isInterp(body)) {
-        return url(body);
-      }
-      return url(any(requireTerminalText(body)));
+      return withSourceSpan(url(body === undefined
+        ? any('')
+        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
     }
   );
   const UrlTarget = choice(g.VariableUrl, g.PlainUrl);
@@ -1386,13 +1380,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const UseStatement = node<ModuleImport>(
     'ModuleImport',
     sequence(useKeyword, g.Quoted, optional(literal(';'))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const path = children[1];
       if (!isQuoted(path) || path.interp !== null) {
         throw new TypeError('Less @use requires a quoted module path.');
       }
       closeAmbientFunctions(state);
-      return moduleImport(path, 'use', null);
+      return withSourceSpan(moduleImport(path, 'use', null), span);
     }
   );
   const ImportStatement = node(
@@ -1454,11 +1448,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
             throw new LessImportPostludeError(span.start, span.end);
           }
           return withSourceSpan(
-            atRuleBlock('@media', tail, [styleImport(keyword.value, target, { options, mode: 'import' })]),
+            atRuleBlock('@media', tail, [withSourceSpan(styleImport(keyword.value, target, { options, mode: 'import' }), span)]),
             span
           );
         }
-        return styleImport(keyword.value, target, { options, mode: 'import' });
+        return withSourceSpan(styleImport(keyword.value, target, { options, mode: 'import' }), span);
       }
       return withImportSourceSpan(
         withImportTailStart(
@@ -2144,10 +2138,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * have their own productions above; do not widen this value position into a
    * permissive raw list. The group is read once, and the token after its first
    * operand decides what it is, as in `FunctionConditionTerm`: `)` closes a
-   * math group, and a comparison continues it as a group around the `a > b`
-   * condition `if()` and `boolean()` read (`@x: (1px > 2px)` holds that group;
-   * written out, it keeps its parens and its variables substitute).
+   * math group, and a comparison, `and` or `or` continues it as a group around
+   * the condition `if()` and `boolean()` read, as does a leading `not`
+   * (`@x: (1px > 2px)`, `@x: ((1px > 2px) and (1 = 1))`, `@x: (not (1px > 2px))`
+   * hold that group; written out, it keeps its parens and its variables
+   * substitute). A term is the `FunctionConditionTerm` shape over a math
+   * operand: `not`?, an operand, an optional comparison.
    */
+  const parenConditionTerm = sequence(
+    optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
+    g.MathSum,
+    optional(sequence(functionConditionOperator, g.MathSum))
+  );
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
@@ -2156,8 +2158,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(
       literal('('),
       optional(whitespace),
-      g.MathSum,
-      optional(sequence(functionConditionOperator, g.MathSum)),
+      parenConditionTerm,
+      many(sequence(choice(functionConditionAnd, functionConditionOr), parenConditionTerm)),
       optional(whitespace),
       literal(')')
     )),
@@ -2596,17 +2598,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => trimCustomValueEnd(requireValueNode(children[0]))
   );
   /**
-   * The `var()` name: css's `<custom-property-name>` first, then the Less forms
-   * that evaluate to one — a variable (`@v`, `@@v`, `@m[k]`), an escape
+   * The `var()` name: css's `<custom-property-name>`, or a Less form that
+   * evaluates to one — a variable (`@v`, `@@v`, `@m[k]`), an escape
    * (`~"--x"`), or a call (`e("--x")`). The parser keeps the shape; evaluation
    * supplies the name, as Less 4.x does (`var(@v)` with `@v: --x` is `var(--x)`).
+   * An identifier or a plain string is no custom-property name, but Less 4.x
+   * writes `var(foo)` and `var("--x")` as authored, so the parser accepts
+   * those shapes too. The identifier family — `--x`, `foo`, `e(` — is read
+   * once and routed, as in any value position.
    */
   const varName = choice(
-    g.CustomPropertyValue,
+    IdentifierOrFunction,
     g.EscapedQuoted,
+    g.Quoted,
     g.IndirectVariableReference,
-    g.VariableReferenceChain,
-    g.Call
+    g.VariableReferenceChain
   );
   const VarFunction = node(
     'VarCall',
@@ -4828,10 +4834,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ]));
     }
   );
+  /*
+   * The css `ns|E` type selector (selectors-4 §5.1) over css's own
+   * `AttributeNamespace` prefix; Less adds one slot, a prefix written as an
+   * interpolation (`@{ns}|a`), which stays one simple: an interpolation with
+   * its `|E` as literal text.
+   */
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
-    sequence(g.AttributeNamespace, choice(staticIdentifier, literal('*'))),
-    children => simpleSelector(children.map(requireTerminalText).join(''))
+    sequence(
+      choice(g.AttributeNamespace, noTrivia(sequence(g.VariableInterpolation, literal('|')))),
+      choice(staticIdentifier, literal('*'))
+    ),
+    children => children.some(isInterpolationFact)
+      ? interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+      : simpleSelector(children.map(requireTerminalText).join(''))
   );
   // Less's attribute name/value interpolation is one complete selector token.
   // Keep every literal delimiter and every interpolation reference (`@{…}` and
@@ -5178,19 +5195,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const SelectorBranch = node(
     'SelectorBranch',
     sequence(ExtendComplex, selectorBranchContinuation),
-    (children) => {
-      const subject = children.find(isLessSelectorBranch)!;
-      const extensions = children
-        .filter(Array.isArray)
-        .flatMap(child => child.filter(isExtendTargetFact))
-        .map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }));
-      return { selector: subject, extensions };
-    }
+    selectorBranchFactFrom
   );
+  /*
+   * A branch the static extend subject cannot read — an interpolation, an
+   * interpolated attribute or pseudo — is the full `ComplexSelector`, and an
+   * inline `:extend(…)` after it extends from it the same way
+   * (`@{s} .r:extend(.z)`).
+   */
   const DynamicSelectorBranch = node(
     'SelectorBranch',
-    g.ComplexSelector,
-    children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
+    sequence(g.ComplexSelector, selectorBranchContinuation),
+    selectorBranchFactFrom
   );
   const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
   const SelectorBranchTail = node(
@@ -5227,8 +5243,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       oneOrMoreSep(
         choice(SelectorBranch, node(
           'SelectorBranch',
-          g.RelativeSelector,
-          children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
+          sequence(g.RelativeSelector, selectorBranchContinuation),
+          selectorBranchFactFrom
         )),
         literal(',')
       )

@@ -2161,8 +2161,7 @@ describe('public Less parse()', () => {
       '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     );
     for (const invalid of [
-      '. @{name}-item { color: red; }',
-      '.@{name}:extend(.target) { color: red; }'
+      '. @{name}-item { color: red; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }

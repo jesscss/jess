@@ -82,6 +82,13 @@ describe('Less variable references through the public AST route', () => {
     );
   });
 
+  /* An identifier or a plain string is no custom-property name; Less 4.x writes it as authored, and so does Less 5. */
+  it('should write a var() named by an identifier or a string as authored', async () => {
+    await expect(parseAndRender('.box {\n  a: var(foo);\n  b: var("--x");\n  c: var(foo, 1px);\n}')).resolves.toBe(
+      '.box {\n  a: var(foo);\n  b: var("--x");\n  c: var(foo, 1px);\n}\n'
+    );
+  });
+
   it('should hold a comparison paren group as a condition, written as authored', async () => {
     const lessCode = [
       '@x: (1px > 2px);',
