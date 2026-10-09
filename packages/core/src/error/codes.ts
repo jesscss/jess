@@ -28,6 +28,7 @@ export type JessErrorCode =
   | 'parse/source-import-css-syntax'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
+  | 'compose/not-top-level'
   | 'import/cycle'
   | 'import/not-found'
   | 'import/load-failed'
@@ -214,6 +215,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Circular @-compose detected',
       reason: '${chain}',
       fix: 'Break the cycle (extract shared bits and compose that).'
+    }
+  ],
+  [
+    'compose/not-top-level',
+    {
+      summary: '@compose is only allowed at the top level of a stylesheet',
+      reason: 'A @compose is written inside a ruleset, at-rule, mixin, guard or loop body; a module is composed by the stylesheet, at its top level.',
+      fix: 'Move the @compose to the top level of the stylesheet, or use @import to bring the sheet into this block.'
     }
   ],
   [

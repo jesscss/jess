@@ -13587,6 +13587,10 @@ function planImportedFacts(
     let firstCssImportKey: string | null = null;
     let furtherCssImportKeys: Set<string> | null = null;
     const visitImport = async (st: StyleImport, importCssPlan: CssImportPlan | null, at: number): Promise<void> => {
+      /* A `@compose` is written at the top level of a stylesheet ({@link composeNotTopLevel}). */
+      if (st.mode === 'compose' && importScope !== '' && typeof importScope === 'string') {
+        throw composeNotTopLevel(st, e);
+      }
       recordAstExtendProfile?.('astExtend.preflight.importsVisited');
       const options = importRequestOptions(st.options);
       const specifier = importSpecifier(st, scope, e);
@@ -21437,6 +21441,18 @@ function activateComposeEdge(
  * execution has not reached. Only a configuring `set` edge asks, so the pending
  * planned composes are scanned rather than indexed by frame.
  */
+/**
+ * A `@compose` anywhere but the top level of a stylesheet: inside a ruleset, an at-rule
+ * block, a mixin, detached-ruleset, guard or loop body (owner 2026-10-09: `@compose` is
+ * document-root only). A sheet `@import`ed inside such a body is evaluated there, so its
+ * own `@compose` is not at the top level either. The walk tells the body from the frame
+ * it evaluates in ({@link Frame.outputOf}, {@link Frame.importScope}); the import planner,
+ * which walks the root and its at-rule blocks, from the at-rule context it is in.
+ */
+function composeNotTopLevel(node: StyleImport, e: EvalCtx): JessError {
+  return ERR.composeNotTopLevel({ node, ...callSiteLocation(node, e) });
+}
+
 function plannedAhead(frame: Frame, e: Emit): boolean {
   const pending = e.composeActivations?.values();
   if (pending === undefined) {
@@ -21475,6 +21491,9 @@ function expandStyleImport(
   /* The import sits in a ruleset's body, which the import planner never walks. */
   inRule = false
 ): MaybePromise<void> {
+  if (node.mode === 'compose' && (frame.outputOf !== undefined || frame.importScope !== undefined)) {
+    throw composeNotTopLevel(node, e);
+  }
   if (e.context?.options.processImports === false) {
     return;
   }

@@ -227,48 +227,47 @@ describe('Less @compose stylesheet modules', () => {
     expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
   });
 
-  /*
-   * The document-root `set` is activated ahead of output, but a plain compose
-   * nested in a rule or an at-rule that comes before it in source loads the
-   * module first, so the `set` is still the one that comes too late.
-   */
-  it('rejects a document-root `set` that a nested plain compose before it already loaded', async () => {
-    for (const entry of [
-      '.wrap { @compose "./theme.less"; .a { c: @theme.primary; } }\n@compose "./theme.less" as t2 set { @primary: red; }\n',
-      '@media screen { @compose "./theme.less"; .a { c: @theme.primary; } }\n@compose "./theme.less" as t2 set { @primary: red; }\n'
-    ]) {
-      const { errors } = await render(entry);
-      expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
-    }
-  });
-
   it('reports a rejected configuration at the compose that wrote it', async () => {
-    const directory = project([['theme.less', THEME], ['entry.less', '@compose "./theme.less";\n\n.wrap {\n  @compose "./theme.less" as t2 set { @primary: red; }\n}\n']]);
+    const directory = project([['theme.less', THEME], ['entry.less', '@compose "./theme.less";\n\n@compose "./theme.less" as t2 set { @primary: red; }\n']]);
     const compiler = new Compiler();
     try {
       const result = await compiler.renderToResult(path.join(directory, 'entry.less'));
       const errors = (result as { errors?: { code?: string; line?: number; column?: number }[] }).errors ?? [];
-      expect(errors.map(error => [error.code, error.line, error.column])).toEqual([['eval/module-config-rejected', 4, 3]]);
+      expect(errors.map(error => [error.code, error.line, error.column])).toEqual([['eval/module-config-rejected', 3, 1]]);
     } finally {
       compiler.dispose();
     }
   });
 
   /*
-   * Ruling J6(c): publishing a document-root compose's namespace early does not
-   * load the module early. A `set` nested before it in source comes first, so it
-   * configures the module, and the root compose inherits it.
+   * `@compose` is document-root only (owner 2026-10-09): one inside a ruleset, an
+   * at-rule block, a mixin, detached-ruleset or guard body, or in a sheet `@import`ed
+   * into one of those, is an error at the compose.
    */
-  it('lets a nested `set` before a document-root plain compose configure the module', async () => {
-    const { css, errors } = await render('.wrap { @compose "./theme.less" set { @primary: red; } c: @theme.primary; }\n@compose "./theme.less";\n.a { c: @theme.primary; }\n');
-    expect(errors).toEqual([]);
-    expect(css).toBe('.wrap {\n  .theme-base {\n    color: red;\n    border-color: #cc0000;\n  }\n  c: red;\n}\n.a {\n  c: red;\n}\n');
-  });
+  it('rejects a @compose anywhere but the top level of a stylesheet', async () => {
+    for (const [entry, file, line, column] of [
+      ['.wrap { @compose "./theme.less"; }', 'entry.less', 1, 9],
+      ['@media screen { @compose "./theme.less"; }', 'entry.less', 1, 17],
+      ['.m() { @compose "./theme.less"; } .x { .m(); }', 'entry.less', 1, 8],
+      ['& when (true) { @compose "./theme.less"; }', 'entry.less', 1, 17],
+      ['@d: { @compose "./theme.less"; }; @d();', 'entry.less', 1, 7],
+      ['.wrap { @import "./composes.less"; }', 'composes.less', 1, 1],
+      ['@media print { @import "./composes.less"; }', 'composes.less', 1, 1]
+    ] as const) {
+      const directory = project([['theme.less', THEME], ['composes.less', '@compose "./theme.less";'], ['entry.less', entry]]);
+      const compiler = new Compiler();
+      try {
+        const result = await compiler.renderToResult(path.join(directory, 'entry.less'));
+        expect(result.errors.map(error => [error.code, path.basename(error.filePath ?? ''), error.line, error.column]), entry)
+          .toEqual([['compose/not-top-level', file, line, column]]);
+      } finally {
+        compiler.dispose();
+      }
+    }
 
-  it('lets a nested plain compose after a document-root `set` inherit it', async () => {
-    const { css, errors } = await render('@compose "./theme.less" set { @primary: red; }\n.wrap { @compose "./theme.less"; c: @theme.primary; }\n');
-    expect(errors).toEqual([]);
-    expect(css).toBe('.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n.wrap {\n  c: red;\n}\n');
+    // At the top level of the entry, or of a sheet imported at its top level, it composes.
+    await expect(render('@import "./composes.less";\n.a { c: @theme.primary; }\n', [['composes.less', '@compose "./theme.less";']]))
+      .resolves.toEqual({ css: '.theme-base {\n  color: blue;\n  border-color: #0000cc;\n}\n.a {\n  c: blue;\n}\n', errors: [] });
   });
 
   /* Ruling J6(b): an identity an @import folded into the stylesheet cannot also be composed. */
