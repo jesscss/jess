@@ -1,13 +1,35 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SERIALIZE_PATH = fileURLToPath(new URL('../serialize.ts', import.meta.url));
 const SOURCE = readFileSync(SERIALIZE_PATH, 'utf8');
+const AST_DIR = fileURLToPath(new URL('..', import.meta.url));
 
 function occurrences(pattern: RegExp): number {
   return [...SOURCE.matchAll(pattern)].length;
 }
+
+/*
+ * A module-global `WeakMap` keyed by a value is a side table every reader of
+ * that fact pays a hash lookup for, where a field on the value would be one
+ * load (docs/perf/V8-ARCHITECTURE.md, invariants 7 and 11). Counted across
+ * every source file of `src/ast/`, not only the serializer: the text-group
+ * table that lived in `value-operate.ts` is now the `groups` field of the text
+ * values (owner 2026-10-09, ledger J16).
+ */
+describe('ast/ side-table ratchet', () => {
+  it('does not grow the WeakMap side tables of src/ast/', () => {
+    let count = 0;
+    for (const entry of readdirSync(AST_DIR, { recursive: true, encoding: 'utf8' })) {
+      if (entry.endsWith('.ts') && !entry.includes('__tests__')) {
+        count += [...readFileSync(join(AST_DIR, entry), 'utf8').matchAll(/new WeakMap/gu)].length;
+      }
+    }
+    expect(count).toBe(16);
+  });
+});
 
 describe('V19 one-evaluator projection ratchet', () => {
   it('names every statement evaluator that still dispatches a body', () => {

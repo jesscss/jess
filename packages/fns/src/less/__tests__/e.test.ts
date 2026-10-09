@@ -9,8 +9,8 @@ describe('e()', () => {
     const quoted = makeQuoted('hello', '"', false);
     const ident = makeKeyword('world');
 
-    expect(invoke(e, quoted)).toEqual({ type: 'Any', bytes: 'hello', escapedQuote: '"' });
-    expect(invoke(e, ident)).toEqual({ type: 'Any', bytes: 'world', escapedQuote: '"' });
+    expect(invoke(e, quoted)).toEqual({ type: 'Any', bytes: 'hello', escapedQuote: '"', groups: 0 });
+    expect(invoke(e, ident)).toEqual({ type: 'Any', bytes: 'world', escapedQuote: '"', groups: 0 });
   });
 
   it('uses the canonical implementation registered for Less', () => {

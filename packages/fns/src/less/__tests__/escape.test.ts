@@ -11,7 +11,8 @@ describe('escape()', () => {
     expect(result).toEqual({
       type: 'Any',
       bytes: 'a%20b%3Dx%3Ay%23z%3B%28%29',
-      escapedQuote: ''
+      escapedQuote: '',
+      groups: 0
     });
   });
 

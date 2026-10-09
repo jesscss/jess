@@ -78,15 +78,15 @@ as anywhere else (`calc(100% - ((min(@a, 20px))))` → `calc(100% - 10px)`), and
 the `calc()` stays (`calc((min(@a, 20px)))` → `calc(10px)`), also around an
 argument that resolves to one number (`calc(min(@a, 20px))` → `calc(10px)`).
 
-Text is never a computed value: parens around an escaped string — `~"…"`,
-`e()`, `escape()`, or the text an `if()` picks — stay wherever the text is
-written into math (an operand of math written out, or inside `calc()` and the
-other math functions), a variable holding it included, so the math never
-re-reads it: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`,
-`(e("1px + 2px")) * 2` → `calc((1px + 2px) * 2)`, and
-`@t: (e("1px + 2px")); calc(2 * @t)` → `calc(2 * (1px + 2px))`. Anywhere else
-the group gives its text: `(e("foo"))` → `foo`, `@a: (~"x"); .x-@{a}` →
-`.x-x`, and a function reads `x` from `(e("x"))`.
+Text is never a computed value, and it prints as written: parens around an
+escaped string — `~"…"`, `e()`, `escape()`, or the text an `if()` picks — stay
+wherever the text is written, a variable or a mixin argument holding it
+included: `(e("foo"))` → `(foo)`, `(e("x")), (~"y") 1px` → `(x), (y) 1px`,
+`foo((e("x")))` → `foo((x))`, `calc(2 * (e("1px + 2px")))` →
+`calc(2 * (1px + 2px))`, `(e("1px + 2px")) * 2` → `calc((1px + 2px) * 2)`, and
+`@t: (e("1px + 2px")); calc(2 * @t)` → `calc(2 * (1px + 2px))`. Only where the
+text is spliced or read does the group give its text: `@a: (~"x"); .x-@{a}` →
+`.x-x`, `"@{a}"` → `"x"`, and a function reads `x` from `(e("x"))`.
 
 ```less
 @a: #a80000; @b: #00000b;

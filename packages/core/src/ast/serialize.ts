@@ -145,6 +145,7 @@ import {
   EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
+  readText,
   delimiterClose,
   delimiterOpen,
   isValueGroup,
@@ -4398,14 +4399,14 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     return quotedFromFields(node.value, node.quote, node.escaped, node.src);
   }
   if (!e.ev) {
-    return { type: 'Keyword', text: src, bytes: src };
+    return { type: 'Keyword', text: src, bytes: src, groups: 0 };
   }
   switch (node.type) {
-    case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src };
+    case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src, groups: 0 };
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Any': return makeAny(node.src);
-    case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text };
+    case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text, groups: 0 };
   }
 }
 
@@ -5002,7 +5003,7 @@ function evalTyped(
        * call there is still written as authored.
        */
       if (e.reached && groupsOneValue(node)) {
-        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e));
+        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
       }
       if (isInertGroup(node) || (writtenAsAuthored(argument) && slotComputation(node.value, frame, e, true, true) === null)) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
@@ -5013,7 +5014,7 @@ function evalTyped(
         { ...e, parenFrames: pushParenFrame(e, true) },
         projectMixinValues,
         writtenAsAuthored(argument) ? argument : ARG_NONE
-      ), v => keepAuthoredGroup(v, e));
+      ), v => keepAuthoredGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -5370,27 +5371,30 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number
 }
 
 /**
- * Whether `v` is opaque text, whose paren groups are kept where it is written
- * into math ({@link textGroup}): an escaped string — `~"…"`, `e()`,
- * `escape()`, an interpolated template, the value-domain `Any` (ledger V3) —
- * in every dialect, and in `.scss` ({@link ValueEvaluator.sassCalculations})
- * an unquoted string, as dart-sass keeps a parenthesized string in a
- * calculation (`calc(2 * (unquote("1px + 2px")))` is `calc(2 * (1px + 2px))`,
- * `calc(2 * ($k))` with `$k: foo` is `calc(2 * (foo))`). The test is the
- * value's type, never its bytes.
+ * Whether `v` is opaque text, which carries the paren groups written around it
+ * ({@link textGroup}): an escaped string — `~"…"`, `e()`, `escape()`, an
+ * interpolated template, the value-domain `Any` (ledger V3) — in every dialect,
+ * and in `.scss` ({@link ValueEvaluator.sassCalculations}) an unquoted string
+ * inside a calculation, as dart-sass keeps a parenthesized string there
+ * (`calc(2 * (unquote("1px + 2px")))` is `calc(2 * (1px + 2px))`,
+ * `calc(2 * ($k))` with `$k: foo` is `calc(2 * (foo))`), or one a call returns
+ * in a group (`call`) that math reads: `(unquote("1px + 2px")) * 2` is
+ * `calc((1px + 2px) * 2)`, never `1px + 2px * 2`. Any other `.scss` keyword is
+ * an identifier, so `(foo) * 2` stays `(foo) * 2`. The test is the value's type
+ * and the node the group holds, never its bytes.
  */
-const isOpaqueText = (v: Value, e: EvalCtx): v is TextValue | KeywordValue =>
-  v.type === 'Any' || (v.type === 'Keyword' && e.ev?.sassCalculations === true);
+const isOpaqueText = (v: Value, e: EvalCtx, call = false): v is TextValue | KeywordValue =>
+  v.type === 'Any' || (v.type === 'Keyword' && ((e.calcDepth ?? 0) > 0 || call) && e.ev?.sassCalculations === true);
 
 /**
  * A paren group around opaque text ({@link isOpaqueText}): the text, carrying
- * the group, which only math writes (ledger J16, SETTLED — orchestrator
- * judgment under owner delegation 2026-10-07). Written into math — an operand
- * of an operation written out, inside `calc()` or another math function — the
- * text keeps its parens (`calc(2 * (e("1px + 2px")))` is
- * `calc(2 * (1px + 2px))`); everywhere else the group yields its text:
- * `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
- * `(e("x"))`, and `b: (e("x"))` is `b: x` ({@link mathText}).
+ * the group (ledger J16; owner 2026-10-09: "everywhere that is text should
+ * print AS WRITTEN"). An escaped string is written in its groups in a value and
+ * in math (`b: (e("x"))` is `b: (x)`, `calc(2 * (e("1px + 2px")))` is
+ * `calc(2 * (1px + 2px))`; {@link emitValue}), an unquoted `.scss` string only
+ * in math ({@link mathText}); where the text is spliced or read it is the text
+ * alone: `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
+ * `(e("x"))` ({@link readText}).
  */
 const textGroup = (v: TextValue | KeywordValue): Value => groupText(v);
 
@@ -5442,16 +5446,16 @@ function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: E
  * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`; and text carries
  * them ({@link textGroup}).
  */
-function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx): T | Value {
+function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx, call = false): T | Value {
   if (isLiteral(v) || isValueGroupArray(v)) {
     return v;
   }
   const grouped = groupAsWritten(v);
-  return grouped === v && isOpaqueText(v, e) ? textGroup(v) : grouped;
+  return grouped === v && isOpaqueText(v, e, call) ? textGroup(v) : grouped;
 }
 
 /** A group a reference reached, around one value: the value, text carrying the group ({@link whileReached}, {@link textGroup}). */
-const reachedGroup = (v: ValueGroup, e: EvalCtx): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e) ? textGroup(v) : v;
+const reachedGroup = (v: ValueGroup, e: EvalCtx, call = false): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e, call) ? textGroup(v) : v;
 
 /**
  * A paren group nothing in computes, around its evaluated content: the group
@@ -5604,15 +5608,20 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         }
       }
 
-      /*
-       * Inside `calc()` an operand is read as it is evaluated: kept math a mixin
-       * argument bound to is its arithmetic there, never a nested `calc()`
-       * (`.m(@v) { w: calc(@v * 2); }` with `.m(1px + 1em)` is
-       * `calc((1px + 1em) * 2)`), as the same math through a variable is.
-       */
-      if ((e.calcDepth ?? 0) > 0) {
+      {
+        /*
+         * Inside `calc()` an operand is read as it is evaluated: kept math a mixin
+         * argument bound to is its arithmetic there, never a nested `calc()`
+         * (`.m(@v) { w: calc(@v * 2); }` with `.m(1px + 1em)` is
+         * `calc((1px + 1em) * 2)`), as the same math through a variable is. Text
+         * in the groups written around it is that text wherever it is read, as
+         * through a variable: written in its groups (`calc(2 * @t)` with
+         * `.m((e("1px + 2px")))` is `calc(2 * (1px + 2px))`), spliced without
+         * them (ledger J16).
+         */
         const carried = e.snapshotValues?.get(node);
-        if (carried !== undefined && !isValueGroupArray(carried) && keptMathOf(carried) !== undefined) {
+        if (carried !== undefined && !isValueGroupArray(carried)
+          && ((carried.type === 'Any' && carried.groups !== 0) || ((e.calcDepth ?? 0) > 0 && keptMathOf(carried) !== undefined))) {
           return carried;
         }
       }
@@ -5846,14 +5855,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             : makeBlock(v, node.delimiter, node.escaped);
         }
         if (reached) {
-          return isLiteral(v) ? v : reachedGroup(v, e);
+          return isLiteral(v) ? v : reachedGroup(v, e, computation?.type === 'FunctionCall');
         }
         if (isLiteral(v)) {
           return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
             ? literal(`(${v})`)
             : v;
         }
-        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e);
+        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e, computation.type === 'FunctionCall');
       });
     }
     case 'Expression': {
@@ -9280,7 +9289,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  * unit multiset to validate.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, spliceCtx(e)), emitValue);
+  return mapMaybe(evalValue(node, frame, spliceCtx(e)), readText);
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
