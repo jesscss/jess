@@ -478,8 +478,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (ledger N11; orchestrator judgment under owner delegation
     // 2026-10-09): an imported sheet's `@charset` goes to the top of the output,
     // a later one naming another encoding warns (`hoistCharsets`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(592);
-    expect(occurrences(/new Map/gu)).toBe(92);
+    // +2 functions: the extend pre-pass resolves interpolated selectors into copies
+    // the planner reads, never into the parsed document (`plannedSelectorList`,
+    // `resolvedSelectorBranchOf`), one map of them per render (+2 `new Map`, the
+    // render and the static-import preparation).
+    expect(occurrences(/^function |^async function /gmu)).toBe(594);
+    expect(occurrences(/new Map/gu)).toBe(94);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
     expect(occurrences(/new WeakSet/gu)).toBe(2);

@@ -4219,6 +4219,15 @@ interface EvalCtx {
    */
   pseudoElementLists: Map<readonly string[], Uint8Array>;
 
+  /**
+   * [extend/selector-interp] The selector lists the extend pre-pass resolved
+   * ({@link resolveSelectorInterpForExtend}), each mapped to its resolved copy, which
+   * the planner reads ({@link plannedSelectorList}). The parsed lists are never
+   * written: a parsed document renders again with other values (a reused AST, a sheet
+   * placed twice). One map per render, shared by every context of it.
+   */
+  resolvedSelectors: Map<SelectorList, SelectorList>;
+
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
    * `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
@@ -10395,6 +10404,9 @@ interface DynamicExtendState {
    * rule outside this set is a dynamic emission whose facts are recorded at emit. */
   staticRules: Set<Ruleset>;
 
+  /** The extend pre-pass's resolved selector lists ({@link EvalCtx.resolvedSelectors}). */
+  resolvedSelectors: ReadonlyMap<SelectorList, SelectorList>;
+
   /** The import placements the walk issued, which the static plan never projected:
    * a rule they place is a dynamic emission even when `staticRules` holds it, since
    * the plan holds it at another copy of its sheet. */
@@ -10643,6 +10655,7 @@ function scratchEmit(e: EvalCtx): Emit {
     excluded: e.excluded,
     propNames: e.propNames,
     pseudoElementLists: e.pseudoElementLists,
+    resolvedSelectors: e.resolvedSelectors,
     reached: e.reached,
     optional: e.optional,
     calcDepth: e.calcDepth,
@@ -12432,25 +12445,27 @@ function rejectAsyncSelectorInterp(
 }
 
 /**
- * [extend/selector-interp] Resolve a compound's interpolated simple tokens in place, in
- * `frame`, replacing each `@{…}` token with the static resolved text — the SAME
- * per-simple resolution {@link resolveCompound} performs at emit, so the mutated
- * compound serializes byte-identically. Static (`&`, `.a`) simple tokens are untouched.
- * The lazy `_hasInterp` / `_canon` memos are cleared so the fast static path recomputes.
+ * [extend/selector-interp] A compound with its interpolated simple tokens resolved in
+ * `frame`: each `@{…}` token is the static resolved text — the SAME per-simple
+ * resolution {@link resolveCompound} performs at emit, so it serializes
+ * byte-identically. A new compound; the parsed one is never written (a parsed document
+ * renders again with other values). Static (`&`, `.a`) simple tokens are shared. A glued
+ * name merged into one token is no longer a compound.
  */
-function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | null, e: EvalCtx): void {
+function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: EvalCtx): SelectorTerm {
   if (!compoundHasInterp(comp)) {
-    return;
+    return comp;
   }
 
   /*
-   * Resolve EVERY interpolated simple before mutating any of them. A partial
-   * mutation (simple 0 replaced, simple 1 throwing) would leave the compound in a
-   * state that is neither the authored selector nor the resolved one, and the
-   * caller's recovery path would then serialize that corruption.
+   * Resolve EVERY interpolated simple before building, so a throw leaves nothing
+   * half-resolved for the caller's recovery path to serialize.
    */
   const texts: Array<string | undefined> = [];
-  const pseudos: PseudoSelector[] = [];
+
+  /* Each pseudo whose argument interpolates, and its resolved copy. */
+  const pseudos: SimpleToken[] = [];
+  const copies: SimpleToken[] = [];
   for (let i = 0; i < comp.value.length; i++) {
     const sim = comp.value[i]!;
     texts.push(undefined);
@@ -12458,6 +12473,7 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
       if (pseudoHasInterp(sim)) {
         probePseudoInterp(sim, frame, e);
         pseudos.push(sim);
+        copies.push(resolvePseudoInterpCopy(sim, frame, e));
       }
       continue;
     }
@@ -12466,15 +12482,13 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
     }
   }
   const tokens = resolvedCompoundTokens(comp.value, texts);
-  comp.value.length = 0;
-  for (const token of tokens) {
-    comp.value.push(token);
+  for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
+    const at = pseudos.indexOf(tokens[i]!);
+    if (at !== -1) {
+      tokens[i] = copies[at]!;
+    }
   }
-  for (const p of pseudos) {
-    resolvePseudoInterpInPlace(p, frame, e);
-  }
-  comp._hasInterp = false;
-  comp._canon = undefined;
+  return tokens.length === 1 ? tokens[0]! : { ...comp, value: tokens, _hasInterp: false, _canon: undefined };
 }
 
 /**
@@ -12594,7 +12608,7 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: EvalCt
 /**
  * [extend/selector-interp] Resolve every interpolated leaf under a structured
  * pseudo WITHOUT mutating anything, so a member that cannot resolve throws
- * BEFORE the first write. {@link resolveSelectorBranchInterpInPlace} rewrites as
+ * BEFORE the first write. {@link resolveSelectorBranchInterpCopy} builds as
  * it walks, so `:not(.#{$ok}, .#{$broken})` would otherwise leave branch one
  * rewritten and branch two authored — exactly the half-state the staging
  * comment above forbids, and the state the pre-pass's "leave the selector
@@ -12621,64 +12635,70 @@ function probePseudoInterp(p: PseudoSelector, frame: Frame | null, e: EvalCtx): 
 }
 
 /**
- * [extend/selector-interp] Resolve a structured pseudo's interpolated ARGUMENT
- * members in place. The pseudo itself stays a `PseudoSelector` — collapsing it
- * to a flat `SimpleSelector` would discard `crossable`, and the extend IR forks
- * a crossable `:is(…)` into a structured graft off exactly that field. Only the
- * members below it are rewritten, so the token keeps its structure and loses its
- * frame dependence.
+ * [extend/selector-interp] A structured pseudo with its interpolated ARGUMENT members
+ * resolved. It stays a `PseudoSelector` — collapsing it to a flat `SimpleSelector`
+ * would discard `crossable`, and the extend IR forks a crossable `:is(…)` into a
+ * structured graft off exactly that field. A new pseudo; the parsed one is never
+ * written.
  */
-function resolvePseudoInterpInPlace(p: PseudoSelector, frame: Frame | null, e: EvalCtx): void {
+function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: EvalCtx): PseudoSelector {
   const args = p.args;
   if (args === null || !pseudoHasInterp(p)) {
-    return;
+    return p;
   }
-  for (let i = 0; i < args.selectors.length; i++) {
-    args.selectors[i] = resolveSelectorBranchInterpInPlace(args.selectors[i]!, frame, e);
-  }
-  p._hasInterp = false;
+  const selectors = args.selectors.map(c => resolveSelectorBranchInterpCopy(c, frame, e));
+  return { ...p, args: { ...args, selectors }, _hasInterp: false };
 }
 
-function resolveSelectorTermInterpInPlace(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
+function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
   if (term.type === 'CompoundSelector') {
-    resolveCompoundInterpInPlace(term, frame, e);
-
-    /* A glued name merged into one token is no longer a compound. */
-    return term.value.length === 1 ? term.value[0]! : term;
+    return resolveCompoundInterpCopy(term, frame, e);
   }
   if (term.type === 'PseudoSelector' && term.args !== null) {
     if (pseudoHasInterp(term)) {
       probePseudoInterp(term, frame, e);
-      resolvePseudoInterpInPlace(term, frame, e);
+      return resolvePseudoInterpCopy(term, frame, e);
     }
     return term;
   }
   return term.interp !== null ? simpleSelector(resolveSimpleTextSync(term, frame, e)) : term;
 }
 
-function resolveSelectorBranchInterpInPlace(c: SelectorBranch, frame: Frame | null, e: EvalCtx): SelectorBranch {
+/** A selector branch with its interpolation resolved in `frame`: a new branch, or `c` when it holds none. */
+function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: EvalCtx): SelectorBranch {
   if (!selectorBranchHasInterp(c)) {
     return c;
   }
   if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
-    return resolveSelectorTermInterpInPlace(c, frame, e);
+    return resolveSelectorTermInterpCopy(c, frame, e);
   }
   const hasLiteralAmpersand = selectorBranchHasAmpersand(c);
-  const start = c.type === 'RelativeSelector' ? 1 : 0;
-  const resolvedTerms: Array<{ index: number; term: SelectorTerm }> = [];
-  for (let index = start; index < c.value.length; index += 1) {
-    const term = c.value[index];
-    if (term !== undefined && typeof term !== 'string') {
-      resolvedTerms.push({ index, term: resolveSelectorTermInterpInPlace(term, frame, e) });
-    }
+  const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator =>
+    typeof term === 'string' ? term : resolveSelectorTermInterpCopy(term, frame, e);
+  if (c.type === 'ComplexSelector') {
+    const [head, ...rest] = c.value;
+    return { ...c, value: [resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
   }
-  for (const { index, term } of resolvedTerms) {
-    c.value[index] = term;
+  const [combinator, head, ...rest] = c.value;
+  return { ...c, value: [combinator, resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+}
+
+/** The selector list `list` reads as for the extend planner: its resolved copy, or itself ({@link EvalCtx.resolvedSelectors}). */
+function plannedSelectorList(list: SelectorList, e: EvalCtx): SelectorList {
+  return e.resolvedSelectors.get(list) ?? list;
+}
+
+/** Record `branch` as branch `index` of `list`'s resolved copy ({@link EvalCtx.resolvedSelectors}). */
+function resolvedSelectorBranchOf(list: SelectorList, index: number, branch: SelectorBranch, e: EvalCtx): void {
+  if (branch === list.selectors[index]) {
+    return;
   }
-  c._hasInterp = false;
-  c._hasAmp = hasLiteralAmpersand;
-  c._canon = undefined;
-  return c;
+  let copy = e.resolvedSelectors.get(list);
+  if (copy === undefined) {
+    copy = { ...list, selectors: list.selectors.slice() };
+    e.resolvedSelectors.set(list, copy);
+  }
+  copy.selectors[index] = branch;
 }
 
 /**
@@ -12688,7 +12708,10 @@ function resolveSelectorBranchInterpInPlace(c: SelectorBranch, frame: Frame | nu
  * neither matches an `:extend()` target nor emits its concrete header. This pre-pass
  * resolves each interp selector to its static text in the SAME lexical frame emit
  * would use (a rule's own selector resolves in its PARENT frame), so both the matcher
- * and the nested-plan header see the concrete selector. It mirrors the extend planner's
+ * and the nested-plan header see the concrete selector. It resolves into copies the
+ * planner reads ({@link EvalCtx.resolvedSelectors}) and never writes the parsed
+ * document, which renders again with other values: the same parsed sheet rendered
+ * with `@v: 1` and then `@v: 2` gives `.c-1` and then `.c-2`. It mirrors the extend planner's
  * walk EXACTLY (Ruleset + AtRuleBlock only; never a MixinDefinition body — those resolve per call
  * frame, not lexically, and the planner skips them too), so no rule is resolved that the
  * planner would not also see. A resolution throw (an unresolvable interp on a guarded /
@@ -12731,20 +12754,17 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           if (loneGroupInterp(c, frame, e) !== null) {
             continue;
           }
-          const resolved = resolveSelectorBranchInterpInPlace(c, frame, e);
-          list.selectors[index] = resolved;
+          const resolved = resolveSelectorBranchInterpCopy(c, frame, e);
+          resolvedSelectorBranchOf(list, index, resolved, e);
 
           /*
            * An inline `:extend()` holds its own branch — the parser's object, shared with
-           * this list. A lone interpolated simple resolves to a NEW token, so the extend
-           * is pointed at it too, or it extends from the unresolved branch, whose IR
-           * writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
+           * this list — so the extend reads the resolved branch too, or it extends from
+           * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
            */
-          if (resolved !== c) {
-            for (const inst of st.extendInstructions ?? []) {
-              if (inst.subject?.selectors[0] === c) {
-                inst.subject.selectors[0] = resolved;
-              }
+          for (const inst of st.extendInstructions ?? []) {
+            if (inst.subject?.selectors[0] === c) {
+              resolvedSelectorBranchOf(inst.subject, 0, resolved, e);
             }
           }
         } catch (error) {
@@ -12771,7 +12791,7 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
             continue;
           }
           try {
-            inst.target.selectors[index] = resolveSelectorBranchInterpInPlace(c, frame, e);
+            resolvedSelectorBranchOf(inst.target, index, resolveSelectorBranchInterpCopy(c, frame, e), e);
           } catch (error) {
             /*
              * As above: an awaitable target is reported; a genuinely unresolvable
@@ -13161,7 +13181,7 @@ function planImportedStaticExtend(
         e.importedWalkPlacement = true;
       }
     }
-    if (statement.type === 'Ruleset' && statement.selector.selectors.some(selectorBranchHasInterp)) {
+    if (statement.type === 'Ruleset' && plannedSelectorList(statement.selector, e).selectors.some(selectorBranchHasInterp)) {
       /*
        * A selector the planner could not resolve (see `planImported`) resolves only in
        * the frame the walk emits it in, so the rule and every rule nested in it are left
@@ -13171,7 +13191,7 @@ function planImportedStaticExtend(
       e.importedWalkPlacement = true;
       collectBodyExtendAtoms([statement], overlay.dynamicTargetAtoms ??= new Set());
     } else if (statement.type === 'Ruleset') {
-      const own = levelFromSelectorList(statement.selector);
+      const own = levelFromSelectorList(plannedSelectorList(statement.selector, e));
       const rulePath = [...path, own];
       const subject: PlanSubject = {
         rule: statement, path: rulePath, scope, ownLocal: own, parent,
@@ -13182,9 +13202,9 @@ function planImportedStaticExtend(
       if (statement.extendInstructions) {
         for (const inst of statement.extendInstructions) {
           const extenderPath = inst.subject
-            ? [...path, levelFromSelectorList(inst.subject)]
+            ? [...path, levelFromSelectorList(plannedSelectorList(inst.subject, e))]
             : rulePath;
-          for (const sel of inst.target.selectors) {
+          for (const sel of plannedSelectorList(inst.target, e).selectors) {
             overlay.instructions.push({
               target: branchFromSelector(sel), partial: inst.partial, extenderPath, scope,
               order: overlay.instructions.length, extenderHidden: hidden,
@@ -13499,8 +13519,8 @@ function planImportedFacts(
     /*
      * An interpolated rule selector is resolved before it is planned, as the root's are
      * (ledger X7 as amended): in the sheet's own frame under its importer's, which is
-     * where the walk resolves it, and in place, so the walk writes that same
-     * resolution and nothing is resolved twice (ledger X12).
+     * where the walk resolves it, into a copy the planner reads, so the parsed sheet a
+     * second placement or render reads is untouched ({@link EvalCtx.resolvedSelectors}).
      */
     if (bodyHasInterpRule(rules)) {
       resolveSelectorInterpForExtend(rules, {
@@ -13944,6 +13964,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     excluded: new Set(),
     propNames: new Set(),
     pseudoElementLists: new Map(),
+    resolvedSelectors: new Map(),
     reached: false,
     optional: options?.optional ?? false,
     pending: [],
@@ -14051,6 +14072,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
+    resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
     reached: false, // [paren-group] inside a value a reference reached
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
@@ -14141,7 +14163,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0 || e.importedWalkPlacement) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
-    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact'); // [extend] null when no `:extend()` anywhere
+    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact', e.resolvedSelectors); // [extend] null when no `:extend()` anywhere
     e.importPlacements = planned.imports?.importPlacements ?? null;
 
     /*
@@ -14183,6 +14205,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerStarts: [],
         containerEnds: [],
         staticRules,
+        resolvedSelectors: e.resolvedSelectors,
         walkPlacements: null,
         subjects: [],
         instructions: [],
@@ -15286,7 +15309,7 @@ function recordDynamicExtendFacts(
 function recordDynamicInstruction(dyn: DynamicExtendState, inst: ExtendInstruction, extenderPath: Level[], hidden: boolean): void {
   let targets = dyn.targetBranches.get(inst);
   if (targets === undefined) {
-    targets = inst.target.selectors.map(branchFromSelector);
+    targets = (dyn.resolvedSelectors.get(inst.target) ?? inst.target).selectors.map(branchFromSelector);
     dyn.targetBranches.set(inst, targets);
   }
   for (const target of targets) {

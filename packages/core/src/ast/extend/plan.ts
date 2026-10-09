@@ -208,7 +208,7 @@ export function atRuleScope(scope: number[], node: AtRuleBlock, ids: AtRuleScope
   return [...scope, id];
 }
 
-export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
+export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: ReadonlyMap<SelectorList, SelectorList>): Plan {
   recordAstExtendProfile?.('astExtend.plan.calls');
   const subjects: PlanSubject[] = [];
   const instructions: PlanInstruction[] = [];
@@ -232,9 +232,12 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
     for (const st of statements) {
       if (st.type === 'Ruleset') {
         const rule = st;
-        const own = levelFromSelectorList(rule.selector);
+
+        /* An interpolated selector reads as the extend pre-pass resolved it (`resolved`), the parsed one untouched. */
+        const selector = resolved?.get(rule.selector) ?? rule.selector;
+        const own = levelFromSelectorList(selector);
         const rulePath = [...path, own];
-        const ownExt = ext === null ? null : writableLevel(rule.selector, own);
+        const ownExt = ext === null ? null : writableLevel(selector, own);
         const ruleExt = ext === null || ownExt === null ? null : ext === path && ownExt === own ? rulePath : [...ext, ownExt];
         const subject: PlanSubject = {
           rule,
@@ -257,13 +260,14 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
              * that one branch so a comma-sibling is never folded into the target. A
              * body-form `&:extend` (no subject) keeps the whole rule selector.
              */
-            const extenderPath = inst.subject
-              ? ext === null || inst.subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, levelFromSelectorList(inst.subject)]
+            const subject = inst.subject && (resolved?.get(inst.subject) ?? inst.subject);
+            const extenderPath = subject
+              ? ext === null || subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, levelFromSelectorList(subject)]
               : ruleExt;
             if (extenderPath === null) {
               continue;
             }
-            for (const sel of inst.target.selectors) {
+            for (const sel of (resolved?.get(inst.target) ?? inst.target).selectors) {
               /* An unresolved target names nothing, and its `''` would match an unresolved subject. */
               if (selectorBranchHasInterp(sel)) {
                 continue;

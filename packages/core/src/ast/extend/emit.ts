@@ -59,7 +59,7 @@ import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExte
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
-import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
+import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import { branchTextIsPlaceholder } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
 
@@ -1016,7 +1016,7 @@ function lastCompound(b: Branch): Branch {
  * an extended header keeps ({@link nestingFold}); extend's own groups are guarded in
  * every mode.
  */
-export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true): ExtendResults | null {
+export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true, resolved?: ReadonlyMap<SelectorList, SelectorList>): ExtendResults | null {
   /*
    * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
    * `:extend()` anywhere) before any subject/instruction plan is built.
@@ -1024,7 +1024,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
   if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) {
     return null;
   }
-  const plan = collectPlan(root, overlay);
+  const plan = collectPlan(root, overlay, resolved);
   if (plan.instructions.length === 0) {
     return null;
   }
