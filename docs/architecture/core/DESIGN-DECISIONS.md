@@ -16,6 +16,15 @@ Rules of the road:
 - **"Source" pointers** are relative paths inside this dir unless prefixed
   `memory:` (a note in the owner's project memory,
   `.claude/projects/-Users-matthew-git-oss-jess/memory/<name>.md`).
+- **Owner rows are locked; notes go in `DESIGN-DECISIONS-NOTES.md`.** Every
+  owner-ruled row (the detection rule is in `scripts/rulings-lock.mjs`) is
+  hashed in `owner-rulings.lock.json`, with its conformance test in
+  `packages/jess/test/owner-rulings.test.ts`. `pnpm check:guardrails` fails
+  when either changes without the lock, and regenerating the lock
+  (`pnpm rulings:lock`) needs the owner's explicit approval. Implementation
+  state, landed-code links and agent notes go in
+  [`DESIGN-DECISIONS-NOTES.md`](DESIGN-DECISIONS-NOTES.md) under the row id —
+  never appended to an owner row.
 
 ## Ledger process (PROPOSED)
 
@@ -23,7 +32,8 @@ Every owner question that can alter parser facts, AST shape, lookup, evaluation,
 or emitted CSS gets an `OPEN` row here before implementation. Its linked detail
 record must state the exact owner proposal, known unknowns, and required
 invariants/tests. The owner changes only the row's status/ruling when deciding;
-the implementing agent then links the landed code and tests. Superseded rows
+the implementing agent then links the landed code and tests in
+`DESIGN-DECISIONS-NOTES.md`. Superseded rows
 remain with their status and replacement pointer rather than being deleted.
 
 ## 0. The epistemics — there is NO external authority (read first)

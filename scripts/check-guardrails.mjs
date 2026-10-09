@@ -32,6 +32,11 @@
  *      `scripts/check-guardrails.reference-baseline.json`; the baseline may only
  *      shrink.
  *
+ *   4. Owner rulings are locked: every owner-ruled row of the decision ledger
+ *      and every test in `packages/jess/test/owner-rulings.test.ts` matches its
+ *      hash in `docs/architecture/core/owner-rulings.lock.json`. Updating the
+ *      lock (`pnpm rulings:lock`) is an owner-approved act.
+ *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
  * the closure rests on. An agent that types `OWNER-RULED:` over its own opinion
@@ -48,6 +53,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compareRulingsLock, LOCK, LEDGER, RULING_TESTS } from './rulings-lock.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -536,6 +542,42 @@ if (staleBaseline.length > 0) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Assertion 4 — owner rulings change only with the owner's approval.
+ * ------------------------------------------------------------------ */
+
+/*
+ * The ledger row and its conformance test are the ruling. An agent that made
+ * the code match lessc and then "corrected" the row, the test or the golden to
+ * match the code has reversed an owner ruling silently. A change to either now
+ * fails until the lock changes with it, and the lock diff names the ruling.
+ * Detection of owner-ruled rows and the hashing rules: scripts/rulings-lock.mjs.
+ */
+const rulings = compareRulingsLock();
+if (!rulings.lock) {
+  failures.push(`${LOCK} is MISSING. Restore it from git history; regenerating it is an owner-approved act.`);
+} else if (rulings.ledger.length + rulings.tests.length > 0) {
+  const ids = [...new Set([...rulings.ledger, ...rulings.tests].map(c => c.id))];
+  failures.push(
+    [
+      `This change edits OWNER RULING ${ids.join(', ')}. Owner rulings change only with the owner's explicit approval.`,
+      '',
+      ...rulings.ledger.map(c => `    ${c.id}: ${LEDGER} row ${c.what}`),
+      ...rulings.tests.map(c => `    ${c.id}: ${RULING_TESTS} test ${c.what}${c.key === c.id ? '' : `\n      ${c.key}`}`),
+      '',
+      '  When code disagrees with an owner ruling, the CODE is the defect: fix the code, or',
+      '  escalate to the owner. Never edit the ruling, its conformance test, the golden or',
+      '  the docs to match the code or lessc. Less 4.x output is never a reason.',
+      '',
+      '  Implementation notes do not go in an owner row: put them in',
+      '  docs/architecture/core/DESIGN-DECISIONS-NOTES.md under the row id.',
+      '',
+      '  Only if the owner explicitly approved THIS change: run `pnpm rulings:lock` (it prints',
+      `  which rulings changed) and commit ${LOCK} with it.`
+    ].join('\n')
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 if (failures.length > 0) {
@@ -553,5 +595,6 @@ if (failures.length > 0) {
 
 console.log(
   `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
-  + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined).`
+  + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined); `
+  + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}.`
 );
