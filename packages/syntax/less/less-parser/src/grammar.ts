@@ -135,6 +135,8 @@ import {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rulesetExtensions,
+  selectorListWithExtendsFrom,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,
@@ -5215,6 +5217,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         .map(target => ({ target: target.target, partial: target.partial }))
     })
   );
+  /*
+   * The static branch must end at a list boundary, which is what sends a branch
+   * it cannot read whole to the dynamic one. The dynamic and relative branches
+   * are the last arm, so the list or ruleset that holds them consumes the
+   * delimiter after them, and they peek for nothing.
+   */
   const selectorBranchContinuation = choice(
     sequence(ExtendPseudo, selectorBranchBoundary),
     selectorBranchBoundary
@@ -5232,7 +5240,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const DynamicSelectorBranch = node(
     'SelectorBranch',
-    sequence(g.ComplexSelector, selectorBranchContinuation),
+    sequence(g.ComplexSelector, optional(ExtendPseudo)),
     selectorBranchFactFrom
   );
   const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
@@ -5256,12 +5264,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         literal(',')
       )
     ),
-    (children, _fields, span) => ({
-      selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
-        ? [child.selector]
-        : [])), span),
-      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
-    })
+    (children, _fields, span) => selectorListWithExtendsFrom(children, span)
   );
   const relativeSelectorListWithExtends = node(
     'SelectorListWithExtends',
@@ -5270,33 +5273,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       oneOrMoreSep(
         choice(SelectorBranch, node(
           'SelectorBranch',
-          sequence(g.RelativeSelector, selectorBranchContinuation),
+          sequence(g.RelativeSelector, optional(ExtendPseudo)),
           selectorBranchFactFrom
         )),
         literal(',')
       )
     ),
-    (children, _fields, span) => ({
-      selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
-        ? [child.selector]
-        : [])), span),
-      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
-    })
+    (children, _fields, span) => selectorListWithExtendsFrom(children, span)
   );
   const RulesetWithExtends = node(
     'Ruleset',
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = bodyExtensionsOf(children);
-      const extensions = [...selectorFact.extensions, ...bodyExtensions];
+      const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
         rule(
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
           // the braces. This validates that fact list; it never reparses body text.
           requireRulesetBody(children.filter(isStatement)),
-          extensions.length === 0 ? undefined : extensions,
+          extensions,
           children.find(isMixinGuard)
         ),
         rawChildren
@@ -5309,13 +5306,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = bodyExtensionsOf(children);
-      const extensions = [...selectorFact.extensions, ...bodyExtensions];
+      const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
         rule(
           selectorFact.selector,
           requireRulesetBody(children.filter(isStatement)),
-          extensions.length === 0 ? undefined : extensions,
+          extensions,
           children.find(isMixinGuard)
         ),
         rawChildren

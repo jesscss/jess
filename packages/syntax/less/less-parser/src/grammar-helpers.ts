@@ -1737,7 +1737,8 @@ function isBodyExtendFact(value: unknown): value is BodyExtendFact {
     && value.bodyExtensions.every(isExtendInstruction);
 }
 
-const NO_BODY_EXTENSIONS: readonly ExtendInstruction[] = [];
+/** The shared empty extension list: a selector or body without an extend allocates nothing. */
+const NO_EXTENSIONS: readonly ExtendInstruction[] = [];
 
 /**
  * The body-form `&:extend()`s among a ruleset or mixin-definition body's reduced
@@ -1751,7 +1752,7 @@ function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruct
       (out ??= []).push(...child.bodyExtensions);
     }
   }
-  return out ?? NO_BODY_EXTENSIONS;
+  return out ?? NO_EXTENSIONS;
 }
 
 /**
@@ -1760,11 +1761,42 @@ function bodyExtensionsOf(children: readonly unknown[]): readonly ExtendInstruct
  */
 function selectorBranchFactFrom(children: readonly unknown[]): SelectorBranchFact {
   const subject = children.find(isLessSelectorBranch)!;
-  const extensions = children
-    .filter(Array.isArray)
-    .flatMap(child => child.filter(isExtendTargetFact))
-    .map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }));
-  return { selector: subject, extensions };
+  let extensions: ExtendInstruction[] | undefined;
+  for (const child of children) {
+    if (!Array.isArray(child)) {
+      continue;
+    }
+    for (const target of child) {
+      if (isExtendTargetFact(target)) {
+        (extensions ??= []).push({ target: target.target, partial: target.partial, subject: selist(subject) });
+      }
+    }
+  }
+  return { selector: subject, extensions: extensions ?? NO_EXTENSIONS };
+}
+
+/**
+ * `SelectorListWithExtends`' reduction: the branches as one selector list, and
+ * the inline extends of every branch, in order — the shared empty list when
+ * no branch has one.
+ */
+function selectorListWithExtendsFrom(children: readonly unknown[], span: SourceSpan): SelectorListWithExtendsFact {
+  const branches: SelectorBranch[] = [];
+  let extensions: ExtendInstruction[] | undefined;
+  for (const child of children) {
+    if (isSelectorBranchFact(child)) {
+      branches.push(child.selector);
+      if (child.extensions.length !== 0) {
+        (extensions ??= []).push(...child.extensions);
+      }
+    }
+  }
+  return { selector: withSourceSpan(selist(...branches), span), extensions: extensions ?? NO_EXTENSIONS };
+}
+
+/** A ruleset's extends: its selector's inline ones, then its body's; none when it has neither. */
+function rulesetExtensions(selector: readonly ExtendInstruction[], body: readonly ExtendInstruction[]): ExtendInstruction[] | undefined {
+  return selector.length === 0 && body.length === 0 ? undefined : [...selector, ...body];
 }
 
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
@@ -2906,6 +2938,8 @@ export {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rulesetExtensions,
+  selectorListWithExtendsFrom,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,
