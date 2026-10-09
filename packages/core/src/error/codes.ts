@@ -26,6 +26,7 @@ export type JessErrorCode =
   | 'parse/uncalled-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
+  | 'parse/invalid-mixin-argument'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'import/cycle'
@@ -196,6 +197,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@-import cannot carry a media, supports or layer condition without (css)',
       reason: '@-import has Less import semantics, so a CSS import condition needs the (css) option.',
       fix: 'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.'
+    }
+  ],
+  [
+    'parse/invalid-mixin-argument',
+    {
+      summary: 'Invalid mixin argument',
+      reason: 'This item cannot be an argument or parameter of a mixin in this position.',
+      fix: 'Rewrite the argument as a value, or separate it with ";".'
     }
   ],
 

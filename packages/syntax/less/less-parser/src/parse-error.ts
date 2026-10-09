@@ -222,6 +222,55 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
 }
 
 /**
+ * What is wrong with one item of a mixin argument or parameter list. `named` and
+ * `rest` exist only because the list holds a `;` (ledger P45): every `,` then
+ * belongs to a comma-list value, which a name or a spread cannot be part of.
+ */
+export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value';
+
+const MIXIN_ARGUMENT_PROBLEMS: Record<LessMixinArgumentProblem, { message: string; reason: string; fix: string }> = {
+  named: {
+    message: 'A named argument must start its ;-separated argument.',
+    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A name can only begin an argument.',
+    fix: 'Put a ";" before the named argument.'
+  },
+  rest: {
+    message: 'A spread or rest argument cannot be part of a comma list.',
+    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A spread or rest is not a value.',
+    fix: 'Separate it from the comma list with ";".'
+  },
+  anonymousRest: {
+    message: 'A mixin call cannot pass "..." on its own.',
+    reason: 'A bare "..." declares a rest parameter in a mixin definition. A call spreads a value.',
+    fix: 'Spread a variable, for example @rest..., or remove the "...".'
+  },
+  value: {
+    message: 'A mixin call is not a value here.',
+    reason: 'A parameter default, a pattern parameter and an item of a comma-list argument must be values.',
+    fix: 'Replace the mixin call with a value, or pass it as an argument of its own.'
+  }
+};
+
+/** One argument or parameter of a mixin list, located at that item. */
+export class LessMixinArgumentError extends SyntaxError {
+  readonly code = 'parse/invalid-mixin-argument' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, problem: LessMixinArgumentProblem) {
+    const text = MIXIN_ARGUMENT_PROBLEMS[problem];
+    super(text.message);
+    this.name = 'LessMixinArgumentError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
+  }
+}
+
+/**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no
  * wrapping desugaring. The discriminant is real-CSS-vs-compile-time, NOT a
  * dialect split (owner 2026-09-02; DESIGN-DECISIONS.md A10, §12.3b amendment):

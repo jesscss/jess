@@ -75,7 +75,6 @@ import {
   isLessCallArg,
   isLessEachCallback,
   isMixinCall,
-  isMixinCallArgument,
   isMixinCallFact,
   isMixinDefinitionFact,
   isMixinGuard,
@@ -113,6 +112,7 @@ import {
   mixinCallArgsFromInterior,
   mixinCallFromSelectorBranch,
   mixinDefinitionNameFromSelectorBranch,
+  mixinInteriorFromFields,
   mixinParamsFromInterior,
   queryClauseReducer,
   quotedFromChildren,
@@ -125,7 +125,6 @@ import {
   requireInterpolationFact,
   requireKeyword,
   requireMixinCallArgumentValue,
-  requireMixinInteriorItem,
   requireMixinReferenceBaseFact,
   referenceBracketTailFact,
   referenceCallTailFact,
@@ -252,7 +251,6 @@ type LessRules = {
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
   ClassIdStatement: Combinator<Statement>;
-  MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
   MixinInterior: Combinator<MixinInteriorFact>;
   ClassIdSelectorPrefix: Combinator<SelectorBranchFact>;
@@ -2779,69 +2777,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  const PositionalMixinCallArgument = node(
-    'PositionalMixinArgument',
-    sequence(g.CallArgumentValue, optional(literal('...'))),
-    /* ONE shape for both arms and both call families. The conditional spread
-     * this replaced realized a second hidden class for every `@args...`. */
-    children => callArg(
-      requireMixinCallArgumentValue(children[0]),
-      undefined,
-      children.some(child => isLessTerminalText(child, '...'))
-    )
-  );
-  const mixinCallArgument: Combinator<MixinCallArgument> = choice(
-    node(
-      'NamedMixinArgument',
-      sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
-      (children, _fields, span) => {
-        const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-        return callArg(requireMixinCallArgumentValue(children[3]), name, false, '@');
-      }
-    ),
-    PositionalMixinCallArgument
-  );
-  // In Less, a semicolon starts a new mixin argument group; commas *within*
-  // that group form one list-valued argument. Keep the semicolon branch
-  // transactional so ordinary comma-only calls retain their existing individual
-  // argument shape.
-  const MixinArgumentGroup = node(
-    'MixinArgumentGroup',
-    sequence(PositionalMixinCallArgument, oneOrMore(sequence(literal(','), PositionalMixinCallArgument))),
-    (children) => {
-      const args = children.filter(isMixinCallArgument);
-      return callArg(list(args.map(argument => requireValueSlot(argument.value)), ','));
-    }
-  );
-  const mixinSemicolonArgument = choice(g.MixinArgumentGroup, mixinCallArgument);
-  const semicolonSeparatedMixinArguments = sequence(
-    mixinSemicolonArgument,
-    literal(';'),
-    optional(sequence(
-      oneOrMoreSep(
-        mixinSemicolonArgument,
-        literal(';')
-      ),
-      optional(literal(';'))
-    ))
-  );
-  const MixinArguments = node(
-    'MixinArguments',
-    choice(
-      attempt(semicolonSeparatedMixinArguments),
-      // A comma-only call has individual arguments. Once a semicolon appears,
-      // Less switches to its semicolon-group grammar above; a mixed named
-      // `@a: x, @b: y; @c: z` call is invalid and must not fall through.
-      sequence(
-        oneOrMoreSep(
-          mixinCallArgument,
-          literal(',')
-        ),
-        optional(literal(';'))
-      )
-    ),
-    children => mixinArgumentsFromChildren(children)
-  );
   /*
    * A class/id statement has one parenthesized interior. It becomes a mixin
    * definition only when the continuation reaches `when` / `{`; otherwise it
@@ -2892,39 +2827,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     MixinInteriorPositional
   );
   const mixinInteriorSeparator = parser({ trivia: mixinSignatureTrivia }, commaOrSemicolon);
+  // Items and separators only: whether a `,` separates arguments or belongs to a
+  // comma-list value is decided once the list has ended (ledger P45), by the
+  // reducer that reassembles it, so the list is read forward exactly once.
+  const mixinInteriorItems = oneOrMoreSep(
+    field('item', mixinInteriorItem),
+    field('separator', mixinInteriorSeparator)
+  );
+  const mixinInteriorTrailingSeparator = optional(field('trailingSeparator', choice(literal(','), literal(';'))));
   const MixinInterior = node(
     'MixinInterior',
     parser({ trivia: mixinSignatureTrivia }, sequence(
       literal('('),
-      optional(oneOrMoreSep(
-        field('item', mixinInteriorItem),
-        field('separator', mixinInteriorSeparator)
-      )),
-      optional(field('trailingSeparator', choice(literal(','), literal(';'))))
+      optional(mixinInteriorItems),
+      mixinInteriorTrailingSeparator
     )),
-    (_children, fields): MixinInteriorFact => ({
-      items: fields?.item === undefined
-        ? []
-        : requireFields(fields, 'item').map(item => requireMixinInteriorItem(item.value)),
-      separators: fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map((separator) => {
-            const value = requireTerminalText(separator.value);
-            if (value !== ',' && value !== ';') {
-              throw new TypeError('Less mixin interior produced an invalid separator.');
-            }
-            return value;
-          }),
-      ...(fields?.trailingSeparator === undefined
-        ? {}
-        : (() => {
-            const value = requireTerminalText(requireField(fields, 'trailingSeparator').value);
-            if (value !== ',' && value !== ';') {
-              throw new TypeError('Less mixin interior produced an invalid trailing separator.');
-            }
-            return { trailingSeparator: value };
-          })())
-    })
+    (_children, fields, _span, rawChildren, triviaLog, state): MixinInteriorFact =>
+      mixinInteriorFromFields(fields, rawChildren, triviaLog, state)
+  );
+  // The arguments of a call in value position (`@r: .m(…)`, `each(.m(), …)`,
+  // `@dr(…)`): the statement interior's items and separators, reassembled as
+  // call arguments at once, since nothing after its `)` can make it a definition.
+  const MixinArguments = node(
+    'MixinArguments',
+    parser({ trivia: mixinSignatureTrivia }, sequence(mixinInteriorItems, mixinInteriorTrailingSeparator)),
+    (_children, fields, _span, rawChildren, triviaLog, state) =>
+      mixinCallArgsFromInterior(mixinInteriorFromFields(fields, rawChildren, triviaLog, state))
   );
   /*
    * The steps of the one lookup/call chain (REFERENCE-CALL-PLAN): a `[key]`
@@ -5542,7 +5470,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomDeclaration,
     Declaration,
     ClassIdStatement,
-    MixinArgumentGroup,
     MixinArguments,
     MixinInterior,
     ClassIdSelectorPrefix,

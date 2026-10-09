@@ -3361,6 +3361,18 @@ describe('public Less parse()', () => {
       '.host { .join(@first; @second, @third,); .join(@first - 1); }'
     ].join('\n'));
 
+    /* Both lists hold a `;`, so each comma run is ONE comma-list value, stored as
+     * the `~( … )` node (ledger P45): in the definition it is a pattern. */
+    const commaList = (...names: string[]) => ({
+      type: 'Block',
+      delimiter: 'paren',
+      escaped: true,
+      value: {
+        type: 'List',
+        sep: ',',
+        value: names.map(name => ({ type: 'Lookup', kind: 'var', name, raw: `@${name}` }))
+      }
+    });
     expect(document).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'first' },
@@ -3369,7 +3381,7 @@ describe('public Less parse()', () => {
         {
           type: 'MixinDefinition',
           name: '.join',
-          params: [{ name: 'first' }, { name: 'second' }, { name: 'third' }]
+          params: [{ pattern: commaList('first', 'second') }, { name: 'third' }]
         },
         {
           type: 'Ruleset',
@@ -3379,16 +3391,7 @@ describe('public Less parse()', () => {
               name: '.join',
               args: [
                 { value: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' } },
-                {
-                  value: {
-                    type: 'List',
-                    sep: ',',
-                    value: [
-                      { type: 'Lookup', kind: 'var', name: 'second', raw: '@second' },
-                      { type: 'Lookup', kind: 'var', name: 'third', raw: '@third' }
-                    ]
-                  }
-                }
+                { value: commaList('second', 'third') }
               ]
             },
             {

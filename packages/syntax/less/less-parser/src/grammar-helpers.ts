@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { IMPLIED_TRUE, NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessMixinArgumentError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -53,10 +53,16 @@ type MixinInteriorItem =
   | { readonly kind: 'binding'; readonly reference: VarRef; readonly default?: CallValue; readonly rest: boolean }
   | { readonly kind: 'anonymous-rest' }
   | { readonly kind: 'positional'; readonly value: CallValue };
+type MixinInteriorCapture = FieldCapture<MixinInteriorItem>;
 type MixinInteriorFact = {
-  readonly items: readonly MixinInteriorItem[];
+  readonly items: readonly MixinInteriorCapture[];
+  /** `separators[i]` follows `items[i]`. */
   readonly separators: readonly (',' | ';')[];
-  readonly trailingSeparator?: ',' | ';';
+  /** Whether any separator, the trailing one included, is `;` (ledger P45). */
+  readonly semicolons: boolean;
+  /** Each separator with its authored trivia, kept only when `semicolons`: a comma
+   *  folded into a list value keeps the spelling `~( … )` would have recorded. */
+  readonly separatorLayout: readonly string[] | undefined;
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -595,14 +601,70 @@ function isMixinInteriorItem(value: unknown): value is MixinInteriorItem {
     && (value.kind === 'binding' || value.kind === 'anonymous-rest' || value.kind === 'positional');
 }
 
-function requireMixinInteriorItem(value: unknown): MixinInteriorItem {
-  if (typeof value !== 'object' || value === null || !('kind' in value)) {
-    throw new TypeError('Less mixin interior produced an invalid item.');
-  }
-  if (!isMixinInteriorItem(value)) {
-    throw new TypeError('Less mixin interior produced an unknown item kind.');
+function isMixinInteriorCaptures(captures: readonly FieldCapture[]): captures is readonly MixinInteriorCapture[] {
+  return captures.every(capture => isMixinInteriorItem(capture.value));
+}
+
+function mixinInteriorSeparatorOf(capture: FieldCapture): ',' | ';' {
+  const value = requireTerminalText(capture.value);
+  if (value !== ',' && value !== ';') {
+    throw new TypeError('Less mixin interior produced an invalid separator.');
   }
   return value;
+}
+
+/**
+ * The single forward pass over a mixin argument or parameter list, kept as its
+ * items (with their spans) and separators. Whether a `,` separates arguments or
+ * belongs to a comma list is known only once the list has ended (ledger P45), so
+ * the list is reassembled from these facts afterwards, never re-parsed.
+ */
+function mixinInteriorFromFields(
+  fields: FieldMap | undefined,
+  rawChildren: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown
+): MixinInteriorFact {
+  const items = fields?.item === undefined ? [] : requireFields(fields, 'item');
+  if (!isMixinInteriorCaptures(items)) {
+    throw new TypeError('Less mixin interior produced an invalid item.');
+  }
+  const separators = fields?.separator === undefined
+    ? []
+    : requireFields(fields, 'separator').map(mixinInteriorSeparatorOf);
+  const trailing = fields?.trailingSeparator === undefined
+    ? undefined
+    : mixinInteriorSeparatorOf(requireField(fields, 'trailingSeparator'));
+  const semicolons = trailing === ';' || separators.includes(';');
+  return {
+    items,
+    separators,
+    semicolons,
+    separatorLayout: semicolons ? mixinListSeparatorLayout(separators, rawChildren, triviaLog, state) : undefined
+  };
+}
+
+/**
+ * Each separator as a comma-list value records it: the trivia the parser logged
+ * either side of it, and after a comma that a `,` token's own whitespace would
+ * hold — a single space where the log keeps no layout — so `.m(a, b; c)` lays its
+ * list out as `~(a, b)` does.
+ */
+function mixinListSeparatorLayout(
+  separators: readonly string[],
+  rawChildren: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown
+): string[] {
+  const rawIndexes = separatorRawIndexes(rawChildren, separators);
+  return separators.map((separator, index) => {
+    const rawIndex = rawIndexes[index];
+    if (rawIndex === undefined) {
+      return `${separator} `;
+    }
+    const after = triviaTextAtInsertIndex(triviaLog, state, rawIndex + 1);
+    return triviaTextAtInsertIndex(triviaLog, state, rawIndex) + separator + (after === '' ? ' ' : after);
+  });
 }
 
 function isReferenceTailFact(value: unknown): value is ReferenceTailFact {
@@ -1814,33 +1876,106 @@ function mixinArgumentsFromChildren(children: readonly unknown[]): MixinCallArgu
     : isMixinCallArgument(child) ? [child] : []);
 }
 
-function mixinParamsFromInterior(interior: MixinInteriorFact): Param[] {
-  return interior.items.map((item) => {
-    if (item.kind === 'anonymous-rest') {
-      return { rest: true };
-    }
-    if (item.kind === 'binding') {
-      if (item.rest) {
-        return { name: item.reference.name, rest: true };
-      }
-      if (item.default === undefined) {
-        return { name: item.reference.name };
-      }
-      if (!isLessValueSlotValue(item.default)) {
-        throw new SyntaxError('Less mixin parameter defaults must be values.');
-      }
-      return { name: item.reference.name, default: item.default };
-    }
-    if (!isLessValueSlotValue(item.value)) {
-      throw new SyntaxError('Less mixin pattern parameters must be values.');
-    }
-    return { pattern: item.value };
-  });
+/** A value where a mixin list needs one: a parameter default, a pattern, a comma-list item. */
+function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture): ValueSlot {
+  if (!isLessValueSlotValue(value)) {
+    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'value');
+  }
+  return value;
 }
 
-function mixinCallArgumentFromInterior(item: MixinInteriorItem): MixinCallArgument {
+/** One item of a comma-list argument; `leadsNamed` when it is that argument's `@name: value`. */
+function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean): ValueSlot {
+  const item = capture.value;
+  if (item.kind === 'anonymous-rest' || (item.kind === 'binding' && item.rest)) {
+    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'rest');
+  }
+  if (item.kind === 'positional') {
+    return mixinListValueAt(item.value, capture);
+  }
+  if (item.default === undefined) {
+    return item.reference;
+  }
+  if (!leadsNamed) {
+    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'named');
+  }
+  return mixinListValueAt(item.default, capture);
+}
+
+/**
+ * Less's `;` rule for mixin calls and definitions (owner 2026-10-09, ledger P45).
+ * When the list holds any `;`, `;` separates its arguments and EVERY `,`, before
+ * or after the `;`, belongs to a comma-list value; without one, `,` separates
+ * arguments. A group of two or more items is ONE argument whose value is the node
+ * `~( … )` builds (`EscapedParen`), the normalized form: `.m(@a: b, c; d)` holds
+ * exactly what `.m(@a: ~(b, c), d)` does. Errors raise in source order, so the
+ * first one is reported, at its own item.
+ */
+function reassembleMixinInterior<T>(
+  interior: MixinInteriorFact,
+  single: (capture: MixinInteriorCapture) => T,
+  commaList: (name: string | undefined, value: Block) => T
+): T[] {
+  const { items, separators } = interior;
+  if (!interior.semicolons) {
+    return items.map(single);
+  }
+  const out: T[] = [];
+  let first = 0;
+  for (let last = 0; last < items.length; last++) {
+    if (separators[last] === ',') {
+      continue;
+    }
+    if (last === first) {
+      out.push(single(items[first]!));
+    } else {
+      const head = items[first]!.value;
+      const name = head.kind === 'binding' && !head.rest && head.default !== undefined ? head.reference.name : undefined;
+      const values: ValueSlot[] = [];
+      for (let index = first; index <= last; index++) {
+        values.push(mixinCommaListItem(items[index]!, index === first && name !== undefined));
+      }
+      const value = list(values, ',');
+      if (interior.separatorLayout !== undefined) {
+        withValueLayout(value, interior.separatorLayout.slice(first, last));
+      }
+      out.push(commaList(name, withSourceSpan(
+        block(value, 'paren', true),
+        { start: items[first]!.span.start, end: items[last]!.span.end }
+      )));
+    }
+    first = last + 1;
+  }
+  return out;
+}
+
+function mixinParamFromInterior(capture: MixinInteriorCapture): Param {
+  const item = capture.value;
   if (item.kind === 'anonymous-rest') {
-    throw new SyntaxError('Less mixin calls cannot use an anonymous rest argument.');
+    return { rest: true };
+  }
+  if (item.kind === 'binding') {
+    if (item.rest) {
+      return { name: item.reference.name, rest: true };
+    }
+    return item.default === undefined
+      ? { name: item.reference.name }
+      : { name: item.reference.name, default: mixinListValueAt(item.default, capture) };
+  }
+  return { pattern: mixinListValueAt(item.value, capture) };
+}
+
+const mixinCommaListParam = (name: string | undefined, value: Block): Param =>
+  name === undefined ? { pattern: value } : { name, default: value };
+
+function mixinParamsFromInterior(interior: MixinInteriorFact): Param[] {
+  return reassembleMixinInterior(interior, mixinParamFromInterior, mixinCommaListParam);
+}
+
+function mixinCallArgumentFromInterior(capture: MixinInteriorCapture): MixinCallArgument {
+  const item = capture.value;
+  if (item.kind === 'anonymous-rest') {
+    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'anonymousRest');
   }
   if (item.kind === 'binding') {
     if (item.rest) {
@@ -1853,39 +1988,11 @@ function mixinCallArgumentFromInterior(item: MixinInteriorItem): MixinCallArgume
   return callArg(item.value);
 }
 
+const mixinCommaListArgument = (name: string | undefined, value: Block): MixinCallArgument =>
+  name === undefined ? callArg(value) : callArg(value, name, false, '@');
+
 function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgument[] {
-  let hasSemicolon = false;
-  for (const separator of interior.separators) {
-    if (separator === ';') {
-      hasSemicolon = true;
-      break;
-    }
-  }
-  if (!hasSemicolon) {
-    return interior.items.map(mixinCallArgumentFromInterior);
-  }
-
-  const groups: MixinInteriorItem[][] = [[]];
-  for (let index = 0; index < interior.items.length; index++) {
-    groups.at(-1)!.push(interior.items[index]!);
-    if (interior.separators[index] === ';') {
-      groups.push([]);
-    }
-  }
-  if (groups.at(-1)?.length === 0) {
-    groups.pop();
-  }
-
-  return groups.map((group) => {
-    const args = group.map(mixinCallArgumentFromInterior);
-    if (args.length === 1) {
-      return args[0]!;
-    }
-    if (args.some(argument => argument.name !== undefined || argument.spread)) {
-      throw new SyntaxError('Less comma-list mixin argument groups cannot use named or spread arguments.');
-    }
-    return callArg(list(args.map(argument => requireValueSlot(argument.value)), ','));
-  });
+  return reassembleMixinInterior(interior, mixinCallArgumentFromInterior, mixinCommaListArgument);
 }
 
 /**
@@ -2814,6 +2921,7 @@ export {
   mixinCallArgumentFromInterior,
   mixinCallFromSelectorBranch,
   mixinDefinitionNameFromSelectorBranch,
+  mixinInteriorFromFields,
   mixinParamsFromInterior,
   mixinPrefixFromSelectorBranch,
   pseudoNameFromHead,
@@ -2831,7 +2939,6 @@ export {
   requireInterpolationFact,
   requireKeyword,
   requireMixinCallArgumentValue,
-  requireMixinInteriorItem,
   requireMixinReferenceBaseFact,
   referenceBracketTailFact,
   referenceCallTailFact,

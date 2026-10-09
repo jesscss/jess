@@ -345,7 +345,8 @@ describe('JessLanguageServiceEngine', () => {
 
     it.each([
       ['parse/leading-separator-value', '@p: /img/icon.svg;\n.after { color: red; }', '/img/icon.svg'],
-      ['parse/uncalled-mixin-reference', '.legacy { p: .a; }\n.after { color: red; }', '.a']
+      ['parse/uncalled-mixin-reference', '.legacy { p: .a; }\n.after { color: red; }', '.a'],
+      ['parse/invalid-mixin-argument', '.legacy { .t(@a: 1, @b: 2; 3); }\n.after { color: red; }', '@b: 2']
     ])('underlines a rejected Less construct (%s) without losing the document', (code, input, underlined) => {
       const engine = createEngine();
       const doc = createDocument('less', input);

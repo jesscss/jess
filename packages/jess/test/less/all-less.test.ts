@@ -379,13 +379,22 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
 
   /*
+   * Ledger P45 stores `.generic(a, b, c; a, b, d)`'s comma runs as the `~( … )`
+   * node, and a guard orders two `~( … )` lists by their bytes, so `when (@a < @b)`
+   * matches. It does at the base for `.generic(~(a, b, c), ~(a, b, d))` and for
+   * lists bound to variables; only a bare `List` argument was unordered. That
+   * ordering is an evaluator question, open under ledger P45.
+   */
+  ['tests-unit/mixins-guards/mixins-guards.less', 'a guard orders two `~( … )` comma lists by their bytes: `.generic(a, b, c; a, b, d)` adds `a, b, c is less than a, b, d` and `a, b, d is greater than a, b, c too`'],
+
+  /*
    * The math-mode fixtures (see goldenFor). They ran for the first time when
    * the lane started pairing them with their goldens, and are untriaged:
    * jess#351 says what each one does.
    */
   ['tests-config/math-always/no-sm-operations.less', 'untriaged (jess#351): the digit-led variable name `@3` is rejected'],
-  ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
-  ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
+  ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P45); the rest differs: `.var-args` keeps `(@var * 2) / 2 - 1%` as `calc(18 / 2 - 1%)` for `8%` (and `depth` as `calc(…)`), `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
+  ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P45); the rest differs: `.var-args` keeps `(@var * 2) / 2 - 1%` as `calc(18 / 2 - 1%)` for `8%`, `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
   ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
   ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 
@@ -435,8 +444,6 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
   ['tests-config/debug/mediaquery/linenumbers-mediaquery.less', 'deprecation/dump-line-numbers-option'],
   ['tests-config/math-always/mixins-guards.less', 'parse/syntax-error'],
   ['tests-config/math-always/no-sm-operations.less', 'parse/unsupported-variable-name'],
-  ['tests-config/math-parens-division/mixins-args.less', 'parse/syntax-error'],
-  ['tests-config/math-strict/mixins-args.less', 'parse/syntax-error'],
   ['tests-config/math-parens-division/new-division.less', 'parse/syntax-error']
 ]);
 
