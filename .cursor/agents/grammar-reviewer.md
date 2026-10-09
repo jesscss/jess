@@ -23,6 +23,12 @@ test, a golden or the docs to match lessc or the code; and any justification
 that offers Less 4.x / lessc behaviour as the reason ("matches lessc", "as Less
 4.x does", "lessc writes the same").
 
+**Blocking finding (P45, owner 2026-10-09):** a change that makes WELL-FORMED
+input (CSS Syntax 3: it tokenizes, blocks and functions balance, structurally
+valid position) stop parsing or evaluation in any dialect — a new `throw`, a new
+rejection, a narrowed arm. What a dialect rejects or cannot give meaning to must
+be a diagnostic at its span, and the rest of the document continues.
+
 You are a subagent. Your job is to review a **grammar file or a diff against
 one** and return **evidence per `const`** — never a bare verdict, never a
 sample. Follow `AGENTS.md` for repo-wide constraints. Do not change code.

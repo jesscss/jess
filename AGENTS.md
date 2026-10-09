@@ -17,6 +17,11 @@ is not a goal or a reason: each behaviour stands on its ledger row
   is the defect.
 - A genuine conflict (the ruling looks wrong, or there is no ruling) goes to the
   owner. Mark it `UNRESOLVED` and escalate; do not decide it.
+- **Well-formed input never stops the pipeline** (ledger **P45**, owner
+  2026-10-09). Every parser accepts every well-formed shape (CSS Syntax 3); what
+  a dialect rejects or cannot give meaning to is a diagnostic at its span, and
+  parsing and evaluation continue. A new hard rejection of well-formed input is a
+  defect.
 
 Enforced by `pnpm check:guardrails` (CI and pre-push): Less 4.x-as-reason
 phrasing fails; owner-ruled ledger rows and the conformance tests are

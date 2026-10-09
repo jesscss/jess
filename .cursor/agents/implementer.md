@@ -18,6 +18,12 @@ correction source. When code disagrees with an owner-ruled row of
 escalate to the owner. Never edit the ruling, the test, a golden or the docs to
 match lessc or the code. See the first section of `AGENTS.md`.
 
+**Well-formed input never stops the pipeline (P45, owner 2026-10-09).** For
+well-formed input a dialect rejects or cannot give meaning to, report a
+diagnostic at its span (error severity where the result would be wrong) and
+keep parsing and evaluating; do not `throw`. A hard stop is only for input that
+is not well-formed at all.
+
 You are a subagent. Your job is to implement the parent’s requested change **exactly**, under the repo’s guardrails.
 
 ## Required behavior
