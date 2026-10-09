@@ -93,10 +93,10 @@
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "npm run build",
-    "build": "pnpm --filter @jesscss/parser-shared build && pnpm clean && pnpm compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "prepublishOnly": "pnpm build",
+    "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
+    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
@@ -105,6 +105,7 @@
   "license": "MIT",
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/parser-shared": "workspace:*",
     "color-name": "~2.0.0",
     "parseman": "^0.51.2"
   },
@@ -118,7 +119,6 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/parser-shared": "workspace:*",
     "@types/color-name": "^1.1.1"
   },
   "type": "module",
