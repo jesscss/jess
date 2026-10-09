@@ -276,15 +276,6 @@ before the rules that consume their bindings.
 
 <AudienceGate include={['jess']}>
 
-:::caution[Not working yet in `.jess`]
-
-The `.jess` spellings below describe the intended design. Today the directive is
-emitted into the CSS and the namespace does not bind —
-[jess#233](https://github.com/jesscss/jess/issues/233). The Less spellings in the
-next section do work.
-
-:::
-
 Jess supports namespace, flat, and selected imports:
 
 ```less
@@ -297,8 +288,8 @@ Jess supports namespace, flat, and selected imports:
 @-from "./functions.js" import * as fn;
 ```
 
-Read data members through the namespace and call imported functions by their
-bound name:
+Read data members through the namespace and call imported functions through an
+explicit `$` reference:
 
 ```less
 @-use "./tokens.json" as tokens;
@@ -306,9 +297,13 @@ bound name:
 
 .card {
   color: $tokens.color;
-  width: twice(10px);
+  width: $twice(10px);
 }
 ```
+
+Namespace and flat callable imports follow the same rule: `$fn.double(10px)`
+and `$double(10px)`. A bare `double(10px)` remains a CSS-shaped call; importing
+`double` never changes its meaning.
 
 When `@-use` has no `as` clause, the namespace comes from the file name.
 `as *` exposes every export without a namespace. Prefer a namespace when

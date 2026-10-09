@@ -2723,14 +2723,20 @@ export function createEngine(): JessLanguageServiceEngine {
         if (suppressByDiagnosticOptions(diagnostic, text)) {
           continue;
         }
-        const configured = semanticDiagnosticSeverities[diagnostic.code];
+        const configured = diagnostic.phase === 'parse'
+          ? parseSeverity(diagnostic.defaultSeverity)
+          : semanticDiagnosticSeverities[diagnostic.code];
         if (typeof configured !== 'number') {
           continue;
         }
         diagnostics.push({
           code: diagnostic.code,
           source: diagnostic.source,
-          message: diagnostic.message,
+          message: diagnostic.phase === 'parse'
+            && diagnostic.fix !== ''
+            && !diagnostic.message.includes(diagnostic.fix)
+            ? `${diagnostic.message} ${diagnostic.fix}`
+            : diagnostic.message,
           severity: configured,
           range: diagnosticRange(diagnostic.start, diagnostic.end)
         });

@@ -118,7 +118,7 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "known-css-properties": "~0.37.0",
-    "parseman": "^0.50.7"
+    "parseman": "^0.51.2"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

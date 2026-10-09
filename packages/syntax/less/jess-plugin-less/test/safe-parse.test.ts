@@ -95,9 +95,11 @@ describe("@jesscss/plugin-less", () => {
       {
         code: "parse/unsupported-inline-javascript",
         phase: "parse",
-        message: "Inline backtick JavaScript is not supported.",
-        reason: "Backtick JavaScript expressions are not evaluated.",
-        fix: expect.stringContaining("@from/@-from"),
+        message:
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move it to a module loaded with @use.',
         filePath: "entry.less",
         line: 1,
         column: source.indexOf("`") + 1,

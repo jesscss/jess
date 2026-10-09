@@ -894,6 +894,11 @@ export interface Frame {
    */
   fns?: Map<string, Fn> | null;
 
+  /** Functions imported by `@-use` / `@-from`, keyed by their explicit
+   * reference path. They are deliberately separate from `fns`: importing a
+   * module must never change the meaning of a CSS-shaped `name(...)` call. */
+  moduleFns?: Map<string, Fn>;
+
   /*
    * [plugin/P1] nearest frame at-or-above this one that owns any local function
    * registrations. This is only an accelerator for candidate frames: lookup is
@@ -1100,8 +1105,21 @@ function moduleAstValue(value: unknown, name: string, seen: Set<object> | null =
 }
 
 function addModuleFunction(frame: Frame, fn: Fn, e: EvalCtx): void {
-  addScopedFns(frame, [fn], e);
-  (e.moduleFns ??= new Set()).add(fn);
+  (frame.moduleFns ??= new Map()).set(fn.name.toLowerCase(), fn);
+  if (e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.scss') === true) {
+    addScopedFns(frame, [fn], e);
+    (e.moduleFns ??= new Set()).add(fn);
+  }
+}
+
+function lookupModuleFunction(frame: Frame | null, lowerName: string): Fn | undefined {
+  for (let current = frame; current; current = current.parent) {
+    const fn = current.moduleFns?.get(lowerName);
+    if (fn !== undefined) {
+      return fn;
+    }
+  }
+  return undefined;
 }
 
 function bindModuleValue(frame: Frame, name: string, value: unknown, e: EvalCtx): ValueSlot {
@@ -1110,6 +1128,28 @@ function bindModuleValue(frame: Frame, name: string, value: unknown, e: EvalCtx)
   publishImportedVariableDeclaration(frame, declaration);
   activateVariableDeclaration(declaration, frame, e);
   return binding;
+}
+
+function bindModuleCallable(
+  frame: Frame,
+  name: string,
+  value: ModuleCallable | Fn,
+  e: EvalCtx
+): void {
+  const fn = bindModuleFunction(value, name);
+  addModuleFunction(frame, fn, e);
+
+  /*
+   * A callable import is also a real lexical `$name` binding, so ordinary
+   * shadowing decides whether `$name(...)` still reaches this function. The
+   * value is an inert marker whose identity is meaningful only to the sparse
+   * render-local module-reference map.
+   */
+  const marker = keyword(`$${name}`);
+  const declaration = variableDeclaration(name, marker, { mode: 'declare' });
+  publishImportedVariableDeclaration(frame, declaration);
+  activateVariableDeclaration(declaration, frame, e);
+  (e.moduleReferenceValues ??= new Map()).set(marker, name.toLowerCase());
 }
 
 function requireModuleExport(module: Readonly<Record<string, unknown>>, name: string): unknown {
@@ -1135,7 +1175,7 @@ function bindModuleNamespace(
   }
   const binding = bindModuleValue(frame, namespace, values, e);
   if (!isValueSlotArray(binding)) {
-    (e.moduleNamespaceValues ??= new Set()).add(binding);
+    (e.moduleReferenceValues ??= new Map()).set(binding, null);
   }
 }
 
@@ -1153,7 +1193,7 @@ function bindModuleImport(
     if (namespace === '*') {
       for (const [name, value] of Object.entries(module)) {
         if (isModuleCallable(value)) {
-          addModuleFunction(frame, bindModuleFunction(value, name), e);
+          bindModuleCallable(frame, name, value, e);
         } else {
           bindModuleValue(frame, name, value, e);
         }
@@ -1170,7 +1210,7 @@ function bindModuleImport(
   if (node.defaultImport !== null) {
     const value = requireModuleExport(module, 'default');
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, node.defaultImport), e);
+      bindModuleCallable(frame, node.defaultImport, value, e);
     } else {
       bindModuleValue(frame, node.defaultImport, value, e);
     }
@@ -1179,7 +1219,7 @@ function bindModuleImport(
     const value = requireModuleExport(module, specifier.name);
     const localName = specifier.alias ?? specifier.name;
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, localName), e);
+      bindModuleCallable(frame, localName, value, e);
     } else {
       bindModuleValue(frame, localName, value, e);
     }
@@ -3700,11 +3740,14 @@ interface EvalCtx {
    */
   pluginHost?: PluginHost;
 
-  /** Functions bound by ModuleImport rather than the legacy raw-plugin ABI. */
+  /** SCSS module functions also use the dialect's qualified `name.member()`
+   * call shape; mark them so the legacy raw-plugin ABI does not intercept them. */
   moduleFns?: Set<Fn>;
 
-  /** Namespace collection identities used to disambiguate `$ns.member()` calls. */
-  moduleNamespaceValues?: Set<object>;
+  /** Imported callable markers map to their function path; imported namespace
+   * collection identities map to `null`. This lets explicit references dispatch
+   * without admitting module functions into bare CSS call lookup. */
+  moduleReferenceValues?: Map<object, string | null>;
 
   /** Compile-loaded script/data modules keyed by their canonical import fact. */
   plannedModuleImports?: Map<ModuleImport, PreparedModule> | null;
@@ -5675,7 +5718,7 @@ function resolveReferenceResult(
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
   if (
-    e.moduleNamespaceValues !== undefined
+    e.moduleReferenceValues !== undefined
     && !isValueSlotArray(value)
     && value.type === 'Lookup'
     && value.kind === 'entry'
@@ -5688,7 +5731,7 @@ function resolveReferenceResult(
       if (
         binding !== undefined
         && !isValueSlotArray(binding.value)
-        && e.moduleNamespaceValues.has(binding.value)
+        && e.moduleReferenceValues.get(binding.value) === null
       ) {
         value = binding.value;
         valueFrame = binding.frame;
@@ -6021,8 +6064,9 @@ function moduleReferenceCall(
   node: Reference,
   frame: Frame | null,
   e: EvalCtx
-): { name: string; call: ReferenceCall } | undefined {
-  if (e.moduleNamespaceValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
+): { name: string; call: ReferenceCall; fn: Fn } | undefined {
+  const moduleValues = e.moduleReferenceValues;
+  if (moduleValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
     return undefined;
   }
   let name: string;
@@ -6031,7 +6075,7 @@ function moduleReferenceCall(
   if (node.base.kind === 'var' && typeof node.base.name === 'string') {
     name = node.base.name;
     stepIndex = 0;
-    resolved = resolveVarRef(frame, name, node.base.scope, e);
+    resolved = resolveVarRef(frame, node.base.name, node.base.scope, e);
   } else if (node.base.kind === 'entry' && node.steps.length > 0) {
     const namespaceStep = node.steps[0]!;
     if (namespaceStep.type !== 'LookupStep' || typeof namespaceStep.name !== 'string') {
@@ -6044,18 +6088,27 @@ function moduleReferenceCall(
   } else {
     return undefined;
   }
+  if (!resolved || isValueSlotArray(resolved.value)) {
+    return undefined;
+  }
+
+  const importedPath = moduleValues.get(resolved.value);
+  if (importedPath === undefined) {
+    return undefined;
+  }
+  if (importedPath !== null) {
+    if (node.steps.length !== 1 || node.steps[0]?.type !== 'Call') {
+      return undefined;
+    }
+    const fn = lookupModuleFunction(frame, importedPath);
+    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn };
+  }
+
   if (node.steps.length - stepIndex < 2) {
     return undefined;
   }
   const call = node.steps[node.steps.length - 1]!;
   if (call.type !== 'Call') {
-    return undefined;
-  }
-  if (
-    !resolved
-    || isValueSlotArray(resolved.value)
-    || !e.moduleNamespaceValues.has(resolved.value)
-  ) {
     return undefined;
   }
   for (; stepIndex < node.steps.length - 1; stepIndex++) {
@@ -6066,10 +6119,8 @@ function moduleReferenceCall(
     name += `.${step.name}`;
   }
   const lowerName = name.toLowerCase();
-  if (e.scopedFunctionNames?.has(lowerName) !== true) {
-    return undefined;
-  }
-  return { name, call };
+  const fn = lookupModuleFunction(frame, lowerName);
+  return fn === undefined ? undefined : { name, call, fn };
 }
 
 function evalModuleReferenceCall(
@@ -6088,7 +6139,10 @@ function evalModuleReferenceCall(
     }
     args.push(callArg(arg.value, arg.name, arg.spread));
   }
-  return evalCall(funcCall(selected.name, args), frame, e, true);
+  if (!e.ev) {
+    return literal(node.raw);
+  }
+  return dispatchCall(funcCall(selected.name, args), frame, e, e.ev, selected.fn, false);
 }
 
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
@@ -8579,7 +8633,7 @@ function scratchEmit(e: EvalCtx): Emit {
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     moduleFns: e.moduleFns,
-    moduleNamespaceValues: e.moduleNamespaceValues,
+    moduleReferenceValues: e.moduleReferenceValues,
     pluginRawBindings: e.pluginRawBindings,
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,

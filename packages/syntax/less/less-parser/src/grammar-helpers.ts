@@ -93,6 +93,10 @@ type FunctionConditionFact = {
   readonly bare?: ValueNode;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
+type VariableNameFact = {
+  readonly variableName: string;
+  readonly variableNameSource: string;
+};
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
     throw new TypeError('Less grammar produced a non-token child.');
@@ -119,6 +123,15 @@ function isUnsupportedVariableNameFact(value: unknown): value is UnsupportedVari
     && typeof value.unsupportedVariableName === 'string';
 }
 
+function isVariableNameFact(value: unknown): value is VariableNameFact {
+  return typeof value === 'object'
+    && value !== null
+    && 'variableName' in value
+    && typeof value.variableName === 'string'
+    && 'variableNameSource' in value
+    && typeof value.variableNameSource === 'string';
+}
+
 function hasChildren(value: unknown): value is ChildContainer {
   return typeof value === 'object'
     && value !== null
@@ -134,6 +147,9 @@ function hasGrammarType(value: unknown, grammarType: string): boolean {
 }
 
 function variableNameTerminalText(value: unknown): string | undefined {
+  if (isVariableNameFact(value)) {
+    return value.variableNameSource;
+  }
   if (typeof value === 'string') {
     return value;
   }
@@ -152,11 +168,21 @@ function variableNameTerminalText(value: unknown): string | undefined {
     }
     return found ? text : undefined;
   }
-  if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
-    return value.value;
+  if (typeof value === 'object' && value !== null && 'value' in value) {
+    return variableNameTerminalText(value.value);
   }
   if (hasChildren(value)) {
     return variableNameTerminalText(value.rules);
+  }
+  return undefined;
+}
+
+function supportedVariableNameFrom(value: unknown): string | undefined {
+  if (isVariableNameFact(value)) {
+    return value.variableName;
+  }
+  if (typeof value === 'object' && value !== null && 'value' in value) {
+    return supportedVariableNameFrom(value.value);
   }
   return undefined;
 }
@@ -190,15 +216,26 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
 }
 
 function variableNameText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'object' && value !== null && 'variableNameSource' in value && typeof value.variableNameSource === 'string') {
+    return value.variableNameSource;
+  }
   return unsupportedVariableNameFrom(value) ?? variableNameTerminalText(value) ?? requireTerminalText(value);
 }
 
 function requireSupportedVariableName(value: unknown, start: number, end: number): string {
+  if (typeof value === 'string') {
+    return value;
+  }
   const unsupported = unsupportedVariableNameFrom(value);
   if (unsupported !== undefined) {
     throw new LessUnsupportedVariableNameError(start, end, unsupported);
   }
-  return variableNameTerminalText(value) ?? requireTerminalText(value);
+  return supportedVariableNameFrom(value)
+    ?? variableNameTerminalText(value)
+    ?? requireTerminalText(value);
 }
 
 function requireString(value: unknown): string {
@@ -1433,8 +1470,7 @@ function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPr
       ? segment.term.value
       : [segment.term];
     for (const token of tokens) {
-      const isMixinName = token.text?.startsWith('.') === true || token.text?.startsWith('#') === true;
-      if (!isSimpleSelector(token) || token.interp !== null || token.text === null || !isMixinName) {
+      if (!isSimpleSelector(token) || token.text === null || (!token.text.startsWith('.') && !token.text.startsWith('#'))) {
         return null;
       }
       prefix.push({
@@ -1731,7 +1767,14 @@ function mixinCallArgumentFromInterior(item: MixinInteriorItem): MixinCallArgume
 }
 
 function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgument[] {
-  if (!interior.separators.includes(';')) {
+  let hasSemicolon = false;
+  for (const separator of interior.separators) {
+    if (separator === ';') {
+      hasSemicolon = true;
+      break;
+    }
+  }
+  if (!hasSemicolon) {
     return interior.items.map(mixinCallArgumentFromInterior);
   }
 
@@ -1810,7 +1853,19 @@ function guardOperatorText(value: unknown): string | null {
   // mediaqueries-4 §4 = `< <= = >= >`): `=~`, `=>` and `=<` are Less guard spellings
   // with no meaning in a media query, and merging the two would widen
   // `@media (width => 600px)` into acceptance.
-  return ['>', '<', '>=', '<=', '=>', '=<', '=', '=~'].includes(operator) ? operator : null;
+  switch (operator) {
+    case '>':
+    case '<':
+    case '>=':
+    case '<=':
+    case '=>':
+    case '=<':
+    case '=':
+    case '=~':
+      return operator;
+    default:
+      return null;
+  }
 }
 
 function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[]): MixinGuard {

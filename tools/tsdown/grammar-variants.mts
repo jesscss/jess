@@ -127,7 +127,7 @@ const INTERPRETER_DIR = 'grammar/interpreter';
 
 /*
  * A dialect grammar composes over a sibling parser's grammar export
- * (`@jesscss/css-parser/grammar`). The interpreter twin must compose over the
+ * (`@jesscss/css-parser/grammar/base`). The interpreter twin must compose over the
  * sibling's interpreter twin too, or half of it would run as a compiled table.
  */
 const SIBLING_GRAMMAR = /^(@jesscss\/[\w-]+-parser\/grammar)(\/[\w/-]+)?$/;
@@ -213,6 +213,12 @@ function interpreterExternal(patterns: readonly (string | RegExp)[]) {
  */
 export function grammarVariantBuilds(options: {
   dir?: string;
+  /*
+   * Extra single-export entries built alongside the four variants, both
+   * compiled and as interpreter twins. css adds `base`, its compose base, so a
+   * dialect composing onto it never loads css's own parse grammar.
+   */
+  extraEntries?: readonly string[];
   shared?: readonly string[];
   plugins?: PluginList;
   external?: readonly (string | RegExp)[];
@@ -222,7 +228,8 @@ export function grammarVariantBuilds(options: {
   const extraExternal = options.external ?? [];
   const externalPatterns = [...shared.length > 0 ? [sharedSpecifier(shared)] : [], ...extraExternal];
   const external = externalPatterns.length > 0 ? { external: externalPatterns } : {};
-  const compiled = GRAMMAR_VARIANTS.map(variant => {
+  const variants = [...GRAMMAR_VARIANTS, ...options.extraEntries ?? []];
+  const compiled = variants.map(variant => {
     return {
       ...BASE,
       entry: { [`grammar/${variant}`]: `${dir}/${variant}.ts` },
@@ -241,7 +248,7 @@ export function grammarVariantBuilds(options: {
       }
     };
   });
-  const interpreter = GRAMMAR_VARIANTS.map(variant => {
+  const interpreter = variants.map(variant => {
     return {
       ...BASE,
       entry: { [`${INTERPRETER_DIR}/${variant}`]: `${dir}/${variant}.ts` },

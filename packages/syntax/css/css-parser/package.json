@@ -77,6 +77,11 @@
       "import": "./lib/grammar/cst/positions.js",
       "require": "./lib/grammar/cst/positions.cjs"
     },
+    "./grammar/base": {
+      "types": "./lib/grammar/base.d.ts",
+      "import": "./lib/grammar/base.js",
+      "require": "./lib/grammar/base.cjs"
+    },
     "./grammar/interpreter": {
       "types": "./lib/grammar/ast.d.ts",
       "import": "./lib/grammar/interpreter/ast.js",
@@ -101,6 +106,11 @@
       "types": "./lib/grammar/cst/positions.d.ts",
       "import": "./lib/grammar/interpreter/cst/positions.js",
       "require": "./lib/grammar/interpreter/cst/positions.cjs"
+    },
+    "./grammar/interpreter/base": {
+      "types": "./lib/grammar/base.d.ts",
+      "import": "./lib/grammar/interpreter/base.js",
+      "require": "./lib/grammar/interpreter/base.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -127,7 +137,7 @@
   },
   "dependencies": {
     "@jesscss/parser-shared": "workspace:*",
-    "parseman": "^0.50.7"
+    "parseman": "^0.51.2"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

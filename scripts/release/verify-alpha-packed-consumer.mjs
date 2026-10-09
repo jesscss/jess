@@ -182,7 +182,7 @@ const specifiers = ${JSON.stringify(packageNames.flatMap((name) => {
     ];
   }
   if (name === '@jesscss/css-parser') {
-    return [name, '@jesscss/css-parser/grammar'];
+    return [name, '@jesscss/css-parser/grammar', '@jesscss/css-parser/grammar/base'];
   }
   return [name];
 }), null, 2)};
