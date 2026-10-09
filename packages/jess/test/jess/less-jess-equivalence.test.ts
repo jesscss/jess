@@ -1176,6 +1176,41 @@ describe('targeted round trip: the converted sheet answers the .jess default', (
 });
 
 /*
+ * A condition keyword glued to its `(` is a `<general-enclosed>` function in every CSS
+ * condition, written as authored with a warning (owner 2026-10-09: "output them as
+ * authored BUT give a warning for and( / or( / not("), and so is a glued
+ * `@container size(…)` (CSS Conditional 5: `size (…)` would name a container). The
+ * fixtures that hold these (`media.less`, `container.less`) are listed in KNOWN for other
+ * gaps, so the round trip is checked here.
+ */
+describe('targeted round trip: a glued condition keyword and `@container size(…)`', () => {
+  const conditions = [
+    '@media screen and(max-width: 100px)',
+    '@media (min-width: 1px) and(color)',
+    '@supports not(display: grid)',
+    '@supports (display: grid) and(display: flex)',
+    '@container size(min-width: 60ch)',
+    '@container card and(min-width: 1px)'
+  ];
+  const less = conditions.map(c => `${c} { .a { b: c; } }\n`).join('');
+  const render = async (source: string, extension: '.less' | '.jess') => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+    return { css: result.css, warnings: result.warnings.map(w => w.code) };
+  };
+
+  it('converts each as authored, and both arms write the same CSS and warnings', async () => {
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    for (const condition of conditions) {
+      expect(jess).toContain(`${condition} {`);
+    }
+    const lessArm = await render(less, '.less');
+    expect(lessArm.css).toContain('@container size(min-width: 60ch) {');
+    expect(await render(jess, '.jess')).toEqual(lessArm);
+  });
+});
+
+/*
  * Less's `;` rule (owner 2026-10-09, ledger P46) stores each comma run of a `;`
  * mixin list as the node `~( … )` builds, so a `;` list converts exactly as its
  * escaped spelling does. `.jess` has no spelling for that node yet and the

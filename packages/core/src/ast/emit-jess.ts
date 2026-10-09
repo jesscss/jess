@@ -1010,6 +1010,15 @@ class JessPrinter {
    * is a `Quoted`.
    */
   valueInterpolation(node: Interpolation, at: At): string {
+    /*
+     * In a prelude, a template of literal text alone is the authored content of a
+     * `<general-enclosed>` function — a glued `and(…)` / `not(…)` or `@container
+     * size(…)` (CSS Conditional 5; ledger N17) — which `.jess` reads as CSS does, so it
+     * is written as authored, never as escaped text.
+     */
+    if (at === At.Prelude && node.parts.every(part => 'lit' in part)) {
+      return node.parts.map(part => ('lit' in part ? part.lit : '')).join('');
+    }
     const first = node.parts[0];
     if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
       let out = '';
