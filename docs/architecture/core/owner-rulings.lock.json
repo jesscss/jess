@@ -1,6 +1,5 @@
 {
   "_": "OWNER-LOCKED. Content hashes of the owner-ruled rows of docs/architecture/core/DESIGN-DECISIONS.md and of the tests in packages/jess/test/owner-rulings.test.ts. Regenerate with `pnpm rulings:lock` ONLY when the owner explicitly approved the change. See scripts/rulings-lock.mjs.",
-  "placeholder": "PLACEHOLDER (2026-10-09): generated from the tree at chore/v5-ruling-guardrails (integ/v5-wave10 2828d50fd) before the pending ruling fixes (P2 custom property, .active&, escaped selector text, ledger rows with Less 4.x reasons). Regenerate with `pnpm rulings:lock`, with the owner's approval, once those land; regenerating drops this key.",
   "ledger": {
     "E1": "9567043ebb1897b1",
     "E2": "bf20ec2147c2f408",
@@ -158,6 +157,7 @@
     "P38": "3068efbef06125cd",
     "P39": "50b2a0dd2ad8448a",
     "P40": "669588dd746bb3a0",
+    "P45": "060076e60ee5e565",
     "G31": "019f6e15f98d355d",
     "G32": "4785c83df5a67ff6",
     "G33": "9a0a8f97e506d754",
@@ -204,7 +204,22 @@
     "D2": "54e9c64ba889ec9a"
   },
   "tests": {
-    "(file preamble: imports and helpers)": "01b603f4e88752cd",
+    "(file preamble: imports and helpers)": "0cc544db328c3779",
+    "P45 (owner 2026-10-09): SCSS gives a parenthesized comparison its Sass meaning, `x: (3px > 2px)` is `x: true`": "c9c7572f80398f74",
+    "P45 (owner 2026-10-09): SCSS gives a bare comparison its Sass meaning, `x: 3px > 2px` is `x: true`": "8f6d886996139931",
+    "P45 (owner 2026-10-09): Less parses `@supports selector(a > b)`": "738f61a521508937",
+    "P45 (owner 2026-10-09): .jess parses a comment between two values, `b: x /**/ y`": "58f04c7263b577a7",
+    "P45 (owner 2026-10-09): .jess parses `@media (min-width: calc(100px + 1px))`": "218307833883d0e6",
+    "P45 (owner 2026-10-09): .jess parses an unknown at-rule statement, `@foo 1 + 2;`": "118767753c9d1200",
+    "P45 (owner 2026-10-09): SCSS parses a line comment inside a call, `max(1px, // c` then `2px)`": "8ee45c4ab03e6a3c",
+    "P45 (owner 2026-10-09): SCSS parses `var(--x, /img)`": "439e53ad52bf4587",
+    "P45 (owner 2026-10-09): SCSS parses a comment inside a compound selector, `.e/*y*/.f`": "a50a4be10f9499a9",
+    "P45 (owner 2026-10-09): SCSS parses `url( \"a b.png\" )`": "e33c3877c4faad7d",
+    "P45 (owner 2026-10-09): .jess parses `url( \"a b.png\" )`": "e508d580f4b4854f",
+    "P45 (owner 2026-10-09): SCSS parses the ident `--` as a value, `d: --`": "df72ae0a35c19966",
+    "P45 (owner 2026-10-09): .jess parses the ident `--` as a value, `d: --`": "8c4dcd6062c1fcd5",
+    "P45 (owner 2026-10-09): Less parses a general-enclosed container query, `@container ( foo(x) )`": "04b1cbf2ec11f926",
+    "P45 (owner 2026-10-09): .jess parses a general-enclosed container query, `@container ( foo(x) )`": "e2979a5304f33647",
     "P2 (owner, reaffirmed 2026-10-09): a bare @var in a custom property is written as authored": "d557cbffb7d5a2fb",
     "owner 2026-10-09 (golden review; J13 is stale): .active& under a multi-compound parent keeps .active as the subject": "c335a92cede83db8",
     "owner 2026-10-09 (golden review): escaped selector text before & is written as authored, not :is()-wrapped": "8b8740123a396056",
