@@ -46,6 +46,11 @@
 
 Start with `AGENTS.md`.
 
+**Less v5 is a breaking release: Less 4.x / lessc output is never a reason and
+never a correction source, and when it differs from a ledger row or owner
+ruling, the ruling wins.** Read the first section of `AGENTS.md`;
+`pnpm check:guardrails` enforces it.
+
 **Before proposing any architecture / grammar / semantics / perf / release plan —
 or a "here are the corrections" list — consult the Record Map:
 `docs/RECORD-MAP.md`.** It routes each topic to the one document that is the

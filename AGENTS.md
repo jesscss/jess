@@ -1,5 +1,32 @@
 # Agent Guidelines
 
+## Read this first — Less 4.x is never the reason
+
+> **Owner, 2026-10-09:** *"Less v5 is NEW. Jess is a NEW ENGINE. The fact it acts different IS. THE. POINT. (usually)"*
+
+A difference from Less 4.x is not evidence of a bug, and sameness with Less 4.x
+is not a goal or a reason: each behaviour stands on its ledger row
+(`docs/architecture/core/DESIGN-DECISIONS.md`), the CSS spec, or an owner ruling.
+
+- lessc / Less 4.x / less.js output is **never a reason and never a correction
+  source**. Do not run lessc to decide what jess should emit.
+- When lessc differs from a ledger row or an owner ruling, **the ruling wins**.
+  Never edit the ruling, its conformance test
+  (`packages/jess/test/owner-rulings.test.ts`), a `.css` golden or the docs to
+  match lessc, or to match the code: when code disagrees with a ruling, the code
+  is the defect.
+- A genuine conflict (the ruling looks wrong, or there is no ruling) goes to the
+  owner. Mark it `UNRESOLVED` and escalate; do not decide it.
+
+Enforced by `pnpm check:guardrails` (CI and pre-push): Less 4.x-as-reason
+phrasing fails; owner-ruled ledger rows and the conformance tests are
+hash-locked in `docs/architecture/core/owner-rulings.lock.json`, regenerated
+(`pnpm rulings:lock`) only with the owner's explicit approval; and
+`packages/jess/test/migration-docs.test.ts` executes the migration guides'
+examples.
+
+---
+
 This file is the stable cross-tool contract for working in this repo. **It is
 the front door.** It assumes you have the repository, a shell, and nothing else
 — no conversation history, no memory of prior sessions, no access to the owner.
