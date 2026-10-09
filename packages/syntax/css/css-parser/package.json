@@ -134,9 +134,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/shared": "workspace:*",
-    "postcss": "8.5.23",
-    "tsx": "~4.21.0"
+    "postcss": "8.5.23"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

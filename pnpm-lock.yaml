@@ -769,15 +769,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@jesscss/shared':
-        specifier: workspace:*
-        version: link:../../../_shared
       postcss:
         specifier: 8.5.23
         version: 8.5.23
-      tsx:
-        specifier: ~4.21.0
-        version: 4.21.1
 
   packages/syntax/jess/jess-parser:
     dependencies:
@@ -787,9 +781,6 @@ importers:
       '@jesscss/parser-shared':
         specifier: workspace:*
         version: link:../../../parser-shared
-      color-name:
-        specifier: ~2.0.0
-        version: 2.0.2
       parseman:
         specifier: ^0.51.2
         version: 0.51.2
@@ -797,9 +788,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@types/color-name':
-        specifier: ^1.1.1
-        version: 1.1.5
 
   packages/syntax/jess/jess-plugin-jess:
     dependencies:
@@ -867,9 +855,6 @@ importers:
       '@jesscss/parser-shared':
         specifier: workspace:*
         version: link:../../../parser-shared
-      known-css-properties:
-        specifier: ~0.37.0
-        version: 0.37.0
       parseman:
         specifier: ^0.51.2
         version: 0.51.2
@@ -877,21 +862,12 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@jesscss/shared':
-        specifier: workspace:*
-        version: link:../../../_shared
       '@types/node':
         specifier: ^18.19.31
         version: 18.19.130
-      less:
-        specifier: ^4.6.3
-        version: 4.9.1
       postcss-less:
         specifier: ~6.0.0
         version: 6.0.0(postcss@8.5.23)
-      tsx:
-        specifier: ~4.21.0
-        version: 4.21.1
 
   packages/syntax/scss/jess-plugin-scss:
     dependencies:
@@ -4015,9 +3991,6 @@ packages:
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
-
-  '@types/color-name@1.1.5':
-    resolution: {integrity: sha512-j2K5UJqGTxeesj6oQuGpMgifpT5k9HprgQd8D1Y0lOFqKHl3PJu5GMeS4Y5EgjS55AE6OQxf8mPED9uaGbf4Cg==}
 
   '@types/connect-history-api-fallback@1.5.4':
     resolution: {integrity: sha512-n6Cr2xS1h4uAulPRdlw6Jl6s1oG8KrVilPN2yUITEs+K48EzMJJ3W1xy8K5eWuFvjp3R74AOIGSmp2UfBJ8HFw==}
@@ -17793,8 +17766,6 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
-  '@types/color-name@1.1.5': {}
-
   '@types/connect-history-api-fallback@1.5.4':
     dependencies:
       '@types/express-serve-static-core': 5.1.3
@@ -20865,6 +20836,7 @@ snapshots:
       '@esbuild/win32-arm64': 0.27.7
       '@esbuild/win32-ia32': 0.27.7
       '@esbuild/win32-x64': 0.27.7
+    optional: true
 
   esbuild@0.28.2:
     optionalDependencies:
@@ -27737,6 +27709,7 @@ snapshots:
       esbuild: 0.27.7
     optionalDependencies:
       fsevents: 2.3.3
+    optional: true
 
   ttest@3.0.0:
     dependencies:

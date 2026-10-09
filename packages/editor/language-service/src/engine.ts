@@ -438,7 +438,7 @@ function findIdentInSpan(text: string, start: number, end: number, ident: string
 /*
  * Data sources:
  * - At-rules: from VS Code's published web custom data (npm package).
- * - Properties: use the same package Less parser uses (`known-css-properties`).
+ * - Properties: from the `known-css-properties` npm package.
  * - Property values: from web custom data (properties have `values` arrays).
  */
 const require = createRequire(import.meta.url);

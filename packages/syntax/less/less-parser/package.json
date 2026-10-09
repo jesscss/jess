@@ -108,7 +108,6 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "known-css-properties": "~0.37.0",
     "parseman": "^0.51.2"
   },
   "peerDependencies": {
@@ -116,11 +115,8 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
-    "less": "^4.6.3",
-    "postcss-less": "~6.0.0",
-    "tsx": "~4.21.0"
+    "postcss-less": "~6.0.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

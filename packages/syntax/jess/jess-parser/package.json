@@ -106,15 +106,13 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "color-name": "~2.0.0",
     "parseman": "^0.51.2"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
   "devDependencies": {
-    "@jesscss/core": "workspace:*",
-    "@types/color-name": "^1.1.1"
+    "@jesscss/core": "workspace:*"
   },
   "type": "module",
   "module": "lib/index.js"
