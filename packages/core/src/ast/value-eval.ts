@@ -152,6 +152,9 @@ export interface Keyword {
   readonly type: 'Keyword';
   readonly text: string;
   readonly bytes: string;
+
+  /** The paren groups written around it where it is text ({@link Any.groups}); `0` otherwise. */
+  readonly groups: number;
 }
 
 /**
@@ -172,6 +175,16 @@ export interface Any {
    * every `Any` realizes one hidden class.
    */
   readonly escapedQuote: string;
+
+  /**
+   * How many paren groups the author wrote around this text (ledger J16): text
+   * is never a resolved calculation, so the groups are printed where it is
+   * written — a value, an operand of math — and not where it is spliced into a
+   * selector, a property or a string, or read by a callable, which take
+   * `bytes`, the text alone. Factory-defaulted to `0`, so every value keeps
+   * one hidden class.
+   */
+  readonly groups: number;
 }
 
 /**
@@ -356,7 +369,23 @@ export const joinGroup = (
 };
 
 export const emitValue = (v: EvalValue): string =>
-  typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.bytes;
+  typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.type === 'Any' && v.groups !== 0 ? writtenText(v) : v.bytes;
+
+/**
+ * Text as it is written: in the paren groups the author wrote around it
+ * ({@link Any.groups}). Owner 2026-10-09: "everywhere that is text should print
+ * AS WRITTEN".
+ */
+export const writtenText = (v: Any | Keyword, bytes = v.bytes): string =>
+  v.groups === 0 ? bytes : `${'('.repeat(v.groups)}${bytes}${')'.repeat(v.groups)}`;
+
+/**
+ * A value as an interpolation splices it or a callable reads it: text without
+ * the groups written around it ({@link Any.groups}), anything else as
+ * {@link emitValue} writes it.
+ */
+export const readText = (v: EvalValue): string =>
+  typeof v !== 'string' && !isValueGroupArray(v) && (v.type === 'Any' || v.type === 'Keyword') ? v.bytes : emitValue(v);
 
 /**
  * The glue joining a list's items for its separator (`,`→`, `, `/`→` / `).

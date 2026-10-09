@@ -60,7 +60,7 @@ describe('Less selector-capture output boundaries', () => {
     ].join('\n');
 
     await expect(render(source, false)).resolves.toBe([
-      ':is(.a, .b):is(.c, .d) {',
+      '.a, .b.c, .d {',
       '  + .e-quoted {',
       '    foo: baz;',
       '  }',
@@ -68,7 +68,7 @@ describe('Less selector-capture output boundaries', () => {
       ''
     ].join('\n'));
     await expect(render(source, true)).resolves.toBe([
-      ':is(.a, .b):is(.c, .d) + .e-quoted {',
+      '.a, .b.c, .d + .e-quoted {',
       '  foo: baz;',
       '}',
       ''
@@ -76,11 +76,14 @@ describe('Less selector-capture output boundaries', () => {
   });
 
   /*
-   * Ledger O8: a quoted multi-branch selector supplied to a nested header prints
-   * one branch per line (a), and the whitespace it opens with is dropped there
-   * and inside the collapsed `:is()` (b).
+   * Escaped text in a selector prints as written, never read as selector syntax
+   * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"): its
+   * commas are characters, so a nested header keeps it on one line and a
+   * collapsed one glues it after its parent, never in an `:is()`. The
+   * whitespace it opens with is still dropped at the header (ledger O8(b)).
+   * One branch per line (O8(a)) is for a structured list (`*[…]`).
    */
-  it('prints a quoted selector group one branch per line in a nested header', async () => {
+  it('prints a quoted selector text as written in a nested header', async () => {
     const source = [
       '@g: ~\' .e, .f\';',
       '.a {',
@@ -92,15 +95,14 @@ describe('Less selector-capture output boundaries', () => {
 
     await expect(render(source, false)).resolves.toBe([
       '.a {',
-      '  .e,',
-      '  .f {',
+      '  .e, .f {',
       '    foo: baz;',
       '  }',
       '}',
       ''
     ].join('\n'));
     await expect(render(source, true)).resolves.toBe([
-      '.a :is(.e, .f) {',
+      '.a .e, .f {',
       '  foo: baz;',
       '}',
       ''

@@ -67,6 +67,7 @@ import {
   selectorBranchHasInterp,
   selectorBranchOf,
   selectorTermCanonical,
+  selectorTermHasAmpersand,
   selectorTermHasInterp,
   selectorTermOf,
   selist,
@@ -143,6 +144,7 @@ import {
   EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
+  readText,
   delimiterClose,
   delimiterOpen,
   isValueGroup,
@@ -191,6 +193,7 @@ import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [exte
 import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
+import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
@@ -462,27 +465,70 @@ function importScopeOf(frame: Frame): Frame {
 }
 
 /**
- * Import-once, per scope (ledgers J14, X18): whether `@import` `node` of the sheet `key` is
- * a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once` import
- * already placed there, or a `(reference)` re-import ({@link isReferenceReimport}) — else
- * records the placement. A scope is the root, one ruleset or one at-rule block; a mixin
- * call or loop iteration places in the scope it runs in ({@link importScopeOf}), a bare-`&`
- * rule in its parent's, and an imported sheet's own root is its importer's scope. A copy placed in another scope never
- * makes an import a no-op: `@media print { @import "t"; } @import "t";` renders the root
- * copy (orchestrator judgment under owner delegation 2026-10-07). A sheet an enclosing
+ * The output context an import in `scope` ({@link importScopeOf}) places its sheet in, for
+ * import-once ({@link importIsNoOp}): the chain of rule selectors and at-rule preludes from
+ * the root, `''`, to `scope`, so `.a { @import "t"; } .a { @import "t"; }` places one copy
+ * (owner 2026-10-09: once counts per scope, if the output would be different). Each part
+ * is written as the walk writes it — a rule's selector list, an at-rule's resolved
+ * prelude, read once per scope and cached on it. A scope whose output context the walk
+ * does not write from these parts (a composed module's root, a rule whose selector is
+ * interpolated) is its own context: the frame itself.
+ *
+ * ponytail: an interpolated selector is its own context rather than its resolved text;
+ * resolving it here is the upgrade if two such rules ever need one copy.
+ */
+function importContextKey(scope: Frame): object | string {
+  if (scope.importContext !== undefined) {
+    return scope.importContext;
+  }
+  const of = scope.outputOf;
+  if (of === undefined || scope.parent === null) {
+    return scope;
+  }
+  const outer = importContextKey(importScopeOf(scope.parent));
+  if (typeof outer !== 'string') {
+    return scope;
+  }
+  let part: string;
+  if (of.type === 'AtRuleBlock') {
+    part = of.name + ' ' + scope.outputPrelude!;
+  } else {
+    part = '';
+    for (const branch of of.selector.selectors) {
+      if (selectorBranchHasInterp(branch)) {
+        return scope;
+      }
+      part += (part === '' ? '' : ', ') + selectorBranchCanonical(branch);
+    }
+  }
+  return scope.importContext = outer + '\n' + part;
+}
+
+/**
+ * Import-once, per output context (ledgers J14, X18): whether `@import` `node` of the sheet
+ * `key` is a no-op in `scope` — a `once` import ({@link importsOnce}) of a sheet a `once`
+ * import already placed in the same output context, or a `(reference)` re-import
+ * ({@link isReferenceReimport}) — else records the placement. The output context is the
+ * chain of rule selectors and at-rule preludes the copy would render into
+ * ({@link importContextKey}); a mixin call or loop iteration places in the context it runs
+ * in ({@link importScopeOf}), a bare-`&` rule in its parent's, and an imported sheet's own
+ * root in its importer's. A copy placed in another context never makes an import a no-op:
+ * `@media print { @import "t"; } @import "t";` renders the root copy, while
+ * `.a { @import "t"; } .a { @import "t"; }` renders one (owner 2026-10-09: once counts per
+ * scope, if the output would be different). A sheet an enclosing
  * import is still placing (`expanding`) counts as placed in every scope, so a sheet that
- * imports itself, directly or through others, ends. `placed` maps a scope's sheets to
- * whether a `once` import placed them. The import planner (a scope is the enclosing node)
- * and the render walk (its frame) both ask this in document order, an import inside a
+ * imports itself, directly or through others, ends. `placed` maps a context's sheets to
+ * whether a `once` import placed them. The import planner (which walks the root and its
+ * at-rule blocks) and the render walk both ask this in document order, an import inside a
  * ruleset included, so they agree on which imports place a sheet. A `(multiple)` import
  * of a sheet still being placed is an import cycle, which they raise before asking
  * ({@link importCycles}); any other import of one is a no-op, one inside a `(multiple)`
  * sheet included.
  */
 function importIsNoOp(
-  placed: Map<object, Map<string, boolean>>,
+  placed: Map<object | string, Map<string, boolean>>,
   expanding: ReadonlySet<string>,
-  scope: object,
+  scope: object | string,
   key: string,
   node: StyleImport,
   options: string | null,
@@ -829,6 +875,15 @@ export interface Frame {
    * ({@link importScopeOf}), since its output lands in the scope it runs in.
    */
   importScope?: Frame;
+
+  /**
+   * The ruleset or at-rule block whose body this frame is, and an at-rule's written
+   * prelude: what {@link importContextKey} reads for the output context its imports land
+   * in. `importContext` caches that key; the walk's root frame is `''`.
+   */
+  outputOf?: Ruleset | AtRuleBlock;
+  outputPrelude?: string;
+  importContext?: string;
 
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDefinition[]> | null;
@@ -4163,6 +4218,15 @@ interface EvalCtx {
    */
   pseudoElementLists: Map<readonly string[], Uint8Array>;
 
+  /**
+   * [extend/selector-interp] The selector lists the extend pre-pass resolved
+   * ({@link resolveSelectorInterpForExtend}), each mapped to its resolved copy, which
+   * the planner reads ({@link plannedSelectorList}). The parsed lists are never
+   * written: a parsed document renders again with other values (a reused AST, a sheet
+   * placed twice). One map per render, shared by every context of it.
+   */
+  resolvedSelectors: Map<SelectorList, SelectorList>;
+
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
    * `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
@@ -4343,14 +4407,14 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     return quotedFromFields(node.value, node.quote, node.escaped, node.src);
   }
   if (!e.ev) {
-    return { type: 'Keyword', text: src, bytes: src };
+    return { type: 'Keyword', text: src, bytes: src, groups: 0 };
   }
   switch (node.type) {
-    case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src };
+    case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src, groups: 0 };
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Any': return makeAny(node.src);
-    case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text };
+    case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text, groups: 0 };
   }
 }
 
@@ -4947,7 +5011,7 @@ function evalTyped(
        * call there is still written as authored.
        */
       if (e.reached && groupsOneValue(node)) {
-        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e));
+        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => reachedGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
       }
       if (isInertGroup(node) || (writtenAsAuthored(argument) && slotComputation(node.value, frame, e, true, true) === null)) {
         return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), writtenGroup);
@@ -4958,7 +5022,7 @@ function evalTyped(
         { ...e, parenFrames: pushParenFrame(e, true) },
         projectMixinValues,
         writtenAsAuthored(argument) ? argument : ARG_NONE
-      ), v => keepAuthoredGroup(v, e));
+      ), v => keepAuthoredGroup(v, e, !isValueSlotArray(node.value) && node.value.type === 'FunctionCall'));
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -5315,27 +5379,30 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number
 }
 
 /**
- * Whether `v` is opaque text, whose paren groups are kept where it is written
- * into math ({@link textGroup}): an escaped string — `~"…"`, `e()`,
- * `escape()`, an interpolated template, the value-domain `Any` (ledger V3) —
- * in every dialect, and in `.scss` ({@link ValueEvaluator.sassCalculations})
- * an unquoted string, as dart-sass keeps a parenthesized string in a
- * calculation (`calc(2 * (unquote("1px + 2px")))` is `calc(2 * (1px + 2px))`,
- * `calc(2 * ($k))` with `$k: foo` is `calc(2 * (foo))`). The test is the
- * value's type, never its bytes.
+ * Whether `v` is opaque text, which carries the paren groups written around it
+ * ({@link textGroup}): an escaped string — `~"…"`, `e()`, `escape()`, an
+ * interpolated template, the value-domain `Any` (ledger V3) — in every dialect,
+ * and in `.scss` ({@link ValueEvaluator.sassCalculations}) an unquoted string
+ * inside a calculation, as dart-sass keeps a parenthesized string there
+ * (`calc(2 * (unquote("1px + 2px")))` is `calc(2 * (1px + 2px))`,
+ * `calc(2 * ($k))` with `$k: foo` is `calc(2 * (foo))`), or one a call returns
+ * in a group (`call`) that math reads: `(unquote("1px + 2px")) * 2` is
+ * `calc((1px + 2px) * 2)`, never `1px + 2px * 2`. Any other `.scss` keyword is
+ * an identifier, so `(foo) * 2` stays `(foo) * 2`. The test is the value's type
+ * and the node the group holds, never its bytes.
  */
-const isOpaqueText = (v: Value, e: EvalCtx): v is TextValue | KeywordValue =>
-  v.type === 'Any' || (v.type === 'Keyword' && e.ev?.sassCalculations === true);
+const isOpaqueText = (v: Value, e: EvalCtx, call = false): v is TextValue | KeywordValue =>
+  v.type === 'Any' || (v.type === 'Keyword' && ((e.calcDepth ?? 0) > 0 || call) && e.ev?.sassCalculations === true);
 
 /**
  * A paren group around opaque text ({@link isOpaqueText}): the text, carrying
- * the group, which only math writes (ledger J16, SETTLED — orchestrator
- * judgment under owner delegation 2026-10-07). Written into math — an operand
- * of an operation written out, inside `calc()` or another math function — the
- * text keeps its parens (`calc(2 * (e("1px + 2px")))` is
- * `calc(2 * (1px + 2px))`); everywhere else the group yields its text:
- * `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
- * `(e("x"))`, and `b: (e("x"))` is `b: x` ({@link mathText}).
+ * the group (ledger J16; owner 2026-10-09: "everywhere that is text should
+ * print AS WRITTEN"). An escaped string is written in its groups in a value and
+ * in math (`b: (e("x"))` is `b: (x)`, `calc(2 * (e("1px + 2px")))` is
+ * `calc(2 * (1px + 2px))`; {@link emitValue}), an unquoted `.scss` string only
+ * in math ({@link mathText}); where the text is spliced or read it is the text
+ * alone: `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
+ * `(e("x"))` ({@link readText}).
  */
 const textGroup = (v: TextValue | KeywordValue): Value => groupText(v);
 
@@ -5387,16 +5454,16 @@ function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: E
  * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`; and text carries
  * them ({@link textGroup}).
  */
-function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx): T | Value {
+function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx, call = false): T | Value {
   if (isLiteral(v) || isValueGroupArray(v)) {
     return v;
   }
   const grouped = groupAsWritten(v);
-  return grouped === v && isOpaqueText(v, e) ? textGroup(v) : grouped;
+  return grouped === v && isOpaqueText(v, e, call) ? textGroup(v) : grouped;
 }
 
 /** A group a reference reached, around one value: the value, text carrying the group ({@link whileReached}, {@link textGroup}). */
-const reachedGroup = (v: ValueGroup, e: EvalCtx): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e) ? textGroup(v) : v;
+const reachedGroup = (v: ValueGroup, e: EvalCtx, call = false): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e, call) ? textGroup(v) : v;
 
 /**
  * A paren group nothing in computes, around its evaluated content: the group
@@ -5558,15 +5625,20 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         }
       }
 
-      /*
-       * Inside `calc()` an operand is read as it is evaluated: kept math a mixin
-       * argument bound to is its arithmetic there, never a nested `calc()`
-       * (`.m(@v) { w: calc(@v * 2); }` with `.m(1px + 1em)` is
-       * `calc((1px + 1em) * 2)`), as the same math through a variable is.
-       */
-      if ((e.calcDepth ?? 0) > 0) {
+      {
+        /*
+         * Inside `calc()` an operand is read as it is evaluated: kept math a mixin
+         * argument bound to is its arithmetic there, never a nested `calc()`
+         * (`.m(@v) { w: calc(@v * 2); }` with `.m(1px + 1em)` is
+         * `calc((1px + 1em) * 2)`), as the same math through a variable is. Text
+         * in the groups written around it is that text wherever it is read, as
+         * through a variable: written in its groups (`calc(2 * @t)` with
+         * `.m((e("1px + 2px")))` is `calc(2 * (1px + 2px))`), spliced without
+         * them (ledger J16).
+         */
         const carried = e.snapshotValues?.get(node);
-        if (carried !== undefined && !isValueGroupArray(carried) && keptMathOf(carried) !== undefined) {
+        if (carried !== undefined && !isValueGroupArray(carried)
+          && ((carried.type === 'Any' && carried.groups !== 0) || ((e.calcDepth ?? 0) > 0 && keptMathOf(carried) !== undefined))) {
           return carried;
         }
       }
@@ -5800,14 +5872,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             : makeBlock(v, node.delimiter, node.escaped);
         }
         if (reached) {
-          return isLiteral(v) ? v : reachedGroup(v, e);
+          return isLiteral(v) ? v : reachedGroup(v, e, computation?.type === 'FunctionCall');
         }
         if (isLiteral(v)) {
           return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
             ? literal(`(${v})`)
             : v;
         }
-        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e);
+        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e, computation.type === 'FunctionCall');
       });
     }
     case 'Expression': {
@@ -9234,7 +9306,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  * unit multiset to validate.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, spliceCtx(e)), emitValue);
+  return mapMaybe(evalValue(node, frame, spliceCtx(e)), readText);
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
@@ -9305,20 +9377,19 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
 
 /**
  * [selector-capture] A GROUP interpolation: a lone bare `@{name}` in a selector
- * whose variable resolves to a `*[…]` selector-list CAPTURE, or to an escaped
- * `~'…'` selector string carrying a top-level comma. Both interpolate a multi-
- * branch selector group, routed through the SAME expansion — a comma-separated
- * branch list at whole-selector position, a `:is(…)` compaction in compound
- * position. `capture` marks a `*[…]` (its branches are parser-owned and expand at
- * whole-selector position); a quoted string's commas are opaque bytes that stay a
- * single verbatim branch there. Returns null for any non-group interpolation
- * (`.a-@{n}`, `@{n}` bound to a plain value) — the byte-splice path is unchanged.
+ * whose variable resolves to a `*[…]` selector-list CAPTURE, whose branches are
+ * parser-owned: a comma-separated branch list at whole-selector position, a
+ * `:is(…)` compaction in compound position. Escaped text (`~'.a, .b'`) is never
+ * a group: it is printed as written, its commas, `&` and combinators being
+ * characters (owner 2026-10-09: "everywhere that is text should print AS
+ * WRITTEN"; "in Less, we promise ~"" as a 'dump whatever you want as-is'"), so
+ * it splices on the byte path like any other value. Returns null for any
+ * non-group interpolation (`.a-@{n}`, `@{n}` bound to a plain value or text).
  */
-interface GroupInterp { branches: string[]; multi: boolean; capture: boolean }
+interface GroupInterp { branches: string[]; multi: boolean }
 
 /** [selector-capture] The group a single interpolation REF resolves to: a `*[…]`
- *  selector CAPTURE, or an escaped `~'…'` selector string with a top-level comma.
- *  Any other ref (a plain value, a comma-less string) is null. */
+ *  selector CAPTURE. Any other ref (a plain value, escaped text) is null. */
 function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupInterp | null {
   if (ref.type !== 'Lookup' || ref.kind !== 'var') {
     return null;
@@ -9333,24 +9404,7 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
   }
   if (bound.type === 'SelectorCapture') {
     const branches = bound.branches.slice();
-    return { branches, multi: branches.length > 1, capture: true };
-  }
-  if (bound.type === 'Quoted' && bound.escaped) {
-    /*
-     * One escaped string, interpolating or not: its content decides the group.
-     * A comma-less string returns null and splices on the byte path, which
-     * evaluates an interpolating one again there.
-     */
-    const content = bound.interp === null ? bound.value : withExcluded(e, bound, () => evalBytes(bound, hit.frame, e));
-    if (isThenable(content)) {
-      // ponytail: an async hole in a selector string falls back to the byte splice, without grouping.
-      observeRejectedThenable(content);
-      return null;
-    }
-    if (hasTopLevelComma(content)) {
-      /* The whitespace an escaped selector opens or closes with is canonicalized away (ledger O8(b)). */
-      return { branches: [content.trim()], multi: true, capture: false };
-    }
+    return { branches, multi: branches.length > 1 };
   }
   return null;
 }
@@ -9395,23 +9449,23 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
  *  A lone whole-selector `*[…]` capture EXPANDS to one branch per captured
- *  selector. A lone quoted group stays a single verbatim branch at a root
- *  header, and contributes its branches one per line to a `nested` header
- *  (ledger O8(a)). Every other complex resolves to exactly one string (a
- *  compound-embedded group compacts to `:is(…)` inside `resolveComplex`). */
-function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx, nested = false): MaybePromise<string[]> {
+ *  selector, one per line in a nested header (ledger O8(a)). Every other complex
+ *  resolves to exactly one string (a compound-embedded group compacts to `:is(…)`
+ *  inside `resolveComplex`), escaped text included, as written: `~'.a, .b'` is
+ *  the one branch `.a, .b` (owner 2026-10-09). */
+function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const g = loneGroupInterp(c, frame, e);
   if (g !== null) {
-    return g.capture ? g.branches : nested ? splitListBytes(g.branches[0]!) : g.branches;
+    return g.branches;
   }
 
   return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, EXCEPT a group ref (a `*[…]` capture or `~'…'` comma
- *  string) embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
- *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
+ *  part folds to its bytes, escaped text as written, EXCEPT a `*[…]` capture
+ *  embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to
+ *  a single `:is(…)` group; a single-branch capture splices its lone branch bare. */
 function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
@@ -9653,11 +9707,20 @@ function parentUnits(parents: readonly string[], flags: Uint8Array): string[] {
  *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
  *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
  *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
- *  fused append (`&__el`) or a `&` merged after a preceding name (`.qux&`,
- *  `.fruit-&`) — is a name concatenation and DISTRIBUTES per parent (a group cannot
- *  splice into a name; `:is(.foo .bar)` would also relocate the subject). Returns
- *  one variant per distribution — the branch-multiplying case. */
-function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: readonly string[], first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<readonly string[]> {
+ *  fused append (`&__el`) or a `&` after another simple (`.qux&`, `.fruit-&`) —
+ *  DISTRIBUTES per parent. Where `complex` is given (each parent's {@link lastCompoundStart}), a
+ *  parent of several compounds is one unit, `:is(.a .b)`: this `&` is not the one
+ *  that opens its selector ({@link placeParent}). Returns one variant per
+ *  distribution — the branch-multiplying case. */
+function resolveTokenAmp(
+  sim: SimpleToken,
+  parents: string[],
+  subs: readonly string[],
+  first: boolean,
+  complex: Int32Array | null,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<readonly string[]> {
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
@@ -9669,42 +9732,210 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], subs: readonly str
       return [text];
     }
     if (first && text === '&') {
-      return subs;
+      return complex !== null && parents.length === 1 && complex[0]! > 0 ? [`:is(${subs[0]!})`] : subs;
     }
-    return parents.map(p => text.split('&').join(p));
+    return parents.map((p, i) => complex !== null && complex[i]! > 0
+      ? `:is(${text.split('&').join(p)})`
+      : text.split('&').join(p));
   });
 }
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
- *  a distributing `&` (append/merge) multiplies its variants (cartesian). */
-function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], subs: readonly string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0, frame, e));
+ *  a distributing `&` (append/merge) multiplies its variants (cartesian). In the
+ *  compound that opens its selector (`head`), the first `&` writes a parent of
+ *  several compounds in place ({@link placeParent}). */
+function resolveCompoundAmp(
+  cmp: CompoundSelector,
+  parents: string[],
+  subs: readonly string[],
+  head: boolean,
+  complex: Int32Array | null,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<string[]> {
+  let ref = -1;
+  for (let i = 0; head && complex !== null && ref === -1 && i < cmp.value.length; i++) {
+    const sim = cmp.value[i]!;
+    if (!(sim.type === 'PseudoSelector' && sim.args !== null) && selectorTermHasAmpersand(sim)) {
+      ref = i;
+    }
+  }
+  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0 && !continuesName(cmp.value[1]), i === ref ? null : complex, frame, e));
   return combineAll(tokens, (lists) => {
+    /* The simples before the first `&` hold none, so each is one variant: `before`. */
+    let before = '';
     let acc = [''];
-    for (const variants of lists) {
+    for (let i = 0; i < lists.length; i++) {
+      if (i === ref) {
+        before = acc[0]!;
+        acc = [''];
+        continue;
+      }
       const next: string[] = [];
       for (const head of acc) {
-        for (const v of variants) {
+        for (const v of lists[i]!) {
           next.push(head + v);
         }
       }
       acc = next;
     }
-    return acc;
+    if (ref === -1) {
+      return acc;
+    }
+    const lead = ref > 0 && leadsWithElement(lists[0]![0]!, 0) ? lists[0]![0]! : '';
+    const out: string[] = [];
+    for (const parent of lists[ref]!) {
+      for (const after of acc) {
+        out.push(placeParent(parent, before, lead, after));
+      }
+    }
+    return out;
   });
 }
 
-function resolveTermAmp(term: SelectorTerm, parents: string[], subs: readonly string[], frame: Frame | null, e: EvalCtx): MaybePromise<readonly string[]> {
+/**
+ * Whether `sim`, glued after a `&`, continues a name the `&` builds: a plain token that
+ * opens with an identifier code point (`.scss` `&__el`, `&-m`, which its grammar reads
+ * as `&` then `__el`). Such a `&` is a name concatenation, so it distributes over a
+ * parent list (`.a, .b { &__el {} }` → `.a__el, .b__el`), never `:is(.a, .b)__el`,
+ * which is no selector.
+ */
+function continuesName(sim: SimpleToken | undefined): boolean {
+  return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
+}
+
+/** Whether `c` continues a name glued to a `&`: a name code point (CSS Syntax 3 §4.2) or the backslash of an escape. */
+function isNameCode(c: number): boolean {
+  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c === 0x5C /* \ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
+}
+
+/**
+ * [nesting] A `&` that is a plain reference to its parent follows CSS nesting
+ * (owner 2026-10-09): it stands for `:is(parent)`. Where the compound holding it
+ * opens its selector, a parent of several compounds is written in place, with the
+ * compound's other simples (`before` and `after` the `&`) joined to its LAST
+ * compound — `.active&` under `.a .b` is `.a .b.active`, `&.x` is `.a .b.x`, the
+ * meaning and specificity of `.active:is(.a .b)`. A type or universal selector
+ * (`lead`, the start of `before`) leads that compound (`div&` → `.a div.b`); where
+ * the parent's last compound opens with one too, the parent stays one unit
+ * (`div:is(.a span)`). A name built on the parent (`&-x`, `parent` is then
+ * `.a .b-x`) is placed the same way. A single-compound parent is written as it was.
+ */
+function placeParent(parent: string, before: string, lead: string, after: string): string {
+  const at = lastCompoundStart(parent);
+  if (at === 0) {
+    return before + parent + after;
+  }
+  if (lead.length === 0) {
+    return parent + before + after;
+  }
+  if (leadsWithElement(parent, at)) {
+    return before + ':is(' + parent + ')' + after;
+  }
+  return parent.slice(0, at) + lead + parent.slice(at) + before.slice(lead.length) + after;
+}
+
+/**
+ * [nesting] Where the last compound of a composed selector begins: past its last
+ * top-level combinator, `0` for a single compound.
+ *
+ * ponytail: reads a composed parent's text, since parents reach their children as
+ * text (SEMANTIC-INVARIANTS 6); carrying each composed branch's compound boundaries
+ * is the upgrade. Only a `&` that does not open its selector ({@link ampNeedsPlacement})
+ * pays for it.
+ */
+function lastCompoundStart(text: string): number {
+  let depth = 0;
+  let quote = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x5C /* \ */) {
+      i++;
+    } else if (quote !== 0) {
+      if (c === quote) {
+        quote = 0;
+      }
+    } else if (c === 0x22 /* " */ || c === 0x27 /* ' */) {
+      quote = c;
+    } else if (c === 0x28 /* ( */ || c === 0x5B /* [ */) {
+      depth++;
+    } else if (c === 0x29 /* ) */ || c === 0x5D /* ] */) {
+      depth--;
+    } else if (depth === 0 && (c === 0x20 || c === 0x3E /* > */ || c === 0x2B /* + */ || c === 0x7E /* ~ */ || c === 0x0A || c === 0x09)) {
+      start = i + 1;
+    }
+  }
+  return start;
+}
+
+/**
+ * [nesting] Whether a `&` of `c` sits where a parent of several compounds cannot be
+ * written as it is: in a compound after the first or after a leading combinator
+ * (`.c &`, `> &`), after another simple of the first compound (`.x&`), or as a second
+ * `&` in it (`&&`) — inside a pseudo's argument too (`:not(.c &)`). A `&` that opens
+ * its selector (`&`, `&.x`, `& + .y`, `&-el`) takes the parent as written. Allocates
+ * nothing.
+ */
+function ampNeedsPlacement(c: SelectorBranch): boolean {
+  if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
+    return termNeedsPlacement(c, true);
+  }
+  let head = c.type === 'ComplexSelector';
+  for (const part of c.value) {
+    if (typeof part === 'string') {
+      continue;
+    }
+    if (termNeedsPlacement(part, head)) {
+      return true;
+    }
+    head = false;
+  }
+  return false;
+}
+
+/** {@link ampNeedsPlacement} for one compound; `head` when it opens the selector. */
+function termNeedsPlacement(term: SelectorTerm, head: boolean): boolean {
+  const n = term.type === 'CompoundSelector' ? term.value.length : 1;
+  let refs = 0;
+  for (let i = 0; i < n; i++) {
+    const sim = term.type === 'CompoundSelector' ? term.value[i]! : term;
+    if (sim.type === 'PseudoSelector' && sim.args !== null) {
+      if (pseudoHasAmpersand(sim) && sim.args.selectors.some(ampNeedsPlacement)) {
+        return true;
+      }
+    } else if (selectorTermHasAmpersand(sim)) {
+      if (!head || i > 0 || refs > 0) {
+        return true;
+      }
+      refs++;
+    }
+  }
+  return false;
+}
+
+function resolveTermAmp(
+  term: SelectorTerm,
+  parents: string[],
+  subs: readonly string[],
+  head: boolean,
+  complex: Int32Array | null,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<readonly string[]> {
   return term.type === 'CompoundSelector'
-    ? resolveCompoundAmp(term, parents, subs, frame, e)
-    : resolveTokenAmp(term, parents, subs, true, frame, e);
+    ? resolveCompoundAmp(term, parents, subs, head, complex, frame, e)
+    : resolveTokenAmp(term, parents, subs, true, head ? null : complex, frame, e);
 }
 
 /** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
  *  position-aware substitution — the spec-faithful CSS-Nesting parent resolution
  *  that replaces the old context-blind cartesian odometer. A whole selector branch
  *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
- *  interior `&` resolves by role in `resolveCompoundAmp`. */
+ *  interior `&` resolves by role in `resolveCompoundAmp`. A parent of several
+ *  compounds is written in place only by the `&` that opens the selector
+ *  ({@link placeParent}); a parent list holding one that ends with a pseudo-element
+ *  (`flags`) keeps every parent as written, since `:is()` cannot hold it (O17). */
 function resolveSelectorBranchAmp(
   c: SelectorBranch,
   parents: string[],
@@ -9722,7 +9953,17 @@ function resolveSelectorBranchAmp(
   const subs = [ampSub(parents)];
   const last = terms.length - 1;
   const lastSubs = flags !== undefined && keepsPseudoElementLast(terms[last]!) ? parentUnits(parents, flags) : subs;
-  return combineAll(terms.map((term, i) => resolveTermAmp(term, parents, i === last ? lastSubs : subs, frame, e)), (variants) => {
+  let complex: Int32Array | null = null;
+  if (flags === undefined && ampNeedsPlacement(c)) {
+    for (let i = 0; i < parents.length; i++) {
+      const at = lastCompoundStart(parents[i]!);
+      if (at > 0) {
+        (complex ??= new Int32Array(parents.length))[i] = at;
+      }
+    }
+  }
+  const relative = c.type === 'RelativeSelector';
+  return combineAll(terms.map((term, i) => resolveTermAmp(term, parents, i === last ? lastSubs : subs, i === 0 && !relative, complex, frame, e)), (variants) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     const lead = c.type === 'RelativeSelector'
       ? renderCombinator(combinators[0]!).trimStart()
@@ -9771,7 +10012,9 @@ function branchHasAttributeAmp(c: SelectorBranch): boolean {
  * take an implicit descendant prefix, one branch per parent. A SINGLE parent — the
  * common BEM/`&:hover` nesting — keeps the fast `joinAmpersand` string splice (byte-
  * identical to the structural walk for one parent), which also carries the legacy
- * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
+ * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`), except
+ * where a parent of several compounds is referenced by a `&` that does not open the
+ * selector ({@link ampNeedsPlacement}): that takes the structural walk too. */
 function composeOne(parents: string[], child: SelectorBranch, frame: Frame | null, e: EvalCtx, flags: Uint8Array | undefined): MaybePromise<string[]> {
   if (!selectorBranchHasAmpersand(child)) {
     /*
@@ -9783,7 +10026,8 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
     return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
       parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
   }
-  if ((parents.length >= 2 || branchHasAttributeAmp(child)) && !parents.some(hasTopLevelComma)) {
+  if ((parents.length >= 2 || branchHasAttributeAmp(child) || (flags === undefined && ampNeedsPlacement(child) && lastCompoundStart(parents[0]!) > 0))
+    && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
   return mapMaybe(resolveSelectorBranch(child, frame, e), (text) => {
@@ -10033,7 +10277,7 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
 }
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e, true)), values => values.flat());
+  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e)), values => values.flat());
 }
 
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -10184,6 +10428,9 @@ interface DynamicExtendState {
    * rule outside this set is a dynamic emission whose facts are recorded at emit. */
   staticRules: Set<Ruleset>;
 
+  /** The extend pre-pass's resolved selector lists ({@link EvalCtx.resolvedSelectors}). */
+  resolvedSelectors: ReadonlyMap<SelectorList, SelectorList>;
+
   /** The import placements the walk issued, which the static plan never projected:
    * a rule they place is a dynamic emission even when `staticRules` holds it, since
    * the plan holds it at another copy of its sheet. */
@@ -10324,14 +10571,18 @@ interface Emit extends EvalCtx {
    */
   loadedImports: Map<string, Frame | null> | null;
 
-  /** The sheets each scope's `@import`s placed, keyed by the scope's frame ({@link importIsNoOp}). */
-  importScopes: Map<Frame, Map<string, boolean>> | null;
+  /** The sheets each output context's `@import`s placed ({@link importIsNoOp}, {@link importContextKey}). */
+  importScopes: Map<object | string, Map<string, boolean>> | null;
 
   /** The sheets the `@import`s enclosing the walk's position are placing ({@link importIsNoOp}). */
   importsExpanding: Set<string> | null;
 
   /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
   splitBlocks: SplitBlock[] | null;
+
+  /** The nested writer's open blocks, outermost first, `openCount` of them live ({@link OpenBlock}); null until one opens. */
+  openBlocks: OpenBlock[] | null;
+  openCount: number;
 
   /**
    * [extend] The header an extend wrote for a rule, keyed by the composed context its
@@ -10399,6 +10650,9 @@ interface Emit extends EvalCtx {
   /** Block-comment trivia runs already replayed during this render. */
   emittedBlockTrivia: EmittedTrivia;
 
+  /** [charset] The output's one `@charset` ({@link hoistCharsets}); null where none is hoisted. */
+  charset: HoistedCharset | null;
+
   /** Pending trivia owned by the currently active leaf buffer. */
   pendingLeafBlockComments: string[] | null;
 
@@ -10429,6 +10683,7 @@ function scratchEmit(e: EvalCtx): Emit {
     excluded: e.excluded,
     propNames: e.propNames,
     pseudoElementLists: e.pseudoElementLists,
+    resolvedSelectors: e.resolvedSelectors,
     reached: e.reached,
     optional: e.optional,
     calcDepth: e.calcDepth,
@@ -10465,6 +10720,8 @@ function scratchEmit(e: EvalCtx): Emit {
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    openBlocks: null,
+    openCount: 0,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -10479,6 +10736,7 @@ function scratchEmit(e: EvalCtx): Emit {
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
+    charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null
   };
@@ -12217,25 +12475,27 @@ function rejectAsyncSelectorInterp(
 }
 
 /**
- * [extend/selector-interp] Resolve a compound's interpolated simple tokens in place, in
- * `frame`, replacing each `@{…}` token with the static resolved text — the SAME
- * per-simple resolution {@link resolveCompound} performs at emit, so the mutated
- * compound serializes byte-identically. Static (`&`, `.a`) simple tokens are untouched.
- * The lazy `_hasInterp` / `_canon` memos are cleared so the fast static path recomputes.
+ * [extend/selector-interp] A compound with its interpolated simple tokens resolved in
+ * `frame`: each `@{…}` token is the static resolved text — the SAME per-simple
+ * resolution {@link resolveCompound} performs at emit, so it serializes
+ * byte-identically. A new compound; the parsed one is never written (a parsed document
+ * renders again with other values). Static (`&`, `.a`) simple tokens are shared. A glued
+ * name merged into one token is no longer a compound.
  */
-function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | null, e: EvalCtx): void {
+function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: EvalCtx): SelectorTerm {
   if (!compoundHasInterp(comp)) {
-    return;
+    return comp;
   }
 
   /*
-   * Resolve EVERY interpolated simple before mutating any of them. A partial
-   * mutation (simple 0 replaced, simple 1 throwing) would leave the compound in a
-   * state that is neither the authored selector nor the resolved one, and the
-   * caller's recovery path would then serialize that corruption.
+   * Resolve EVERY interpolated simple before building, so a throw leaves nothing
+   * half-resolved for the caller's recovery path to serialize.
    */
   const texts: Array<string | undefined> = [];
-  const pseudos: PseudoSelector[] = [];
+
+  /* Each pseudo whose argument interpolates, and its resolved copy. */
+  const pseudos: SimpleToken[] = [];
+  const copies: SimpleToken[] = [];
   for (let i = 0; i < comp.value.length; i++) {
     const sim = comp.value[i]!;
     texts.push(undefined);
@@ -12243,6 +12503,7 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
       if (pseudoHasInterp(sim)) {
         probePseudoInterp(sim, frame, e);
         pseudos.push(sim);
+        copies.push(resolvePseudoInterpCopy(sim, frame, e));
       }
       continue;
     }
@@ -12251,15 +12512,13 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
     }
   }
   const tokens = resolvedCompoundTokens(comp.value, texts);
-  comp.value.length = 0;
-  for (const token of tokens) {
-    comp.value.push(token);
+  for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
+    const at = pseudos.indexOf(tokens[i]!);
+    if (at !== -1) {
+      tokens[i] = copies[at]!;
+    }
   }
-  for (const p of pseudos) {
-    resolvePseudoInterpInPlace(p, frame, e);
-  }
-  comp._hasInterp = false;
-  comp._canon = undefined;
+  return tokens.length === 1 ? tokens[0]! : { ...comp, value: tokens, _hasInterp: false, _canon: undefined };
 }
 
 /**
@@ -12379,7 +12638,7 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: EvalCt
 /**
  * [extend/selector-interp] Resolve every interpolated leaf under a structured
  * pseudo WITHOUT mutating anything, so a member that cannot resolve throws
- * BEFORE the first write. {@link resolveSelectorBranchInterpInPlace} rewrites as
+ * BEFORE the first write. {@link resolveSelectorBranchInterpCopy} builds as
  * it walks, so `:not(.#{$ok}, .#{$broken})` would otherwise leave branch one
  * rewritten and branch two authored — exactly the half-state the staging
  * comment above forbids, and the state the pre-pass's "leave the selector
@@ -12406,64 +12665,70 @@ function probePseudoInterp(p: PseudoSelector, frame: Frame | null, e: EvalCtx): 
 }
 
 /**
- * [extend/selector-interp] Resolve a structured pseudo's interpolated ARGUMENT
- * members in place. The pseudo itself stays a `PseudoSelector` — collapsing it
- * to a flat `SimpleSelector` would discard `crossable`, and the extend IR forks
- * a crossable `:is(…)` into a structured graft off exactly that field. Only the
- * members below it are rewritten, so the token keeps its structure and loses its
- * frame dependence.
+ * [extend/selector-interp] A structured pseudo with its interpolated ARGUMENT members
+ * resolved. It stays a `PseudoSelector` — collapsing it to a flat `SimpleSelector`
+ * would discard `crossable`, and the extend IR forks a crossable `:is(…)` into a
+ * structured graft off exactly that field. A new pseudo; the parsed one is never
+ * written.
  */
-function resolvePseudoInterpInPlace(p: PseudoSelector, frame: Frame | null, e: EvalCtx): void {
+function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: EvalCtx): PseudoSelector {
   const args = p.args;
   if (args === null || !pseudoHasInterp(p)) {
-    return;
+    return p;
   }
-  for (let i = 0; i < args.selectors.length; i++) {
-    args.selectors[i] = resolveSelectorBranchInterpInPlace(args.selectors[i]!, frame, e);
-  }
-  p._hasInterp = false;
+  const selectors = args.selectors.map(c => resolveSelectorBranchInterpCopy(c, frame, e));
+  return { ...p, args: { ...args, selectors }, _hasInterp: false };
 }
 
-function resolveSelectorTermInterpInPlace(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
+function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
   if (term.type === 'CompoundSelector') {
-    resolveCompoundInterpInPlace(term, frame, e);
-
-    /* A glued name merged into one token is no longer a compound. */
-    return term.value.length === 1 ? term.value[0]! : term;
+    return resolveCompoundInterpCopy(term, frame, e);
   }
   if (term.type === 'PseudoSelector' && term.args !== null) {
     if (pseudoHasInterp(term)) {
       probePseudoInterp(term, frame, e);
-      resolvePseudoInterpInPlace(term, frame, e);
+      return resolvePseudoInterpCopy(term, frame, e);
     }
     return term;
   }
   return term.interp !== null ? simpleSelector(resolveSimpleTextSync(term, frame, e)) : term;
 }
 
-function resolveSelectorBranchInterpInPlace(c: SelectorBranch, frame: Frame | null, e: EvalCtx): SelectorBranch {
+/** A selector branch with its interpolation resolved in `frame`: a new branch, or `c` when it holds none. */
+function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: EvalCtx): SelectorBranch {
   if (!selectorBranchHasInterp(c)) {
     return c;
   }
   if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
-    return resolveSelectorTermInterpInPlace(c, frame, e);
+    return resolveSelectorTermInterpCopy(c, frame, e);
   }
   const hasLiteralAmpersand = selectorBranchHasAmpersand(c);
-  const start = c.type === 'RelativeSelector' ? 1 : 0;
-  const resolvedTerms: Array<{ index: number; term: SelectorTerm }> = [];
-  for (let index = start; index < c.value.length; index += 1) {
-    const term = c.value[index];
-    if (term !== undefined && typeof term !== 'string') {
-      resolvedTerms.push({ index, term: resolveSelectorTermInterpInPlace(term, frame, e) });
-    }
+  const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator =>
+    typeof term === 'string' ? term : resolveSelectorTermInterpCopy(term, frame, e);
+  if (c.type === 'ComplexSelector') {
+    const [head, ...rest] = c.value;
+    return { ...c, value: [resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
   }
-  for (const { index, term } of resolvedTerms) {
-    c.value[index] = term;
+  const [combinator, head, ...rest] = c.value;
+  return { ...c, value: [combinator, resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+}
+
+/** The selector list `list` reads as for the extend planner: its resolved copy, or itself ({@link EvalCtx.resolvedSelectors}). */
+function plannedSelectorList(list: SelectorList, e: EvalCtx): SelectorList {
+  return e.resolvedSelectors.get(list) ?? list;
+}
+
+/** Record `branch` as branch `index` of `list`'s resolved copy ({@link EvalCtx.resolvedSelectors}). */
+function resolvedSelectorBranchOf(list: SelectorList, index: number, branch: SelectorBranch, e: EvalCtx): void {
+  if (branch === list.selectors[index]) {
+    return;
   }
-  c._hasInterp = false;
-  c._hasAmp = hasLiteralAmpersand;
-  c._canon = undefined;
-  return c;
+  let copy = e.resolvedSelectors.get(list);
+  if (copy === undefined) {
+    copy = { ...list, selectors: list.selectors.slice() };
+    e.resolvedSelectors.set(list, copy);
+  }
+  copy.selectors[index] = branch;
 }
 
 /**
@@ -12473,7 +12738,10 @@ function resolveSelectorBranchInterpInPlace(c: SelectorBranch, frame: Frame | nu
  * neither matches an `:extend()` target nor emits its concrete header. This pre-pass
  * resolves each interp selector to its static text in the SAME lexical frame emit
  * would use (a rule's own selector resolves in its PARENT frame), so both the matcher
- * and the nested-plan header see the concrete selector. It mirrors the extend planner's
+ * and the nested-plan header see the concrete selector. It resolves into copies the
+ * planner reads ({@link EvalCtx.resolvedSelectors}) and never writes the parsed
+ * document, which renders again with other values: the same parsed sheet rendered
+ * with `@v: 1` and then `@v: 2` gives `.c-1` and then `.c-2`. It mirrors the extend planner's
  * walk EXACTLY (Ruleset + AtRuleBlock only; never a MixinDefinition body — those resolve per call
  * frame, not lexically, and the planner skips them too), so no rule is resolved that the
  * planner would not also see. A resolution throw (an unresolvable interp on a guarded /
@@ -12516,20 +12784,18 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           if (loneGroupInterp(c, frame, e) !== null) {
             continue;
           }
-          const resolved = resolveSelectorBranchInterpInPlace(c, frame, e);
-          list.selectors[index] = resolved;
+          const resolved = resolveSelectorBranchInterpCopy(c, frame, e);
+          resolvedSelectorBranchOf(list, index, resolved, e);
 
           /*
            * An inline `:extend()` holds its own branch — the parser's object, shared with
-           * this list. A lone interpolated simple resolves to a NEW token, so the extend
-           * is pointed at it too, or it extends from the unresolved branch, whose IR
-           * writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
+           * this list — so the extend reads the resolved branch too, or it extends from
+           * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
            */
-          if (resolved !== c) {
-            for (const inst of st.extendInstructions ?? []) {
-              if (inst.subject?.selectors[0] === c) {
-                inst.subject.selectors[0] = resolved;
-              }
+          for (let i = 0; st.extendInstructions !== undefined && i < st.extendInstructions.length; i++) {
+            const inst = st.extendInstructions[i]!;
+            if (inst.subject?.selectors[0] === c) {
+              resolvedSelectorBranchOf(inst.subject, 0, resolved, e);
             }
           }
         } catch (error) {
@@ -12556,7 +12822,7 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
             continue;
           }
           try {
-            inst.target.selectors[index] = resolveSelectorBranchInterpInPlace(c, frame, e);
+            resolvedSelectorBranchOf(inst.target, index, resolveSelectorBranchInterpCopy(c, frame, e), e);
           } catch (error) {
             /*
              * As above: an awaitable target is reported; a genuinely unresolvable
@@ -12846,6 +13112,13 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
   return places;
 }
 
+/*
+ * The plan overlay of a document the import planner bypasses. Every overlay literal
+ * names `subjects`, `instructions`, `bubbles`, `atRuleScopes` in that order, so the
+ * planner reads them through as few hidden classes as there are overlay kinds.
+ */
+const NO_PLAN_BUBBLES: readonly PlanBubble[] = [];
+
 /** The import preflight's mutable {@link PlanOverlay}. */
 interface ImportPlanOverlay {
   subjects: PlanSubject[];
@@ -12946,7 +13219,7 @@ function planImportedStaticExtend(
         e.importedWalkPlacement = true;
       }
     }
-    if (statement.type === 'Ruleset' && statement.selector.selectors.some(selectorBranchHasInterp)) {
+    if (statement.type === 'Ruleset' && plannedSelectorList(statement.selector, e).selectors.some(selectorBranchHasInterp)) {
       /*
        * A selector the planner could not resolve (see `planImported`) resolves only in
        * the frame the walk emits it in, so the rule and every rule nested in it are left
@@ -12956,7 +13229,7 @@ function planImportedStaticExtend(
       e.importedWalkPlacement = true;
       collectBodyExtendAtoms([statement], overlay.dynamicTargetAtoms ??= new Set());
     } else if (statement.type === 'Ruleset') {
-      const own = levelFromSelectorList(statement.selector);
+      const own = levelFromSelectorList(plannedSelectorList(statement.selector, e));
       const rulePath = [...path, own];
       const subject: PlanSubject = {
         rule: statement, path: rulePath, scope, ownLocal: own, parent,
@@ -12967,9 +13240,9 @@ function planImportedStaticExtend(
       if (statement.extendInstructions) {
         for (const inst of statement.extendInstructions) {
           const extenderPath = inst.subject
-            ? [...path, levelFromSelectorList(inst.subject)]
+            ? [...path, levelFromSelectorList(plannedSelectorList(inst.subject, e))]
             : rulePath;
-          for (const sel of inst.target.selectors) {
+          for (const sel of plannedSelectorList(inst.target, e).selectors) {
             overlay.instructions.push({
               target: branchFromSelector(sel), partial: inst.partial, extenderPath, scope,
               order: overlay.instructions.length, extenderHidden: hidden,
@@ -13224,6 +13497,7 @@ function planImportedFacts(
       overlay: {
         subjects: [],
         instructions: [],
+        bubbles: NO_PLAN_BUBBLES,
         atRuleScopes: null
       },
       imports: null,
@@ -13240,7 +13514,7 @@ function planImportedFacts(
    * at-rule block, or by the document root the walk began at. The planner never walks into
    * a ruleset, and no import it plans shares a ruleset's scope.
    */
-  const placed = new Map<object, Map<string, boolean>>();
+  const placed = new Map<object | string, Map<string, boolean>>();
 
   /* The sheets the imports enclosing the walk's position are placing ({@link importIsNoOp}). */
   const expanding = new Set<string>();
@@ -13284,8 +13558,8 @@ function planImportedFacts(
     /*
      * An interpolated rule selector is resolved before it is planned, as the root's are
      * (ledger X7 as amended): in the sheet's own frame under its importer's, which is
-     * where the walk resolves it, and in place, so the walk writes that same
-     * resolution and nothing is resolved twice (ledger X12).
+     * where the walk resolves it, into a copy the planner reads, so the parsed sheet a
+     * second placement or render reads is untouched ({@link EvalCtx.resolvedSelectors}).
      */
     if (bodyHasInterpRule(rules)) {
       resolveSelectorInterpForExtend(rules, {
@@ -13354,8 +13628,12 @@ function planImportedFacts(
     hidden = false,
     placement: object | undefined = undefined,
 
-    /* The import-once scope of `statements` ({@link importIsNoOp}): the at-rule block, or the root. */
-    importScope: object = scope
+    /*
+     * The import-once output context of `statements` ({@link importIsNoOp}): the root,
+     * `''`, and each at-rule block's prelude after it, as {@link importContextKey} writes
+     * it; a composed module's root is its own.
+     */
+    importScope: object | string = ''
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     const deferredSites: number[] = [];
@@ -13363,6 +13641,10 @@ function planImportedFacts(
     let firstCssImportKey: string | null = null;
     let furtherCssImportKeys: Set<string> | null = null;
     const visitImport = async (st: StyleImport, importCssPlan: CssImportPlan | null, at: number): Promise<void> => {
+      /* A `@compose` is written at the top level of a stylesheet ({@link composeNotTopLevel}). */
+      if (st.mode === 'compose' && importScope !== '' && typeof importScope === 'string') {
+        throw composeNotTopLevel(st, e);
+      }
       recordAstExtendProfile?.('astExtend.preflight.importsVisited');
       const options = importRequestOptions(st.options);
       const specifier = importSpecifier(st, scope, e);
@@ -13600,7 +13882,10 @@ function planImportedFacts(
          * — and ledger A10's `@import "lib" screen;` desugar lands exactly here.
          * Those facts keep publication order (see {@link importSiteRank}).
          */
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement, st);
+        const context = typeof importScope === 'string' && bodyHasPlannedImport(st.rules)
+          ? importScope + '\n' + st.name + ' ' + await atRulePreludeBytes(st, scope, e)
+          : st;
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement, context);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -13718,6 +14003,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     excluded: new Set(),
     propNames: new Set(),
     pseudoElementLists: new Map(),
+    resolvedSelectors: new Map(),
     reached: false,
     optional: options?.optional ?? false,
     pending: [],
@@ -13739,6 +14025,8 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    openBlocks: null,
+    openCount: 0,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -13754,6 +14042,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
+    charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null,
     scopedFunctionNames: scopedFunctionNames(rootFns),
@@ -13776,7 +14065,8 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     reassign: null,
     statements: root.rules,
     fns: rootFns,
-    sourceOwner: e.context?.currentSourceOwner?.() ?? null
+    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
+    importContext: ''
   };
   if (rootFns) {
     rootFrame.fnScope = rootFrame;
@@ -13823,6 +14113,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
+    resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
     reached: false, // [paren-group] inside a value a reference reached
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
@@ -13844,6 +14135,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     importScopes: null,
     importsExpanding: null,
     splitBlocks: null,
+    openBlocks: null,
+    openCount: 0,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -13864,6 +14157,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
+    charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null,
     scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
@@ -13884,7 +14178,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     declIndex: collectDeclIndex(root.rules), cells: null, reassign: null,
     statements: root.rules,
     fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
-    sourceOwner: e.context?.currentSourceOwner?.() ?? null
+    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
+    importContext: ''
   };
   if (rootFns) {
     rootFrame.fnScope = rootFrame;
@@ -13911,7 +14206,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0 || e.importedWalkPlacement) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
-    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact'); // [extend] null when no `:extend()` anywhere
+    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact', e.resolvedSelectors); // [extend] null when no `:extend()` anywhere
     e.importPlacements = planned.imports?.importPlacements ?? null;
 
     /*
@@ -13953,6 +14248,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerStarts: [],
         containerEnds: [],
         staticRules,
+        resolvedSelectors: e.resolvedSelectors,
         walkPlacements: null,
         subjects: [],
         instructions: [],
@@ -14806,7 +15102,7 @@ function recordOpenRule(dyn: DynamicExtendState, rule: Ruleset, frame: Frame, e:
 function ownLevelOf(dyn: DynamicExtendState, rule: Ruleset): Level {
   let own = dyn.ownLevels.get(rule);
   if (own === undefined) {
-    own = levelFromSelectorList(rule.selector);
+    own = levelFromSelectorList(dyn.resolvedSelectors.get(rule.selector) ?? rule.selector);
     dyn.ownLevels.set(rule, own);
   }
   return own;
@@ -15044,7 +15340,7 @@ function recordDynamicExtendFacts(
        */
       const at = inst.subject && resolved !== undefined ? rule.selector.selectors.indexOf(inst.subject.selectors[0]!) : -1;
       const extenderPath = inst.subject && structured
-        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : levelFromSelectorList(inst.subject)]
+        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : levelFromSelectorList(dyn.resolvedSelectors.get(inst.subject) ?? inst.subject)]
         : path;
       recordDynamicInstruction(dyn, inst, extenderPath, hidden);
     }
@@ -15056,7 +15352,7 @@ function recordDynamicExtendFacts(
 function recordDynamicInstruction(dyn: DynamicExtendState, inst: ExtendInstruction, extenderPath: Level[], hidden: boolean): void {
   let targets = dyn.targetBranches.get(inst);
   if (targets === undefined) {
-    targets = inst.target.selectors.map(branchFromSelector);
+    targets = (dyn.resolvedSelectors.get(inst.target) ?? inst.target).selectors.map(branchFromSelector);
     dyn.targetBranches.set(inst, targets);
   }
   for (const target of targets) {
@@ -15158,10 +15454,10 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
   const overlay: PlanOverlay = {
     subjects: [...dyn.baseOverlay.subjects, ...subjects],
     instructions: [...dyn.baseOverlay.instructions, ...dyn.instructions],
-    atRuleScopes: dyn.atRuleScopes,
-    bubbles: dyn.baseOverlay.bubbles
+    bubbles: dyn.baseOverlay.bubbles,
+    atRuleScopes: dyn.atRuleScopes
   };
-  return computeExtends(dyn.root, overlay, guardedNesting);
+  return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors);
 }
 
 /**
@@ -15405,6 +15701,70 @@ function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
 }
 
 /**
+ * Whether a branch of `list` builds a name on its parent: a `&` with a name glued after
+ * it (`&__el`, `&--m`, `&-1`, `&2`, `&@{x}`; `.scss` reads `&__el` as `&` then `__el`),
+ * in a pseudo's argument too. Less name concatenation, not CSS nesting, which reads
+ * `&__el` as `&` then the type selector `__el` (owner 2026-07-23/24, ledger J13).
+ * Allocates nothing.
+ */
+function selectorBuildsName(list: SelectorList): boolean {
+  for (const c of list.selectors) {
+    if (selectorBranchHasAmpersand(c) && branchBuildsName(c)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function branchBuildsName(c: SelectorBranch): boolean {
+  const parts = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value : null;
+  for (let k = 0; k < (parts === null ? 1 : parts.length); k++) {
+    const part = parts === null ? c : parts[k]!;
+    if (typeof part === 'string') {
+      continue;
+    }
+    const n = part.type === 'CompoundSelector' ? part.value.length : 1;
+    for (let i = 0; i < n; i++) {
+      const sim = part.type === 'CompoundSelector' ? part.value[i]! : part;
+      if (sim.type === 'PseudoSelector') {
+        if (sim.args !== null && sim.args.selectors.some(branchBuildsName)) {
+          return true;
+        }
+        continue;
+      }
+      if (sim.type !== 'SimpleSelector') {
+        continue;
+      }
+      const next = part.type === 'CompoundSelector' ? part.value[i + 1] : undefined;
+      if (sim.text !== null && textHoldsParentRef(sim.text) && gluesName(sim.text, false, next)) {
+        return true;
+      }
+      const interp = sim.interp?.parts;
+      for (let p = 0; interp !== undefined && p < interp.length; p++) {
+        const lit = interp[p]!;
+        if ('lit' in lit && lit.lit.charCodeAt(0) !== 0x5B /* [ */ && gluesName(lit.lit, p + 1 < interp.length, next)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a `&` in `text` has a name glued after it: a name code point, or, at the end
+ * of `text`, an interpolation (`more`) or the next token's name ({@link continuesName}).
+ */
+function gluesName(text: string, more: boolean, next: SimpleToken | undefined): boolean {
+  for (let at = text.indexOf('&'); at !== -1; at = text.indexOf('&', at + 1)) {
+    if (at + 1 < text.length ? isNameCode(text.charCodeAt(at + 1)) : more || continuesName(next)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Evaluate shared ruleset gates and placement, then call the selected writer.
  * The optional nested arguments are existing writer state; their presence chooses
  * the projection without consulting the output setting during evaluation.
@@ -15420,6 +15780,14 @@ function expandRule(
   nestedSource?: NestedHeaderSource | null,
   nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
+  /*
+   * A rule whose `&` builds a name is written flattened, the name built (`.block { &__el
+   * {} }` → `.block__el`), where it stands: nested, CSS would read it as no rule of the
+   * block's (ledger J13, O17).
+   */
+  if (nestedSource !== undefined && nestedSource !== null && selectorBuildsName(rule.selector)) {
+    return riseOut(rule, frame, e, imp, nestedSource);
+  }
   if (nestedSource !== undefined && nestedHoist !== undefined) {
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
@@ -15578,7 +15946,8 @@ function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
       mixins: collectMixins(rule.rules),
       declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
       statements: rule.rules,
-      sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
+      sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
+      outputOf: rule
     };
 
     /*
@@ -18255,48 +18624,6 @@ interface EvaluatedForItems {
 
 type ForItems = ForItem[] | EvaluatedForItems | CollectionOverlay<ValueCollectionEntry> | ValueCollection;
 
-/**
- * Split `text` at the TOP level on `,` (comma list) else a whitespace run (space
- * list), skipping anything nested in `()[]{}` or inside a quoted string. Mirrors
- * Less's value model: a comma binds looser than a space, so a top-level comma
- * makes a comma list, otherwise the whitespace runs make a space list. Returns the
- * trimmed non-empty pieces (a single-element array when there is no separator).
- */
-function splitListBytes(text: string): string[] {
-  const comma = hasTopLevelComma(text);
-  const parts: string[] = [];
-  let depth = 0;
-  let quote = '';
-  let start = 0;
-  const push = (end: number): void => {
-    const piece = text.slice(start, end).trim();
-    if (piece !== '') {
-      parts.push(piece);
-    }
-  };
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
-    if (quote !== '') {
-      if (c === quote) {
-        quote = '';
-      }
-      continue;
-    }
-    if (c === '"' || c === '\'') {
-      quote = c;
-    } else if (c === '(' || c === '[' || c === '{') {
-      depth++;
-    } else if (c === ')' || c === ']' || c === '}') {
-      depth--;
-    } else if (depth === 0 && (comma ? c === ',' : c === ' ' || c === '\t' || c === '\n' || c === '\r')) {
-      push(i);
-      start = i + 1;
-    }
-  }
-  push(text.length);
-  return parts;
-}
-
 /** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
 function hasTopLevelComma(text: string): boolean {
   let depth = 0;
@@ -20367,16 +20694,60 @@ function isCharset(node: AtRuleStatement): boolean {
 }
 
 /**
- * [charset] Emit the FIRST document-level `@charset` at the top of the output.
- * Every inline occurrence (including this one) is dropped by
- * `emitAtRuleStatement`, so the single hoisted copy is the whole output — the
- * dedupe. Mirrors legacy jess / Less 4.x: first charset wins, rest dropped.
+ * [charset] The output's one `@charset`: its written bytes, and the chunk at the top of
+ * the output that holds them (`-1` where the entry's own was written there directly).
+ */
+interface HoistedCharset {
+  bytes: string | null;
+  at: number;
+}
+
+/**
+ * [charset] The top of the output, where the first document-level `@charset` goes
+ * (ledger N11): the entry's own is written there, and otherwise a chunk is reserved
+ * that the first `@charset` of a sheet an import places fills ({@link hoistCharsets}).
+ * Every inline occurrence is dropped by `emitAtRuleStatement`.
  */
 function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
   for (const c of rules) {
-    if (c.type === 'AtRuleStatement' && isCharset(c as AtRuleStatement)) {
-      emitAtRuleStatementRaw(c as AtRuleStatement, frame, e, null);
+    if (c.type === 'AtRuleStatement' && isCharset(c)) {
+      const start = e.chunks.length;
+      emitAtRuleStatementRaw(c, frame, e, null);
+      e.charset = { bytes: e.chunks.slice(start).join(''), at: -1 };
+      hoistCharsets(rules, frame, e, c);
       return;
+    }
+  }
+  e.charset = { bytes: null, at: e.chunks.length };
+  e.chunks.push('');
+}
+
+/**
+ * [charset] The document-level `@charset`s of `rules`, a document's top level, the
+ * entry's or a sheet's an import places, in order: the first in the output fills the
+ * chunk reserved at its top; a later one written the same is dropped; a later one that
+ * names another encoding is dropped with an `eval/charset-conflict` warning, since one
+ * stylesheet declares one encoding, read only from its first bytes (CSS Syntax 3 §3.2;
+ * orchestrator judgment under owner delegation 2026-10-09: a silent drop is
+ * surprising). `written` is the one already written.
+ */
+function hoistCharsets(rules: readonly Statement[], frame: Frame, e: Emit, written: AtRuleStatement | null = null): void {
+  const slot = e.charset;
+  if (slot === null) {
+    return;
+  }
+  for (const c of rules) {
+    if (c === written || c.type !== 'AtRuleStatement' || !isCharset(c)) {
+      continue;
+    }
+    const scratch = scratchEmit(e);
+    emitAtRuleStatementRaw(c, frame, scratch, null);
+    const bytes = scratch.chunks.join('');
+    if (slot.bytes === null) {
+      slot.bytes = bytes;
+      e.chunks[slot.at] = bytes;
+    } else if (slot.bytes !== bytes) {
+      e.context?.warnAtNode('eval/charset-conflict', 'eval', c, { charset: bytes.trim(), hoisted: slot.bytes.trim() });
     }
   }
 }
@@ -21207,6 +21578,18 @@ function activateComposeEdge(
  * execution has not reached. Only a configuring `set` edge asks, so the pending
  * planned composes are scanned rather than indexed by frame.
  */
+/**
+ * A `@compose` anywhere but the top level of a stylesheet: inside a ruleset, an at-rule
+ * block, a mixin, detached-ruleset, guard or loop body (owner 2026-10-09: `@compose` is
+ * document-root only). A sheet `@import`ed inside such a body is evaluated there, so its
+ * own `@compose` is not at the top level either. The walk tells the body from the frame
+ * it evaluates in ({@link Frame.outputOf}, {@link Frame.importScope}); the import planner,
+ * which walks the root and its at-rule blocks, from the at-rule context it is in.
+ */
+function composeNotTopLevel(node: StyleImport, e: EvalCtx): JessError {
+  return ERR.composeNotTopLevel({ node, ...callSiteLocation(node, e) });
+}
+
 function plannedAhead(frame: Frame, e: Emit): boolean {
   const pending = e.composeActivations?.values();
   if (pending === undefined) {
@@ -21245,6 +21628,9 @@ function expandStyleImport(
   /* The import sits in a ruleset's body, which the import planner never walks. */
   inRule = false
 ): MaybePromise<void> {
+  if (node.mode === 'compose' && (frame.outputOf !== undefined || frame.importScope !== undefined)) {
+    throw composeNotTopLevel(node, e);
+  }
   if (e.context?.options.processImports === false) {
     return;
   }
@@ -21343,7 +21729,7 @@ function expandStyleImport(
           /* A sheet composed as a module is not also folded in by `@import`. */
           const composed = emitOnceKey !== undefined ? e.loadedImports?.get(loaded.key) : undefined;
           if ((composed !== undefined && composed !== null)
-            || importIsNoOp(e.importScopes ??= new Map(), e.importsExpanding ??= new Set(), importScopeOf(frame), loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
+            || importIsNoOp(e.importScopes ??= new Map(), e.importsExpanding ??= new Set(), importContextKey(importScopeOf(frame)), loaded.key, node, request.options, e.multipleImportDepth !== 0)) {
             return;
           }
           if (emitOnceKey !== undefined && composed === undefined) {
@@ -21364,6 +21750,11 @@ function expandStyleImport(
         return mapMaybe(publishChildren, () => {
           if (loaded.document === null) {
             return;
+          }
+
+          /* [charset] A placed sheet's `@charset` goes to the top of the output (ledger N11). */
+          if (e.referenceImportDepth === 0 && !importHasOption(request.options, 'reference')) {
+            hoistCharsets(loaded.document.rules, bodyFrame, e);
           }
           const emitSheet = () => emitLoaded
             ? emitLoaded(loaded.document!, bodyFrame)
@@ -22428,7 +22819,9 @@ function expandAtRuleBlock(
       parent: frame,
       mixins: collectMixins(node.rules),
       declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
-      statements: node.rules
+      statements: node.rules,
+      outputOf: node,
+      outputPrelude: prelude
     };
     const write = (): MaybePromise<void> => nestedSource === undefined
       ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
@@ -23311,6 +23704,13 @@ interface NestedLeafBuffer {
  * re-hoists the entry up the ancestor chain (decrementing each level) until it lands
  * `k` blocks up, so a match that crosses `k` nesting boundaries clears exactly those.
  */
+/**
+ * A {@link HoistEntry.bubble} that rises out of every rule block: a small integer, so
+ * every entry's `bubble` stays one in-object Smi field (an `Infinity` here was the first
+ * non-Smi stored in it and boxed every later entry's as a heap number).
+ */
+const HOIST_TO_ROOT = 0x3FFFFFFF;
+
 interface HoistEntry {
   rule: Ruleset;
   frame: Frame;
@@ -23338,6 +23738,226 @@ interface HoistEntry {
 interface HoistWrapper {
   node: AtRuleBlock;
   prelude: string;
+}
+
+/**
+ * [nesting] A block the nested writer has open ({@link Emit.openBlocks}): what it takes
+ * to close it where a rule rises out of it ({@link riseOut}) and to open it again after,
+ * a part of its own. `mark`, `markPos`, `headerChunk`, `body` and `split` are the
+ * current part's. The records are reused, one per open depth, so opening a block
+ * allocates nothing once the deepest nesting has been reached.
+ */
+interface OpenBlock {
+  /** The at-rule the block is the body of, its header `name prelude`; null for a rule, whose header is `own`. */
+  atRule: AtRuleBlock | null;
+  prelude: string;
+  idt: string;
+  depth: number;
+
+  /** The rule the block is the body of; null for an at-rule. */
+  rule: Ruleset | null;
+  frame: Frame | null;
+  own: string[] | null;
+
+  /** The header is a target slot a dynamic extend fold may rewrite ({@link recordNestedDynExtendSlot}). */
+  slot: boolean;
+  split: SplitBlock | null;
+  mark: number;
+  markPos: number;
+
+  /** The header's chunk; -1 where the part continues a block written before it (adjacent merge). */
+  headerChunk: number;
+  body: number;
+}
+
+/** Record the block whose header and `{` were just written, its body starting here; `e.openCount--` ends it, its record read until the next block opens. */
+function openBlock(
+  e: Emit,
+  atRule: AtRuleBlock | null,
+  prelude: string,
+  idt: string,
+  rule: Ruleset | null,
+  frame: Frame | null,
+  own: string[] | null,
+  slot: boolean,
+  split: SplitBlock | null,
+  mark: number,
+  markPos: number,
+  headerChunk: number
+): OpenBlock {
+  const pool = e.openBlocks ??= [];
+  let block = pool[e.openCount];
+  if (block === undefined) {
+    block = { atRule, prelude, idt, depth: e.depth, rule, frame, own, slot, split, mark, markPos, headerChunk, body: e.chunks.length };
+    pool.push(block);
+  } else {
+    block.atRule = atRule;
+    block.prelude = prelude;
+    block.idt = idt;
+    block.depth = e.depth;
+    block.rule = rule;
+    block.frame = frame;
+    block.own = own;
+    block.slot = slot;
+    block.split = split;
+    block.mark = mark;
+    block.markPos = markPos;
+    block.headerChunk = headerChunk;
+    block.body = e.chunks.length;
+  }
+  e.openCount++;
+  return block;
+}
+
+/** Drop the current part of `block`, which wrote nothing: its header and `{`. */
+function dropBlockPart(block: OpenBlock, e: Emit): void {
+  e.chunks.length = block.mark;
+  if (e.positions) {
+    e.positions.length = block.markPos;
+  }
+  if (block.split !== null) {
+    e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(block.split), 1);
+  }
+}
+
+/** Write the header of `block` at `idt`. */
+function putBlockHeader(block: OpenBlock, idt: string, e: Emit): void {
+  const atRule = block.atRule;
+  if (atRule === null) {
+    put(e, composeSelectorHeader(e, block.own!, idt, null));
+    return;
+  }
+  put(e, atRule.name);
+  if (block.prelude.length > 0) {
+    put(e, e.compress === true && block.prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
+    put(e, block.prelude);
+  }
+}
+
+/** Open `block` again at `e.depth`, a new part of it. */
+function reopenBlock(block: OpenBlock, e: Emit): void {
+  const idt = blockIndent(e);
+  block.idt = idt;
+  block.mark = e.chunks.length;
+  block.markPos = e.positions ? e.positions.length : 0;
+  if (idt) {
+    put(e, idt);
+  }
+  block.headerChunk = e.chunks.length;
+  if (block.split !== null) {
+    block.split = { header: block.headerChunk, end: -1, indent: idt, branches: block.split.branches, flags: block.split.flags };
+    (e.splitBlocks ??= []).push(block.split);
+  }
+  putBlockHeader(block, idt, e);
+  if (block.rule !== null && e.positions) {
+    e.positions.push({ node: block.rule.selector, type: block.rule.selector.type, start: block.headerChunk, end: e.chunks.length, source: srcFile(e) });
+  }
+  put(e, blockOpen(e));
+  block.body = e.chunks.length;
+}
+
+/**
+ * [nesting] Write `rule`, whose `&` builds a name ({@link selectorBuildsName}), flattened
+ * where it stands: it rises out of every open rule block, inside the at-rules it is in,
+ * and those blocks are closed before it and opened again after it, so whatever follows
+ * it in them still follows it, as in the collapsed output (`.b { a: 1; &__e { c: 2 } d:
+ * 3 }` → `.b { a: 1; } .b__e { c: 2; } .b { d: 3; }`). A part left with nothing in it
+ * is dropped; when the rule writes nothing, the blocks stay whole.
+ */
+function riseOut(rule: Ruleset, frame: Frame, e: Emit, imp: boolean, source: NestedHeaderSource): MaybePromise<void> {
+  const open = e.openBlocks;
+  const count = e.openCount;
+  let first = 0;
+  while (open !== null && first < count && open[first]!.rule === null) {
+    first++;
+  }
+  if (open === null || first === count) {
+    return emitHoisted(rule, frame, e, source, imp);
+  }
+  const depth = e.depth;
+  let top = count;
+  while (top > first && e.chunks.length === open[top - 1]!.body && open[top - 1]!.headerChunk >= 0) {
+    dropBlockPart(open[--top]!, e);
+  }
+
+  /* [compress] The `;` a close drops from the last declaration, put back if the blocks stay whole. */
+  let semi = -1;
+  if (e.compress === true) {
+    semi = e.chunks.length - 1;
+    while (semi >= 0 && e.chunks[semi] === '') {
+      semi--;
+    }
+    semi = semi >= 0 && e.chunks[semi] === ';' ? semi : -1;
+  }
+  const closesFrom = e.chunks.length;
+  const posFrom = e.positions ? e.positions.length : 0;
+  const ends: number[] = [];
+  for (let i = top - 1; i >= first; i--) {
+    emitBlockClose(e, open[i]!.idt);
+    ends.push(e.chunks.length);
+  }
+  const closed = e.chunks.length;
+  e.depth = open[first]!.depth;
+  return mapMaybe(insideAtRules(open, first + 1, count, e, () => emitHoisted(rule, frame, e, source, imp)), () => {
+    let from = first;
+    if (e.chunks.length === closed) {
+      e.chunks.length = closesFrom;
+      if (e.positions) {
+        e.positions.length = posFrom;
+      }
+      if (semi >= 0) {
+        e.chunks[semi] = ';';
+      }
+      from = top;
+    } else {
+      for (let i = top - 1; i >= first; i--) {
+        const block = open[i]!;
+        const end = ends[top - 1 - i]!;
+        if (block.split !== null) {
+          block.split.end = end;
+        }
+        if (block.slot && block.headerChunk >= 0 && e.dynamicExtend !== null) {
+          recordNestedDynExtendSlot(e, block.rule!, block.frame!, block.headerChunk, block.idt, block.own!, end);
+        }
+      }
+    }
+    for (let i = from; i < count; i++) {
+      e.depth = open[i]!.depth;
+      reopenBlock(open[i]!, e);
+    }
+    e.depth = depth;
+  });
+}
+
+/** Write `body` inside the at-rules of `open` from `index` to `count`, each dropped when it holds nothing. */
+function insideAtRules(open: OpenBlock[], index: number, count: number, e: Emit, body: () => MaybePromise<void>): MaybePromise<void> {
+  while (index < count && open[index]!.atRule === null) {
+    index++;
+  }
+  if (index === count) {
+    return body();
+  }
+  const mark = e.chunks.length;
+  const markPos = e.positions ? e.positions.length : 0;
+  const idt = blockIndent(e);
+  if (idt) {
+    put(e, idt);
+  }
+  putBlockHeader(open[index]!, idt, e);
+  put(e, blockOpen(e));
+  const after = e.chunks.length;
+  e.depth++;
+  return mapMaybe(insideAtRules(open, index + 1, count, e, body), () => {
+    e.depth--;
+    if (e.chunks.length === after) {
+      e.chunks.length = mark;
+      if (e.positions) {
+        e.positions.length = markPos;
+      }
+    } else {
+      emitBlockClose(e, idt);
+    }
+  });
 }
 
 interface HoistSplit {
@@ -23565,19 +24185,18 @@ function emitTransparentShells(
       if (idt) {
         put(e, idt);
       }
+      const headerChunk = e.chunks.length;
       put(e, composeSelectorHeader(e, header, idt, null));
       put(e, blockOpen(e));
-      const afterHeader = e.chunks.length;
+      const block = openBlock(e, null, '', idt, shell.rule, null, header, false, null, markChunks, markPos, headerChunk);
       e.depth++;
       const finish = (): void => {
         e.depth--;
-        if (e.chunks.length === afterHeader) {
-          e.chunks.length = markChunks;
-          if (e.positions) {
-            e.positions.length = markPos;
-          }
+        e.openCount--;
+        if (e.chunks.length === block.body) {
+          dropBlockPart(block, e);
         } else {
-          emitBlockClose(e, idt);
+          emitBlockClose(e, block.idt);
         }
       };
       const emitted = mapMaybe(
@@ -23643,7 +24262,6 @@ function writeNestedRule(
    */
   const markChunks = e.chunks.length;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.chunks.length;
   const idt = blockIndent(e);
 
   /*
@@ -23721,7 +24339,7 @@ function writeNestedRule(
 
     /* [nesting] An extended header's branches that carry a pseudo-element followed by more get rules of their own ({@link SplitBlock}). */
     const split = plan === undefined ? undefined : extendedSplitFlags(own, projection?.suffixedByRule?.get(rule));
-    let splitBlock: SplitBlock | undefined;
+    let splitBlock: SplitBlock | null = null;
 
     /*
      * Less only coalesces this nested-output root seam after an authored header
@@ -23754,7 +24372,7 @@ function writeNestedRule(
       }
       put(e, blockOpen(e));
     }
-    const afterHeader = e.chunks.length;
+    const block = openBlock(e, null, '', idt, rule, frame, own, rewritable, splitBlock, markChunks, markPos, headerChunkIndex);
     const childFrame = activateRuleFrame(rule, frame, e);
     const childSource: NestedHeaderSource = { parent: source, selector: resolved ?? rule.selector, frame };
 
@@ -23767,25 +24385,20 @@ function writeNestedRule(
     e.depth++;
     const finish = (): MaybePromise<void> => {
       e.depth--;
-      if (e.chunks.length === afterHeader) {
+      e.openCount--;
+      if (e.chunks.length === block.body) {
         /*
          * Nothing emitted in the block, not even a comment (the walk writes the
          * body's own): drop the header/braces (rewind, ledger O6).
          */
-        e.chunks.length = markChunks;
-        if (e.positions) {
-          e.positions.length = markPos;
-        }
-        if (splitBlock !== undefined) {
-          e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(splitBlock), 1);
-        }
+        dropBlockPart(block, e);
       } else {
-        emitBlockClose(e, idt, lb);
-        if (splitBlock !== undefined) {
-          splitBlock.end = e.chunks.length;
+        emitBlockClose(e, block.idt, lb);
+        if (block.split !== null) {
+          block.split.end = e.chunks.length;
         }
         if (e.positions) {
-          e.positions.push({ node: rule, type: rule.type, start, end: e.chunks.length, source: srcFile(e) });
+          e.positions.push({ node: rule, type: rule.type, start: block.mark, end: e.chunks.length, source: srcFile(e) });
         }
         if (rootSibling) {
           lb.parentKey = frame;
@@ -23798,8 +24411,8 @@ function writeNestedRule(
          * [extend/dynamic] The surviving nested block's header is a rewritable target
          * slot: the deferred fold overwrites it in place if dynamic extenders fold in.
          */
-        if (e.dynamicExtend && headerChunkIndex >= 0 && rewritable) {
-          recordNestedDynExtendSlot(e, rule, frame, headerChunkIndex, idt, own, e.chunks.length);
+        if (e.dynamicExtend && block.headerChunk >= 0 && rewritable) {
+          recordNestedDynExtendSlot(e, rule, frame, block.headerChunk, block.idt, own, e.chunks.length);
         }
       }
 
@@ -23823,7 +24436,7 @@ function writeNestedRule(
        */
       if (rootSplits !== undefined && direct.length > 0) {
         for (const header of rootSplits) {
-          (outerHoist ?? hoist).push({ rule, frame, bubble: Number.POSITIVE_INFINITY, wrappers: null, source, split: { header, leaves: direct } });
+          (outerHoist ?? hoist).push({ rule, frame, bubble: HOIST_TO_ROOT, wrappers: null, source, split: { header, leaves: direct } });
         }
       }
       const emitSplits = (index: number): MaybePromise<void> => {
@@ -23877,10 +24490,10 @@ function writeNestedRule(
  * or an at-rule bubbled out of it keeps the rule's ancestors: `.a { .b { @media
  * print { … } } }` hoisting `.b` writes `@media print { .a .b { … } }`.
  */
-function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null): MaybePromise<void> {
+function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null, imp = false): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e);
+  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e, imp);
   if (isThenable(emitted)) {
     return emitted.then(
       () => {
@@ -23935,32 +24548,30 @@ function nestedAtRuleShell(
 ): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.chunks.length;
   const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
   }
+  const headerChunk = e.chunks.length;
   put(e, node.name);
   if (prelude.length > 0) {
     put(e, e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
     put(e, prelude);
   }
   put(e, blockOpen(e));
-  const afterHeader = e.chunks.length;
+  const block = openBlock(e, node, prelude, idt, null, null, null, false, null, markChunks, markPos, headerChunk);
   e.depth++;
   const finish = (): void => {
     e.depth--;
-    if (e.chunks.length === afterHeader) {
+    e.openCount--;
+    if (e.chunks.length === block.body) {
       /* Nothing emitted, not even a comment (the walk writes the body's own). */
-      e.chunks.length = markChunks;
-      if (e.positions) {
-        e.positions.length = markPos;
-      }
+      dropBlockPart(block, e);
       return;
     }
-    emitBlockClose(e, idt);
+    emitBlockClose(e, block.idt);
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start: block.mark, end: e.chunks.length, source: srcFile(e) });
     }
   };
   return mapMaybe(body(), finish);

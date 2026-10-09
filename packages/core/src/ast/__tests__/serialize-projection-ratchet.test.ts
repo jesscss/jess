@@ -1,13 +1,35 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SERIALIZE_PATH = fileURLToPath(new URL('../serialize.ts', import.meta.url));
 const SOURCE = readFileSync(SERIALIZE_PATH, 'utf8');
+const AST_DIR = fileURLToPath(new URL('..', import.meta.url));
 
 function occurrences(pattern: RegExp): number {
   return [...SOURCE.matchAll(pattern)].length;
 }
+
+/*
+ * A module-global `WeakMap` keyed by a value is a side table every reader of
+ * that fact pays a hash lookup for, where a field on the value would be one
+ * load (docs/perf/V8-ARCHITECTURE.md, invariants 7 and 11). Counted across
+ * every source file of `src/ast/`, not only the serializer: the text-group
+ * table that lived in `value-operate.ts` is now the `groups` field of the text
+ * values (owner 2026-10-09, ledger J16).
+ */
+describe('ast/ side-table ratchet', () => {
+  it('does not grow the WeakMap side tables of src/ast/', () => {
+    let count = 0;
+    for (const entry of readdirSync(AST_DIR, { recursive: true, encoding: 'utf8' })) {
+      if (entry.endsWith('.ts') && !entry.includes('__tests__')) {
+        count += [...readFileSync(join(AST_DIR, entry), 'utf8').matchAll(/new WeakMap/gu)].length;
+      }
+    }
+    expect(count).toBe(16);
+  });
+});
 
 describe('V19 one-evaluator projection ratchet', () => {
   it('names every statement evaluator that still dispatches a body', () => {
@@ -444,8 +466,39 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (owner ruling 2026-10-09, ledger N17): a glued `and(` / `or(` /
     // `not(` a condition prelude writes as authored is reported where it is
     // written, from the call the parser built (`warnGluedConditionKeyword`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(587);
-    expect(occurrences(/new Map/gu)).toBe(92);
+    // +4 functions (owner 2026-10-09): a `&` is a plain reference to its parent,
+    // so a parent of several compounds is written in place only by the `&` that
+    // opens the selector, the compound's other simples joined to its last
+    // compound (`placeParent`, `lastCompoundStart`), found without allocating
+    // (`ampNeedsPlacement`, `termNeedsPlacement`).
+    // +1 function (owner 2026-10-09: import-once counts per scope, if the output
+    // would be different): an import's scope is the output context it renders
+    // into, its rule selectors and at-rule preludes (`importContextKey`).
+    // +1 function (owner 2026-10-09: `@compose` is document-root only): the
+    // planner and the walk raise the same error (`composeNotTopLevel`).
+    // -1 function (owner 2026-10-09: text prints as written): escaped text is
+    // never split into a nested header's branches (`splitListBytes`).
+    // +1 function (ledger N11; orchestrator judgment under owner delegation
+    // 2026-10-09): an imported sheet's `@charset` goes to the top of the output,
+    // a later one naming another encoding warns (`hoistCharsets`).
+    // +2 functions: the extend pre-pass resolves interpolated selectors into copies
+    // the planner reads, never into the parsed document (`plannedSelectorList`,
+    // `resolvedSelectorBranchOf`), one map of them per render (+2 `new Map`, the
+    // render and the static-import preparation).
+    // +3 functions (owner 2026-07-23/24: a `&` glued to a name continuation is Less
+    // name concatenation; ledger O17): a name nested output could not write as a
+    // selector is written flattened (`selectorBuildsInvalidNestedName`,
+    // `startsIdentifier`), and a `.scss` `&` + `__el` distributes over a parent
+    // list (`continuesName`).
+    // +8 functions (owner 2026-07-23/24, ledger J13): every rule whose `&` builds a
+    // name is written flattened in nested output (`selectorBuildsName`,
+    // `branchBuildsName`, `gluesName`, `isNameCode`, replacing
+    // `selectorBuildsInvalidNestedName` and `startsIdentifier`), where it stands: the
+    // blocks it rises out of are closed before it and opened again after it
+    // (`riseOut`, `insideAtRules`, over the writer's open blocks: `openBlock`,
+    // `dropBlockPart`, `reopenBlock`, `putBlockHeader`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(606);
+    expect(occurrences(/new Map/gu)).toBe(94);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
     expect(occurrences(/new WeakSet/gu)).toBe(2);

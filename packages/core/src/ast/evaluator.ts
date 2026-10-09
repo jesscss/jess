@@ -13,7 +13,7 @@
  * out as-is.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, itemBoundary, joinGroup, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { emitValue, isValueGroupArray, itemBoundary, joinGroup, readText, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
 import { valueLayoutOf } from './provenance.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
@@ -105,11 +105,13 @@ function recoverAsyncCall(
 /**
  * The value→string hook supplied to Tier-B fns: a Quoted's INNER text (unquoted;
  * escaped `~"…"` already
- * arrives as an `Any` whose bytes ARE the inner text), any other value its
- * canonical emitted bytes. Boundary-clean (operates on the value domain only).
+ * arrives as an `Any` whose bytes ARE the inner text), text without the paren
+ * groups written around it (a callable reads the text: `escape((e("a b")))` is
+ * `a%20b`; ledger J16), any other value its canonical emitted bytes.
+ * Boundary-clean (operates on the value domain only).
  */
 const stringify = (v: ValueGroup): string =>
-  !isValueGroupArray(v) && v.type === 'Quoted' ? v.value : emitValue(v);
+  !isValueGroupArray(v) && v.type === 'Quoted' ? v.value : readText(v);
 
 /**
  * Build the typed `ValueEvaluator`. No pre-pass: values are computed

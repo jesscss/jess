@@ -124,10 +124,11 @@ describe('root parentless ampersand', () => {
 });
 
 /*
- * A `&` fused into a compound under a parent of several compounds is the parent spliced
- * in place, as the serializer composes it: the simples before the `&` join the parent's
- * first compound and those after it (a `&-suffix` included) its last. Extend matches that
- * composed selector, never a one-arm `:is(parent)` wrap.
+ * A `&` fused into the compound that opens its selector, under a parent of several
+ * compounds, is the parent written in place, as the serializer composes it: the
+ * compound's other simples, before or after the `&` (a `&-suffix` too), join the
+ * parent's last compound (owner 2026-10-09). Extend matches that composed selector,
+ * never a one-arm `:is(parent)` wrap.
  */
 describe('fused ampersand under a multi-compound parent', () => {
   const renderLess = (src: string): string | undefined => flat(parseLess(src));
@@ -135,8 +136,8 @@ describe('fused ampersand under a multi-compound parent', () => {
   it('is matched as the composed selector', () => {
     expect(renderLess('.b { .p { &.q { m: 1 } } } .x:extend(.b .p.q) {}'))
       .toBe('.b .p.q,\n.x {\n  m: 1;\n}\n');
-    expect(renderLess('.b { .p { .q& { m: 1 } } } .z:extend(.q.b .p) {}'))
-      .toBe('.q.b .p,\n.z {\n  m: 1;\n}\n');
+    expect(renderLess('.b { .p { .q& { m: 1 } } } .z:extend(.b .p.q) {}'))
+      .toBe('.b .p.q,\n.z {\n  m: 1;\n}\n');
     expect(renderLess('.b { .p { &-foo { m: 1 } } } .z:extend(.b .p-foo) {}'))
       .toBe('.b .p-foo,\n.z {\n  m: 1;\n}\n');
   });

@@ -52,14 +52,14 @@ import {
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import type { Combinator } from '../node.js';
 import { branchHasAmp, composePath } from './compose.js';
-import { mergeCompound, NO_SIMPLES } from './conflict.js';
+import { mergeCompound, NO_SIMPLES, placeComplex } from './conflict.js';
 import { extendBranchSpecificity, irPseudoElementCarriesSuffix, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
-import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
+import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import { branchTextIsPlaceholder } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
 
@@ -553,13 +553,14 @@ function sameCompound(a: readonly Simple[], b: readonly Simple[]): boolean {
  * one group share one specificity (equal-specificity members gather however far
  * apart they are, in order of first appearance), and a member that cannot sit inside
  * `:is()` — a pseudo-element, an unlisted pseudo-class, a complex member the group
- * does not lead with — is written as its own branch, the way Less 4.x expands an
- * `all` match ({@link spliceMember}).
+ * does not lead with — is written as its own branch where the group was, the
+ * compound's other simples on the element they describe ({@link spliceMember}; owner
+ * 2026-10-09: same element ⇒ same compound).
  *
  * `root` is set for a top-level header. A complex member may stay in a group only
  * where the group leads the whole selector — first in the head compound of a
- * top-level header — because only there `:is(.t .b).k .box` matches what the
- * expanded `.t .b.k .box` does. A nested header has an implicit `&` before it.
+ * top-level header — because only there `:is(.t .b).k .box` matches what
+ * `.t .b.k .box` does. A nested header has an implicit `&` before it.
  * Returns `list` itself when no group splits.
  */
 function groupedBranches(list: Branch[], root: boolean): Branch[] {
@@ -711,7 +712,7 @@ function splitGroup(b: Branch, k: number, p: number, group: Simple & { t: 'is' }
       continue;
     }
     if (sizes[g] === 1) {
-      const spliced = spliceMember(b, k, p, members[i]!);
+      const spliced = spliceMember(b, k, p, members[i]!, root);
       if (spliced !== null) {
         pushRegrouped(out, spliced, root, k, p);
       }
@@ -807,9 +808,20 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   }
   const out: Branch[] = [];
   pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
+  const unit = arms.length === 1 && !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
   for (const alternative of alone ?? []) {
-    /* Written in place, never as a one-arm `:is()` (ledger X3's 4.x placement). */
-    const spliced = spliceMember(b, k, p, alternative);
+    /*
+     * Written where the `:is()` stood, by X3's placement ({@link spliceMember}), except
+     * a complex alternative of a one-arm `:is()` that does not lead the selector: that
+     * `:is()` is one unit — a `&` referencing a parent of several compounds, or the
+     * author's — and written in place it would change what the selector matches
+     * (`.c :is(#z .b)` is not `.c #z .b`; owner 2026-10-09, ledger J13).
+     */
+    if (unit && alternative.segments.length > 1) {
+      pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [mkBranch(alternative.segments)], fold: false }), root, k, p + 1);
+      continue;
+    }
+    const spliced = spliceMember(b, k, p, alternative, root);
     if (spliced !== null) {
       pushRegrouped(out, spliced, root, k, p);
     }
@@ -837,39 +849,51 @@ function withSimple(b: Branch, k: number, p: number, simple: Simple): Branch {
 }
 
 /**
- * `b` with the group at `b.segments[k]`, simple `p`, replaced by one member, written
- * the way Less 4.x expands an `all` match: the simples before the group join the
- * member's first compound and those after it join its last compound
- * (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made valid
- * by {@link mergeCompound}; null when one would need two element types — no element
- * matches it, so the member contributes no branch. A member that leads with the
- * whole context before the group is written without it twice ({@link sharedContext}).
+ * `b` with the group at `b.segments[k]`, simple `p`, replaced by one member, as an `all`
+ * extender is written where it cannot sit in a group (ledger X3). The compound's other
+ * simples describe the same element as the simple the member stands in for (owner
+ * 2026-10-09: same element ⇒ same compound): a one-compound member joins them in place
+ * (`.m.c .d` + `.x:extend(.c all)` → `.m.x .d`); a member of several compounds is
+ * written in place where the compound opens a top-level header, those simples joining
+ * its LAST compound (`.active.btn .icon` + `.toolbar .tool:extend(.btn all)` →
+ * `.toolbar .tool.active .icon`; {@link placeComplex}), and anywhere else stays one
+ * `:is()` unit where the group was (`.x .m.c .d` + `.p .q:extend(.c all)` →
+ * `.x .m:is(.p .q) .d`), since written in place it would put them on another element.
+ * A nested header has an implicit `&` before it, so it never opens. A member that is
+ * the whole compound it stands in (no other simples, as a span a multi-compound target
+ * matched is) is written in its place. Each joined compound is made valid by
+ * {@link mergeCompound}; null when one would need two element types — no element
+ * matches it, so the member contributes no branch. A member that leads with the whole
+ * context before the group is written without it twice ({@link sharedContext}).
  */
-function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch | null {
+function spliceMember(b: Branch, k: number, p: number, member: Branch, root: boolean): Branch | null {
   const segment = b.segments[k]!;
   const value = segment.compound.value;
   const drop = sharedContext(b, k, member);
   const arm = drop === 0 ? member.segments : member.segments.slice(drop);
   const n = arm.length;
-  const before = value.slice(0, p);
-  const after = value.slice(p + 1);
-  const head = mergeCompound(before, arm[0]!.compound.value, n === 1 ? after : NO_SIMPLES);
-  const tail = n === 1 ? head : mergeCompound(NO_SIMPLES, arm[n - 1]!.compound.value, after);
-  if (head === null || tail === null) {
+  const combinator = k === 0 && segment.combinator === ' '
+    ? arm[0]!.combinator
+    : drop > 0 && member.segments.length > k ? narrower(segment.combinator, arm[0]!.combinator)! : segment.combinator;
+  let placed: SelectorPart[] | null;
+  if (n === 1 || value.length === 1) {
+    const head = mergeCompound(value.slice(0, p), arm[0]!.compound.value, n === 1 ? value.slice(p + 1) : NO_SIMPLES);
+    placed = head === null ? null : [{ combinator, compound: { value: head } }];
+    for (let j = 1; j < n && placed !== null; j++) {
+      placed.push(arm[j]!);
+    }
+  } else if (drop > 0 || (root && k === 0 && segment.combinator === ' ')) {
+    placed = placeComplex(arm, [...value.slice(0, p), ...value.slice(p + 1)], combinator);
+  } else {
+    /* The unit is the member's selector, not an arm an extend appended: no second split. */
+    return withSimple(b, k, p, { t: 'is', branches: [mkBranch(member.segments)], fold: false });
+  }
+  if (placed === null) {
     return null;
   }
   const segments = b.segments.slice(0, k);
-  segments.push({
-    combinator: k === 0 && segment.combinator === ' '
-      ? arm[0]!.combinator
-      : drop > 0 && member.segments.length > k ? narrower(segment.combinator, arm[0]!.combinator)! : segment.combinator,
-    compound: { value: head }
-  });
-  for (let j = 1; j < n - 1; j++) {
-    segments.push(arm[j]!);
-  }
-  if (n > 1) {
-    segments.push({ combinator: arm[n - 1]!.combinator, compound: { value: tail } });
+  for (const part of placed) {
+    segments.push(part);
   }
   for (let j = k + 1; j < b.segments.length; j++) {
     segments.push(b.segments[j]!);
@@ -992,7 +1016,7 @@ function lastCompound(b: Branch): Branch {
  * an extended header keeps ({@link nestingFold}); extend's own groups are guarded in
  * every mode.
  */
-export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true): ExtendResults | null {
+export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true, resolved?: ReadonlyMap<SelectorList, SelectorList>): ExtendResults | null {
   /*
    * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
    * `:extend()` anywhere) before any subject/instruction plan is built.
@@ -1000,7 +1024,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
   if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) {
     return null;
   }
-  const plan = collectPlan(root, overlay);
+  const plan = collectPlan(root, overlay, resolved);
   if (plan.instructions.length === 0) {
     return null;
   }
@@ -1218,7 +1242,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     if (!candidate.has(s)) {
       continue;
     }
-    const { list: flat, changed } = solveComposed(rawOf(s), s, plan, contribMemo);
+    const { list: flat, changed } = solveComposed(rawOf(s), s.scope, s.boundary, plan, contribMemo);
     flatBySubject.set(s, flat);
 
     /*
@@ -1299,14 +1323,16 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
    * fold in the at-rule's implicit `&` block, so such a rule is written flat there
    * (trigger A below).
    */
-  const bubbled = new Set<PlanSubject>();
+  let bubbled: Set<PlanSubject> | null = null;
+  let scopedIds: Set<number> | null = null;
   if (plan.bubbles.length > 0) {
-    const scopedIds = new Set<number>();
     for (const inst of plan.instructions) {
       if (inst.scope.length > 0) {
-        scopedIds.add(inst.scope[inst.scope.length - 1]!);
+        (scopedIds ??= new Set()).add(inst.scope[inst.scope.length - 1]!);
       }
     }
+  }
+  if (scopedIds !== null) {
     for (const b of plan.bubbles) {
       const s = b.subject;
       let inside = false;
@@ -1317,14 +1343,14 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         continue;
       }
       recordAstExtendProfile?.('astExtend.emit.bubbleSolves');
-      const { list, changed } = solveComposed(rawOf(s), { scope: b.scope, boundary: s.boundary }, plan, contribMemo);
+      const { list, changed } = solveComposed(rawOf(s), b.scope, s.boundary, plan, contribMemo);
       const own = flatBySubject.get(s) ?? rawOf(s);
       if (!changed || (list.length === own.length && list.every((branch, index) => branchText(branch) === branchText(own[index]!)))) {
         continue;
       }
       const compacted = groupedBranches(siblingCompact(nestingFold(list, s, rawOf(s), guardedNesting), false), true);
       (projectionFor(s).bubbleHeaders ??= new Map()).set(b.atRule, compacted.map(branchOut));
-      bubbled.add(s);
+      (bubbled ??= new Set()).add(s);
     }
   }
 
@@ -1390,7 +1416,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
      * block can carry (see the bubbles above), so the rule is written flat, its
      * children with it, a top-level rule included.
      */
-    if (bubbled.has(s)) {
+    if (bubbled?.has(s) === true) {
       return 'collapse';
     }
     if (s.parent === null) {
@@ -1598,7 +1624,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     const survivors = hasSurvivingChild(s);
     let header: Branch[];
     const splits: Branch[] = [];
-    const rootSplits: Branch[] = [];
+    let rootSplits: Branch[] | null = null;
     if (asTop) {
       /*
        * A top-level rule's header is its FULL flat solve (so transitive chaining +
@@ -1674,7 +1700,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
            */
           if (!inst.partial && survivors) {
             for (const e of composePath(inst.extenderPath)) {
-              rootSplits.push(e);
+              (rootSplits ??= []).push(e);
             }
           }
           continue;
@@ -1695,7 +1721,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
       flatten: false,
       header: rewritten ? extendedHeaderTexts(s, grouped) : grouped.map(branchOut),
       splits: dedupBranchTexts(splits).map(t => [t]),
-      rootSplits: rootSplits.length === 0 ? NO_ROOT_SPLITS : dedupBranchTexts(rootSplits).map(t => [t]),
+      rootSplits: rootSplits === null ? NO_ROOT_SPLITS : dedupBranchTexts(rootSplits).map(t => [t]),
       collapseTransparent: collapsedParent.has(s.rule)
     });
   }

@@ -12,7 +12,7 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, incompatibleUnits, isValueGroupArray, unitName, type Any, type Color, type Dimension, type EvalModes, type Keyword, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type Keyword, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
@@ -517,28 +517,25 @@ const keptAsWritten = new WeakMap<Value, string>();
 const keptMath = new WeakMap<Value, string>();
 
 /**
- * Opaque text (an escaped string, ledger V3; an unquoted string in `.scss`)
- * that paren groups were written around, mapped to how many. Text is never a
- * resolved calculation, so the groups are kept where the text is written into
- * math — an operand of an operation written out, an argument of a math
- * function — and nowhere else (ledger J16): `(e("1px + 2px")) * 2` is
- * `calc((1px + 2px) * 2)`, while `.x-@{a}` with `@a: (~"x")` is `.x-x`. A
- * value carries the fact, so a variable or argument holding the group
- * carries it too ({@link groupText}, {@link mathText}).
+ * Text `v` (an escaped string, ledger V3; an unquoted string in `.scss`) in one
+ * more paren group the author wrote: a new value with `v`'s bytes, still text,
+ * carrying the group in its `groups` field. Text is never a resolved
+ * calculation (ledger J16), so the group is written where the text is written:
+ * an escaped string's in a value and in math ({@link emitValue}), an unquoted
+ * `.scss` string's only in math ({@link mathText}); a splice or a callable reads
+ * the text alone.
  */
-const textGroups = new WeakMap<Value, number>();
-
-/** Text `v` in one more paren group: a new value with `v`'s bytes, still text ({@link textGroups}). */
 export function groupText(v: Any | Keyword): Value {
-  const out = v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote) : makeKeyword(v.bytes);
-  textGroups.set(out, (textGroups.get(v) ?? 0) + 1);
-  return out;
+  return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : { ...makeKeyword(v.bytes), groups: v.groups + 1 };
 }
 
-/** `bytes`, the spelling of `v`, as `v` is written into math: in the groups written around it when it is text ({@link textGroups}). */
-export function mathText(v: Value, bytes = v.bytes): string {
-  const depth = v.type === 'Any' || v.type === 'Keyword' ? textGroups.get(v) : undefined;
-  return depth === undefined ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
+/**
+ * `bytes`, the spelling of `v` ({@link emitValue}: an escaped string's already
+ * in its groups), as `v` is written into math: an unquoted `.scss` string in the
+ * groups written around it too.
+ */
+export function mathText(v: Value, bytes = emitValue(v)): string {
+  return v.type === 'Keyword' ? writtenText(v, bytes) : bytes;
 }
 
 /**
@@ -609,7 +606,7 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * is its arithmetic, grouped the same way (`calc((1px + 1em) * 2)`). Text is
  * written in the groups written around it ({@link mathText}).
  */
-export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = v.bytes, inMath = false): string {
+export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = emitValue(v), inMath = false): string {
   const kept = keptMathOf(v);
   if (kept !== undefined && !inMath) {
     return bytes;
@@ -723,9 +720,9 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
    * Guard 2: an un-operable keyword operand → preserve source. A `.scss`
    * unquoted string in a group is text, which no operation computes, so it is
    * kept as math in its group, as Less text is: `(unquote("1px + 2px")) * 2`
-   * is `calc((1px + 2px) * 2)`, never `1px + 2px * 2` ({@link textGroups}).
+   * is `calc((1px + 2px) * 2)`, never `1px + 2px * 2` ({@link groupText}).
    */
-  if ((left.type === 'Keyword' && !textGroups.has(left)) || (right.type === 'Keyword' && !textGroups.has(right))) {
+  if ((left.type === 'Keyword' && left.groups === 0) || (right.type === 'Keyword' && right.groups === 0)) {
     return composedKeyword(`${operandAsWritten(left, op, false)} ${op} ${operandAsWritten(right, op, true)}`, left, right, op);
   }
 

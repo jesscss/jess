@@ -220,8 +220,9 @@ and math in nested functions. Parentheses written inside `calc()` are kept as wr
 nothing in them computes: math written in the `calc()`, or a single value. Parentheses around
 a calculation that is resolved — a function that runs, or a variable that names one value — are
 dropped, as they are anywhere else; the `calc()` itself stays. A variable that names a list keeps
-them. Text, such as `e("1px + 2px")`, is never a computed value and keeps its parentheses in
-math; outside math the parentheses around it give the text (`(e("foo"))` is `foo`).
+them. Text, such as `e("1px + 2px")`, is never a computed value and prints as written, its
+parentheses included (`(e("foo"))` is `(foo)`); only an interpolation or a function reading it
+gets the text alone.
 
 The `calc()` stays even when its argument resolves to one number, as in Less 4.x:
 `calc(percentage(0.5))` is `calc(50%)`. The browser clamps a math function's result to what the

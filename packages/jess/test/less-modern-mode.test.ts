@@ -187,12 +187,16 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('@media screen and round(1.5) {\n  a {\n    b: c;\n  }\n}\n');
   });
 
+  /*
+   * A `@compose` nested in a block still puts its document in modern mode as it is
+   * parsed (`less-parser/test/module-mode.test.ts`), but rendering it is an error:
+   * `@compose` is document-root only (owner 2026-10-09; `less-modules.test.ts`).
+   */
   it.each([
     ['@use', '@use "#less";'],
     ['@-use', '@-use "#less";'],
     ['@compose', '@compose "./theme.less";'],
-    ['@-compose', '@-compose "./theme.less";'],
-    ['a nested @compose', '.wrap { @compose "./theme.less"; }']
+    ['@-compose', '@-compose "./theme.less";']
   ])('%s switches the document to modern mode', async (_label, directive) => {
     const directory = project(
       ['theme.less', '@gap: 1px;'],

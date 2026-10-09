@@ -147,10 +147,10 @@ export function makeQuoted(value: string, quote: string, escaped: boolean): Quot
   return q;
 }
 
-export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text });
+export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text, groups: 0 });
 
 /** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
-export const makeAny = (bytes: string, escapedQuote = ''): Any => ({ type: 'Any', bytes, escapedQuote });
+export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => ({ type: 'Any', bytes, escapedQuote, groups });
 
 /** Project an evaluated AST `Url` into the typed value domain. */
 export const makeUrlValue = (bytes: string): UrlValue => ({ type: 'Url', bytes });

@@ -743,6 +743,13 @@ export const ERR = {
       ...args
     });
   },
+  composeNotTopLevel(args: Common) {
+    return makeJessError({
+      code: 'compose/not-top-level',
+      phase: 'import',
+      ...args
+    });
+  },
   importCycle(args: Common & { meta: { specifier: string } }) {
     return makeJessError({
       code: 'import/cycle',

@@ -4447,7 +4447,8 @@ involved.
 - Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05:
   extend's own `:is()` groups follow the same keep-native-specificity rule as
   the `'native'` nesting fold, in every output mode; a member that cannot fold
-  is written in the Less 4.x expanded form; branch order inside one selector
+  is written as its own branch where the group was (X3; its placement amended by
+  the owner 2026-10-09: same element ⇒ same compound); branch order inside one selector
   list may change, so equal-specificity branches group across non-adjacent
   positions). One module, `packages/core/src/ast/is-grouping.ts`, owns
   specificity, the "may this branch sit inside `:is()`" check and the partition
@@ -4529,7 +4530,7 @@ involved.
   the merge-dedup `Set`; the `groupPlans` `Map`) and [materialized
   array/object] as above.
 - Behavior evidence: `packages/jess/test/less/extend-is-grouping.test.ts` (16
-  tests, every output mode: 4.x placement after a combinator and at the head,
+  tests, every output mode: X3 placement after a combinator and at the head,
   chained groups checked where spliced, authored `:is()` arm splits, nested
   top-level compaction and dedup, at-rule wrappers on the nested hoist),
   `packages/core/src/ast/__tests__/is-grouping.test.ts` (7) and the
@@ -4578,7 +4579,7 @@ involved.
       "recursive-ValueGroup-final-unit-validation",
       "async-declaration-dedup-output-order"
     ],
-    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode, writes an unfoldable member in the Less 4.x expanded form, and a flattened nested rule rises to the top level with the at-rules it crossed. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
+    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode, writes an unfoldable member as its own branch where the group was (X3), and a flattened nested rule rises to the top level with the at-rules it crossed. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
     "dangerTokensJustification": "The new walks run only on extend-touched headers and multi-branch nesting child lists; each group member is resolved and scored once per header (op-budget gate), a split resumes from its cursor, a group that stays whole allocates nothing, and matcher and planner counters are identical before and after.",
     "behaviorEvidence": "packages/jess/test/less/extend-is-grouping.test.ts, packages/core/src/ast/__tests__/is-grouping.test.ts, the extend-op-budget regroup gate and the updated collapse-nesting-mode.test.ts pin the rule; the all-Less lane passes with the extend goldens' new groups registered in pending-golden-edits.ts.",
     "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",

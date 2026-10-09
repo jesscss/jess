@@ -145,9 +145,11 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
         return [
           [`${grouped(tooltip, ' .arrow')} {`, `${split(tooltip, ' .arrow')} {`],
 
+          // OWNER-ACCEPTED 2026-10-09
           /*
-           * A `&` fused under the two-compound parent `<owner> .arrow` is that parent
-           * spliced in place, never a one-arm `:is()` (orchestrator judgment 2026-10-05).
+           * `&::before` under the two-compound parent `<owner> .arrow` opens its
+           * selector, so the parent is written in place, never in a one-item `:is()`
+           * (owner 2026-10-09, ledger J13).
            */
           [`:is(${grouped(tooltip, ' .arrow')})::before {`, `${split(tooltip, ' .arrow::before')} {`],
           [`${grouped(popover, ' .arrow')} {`, `${split(popover, ' .arrow')} {`],
@@ -197,22 +199,64 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       ':is(.sidebar, .sidebar2) .box,\n:is(.type1 .sidebar3, .type2.sidebar4) .box {'
     ],
 
+    // OWNER-ACCEPTED 2026-10-09
     /*
-     * A `&` fused under a parent of several compounds is that parent spliced in place,
-     * as the rule's own selector composes, never a one-arm `:is()` (orchestrator
-     * judgment 2026-10-05).
+     * A `&` is a plain reference to its parent, `:is(parent)` (owner 2026-10-09): the
+     * `&` that opens the selector writes a parent of several compounds in place, the
+     * compound's other simples joined to its last compound; the `&` after the `+`
+     * keeps the parent one unit.
      */
     ((parent: string): readonly [string, string] => [
       `.amp-test-f:is(${parent}) + :is(${parent}).amp-test-g {`,
-      `.amp-test-f${parent} + ${parent}.amp-test-g {`
+      `${parent}.amp-test-f + :is(${parent}).amp-test-g {`
     ])('.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e')
   ]],
   ['tests-unit/selectors/selectors.less', [
-    // As in extend-nest: `.active&` and `&.active2` under `.first-level .second-level`.
+    // OWNER-ACCEPTED 2026-10-09
+    /* As in extend-nest: `.active&` and `&.active2` under `.first-level .second-level`. */
     [
       '.active:is(.first-level .second-level),\n:is(.first-level .second-level).active2 {',
-      '.active.first-level .second-level,\n.first-level .second-level.active2 {'
-    ]
+      '.first-level .second-level.active,\n.first-level .second-level.active2 {'
+    ],
+
+    // OWNER-ACCEPTED 2026-10-09 (prefix-glued & is a parent reference: .qux& ≡ .qux:is(parent))
+    /*
+     * `.qux&` under `.foo .bar, .foo .baz` and `.tst&:hover` inside `:not()` under
+     * `.only-nested .level2` reference the parent: each parent of several compounds
+     * is written in place with `.qux` (`.tst`) joined to its last compound, the
+     * meaning of `.qux:is(.foo .bar, .foo .baz)`, where the golden puts `.qux` on
+     * the ancestor.
+     */
+    ['.qux.foo .bar,\n.qux.foo .baz {', '.foo .bar.qux,\n.foo .baz.qux {'],
+    ['.foo:not(.tst.only-nested .level2:hover) {', '.foo:not(.only-nested .level2.tst:hover) {']
+  ]],
+  ['tests-unit/parse-interpolation/parse-interpolation.less', [
+    // OWNER-ACCEPTED 2026-10-09
+    /*
+     * Escaped text in a selector prints as written, never read as selector syntax
+     * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"), so
+     * `~'.a, .b, .c'` after `.q` is glued as written, not wrapped in `:is()`; the
+     * header's written comma before `baz-quoted` is structure, one branch per line
+     * in a nested header (ledger O8(a)).
+     */
+    ['  .q:is(.a, .b, .c)&:hover, baz-quoted {', '  .q.a, .b, .c&:hover,\n  baz-quoted {'],
+
+    // OWNER-ACCEPTED 2026-10-09
+    /* `@{c-quoted}@{d-quoted}`: two escaped texts glued as written. */
+    [':is(.a, .b):is(.c, .d) {\n  + .e-quoted {', '.a, .b.c, .d {\n  + .e-quoted {'],
+
+    /*
+     * PENDING OWNER REVIEW: a `*[…]` capture is a structured list, one branch per
+     * line in a nested header (ledger O8(a), owner 2026-10-04); the golden predates
+     * the ruling.
+     */
+    ['  .d:is(.a, .b, .c)&:hover, baz-cap {', '  .d:is(.a, .b, .c)&:hover,\n  baz-cap {'],
+
+    /*
+     * PENDING OWNER REVIEW: the golden says `foo: bar` where the quoted case's
+     * source says `foo: baz` (a fixture typo awaiting the owner's reconciliation).
+     */
+    ['  + .e-quoted {\n    foo: bar;', '  + .e-quoted {\n    foo: baz;']
   ]],
   ['tests-unit/extend-selector/extend-selector.less', [
     // `.foo`, `.ext3`, `.ext4` (0,1,0); `.ext1 .ext2` (0,2,0).
@@ -258,11 +302,12 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
     ['  border-radius-keep: 8px / 4 + 3px;\n', '  border-radius-keep: 8px / 7px;\n']
   ]],
 
+  // OWNER-ACCEPTED 2026-10-09
   /*
-   * Import-once counts only a copy placed in the same scope (ledger J14 as amended,
-   * orchestrator judgment under owner delegation 2026-10-07): a sheet a copy in
-   * another scope already placed renders where the author imports it again. The
-   * goldens hold Less 4.x's document-wide import-once, which dropped these copies.
+   * Import-once counts only a copy placed in the same output context (ledger J14;
+   * owner 2026-10-09: once counts per scope, if the output would be different): a
+   * sheet a copy in another context already placed renders where the author imports
+   * it again. The goldens hold a document-wide import-once, which dropped these copies.
    */
   ['tests-config/strict-imports/strict-imports.less', [
     [
@@ -274,7 +319,8 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
     ]
   ]],
 
-  // `import-test-f.less` imports `import-test-e` at the root after `@media screen` placed a copy.
+  // OWNER-ACCEPTED 2026-10-09
+  /* `import-test-f.less` imports `import-test-e` at the root after `@media screen` placed a copy. */
   ['tests-unit/import/import.less', [
     [
       '.mixin {\n  height: 10px;\n  color: red;\n}\n.test-rule-f {',

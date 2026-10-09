@@ -10,12 +10,12 @@
     "bootstrapVersion": "5.3.8"
   },
   "counts": {
-    "ok": 63,
-    "reject": 56,
+    "ok": 64,
+    "reject": 55,
     "emitError": 0
   },
-  "emittedBytes": 606454,
-  "aggregate": "62450e9814cf7d622c396c20ba2cf8a6bb7d63ecfe1ee000377e29e1789139a2",
+  "emittedBytes": 607124,
+  "aggregate": "c0a99b4953d30e7dccd30075923e31cbddcbefb757f67c439b0bfad5174f0f50",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -187,9 +187,9 @@
     },
     "repo/packages/jess/test/files/nested.css": {
       "bucket": "repo",
-      "status": "reject",
-      "bytes": null,
-      "fingerprint": "ceb7099105050501"
+      "status": "ok",
+      "bytes": 670,
+      "fingerprint": "2f9c712e4506e453"
     },
     "repo/packages/jess/test/files/simple.css": {
       "bucket": "repo",

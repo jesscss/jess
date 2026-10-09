@@ -2227,7 +2227,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      ':is(.a, .b):is(.c, .d),\n:is(.a, .b):is(.c, .d) {\n  color: red;\n}\n'
+      ':is(.a, .b):is(.c, .d),\n.a, .b.c, .d {\n  color: red;\n}\n'
     );
   });
 

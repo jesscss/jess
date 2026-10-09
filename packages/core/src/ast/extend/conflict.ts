@@ -29,7 +29,8 @@
  * genuinely-invalid-CSS case tree-v1 rejects is still rejected here.
  */
 
-import type { Simple } from './ir.js';
+import type { Combinator } from '../node.js';
+import type { SelectorPart, Simple } from './ir.js';
 
 const enum Kind {
   /** A type/element selector (`div`, `a`) — at most one per compound. */
@@ -47,11 +48,11 @@ const enum Kind {
  * `BasicSelector.isTag` / `isId`: `#` ⇒ id, `.`/`[`/`:`/`&`/`*`/empty ⇒ non-conflicting,
  * everything else (a bare ident head) ⇒ an element type selector.
  */
-function classify(text: string): Kind {
-  if (text.length === 0) {
+function classify(text: string, at = 0): Kind {
+  if (text.length <= at) {
     return Kind.Other;
   }
-  switch (text.charCodeAt(0)) {
+  switch (text.charCodeAt(at)) {
     case 0x23 /* # */:
       return Kind.Id;
     case 0x2e /* . */:
@@ -126,12 +127,49 @@ export function wouldConflict(surrounding: readonly string[], extenderTerminal: 
   return false;
 }
 
+/**
+ * True when the selector text from `at` opens with a type or universal selector, the
+ * simple that must lead its compound.
+ */
+export function leadsWithElement(text: string, at: number): boolean {
+  return text.charCodeAt(at) === 0x2A /* * */ || classify(text, at) === Kind.Type;
+}
+
 /** True for a text token that must lead its compound: a type or universal selector. */
 function leadsCompound(text: string): boolean {
-  return text.charCodeAt(0) === 0x2A /* * */ || isTypeSelector(text);
+  return leadsWithElement(text, 0);
 }
 
 export const NO_SIMPLES: readonly Simple[] = [];
+
+/**
+ * A selector of several compounds, `x`, written in place of one simple of a compound
+ * that opens its selector, `others` being that compound's other simples (owner
+ * 2026-10-09: they describe the same element as the simple `x` stands in for, so they
+ * join `x`'s LAST compound — same element, same compound): `x`'s compounds in order,
+ * the first taking `first` as its combinator, the last holding its own simples then
+ * `others`, made valid by {@link mergeCompound} (`.active` + `.toolbar .tool` →
+ * `.toolbar .tool.active`; `div` + `.a .b` → `.a div.b`). The meaning and specificity
+ * are those of `:is(x)` with `others`. Null where two element types would meet.
+ * Where the compound does not open its selector the caller keeps `x` one unit,
+ * `:is(x)`, instead: `.c .m:is(.a .b)` is not `.c .a .b.m`. A `&` that references a
+ * parent of several compounds (`compose.ts` `placeFusedAmp`) and an `all` extender
+ * written in place of the simple it matched (`emit.ts` `spliceMember`) both place by
+ * this rule.
+ */
+export function placeComplex(x: readonly SelectorPart[], others: readonly Simple[], first: Combinator): SelectorPart[] | null {
+  const n = x.length;
+  const tail = mergeCompound(NO_SIMPLES, x[n - 1]!.compound.value, others);
+  if (tail === null) {
+    return null;
+  }
+  const out: SelectorPart[] = [];
+  for (let k = 0; k < n - 1; k++) {
+    out.push(k === 0 ? { combinator: first, compound: x[0]!.compound } : x[k]!);
+  }
+  out.push({ combinator: n === 1 ? first : x[n - 1]!.combinator, compound: { value: tail } });
+  return out;
+}
 
 /**
  * `before`, `member` and `after` as one valid compound: the type (or universal)

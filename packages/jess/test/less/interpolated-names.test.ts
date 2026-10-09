@@ -88,21 +88,23 @@ describe('Interpolated Names', () => {
     });
 
     /*
-     * A lone `@{list}` is a whole selector list the static extend plan cannot read
-     * (it stays as authored, see `resolveSelectorInterpForExtend`). Its extend is
-     * skipped rather than written as an empty or parentless extender, which drops
-     * or widens the target's rule (ledger O17); a resolved sibling still extends.
+     * A lone `@{list}` of escaped text is that text, printed as written (owner
+     * 2026-10-09: "in Less, we promise ~\"\" as a 'dump whatever you want as-is'"),
+     * so its extend appends the text to the target's header, as one branch, in
+     * the root sheet as from an imported sheet or a mixin.
      */
-    it('never writes an empty extender for a lone interpolated selector list', async () => {
+    it('appends a lone interpolated text extender as written', async () => {
       const render = (less: string) => compiler.renderString(less, { language: 'less' });
       expect(await render('@s: ~".q, .w"; @{s}:extend(.z) {} .z { d: 2; }'))
-        .toBe('.z {\n  d: 2;\n}\n');
+        .toBe('.z,\n.q, .w {\n  d: 2;\n}\n');
       expect(await render('@s: ~".q, .w"; @{s} { &:extend(.z); } .z { d: 2; }'))
-        .toBe('.z {\n  d: 2;\n}\n');
+        .toBe('.z,\n.q, .w {\n  d: 2;\n}\n');
       expect(await render('@s: ~".q, .w"; @{s}, .a { &:extend(.z); } .z { d: 2; }'))
-        .toBe('.z,\n.a {\n  d: 2;\n}\n');
+        .toBe('.z,\n.q, .w,\n.a {\n  d: 2;\n}\n');
       expect(await render('@s: ~".q, .w"; @{s} { .c:extend(.z) { x: 1; } } .z { d: 2; }'))
-        .toBe('.q, .w {\n  .c {\n    x: 1;\n  }\n}\n.z {\n  d: 2;\n}\n');
+        .toBe('.q, .w {\n  .c {\n    x: 1;\n  }\n}\n.z,\n.q, .w .c {\n  d: 2;\n}\n');
+      expect(await render('.m() { @s: ~".q, .w"; @{s}:extend(.z) {} } .m(); .z { d: 2; }'))
+        .toBe('.z,\n.q, .w {\n  d: 2;\n}\n');
     });
   });
 

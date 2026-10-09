@@ -241,21 +241,30 @@ the extend engine both call it.
   (`&-primary` under `.btn`) stands for that parent's token —, a resolved interpolation
   that holds more than one simple (`@v: ~"x.y"; .@{v}`), or a
   complex member the group does not lead with (ledger X17 records this reading of X3's
-  provenance clause) — is written as its own branch in the Less 4.x expanded form: the simples
-  before the group join the member's FIRST compound and those after it its LAST
-  compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made
-  valid: the type selector leads and a repeated type is written once (`div` + `div.b`
-  → `div.b`, where 4.x wrote `divdiv.b`); a member that would need two element types
-  matches no element and is dropped (4.x wrote `divspan`).
+  provenance clause) — is written as its own branch where the group was. The
+  compound's other simples describe the same element as the matched simple, the one a
+  complex member's LAST compound names (owner 2026-10-09: same element ⇒ same
+  compound): where the compound opens a top-level header the member is written in
+  place, those simples joining its last compound (`.active.btn .icon` +
+  `.toolbar .tool:extend(.btn all)` → `.toolbar .tool.active .icon`); anywhere else it
+  stays one `:is()` unit where the group was (`.a > .m:is(.c, .p .q).n` →
+  `.a > .m:is(.p .q).n`), the position rule a `&` referencing a parent of several
+  compounds follows too (ledger J13; `conflict.ts` `placeComplex`). A one-compound member
+  joins them in place, and a member that is the whole compound it stands in is written
+  in its place. Each joined compound is made valid: the type selector leads and a
+  repeated type is written once (`div` + `div.b` → `div.b`, never `divdiv.b`); a member
+  that would need two element types or two ids matches no element and is dropped
+  (`div.c` + `.p span:extend(.c all)`).
 - A group may hold a complex member only where it leads the whole selector: first in
   the head compound of a top-level header. Only there `:is(.t .b).k .box` matches what
-  the expanded `.t .b.k .box` does; `.p :is(.x .y)` would let `.x` sit above `.p`, and
-  `.m:is(.p .q)` is `.p .m.q` where 4.x's `.m.p .q` is meant. A nested header has an
-  implicit `&` before it, so it never leads.
+  `.t .b.k .box` does; elsewhere a group would let the member's own compounds sit
+  across the combinator before it (`.p :is(.x .y)` lets `.x` sit above `.p`). A nested
+  header has an implicit `&` before it, so it never leads.
 - A group nested in a member (a chained extend, `.j.k:extend(.c all)` then
   `.p .q:extend(.j all)`) is checked as an `:is()` argument first, and again where the
   member lands when the outer group splits: with `.r .s:extend(.j all)` too,
-  `.a > .c` gives `.a > .p .q.k, .a > .r .s.k`, never `.a > :is(.p .q, .r .s).k`.
+  `.a > .c` gives `.a > :is(.p .q).k, .a > :is(.r .s).k`, never
+  `.a > :is(.p .q, .r .s).k`.
 - The solve keeps each group whole (later instructions chain through it as one set of
   alternatives); the split happens once, as a header is emitted (`emit.ts`
   `groupedBranches`). Only extend-built groups (`Simple.fold`) split. An authored
@@ -264,14 +273,24 @@ the extend engine both call it.
   selector, at the arm's own specificity), and every other alternative replaces the
   whole `:is()` on its own — returned to the list it would raise elements the extend
   never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
-  An alternative is written in place in the 4.x placement, a complex one too
-  (`.p .q:extend(.c all)` gives `.p .q.k .d`), never as a one-arm `:is()`.
-- A `&` fused into a compound under a parent of several compounds composes as the
-  parent spliced in place, as the serializer writes it (`.b { .p { &.q {} } }` is
-  `.b .p.q`, `.q&` is `.q.b .p`, `&-foo` is `.b .p-foo`), and extend matches that
-  composed selector: `.x:extend(.b .p.q)` reaches it, and an `all` graft on `.x` in
-  `.x { .arrow { &::before {} } }` gives `:is(.x, .y) .arrow::before`, never a one-arm
-  `:is(:is(.x, .y) .arrow)::before`.
+  An alternative is written in place in X3's placement (`.p .q:extend(.c all)` gives
+  `.p .q.k .d`), except a complex alternative of a one-arm `:is()` that does not lead
+  its selector: that `:is()` is one unit (a `&` referencing a parent of several
+  compounds, or the author's), so it keeps it — `.a .b { .c & {} }` +
+  `#z:extend(.a all)` gives `.c :is(.a .b), .c :is(#z .b)`, never `.c #z .b` (owner
+  2026-10-09, ledger J13).
+- A `&` is a plain reference to its parent, `:is(parent)` (owner 2026-10-09, ledger
+  J13), and extend composes it as the serializer writes it. Under a parent of several
+  compounds, the compound that opens the selector writes the parent in place, its other
+  simples joined to the parent's LAST compound (`.b { .p { &.q {} } }` and `.q&` are
+  both `.b .p.q`, `&-foo` is `.b .p-foo`, `div&` is `.b div.p`); anywhere else the
+  parent is one `:is()` unit (`.c &` is `.c :is(.b .p)`, `& + &` is
+  `.b .p + :is(.b .p)`, `:not(.c &)` is `:not(.c :is(.b .p))`). A `&` inside an
+  `:is()` argument is composed too (`:is(&) .y` is `:is(.b .p) .y`). Extend matches
+  that composed selector: `.x:extend(.b .p.q)` reaches `.q&`, and an `all` graft on
+  `.x` in `.x { .arrow { &::before {} } }` gives `:is(.x, .y) .arrow::before`, never a
+  one-arm `:is(:is(.x, .y) .arrow)::before`. A parent ending with a pseudo-element
+  keeps the earlier splice, since `:is()` cannot hold it (O17).
 - An `all` match of a whole authored or nesting `:is()` arm appends the extender to
   that list; the append is extend's own grouping and follows the same guard
   (orchestrator judgment 2026-10-05). The extender joins the list only at the list's
@@ -754,9 +773,10 @@ Hiding follows the import placement, not the rule. Each `(reference)` or `(multi
 import is its own placement of the sheet's rules, so an extend inside one `@media` block
 reaches only that block's copy — a `(reference)` import inside a sheet imported
 `(multiple)` twice is placed once per copy. Import-once counts only a copy placed in the
-same scope — the root, one ruleset or one at-rule block, a mixin call or loop iteration
-counting in the scope it runs in and an imported sheet's root in its importer's (J14 as
-amended, orchestrator judgment under owner delegation 2026-10-07). An import of a sheet an
+same output context — the chain of rule selectors and at-rule preludes the copy renders
+into, a mixin call or loop iteration counting in the context it runs in and an imported
+sheet's root in its importer's (J14 as amended; owner 2026-10-09: once counts per scope,
+if the output would be different). An import of a sheet an
 enclosing import is still placing is a no-op in every scope, so a sheet that imports
 itself through a nested scope ends. Import-once drops a `(reference)` import of a sheet any `@import`
 already placed in its scope — plain, `(multiple)` or `(reference)` — (ledger J14,
@@ -776,7 +796,7 @@ delegation 2026-10-07: a sheet the author asked to see is never hidden). A copy 
 another scope never makes an import a no-op: after `.wrap { @import "t.less"; }` or
 `@media print { @import "t.less"; }`, a root `@import "t.less";` renders the sheet at the
 root and makes its mixins callable there, and a root `@import (reference) "t.less";` places
-its hidden copy there (lessc 4.9.1 drops both, leaving `.mx` undefined at the root). The
+its hidden copy there. The
 other way round, a scoped import after a root one places its own copy too. A sheet a `(reference)` sheet imports is
 referenced too, and a reference sheet's rule called as a mixin from outside the import
 renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the

@@ -29,6 +29,7 @@ export type JessErrorCode =
   | 'parse/invalid-mixin-argument'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
+  | 'compose/not-top-level'
   | 'import/cycle'
   | 'import/not-found'
   | 'import/load-failed'
@@ -52,6 +53,7 @@ export type JessErrorCode =
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
   | 'eval/url-option-skipped'
+  | 'eval/charset-conflict'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
   | 'eval/unit-conversion'
@@ -224,6 +226,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Circular @-compose detected',
       reason: '${chain}',
       fix: 'Break the cycle (extract shared bits and compose that).'
+    }
+  ],
+  [
+    'compose/not-top-level',
+    {
+      summary: '@compose is only allowed at the top level of a stylesheet',
+      reason: 'A @compose is written inside a ruleset, at-rule, mixin, guard or loop body; a module is composed by the stylesheet, at its top level.',
+      fix: 'Move the @compose to the top level of the stylesheet, or use @import to bring the sheet into this block.'
     }
   ],
   [
@@ -409,6 +419,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${expr} has no single CSS value: its units compose to one CSS cannot express, or + or - joins two units that do not convert.',
       fix: 'Cancel the units, or drop one side\'s unit. An expression calc() accepts can be wrapped in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/charset-conflict',
+    {
+      summary: '${charset} is dropped: the output already declares ${hoisted}',
+      reason: 'A stylesheet declares one encoding, read only from its first bytes, and ${hoisted} comes first, so the later ${charset} is not written.',
+      fix: 'Remove the @charset that names the other encoding, or make the files agree.'
     }
   ],
   [
