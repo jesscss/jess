@@ -61,10 +61,24 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
       .resolves.toBe(':is(.a, .c).x, #b.x');
   });
 
-  it('writes a complex member that follows a combinator as its own branch', async () => {
-    // `.intrusion :is(.type1 .sidebar3)` would let `.type1` sit above `.intrusion`.
+  /*
+   * A complex member that is the whole compound it stands in follows the same position
+   * rule as one beside other simples: written in place only where it opens a top-level
+   * header, else one `:is()` unit. `.intrusion .type1 .sidebar3` would need `.type1`
+   * under `.intrusion`, which `.error` there does not (the owner's meaning of an `all`
+   * extend is `:is()`, `.active:is(.toolbar .tool, .btn) .icon`, ledger X3).
+   */
+  it('writes a complex member that follows a combinator as one :is() unit', async () => {
     await expect(extendHeader('.intrusion .error { m: 1 } .type1 { .sidebar3:extend(.error all) {} }'))
-      .resolves.toBe('.intrusion .error, .intrusion .type1 .sidebar3');
+      .resolves.toBe('.intrusion .error, .intrusion :is(.type1 .sidebar3)');
+  });
+
+  it('matches the same elements nested and flattened when a & joins the extended compound', async () => {
+    const src = '.a .b { .x& { m: 1 } } .p .q:extend(.b all) {}';
+    expect(headerOf(await render(src, false), '.x&')).toBe('.a .b, .a :is(.p .q)');
+    for (const mode of ['native', 'compact'] as const) {
+      expect(headerOf(await render(src, mode), 'm: 1')).toBe('.a .b.x, .a :is(.p .q).x');
+    }
   });
 
   /*
@@ -119,9 +133,9 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
     await expect(extendHeader(':is(.c, .z) .d { m: 1 } .y:extend(.c all) {}'))
       .resolves.toBe(':is(.c, .z, .y) .d');
 
-    // `.a :is(.c, .z, .p .q)` would let `.p` sit above `.a`.
+    // `.p .q` raises `.c` to (0,2,0), so it stands alone: one `:is()` unit after the combinator.
     await expect(extendHeader('.a :is(.c, .z) { m: 1 } .p .q:extend(.c all) {}'))
-      .resolves.toBe('.a :is(.c, .z), .a .p .q');
+      .resolves.toBe('.a :is(.c, .z), .a :is(.p .q)');
   });
 
   it('appends to the nesting :is(parents) under the guard too', async () => {

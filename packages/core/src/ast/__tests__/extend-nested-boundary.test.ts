@@ -368,8 +368,9 @@ describe('nested-mode extend whose extender is the target\'s parent', () => {
     expect(nestedLess(merged)).toBe('.p {\n  &.y {\n    .z.k,\n    .p.y.k {\n      c: 3;\n    }\n  }\n}\n');
     expect(flatLess(merged)).toBe('.p.y .z.k,\n.p.y .p.y.k {\n  c: 3;\n}\n');
 
-    // A context the extender does not lead with in full is written as it is.
-    expect(flatLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a .b [d],\n.a .b .a .e {\n  c: 1;\n}\n');
+    // A context the extender does not lead with in full: the extender is one `:is()` unit where it stands.
+    expect(flatLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a .b [d],\n.a .b :is(.a .e) {\n  c: 1;\n}\n');
+    expect(nestedLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a {\n  .b {\n    [d],\n    :is(.a .e) {\n      c: 1;\n    }\n  }\n}\n');
   });
 
   /*
@@ -389,6 +390,6 @@ describe('nested-mode extend whose extender is the target\'s parent', () => {
       expect(nestedLess(src), src).toBe(nestedOut);
       expect(flatLess(src), src).toBe(flatOut);
     }
-    expect(flatLess('.a { ~ .t { c: 1; } > .r { &:extend(.t all); } }')).toBe('.a ~ .t,\n.a ~ .a > .r {\n  c: 1;\n}\n');
+    expect(flatLess('.a { ~ .t { c: 1; } > .r { &:extend(.t all); } }')).toBe('.a ~ .t,\n.a ~ :is(.a > .r) {\n  c: 1;\n}\n');
   });
 });

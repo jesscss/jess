@@ -152,7 +152,7 @@ describe('fused ampersand under a multi-compound parent', () => {
       .toBe('.header .header-nav,\n.footer .footer-nav {\n  a: 1;\n}\n.header .header-nav:before,\n.footer .footer-nav:before {\n  b: 2;\n}\n');
     expect(renderLess('div.a .b { m: 1 } .x:extend(.a .b all) {}')).toBe('div.a .b,\ndiv.x {\n  m: 1;\n}\n');
     expect(renderLess('.q .a.k .b.m .z { m: 1 } .x .y:extend(.a .b all) {}'))
-      .toBe('.q .a.k .b.m .z,\n.q .k.x .y.m .z {\n  m: 1;\n}\n');
+      .toBe('.q .a.k .b.m .z,\n.q :is(.k.x .y.m) .z {\n  m: 1;\n}\n');
   });
 
   it('carries an all graft without a one-arm :is() around the parent', () => {

@@ -859,9 +859,12 @@ function withSimple(b: Branch, k: number, p: number, simple: Simple): Branch {
  * `.toolbar .tool.active .icon`; {@link placeComplex}), and anywhere else stays one
  * `:is()` unit where the group was (`.x .m.c .d` + `.p .q:extend(.c all)` →
  * `.x .m:is(.p .q) .d`), since written in place it would put them on another element.
- * A nested header has an implicit `&` before it, so it never opens. A member that is
- * the whole compound it stands in (no other simples, as a span a multi-compound target
- * matched is) is written in its place. Each joined compound is made valid by
+ * So is an extender (`ext`) that is the whole compound it stands in (`.a .b` +
+ * `.p .q:extend(.b all)` → `.a :is(.p .q)`): written in place, `.a .p .q` would need
+ * `.p` under `.a`, which `.a .b.x` extended as `.a :is(.p .q).x` does not, so nested
+ * and flattened output would match different elements. The span a multi-compound
+ * target matched is the authored selector and is written back in its place. A nested
+ * header has an implicit `&` before it, so it never opens. Each joined compound is made valid by
  * {@link mergeCompound}; null when one would need two element types — no element
  * matches it, so the member contributes no branch. A member that leads with the whole
  * context before the group is written without it twice ({@link sharedContext}).
@@ -876,7 +879,8 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch, root: boo
     ? arm[0]!.combinator
     : drop > 0 && member.segments.length > k ? narrower(segment.combinator, arm[0]!.combinator)! : segment.combinator;
   let placed: SelectorPart[] | null;
-  if (n === 1 || value.length === 1) {
+  if (n === 1 || (value.length === 1 && member.ext !== true)) {
+    /* A one-compound member joins the compound; the matched span itself (no `ext`) is written back as authored. */
     const head = mergeCompound(value.slice(0, p), arm[0]!.compound.value, n === 1 ? value.slice(p + 1) : NO_SIMPLES);
     placed = head === null ? null : [{ combinator, compound: { value: head } }];
     for (let j = 1; j < n && placed !== null; j++) {
@@ -1000,6 +1004,25 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject, whole: 
     return { ...inst, extenderPath: inst.extenderPath.slice(drop) };
   }
   return { ...inst, extenderPath: whole ? PARENT_PATH : [composePath(inst.extenderPath).map(lastCompound)] };
+}
+
+/**
+ * An extender of several compounds appended to a nested header, as one `:is()` unit: the
+ * header has an implicit `&` before it, so written as it is it would be placed under the
+ * parent (`.a { .b { [d], .a .e {} } }` is `.a .b .a .e`), while the flattened header
+ * keeps it one unit (`.a .b :is(.a .e)`, {@link spliceMember}). One that opens with a
+ * combinator (`> .r`) is relative to the parent already.
+ */
+function nestedExtenderUnit(b: Branch): Branch {
+  if (b.ext !== true || b.segments.length < 2 || b.segments[0]!.combinator !== ' ') {
+    return b;
+  }
+  const unit = descendantBranch([isSimple([mkBranch(b.segments)], false)]);
+  unit.ext = true;
+  if (b.hidden === true) {
+    unit.hidden = true;
+  }
+  return unit;
 }
 
 /** `b`'s last compound as a branch of its own. */
@@ -1675,7 +1698,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
          * (`.attribute-test`), not the double-prefixed full path.
          */
         .map(inst => relativizeExtender(inst, s, false));
-      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
+      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list.map(nestedExtenderUnit);
 
       /*
        * A match of the rule's whole composed selector by an extender nested under the
