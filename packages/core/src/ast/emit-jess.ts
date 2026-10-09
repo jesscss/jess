@@ -972,7 +972,9 @@ class JessPrinter {
 
   paren(node: Block, at: At): string {
     if (node.escaped === true) {
-      return gap('Block', 'escaped `~( … )` block: no `.jess` production');
+      return at === At.Expr || at === At.Prelude
+        ? gap('Block', 'escaped `~( … )` block inside `$( … )` or an at-rule prelude: only `ParenValue` reads it')
+        : `~(${this.value(node.value, at)})`;
     }
     if (node.delimiter === 'square') {
       return `[${this.value(node.value, at)}]`;

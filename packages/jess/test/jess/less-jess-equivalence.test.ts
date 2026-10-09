@@ -40,7 +40,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import { emitJess, NoJessSpelling } from '@jesscss/core';
-import { importTargetSpelling } from '@jesscss/core/ast';
+import { importTargetSpelling, type Stylesheet } from '@jesscss/core/ast';
 import { parse as parseJess } from '@jesscss/jess-parser';
 import { parse as parseLess } from '@jesscss/less-parser';
 import * as lessFunctionModule from '@jesscss/fns/less';
@@ -1177,54 +1177,82 @@ describe('targeted round trip: the converted sheet answers the .jess default', (
 
 /*
  * Less's `;` rule (owner 2026-10-09, ledger P45) stores each comma run of a `;`
- * mixin list as the node `~( … )` builds, so a `;` list converts exactly as its
- * escaped spelling does. `.jess` has no spelling for that node yet and the
- * converter names it, so these round trips are held by that one gap, not by the
- * `;` form: the `.less` arm renders, and both spellings name the same gap.
+ * mixin list as the node `~( … )` builds, and `.jess` reads `~( … )` back
+ * (owner 2026-10-09: "Jess is supposed to support ~()"), so a `;` list converts
+ * to `~( … )` arguments and never to a `;`: a `.jess` call has no `;` separator.
+ * Both arms render the same CSS, and the `;` spelling converts exactly as its
+ * escaped Less spelling does.
  */
-describe('targeted round trip: a `;` mixin list converts as its `~( … )` spelling', () => {
+describe('targeted round trip: a `;` mixin list converts to `~( … )`', () => {
   const TAKES = '.t1(@a) { one: @a; }\n.t2(@a; @b) { one: @a; two: @b; }\n';
-  const gapsOf = (source: string): string[] => {
-    try {
-      emitJess(parseLess(source), { functions: LESS_FUNCTIONS });
-      return [];
-    } catch (error) {
-      if (!(error instanceof NoJessSpelling)) {
-        throw error;
-      }
-      return error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
-    }
-  };
-  const render = async (source: string) => {
-    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin()] }, quiet: true })
-      .renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+  const convert = (less: string) => emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+  const render = async (source: string, extension: '.less' | '.jess') => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
     expect(result.errors).toEqual([]);
     return result.css.replace(/\s+/g, ' ').trim();
   };
-  const ESCAPED_BLOCK_GAP = 'Block: escaped `~( … )` block: no `.jess` production';
 
   it.each([
-    ['.x { .t2(@a : a; @b : b, c); }', '.x { .t2(@a: a, @b: ~(b, c)); }', '.x { one: a; two: b, c; }'],
-    ['.x { .t2(@a : d, e; @b : f); }', '.x { .t2(@a: ~(d, e), @b: f); }', '.x { one: d, e; two: f; }'],
-    ['.x { .t2(o, p; q); }', '.x { .t2(~(o, p), q); }', '.x { one: o, p; two: q; }'],
-    ['.x { .t2(r, s; t;); }', '.x { .t2(~(r, s), t); }', '.x { one: r, s; two: t; }'],
-    ['.x { .t1(m, n;); }', '.x { .t1(~(m, n)); }', '.x { one: m, n; }'],
+    ['.x { .t2(@a : a; @b : b, c); }', '.x { .t2(@a: a, @b: ~(b, c)); }', '$ > .t2($a: a, $b: ~(b, c));', '.x { one: a; two: b, c; }'],
+    ['.x { .t2(@a : d, e; @b : f); }', '.x { .t2(@a: ~(d, e), @b: f); }', '$ > .t2($a: ~(d, e), $b: f);', '.x { one: d, e; two: f; }'],
+    ['.x { .t2(o, p; q); }', '.x { .t2(~(o, p), q); }', '$ > .t2(~(o, p), q);', '.x { one: o, p; two: q; }'],
+    ['.x { .t2(r, s; t;); }', '.x { .t2(~(r, s), t); }', '$ > .t2(~(r, s), t);', '.x { one: r, s; two: t; }'],
+    ['.x { .t1(m, n;); }', '.x { .t1(~(m, n)); }', '$ > .t1(~(m, n));', '.x { one: m, n; }'],
     [
       '.d(@c; @p; @m: 2, 2, 2, 2) { margin: @m; }\n.x { .d(#33acfe; 4); }',
       '.d(@c, @p, @m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(#33acfe, 4); }',
+      '.d($c, $p, $m: ~(2, 2, 2, 2)) {',
       '.x { margin: 2, 2, 2, 2; }'
     ],
-    ['.d(@m: 2, 2, 2, 2;) { margin: @m; }\n.x { .d(); }', '.d(@m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(); }', '.x { margin: 2, 2, 2, 2; }']
-  ])('%s', async (semicolons, escaped, expected) => {
-    expect(await render(TAKES + semicolons)).toBe(expected);
-    expect(await render(TAKES + escaped)).toBe(expected);
-    expect(gapsOf(TAKES + semicolons)).toEqual([ESCAPED_BLOCK_GAP]);
-    expect(gapsOf(TAKES + escaped)).toEqual([ESCAPED_BLOCK_GAP]);
+    [
+      '.d(@m: 2, 2, 2, 2;) { margin: @m; }\n.x { .d(); }',
+      '.d(@m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(); }',
+      '.d($m: ~(2, 2, 2, 2)) {',
+      '.x { margin: 2, 2, 2, 2; }'
+    ],
+    ['.x { a: ~(1, 2, 3); b: ~(1 2 3); }', '.x { a: ~(1, 2, 3); b: ~(1 2 3); }', 'a: ~(1, 2, 3);', '.x { a: 1, 2, 3; b: 1 2 3; }']
+  ])('%s', async (semicolons, escaped, written, expected) => {
+    const jess = convert(TAKES + semicolons);
+    expect(jess).toBe(convert(TAKES + escaped));
+    expect(jess).toContain(written);
+    expect(jess).not.toMatch(/\([^)]*;/u);
+    expect(await render(TAKES + semicolons, '.less')).toBe(expected);
+    expect(await render(jess, '.jess')).toBe(expected);
   });
 
   it('converts a `;` list that holds no comma run', () => {
-    expect(emitJess(parseLess(`${TAKES}.x { .t2(@a: h; @b: i;); }`), { functions: LESS_FUNCTIONS }))
-      .toBe(emitJess(parseLess(`${TAKES}.x { .t2(@a: h, @b: i); }`), { functions: LESS_FUNCTIONS }));
+    expect(convert(`${TAKES}.x { .t2(@a: h; @b: i;); }`)).toBe(convert(`${TAKES}.x { .t2(@a: h, @b: i); }`));
+  });
+
+  it('reads `.jess` `~( … )` as the node a `.less` `;` list and `~( … )` build', () => {
+    const argument = (tree: Stylesheet) => {
+      const [rule] = tree.rules;
+      return rule?.type === 'Ruleset' && rule.rules[0]?.type === 'MixinCall' ? shape(rule.rules[0].args[0]!.value) : '';
+    };
+    const jess = argument(parseJess('.x { $ > .t2(~(o, p), q); }'));
+    expect(jess).toContain('"escaped":true');
+    expect(argument(parseLess('.x { .t2(o, p; q); }'))).toBe(jess);
+    expect(argument(parseLess('.x { .t2(~(o, p), q); }'))).toBe(jess);
+  });
+});
+
+/*
+ * The `.jess` docs' own example (`docs/jess/02-Language/05-mixins.mdx`): a comma
+ * list passed as one mixin argument, through a variable or wrapped in `~( … )`.
+ */
+describe('the .jess docs example: a comma list as one mixin argument', () => {
+  it('passes `~(one, two, three)` as the value a variable holding the list passes', async () => {
+    const source = (call: string) => `button-base($list) {\n  values: $list;\n}\n.a {\n  $values: one, two, three;\n  ${call}\n}\n`;
+    const render = async (jess: string) => {
+      const result = await new Compiler({ compile: { plugins: [jessPlugin()] }, quiet: true })
+        .renderToResult({ source: jess, filePath: 'entry.jess', extension: '.jess' }, { quiet: true });
+      expect(result.errors).toEqual([]);
+      return result.css;
+    };
+    const viaVariable = await render(source('$ > button-base($values);'));
+    expect(viaVariable).toBe('.a {\n  values: one, two, three;\n}\n');
+    await expect(render(source('$ > button-base(~(one, two, three));'))).resolves.toBe(viaVariable);
   });
 });
 

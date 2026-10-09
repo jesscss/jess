@@ -3088,12 +3088,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * the conservative existing behaviour rather than minting an empty `Any` block
    * (the CSS base instead throws in its `()` reducer; the empty-block form is a
    * separate open question, not settled here).
+   *
+   * `~( … )` is the same block with its delimiters escaped (owner 2026-10-09):
+   * the one `.jess` spelling of a comma list passed as ONE call argument, since a
+   * `.jess` call has no `;` separator. It is an opener of the structured arm, not
+   * a second production, and reduces to the node Less's `~( … )` builds, so a
+   * `.less` list made one argument by `;` (ledger P45) converts to it.
    */
   const ParenValue = node<ValueNode>(
     'ParenValue',
     choice(
       noTrivia(sequence(
-        literal('('),
+        choice(literal('('), literal('~(')),
         optional(valueTrivia),
         g.Value,
         optional(valueTrivia),
@@ -3109,10 +3115,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(')')
       ))
     ),
-    (children) => {
+    (children, _fields, span) => {
       const slot = children.find(isJessValueSlotValue);
-      return slot === undefined
-        ? block(any(requireToken(children[1]).value), 'paren')
+      if (slot === undefined) {
+        return block(any(requireToken(children[1]).value), 'paren');
+      }
+      return isToken(children[0]) && children[0].value === '~('
+        ? withSourceSpan(block(slot, 'paren', true), span)
         : block(slot, 'paren');
     }
   );
