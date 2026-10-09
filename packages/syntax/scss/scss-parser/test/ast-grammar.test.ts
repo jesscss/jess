@@ -126,6 +126,14 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
+  it('ends a keyword only where the identifier ends: an escape continues it', () => {
+    /* css-syntax-3 §4.3.11: `not\61` is the one identifier `nota`, not `not` then `\61`. */
+    expect(bare(parse('@if not\\61 { a { b: c } }').rules[0])).toMatchObject({
+      type: 'If',
+      branches: [{ guard: { g: 'truth', value: { type: 'Keyword', src: 'not\\61 ' } } }]
+    });
+  });
+
   it('constructs the restricted static @if chain as canonical If/GuardNode facts', () => {
     const source = '@if not (false or false) and true { /* keep */ .yes { color: green; } @media screen { .inside { color: lime; } } } @else if false { .no { color: red; } } @else { .fallback { color: blue; } }';
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });

@@ -77,7 +77,7 @@ describe('Less modern mode (P36)', () => {
   });
 
   it.each(['#less', '@jesscss/fns/less'])('.jess: `@-from "%s"` binds its import and computes', async (specifier) => {
-    await expect(compiler().renderString(`@-from "${specifier}" import (darken);\na { color: darken(red, 10%); }`, { extension: '.jess' }))
+    await expect(compiler().renderString(`@-from "${specifier}" import (darken);\na { color: $darken(red, 10%); }`, { extension: '.jess' }))
       .resolves.toBe('a {\n  color: #cc0000;\n}\n');
   });
 

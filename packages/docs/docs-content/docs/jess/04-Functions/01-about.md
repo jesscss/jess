@@ -15,7 +15,7 @@ The compiler provides trusted Less and Sass function modules:
 @-from "#less" import (mix);
 
 .box {
-  color: mix(#ff0000, #0000ff, 50%);
+  color: $mix(#ff0000, #0000ff, 50%);
 }
 ```
 
@@ -25,13 +25,13 @@ You can rename an imported helper:
 @-from "#less" import (rgb as jessRgb);
 
 .color {
-  color: jessRgb(1, 2, 3);
+  color: $jessRgb(1, 2, 3);
   background-color: rgb(255 255 255 / 0.8);
 }
 ```
 
-The first call uses the imported compiler function. The second remains a native
-CSS function because no import claims the name `rgb`.
+The first call uses the explicit imported binding. The second remains a native
+CSS function. Imports never claim bare CSS-shaped calls.
 
 Use `@-use "#less" as less;` when a namespace reads better, then call helpers
 as `$less.mix(...)`. Built-in compiler modules do not require a script runtime.

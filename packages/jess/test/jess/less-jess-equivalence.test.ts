@@ -689,7 +689,7 @@ const KNOWN = new Map<string, Known>([
   ['all-less:tests-unit/javascript-REMOVED/legacy/javascript.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: parse/unsupported-inline-javascript: Inline backtick JavaScript is not supported.'
+    reason: 'the Less arm itself does not render: parse/unsupported-inline-javascript: Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.'
   }],
   ['all-less:tests-unit/layer/layer.less', {
     cause: 'cannot-express',
@@ -941,6 +941,7 @@ describe('converted function imports', () => {
       '@charset "utf-8";',
       '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
     ]);
+    expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: $rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n}');
   });
 });
 

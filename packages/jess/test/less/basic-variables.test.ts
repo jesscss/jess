@@ -45,6 +45,29 @@ describe('Less variable references through the public AST route', () => {
   });
 
   /*
+   * A variable name is a css ident, so its escapes decode (css-syntax-3
+   * §4.3.11): an escaped and a plain spelling name one variable (P40).
+   */
+  it('treats an escaped variable name as its plain spelling', async () => {
+    const lessCode = [
+      '@\\63 olor: red;',
+      '@var\\61: box;',
+      '@name: color;',
+      '@r: { d: e; };',
+      '.@{var\\61} {',
+      '  a: @color;',
+      '  b: @\\63 olor;',
+      '  c: @vara @@\\6e ame;',
+      '  @\\72();',
+      '}'
+    ].join('\n');
+
+    await expect(parseAndRender(lessCode)).resolves.toBe(
+      '.box {\n  a: red;\n  b: red;\n  c: box red;\n  d: e;\n}\n'
+    );
+  });
+
+  /*
    * PINNED DEFECT (jess#236). A variable holding a bare mixin reference is only
    * a problem when it is CALLED: lessc 4.9.1 compiles `@foo: .a;` and only
    * raises on `@foo()`. Less 5 rejects the DECLARATION at parse time, and the
