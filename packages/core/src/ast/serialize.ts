@@ -15059,7 +15059,7 @@ function recordOpenRule(dyn: DynamicExtendState, rule: Ruleset, frame: Frame, e:
 function ownLevelOf(dyn: DynamicExtendState, rule: Ruleset): Level {
   let own = dyn.ownLevels.get(rule);
   if (own === undefined) {
-    own = levelFromSelectorList(rule.selector);
+    own = levelFromSelectorList(dyn.resolvedSelectors.get(rule.selector) ?? rule.selector);
     dyn.ownLevels.set(rule, own);
   }
   return own;
@@ -15297,7 +15297,7 @@ function recordDynamicExtendFacts(
        */
       const at = inst.subject && resolved !== undefined ? rule.selector.selectors.indexOf(inst.subject.selectors[0]!) : -1;
       const extenderPath = inst.subject && structured
-        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : levelFromSelectorList(inst.subject)]
+        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : levelFromSelectorList(dyn.resolvedSelectors.get(inst.subject) ?? inst.subject)]
         : path;
       recordDynamicInstruction(dyn, inst, extenderPath, hidden);
     }
@@ -15414,7 +15414,7 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
     atRuleScopes: dyn.atRuleScopes,
     bubbles: dyn.baseOverlay.bubbles
   };
-  return computeExtends(dyn.root, overlay, guardedNesting);
+  return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors);
 }
 
 /**
@@ -23565,6 +23565,13 @@ interface NestedLeafBuffer {
  * re-hoists the entry up the ancestor chain (decrementing each level) until it lands
  * `k` blocks up, so a match that crosses `k` nesting boundaries clears exactly those.
  */
+/**
+ * A {@link HoistEntry.bubble} that rises out of every rule block: a small integer, so
+ * every entry's `bubble` stays one in-object Smi field (an `Infinity` here was the first
+ * non-Smi stored in it and boxed every later entry's as a heap number).
+ */
+const HOIST_TO_ROOT = 0x3FFFFFFF;
+
 interface HoistEntry {
   rule: Ruleset;
   frame: Frame;
@@ -24077,7 +24084,7 @@ function writeNestedRule(
        */
       if (rootSplits !== undefined && direct.length > 0) {
         for (const header of rootSplits) {
-          (outerHoist ?? hoist).push({ rule, frame, bubble: Number.POSITIVE_INFINITY, wrappers: null, source, split: { header, leaves: direct } });
+          (outerHoist ?? hoist).push({ rule, frame, bubble: HOIST_TO_ROOT, wrappers: null, source, split: { header, leaves: direct } });
         }
       }
       const emitSplits = (index: number): MaybePromise<void> => {

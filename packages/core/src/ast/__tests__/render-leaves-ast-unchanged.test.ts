@@ -26,6 +26,16 @@ describe('a render leaves the parsed document as parsed', () => {
     expect(await render('2')).toBe('.c-2,\n.y {\n  m: 1;\n}\n');
   });
 
+  it('extends a resolved interpolated selector from a mixin-placed extender', () => {
+    for (const source of ['@v: 1; .c-@{v} { m: 1 } .mx() { .x:extend(.c-1 all) {} } .mx();', '@v: 1; .c-@{v} { m: 1 } .mx() { .x { &:extend(.c-1); } } .mx();']) {
+      expect(serialize(parseLess(source), { evaluator, collapseNesting: true }).css, source).toBe('.c-1,\n.x {\n  m: 1;\n}\n');
+    }
+
+    // The resolved rule is the open rule a mixin-placed extender composes under.
+    expect(serialize(parseLess('@v: 1; .t { m: 1 } .mx() { .x { &:extend(.t); } } .c-@{v} { .mx(); }'), { evaluator, collapseNesting: true }).css)
+      .toBe('.t,\n.c-1 .x {\n  m: 1;\n}\n');
+  });
+
   it('keeps an interpolated selector and an inline extend subject as parsed', () => {
     /* The serializer's lazy memos (`_hasInterp`, `_canon`, `_hasAmp`) are caches, not the document. */
     const parsed = (document: Stylesheet): string => JSON.stringify(document, (key, value: unknown) => (/^_(hasInterp|canon|hasAmp)$/u.test(key) ? undefined : value));
