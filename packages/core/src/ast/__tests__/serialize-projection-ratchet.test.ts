@@ -502,7 +502,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // that opens with an element, or one that ends with a pseudo-element, as it
     // places a parent of several compounds (`parentKind`, `pseudoElementStart`,
     // `parentUnit`, `endsAfterPseudoElement`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(610);
+    // +1 function (ledger N11; agent judgment 2026-10-09, awaiting owner): only a
+    // `@charset` that names UTF-8 is hoisted over the UTF-8 output (`namesUtf8`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(611);
     expect(occurrences(/new Map/gu)).toBe(94);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);

@@ -53,7 +53,7 @@ export type JessErrorCode =
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
   | 'eval/url-option-skipped'
-  | 'eval/charset-conflict'
+  | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
   | 'eval/unit-conversion'
@@ -422,11 +422,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    'eval/charset-conflict',
+    'eval/charset-not-utf8',
     {
-      summary: '${charset} is dropped: the output already declares ${hoisted}',
-      reason: 'A stylesheet declares one encoding, read only from its first bytes, and ${hoisted} comes first, so the later ${charset} is not written.',
-      fix: 'Remove the @charset that names the other encoding, or make the files agree.'
+      summary: '${charset} in ${file} is dropped: the output is UTF-8',
+      reason: 'A stylesheet declares one encoding, read from its first bytes, and Jess writes its output as UTF-8, so a @charset naming another encoding would make every non-ASCII character read wrongly.',
+      fix: 'Save ${file} as UTF-8 and remove its @charset, or change it to @charset "UTF-8".'
     }
   ],
   [

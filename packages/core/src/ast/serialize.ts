@@ -17310,6 +17310,10 @@ function walkBody(
           break;
         }
         case 'AtRuleStatement': {
+          /* [charset] Written only at the top of the output ({@link hoistCharsets}), never where it stands. */
+          if (isCharset(node)) {
+            break;
+          }
           if (nested) {
             flushBuf();
             emitBeforeRootStatement(node);
@@ -20872,59 +20876,68 @@ function isCharset(node: AtRuleStatement): boolean {
 
 /**
  * [charset] The output's one `@charset`: its written bytes, and the chunk at the top of
- * the output that holds them (`-1` where the entry's own was written there directly).
+ * the output that holds them.
  */
 interface HoistedCharset {
   bytes: string | null;
   at: number;
 }
 
+/*
+ * [charset] The labels the Encoding Standard maps to UTF-8 (WHATWG Encoding §4.2, "get
+ * an encoding": ASCII case-insensitive, surrounding ASCII whitespace ignored).
+ */
+const UTF8_LABELS: readonly string[] = ['unicode-1-1-utf-8', 'unicode11utf8', 'unicode20utf8', 'utf-8', 'utf8', 'x-unicode20utf8'];
+
+/**
+ * [charset] Whether a written `@charset` statement names UTF-8. Its label is the string
+ * the statement's bytes hold, as CSS Syntax 3 §3.2 reads it from `@charset "…";`.
+ */
+function namesUtf8(bytes: string): boolean {
+  const open = bytes.indexOf('"');
+  const close = bytes.indexOf('"', open + 1);
+  return open !== -1 && close !== -1 && UTF8_LABELS.includes(bytes.slice(open + 1, close).trim().toLowerCase());
+}
+
 /**
  * [charset] The top of the output, where the first document-level `@charset` goes
- * (ledger N11): the entry's own is written there, and otherwise a chunk is reserved
- * that the first `@charset` of a sheet an import places fills ({@link hoistCharsets}).
- * Every inline occurrence is dropped by `emitAtRuleStatement`.
+ * (ledger N11): a chunk reserved there, filled by the entry's own `@charset` or by the
+ * first of a sheet an import places ({@link hoistCharsets}). Every inline occurrence is
+ * dropped by `emitAtRuleStatement`.
  */
 function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
-  for (const c of rules) {
-    if (c.type === 'AtRuleStatement' && isCharset(c)) {
-      const start = e.chunks.length;
-      emitAtRuleStatementRaw(c, frame, e, null);
-      e.charset = { bytes: e.chunks.slice(start).join(''), at: -1 };
-      hoistCharsets(rules, frame, e, c);
-      return;
-    }
-  }
   e.charset = { bytes: null, at: e.chunks.length };
   e.chunks.push('');
+  hoistCharsets(rules, frame, e, e.context?.sourceContext?.file?.fullPath ?? '');
 }
 
 /**
  * [charset] The document-level `@charset`s of `rules`, a document's top level, the
- * entry's or a sheet's an import places, in order: the first in the output fills the
- * chunk reserved at its top; a later one written the same is dropped; a later one that
- * names another encoding is dropped with an `eval/charset-conflict` warning, since one
- * stylesheet declares one encoding, read only from its first bytes (CSS Syntax 3 §3.2;
- * orchestrator judgment under owner delegation 2026-10-09: a silent drop is
- * surprising). `written` is the one already written.
+ * entry's or a sheet's an import places (`file`, as its importer names it), in order.
+ * A stylesheet declares one encoding, read only from its first bytes (CSS Syntax 3
+ * §3.2), and Jess writes its output as UTF-8: the first that names UTF-8, in any case
+ * (`utf-8` is `UTF-8`), fills the chunk reserved at the top, and a later one is
+ * dropped; one that names another encoding would mis-declare the output (`é` read as
+ * `Ã©`), so it is dropped with an `eval/charset-not-utf8` warning naming its file
+ * (agent judgment 2026-10-09, awaiting owner).
  */
-function hoistCharsets(rules: readonly Statement[], frame: Frame, e: Emit, written: AtRuleStatement | null = null): void {
+function hoistCharsets(rules: readonly Statement[], frame: Frame, e: Emit, file: string): void {
   const slot = e.charset;
   if (slot === null) {
     return;
   }
   for (const c of rules) {
-    if (c === written || c.type !== 'AtRuleStatement' || !isCharset(c)) {
+    if (c.type !== 'AtRuleStatement' || !isCharset(c)) {
       continue;
     }
     const scratch = scratchEmit(e);
     emitAtRuleStatementRaw(c, frame, scratch, null);
     const bytes = scratch.chunks.join('');
-    if (slot.bytes === null) {
+    if (!namesUtf8(bytes)) {
+      e.context?.warnAtNode('eval/charset-not-utf8', 'eval', c, { charset: bytes.trim(), file });
+    } else if (slot.bytes === null) {
       slot.bytes = bytes;
       e.chunks[slot.at] = bytes;
-    } else if (slot.bytes !== bytes) {
-      e.context?.warnAtNode('eval/charset-conflict', 'eval', c, { charset: bytes.trim(), hoisted: slot.bytes.trim() });
     }
   }
 }
@@ -21931,7 +21944,7 @@ function expandStyleImport(
 
           /* [charset] A placed sheet's `@charset` goes to the top of the output (ledger N11). */
           if (e.referenceImportDepth === 0 && !importHasOption(request.options, 'reference')) {
-            hoistCharsets(loaded.document.rules, bodyFrame, e);
+            hoistCharsets(loaded.document.rules, bodyFrame, e, request.specifier);
           }
           const emitSheet = () => emitLoaded
             ? emitLoaded(loaded.document!, bodyFrame)
