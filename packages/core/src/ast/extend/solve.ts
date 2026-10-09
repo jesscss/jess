@@ -105,7 +105,13 @@ export interface SolveResult {
  * this never recomposes. Returns the RAW seed with `changed: false` on a prefilter
  * miss or a no-op fixpoint, else the extended list with `changed: true`.
  */
-export function solveComposed(seed: Branch[], subject: Pick<PlanSubject, 'scope' | 'boundary'>, plan: Plan, contribMemo?: ContribMap): SolveResult {
+export function solveComposed(
+  seed: Branch[],
+  scope: PlanSubject['scope'],
+  boundary: PlanSubject['boundary'],
+  plan: Plan,
+  contribMemo?: ContribMap
+): SolveResult {
   /*
    * Target-atom PREFILTER: the fixpoint can only ever change a subject whose
    * composed seed shares at least one individual simple atom with some instruction
@@ -125,8 +131,8 @@ export function solveComposed(seed: Branch[], subject: Pick<PlanSubject, 'scope'
      * instruction (a reference sheet's, a composed module's) never aliases rules
      * outside the sheets it was loaded with.
      */
-    boundaryReaches(i.boundary, subject.boundary)
-    && reaches(i.scope, subject.scope));
+    boundaryReaches(i.boundary, boundary)
+    && reaches(i.scope, scope));
   if (reachable.length === 0) {
     return { list: seed, changed: false };
   }

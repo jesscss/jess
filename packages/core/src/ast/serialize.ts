@@ -12777,7 +12777,8 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
            * this list — so the extend reads the resolved branch too, or it extends from
            * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
            */
-          for (const inst of st.extendInstructions ?? []) {
+          for (let i = 0; st.extendInstructions !== undefined && i < st.extendInstructions.length; i++) {
+            const inst = st.extendInstructions[i]!;
             if (inst.subject?.selectors[0] === c) {
               resolvedSelectorBranchOf(inst.subject, 0, resolved, e);
             }
@@ -13095,6 +13096,13 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
   }
   return places;
 }
+
+/*
+ * The plan overlay of a document the import planner bypasses. Every overlay literal
+ * names `subjects`, `instructions`, `bubbles`, `atRuleScopes` in that order, so the
+ * planner reads them through as few hidden classes as there are overlay kinds.
+ */
+const NO_PLAN_BUBBLES: readonly PlanBubble[] = [];
 
 /** The import preflight's mutable {@link PlanOverlay}. */
 interface ImportPlanOverlay {
@@ -13474,6 +13482,7 @@ function planImportedFacts(
       overlay: {
         subjects: [],
         instructions: [],
+        bubbles: NO_PLAN_BUBBLES,
         atRuleScopes: null
       },
       imports: null,
@@ -15426,8 +15435,8 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
   const overlay: PlanOverlay = {
     subjects: [...dyn.baseOverlay.subjects, ...subjects],
     instructions: [...dyn.baseOverlay.instructions, ...dyn.instructions],
-    atRuleScopes: dyn.atRuleScopes,
-    bubbles: dyn.baseOverlay.bubbles
+    bubbles: dyn.baseOverlay.bubbles,
+    atRuleScopes: dyn.atRuleScopes
   };
   return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors);
 }

@@ -1242,7 +1242,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     if (!candidate.has(s)) {
       continue;
     }
-    const { list: flat, changed } = solveComposed(rawOf(s), s, plan, contribMemo);
+    const { list: flat, changed } = solveComposed(rawOf(s), s.scope, s.boundary, plan, contribMemo);
     flatBySubject.set(s, flat);
 
     /*
@@ -1323,14 +1323,16 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
    * fold in the at-rule's implicit `&` block, so such a rule is written flat there
    * (trigger A below).
    */
-  const bubbled = new Set<PlanSubject>();
+  let bubbled: Set<PlanSubject> | null = null;
+  let scopedIds: Set<number> | null = null;
   if (plan.bubbles.length > 0) {
-    const scopedIds = new Set<number>();
     for (const inst of plan.instructions) {
       if (inst.scope.length > 0) {
-        scopedIds.add(inst.scope[inst.scope.length - 1]!);
+        (scopedIds ??= new Set()).add(inst.scope[inst.scope.length - 1]!);
       }
     }
+  }
+  if (scopedIds !== null) {
     for (const b of plan.bubbles) {
       const s = b.subject;
       let inside = false;
@@ -1341,14 +1343,14 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         continue;
       }
       recordAstExtendProfile?.('astExtend.emit.bubbleSolves');
-      const { list, changed } = solveComposed(rawOf(s), { scope: b.scope, boundary: s.boundary }, plan, contribMemo);
+      const { list, changed } = solveComposed(rawOf(s), b.scope, s.boundary, plan, contribMemo);
       const own = flatBySubject.get(s) ?? rawOf(s);
       if (!changed || (list.length === own.length && list.every((branch, index) => branchText(branch) === branchText(own[index]!)))) {
         continue;
       }
       const compacted = groupedBranches(siblingCompact(nestingFold(list, s, rawOf(s), guardedNesting), false), true);
       (projectionFor(s).bubbleHeaders ??= new Map()).set(b.atRule, compacted.map(branchOut));
-      bubbled.add(s);
+      (bubbled ??= new Set()).add(s);
     }
   }
 
@@ -1414,7 +1416,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
      * block can carry (see the bubbles above), so the rule is written flat, its
      * children with it, a top-level rule included.
      */
-    if (bubbled.has(s)) {
+    if (bubbled?.has(s) === true) {
       return 'collapse';
     }
     if (s.parent === null) {
@@ -1622,7 +1624,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     const survivors = hasSurvivingChild(s);
     let header: Branch[];
     const splits: Branch[] = [];
-    const rootSplits: Branch[] = [];
+    let rootSplits: Branch[] | null = null;
     if (asTop) {
       /*
        * A top-level rule's header is its FULL flat solve (so transitive chaining +
@@ -1698,7 +1700,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
            */
           if (!inst.partial && survivors) {
             for (const e of composePath(inst.extenderPath)) {
-              rootSplits.push(e);
+              (rootSplits ??= []).push(e);
             }
           }
           continue;
@@ -1719,7 +1721,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
       flatten: false,
       header: rewritten ? extendedHeaderTexts(s, grouped) : grouped.map(branchOut),
       splits: dedupBranchTexts(splits).map(t => [t]),
-      rootSplits: rootSplits.length === 0 ? NO_ROOT_SPLITS : dedupBranchTexts(rootSplits).map(t => [t]),
+      rootSplits: rootSplits === null ? NO_ROOT_SPLITS : dedupBranchTexts(rootSplits).map(t => [t]),
       collapseTransparent: collapsedParent.has(s.rule)
     });
   }
