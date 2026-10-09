@@ -377,12 +377,12 @@ Less 4.x stopped with an error on `percentage(~"@{x}")`. To compute with a value
 | `--y: calc(@c + 1px);` with `@c: red` | `--y: calc(red + 1px);` | `--y: calc(@c + 1px);` |
 | `--y: ~"red";` | `--y: red;` | `--y: ~"red";` |
 | `--z: percentage(0.5);` | `--z: 50%;` | `--z: percentage(0.5);` |
-| `a: var(--x, e("red"));` | `a: var(--x, red);` | `a: var(--x, e("red"));` |
-| `a: var(--x, (1px + 2px));` | `a: var(--x, 3px);` | `a: var(--x, (1px + 2px));` |
+| `a: var(--x, e("red"));` | `a: var(--x, red);` | `a: var(--x, red);` |
+| `a: var(--x, (1px + 2px));` | `a: var(--x, 3px);` | `a: var(--x, 3px);` |
 
 The value in a `style()` query (`@container style(--x: @{c})`) is read the same way, and so is a `var()` written inside a custom property (`--y: var(--x, @c)` is written as is). Because the variable is never looked up, an undefined one is not an error: `--x: @nope` is written as is, where Less 4.x stopped with `variable @nope is undefined`. To compute the value, compute it in a variable and interpolate the variable: `@p: percentage(0.5); .a { --z: @{p}; }` gives `--z: 50%`.
 
-In an ordinary declaration, `var()` is a CSS function, so its fallback is an argument and a Less variable in it is still replaced: `color: var(--x, @c)` gives `color: var(--x, red)`. Escapes, function calls and math in a fallback are written as they are, as the last two rows of the table show.
+In an ordinary declaration, `var()` is a CSS function, so its fallback is an argument and is evaluated like any CSS function's arguments: a Less variable in it is replaced (`color: var(--x, @c)` gives `color: var(--x, red)`), and so are escapes, function calls and math, as the last two rows of the table show. Evaluating a fallback's escapes, calls and math is not implemented in this alpha yet: those two rows are still written as they are.
 
 CSS has no `//` comment, so `//` inside a custom property is part of the value:
 

@@ -34,8 +34,9 @@
  * and `;`: a guide writes `.a { b: c; }` on one line.
  *
  * A documented example that jess does not produce is drift between the docs
- * and the code. It is listed in DRIFT (and skipped) with the ruling that
- * decides which side is wrong. Do not change a guide's claim, or the code, to
+ * and the code. It is listed in DRIFT with the ruling that decides which side
+ * is wrong, and runs as `it.fails`: it turns red when the code catches up, and
+ * the entry is then removed. Do not change a guide's claim, or the code, to
  * make an example pass without that ruling.
  */
 import { readFileSync } from 'node:fs';
@@ -45,8 +46,12 @@ import { Compiler } from '../src/index.js';
 const DOCS = new URL('../../docs/docs-content/docs/', import.meta.url);
 const GUIDES = ['less/usage/migrating-to-v5.md', 'shared/04-guides/01-migrating-less-4-to-5.mdx'];
 
-/* `<guide> :: <input>` → why it is skipped. Each entry is drift between the guide and the code. */
-const DRIFT = new Map<string, string>([]);
+/* `<guide> :: <input>` → the ruling the code does not follow yet. Each entry is drift between the guide and the code. */
+const VAR_FALLBACK = 'owner 2026-10-09: "every CSS function should be evaluating args" / "why is var() special??" — a `var()` fallback in an ordinary declaration evaluates its escapes, calls and math (implementation queued)';
+const DRIFT = new Map<string, string>([
+  ['less/usage/migrating-to-v5.md :: .a { a: var(--x, e("red")); }', VAR_FALLBACK],
+  ['less/usage/migrating-to-v5.md :: .a { a: var(--x, (1px + 2px)); }', VAR_FALLBACK]
+]);
 
 type CollapseNesting = false | 'native' | 'compact';
 
@@ -209,7 +214,10 @@ for (const guide of GUIDES) {
       if (ex.expected === null) {
         it.todo(`${title} — not executable (${ex.note})`);
       } else if (DRIFT.has(key)) {
-        it.skip(`${title} — TODO ${DRIFT.get(key)}`);
+        const expected = ex.expected;
+        it.fails(`${title} — ${DRIFT.get(key)}`, async () => {
+          expect(normalize(await render(ex.input, ex.collapseNesting))).toBe(normalize(expected));
+        });
       } else if (ex.error) {
         it(title, async () => {
           await expect(render(ex.input, ex.collapseNesting)).rejects.toThrow();

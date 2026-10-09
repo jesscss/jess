@@ -123,15 +123,10 @@ describe('Less logical / conditional functions', () => {
   });
 
   /*
-   * A condition nothing consumes — here an argument of a CSS colour call, which
-   * is written out as authored — is written with its variables substituted,
-   * never as its source text (SETTLED — orchestrator judgment under owner
-   * delegation 2026-10-07): `@a` in a written-out value is always its value.
+   * A CSS colour call's arguments evaluate (owner 2026-10-09: "every CSS function
+   * should be evaluating args"), so a condition in one is consumed: its pins are
+   * `it.fails` in `css-function-arguments.test.ts` until that lands.
    */
-  it('writes a condition nothing consumes with its variables substituted', async () => {
-    const css = await render('@a: 3px; .y { b: rgb(@a > 2px, 1, 2); c: hsl((@a > 2px) and (@a < 5px), 1%, 2%); d: rgb(not (@a = 3px), 1, 2); }');
-    expect(css).toBe('.y {\n  b: rgb(3px > 2px, 1, 2);\n  c: hsl((3px > 2px) and (3px < 5px), 1%, 2%);\n  d: rgb(not (3px = 3px), 1, 2);\n}\n');
-  });
 
   /*
    * The parser reads a comparison in a value paren group as a condition, and a
@@ -184,9 +179,9 @@ describe('Less logical / conditional functions', () => {
       '@x: (1 and 2);',
       '@y: (@a and 2 or 4);',
       '@z: (not 1);',
-      '.y { a: @x; b: @y; c: @z; d: rgb(1 and 2, 3, 4); e: boolean(@x); f: if((true and true), yes, no); g: (@a > 2px and true); }'
+      '.y { a: @x; b: @y; c: @z; e: boolean(@x); f: if((true and true), yes, no); g: (@a > 2px and true); }'
     ].join(' '));
-    expect(css).toBe('.y {\n  a: (1 and 2);\n  b: (3px and 2 or 4);\n  c: (not 1);\n  d: rgb(1 and 2, 3, 4);\n  e: false;\n  f: yes;\n  g: (3px > 2px and true);\n}\n');
+    expect(css).toBe('.y {\n  a: (1 and 2);\n  b: (3px and 2 or 4);\n  c: (not 1);\n  e: false;\n  f: yes;\n  g: (3px > 2px and true);\n}\n');
   });
 
   /*
@@ -199,8 +194,8 @@ describe('Less logical / conditional functions', () => {
       '@a: 1; @b: 2; @c: 3;',
       '@x: ((1 = 2) and ((1 = 1) or (1 = 1)));',
       '@n: (not (1 or 2));',
-      '.y { d: if(@x, y, n); e: @x; f: @n; g: boolean(@n); h: rgb(not ((1 = 1) or (2 = 2)), 3, 4);',
-      'i: (@a and (@b or @c)); j: ((@a or @b) and @c); k: (((1 = 1)) or 2); l: rgb(((1 = 1)) or 2, 3, 4); }'
+      '.y { d: if(@x, y, n); e: @x; f: @n; g: boolean(@n);',
+      'i: (@a and (@b or @c)); j: ((@a or @b) and @c); k: (((1 = 1)) or 2); }'
     ].join(' '));
     expect(css).toBe([
       '.y {',
@@ -208,11 +203,9 @@ describe('Less logical / conditional functions', () => {
       '  e: ((1 = 2) and ((1 = 1) or (1 = 1)));',
       '  f: (not (1 or 2));',
       '  g: true;',
-      '  h: rgb(not ((1 = 1) or (2 = 2)), 3, 4);',
       '  i: (1 and (2 or 3));',
       '  j: ((1 or 2) and 3);',
       '  k: (((1 = 1)) or 2);',
-      '  l: rgb(((1 = 1)) or 2, 3, 4);',
       '}',
       ''
     ].join('\n'));
@@ -220,20 +213,20 @@ describe('Less logical / conditional functions', () => {
 
   /*
    * A group the author wrote around a bare operand is a group in the condition,
-   * so it keeps its parens however the condition is read — directly, through a
-   * variable, or in a call written as authored — and the operand still
+   * so it keeps its parens however the condition is read — directly or through
+   * a variable — and the operand still
    * evaluates as Less's truth test (J20, J16).
    */
   it('keeps a group around a bare operand however the condition is read', async () => {
-    const css = await render('@x: ((1) and (2)); .y { a: ((1) and (2)); b: @x; c: rgb((1) and (2), 3, 4); d: rgb(((1) and (2)), 3, 4); e: boolean(@x); f: boolean(((true) and (true))); }');
-    expect(css).toBe('.y {\n  a: ((1) and (2));\n  b: ((1) and (2));\n  c: rgb((1) and (2), 3, 4);\n  d: rgb(((1) and (2)), 3, 4);\n  e: false;\n  f: true;\n}\n');
+    const css = await render('@x: ((1) and (2)); .y { a: ((1) and (2)); b: @x; e: boolean(@x); f: boolean(((true) and (true))); }');
+    expect(css).toBe('.y {\n  a: ((1) and (2));\n  b: ((1) and (2));\n  e: false;\n  f: true;\n}\n');
   });
 
   /*
    * `and`, `or` and `not` are keywords, ASCII case-insensitive as every CSS
    * keyword is (CSS Values 4 §6.1), in each position a Less condition is
-   * written — a value paren group, an `if()` / `boolean()` condition, a CSS
-   * colour call written as authored and a mixin guard — and a written
+   * written — a value paren group, an `if()` / `boolean()` condition and a
+   * mixin guard — and a written
    * condition spells them as the author did.
    */
   it('reads and, or and not in any case and writes them as authored', async () => {
@@ -242,7 +235,7 @@ describe('Less logical / conditional functions', () => {
       '.m(@a) when (@a > 1) AND (@a < 5) { x: in; }',
       '.m(@a) when NOT (@a > 1) { x: low; }',
       '.m(@a) when (@a = 9) OR (@a = 10) { x: nine; }',
-      '.y { a: @x; b: boolean(@x); c: @y; d: boolean(@y); e: @z; f: rgb(1 AND 2, 3, 4); g: rgb(NOT (1 = 1), 3, 4); h: boolean(NOT (1 > 2)); i: if((1 = 1) AND (2 = 2), yes, no); }',
+      '.y { a: @x; b: boolean(@x); c: @y; d: boolean(@y); e: @z; h: boolean(NOT (1 > 2)); i: if((1 = 1) AND (2 = 2), yes, no); }',
       '.a { .m(3); } .b { .m(0); } .c { .m(10); }'
     ].join(' '));
     expect(css).toBe([
@@ -252,8 +245,6 @@ describe('Less logical / conditional functions', () => {
       '  c: ((1px > 2px) AND (1 = 1));',
       '  d: false;',
       '  e: (1 Or 2);',
-      '  f: rgb(1 AND 2, 3, 4);',
-      '  g: rgb(NOT (1 = 1), 3, 4);',
       '  h: true;',
       '  i: yes;',
       '}',
@@ -278,8 +269,8 @@ describe('Less logical / conditional functions', () => {
    */
   it('writes a bare operand as authored when the parser and serializer are separate module instances', async () => {
     const cjs = createRequire(import.meta.url)('@jesscss/less-parser') as { parse: typeof parseLess };
-    const result = await serialize(cjs.parse('@x: (1 and 2); .y { a: @x; b: rgb(1 and 2, 3, 4); }'), { collapseNesting: true });
-    expect(result.css).toBe('.y {\n  a: (1 and 2);\n  b: rgb(1 and 2, 3, 4);\n}\n');
+    const result = await serialize(cjs.parse('@x: (1 and 2); .y { a: @x; }'), { collapseNesting: true });
+    expect(result.css).toBe('.y {\n  a: (1 and 2);\n}\n');
   });
 });
 
