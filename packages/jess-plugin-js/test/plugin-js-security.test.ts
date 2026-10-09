@@ -87,10 +87,16 @@ describe('@jesscss/plugin-js security', () => {
     await expect(mod.fetchExample()).resolves.toBe('DENIED');
   });
 
-  it('allows module execution from node_modules outside jsReadRoot', async () => {
-    const root = makeTmpDir('jess-js-root-');
-    const outside = makeTmpDir('jess-js-out-');
-    const modulePath = path.join(outside, 'node_modules', 'pkg', 'index.js');
+  it('allows module execution from a node_modules on jsReadRoot ancestor chain', async () => {
+    /*
+     * jsReadRoot is a subdirectory; the package lives in the project's own
+     * node_modules one level up — an ancestor-chain node_modules, as pnpm/npm
+     * layouts produce — so it is readable.
+     */
+    const project = makeTmpDir('jess-js-proj-');
+    const root = path.join(project, 'src');
+    fs.mkdirSync(root, { recursive: true });
+    const modulePath = path.join(project, 'node_modules', 'pkg', 'index.js');
     fs.mkdirSync(path.dirname(modulePath), { recursive: true });
     fs.writeFileSync(
       modulePath,
@@ -102,6 +108,48 @@ describe('@jesscss/plugin-js security', () => {
     const mod = await plugin.import(modulePath);
     expect(mod.value).toBe(42);
     await expect(mod.plus(2, 3)).resolves.toBe(5);
+  });
+
+  /*
+   * A sandboxed script must not read files under an unrelated `node_modules`
+   * elsewhere on the machine. The allowance is anchored to jsReadRoot's ancestor
+   * chain; a sibling project's `node_modules` is NOT on it, and a read there (or
+   * an import of a module there) is denied — no network needed to notice it, the
+   * returned value would otherwise cross the bridge into compiler output.
+   */
+  it('denies reads and imports under a node_modules outside the jsReadRoot ancestor chain', async () => {
+    const base = makeTmpDir('jess-js-base-');
+    const root = path.join(base, 'project');
+    fs.mkdirSync(root, { recursive: true });
+    const siblingNm = path.join(base, 'sibling', 'node_modules');
+    fs.mkdirSync(siblingNm, { recursive: true });
+    const leakFile = path.join(siblingNm, 'leak.json');
+    fs.writeFileSync(leakFile, JSON.stringify({ stolen: 'NODE_MODULES-SUBSTRING-BYPASS' }), 'utf8');
+
+    const probePath = path.join(root, 'probe.ts');
+    fs.writeFileSync(
+      probePath,
+      [
+        'export function readRaw(p) {',
+        '  try {',
+        '    return Deno.readTextFileSync(p);',
+        '  } catch {',
+        '    return "DENIED";',
+        '  }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(probePath);
+    await expect(mod.readRaw(leakFile)).resolves.toBe('DENIED');
+
+    // Importing a module that merely sits under some node_modules is also denied.
+    const outsidePkg = path.join(siblingNm, 'pkg', 'index.js');
+    fs.mkdirSync(path.dirname(outsidePkg), { recursive: true });
+    fs.writeFileSync(outsidePkg, 'export const value = 1;', 'utf8');
+    await expect(plugin.import(outsidePkg)).rejects.toThrow(/outside jsReadRoot/);
   });
 
   /*
