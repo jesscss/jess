@@ -25,14 +25,27 @@
  *      appears in `docs/`, `.cursor/rules/`, `CLAUDE.md` or `AGENTS.md` without
  *      an explicit attribution marker saying WHO closed it.
  *
+ *   3. Less 4.x / lessc / less.js behaviour is never offered as the REASON for a
+ *      behaviour ("as lessc does", "matches Less 4.x", "lessc 4.9.1 writes the
+ *      same", "Oracle: lessc 4.x"), in docs, code comments or test titles.
+ *      Existing violations are baselined in
+ *      `scripts/check-guardrails.reference-baseline.json`; the baseline may only
+ *      shrink.
+ *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
  * the closure rests on. An agent that types `OWNER-RULED:` over its own opinion
  * is lying, not slipping.
+ *
+ * Flags:
+ *   --list-reference-reasons     print every assertion-3 hit (baselined or not)
+ *                                as JSON, with its current file:line, and exit.
+ *   --prune-reference-baseline   drop baseline entries that no longer occur.
+ *                                It never adds one.
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -247,6 +260,282 @@ if (closureHits.length > 0) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Assertion 3 — Less 4.x / lessc behaviour is never a reason.
+ * ------------------------------------------------------------------ */
+
+/*
+ * WHY THIS EXISTS. Agents ran lessc 4.x, saw different output, and "fixed"
+ * jess to match — reversing owner rulings (ledger E1/E5/E6) — then pinned tests
+ * and wrote user docs describing the reversed behaviour. Less v5 is a breaking
+ * release: a difference from 4.x is not evidence of a bug, and sameness with
+ * 4.x is not a reason (owner 2026-10-09).
+ *
+ * What is flagged is AGREEMENT phrasing that offers the reference in support of
+ * a behaviour. CONTRAST phrasing — "where Less 4.x wrote X", "lessc 4.9.1
+ * rejects it", "unlike 4.x", "Less 4.x instead …" — is not matched, so
+ * migration notes and divergence records pass.
+ *
+ * Patterns run over BLOCKS: a markdown paragraph, list item or table row; one
+ * comment block (prefixes stripped, lines joined); one test title. A phrase
+ * broken across comment lines is still seen.
+ */
+const REF_VER = String.raw`(?:\s+v?[0-9]+(?:\.[0-9x]+)*)?`;
+const REF_VERSIONED = String.raw`(?:lessc${REF_VER}|less\.js${REF_VER}|less@[0-9][0-9.x]*|less[ -]?4(?:\.[0-9x]+)*|4\.x)`;
+const REF_NAME = String.raw`(?:${REF_VERSIONED}|real less(?:\.js)?)`;
+
+/* Not an identifier such as `lessCompat` / `LessCst`. */
+const REF = REF_NAME + String.raw`(?![\w-]*[a-wyz])`;
+const TICK = String.raw`\`?`;
+const REFERENCE_PATTERNS = [
+  // "as lessc does", "as in Less 4.x", "like lessc", "as in css and lessc 4.9.1", "as the `x` golden and lessc 4.x"
+  String.raw`(?<!\b(?:such|not) )\b(?:as|like|same as)\s+(?:in\s+)?(?:(?:the\s+)?[\w\`-]+(?:\s+[\w\`-]+)?\s+and\s+)?${TICK}${REF}(?!\s+(?:wrote|did not|does not|doesn't|didn't|instead))`,
+
+  // "matching lessc 4.x", "matches Less 4.x", "mirrors less@4", "byte-identical to less@4", "parity with 4.x"
+  String.raw`\b(?:matching|matches|matched|mirrors?|mirroring|(?:byte-)?identical to|parity with)\s+(?:the\s+)?(?:legacy jess\s*\/\s*)?(?:eval\s*\/\s*)?${TICK}${REF}(?!\s+(?:perf|speed)|\s+\`[^\`]+\`\s+fixture)`,
+
+  // "(Less 4.x parity)", "(lessc 4.9.1 behaviour)", "Less 4.x-parity", "Less 4.x/v5 parity", "(less@4.6.3)", "(Less 4.x: …)"
+  String.raw`\(${REF}(?:\/v5)?\s+(?:parity|behaviou?r)\)|${REF_VERSIONED}-parity\b|${REF_VERSIONED}\/v5 parity|\((?:lessc\s+|less@)\d[\d.x]*\)|\(${REF}:\s`,
+
+  // corroboration: "lessc 4.9.1 also writes", "agrees", "drops it too", "gives the same output", "copies the Extend"
+  String.raw`${REF}(?:'s)?\s+(?:also\b(?!\s+(?:\w+ed|let|had|wrote|took|gave|made|kept)\b)|agrees(?! with neither)|[^.\n;]{0,80}?\btoo\b(?!\s+(?:large|many|few|small|long|big|much|late|early))|(?:\w+\s+){0,4}the same\b(?!\s+(?:defect|bug))|copies the)`,
+
+  // test oracles: "Oracle: lessc 4.x", "Every expectation … is lessc 4.9.1 output", "captured from npx less@4.6.3"
+  String.raw`\boracles?:?\s+${TICK}${REF}|\bexpectations?\b[^.\n]{0,60}?\b(?:is|are|captured from)\s+(?:\`?npx\s+)?${TICK}${REF}|\bis\s+${TICK}${REF}(?:'s)?\s+output\b|\b(?:both )?oracles agree\b|\bevery other expectation is ${REF}`,
+
+  // "restoring lessc 4.x", "the way Less 4.x expands", "the Less 4.x expanded form", "This mirrors less.js", "and so does Less 5", …
+  String.raw`\brestor(?:e|es|ing|ed)\s+(?:the\s+)?${TICK}${REF}|\bthe way\s+${TICK}${REF}\b[^\n]{0,60}?\b(?:does|writes|expands|derives)\b|(?<!\bis the )\b${REF}\s+expanded form\b|\band\s+${REF}\s+writes it\b|\bthis mirrors\s+${REF}|\band so does (?:less 5|v5|jess)\b|\bbyte-for-byte (?:what|as)\s+${REF}|\b${REF}\b[^.]{0,120}?\bdivergence from the oracle\b|\bmust also error\b|\berror where ${REF} errors\b|\b${REF} output oracles?\b|\b${REF} defaults:|\ba legitimate reference\b`,
+
+  // the reference made the contract: "Matching lessc on valid input is the contract"
+  String.raw`\bmatching ${REF} on\b[^.\n]{0,40}\bis the contract`
+].map(source => new RegExp(source, 'gi'));
+const REF_RE = new RegExp(REF, 'i');
+
+/*
+ * A block is exempt when it says, in writing, that the reference is not the
+ * reason:
+ *   OWNER-RULED: YYYY-MM-DD   the owner's own ruling adopted this behaviour.
+ *   UNRESOLVED                no ruling yet; escalated to the owner.
+ *   REFERENCE-OBSERVATION:    a measurement kept for the record, not a reason.
+ */
+const REFERENCE_MARKERS = /OWNER-RULED:\s*\d{4}-\d{2}-\d{2}|\bUNRESOLVED\b|REFERENCE-OBSERVATION:/;
+
+/* A sentence that disclaims the reference, or is about speed/`loose` mode (V18) or the legacy plugin ABI (A12). */
+const REFERENCE_DISCLAIM = /observation only|for the record|not (?:an? )?authority|is not intent|not as a ruling|agrees with neither|matches neither|\bloose\b|\b(?:a|jess|real) (?:bug|gap)\b|→ jess bug|is a bug|perf\b|speed|\blegacy (?:@?plugin|ABI)\b|\bterminology\b|\bjustified as\b|\bexcept where (?:v5|less 5|jess)\b/i;
+const REFERENCE_SCAN_ROOTS = ['docs', 'packages', '.cursor/rules', '.cursor/agents', 'CLAUDE.md', 'AGENTS.md'];
+const REFERENCE_SKIP = [
+  /(^|\/)archive\//, // frozen history
+  /^packages\/syntax\/less\/jess-plugin-less-compat\//, // the 4.x plugin API IS the contract (A9, A12, C15)
+  /^packages\/jess-plugin-js\//, // legacy @plugin ABI sandbox (A12)
+  /^docs\/releases\//,
+  /(^|\/)(node_modules|lib|dist|\.cache|coverage)\//
+];
+const REFERENCE_EXT = /\.(md|mdc|mdx|ts|mts|cts|mjs|js)$/;
+const REFERENCE_BASELINE = 'scripts/check-guardrails.reference-baseline.json';
+
+function referenceFiles(rel) {
+  const abs = join(root, rel);
+  if (!existsSync(abs)) {
+    return [];
+  }
+  const isDir = statSync(abs).isDirectory();
+  if (REFERENCE_SKIP.some(re => re.test(isDir ? `${rel}/` : rel))) {
+    return [];
+  }
+  if (!isDir) {
+    return REFERENCE_EXT.test(rel) ? [rel] : [];
+  }
+  return readdirSync(abs).flatMap(name => referenceFiles(`${rel}/${name}`));
+}
+
+/* Markdown: paragraph / list item / table row. Code: one comment block, or one test-title line. */
+function referenceBlocks(rel, lines) {
+  const markdown = /\.(md|mdc|mdx)$/.test(rel);
+  const out = [];
+  let cur = null;
+  const flush = () => {
+    if (cur) {
+      out.push(cur);
+    }
+    cur = null;
+  };
+  lines.forEach((line, i) => {
+    let text;
+    if (markdown) {
+      const tableRow = /^\s*\|/.test(line);
+      if (line.trim() === '' || tableRow || /^\s*(?:[-*]|\d+\.)\s/.test(line)) {
+        flush();
+      }
+      if (line.trim() === '') {
+        return;
+      }
+      if (tableRow) {
+        out.push([{ i, text: line }]);
+        return;
+      }
+      text = line;
+    } else {
+      if (/\b(?:it|test|describe)(?:\.\w+)?\(\s*['"`]/.test(line)) {
+        flush();
+        out.push([{ i, text: line }]);
+        return;
+      }
+      const code = line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '');
+      if (!/^\s*(?:\/\*+|\*|\/\/)/.test(line) && !/\/\*|\/\//.test(code)) {
+        flush();
+        return;
+      }
+      text = line.replace(/^\s*(?:\/\*+|\*\/?|\/\/)\s?/, '');
+    }
+    cur ??= [];
+    cur.push({ i, text });
+  });
+  flush();
+  return out;
+}
+
+/* A short quoted phrase quotes the forbidden wording ("Matches less.js" is never a justification). */
+function insideShortQuote(s, idx) {
+  const before = s.slice(0, idx);
+  const open = Math.max(before.lastIndexOf('"'), before.lastIndexOf('“'));
+  if (open < 0 || (before.match(/["“”]/g) ?? []).length % 2 === 0) {
+    return false;
+  }
+  const close = s.slice(idx).search(/["”]/);
+  return idx - open < 40 && close >= 0 && close < 60;
+}
+
+const normalizeSentence = s => s.replace(/\s+/g, ' ').trim();
+
+function scanReferenceReasons() {
+  const hits = [];
+  for (const entry of REFERENCE_SCAN_ROOTS) {
+    for (const rel of referenceFiles(entry)) {
+      const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+      for (const parts of referenceBlocks(rel, lines)) {
+        let text = '';
+        const offsets = [];
+        for (const p of parts) {
+          offsets.push([text.length, p.i]);
+          text += `${p.text} `;
+        }
+        if (REFERENCE_MARKERS.test(text)) {
+          continue;
+        }
+        const lineAt = k => offsets.reduce((ln, [o, i]) => (o <= k ? i : ln), parts[0].i);
+        const seen = new Set();
+        REFERENCE_PATTERNS.forEach((re, pattern) => {
+          re.lastIndex = 0;
+          for (let m = re.exec(text); m; m = re.exec(text)) {
+            /* In user docs, "as in Less 4.x" tells a migrating reader nothing changed: continuity, not a reason. */
+            if (insideShortQuote(text, m.index) || (pattern === 0 && rel.startsWith('packages/docs/docs-content/'))) {
+              continue;
+            }
+            const start = text.lastIndexOf('. ', m.index) + 1;
+            const endRaw = text.indexOf('. ', m.index + m[0].length);
+            const sentence = normalizeSentence(text.slice(start, endRaw < 0 ? text.length : endRaw + 1));
+            if (REFERENCE_DISCLAIM.test(sentence) || seen.has(sentence)) {
+              continue;
+            }
+            seen.add(sentence);
+            const line = lineAt(m.index + Math.max(0, m[0].search(REF_RE))) + 1;
+            hits.push({ file: rel, line, pattern, match: m[0], sentence });
+          }
+        });
+      }
+    }
+  }
+  return hits;
+}
+
+const referenceHits = scanReferenceReasons();
+const listReferenceReasons = process.argv.includes('--list-reference-reasons');
+const pruneReferenceBaseline = process.argv.includes('--prune-reference-baseline');
+
+/* Baseline: file → sentences (a multiset; line numbers are deliberately not part of the key). */
+const baselinePath = join(root, REFERENCE_BASELINE);
+const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : {};
+const remaining = new Map(Object.entries(baseline).map(([file, sentences]) => [file, [...sentences]]));
+const newReferenceHits = [];
+for (const hit of referenceHits) {
+  const left = remaining.get(hit.file);
+  const at = left ? left.indexOf(hit.sentence) : -1;
+  hit.baselined = at >= 0;
+  if (at >= 0) {
+    left.splice(at, 1);
+  } else {
+    newReferenceHits.push(hit);
+  }
+}
+const staleBaseline = [...remaining].flatMap(([file, sentences]) => sentences.map(sentence => ({ file, sentence })));
+
+if (listReferenceReasons) {
+  console.log(JSON.stringify(referenceHits, null, 1));
+  process.exit(0);
+}
+
+if (pruneReferenceBaseline && staleBaseline.length > 0) {
+  const pruned = {};
+  for (const [file, sentences] of Object.entries(baseline)) {
+    const stale = staleBaseline.filter(s => s.file === file).map(s => s.sentence);
+    const kept = sentences.filter((s) => {
+      const at = stale.indexOf(s);
+      if (at < 0) {
+        return true;
+      }
+      stale.splice(at, 1);
+      return false;
+    });
+    if (kept.length > 0) {
+      pruned[file] = kept;
+    }
+  }
+  writeFileSync(baselinePath, `${JSON.stringify(pruned, null, 2)}\n`);
+  console.log(`Pruned ${staleBaseline.length} stale entr${staleBaseline.length === 1 ? 'y' : 'ies'} from ${REFERENCE_BASELINE}.`);
+  staleBaseline.length = 0;
+}
+
+const REFERENCE_REASON_MESSAGE = [
+  '  Less 4.x / lessc behaviour is not a reason. Less v5 is a breaking release — cite the',
+  '  ledger row, CSS spec section, or dated owner ruling that makes this intentional, or mark',
+  '  it UNRESOLVED and escalate to the owner.',
+  '',
+  '  Never "fix" jess, a test, a golden or a doc to match lessc. When lessc differs from a',
+  '  ledger row or owner ruling, the ruling wins (docs/architecture/core/DESIGN-DECISIONS.md',
+  '  E1/E5/E6). Contrast is fine: "Less 4.x wrote X; Less 5 writes Y because <row/spec>".',
+  '',
+  '  Block markers (same paragraph, comment block, table row or test title):',
+  '    OWNER-RULED: YYYY-MM-DD   the owner ruled this behaviour. Date required.',
+  '    UNRESOLVED                no ruling yet; escalated to the owner.',
+  '    REFERENCE-OBSERVATION:    a measurement kept for the record, not a reason.'
+];
+
+if (newReferenceHits.length > 0) {
+  failures.push(
+    [
+      `${newReferenceHits.length} new line(s) use Less 4.x / lessc behaviour as a reason.`,
+      '',
+      ...REFERENCE_REASON_MESSAGE,
+      '',
+      ...newReferenceHits.map(h => `    ${h.file}:${h.line}  "${h.match}"\n      ${h.sentence.slice(0, 240)}`)
+    ].join('\n')
+  );
+}
+
+if (staleBaseline.length > 0) {
+  failures.push(
+    [
+      `${staleBaseline.length} baselined reference-reason entr${staleBaseline.length === 1 ? 'y no longer occurs' : 'ies no longer occur'}.`,
+      '',
+      `  Good — remove ${staleBaseline.length === 1 ? 'it' : 'them'} from ${REFERENCE_BASELINE} so the baseline only`,
+      '  shrinks: `node scripts/check-guardrails.mjs --prune-reference-baseline`.',
+      '  (A reworded sentence that still uses lessc as a reason shows up above as new.)',
+      '',
+      ...staleBaseline.map(s => `    ${s.file}\n      ${s.sentence.slice(0, 240)}`)
+    ].join('\n')
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 if (failures.length > 0) {
@@ -263,5 +552,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives.`
+  `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
+  + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined).`
 );
