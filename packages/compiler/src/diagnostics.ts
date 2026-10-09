@@ -32,7 +32,8 @@ const WARN_ICON = 'warning';
 const ERROR_ICON = 'error';
 
 /**
- * Formats and outputs diagnostics (errors and warnings) to the console.
+ * Formats and outputs diagnostics (errors and warnings) to stderr. Both go to
+ * stderr so that stdout stays free for the CSS a host may write there.
  *
  * Each diagnostic is rendered at a display tier drawn from the ladder
  * `summary → line → frame`:
@@ -73,13 +74,13 @@ export function outputDiagnostics(
   const warnCfg = resolveWarningsConfig({ warnings: options.warnings, verbose });
   const errCfg = resolveErrorsConfig(options.errors);
 
-  // Warnings -> stdout (unless suppressed)
+  // Warnings -> stderr (unless suppressed)
   if (!suppressWarnings && warnings.length > 0) {
     renderTiered(warnings, {
       severityDefault: warnCfg.display,
       icon: WARN_ICON,
       type: 'warning',
-      stream: process.stdout,
+      stream: process.stderr,
       verbose,
       colors
     });

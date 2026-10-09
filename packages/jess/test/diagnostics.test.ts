@@ -504,16 +504,17 @@ function err(
 
 describe('Diagnostic display tiers', () => {
   it('defaults: a warning renders as a single line with an OSC-8 link, no frame', () => {
-    const { out } = capture(() =>
+    const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'used foo', { sourceLine: 'WARN_SRC' })], {
         breakOnError: false
       })
     );
-    expect(out).toContain(OSC8);
-    expect(out).toContain('eval/deprecated');
-    expect(out).toContain('used foo');
-    expect(out).not.toContain('WARN_SRC'); // no code frame
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain(OSC8);
+    expect(stderr).toContain('eval/deprecated');
+    expect(stderr).toContain('used foo');
+    expect(stderr).not.toContain('WARN_SRC'); // no code frame
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(out).toBe(''); // stdout stays free for CSS
   });
 
   it('defaults: an error renders as a code frame', () => {
@@ -583,25 +584,25 @@ describe('Diagnostic display tiers', () => {
       warn('extend/not-found', 'a missing', { filePath: '/proj/a.less' }),
       warn('extend/not-found', 'b missing', { filePath: '/proj/b.less' })
     ];
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], warnings, { breakOnError: false, warnings: 'summary' })
     );
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
-    expect(out).toContain('extend/not-found');
-    expect(out).toContain('2×');
-    expect(out).toContain('a.less');
-    expect(out).toContain('b.less');
-    expect(out).not.toContain(OSC8);
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain('extend/not-found');
+    expect(stderr).toContain('2×');
+    expect(stderr).toContain('a.less');
+    expect(stderr).toContain('b.less');
+    expect(stderr).not.toContain(OSC8);
   });
 
   it('warnings: { display: \'frame\' } frames warnings', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'W_FRAME_SRC' })], {
         breakOnError: false,
         warnings: { display: 'frame' }
       })
     );
-    expectLinecraftFrame(out, {
+    expectLinecraftFrame(stderr, {
       code: 'eval/deprecated',
       phase: 'eval',
       filePath: '/proj/src/styles.less',
@@ -624,7 +625,7 @@ describe('Diagnostic display tiers', () => {
   });
 
   it('category override promotes a chosen code to frame even as a warning', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics(
         [],
         [warn('selector/comma-list-interpolation', 'list in selector', { sourceLine: 'OVERRIDE_SRC' })],
@@ -633,7 +634,7 @@ describe('Diagnostic display tiers', () => {
     );
 
     // Default warning tier is line, but this code is pinned to frame.
-    expect(out).toContain('OVERRIDE_SRC');
+    expect(stderr).toContain('OVERRIDE_SRC');
   });
 
   it('first-vs-repeat: first frame-tier site frames, later sites drop to line', () => {
@@ -641,12 +642,12 @@ describe('Diagnostic display tiers', () => {
       warn('eval/deprecated', 'first', { line: 3, sourceLine: 'FIRST_SRC' }),
       warn('eval/deprecated', 'second', { line: 9, sourceLine: 'SECOND_SRC' })
     ];
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' } })
     );
-    expect(out).toContain('FIRST_SRC'); // first site framed
-    expect(out).not.toContain('SECOND_SRC'); // second site demoted to line
-    expect(out).toContain(OSC8); // ...which carries a link
+    expect(stderr).toContain('FIRST_SRC'); // first site framed
+    expect(stderr).not.toContain('SECOND_SRC'); // second site demoted to line
+    expect(stderr).toContain(OSC8); // ...which carries a link
   });
 
   it('no-location diagnostic renders a one-liner with no link and no frame', () => {
@@ -659,32 +660,33 @@ describe('Diagnostic display tiers', () => {
       line: 0,
       column: 0
     };
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [noLoc], { breakOnError: false })
     );
-    expect(out).toContain('extend/not-found');
-    expect(out).toContain('199 warnings suppressed');
-    expect(out).not.toContain(OSC8);
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain('extend/not-found');
+    expect(stderr).toContain('199 warnings suppressed');
+    expect(stderr).not.toContain(OSC8);
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
   });
 
   it('verbose promotes: a default-line warning becomes a frame', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'VERBOSE_SRC' })], {
         breakOnError: false,
         verbose: true
       })
     );
-    expect(out).toContain('VERBOSE_SRC');
+    expect(stderr).toContain('VERBOSE_SRC');
   });
 
   it('back-compat: suppressWarnings silences warning output', () => {
-    const { out } = capture(() =>
+    const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x')], {
         breakOnError: false,
         suppressWarnings: true
       })
     );
+    expect(stderr).toBe('');
     expect(out).toBe('');
   });
 });

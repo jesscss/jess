@@ -49,8 +49,8 @@ against real workloads first:
 - Compile with `jess`.
 - Keep the familiar Less mental model: variables, mixins, guards, nesting,
   `extend`, maps, operations, and built-in functions.
-- Preserve nesting by default; use `--collapse-nesting` if you want flattened
-  selector output.
+- Preserve nesting by default; set `output: { collapseNesting: true }` in a
+  `styles.config.*` file if you want flattened selector output.
 
 ## A quick feel
 
@@ -112,9 +112,9 @@ stable long-term public surface.
 npm install jess
 ```
 
-Jess supports the current Node LTS line and the prior three LTS lines. The
-current derived floor is Node 18; it advances only when that rolling window
-advances.
+Jess supports the three most recent Node LTS lines: Node `^20.19.0 || >=22.12.0`
+(the `engines` range in `package.json`). The range advances with that rolling
+window.
 
 ## CLI
 

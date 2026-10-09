@@ -1430,12 +1430,25 @@ export class Compiler {
    * recorded real problems (a plugin function that threw, an unresolved
    * function); dropping those on the floor is how a broken plugin stays
    * invisible, so they are always surfaced here.
+   *
+   * A FAILED render also passes the error it is about to throw. A diagnostic
+   * thrown without being recorded (an undefined variable, a missing import) is
+   * emitted with the rest; one that was also recorded (a parse error) is
+   * emitted once. Any other exception is left to the caller, who receives it:
+   * emitting it here as well is how a CLI ends up printing it twice.
    */
-  private reportCollected(context: Context, options?: Partial<ConfigOptions>): void {
-    if (context.errors.length === 0 && context.warningCount === 0) {
+  private reportCollected(context: Context, options?: Partial<ConfigOptions>, thrown?: unknown): void {
+    let errors = context.errors;
+    let warnings = context.warningCount === 0 ? [] : context.warnings;
+    if (thrown instanceof JessError) {
+      errors = [...errors];
+      warnings = [...warnings];
+      appendThrownJessDiagnostic(errors, warnings, thrown);
+    }
+    if (errors.length === 0 && warnings.length === 0) {
       return;
     }
-    outputDiagnostics(context.errors, context.warnings, {
+    outputDiagnostics(errors, warnings, {
       suppressWarnings: options?.suppressWarnings ?? false,
       breakOnError: options?.breakOnError ?? true,
       verbose: options?.verbose ?? false,
@@ -1466,10 +1479,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
-      this.reportCollected(context, options);
-      if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, options, err);
       finalizeRenderProfile(profile, {
         method: 'render',
         filePath,
@@ -1510,10 +1520,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
-      this.reportCollected(context, renderOptions);
-      if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, renderOptions, err);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
