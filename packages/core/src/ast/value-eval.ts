@@ -815,9 +815,11 @@ export interface ValueEvaluator {
   /**
    * Whether a `calc()` this dialect writes is a Sass calculation (dart-sass),
    * as in `.scss`: one that resolves to one number is that number
-   * (`calc(percentage(0.5))` is `50%`), and a paren group around a string in it
-   * keeps its parens (`calc(2 * (unquote("1px + 2px")))`). Elsewhere a
-   * `calc()` is written out as a `calc()` (ledger V32). Absent means `false`.
+   * (`calc(percentage(0.5))` is `50%`). Its unquoted strings are text (ledger
+   * J16), so a paren group around one keeps its parens where it is written
+   * into math (`calc(2 * (unquote("1px + 2px")))`, `(unquote("1px + 2px")) * 2`
+   * is `calc((1px + 2px) * 2)`). Elsewhere a `calc()` is written out as a
+   * `calc()` (ledger V32). Absent means `false`.
    */
   readonly sassCalculations?: boolean;
 }

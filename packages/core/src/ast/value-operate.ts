@@ -12,9 +12,9 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, incompatibleUnits, isValueGroupArray, unitName, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, incompatibleUnits, isValueGroupArray, unitName, type Any, type Color, type Dimension, type EvalModes, type Keyword, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, unitMultisetKey } from './value-units.js';
 
@@ -390,7 +390,7 @@ function preservedSpelling(a: Dimension, op: string, b: Dimension): string {
  * spelling, whichever guard composes it.
  */
 function spliceOperand(v: Value): string {
-  return v.type === 'Dimension' && v.preserved !== undefined ? spliceInner(v.preserved) : v.bytes;
+  return v.type === 'Dimension' && v.preserved !== undefined ? spliceInner(v.preserved) : mathText(v);
 }
 
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
@@ -517,6 +517,31 @@ const keptAsWritten = new WeakMap<Value, string>();
 const keptMath = new WeakMap<Value, string>();
 
 /**
+ * Opaque text (an escaped string, ledger V3; an unquoted string in `.scss`)
+ * that paren groups were written around, mapped to how many. Text is never a
+ * resolved calculation, so the groups are kept where the text is written into
+ * math — an operand of an operation written out, an argument of a math
+ * function — and nowhere else (ledger J16): `(e("1px + 2px")) * 2` is
+ * `calc((1px + 2px) * 2)`, while `.x-@{a}` with `@a: (~"x")` is `.x-x`. A
+ * value carries the fact, so a variable or argument holding the group
+ * carries it too ({@link groupText}, {@link mathText}).
+ */
+const textGroups = new WeakMap<Value, number>();
+
+/** Text `v` in one more paren group: a new value with `v`'s bytes, still text ({@link textGroups}). */
+export function groupText(v: Any | Keyword): Value {
+  const out = v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote) : makeKeyword(v.bytes);
+  textGroups.set(out, (textGroups.get(v) ?? 0) + 1);
+  return out;
+}
+
+/** `bytes`, the spelling of `v`, as `v` is written into math: in the groups written around it when it is text ({@link textGroups}). */
+export function mathText(v: Value, bytes = v.bytes): string {
+  const depth = v.type === 'Any' || v.type === 'Keyword' ? textGroups.get(v) : undefined;
+  return depth === undefined ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
+}
+
+/**
  * Kept math `spelling` with top-level operator `op`, written as `calc(…)`
  * ({@link keptMath}). `op` is `''` for an authored group around kept math, whose
  * own parens are the `calc()`'s ({@link groupAsWritten}).
@@ -581,14 +606,15 @@ const precedence = (op: string): number => (op === '+' || op === '-' ? 1 : 2);
  * `10px - (foo + 1)`, but `foo + 1 + 1px`. Kept math ({@link keptMath}) is its
  * self-delimiting `calc(…)` there, except `inMath` — an operand of math kept
  * as one `calc()`, or of an operation written inside a math function — where it
- * is its arithmetic, grouped the same way (`calc((1px + 1em) * 2)`).
+ * is its arithmetic, grouped the same way (`calc((1px + 1em) * 2)`). Text is
+ * written in the groups written around it ({@link mathText}).
  */
 export function operandAsWritten(v: Value, op: string, isRight: boolean, bytes = v.bytes, inMath = false): string {
   const kept = keptMathOf(v);
   if (kept !== undefined && !inMath) {
     return bytes;
   }
-  const spelled = kept ?? bytes;
+  const spelled = kept ?? mathText(v, bytes);
   const inner = keptAsWritten.get(v);
   if (!inner) {
     return spelled;
@@ -693,8 +719,13 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
     return kept ? keptMathKeyword(`${lb} ${op} ${rb}`, op, left, right) : composedKeyword(`calc(${lb} ${op} ${rb})`, left, right, null);
   }
 
-  // Guard 2: an un-operable keyword operand → preserve source.
-  if (left.type === 'Keyword' || right.type === 'Keyword') {
+  /*
+   * Guard 2: an un-operable keyword operand → preserve source. A `.scss`
+   * unquoted string in a group is text, which no operation computes, so it is
+   * kept as math in its group, as Less text is: `(unquote("1px + 2px")) * 2`
+   * is `calc((1px + 2px) * 2)`, never `1px + 2px * 2` ({@link textGroups}).
+   */
+  if ((left.type === 'Keyword' && !textGroups.has(left)) || (right.type === 'Keyword' && !textGroups.has(right))) {
     return composedKeyword(`${operandAsWritten(left, op, false)} ${op} ${operandAsWritten(right, op, true)}`, left, right, op);
   }
 

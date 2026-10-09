@@ -522,6 +522,11 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
     alias that also rewrites the child's own compound does NOT cross → stays nested.
   - **trigger X** — a NESTED rule whose whole composed complex is matched EXACTLY by an
     extender that does not descend from its parent (hoisted whole-complex sibling).
+    An exact match into a rule with children does not fire it: the extender splits
+    off (§7b).
+  - **trigger A** — a rule (top-level included) one of whose at-rule blocks holds an
+    extend, in its own scope, that reaches the rule's declarations written in that
+    block (§8). Always `'collapse'`: only the flat writer's bubbled block carries it.
   A flatten whose subject STILL HAS surviving nested children RE-NESTS the corrected
   subtree under its hoisted header (`emit.ts` `'renest'` mode) rather than composing
   the children flat (`'collapse'`, which cascades to descendants). A trigger-P/X
@@ -544,6 +549,15 @@ declarations (dropped if empty) — it does not leak into the children. `all`-ex
 fold into the header and DO propagate to children. This is the corrected form gated
 against `proposed-alpha-corrections/{extend.css,extend-exact.css}`, superseding alpha's
 hand-converted leak (see §12.1).
+
+The split's header is the extender's own header. In nested output an extender that
+shares a parent with the target is written relative to it, beside the target; one
+that shares no level with the target's ancestors has a top-level header, so its
+block rises out of every rule block the target nests in, staying inside the
+at-rules it nests in (`emit.ts` `NestedRulePlan.rootSplits`, `serialize.ts`
+`HoistEntry.split`): `.a { .b { y: 1; .c { x: 1 } } } .q:extend(.a .b) {}` writes
+`.q { y: 1; }` beside `.a`. Flat output folds the same extender into the target's
+block, which has no child rules there: `.a .b, .q { y: 1; }`.
 
 ### 7c. Sibling `:is()` compaction, guarded (LANDED)
 
@@ -637,6 +651,23 @@ hoists for an extend composes its body against the context it was written under
 (`HoistEntry.source`, `emitHoisted`), so its bubbled at-rule keeps the rule's
 ancestors (`.a { .b { @media print {…} } }` → `@media print { .a .b, .q {…} }`). An
 extend in a sibling at-rule's scope does not reach it.
+
+The declarations an at-rule block written in a rule holds are the rule's, in the
+at-rule's scope, so an extend written in that scope reaches them too (lessc 4.9.1
+writes the same): `.b { @media print { y: 1; .q:extend(.b) {} } }` gives
+`@media print { .b, .b .q { y: 1; } }`, beside what an extend from outside adds.
+The plan records each such block (`plan.ts` `PlanBubble`; the import planner records
+an imported sheet's, `planImportedStaticExtend`) and solves its header only
+when an instruction's scope ends in an at-rule between the rule and the block
+(`emit.ts`, `ExtendResults.bubbleHeaders`, read by `serialize.ts` `emitBubbleBody`).
+Nested output cannot write that fold in the at-rule's implicit `&` block, so the
+rule is written as flat output writes it (`emit.ts` trigger A). **Known gap (open,
+follow-up):** a rule a mixin call or loop places is recorded by the render walk, not
+the static plan, so its at-rule's own extend is not folded there
+(`.m() { .b { @media print { y: 1; .q:extend(.b) {} } } } .m();` keeps `.b` alone;
+lessc 4.9.1 writes `.b, .b .q`). Folding it needs the walk to record the block as a
+bubble and its slot to read `bubbleHeaders`, and nested output would need the
+restructuring the deferred rewrite does not do (§1a).
 
 ## 9. Compound / complex / combinator targets
 

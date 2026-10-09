@@ -23,11 +23,15 @@
  *  - trigger X: a NESTED rule whose whole composed complex is matched EXACTLY by
  *    an extender that does not descend from its parent (a hoisted whole-complex
  *    sibling, e.g. `.rep_ace:extend(.replace.replace .replace)`) → FLATTEN.
+ *  - trigger A: a rule, top-level included, whose at-rule block holds an extend
+ *    in its own scope that reaches the rule's declarations in that block — only
+ *    the flat writer's bubbled block can carry it → FLATTEN (collapse).
  *
  * An EXACT extender that folds into a target which HAS surviving nested children
  * cannot carry those children (exact never propagates into sub-parts); it SPLITS
  * to a separate sibling rule with the target's DIRECT declarations only (empty →
- * dropped). `all`-extenders fold into the header and DO propagate to children.
+ * dropped), rising to the top level when its header is a top-level selector.
+ * `all`-extenders fold into the header and DO propagate to children.
  */
 
 import {
@@ -69,6 +73,13 @@ export interface NestedRulePlan {
   /** Sibling rules (target's direct decls only) to emit after this rule's block —
    * split-out exact extenders that cannot carry the rule's nested children. */
   splits: string[][];
+
+  /**
+   * Split-out exact extenders that share no level with the rule's ancestors: each
+   * block's header is a top-level selector, so it rises out of every rule block the
+   * rule nests in (inside the at-rules it nests in) instead of following the rule.
+   */
+  rootSplits?: readonly string[][];
 
   /**
    * A cross-`&` flatten whose subject STILL HAS surviving nested rules: instead
@@ -113,6 +124,7 @@ export interface ExtendPlacementResults {
   hoistHeader: Map<Ruleset, string[]>;
   visibleReferenceAtRules: Set<AtRuleBlock> | null;
   visibleReferenceRuleAncestors: Set<Ruleset> | null;
+  bubbleHeaders: Map<AtRuleBlock, string[]> | null;
 }
 
 export interface ExtendResults {
@@ -147,6 +159,13 @@ export interface ExtendResults {
 
   /** Hidden selector containers needed only to compose a visible descendant. */
   visibleReferenceRuleAncestors: Set<Ruleset> | null;
+
+  /**
+   * FLAT mode: per at-rule block written in a rule, the header its bubbled
+   * declarations are written under, when an extend in the at-rule's own scope
+   * reaches them (EXTEND-SEMANTICS §8). Null until one does.
+   */
+  bubbleHeaders: Map<AtRuleBlock, string[]> | null;
 
   /** NESTED mode: per-rule projection (flatten / rewritten header / splits). */
   nestedPlan: Map<Ruleset, NestedRulePlan>;
@@ -246,6 +265,9 @@ function descendsFrom(b: string, headerSet: string[]): boolean {
   }
   return false;
 }
+
+/** The shared empty {@link NestedRulePlan.rootSplits}; read only. */
+const NO_ROOT_SPLITS: readonly string[][] = [];
 
 function dedupBranchTexts(list: Branch[]): string[] {
   const seen = new Set<string>();
@@ -1003,7 +1025,8 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     nestedPlan,
     hoistHeader,
     visibleReferenceAtRules: null,
-    visibleReferenceRuleAncestors: null
+    visibleReferenceRuleAncestors: null,
+    bubbleHeaders: null
   };
   let byPlacement: WeakMap<object, ExtendPlacementResults> | null = null;
   const projectionForPlacement = (placement?: object): ExtendPlacementResults => {
@@ -1020,7 +1043,8 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         nestedPlan: new Map(),
         hoistHeader: new Map(),
         visibleReferenceAtRules: null,
-        visibleReferenceRuleAncestors: null
+        visibleReferenceRuleAncestors: null,
+        bubbleHeaders: null
       };
       all.set(placement, projection);
     }
@@ -1262,6 +1286,48 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     }
   }
 
+  /*
+   * ---- at-rule bubbles (EXTEND-SEMANTICS §8) ----
+   * An at-rule block written in a rule holds declarations of the rule in the
+   * at-rule's scope, which flat output writes under the rule's header in the
+   * bubbled block. An extend in that scope reaches them there: `.b { @media print
+   * { y: 1; .q:extend(.b) {} } }` writes `@media print { .b, .b .q { y: 1; } }`.
+   * Only an extend inside the at-rule's scope makes that header differ from the
+   * rule's own ({@link Emit.extendedContexts} carries the rule's), so a bubble is
+   * solved only when some instruction's scope ends in an at-rule between the rule
+   * and the bubble (a Set read per scope level). Nested output cannot spell the
+   * fold in the at-rule's implicit `&` block, so such a rule is written flat there
+   * (trigger A below).
+   */
+  const bubbled = new Set<PlanSubject>();
+  if (plan.bubbles.length > 0) {
+    const scopedIds = new Set<number>();
+    for (const inst of plan.instructions) {
+      if (inst.scope.length > 0) {
+        scopedIds.add(inst.scope[inst.scope.length - 1]!);
+      }
+    }
+    for (const b of plan.bubbles) {
+      const s = b.subject;
+      let inside = false;
+      for (let level = s.scope.length; level < b.scope.length && !inside; level++) {
+        inside = scopedIds.has(b.scope[level]!);
+      }
+      if (!inside || !candidate.has(s)) {
+        continue;
+      }
+      recordAstExtendProfile?.('astExtend.emit.bubbleSolves');
+      const { list, changed } = solveComposed(rawOf(s), { scope: b.scope, boundary: s.boundary }, plan, contribMemo);
+      const own = flatBySubject.get(s) ?? rawOf(s);
+      if (!changed || (list.length === own.length && list.every((branch, index) => branchText(branch) === branchText(own[index]!)))) {
+        continue;
+      }
+      const compacted = groupedBranches(siblingCompact(nestingFold(list, s, rawOf(s), guardedNesting), false), true);
+      (projectionFor(s).bubbleHeaders ??= new Map()).set(b.atRule, compacted.map(branchOut));
+      bubbled.add(s);
+    }
+  }
+
   const hasChildSubjects = (s: PlanSubject): boolean => (childrenOf.get(s) ?? []).length > 0;
 
   /** The parent header branch texts a nested child may descend from WITHOUT crossing
@@ -1318,6 +1384,15 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
    */
   const flattenModeOf = new Map<PlanSubject, 'collapse' | 'renest'>();
   const ownMode = (s: PlanSubject): 'none' | 'collapse' | 'renest' => {
+    /*
+     * trigger A: an extend in the scope of an at-rule block written in the rule
+     * reaches the rule's declarations there, which only the flat writer's bubbled
+     * block can carry (see the bubbles above), so the rule is written flat, its
+     * children with it, a top-level rule included.
+     */
+    if (bubbled.has(s)) {
+      return 'collapse';
+    }
     if (s.parent === null) {
       return 'none';
     }
@@ -1523,6 +1598,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     const survivors = hasSurvivingChild(s);
     let header: Branch[];
     const splits: Branch[] = [];
+    const rootSplits: Branch[] = [];
     if (asTop) {
       /*
        * A top-level rule's header is its FULL flat solve (so transitive chaining +
@@ -1589,6 +1665,18 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
         }
         const rel = relativizeExtender(inst, s, true);
         if (rel === inst) {
+          /*
+           * An exact extender that shares no level with the rule's ancestors, into a
+           * rule with children (trigger X left it here to split, §7b): its split block
+           * carries the full extender header, so it rises out of every rule block the
+           * rule nests in (`.a { .b { y: 1; .c {…} } } .q:extend(.a .b) {}` writes
+           * `.q { y: 1; }` beside `.a`).
+           */
+          if (!inst.partial && survivors) {
+            for (const e of composePath(inst.extenderPath)) {
+              rootSplits.push(e);
+            }
+          }
           continue;
         }
         const into = !inst.partial && survivors ? splits : header;
@@ -1607,6 +1695,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
       flatten: false,
       header: rewritten ? extendedHeaderTexts(s, grouped) : grouped.map(branchOut),
       splits: dedupBranchTexts(splits).map(t => [t]),
+      rootSplits: rootSplits.length === 0 ? NO_ROOT_SPLITS : dedupBranchTexts(rootSplits).map(t => [t]),
       collapseTransparent: collapsedParent.has(s.rule)
     });
   }
@@ -1617,6 +1706,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
     suffixedByRule: staticProjection.suffixedByRule,
     visibleReferenceAtRules: staticProjection.visibleReferenceAtRules,
     visibleReferenceRuleAncestors: staticProjection.visibleReferenceRuleAncestors,
+    bubbleHeaders: staticProjection.bubbleHeaders,
     nestedPlan,
     hoistHeader,
     byPlacement,

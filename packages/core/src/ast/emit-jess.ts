@@ -37,10 +37,10 @@
 import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, CollectionItem, ComplexSelector, CompoundSelector,
   Declaration, Expression, ExtendInstruction, FunctionCall, Interpolation, Lookup, LookupStep, MixinCall,
-  MixinDefinition, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
+  MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
-import { isCssColorCall, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
+import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import { renderCombinator } from './node.js';
@@ -920,14 +920,21 @@ class JessPrinter {
 
     /*
      * A CSS-shaped color call a property's value writes out is never dispatched
-     * (ledger F5), so it stays a plain CSS call. Anywhere a callable or a
-     * variable can read it, it computes, and goes through its binding.
+     * (ledger F5), and no Less callable computes a CSS colour function in its
+     * channel shape (`color(srgb 1 0 0)`), so it stays a plain CSS call.
+     * Anywhere a callable or a variable can read it, it computes, and goes
+     * through its binding.
      */
-    const exported = this.#propertyValue && at === At.Value && isCssColorCall(node) ? undefined : this.#functions?.names.get(lower);
+    const exported = this.#propertyValue && at === At.Value && isCssColorFunction(node) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }
     const inner = at === At.Prelude ? At.Prelude : At.Math;
+    const alpha = colorAlphaSlash(node);
+    if (alpha !== null) {
+      const name = exported === undefined ? node.name : `$${node.name}`;
+      return `${name}(${this.colorChannels(node.args[0]!.value, alpha, inner)})`;
+    }
     const args = node.args.map((arg) => {
       if (arg.spread || arg.name !== undefined) {
         return gap('FunctionCall', 'keyword or spread argument: `CallArgument` is positional');
@@ -943,6 +950,24 @@ class JessPrinter {
     });
     const name = exported === undefined ? node.name : `$${node.name}`;
     return `${name}(${args.join(', ')})`;
+  }
+
+  /**
+   * A CSS colour function's modern slot with its alpha slash a separator
+   * ({@link colorAlphaSlash}): `0 128 255 / 50%`, which `.jess` reads as the
+   * channels and a slash list, as Less writes it; `$(255 / 50%)` would divide.
+   */
+  colorChannels(slot: ValueSlot, alpha: Operation, at: At): string {
+    if (!isSlotArray(slot)) {
+      return this.value(slot, at);
+    }
+    const layout = valueLayoutOf(slot);
+    const channels = slot.slice(0, -1);
+    const sep = layout?.[channels.length - 1] ?? ' ';
+    if (!WHITESPACE.test(sep)) {
+      return gap('Comment', 'a comment between value parts: `ValueSpaceGroup` separators are whitespace only');
+    }
+    return `${this.spaceRun(channels, layout, at, '')}${sep}${this.value(alpha.left, at)} / ${this.value(alpha.right, at)}`;
   }
 
   paren(node: Block, at: At): string {

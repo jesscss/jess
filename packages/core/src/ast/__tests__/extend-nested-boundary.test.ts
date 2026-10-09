@@ -283,6 +283,25 @@ describe('nested-mode whole-selector extend from a sibling under the same parent
     expect(nestedLess('.w { .y { &:extend(.w .k); } .k { k: 1; .c { c: 1; } } }'))
       .toBe('.w {\n  .k {\n    k: 1;\n    .c {\n      c: 1;\n    }\n  }\n  .y {\n    k: 1;\n  }\n}\n');
   });
+
+  /*
+   * An exact extender that shares no level with the nested target's ancestors
+   * splits off a target with children too (EXTEND-SEMANTICS §7b, ledger X2):
+   * its header is a top-level selector, so its block rises out of every rule
+   * block the target nests in, inside the at-rules it nests in. The flat output
+   * folds it into the target's childless block, carrying the same declarations.
+   */
+  it('splits an exact extender from another rule off a nested target with children', () => {
+    const flatLess = (src: string): string | undefined => flat(parseLess(src));
+    expect(nestedLess('.a { .b { y: 1; .c { x: 1; } } } .q:extend(.a .b) {}'))
+      .toBe('.a {\n  .b {\n    y: 1;\n    .c {\n      x: 1;\n    }\n  }\n}\n.q {\n  y: 1;\n}\n');
+    expect(flatLess('.a { .b { y: 1; .c { x: 1; } } } .q:extend(.a .b) {}'))
+      .toBe('.a .b,\n.q {\n  y: 1;\n}\n.a .b .c {\n  x: 1;\n}\n');
+    expect(nestedLess('.a { .m { .b { y: 1; .c { x: 1; } } } .n { z: 1; } } .z { .q:extend(.a .m .b) {} }'))
+      .toBe('.a {\n  .m {\n    .b {\n      y: 1;\n      .c {\n        x: 1;\n      }\n    }\n  }\n  .n {\n    z: 1;\n  }\n}\n.z .q {\n  y: 1;\n}\n');
+    expect(nestedLess('.a { @media print { .b { y: 1; .c { x: 1; } } } } .q:extend(.a .b) {}'))
+      .toBe('.a {\n  @media print {\n    .b {\n      y: 1;\n      .c {\n        x: 1;\n      }\n    }\n  }\n}\n@media print {\n  .q {\n    y: 1;\n  }\n}\n');
+  });
 });
 
 /*

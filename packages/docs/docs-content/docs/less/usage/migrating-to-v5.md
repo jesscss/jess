@@ -295,7 +295,7 @@ Most values compile exactly as before. These are the changes you can see in the 
 
 **Parentheses around a value that nothing computes are kept.** `c: (10vh)` stays `c: (10vh)`, and `var(--a, (10px))` keeps its parentheses; Less 4.x wrote `10vh` and `var(--a, 10px)`. Parentheses around a calculation that is resolved still disappear, as in Less 4.x: `(2px + 3px)` is `5px`, and with `@a: 10vh`, `width: (@a)` is `width: 10vh`. A variable that names a list keeps them: with `@l: 1px 2px`, `(@l)` stays `(1px 2px)`.
 
-**Parentheses around text are kept.** An escaped string (`~"…"`, `e()`, `escape()`) is text, not a computed value, so the parentheses written around it stay wherever it is read, through a variable too. `(e("foo"))` is `(foo)`, where Less 4.x wrote `foo`; and with `@t: (e("1px + 2px"))`, `calc(2 * @t)` is `calc(2 * (1px + 2px))`, where Less 4.x wrote `calc(2 * 1px + 2px)`, which means something else.
+**Parentheses around text are kept in math.** An escaped string (`~"…"`, `e()`, `escape()`) is text, not a computed value, so the parentheses written around it stay wherever it is written into math, through a variable too: with `@t: (e("1px + 2px"))`, `calc(2 * @t)` is `calc(2 * (1px + 2px))`, where Less 4.x wrote `calc(2 * 1px + 2px)`, which means something else. Anywhere else the parentheses give the text, as in Less 4.x: `(e("foo"))` is `foo`, and `@a: (~"x"); .x-@{a}` is `.x-x`.
 
 **Numbers you write are kept as written.** `0.50em`, `1.0px` and `1.23456789123px` stay as they are; Less 4.x wrote `0.5em`, `1px` and `1.23456789px`. A computed number is no longer rounded to 8 decimal places: `(1 / 3)` is `0.33333333333` and `(10px / 3)` is `3.3333333333px`, where Less 4.x wrote `0.33333333` and `3.33333333px`.
 
@@ -487,6 +487,7 @@ through the explicit module binding:
 - Legacy `strictMath` workflows should move to the `math` option. `strictMath` is still accepted: `true` means `math: 'parens'`, and setting it logs a deprecation warning.
 - `strict-legacy` was removed in Less 4.0; it is still accepted and means `parens`.
 - `math: 'always'` (Less 3.x's eager math) still works; `parens-division` is the default.
+- Under `math: 'always'`, the slash before the alpha in a CSS colour function (`rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`) is a separator, never a division: `rgb(0 128 255 / 50%)` stays `rgb(0 128 255 / 50%)`, where Less 4.x divided it (`#008005`). Wrap a division in parens to keep it: `hwb(1 2% (6% / 2))` is `hwb(1 2% 3%)`.
 - The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
 
 Example:

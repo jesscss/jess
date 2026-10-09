@@ -74,7 +74,8 @@ import {
   simpleTokenHasInterp,
   textHoldsParentRef,
   branchTextIsPlaceholder,
-  isCssColorCall
+  isCssColorCall,
+  colorAlphaSlash
 } from './nodes.js';
 import type {
   Any,
@@ -178,7 +179,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -187,7 +188,7 @@ import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type V
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
-import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
+import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
@@ -4421,6 +4422,30 @@ function evalTypedSlot(
 }
 
 /**
+ * A CSS colour function's modern slot, typed, with its alpha slash a separator
+ * ({@link colorAlphaSlash}): `0 128 255 / 50%` is the channels and the slash
+ * list `255 / 50%`, as the slot reads where the math policy leaves a slash
+ * alone, never `255` divided by `50%`.
+ */
+function colorChannels(
+  slot: ValueSlot,
+  alpha: Operation,
+  frame: Frame | null,
+  e: EvalCtx,
+  argument: ArgumentMode
+): MaybePromise<ValueGroup> {
+  if (!isValueSlotArray(slot)) {
+    return evalTypedSlot(slot, frame, e, true, argument);
+  }
+  const last = slot.length - 1;
+  const values = slot.map((item, index) => index < last
+    ? evalTypedSlot(item, frame, e, true, argument)
+    : combineAll([evalTypedSlot(alpha.left, frame, e, true, argument), evalTypedSlot(alpha.right, frame, e, true, argument)], sides => makeList(sides, '/')));
+  const layout = replaysLayout(argument) ? replayedLayoutOf(slot) : undefined;
+  return combineAll(values, resolved => layout === undefined ? resolved : withValueLayout(resolved, layout));
+}
+
+/**
  * The authored layout of a group when pretty output replays a run of it (a
  * line break or a block comment), else `undefined`: a binding carries only the
  * layout that changes its written bytes ({@link emitAsWritten}).
@@ -5079,9 +5104,9 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
  * (ledger P35: `calc(100% - (((@a + @b))))`).
  *
  * Text is never a resolved calculation: a group whose content is opaque text
- * keeps its parens wherever it is read, a reference reaching it included
- * ({@link isOpaqueText}, {@link textGroup}). Its value is the text spelled with
- * them, so math around it reads `2 * (1px + 2px)`, never `2 * 1px + 2px`.
+ * keeps its parens wherever it is written into math, a reference reaching it
+ * included ({@link isOpaqueText}, {@link textGroup}), so math around it reads
+ * `2 * (1px + 2px)`, never `2 * 1px + 2px`; anywhere else it is the text.
  * Every other kept group only changes the spelling: a computing consumer — an
  * operand of math that operates, an argument a callable reads — reads the value
  * inside it through the typed lane, and an operand of math kept as written keeps
@@ -5147,10 +5172,13 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: EvalCtx, refer
        * boundary (§7.1), and on the typed lane, which reads an argument of a call
        * written out as-is (`unknown((@a > 1))` is `unknown(true)`). Anywhere else
        * the value lane writes it ({@link writtenCondition}), so a group around it
-       * keeps its parens.
+       * keeps its parens; a reference naming it resolves to that one written
+       * value, so a group around the reference does not, and the condition it
+       * returns tells the group to read on the value lane, which writes it
+       * (`b: (@x)` with `@x: (@a > 2px)` is `(3px > 2px)`; ledger J20).
        */
       case 'Condition':
-        return typed || e.exprBoundary === true ? inner : reference;
+        return typed || e.exprBoundary === true || reference !== null ? inner : null;
       case 'Interpolation': {
         const first = inner.parts[0];
         return isComputationSplice(inner) && first !== undefined && 'ref' in first
@@ -5287,19 +5315,29 @@ function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number
 }
 
 /**
- * Whether `v` is opaque text, which no paren group around it ever loses: an
- * escaped string — `~"…"`, `e()`, `escape()`, an interpolated template, the
- * value-domain `Any` (ledger V3) — in every dialect. In a Sass calculation
- * ({@link ValueEvaluator.sassCalculations}) an unquoted string is text too, as
- * dart-sass keeps a parenthesized string in one (`calc(2 * (unquote("1px + 2px")))`
- * is `calc(2 * (1px + 2px))`, `calc(2 * ($k))` with `$k: foo` is
- * `calc(2 * (foo))`). The test is the value's type, never its bytes.
+ * Whether `v` is opaque text, whose paren groups are kept where it is written
+ * into math ({@link textGroup}): an escaped string — `~"…"`, `e()`,
+ * `escape()`, an interpolated template, the value-domain `Any` (ledger V3) —
+ * in every dialect, and in `.scss` ({@link ValueEvaluator.sassCalculations})
+ * an unquoted string, as dart-sass keeps a parenthesized string in a
+ * calculation (`calc(2 * (unquote("1px + 2px")))` is `calc(2 * (1px + 2px))`,
+ * `calc(2 * ($k))` with `$k: foo` is `calc(2 * (foo))`). The test is the
+ * value's type, never its bytes.
  */
 const isOpaqueText = (v: Value, e: EvalCtx): v is TextValue | KeywordValue =>
-  v.type === 'Any' || (v.type === 'Keyword' && (e.calcDepth ?? 0) > 0 && e.ev?.sassCalculations === true);
+  v.type === 'Any' || (v.type === 'Keyword' && e.ev?.sassCalculations === true);
 
-/** A paren group around opaque text ({@link isOpaqueText}): the text spelled with its parens, still text. */
-const textGroup = (v: TextValue | KeywordValue): Value => v.type === 'Any' ? makeAny(`(${v.bytes})`, v.escapedQuote) : makeKeyword(`(${v.bytes})`);
+/**
+ * A paren group around opaque text ({@link isOpaqueText}): the text, carrying
+ * the group, which only math writes (ledger J16, SETTLED — orchestrator
+ * judgment under owner delegation 2026-10-07). Written into math — an operand
+ * of an operation written out, inside `calc()` or another math function — the
+ * text keeps its parens (`calc(2 * (e("1px + 2px")))` is
+ * `calc(2 * (1px + 2px))`); everywhere else the group yields its text:
+ * `.x-@{a}` with `@a: (~"x")` is `.x-x`, a callable reads `x` from
+ * `(e("x"))`, and `b: (e("x"))` is `b: x` ({@link mathText}).
+ */
+const textGroup = (v: TextValue | KeywordValue): Value => groupText(v);
 
 /**
  * An operand as `operate` sees it: a group around one value keeps its spelling,
@@ -5346,8 +5384,8 @@ function keptOperand(parent: Operation, child: ValueNode, value: EvalValue, e: E
  * An authored paren group's value once its math has run. A computed inner is
  * one value and sheds the parens; an operation `operate` kept as written
  * (`foo + 1`) is still an expression and keeps
- * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`; and text keeps them
- * as part of the text ({@link textGroup}).
+ * them, or `(foo + 1) * 2` would print as `foo + 1 * 2`; and text carries
+ * them ({@link textGroup}).
  */
 function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx): T | Value {
   if (isLiteral(v) || isValueGroupArray(v)) {
@@ -5357,7 +5395,7 @@ function keepAuthoredGroup<T extends EvalValue>(v: T, e: EvalCtx): T | Value {
   return grouped === v && isOpaqueText(v, e) ? textGroup(v) : grouped;
 }
 
-/** A group a reference reached, around one value: the value, unless it is text, which keeps the parens ({@link whileReached}). */
+/** A group a reference reached, around one value: the value, text carrying the group ({@link whileReached}, {@link textGroup}). */
 const reachedGroup = (v: ValueGroup, e: EvalCtx): ValueGroup => !isValueGroupArray(v) && isOpaqueText(v, e) ? textGroup(v) : v;
 
 /**
@@ -5365,12 +5403,17 @@ const reachedGroup = (v: ValueGroup, e: EvalCtx): ValueGroup => !isValueGroupArr
  * spelled back. Kept math in it keeps its kept identity ({@link groupAsWritten}),
  * so inside a math function it is still its arithmetic in the group
  * (`calc(100% - (@x))` with `@x: 1px + 1em` is `calc(100% - (1px + 1em))`),
- * never a nested `calc()`.
+ * never a nested `calc()`. An escaped string written in it is text, which
+ * carries its group ({@link textGroup}); raw bytes keep the parens as written.
  */
 function writtenGroup(v: EvalValue): Value {
-  return !isLiteral(v) && !isValueGroupArray(v) && keptMathOf(v) !== undefined
-    ? groupAsWritten(v)
-    : makeKeyword(`(${emitValue(v)})`);
+  if (isLiteral(v) || isValueGroupArray(v)) {
+    return makeKeyword(`(${emitValue(v)})`);
+  }
+  if (keptMathOf(v) !== undefined) {
+    return groupAsWritten(v);
+  }
+  return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emitValue(v)})`);
 }
 
 /**
@@ -5710,12 +5753,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /*
        * Read typed where the value's type decides the spelling: a `.jess` `$( … )`
        * splice, so math it kept as written is still the kept expression; and a
-       * group a reference reached or one around a reference, a conditional or a
-       * computed mixin argument, so text in it keeps the parens
-       * ({@link isOpaqueText}). A call and math say their own type on this lane.
+       * group a reference reached or one around a reference, a conditional, a
+       * computed mixin argument or an escaped string, so text in it carries the
+       * group ({@link isOpaqueText}). A call and math say their own type on this
+       * lane, and a written condition a reference names is written by it.
        */
-      const inner = e.ev && (reached || (computation !== null && computation.type !== 'FunctionCall'
-        && computation.type !== 'Operation' && computation.type !== 'Expression'))
+      const escaped = !isValueSlotArray(node.value) && node.value.type === 'Quoted' && node.value.escaped;
+      const inner = e.ev && (reached || escaped || (computation !== null && computation.type !== 'FunctionCall'
+        && computation.type !== 'Operation' && computation.type !== 'Expression' && computation.type !== 'Condition'))
         ? evalTypedSlot(node.value, frame, ctx)
         : evalValueSlot(node.value, frame, ctx);
 
@@ -5729,9 +5774,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        *
        * A paren group is consumed only by what computes in it
        * ({@link groupComputation}): `(1px + 2px)` is `3px`, while math `operate`
-       * kept, a call written out as-is ({@link groupAsWritten}) and text
-       * ({@link textGroup}) keep the parens, and so does every group nothing
-       * computes in. Bytes from a call or an operation are what nothing
+       * kept and a call written out as-is ({@link groupAsWritten}) keep the
+       * parens, and so does every group nothing computes in; text carries its
+       * group ({@link textGroup}). Bytes from a call or an operation are what nothing
        * computed — a call re-emitted as written, math on the non-evaluating lane.
        */
       return mapMaybe(inner, (v) => {
@@ -7460,8 +7505,8 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
  * `(10vh)`); any other value is the kept `calc(…)` expression. Around a
  * calculation that resolves only the parens are dropped (owner 2026-10-07):
  * `calc((min(-5px, 1px)))` is `calc(-5px)`; a group around kept math or a call
- * written out as-is keeps its parens ({@link groupComputation}), and text keeps
- * them always ({@link textGroup}).
+ * written out as-is keeps its parens ({@link groupComputation}), and text
+ * written into a `calc()` keeps the groups it carries ({@link textGroup}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
@@ -7475,10 +7520,10 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 
       /* Kept math carries the groups around it in its arithmetic already (`calc((@x))` is `calc((1px + 1em))`). */
       const kept = isValueGroupArray(v) ? undefined : keptMathOf(v);
-      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(emitValue(v), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
+      return keepAsWritten(carryKeptClash(makeKeyword(`calc(${kept ?? wrapParens(isValueGroupArray(v) ? emitValue(v) : mathText(v, emitValue(v)), isValueGroupArray(v) || !isOpaqueText(v, ce) ? authored : 0)})`), v, v));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
-      return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${v.bytes})`), v, v));
+      return calcInner(v.bytes) !== null ? writtenCalc(v) : keepAsWritten(carryKeptClash(makeKeyword(`calc(${mathText(v)})`), v, v));
     }
 
     /*
@@ -7489,7 +7534,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
      * no longer a calculation at all (V31).
      */
     if (isValueGroupArray(v) || v.type !== 'Dimension') {
-      return keepAsWritten(makeKeyword(`calc(${emitValueC(v, e)})`));
+      return keepAsWritten(makeKeyword(`calc(${isValueGroupArray(v) ? emitValueC(v, e) : mathText(v, emitValueC(v, e))})`));
     }
     return e.ev?.sassCalculations === true ? v : makeSpelledDimension(v, v.preserved ?? v.bytes);
   });
@@ -8717,7 +8762,10 @@ function dispatchCall(
    * (ledger F11) rather than inputs.
    */
   const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument));
+  const alpha = colorAlphaSlash(node);
+  const typed = alpha === null
+    ? node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument))
+    : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
   return combineAll(typed, (vals) => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {
@@ -12773,6 +12821,7 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
 interface ImportPlanOverlay {
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
+  bubbles: PlanBubble[];
   atRuleScopes: AtRuleScopes;
 
   /** The ONE boundary of each composed module, by module identity (ledger X14). */
@@ -12905,7 +12954,11 @@ function planImportedStaticExtend(
       const owner = hidden
         ? { node: statement, parent: referenceAtRule, placement }
         : referenceAtRule;
-      planImportedStaticExtend(statement.rules, e, overlay, path, atRuleScope(scope, statement, overlay.atRuleScopes), parent, hidden, boundary, owner, placement);
+      const inner = atRuleScope(scope, statement, overlay.atRuleScopes);
+      if (parent !== null) {
+        overlay.bubbles.push({ atRule: statement, subject: parent, scope: inner });
+      }
+      planImportedStaticExtend(statement.rules, e, overlay, path, inner, parent, hidden, boundary, owner, placement);
     } else if (statement.type === 'StyleImport') {
       /*
        * An import inside a ruleset lands where the walk places it (see ExtendClass).
@@ -13165,6 +13218,7 @@ function planImportedFacts(
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
+    bubbles: [],
     atRuleScopes: new Map(),
     moduleBoundaries: new Map(),
     importPlacements: null,
@@ -15075,7 +15129,8 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
   const overlay: PlanOverlay = {
     subjects: [...dyn.baseOverlay.subjects, ...subjects],
     instructions: [...dyn.baseOverlay.instructions, ...dyn.instructions],
-    atRuleScopes: dyn.atRuleScopes
+    atRuleScopes: dyn.atRuleScopes,
+    bubbles: dyn.baseOverlay.bubbles
   };
   return computeExtends(dyn.root, overlay, guardedNesting);
 }
@@ -15340,7 +15395,7 @@ function expandRule(
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource });
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource, split: null });
       return;
     }
   }
@@ -22645,7 +22700,7 @@ function emitBubbleBody(
   ctx: string[] | null,
   frame: Frame,
   e: Emit,
-  owner?: object,
+  owner?: AtRuleBlock,
   inlineTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
   /* The body's comments, replayed as {@link emitAtRuleBody} replays them. */
@@ -22657,9 +22712,12 @@ function emitBubbleBody(
   /*
    * [nesting] The context's parent units that are rules of their own ({@link SplitBlock}).
    * A context whose rule an extend reached writes the rule's extended header
-   * ({@link Emit.extendedContexts}).
+   * ({@link Emit.extendedContexts}); an extend in the at-rule's own scope that
+   * reaches the declarations here gives them their own ({@link ExtendResults.bubbleHeaders}).
    */
-  const directHeader = ctx === null ? null : e.extendedContexts?.get(ctx) ?? ctx;
+  const directHeader = ctx === null
+    ? null
+    : (owner === undefined ? undefined : extendProjection(e)?.bubbleHeaders?.get(owner)) ?? e.extendedContexts?.get(ctx) ?? ctx;
   const ctxSplit = directHeader === null ? undefined : composedSplitFlags(directHeader, e);
   const group: Leaf[] = [];
 
@@ -23215,11 +23273,23 @@ interface HoistEntry {
    * (`.a { @media q { .b { e } } }` hoists `e` as `@media q { … }` beside `.a`).
    */
   wrappers: HoistWrapper[] | null;
+
+  /**
+   * A split-out exact extender rising in place of the rule ({@link NestedRulePlan.rootSplits}):
+   * its header and the rule's evaluated direct declarations, written as one block where
+   * it lands. Null for a hoisted rule.
+   */
+  split: HoistSplit | null;
 }
 
 interface HoistWrapper {
   node: AtRuleBlock;
   prelude: string;
+}
+
+interface HoistSplit {
+  header: string[];
+  leaves: Leaf[];
 }
 
 /** Emit a hoisted rule where it lands, inside the at-rules it rose out of. */
@@ -23228,6 +23298,9 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   if (wrappers !== null && wrapper < wrappers.length) {
     const { node, prelude } = wrappers[wrapper]!;
     return nestedAtRuleShell(node, prelude, e, () => emitHoistEntry(h, e, imp, wrapper + 1));
+  }
+  if (h.split !== null) {
+    return flushBlock(h.split.header, h.split.leaves, e);
   }
   return extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
     ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
@@ -23682,11 +23755,22 @@ function writeNestedRule(
        * sibling rules carrying only the target's DIRECT declarations (empty → drop).
        */
       const direct: Leaf[] = [];
-      if (plan && plan.splits.length > 0) {
+      const rootSplits = plan?.rootSplits;
+      if (plan && (plan.splits.length > 0 || (rootSplits !== undefined && rootSplits.length > 0))) {
         for (const st of rule.rules) {
           if (st.type === 'Declaration' || st.type === 'Comment') {
             direct.push(evaluatedLeaf(st, childFrame));
           }
+        }
+      }
+
+      /*
+       * A split whose header is a top-level selector rises out of every rule block
+       * this rule nests in, inside the at-rules it nests in ({@link HoistEntry.split}).
+       */
+      if (rootSplits !== undefined && direct.length > 0) {
+        for (const header of rootSplits) {
+          (outerHoist ?? hoist).push({ rule, frame, bubble: Number.POSITIVE_INFINITY, wrappers: null, source, split: { header, leaves: direct } });
         }
       }
       const emitSplits = (index: number): MaybePromise<void> => {
@@ -23714,7 +23798,7 @@ function writeNestedRule(
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
           if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source });
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source, split: h.split });
             continue;
           }
           const emitted = emitHoistEntry(h, e, imp);
@@ -23780,7 +23864,7 @@ function writeNestedAtRuleBlock(
     }
     const wrapper: HoistWrapper = { node, prelude };
     for (const h of hoist) {
-      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source });
+      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source, split: h.split });
     }
   };
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(

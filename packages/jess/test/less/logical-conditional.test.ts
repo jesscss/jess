@@ -139,4 +139,15 @@ describe('Less logical / conditional functions', () => {
     const css = await render('@a: 3px; @x: (@a > 2px); .y { a: @x; b: boolean(@x); c: if(@x, yes, no); }');
     expect(css).toBe('.y {\n  a: (3px > 2px);\n  b: true;\n  c: yes;\n}\n');
   });
+
+  /*
+   * A reference naming a written condition resolves to that one value, so a
+   * group around the reference drops its own parens and the condition is
+   * written, as `@x` alone writes it (ledger J20, J16); a consumer still reads
+   * a condition (`if((@x), …)`, a call written out as-is).
+   */
+  it('writes a condition a group around a reference names', async () => {
+    const css = await render('@a: 3px; @x: (@a > 2px); .y { b: (@x); c: ((@x)); d: (@x) 1px; e: if((@x), yes, no); f: unknown((@x)); }');
+    expect(css).toBe('.y {\n  b: (3px > 2px);\n  c: (3px > 2px);\n  d: (3px > 2px) 1px;\n  e: yes;\n  f: unknown(true);\n}\n');
+  });
 });

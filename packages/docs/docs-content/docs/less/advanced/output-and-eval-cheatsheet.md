@@ -79,10 +79,14 @@ the `calc()` stays (`calc((min(@a, 20px)))` → `calc(10px)`), also around an
 argument that resolves to one number (`calc(min(@a, 20px))` → `calc(10px)`).
 
 Text is never a computed value: parens around an escaped string — `~"…"`,
-`e()`, `escape()`, or the text an `if()` picks — stay wherever the group is
-read, a variable holding it included, so what surrounds the text never re-reads
-it: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`, `(e("foo"))` →
-`(foo)`, and `@t: (e("1px + 2px")); calc(2 * @t)` → `calc(2 * (1px + 2px))`.
+`e()`, `escape()`, or the text an `if()` picks — stay wherever the text is
+written into math (an operand of math written out, or inside `calc()` and the
+other math functions), a variable holding it included, so the math never
+re-reads it: `calc(2 * (e("1px + 2px")))` → `calc(2 * (1px + 2px))`,
+`(e("1px + 2px")) * 2` → `calc((1px + 2px) * 2)`, and
+`@t: (e("1px + 2px")); calc(2 * @t)` → `calc(2 * (1px + 2px))`. Anywhere else
+the group gives its text: `(e("foo"))` → `foo`, `@a: (~"x"); .x-@{a}` →
+`.x-x`, and a function reads `x` from `(e("x"))`.
 
 ```less
 @a: #a80000; @b: #00000b;

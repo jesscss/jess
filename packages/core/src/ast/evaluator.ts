@@ -18,7 +18,7 @@ import { valueLayoutOf } from './provenance.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
-import { keepAsWritten, keptMathOf, operate } from './value-operate.js';
+import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js';
 import { isMathFunctionName } from './math-functions.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
@@ -38,7 +38,7 @@ function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly A
   const compress = modes?.compress === true;
   const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
   const plain = compress ? emitCompressed : emitValue;
-  const emit = math ? (v: ValueGroup): string => (isValueGroupArray(v) ? undefined : keptMathOf(v)) ?? plain(v) : plain;
+  const emit = math ? (v: ValueGroup): string => isValueGroupArray(v) ? plain(v) : keptMathOf(v) ?? mathText(v, plain(v)) : plain;
   const items = groupItems(args);
   if (authored === undefined) {
     return items.map(emit).join(glue);
@@ -61,7 +61,8 @@ function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly A
 /**
  * Preserve an optional CSS call, as written, after name resolution or invocation
  * failed. A math function's argument is math, so kept math in it is written as
- * its arithmetic, never a nested `calc()` (`max(1px + 1em, 1px)`; {@link keptMathOf}).
+ * its arithmetic, never a nested `calc()` (`max(1px + 1em, 1px)`; {@link keptMathOf}),
+ * and text in the groups written around it (`min((1px + 2px), 3px)`; {@link mathText}).
  */
 function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments, authored?: readonly ArgumentKeyword[]): Value {
   return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(written?.args ?? args, modes, written?.keywords ?? authored, isMathFunctionName(name))})`));
