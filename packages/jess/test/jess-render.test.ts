@@ -265,9 +265,13 @@ describe('Jess parser plugin render-through', () => {
       expect(await nested('.block { &__el { color: red; } }'))
         .toBe('.block {\n  &__el {\n    color: red;\n  }\n}\n');
 
-      // The `&(X)` spelling normalizes to the fused form it is sugar for.
+      /*
+       * The `&(X)` spelling normalizes to the fused form it is sugar for; `&-1` written
+       * nested would be no selector (`-1` is no identifier), so it is written flattened
+       * (ledger O17).
+       */
       expect(await nested('.button { &(-1) { color: red; } }'))
-        .toBe('.button {\n  &-1 {\n    color: red;\n  }\n}\n');
+        .toBe('.button-1 {\n  color: red;\n}\n');
 
       // A `${…}` template still evaluates; only the parent reference is deferred.
       expect(await nested('$t: primary; .a { &-${t} { color: red; } }'))

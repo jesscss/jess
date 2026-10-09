@@ -74,7 +74,7 @@ b {
   &-suffix {
     color: green;
   }
-  &-1 {
-    color: teal;
-  }
+}
+.block-1 {
+  color: teal;
 }

@@ -454,7 +454,16 @@ function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch
   const token = parentToken(parentBranches);
   let units: Branch[] | undefined;
   const out: Branch[] = [];
-  for (const c of childBranches) {
+  for (const raw of childBranches) {
+    const c = withNamesJoined(raw);
+
+    /* A name a `&` builds is built on each parent, as the serializer distributes it ({@link buildsName}). */
+    if (parentBranches.length > 1 && buildsName(c)) {
+      for (const p of parentBranches) {
+        out.push(composeOne(cloneBranch(p), c));
+      }
+      continue;
+    }
     if (parentBranches.length > 1 && keepsPseudoElementLast(c)) {
       units ??= parentUnits(parentBranches, token);
       for (const unit of units) {
@@ -465,6 +474,69 @@ function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch
     out.push(composeOne(token, c));
   }
   return out;
+}
+
+/** Whether a text simple opens with an identifier code point, so glued after a `&` it continues the name the `&` builds. */
+function continuesName(s: Simple | undefined): boolean {
+  if (s === undefined || s.t !== 'text' || s.text.length === 0) {
+    return false;
+  }
+  const c = s.text.charCodeAt(0);
+  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
+}
+
+/**
+ * `b` with a lone `&` and the name continuation glued after it as one token, the way the
+ * Less and `.jess` grammars read `&__el` (`.scss` reads it as `&` then `__el`), so the
+ * name is built as one simple (`.a__el`) that sibling compaction never splits into
+ * `:is(.a, .b)__el`, no selector. `b` itself when it holds none, allocating nothing.
+ */
+function withNamesJoined(b: Branch): Branch {
+  let segments: SelectorPart[] | null = null;
+  for (let k = 0; k < b.segments.length; k++) {
+    const value = b.segments[k]!.compound.value;
+    for (let i = 0; i + 1 < value.length; i++) {
+      const s = value[i]!;
+      if (s.t === 'text' && s.text === '&' && continuesName(value[i + 1])) {
+        segments ??= b.segments.slice();
+        const joined = value.slice();
+        joined.splice(i, 2, textSimple('&' + simpleText(value[i + 1]!)));
+        segments[k] = { combinator: b.segments[k]!.combinator, compound: { value: joined } };
+        break;
+      }
+    }
+  }
+  if (segments === null) {
+    return b;
+  }
+  const out = mkBranch(segments);
+  if (b.bnd) {
+    out.bnd = b.bnd;
+  }
+  if (b.hidden) {
+    out.hidden = true;
+  }
+  if (b.ext) {
+    out.ext = true;
+  }
+  return out;
+}
+
+/**
+ * Whether a child branch builds a name on its parent: a `&`-led token with text after
+ * its `&` (`&__el`, `&-m`; {@link withNamesJoined}). Built on a parent list as one
+ * `:is()`, it would be no selector (`:is(.a, .b)__el`), so it is built on each parent,
+ * as the serializer distributes it.
+ */
+function buildsName(b: Branch): boolean {
+  for (const seg of b.segments) {
+    for (const s of seg.compound.value) {
+      if (s.t === 'text' && s.text.length > 1 && s.text.charCodeAt(0) === 0x26 /* & */ && s.text.indexOf('&', 1) === -1) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

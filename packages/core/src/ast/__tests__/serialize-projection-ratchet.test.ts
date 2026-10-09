@@ -482,7 +482,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // the planner reads, never into the parsed document (`plannedSelectorList`,
     // `resolvedSelectorBranchOf`), one map of them per render (+2 `new Map`, the
     // render and the static-import preparation).
-    expect(occurrences(/^function |^async function /gmu)).toBe(594);
+    // +3 functions (owner 2026-07-23/24: a `&` glued to a name continuation is Less
+    // name concatenation; ledger O17): a name nested output could not write as a
+    // selector is written flattened (`selectorBuildsInvalidNestedName`,
+    // `startsIdentifier`), and a `.scss` `&` + `__el` distributes over a parent
+    // list (`continuesName`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(597);
     expect(occurrences(/new Map/gu)).toBe(94);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);

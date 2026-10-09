@@ -75,6 +75,11 @@ describe('a `&` is a plain reference to a parent of several compounds', () => {
     expect(headers('.a span { K }', 'div&')).toEqual({ own: 'div:is(.a span)', extended: 'div:is(.a span)' });
   });
 
+  it('keeps every parent but the first one a unit after a combinator (ruling-conformance audit)', () => {
+    expect(headers('.p .q .r { K }', '& + &.s')).toEqual({ own: '.p .q .r + :is(.p .q .r).s', extended: '.p .q .r + :is(.p .q .r).s' });
+    expect(headers('.a .b { K }', '.c &')).toEqual({ own: '.c :is(.a .b)', extended: '.c :is(.a .b)' });
+  });
+
   it('writes a single-compound parent as before', () => {
     expect(headers('.a { K }', '.x&')).toEqual({ own: '.x.a', extended: '.x.a' });
     expect(headers('.a { K }', '.c &')).toEqual({ own: '.c .a', extended: '.c .a' });

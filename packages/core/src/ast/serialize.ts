@@ -9752,7 +9752,7 @@ function resolveCompoundAmp(
       ref = i;
     }
   }
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0, i === ref ? null : complex, frame, e));
+  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0 && !continuesName(cmp.value[1]), i === ref ? null : complex, frame, e));
   return combineAll(tokens, (lists) => {
     /* The simples before the first `&` hold none, so each is one variant: `before`. */
     let before = '';
@@ -9783,6 +9783,21 @@ function resolveCompoundAmp(
     }
     return out;
   });
+}
+
+/**
+ * Whether `sim`, glued after a `&`, continues a name the `&` builds: a plain token that
+ * opens with an identifier code point (`.scss` `&__el`, `&-m`, which its grammar reads
+ * as `&` then `__el`). Such a `&` is a name concatenation, so it distributes over a
+ * parent list (`.a, .b { &__el {} }` → `.a__el, .b__el`), never `:is(.a, .b)__el`,
+ * which is no selector.
+ */
+function continuesName(sim: SimpleToken | undefined): boolean {
+  if (sim?.type !== 'SimpleSelector' || sim.text === null || sim.text.length === 0) {
+    return false;
+  }
+  const c = sim.text.charCodeAt(0);
+  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
 }
 
 /**
@@ -15658,6 +15673,43 @@ function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
 }
 
 /**
+ * Whether a branch of `list` builds a name on its parent that is not a selector once
+ * written after a nesting `&`: a `&`-led token whose continuation is no identifier
+ * start (`&-1`, `&2`), as CSS Syntax 3 §4.3.9 defines one. `&-x` and `&__x` are
+ * identifiers there. Allocates nothing.
+ */
+function selectorBuildsInvalidNestedName(list: SelectorList): boolean {
+  for (const c of list.selectors) {
+    const parts = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value : null;
+    for (let k = 0; k < (parts === null ? 1 : parts.length); k++) {
+      const part = parts === null ? c : parts[k]!;
+      if (typeof part === 'string') {
+        continue;
+      }
+      const n = part.type === 'CompoundSelector' ? part.value.length : 1;
+      for (let i = 0; i < n; i++) {
+        const sim = part.type === 'CompoundSelector' ? part.value[i]! : part;
+        const text = sim.type === 'SimpleSelector' ? sim.text : null;
+        if (text !== null && text.length > 1 && text.charCodeAt(0) === 0x26 /* & */ && !startsIdentifier(text, 1)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/** Whether `text` from `at` starts an identifier (CSS Syntax 3 §4.3.9): a name-start code point, or `-` then one or `-`. */
+function startsIdentifier(text: string, at: number): boolean {
+  const c = text.charCodeAt(at);
+  if (c === 0x2D /* - */) {
+    const d = text.charCodeAt(at + 1);
+    return d === 0x2D || d === 0x5C /* \ */ || d === 0x5F /* _ */ || d >= 0x80 || ((d | 32) >= 0x61 && (d | 32) <= 0x7A);
+  }
+  return c === 0x5C || c === 0x5F || c >= 0x80 || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
+}
+
+/**
  * Evaluate shared ruleset gates and placement, then call the selected writer.
  * The optional nested arguments are existing writer state; their presence chooses
  * the projection without consulting the output setting during evaluation.
@@ -15678,6 +15730,17 @@ function expandRule(
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
       nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource, split: null });
+      return;
+    }
+
+    /*
+     * A name a `&` builds that is no CSS selector written as nested (`&-1`: `-1` is not
+     * an identifier, so `.col { &-1 {} }` would be dropped) is written flattened at the
+     * top, `.col-1`, its at-rules around it (ledger O17: output is never made more
+     * invalid; the name concatenation is Less's, not CSS nesting).
+     */
+    if (nestedSource !== null && selectorBuildsInvalidNestedName(rule.selector)) {
+      nestedHoist.push({ rule, frame, bubble: HOIST_TO_ROOT, wrappers: null, source: nestedSource, split: null });
       return;
     }
   }
