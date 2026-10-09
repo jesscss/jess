@@ -23,19 +23,6 @@ describe('region-comment folding', () => {
   });
 });
 
-describe('range formatting', () => {
-  it('formats only the top-level rules the range intersects', () => {
-    const { engine, doc } = engineWith('css', '.a{color:red}\n.b{color:blue}\n.c{x:1}');
-    const range = { start: doc.positionAt(0), end: doc.positionAt(13) }; // just `.a{...}`
-    const edits = engine.formatRange(doc.uri, range);
-    expect(edits).toHaveLength(1);
-    expect(edits[0]!.newText).toBe('.a {\n  color: red;\n}');
-
-    // Untouched rules stay outside the replaced span.
-    expect(edits[0]!.range.end.line).toBe(0);
-  });
-});
-
 describe('setDataProviders (custom CSS data)', () => {
   it('custom property name completes and hovers', () => {
     const { engine, doc } = engineWith('css', '.a { -my- }');

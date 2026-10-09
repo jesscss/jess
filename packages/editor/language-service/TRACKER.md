@@ -31,11 +31,9 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 
 ### Phase 4 — Remaining editor features
 - [x] Document links (imports/urls/module resolution) with proper file resolution via `@jesscss/style-resolver`.
-- [x] Code actions (quick-fixes: create variable, create mixin for undefined references).
 - [x] Colors (color picker support) - supports hex, rgb/rgba, hsl/hsla, hwb, lab, lch, oklab, oklch, and color keywords.
 - [x] Folding ranges (structural blocks: rulesets, at-rules, mixins, functions).
 - [x] Selection ranges (nested AST spans for smart selection).
-- [x] Formatting (uses core AST `toTrimmedString` for consistent indentation).
 - [x] Semantic tokens (parser-driven highlighting with AST-based variable reference detection).
 - [x] Dynamic diagnostic severity: undefined variables are errors when `@use` (SCSS) or `@from`/`@compose` (Less) present, warnings otherwise.
 - [ ] Math-function argument-type validity (`min()`/`max()`/`clamp()`): CSS Values 4

@@ -131,6 +131,19 @@ describe('Parseman document sync — equivalence oracle', () => {
     });
   }
 
+  it('change() with unchanged text does no work (the server reports it on every open)', () => {
+    const engine = createEngine();
+    const uri = uriFor('css');
+    const text = 'a { color: red; }\n';
+    engine.open(uri, 'css', 1, text);
+    const tree = engine._debugState(uri).cstTree;
+
+    engine.change(uri, 1, text);
+    const state = engine._debugState(uri);
+    expect(state.cstTree).toBe(tree);
+    expect(state.editApplied + state.fullRebuild).toBe(0);
+  });
+
   it('multi-range edit() batches fall back to a correct full rebuild', () => {
     const engine = createEngine();
     const uri = uriFor('scss');

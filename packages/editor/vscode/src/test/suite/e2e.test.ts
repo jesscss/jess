@@ -134,23 +134,6 @@ suite('Jess extension E2E', () => {
     assert.ok(mainEntry![1].some(te => te.newText.includes('brand')), 'rename edits should introduce `brand`');
   });
 
-  test('code actions round-trip (undefined variable quick fix)', async () => {
-    const doc = await openFixture('undefined.less');
-
-    // Wait for the server to publish the undefined-variable diagnostic.
-    const diags = await waitFor(
-      () => vscode.languages.getDiagnostics(doc.uri),
-      d => d.length > 0
-    );
-    assert.ok(diags.length > 0, 'expected at least one diagnostic on undefined.less');
-    const range = diags[0]!.range;
-    const actions = await waitFor(
-      () => vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>('vscode.executeCodeActionProvider', doc.uri, range),
-      a => Array.isArray(a) && a.length > 0
-    );
-    assert.ok(Array.isArray(actions) && actions.length > 0, 'expected at least one code action');
-  });
-
   test('folding ranges round-trip (multi-line rulesets)', async () => {
     const doc = await openFixture('main.less');
     const folds = await waitFor(
@@ -223,27 +206,5 @@ suite('Jess extension E2E', () => {
       h => Array.isArray(h) && h.length >= 2
     );
     assert.ok(Array.isArray(highlights) && highlights.length >= 2, `expected >=2 highlights of @primary, got ${Array.isArray(highlights) ? highlights.length : 'none'}`);
-  });
-
-  test('range formatting round-trip (formats only the selected rule)', async () => {
-    const doc = await openFixture('unformatted.css');
-    const text = doc.getText();
-
-    // Select just the first rule `.a{color:red}` (line 0).
-    const range = new vscode.Range(doc.positionAt(0), doc.positionAt(text.indexOf('\n')));
-    const edits = await waitFor(
-      () => vscode.commands.executeCommand<vscode.TextEdit[]>('vscode.executeFormatRangeProvider', doc.uri, range, { insertSpaces: true, tabSize: 2 }),
-      e => Array.isArray(e) && e.length > 0
-    );
-    assert.ok(Array.isArray(edits) && edits.length > 0, 'expected range-format edits');
-
-    // VS Code returns minimal diffs — apply them to check the formatted result.
-    const sorted = [...edits].sort((a, b) => doc.offsetAt(b.range.start) - doc.offsetAt(a.range.start));
-    let out = text;
-    for (const e of sorted) {
-      out = out.slice(0, doc.offsetAt(e.range.start)) + e.newText + out.slice(doc.offsetAt(e.range.end));
-    }
-    assert.ok(out.startsWith('.a {\n  color: red;\n}'), `selected rule should reformat, got: ${JSON.stringify(out)}`);
-    assert.ok(out.includes('.b{color:blue}'), `the unselected rule must stay untouched, got: ${JSON.stringify(out)}`);
   });
 });

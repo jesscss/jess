@@ -5,10 +5,10 @@ import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
 import { parseJessDoc } from '@jesscss/jess-parser/cst';
 import { createEngine } from '../engine.js';
-import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from '../cst-syntactic.js';
+import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols, SEMANTIC_TOKEN_TYPES } from '../cst-syntactic.js';
 
 // Decode the LSP delta-encoded semantic-token array into absolute tokens.
-function decode(data: number[], types: string[]): Array<{ line: number; char: number; length: number; type: string }> {
+function decode(data: number[]): Array<{ line: number; char: number; length: number; type: string }> {
   const out: Array<{ line: number; char: number; length: number; type: string }> = [];
   let line = 0;
   let char = 0;
@@ -21,12 +21,10 @@ function decode(data: number[], types: string[]): Array<{ line: number; char: nu
       line += dl;
       char = dc;
     }
-    out.push({ line, char, length: data[i + 2]!, type: types[data[i + 3]!] ?? 'unknown' });
+    out.push({ line, char, length: data[i + 2]!, type: SEMANTIC_TOKEN_TYPES[data[i + 3]!] ?? 'unknown' });
   }
   return out;
 }
-
-const TYPES = ['comment', 'string', 'keyword', 'enumMember', 'number', 'operator', 'function', 'variable', 'property', 'type', 'class', 'namespace'];
 
 function lessDoc(content: string): TextDocument {
   return TextDocument.create('file:///t.less', 'less', 1, content);
@@ -39,20 +37,20 @@ describe('cst-syntactic pure functions', () => {
   describe('cstSemanticTokens', () => {
     it('classifies the @import keyword as a namespace token', () => {
       const doc = lessDoc('@import "a.less";');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'));
       expect(tokens.some(t => t.type === 'namespace' && t.char === 0 && t.length === '@import'.length)).toBe(true);
     });
 
     it('splits an interpolated string into string + variable pieces', () => {
       const doc = lessDoc('@import "a-@{theme}-b.less";');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'));
       expect(tokens.filter(t => t.type === 'string').length).toBeGreaterThanOrEqual(3);
       expect(tokens.filter(t => t.type === 'variable').length).toBeGreaterThanOrEqual(1);
     });
 
     it('emits comment tokens (trivia recovered from source)', () => {
       const doc = lessDoc('/* header */\n.a { color: red; }');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'));
       expect(tokens.some(t => t.type === 'comment' && t.line === 0)).toBe(true);
     });
 
@@ -63,7 +61,7 @@ describe('cst-syntactic pure functions', () => {
        * file that contains no at-rule.
        */
       const doc = lessDoc('@primary: red;\n.a { color: @primary; }');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'));
       expect(tokens.filter(t => t.type === 'namespace')).toHaveLength(0);
 
       // The declaration name IS a variable, and the reference IS a variable.
@@ -72,7 +70,7 @@ describe('cst-syntactic pure functions', () => {
 
     it('BUG 3: a genuine @import keyword is still a namespace token (allow-list)', () => {
       const doc = lessDoc('@primary: red;\n@import "a.less";');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'));
 
       // Exactly one namespace token — the `@import`, not the `@primary`.
       const ns = tokens.filter(t => t.type === 'namespace');
@@ -83,7 +81,7 @@ describe('cst-syntactic pure functions', () => {
 
     it('BUG 1: SCSS @mixin/@include get a namespace keyword + a function name token', () => {
       const doc = scssDoc('@mixin foo($a) { color: $a; }\n.x { @include foo(red); }');
-      const tokens = decode(cstSemanticTokens(parseScssDoc(doc.getText()).tree, doc, 'scss'), TYPES);
+      const tokens = decode(cstSemanticTokens(parseScssDoc(doc.getText()).tree, doc, 'scss'));
 
       // `@mixin` and `@include` keywords → namespace.
       expect(tokens.filter(t => t.type === 'namespace').length).toBeGreaterThanOrEqual(2);
@@ -142,7 +140,7 @@ describe('engine syntactic features are CST-grounded (tolerance)', () => {
     // Missing closing brace: an invalid document mid-edit.
     engine.open(uri, 'less', 1, '@primary: red;\n.a { color: @primary');
     const { data } = engine.getSemanticTokens(uri);
-    const tokens = decode(data, TYPES);
+    const tokens = decode(data);
     expect(tokens.some(t => t.type === 'variable')).toBe(true);
   });
 
@@ -162,6 +160,6 @@ describe('engine syntactic features are CST-grounded (tolerance)', () => {
     // Delete the trailing ` }` so the block is now unclosed.
     engine.change(uri, 2, '@primary: red;\n.a { color: @primary;');
     const { data } = engine.getSemanticTokens(uri);
-    expect(decode(data, TYPES).some(t => t.type === 'variable')).toBe(true);
+    expect(decode(data).some(t => t.type === 'variable')).toBe(true);
   });
 });

@@ -6,11 +6,7 @@ import {
   InitializeResult,
   TextDocumentSyncKind,
   TextDocumentChangeEvent,
-  SemanticTokensLegend,
-  type CodeActionParams,
   type DocumentLinkParams,
-  type DocumentFormattingParams,
-  type DocumentRangeFormattingParams,
   type FoldingRangeParams,
   type SelectionRangeParams,
   type CompletionParams,
@@ -27,30 +23,11 @@ import {
 } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from './engine.js';
+import { SEMANTIC_TOKEN_TYPES } from './cst-syntactic.js';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 const engine = createEngine();
-let clientSettings: unknown = {};
-
-const semanticTokensLegend: SemanticTokensLegend = {
-  tokenTypes: [
-    // Use common token types most themes color strongly.
-    'comment',
-    'string',
-    'keyword',
-    'enumMember',
-    'number',
-    'operator',
-    'function',
-    'variable',
-    'property',
-    'type',
-    'class',
-    'namespace'
-  ],
-  tokenModifiers: ['declaration']
-};
 
 connection.onInitialize((_params: InitializeParams): InitializeResult => {
   const result: InitializeResult = {
@@ -60,10 +37,11 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         /*
          * Sigils/openers that begin a completion context: variables (@ $ -),
          * selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
-         * placeholder (\\), value/function/var()/url() ((), path segments (/),
-         * scss interpolation (#{) and jess interpolation (${ / $[).
+         * placeholder (\\), value/function/var()/url() ((), path segments (/).
+         * Not `{`, `;`, `[` or space: after those the list would open on every
+         * new block or declaration, and Enter would accept an entry from it.
          */
-        triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ', '.', '#', '%', '\\', '(', '/', '[']
+        triggerCharacters: ['@', '-', '$', ':', '.', '#', '%', '\\', '(', '/']
       },
       hoverProvider: true,
       definitionProvider: true,
@@ -72,7 +50,6 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       documentSymbolProvider: true,
       foldingRangeProvider: true,
       selectionRangeProvider: true,
-      codeActionProvider: true,
       renameProvider: {
         /*
          * Advertise prepare support so the client asks the server for the exact
@@ -80,13 +57,11 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
          */
         prepareProvider: true
       },
-      documentFormattingProvider: true,
-      documentRangeFormattingProvider: true,
       documentLinkProvider: {
         resolveProvider: false
       },
       semanticTokensProvider: {
-        legend: semanticTokensLegend,
+        legend: { tokenTypes: [...SEMANTIC_TOKEN_TYPES], tokenModifiers: [] },
 
         /*
          * Be explicit: VS Code has historically been stricter about the object form
@@ -101,8 +76,9 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
 });
 
 connection.onDidChangeConfiguration((change) => {
-  clientSettings = change.settings;
-  engine.configure(clientSettings);
+  // The client synchronizes the `jess` section, which arrives under its name.
+  const settings: unknown = change.settings;
+  engine.configure(settings && typeof settings === 'object' && 'jess' in settings ? settings.jess : undefined);
 
   // Re-publish diagnostics under new severity settings.
   for (const doc of documents.all()) {
@@ -112,16 +88,16 @@ connection.onDidChangeConfiguration((change) => {
 
 documents.onDidOpen((e: TextDocumentChangeEvent<TextDocument>) => {
   engine.open(e.document.uri, e.document.languageId, e.document.version, e.document.getText());
-  engine.configure(clientSettings);
-  connection.sendDiagnostics({ uri: e.document.uri, diagnostics: engine.getDiagnostics(e.document.uri) });
 });
 
 documents.onDidChangeContent((e: TextDocumentChangeEvent<TextDocument>) => {
   /*
-   * The `TextDocuments` manager delivers already-merged full text (not the raw
-   * LSP change ranges), so `engine.change` recovers the minimal contiguous edit
-   * and drives Parseman `ParseDoc.edit()` under the hood — incremental sync of
-   * the CST, with the Jess analysis re-derived lazily on the next query.
+   * Also fires right after `onDidOpen` (with unchanged text), so this is the one
+   * place diagnostics are published. The `TextDocuments` manager delivers
+   * already-merged full text (not the raw LSP change ranges), so `engine.change`
+   * recovers the minimal contiguous edit and drives Parseman `ParseDoc.edit()`
+   * under the hood — incremental sync of the CST, with the Jess analysis
+   * re-derived lazily on the next query.
    */
   engine.change(e.document.uri, e.document.version, e.document.getText());
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: engine.getDiagnostics(e.document.uri) });
@@ -164,24 +140,12 @@ connection.onSelectionRanges((params: SelectionRangeParams) => {
   return engine.getSelectionRanges(params.textDocument.uri, params.positions);
 });
 
-connection.onCodeAction((params: CodeActionParams) => {
-  return engine.getCodeActions(params.textDocument.uri, params.range, params.context);
-});
-
 connection.onPrepareRename((params: PrepareRenameParams) => {
   return engine.prepareRename(params.textDocument.uri, params.position);
 });
 
 connection.onRenameRequest((params: RenameParams) => {
   return engine.rename(params.textDocument.uri, params.position, params.newName);
-});
-
-connection.onDocumentFormatting((params: DocumentFormattingParams) => {
-  return engine.formatDocument(params.textDocument.uri);
-});
-
-connection.onDocumentRangeFormatting((params: DocumentRangeFormattingParams) => {
-  return engine.formatRange(params.textDocument.uri, params.range);
 });
 
 connection.onDocumentLinks((params: DocumentLinkParams) => {

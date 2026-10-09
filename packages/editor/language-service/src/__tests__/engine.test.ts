@@ -11,6 +11,7 @@ import {
 } from 'vscode-languageserver-types';
 import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
+import { SEMANTIC_TOKEN_TYPES } from '../cst-syntactic.js';
 
 function createDocument(languageId: string, content: string): TextDocument {
   return TextDocument.create(`file:///test.${languageId}`, languageId, 1, content);
@@ -1948,7 +1949,7 @@ describe('JessLanguageServiceEngine', () => {
      * Helper to decode semantic tokens data array
      * Format: [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
      */
-    function decodeSemanticTokens(data: number[], types: string[], modifiers: string[]): Array<{
+    function decodeSemanticTokens(data: number[]): Array<{
       line: number;
       char: number;
       length: number;
@@ -1973,7 +1974,7 @@ describe('JessLanguageServiceEngine', () => {
           currentChar = deltaStartChar;
         }
 
-        const type = types[typeIdx] || 'unknown';
+        const type = SEMANTIC_TOKEN_TYPES[typeIdx] ?? 'unknown';
         tokens.push({
           line: currentLine,
           char: currentChar,
@@ -1995,10 +1996,7 @@ describe('JessLanguageServiceEngine', () => {
       expect(semanticTokens).toBeDefined();
       expect(semanticTokens.data).toBeDefined();
 
-      // Decode tokens
-      const types = ['comment', 'string', 'keyword', 'enumMember', 'number', 'operator', 'function', 'variable', 'property', 'type', 'class', 'namespace'];
-      const modifiers: string[] = []; // No modifiers in legend for now
-      const tokens = decodeSemanticTokens(semanticTokens.data, types, modifiers);
+      const tokens = decodeSemanticTokens(semanticTokens.data);
 
       // Find tokens on line 0 (the import line)
       const line0Tokens = tokens.filter(t => t.line === 0);
@@ -2151,16 +2149,6 @@ describe('JessLanguageServiceEngine', () => {
     });
   });
 
-  describe('code actions', () => {
-    it('does not offer missing-symbol quick fixes without evaluator-backed diagnostics', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', 'a { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const actions = engine.getCodeActions(doc.uri, Position.create(0, 10), { diagnostics: [] });
-      expect(actions).toEqual([]);
-    });
-  });
-
   describe('rename', () => {
     let tempDir = '';
     afterEach(() => {
@@ -2286,21 +2274,6 @@ describe('JessLanguageServiceEngine', () => {
       expect(edit).not.toBeNull();
       expect((edit?.changes?.[varsUri] ?? []).length).toBe(1);
       expect((edit?.changes?.[mainUri] ?? []).length).toBe(2);
-    });
-  });
-
-  describe('formatting', () => {
-    it('formats a simple CSS snippet deterministically', () => {
-      const engine = createEngine();
-      const doc = createDocument('css', 'a{color:red;}');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-
-      const edits1 = engine.formatDocument(doc.uri);
-      const edits2 = engine.formatDocument(doc.uri);
-
-      expect(edits1).toEqual(edits2);
-      expect(edits1.length).toBeGreaterThan(0);
-      expect(edits1[0]!.newText).toContain('color');
     });
   });
 
