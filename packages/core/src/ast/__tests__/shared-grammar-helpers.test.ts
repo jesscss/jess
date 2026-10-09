@@ -23,11 +23,12 @@ describe('shared dialect grammar helpers', () => {
 
   it('checks guard operands and value-slot leaves with the caller\'s value predicate', () => {
     const truth = { g: 'truth', value: keyword('a'), parens: 0 };
-    expect(isGuardNodeOf({ g: 'not', inner: truth, parens: 0 }, isOperand)).toBe(true);
+    expect(isGuardNodeOf({ g: 'not', inner: truth, word: 'not', parens: 0 }, isOperand)).toBe(true);
     expect(isGuardNodeOf({ g: 'truth', value: dimension(1, 'px'), parens: 0 }, isOperand)).toBe(false);
 
     /* The written-as-authored facts (ledger J20) are part of every guard's shape. */
-    expect(isGuardNodeOf({ g: 'not', inner: { g: 'truth', value: keyword('a') }, parens: 0 }, isOperand)).toBe(false);
+    expect(isGuardNodeOf({ g: 'not', inner: { g: 'truth', value: keyword('a') }, word: 'not', parens: 0 }, isOperand)).toBe(false);
+    expect(isGuardNodeOf({ g: 'not', inner: truth, parens: 0 }, isOperand)).toBe(false);
     expect(isGuardNodeOf({ g: 'cmp', op: '=', left: keyword('a'), right: keyword('b'), parens: 0 }, isOperand)).toBe(false);
     expect(isValueSlotOf([keyword('a'), [keyword('b')]], isOperand)).toBe(true);
     expect(isValueSlotOf([keyword('a'), [dimension(1, 'px')]], isOperand)).toBe(false);

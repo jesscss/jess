@@ -95,6 +95,7 @@ import {
   isSimpleSelector,
   isLessSimpleToken,
   isStatement,
+  isLessKeyword,
   isLessTerminalText,
   isUrl,
   isValueNode,
@@ -3258,7 +3259,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MixinGuardTerm = node(
     'MixinGuardTerm',
     sequence(
-      optional(lessWord('not')),
+      optional(lessCaseWord('not')),
       choice(
         sequence(literal('('), g.MixinGuardOr, literal(')'), mixinGuardGroupTail),
         sequence(not(literal('(')), g.MixinGuardOperand, optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))
@@ -3268,24 +3269,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinGuardAnd = node(
     'MixinGuardAnd',
-    sequence(g.MixinGuardTerm, many(sequence(lessWord('and'), g.MixinGuardTerm))),
+    sequence(g.MixinGuardTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTerm))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('and', children, state)
   );
   const MixinGuardOr = node(
     'MixinGuardOr',
-    sequence(g.MixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardAnd))),
+    sequence(g.MixinGuardAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardAnd))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('or', children, state)
   );
   const unparenthesizedMixinGuard = node(
     'UnparenthesizedMixinGuard',
     choice(
       sequence(
-        optional(lessWord('not')),
+        optional(lessCaseWord('not')),
         choice(mixinGuardDefaultOperand, g.Call),
         optional(sequence(mixinGuardOperator, g.MixinGuardOperand))
       ),
       sequence(
-        optional(lessWord('not')),
+        optional(lessCaseWord('not')),
         g.MixinGuardOperand,
         mixinGuardOperator,
         g.MixinGuardOperand
@@ -3302,24 +3303,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // otherwise read every `(` as a math group first, fail at the comparison,
     // and leave the group to be read again.
     choice(
-      sequence(optional(lessWord('not')), literal('('), g.MixinGuardOr, literal(')')),
+      sequence(optional(lessCaseWord('not')), literal('('), g.MixinGuardOr, literal(')')),
       unparenthesizedMixinGuard,
-      sequence(lessWord('not'), g.MixinGuardTerm)
+      sequence(lessCaseWord('not'), g.MixinGuardTerm)
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state): MixinGuard => {
       const term = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
       const guard = children.some(child => isLessTerminalText(child, '(')) ? inParens(term) : term;
-      return children.some(child => isLessTerminalText(child, 'not')) ? { g: 'not', inner: guard, parens: 0 } : guard;
+      const not = children.find(child => isLessKeyword(child, 'not'));
+      return not === undefined ? guard : { g: 'not', inner: guard, word: requireTerminalText(not), parens: 0 };
     }
   );
   const MixinGuardTopAnd = node(
     'MixinGuardTopAnd',
-    sequence(g.MixinGuardTopTerm, many(sequence(lessWord('and'), g.MixinGuardTopTerm))),
+    sequence(g.MixinGuardTopTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTopTerm))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, state), state)
   );
   const MixinGuardTopOr = node(
     'MixinGuardTopOr',
-    sequence(g.MixinGuardTopAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardTopAnd))),
+    sequence(g.MixinGuardTopAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardTopAnd))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, state), state)
   );
   const MixinGuard = node(

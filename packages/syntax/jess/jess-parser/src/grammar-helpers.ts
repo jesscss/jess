@@ -724,14 +724,14 @@ function reduceGuardCompare(children: readonly unknown[]): GuardNode {
 function reduceGuardAnd(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'and', left: result, right: requireGuardNode(children[index]), parens: 0 };
+    result = { g: 'and', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
   }
   return result;
 }
 function reduceGuardOr(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'or', left: result, right: requireGuardNode(children[index]), parens: 0 };
+    result = { g: 'or', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
   }
   return result;
 }

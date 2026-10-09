@@ -44,21 +44,24 @@ import { isTruthy } from './value-truth.js';
  * position it was written in (§12.0 — lower to the `.jess` you want, then read
  * off the node). Nothing at eval time inspects context or a mode to choose.
  *
- * Two facts the parser records so a written condition is written as authored
- * (ledger J20). Evaluation never reads them, and every instance carries them,
- * so each kind keeps one hidden class:
+ * The facts the parser records so a written condition is written as authored
+ * (ledger J20). Evaluation never reads them, and every instance of a kind
+ * carries them, so each kind keeps one hidden class:
  *
  *  - `parens` — how many paren groups the author wrote around exactly this
  *    condition: `((1 = 1) or 2)` gives the `or` none and its `cmp` one.
  *  - `implied` — the comparison is a dialect's lowering of a bare operand
  *    (Less's `== true`, §4.4.2), not one the author wrote.
+ *  - `word` — the `and` / `or` / `not` keyword as the author spelled it
+ *    (`AND`; a keyword is ASCII case-insensitive, CSS Values 4 §6.1), or the
+ *    keyword itself where a dialect lowers another spelling to it (Sass `!=`).
  */
 export type GuardNode =
   | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
   | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
-  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode; readonly parens: number }
-  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode; readonly parens: number }
-  | { readonly g: 'not'; readonly inner: GuardNode; readonly parens: number }
+  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly parens: number }
+  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly parens: number }
+  | { readonly g: 'not'; readonly inner: GuardNode; readonly word: string; readonly parens: number }
   | { readonly g: 'truth'; readonly value: ValueSlot; readonly parens: number }
   | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[]; readonly parens: number }
   | { readonly g: 'default'; readonly parens: number };

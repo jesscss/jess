@@ -280,6 +280,26 @@ function isLessTerminalText(value: unknown, text: string): boolean {
     || (typeof value === 'object' && value !== null && !('type' in value) && 'value' in value && value.value === text);
 }
 
+/** The text of a raw grammar terminal ({@link isLessTerminalText}), or `null` for anything else. */
+function lessTerminalText(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return typeof value === 'object' && value !== null && !('type' in value) && 'value' in value && typeof value.value === 'string'
+    ? value.value
+    : null;
+}
+
+/**
+ * A terminal spelling the lowercase keyword `word` in any ASCII case: `and`,
+ * `or` and `not` are keywords wherever a Less condition is written, and a CSS
+ * keyword is ASCII case-insensitive (CSS Values 4 §6.1).
+ */
+function isLessKeyword(value: unknown, word: string): boolean {
+  const text = lessTerminalText(value);
+  return text !== null && text.length === word.length && text.toLowerCase() === word;
+}
+
 function requireField(fields: FieldMap | undefined, name: string): FieldCapture {
   const field = fields?.[name];
   if (field === undefined || Array.isArray(field)) {
@@ -1315,14 +1335,14 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), parens: 0 }),
+      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, parens: 0 }),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
       return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
-      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), parens: 0 }) : call;
+      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, parens: 0 }) : call;
     case 'and':
       return boundaryCondition(fold('and'));
     case 'or':
@@ -2055,7 +2075,7 @@ function mixinGuardTermFrom(
   rawChildren: readonly unknown[],
   state: unknown
 ): MixinGuard | LessGuardOperand {
-  const negated = isLessTerminalText(children[0], 'not');
+  const negated = isLessKeyword(children[0], 'not');
   let index = negated ? 1 : 0;
   let left: ValueNode | LessMathRun;
   let term: MixinGuard | LessGuardOperand | undefined;
@@ -2072,7 +2092,7 @@ function mixinGuardTermFrom(
       term = isLessGuardOperand(inner)
         ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: inParens(requireGuardTerm(inner, state)) }
         : inParens(requireGuardTerm(inner, state));
-      return negated ? { g: 'not', inner: requireGuardTerm(term, state), parens: 0 } : term;
+      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
     }
     const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
     left = operand.run;
@@ -2103,7 +2123,7 @@ function mixinGuardTermFrom(
       parens: 0
     };
   }
-  return negated ? { g: 'not', inner: requireGuardTerm(term, state), parens: 0 } : term;
+  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
 }
 
 /** One `MathSum` reduction: an operand, or an unfolded run. */
@@ -2119,17 +2139,20 @@ function requireMathOperand(value: unknown): ValueNode | LessMathRun {
  * bare operand reaches an enclosing group still able to be read as a value.
  */
 function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
-  const terms = children.filter(child => isMixinGuard(child) || isLessGuardOperand(child));
-  const head = terms[0];
-  if (head === undefined) {
+  let result: MixinGuard | LessGuardOperand | undefined;
+  let word: string = kind;
+  for (const child of children) {
+    if (isMixinGuard(child) || isLessGuardOperand(child)) {
+      result = result === undefined
+        ? child
+        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, parens: 0 };
+    } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
+      /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
+      word = requireTerminalText(child);
+    }
+  }
+  if (result === undefined) {
     throw new TypeError('Less grammar produced an empty logical guard.');
-  }
-  if (terms.length === 1) {
-    return head;
-  }
-  let result = requireGuardTerm(head, state);
-  for (let index = 1; index < terms.length; index++) {
-    result = { g: kind, left: result, right: requireGuardTerm(terms[index], state), parens: 0 };
   }
   return result;
 }
@@ -2225,6 +2248,7 @@ function functionConditionTermFrom(
   state: unknown
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
+  const notWord = negated ? requireTerminalText(children[0]) : '';
   let index = negated ? 1 : 0;
   let left = functionConditionOperandFact(children[index], state);
   const groupLed = left.grouped;
@@ -2245,7 +2269,7 @@ function functionConditionTermFrom(
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return { guard: { g: 'not', inner: left.guard, parens: 0 }, src: `not(${left.src})`, grouped, hasComparison: left.hasComparison };
+      return { guard: { g: 'not', inner: left.guard, word: notWord, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
     }
     return { ...left, grouped };
   }
@@ -2256,12 +2280,12 @@ function functionConditionTermFrom(
   const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
   const src = `${left.src} ${operator} ${right.src}`;
   return negated
-    ? { guard: { g: 'not', inner: guard, parens: 0 }, src: `not(${src})`, grouped: false, hasComparison: true }
+    ? { guard: { g: 'not', inner: guard, word: notWord, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
 }
 
 function isFunctionConditionNot(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && 'value' in value && value.value === 'not';
+  return isLessKeyword(value, 'not');
 }
 
 /** One `MathSum` reduction among other children. */
@@ -2324,8 +2348,8 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
   if (operands.length === 1 && !children.some(isParenNot)) {
     return withSourceSpan(block(lessMathInGroup(operands[0]!, state)), span);
   }
-  const ors: FunctionConditionFact[] = [];
-  let ands: FunctionConditionFact[] = [];
+  const ors: unknown[] = [];
+  let ands: unknown[] = [];
   let term: unknown[] = [];
   for (const child of children) {
     const logical = parenLogicalWord(child);
@@ -2336,8 +2360,10 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
     ands.push(parenConditionTermFrom(term, state));
     term = [];
     if (logical === 'or') {
-      ors.push(foldFunctionCondition('and', ands));
+      ors.push(foldFunctionCondition('and', ands), child);
       ands = [];
+    } else {
+      ands.push(child);
     }
   }
   ands.push(parenConditionTermFrom(term, state));
@@ -2346,24 +2372,42 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
   return withSourceSpan(block(condition(fact.guard, fact.src)), span);
 }
 
+/**
+ * Fold an `and` / `or` chain of condition facts, each joined by the keyword
+ * token before it, kept as the author spelled it (`AND`).
+ */
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
-  const facts = children.filter(isFunctionConditionFact);
-  const first = facts[0];
-  if (first === undefined) {
+  let first: FunctionConditionFact | undefined;
+  let guard: MixinGuard | undefined;
+  let src = '';
+  let hasComparison = false;
+  let word: string = kind;
+  for (const child of children) {
+    if (!isFunctionConditionFact(child)) {
+      const text = lessTerminalText(child);
+      if (text !== null) {
+        word = text.trim();
+      }
+      continue;
+    }
+    if (first === undefined || guard === undefined) {
+      first = child;
+      guard = child.guard;
+      src = child.src;
+      hasComparison = child.hasComparison;
+      continue;
+    }
+    guard = { g: kind, left: guard, right: child.guard, word, parens: 0 };
+    src += ` ${word} ${child.src}`;
+    hasComparison ||= child.hasComparison;
+  }
+  if (first === undefined || guard === undefined) {
     throw new TypeError('Less function condition lost its first term.');
   }
-  if (facts.length === 1) {
+  if (guard === first.guard) {
     return first.raw === undefined
-      ? { guard: first.guard, src: first.src, grouped: false, hasComparison: first.hasComparison }
-      : { guard: first.guard, src: first.src, grouped: false, hasComparison: first.hasComparison, raw: first.raw };
-  }
-  let guard = first.guard;
-  let src = first.src;
-  let hasComparison = first.hasComparison;
-  for (const right of facts.slice(1)) {
-    guard = { g: kind, left: guard, right: right.guard, parens: 0 };
-    src += ` ${kind} ${right.src}`;
-    hasComparison ||= right.hasComparison;
+      ? { guard, src, grouped: false, hasComparison }
+      : { guard, src, grouped: false, hasComparison, raw: first.raw };
   }
   return { guard, src, grouped: false, hasComparison };
 }
@@ -2798,6 +2842,7 @@ export {
   isLessSimpleToken,
   isStatement,
   isStyleImport,
+  isLessKeyword,
   isLessTerminalText,
   isUnsupportedVariableNameFact,
   isUrl,

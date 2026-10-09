@@ -532,8 +532,8 @@ export function scssTruth(value: ValueSlot): GuardNode {
  * falsy". Under §4.4.6 that is exactly jess's `not($x)`, so it is the truth node
  * under a `not` wrapper and cannot drift from the positive form.
  */
-export function scssNegation(value: ValueSlot): GuardNode {
-  return { g: 'not', inner: scssTruth(value), parens: 0 };
+export function scssNegation(value: ValueSlot, word: string): GuardNode {
+  return { g: 'not', inner: scssTruth(value), word, parens: 0 };
 }
 
 /**

@@ -142,6 +142,7 @@ describe('Mixin canonical AST emission', () => {
     const exact = mixin('.m', [{ pattern: dimension(1) }], [decl('case', dimension(1))]);
     const nonDefault = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], {
       g: 'not', inner: { g: 'default', parens: 0 },
+      word: 'not',
       parens: 0
     });
     const document = stylesheet([
@@ -206,6 +207,7 @@ describe('Mixin canonical AST emission', () => {
     });
     const unequal = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('order', keyword('unequal'))], {
       g: 'not', inner: { g: 'cmp', op: '=', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped'), implied: false, parens: 0 },
+      word: 'not',
       parens: 0
     });
     const document = stylesheet([
@@ -486,6 +488,7 @@ describe('Mixin canonical AST emission', () => {
       mixin('.generic', params, [decl('content', keyword('greater'))], { g: 'match', op: '>', left, right, implied: false, parens: 0 }),
       mixin('.generic', params, [decl('content', keyword('unequal'))], {
         g: 'not', inner: { g: 'match', op: '=', left, right, implied: false, parens: 0 },
+        word: 'not',
         parens: 0
       }),
       rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])

@@ -230,6 +230,47 @@ describe('Less logical / conditional functions', () => {
   });
 
   /*
+   * `and`, `or` and `not` are keywords, ASCII case-insensitive as every CSS
+   * keyword is (CSS Values 4 §6.1), in each position a Less condition is
+   * written — a value paren group, an `if()` / `boolean()` condition, a CSS
+   * colour call written as authored and a mixin guard — and a written
+   * condition spells them as the author did.
+   */
+  it('reads and, or and not in any case and writes them as authored', async () => {
+    const css = await render([
+      '@x: (NOT (1px > 2px)); @y: ((1px > 2px) AND (1 = 1)); @z: (1 Or 2);',
+      '.m(@a) when (@a > 1) AND (@a < 5) { x: in; }',
+      '.m(@a) when NOT (@a > 1) { x: low; }',
+      '.m(@a) when (@a = 9) OR (@a = 10) { x: nine; }',
+      '.y { a: @x; b: boolean(@x); c: @y; d: boolean(@y); e: @z; f: rgb(1 AND 2, 3, 4); g: rgb(NOT (1 = 1), 3, 4); h: boolean(NOT (1 > 2)); i: if((1 = 1) AND (2 = 2), yes, no); }',
+      '.a { .m(3); } .b { .m(0); } .c { .m(10); }'
+    ].join(' '));
+    expect(css).toBe([
+      '.y {',
+      '  a: (NOT (1px > 2px));',
+      '  b: true;',
+      '  c: ((1px > 2px) AND (1 = 1));',
+      '  d: false;',
+      '  e: (1 Or 2);',
+      '  f: rgb(1 AND 2, 3, 4);',
+      '  g: rgb(NOT (1 = 1), 3, 4);',
+      '  h: true;',
+      '  i: yes;',
+      '}',
+      '.a {',
+      '  x: in;',
+      '}',
+      '.b {',
+      '  x: low;',
+      '}',
+      '.c {',
+      '  x: nine;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  /*
    * The implied truth test is a field the parser sets on the comparison, not
    * the identity of a shared `true` node, so an AST parsed by one module
    * instance (the CJS build) and written by another (the ESM serializer)

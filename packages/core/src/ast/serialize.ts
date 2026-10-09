@@ -5424,7 +5424,8 @@ function writtenGroup(v: EvalValue): Value {
  * (the guard's `parens`), so `((1 = 2) and ((1 = 1) or (1 = 1)))` keeps the
  * grouping that gives it its meaning and `(3px > 2px and 3px < 5px)` is
  * written as css writes it; an implied truth test is written as its bare
- * operand (`implied`), so `(1 and 2)` stays `(1 and 2)` (ledger J20 —
+ * operand (`implied`), so `(1 and 2)` stays `(1 and 2)`; and `and`, `or` and
+ * `not` are spelled as the author spelled them (`word`) (ledger J20 —
  * orchestrator judgment under owner delegation 2026-10-09; SEMANTIC-INVARIANTS
  * 4). The operands are written in the condition, not reached, so a group the
  * author wrote around one keeps its parens however the condition is read, as a
@@ -5447,9 +5448,9 @@ function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx): Ma
     case 'and':
     case 'or':
       return combineAll([writtenCondition(guard.left, frame, e), writtenCondition(guard.right, frame, e)], ([left, right]) =>
-        written(`${left!} ${guard.g} ${right!}`));
+        written(`${left!} ${guard.word} ${right!}`));
     case 'not':
-      return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`not ${inner}`));
+      return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`${guard.word} ${inner}`));
     case 'truth':
       return mapMaybe(evalValueSlot(guard.value, frame, e), v => written(emitValueC(v, e)));
     case 'call':

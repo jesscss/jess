@@ -1112,7 +1112,7 @@ const scssFactory = (g: ScssInputRules) => {
          * (§4.5.2).
          */
         return expression(condition(
-          scssNegation(operand),
+          scssNegation(operand, sign),
           `not ${scssConditionSource(operand)}`
         ));
       }
@@ -1339,7 +1339,7 @@ const scssFactory = (g: ScssInputRules) => {
         parens: 0
       };
       return callArg(expression(condition(
-        operator === '!=' ? { g: 'not', inner: comparison, parens: 0 } : comparison,
+        operator === '!=' ? { g: 'not', inner: comparison, word: 'not', parens: 0 } : comparison,
         `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
       )));
     }
@@ -2787,7 +2787,7 @@ const scssFactory = (g: ScssInputRules) => {
         implied: false,
         parens: 0
       };
-      return operator === '!=' ? { g: 'not', inner: comparison, parens: 0 } : comparison;
+      return operator === '!=' ? { g: 'not', inner: comparison, word: 'not', parens: 0 } : comparison;
     }
   );
   const IfAtom = node<GuardNode>(
@@ -2834,9 +2834,8 @@ const scssFactory = (g: ScssInputRules) => {
       if (atom === undefined) {
         throw new TypeError('SCSS @if term lost its guard.');
       }
-      return children.some(child => isToken(child) && child.value.toLowerCase() === 'not')
-        ? { g: 'not', inner: atom, parens: 0 }
-        : atom;
+      const not = children.find(child => isToken(child) && child.value.toLowerCase() === 'not');
+      return not === undefined ? atom : { g: 'not', inner: atom, word: requireToken(not).value, parens: 0 };
     }
   );
   const IfAnd = node<GuardNode>(
@@ -2851,7 +2850,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), parens: 0 };
+        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
       }
       return guard;
     }
@@ -2868,7 +2867,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), parens: 0 };
+        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
       }
       return guard;
     }

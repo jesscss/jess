@@ -178,14 +178,20 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('reads the logical operators case-insensitively in every ladder, as SCSS does', () => {
+    /* A guard keeps the keyword as the author spelled it (ledger J20); that is its only difference. */
+    const anyCase = (tree: unknown): unknown => JSON.parse(JSON.stringify(bare(tree), (key, value: unknown) =>
+      key === 'word' && typeof value === 'string' ? value.toLowerCase() : value));
     for (const lower of [
       '$if ((($a=true) and not($b)) or false) { .c { d: e; } }',
       'm($v) when (($v = true) and not(false)) { color: red; } n() when (false or true) { color: red; }',
       'a { b: $(not(true)); c: $(true and false); d: $(true or false); }'
     ]) {
       const upper = lower.replace(/\b(and|or|not)\b/g, word => word.toUpperCase());
-      expect(bare(parse(upper))).toEqual(bare(parse(lower)));
+      expect(anyCase(parse(upper))).toEqual(anyCase(parse(lower)));
     }
+    expect(parse('$if (($a=true) AND NOT($b)) { .c { d: e; } }').rules[0]).toMatchObject({
+      branches: [{ guard: { g: 'and', word: 'AND', right: { g: 'not', word: 'NOT' } } }]
+    });
   });
 
   it('ends a keyword only where the identifier ends: an escape continues it', () => {

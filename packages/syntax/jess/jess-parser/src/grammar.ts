@@ -1205,7 +1205,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children) => {
       const inner = requireExpressionFact(children[2]);
       const src = `not(${inner.src})`;
-      return { value: condition({ g: 'not', inner: { g: 'truth', value: inner.value, parens: 1 }, parens: 0 }, src), src };
+      return { value: condition({ g: 'not', inner: { g: 'truth', value: inner.value, parens: 1 }, word: requireToken(children[0]).value, parens: 0 }, src), src };
     }
   );
   const ExpressionLogicalOperand = node<ExpressionFact>(
@@ -1331,7 +1331,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         return requireGuardNode(children[0]);
       }
       if (requireToken(children[0]).value.toLowerCase() === 'not') {
-        return { g: 'not', inner: inParens(requireGuardNode(children[2])), parens: 0 };
+        return { g: 'not', inner: inParens(requireGuardNode(children[2])), word: requireToken(children[0]).value, parens: 0 };
       }
       if (requireToken(children[0]).value === '(') {
         return inParens(requireGuardNode(children[1]));
@@ -5467,7 +5467,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         return requireGuardNode(children[0]);
       }
       return requireToken(children[0]).value.toLowerCase() === 'not'
-        ? { g: 'not', inner: inParens(requireGuardNode(children[2])), parens: 0 }
+        ? { g: 'not', inner: inParens(requireGuardNode(children[2])), word: requireToken(children[0]).value, parens: 0 }
         : inParens(requireGuardNode(children[1]));
     }
   );
