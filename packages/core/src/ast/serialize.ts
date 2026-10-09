@@ -10572,8 +10572,9 @@ interface Emit extends EvalCtx {
   /** The blocks to write once per rule of their own when the walk is done ({@link SplitBlock}). */
   splitBlocks: SplitBlock[] | null;
 
-  /** The nested writer's open blocks, outermost first ({@link OpenBlock}); null until one opens. */
+  /** The nested writer's open blocks, outermost first, `openCount` of them live ({@link OpenBlock}); null until one opens. */
   openBlocks: OpenBlock[] | null;
+  openCount: number;
 
   /**
    * [extend] The header an extend wrote for a rule, keyed by the composed context its
@@ -10712,6 +10713,7 @@ function scratchEmit(e: EvalCtx): Emit {
     importsExpanding: null,
     splitBlocks: null,
     openBlocks: null,
+    openCount: 0,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -14016,6 +14018,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     importsExpanding: null,
     splitBlocks: null,
     openBlocks: null,
+    openCount: 0,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -14125,6 +14128,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     importsExpanding: null,
     splitBlocks: null,
     openBlocks: null,
+    openCount: 0,
     extendedContexts: null,
     moduleActivations: null,
     composeActivations: null,
@@ -23708,11 +23712,13 @@ interface HoistWrapper {
  * [nesting] A block the nested writer has open ({@link Emit.openBlocks}): what it takes
  * to close it where a rule rises out of it ({@link riseOut}) and to open it again after,
  * a part of its own. `mark`, `markPos`, `headerChunk`, `body` and `split` are the
- * current part's.
+ * current part's. The records are reused, one per open depth, so opening a block
+ * allocates nothing once the deepest nesting has been reached.
  */
 interface OpenBlock {
-  /** The at-rule's name and prelude; null for a rule, whose header is its `own` list. */
-  header: string | null;
+  /** The at-rule the block is the body of, its header `name prelude`; null for a rule, whose header is `own`. */
+  atRule: AtRuleBlock | null;
+  prelude: string;
   idt: string;
   depth: number;
 
@@ -23732,10 +23738,11 @@ interface OpenBlock {
   body: number;
 }
 
-/** Record the block whose header and `{` were just written, its body starting here. */
+/** Record the block whose header and `{` were just written, its body starting here; `e.openCount--` ends it, its record read until the next block opens. */
 function openBlock(
   e: Emit,
-  header: string | null,
+  atRule: AtRuleBlock | null,
+  prelude: string,
   idt: string,
   rule: Ruleset | null,
   frame: Frame | null,
@@ -23746,8 +23753,27 @@ function openBlock(
   markPos: number,
   headerChunk: number
 ): OpenBlock {
-  const block: OpenBlock = { header, idt, depth: e.depth, rule, frame, own, slot, split, mark, markPos, headerChunk, body: e.chunks.length };
-  (e.openBlocks ??= []).push(block);
+  const pool = e.openBlocks ??= [];
+  let block = pool[e.openCount];
+  if (block === undefined) {
+    block = { atRule, prelude, idt, depth: e.depth, rule, frame, own, slot, split, mark, markPos, headerChunk, body: e.chunks.length };
+    pool.push(block);
+  } else {
+    block.atRule = atRule;
+    block.prelude = prelude;
+    block.idt = idt;
+    block.depth = e.depth;
+    block.rule = rule;
+    block.frame = frame;
+    block.own = own;
+    block.slot = slot;
+    block.split = split;
+    block.mark = mark;
+    block.markPos = markPos;
+    block.headerChunk = headerChunk;
+    block.body = e.chunks.length;
+  }
+  e.openCount++;
   return block;
 }
 
@@ -23759,6 +23785,20 @@ function dropBlockPart(block: OpenBlock, e: Emit): void {
   }
   if (block.split !== null) {
     e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(block.split), 1);
+  }
+}
+
+/** Write the header of `block` at `idt`. */
+function putBlockHeader(block: OpenBlock, idt: string, e: Emit): void {
+  const atRule = block.atRule;
+  if (atRule === null) {
+    put(e, composeSelectorHeader(e, block.own!, idt, null));
+    return;
+  }
+  put(e, atRule.name);
+  if (block.prelude.length > 0) {
+    put(e, e.compress === true && block.prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
+    put(e, block.prelude);
   }
 }
 
@@ -23776,7 +23816,7 @@ function reopenBlock(block: OpenBlock, e: Emit): void {
     block.split = { header: block.headerChunk, end: -1, indent: idt, branches: block.split.branches, flags: block.split.flags };
     (e.splitBlocks ??= []).push(block.split);
   }
-  put(e, block.header ?? composeSelectorHeader(e, block.own!, idt, null));
+  putBlockHeader(block, idt, e);
   if (block.rule !== null && e.positions) {
     e.positions.push({ node: block.rule.selector, type: block.rule.selector.type, start: block.headerChunk, end: e.chunks.length, source: srcFile(e) });
   }
@@ -23794,15 +23834,16 @@ function reopenBlock(block: OpenBlock, e: Emit): void {
  */
 function riseOut(rule: Ruleset, frame: Frame, e: Emit, imp: boolean, source: NestedHeaderSource): MaybePromise<void> {
   const open = e.openBlocks;
+  const count = e.openCount;
   let first = 0;
-  while (open !== null && first < open.length && open[first]!.rule === null) {
+  while (open !== null && first < count && open[first]!.rule === null) {
     first++;
   }
-  if (open === null || first === open.length) {
+  if (open === null || first === count) {
     return emitHoisted(rule, frame, e, source, imp);
   }
   const depth = e.depth;
-  let top = open.length;
+  let top = count;
   while (top > first && e.chunks.length === open[top - 1]!.body && open[top - 1]!.headerChunk >= 0) {
     dropBlockPart(open[--top]!, e);
   }
@@ -23825,7 +23866,7 @@ function riseOut(rule: Ruleset, frame: Frame, e: Emit, imp: boolean, source: Nes
   }
   const closed = e.chunks.length;
   e.depth = open[first]!.depth;
-  return mapMaybe(insideAtRules(open, first + 1, e, () => emitHoisted(rule, frame, e, source, imp)), () => {
+  return mapMaybe(insideAtRules(open, first + 1, count, e, () => emitHoisted(rule, frame, e, source, imp)), () => {
     let from = first;
     if (e.chunks.length === closed) {
       e.chunks.length = closesFrom;
@@ -23848,7 +23889,7 @@ function riseOut(rule: Ruleset, frame: Frame, e: Emit, imp: boolean, source: Nes
         }
       }
     }
-    for (let i = from; i < open.length; i++) {
+    for (let i = from; i < count; i++) {
       e.depth = open[i]!.depth;
       reopenBlock(open[i]!, e);
     }
@@ -23856,12 +23897,12 @@ function riseOut(rule: Ruleset, frame: Frame, e: Emit, imp: boolean, source: Nes
   });
 }
 
-/** Write `body` inside the at-rules of `open` from `index` on, each dropped when it holds nothing. */
-function insideAtRules(open: OpenBlock[], index: number, e: Emit, body: () => MaybePromise<void>): MaybePromise<void> {
-  while (index < open.length && open[index]!.header === null) {
+/** Write `body` inside the at-rules of `open` from `index` to `count`, each dropped when it holds nothing. */
+function insideAtRules(open: OpenBlock[], index: number, count: number, e: Emit, body: () => MaybePromise<void>): MaybePromise<void> {
+  while (index < count && open[index]!.atRule === null) {
     index++;
   }
-  if (index === open.length) {
+  if (index === count) {
     return body();
   }
   const mark = e.chunks.length;
@@ -23870,11 +23911,11 @@ function insideAtRules(open: OpenBlock[], index: number, e: Emit, body: () => Ma
   if (idt) {
     put(e, idt);
   }
-  put(e, open[index]!.header!);
+  putBlockHeader(open[index]!, idt, e);
   put(e, blockOpen(e));
   const after = e.chunks.length;
   e.depth++;
-  return mapMaybe(insideAtRules(open, index + 1, e, body), () => {
+  return mapMaybe(insideAtRules(open, index + 1, count, e, body), () => {
     e.depth--;
     if (e.chunks.length === after) {
       e.chunks.length = mark;
@@ -24115,11 +24156,11 @@ function emitTransparentShells(
       const headerChunk = e.chunks.length;
       put(e, composeSelectorHeader(e, header, idt, null));
       put(e, blockOpen(e));
-      const block = openBlock(e, null, idt, shell.rule, null, header, false, null, markChunks, markPos, headerChunk);
+      const block = openBlock(e, null, '', idt, shell.rule, null, header, false, null, markChunks, markPos, headerChunk);
       e.depth++;
       const finish = (): void => {
         e.depth--;
-        e.openBlocks!.pop();
+        e.openCount--;
         if (e.chunks.length === block.body) {
           dropBlockPart(block, e);
         } else {
@@ -24299,7 +24340,7 @@ function writeNestedRule(
       }
       put(e, blockOpen(e));
     }
-    const block = openBlock(e, null, idt, rule, frame, own, rewritable, splitBlock, markChunks, markPos, headerChunkIndex);
+    const block = openBlock(e, null, '', idt, rule, frame, own, rewritable, splitBlock, markChunks, markPos, headerChunkIndex);
     const childFrame = activateRuleFrame(rule, frame, e);
     const childSource: NestedHeaderSource = { parent: source, selector: resolved ?? rule.selector, frame };
 
@@ -24312,7 +24353,7 @@ function writeNestedRule(
     e.depth++;
     const finish = (): MaybePromise<void> => {
       e.depth--;
-      e.openBlocks!.pop();
+      e.openCount--;
       if (e.chunks.length === block.body) {
         /*
          * Nothing emitted in the block, not even a comment (the walk writes the
@@ -24479,17 +24520,18 @@ function nestedAtRuleShell(
   if (idt) {
     put(e, idt);
   }
-  const header = prelude.length > 0
-    ? node.name + (e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ') + prelude
-    : node.name;
   const headerChunk = e.chunks.length;
-  put(e, header);
+  put(e, node.name);
+  if (prelude.length > 0) {
+    put(e, e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
+    put(e, prelude);
+  }
   put(e, blockOpen(e));
-  const block = openBlock(e, header, idt, null, null, null, false, null, markChunks, markPos, headerChunk);
+  const block = openBlock(e, node, prelude, idt, null, null, null, false, null, markChunks, markPos, headerChunk);
   e.depth++;
   const finish = (): void => {
     e.depth--;
-    e.openBlocks!.pop();
+    e.openCount--;
     if (e.chunks.length === block.body) {
       /* Nothing emitted, not even a comment (the walk writes the body's own). */
       dropBlockPart(block, e);

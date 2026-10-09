@@ -487,14 +487,14 @@ describe('V19 one-evaluator projection ratchet', () => {
     // selector is written flattened (`selectorBuildsInvalidNestedName`,
     // `startsIdentifier`), and a `.scss` `&` + `__el` distributes over a parent
     // list (`continuesName`).
-    // +7 functions (owner 2026-07-23/24, ledger J13): every rule whose `&` builds a
+    // +8 functions (owner 2026-07-23/24, ledger J13): every rule whose `&` builds a
     // name is written flattened in nested output (`selectorBuildsName`,
     // `branchBuildsName`, `gluesName`, `isNameCode`, replacing
     // `selectorBuildsInvalidNestedName` and `startsIdentifier`), where it stands: the
     // blocks it rises out of are closed before it and opened again after it
     // (`riseOut`, `insideAtRules`, over the writer's open blocks: `openBlock`,
-    // `dropBlockPart`, `reopenBlock`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(604);
+    // `dropBlockPart`, `reopenBlock`, `putBlockHeader`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(605);
     expect(occurrences(/new Map/gu)).toBe(94);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);
