@@ -68,28 +68,42 @@ afterEach(() => {
 });
 
 describe('ModuleImport evaluation', () => {
-  it('consumes @-from, hoists a named function binding, and reuses the loaded module', async () => {
+  it('binds named functions as explicit references without changing CSS-shaped calls', async () => {
     const file = tempModule();
     const twice = defineFunction('twice', {
       params: [{ type: 'Dimension' }] as const,
       body: value => makeDimension(value.number * 2, value.unit)
     });
-    const plugin = new ModulePlugin(new Map([[file, { twice }]]));
+    const plugin = new ModulePlugin(new Map([[file, { twice, default: twice }]]));
     const context = new Context({}, [plugin]);
     const document = stylesheet([
       rule('.before', [decl('value', funcCall('double', [dimension(3)]))]),
       moduleImport(modulePath(file), 'from', null, [{ name: 'twice', alias: 'double' }]),
       moduleImport(modulePath(file), 'from', null, [{ name: 'twice', alias: 'again' }]),
-      rule('.after', [decl('value', funcCall('again', [dimension(4)]))])
+      moduleImport(modulePath(file), 'from', null, [], 'primary'),
+      rule('.after', [
+        decl('explicit', reference(
+          variableReference('again', 'live', '$again'),
+          [{ type: 'Call', args: [callArg(dimension(4))] }],
+          '$again(4)'
+        )),
+        decl('css', funcCall('again', [dimension(4)])),
+        decl('default-explicit', reference(
+          variableReference('primary', 'live', '$primary'),
+          [{ type: 'Call', args: [callArg(dimension(5))] }],
+          '$primary(5)'
+        )),
+        decl('default-css', funcCall('primary', [dimension(5)]))
+      ])
     ]);
 
     const preparedImports = await prepareStaticImports(document, { context, evaluator });
     expect(plugin.importCalls).toBe(1);
     await expect(Promise.resolve(serialize(document, { context, evaluator, preparedImports }))).resolves.toEqual({
-      css: '.before {\n  value: 6;\n}\n.after {\n  value: 8;\n}\n'
+      css: '.before {\n  value: double(3);\n}\n.after {\n  explicit: 8;\n  css: again(4);\n  default-explicit: 10;\n  default-css: primary(5);\n}\n'
     });
     await expect(Promise.resolve(serialize(document, { context, evaluator, preparedImports }))).resolves.toEqual({
-      css: '.before {\n  value: 6;\n}\n.after {\n  value: 8;\n}\n'
+      css: '.before {\n  value: double(3);\n}\n.after {\n  explicit: 8;\n  css: again(4);\n  default-explicit: 10;\n  default-css: primary(5);\n}\n'
     });
     expect(plugin.importCalls).toBe(1);
   });
@@ -110,11 +124,18 @@ describe('ModuleImport evaluation', () => {
       moduleImport(modulePath(file), 'use', 'math'),
       rule('.named', [decl('value', namespacedCall)]),
       moduleImport(modulePath(file), 'use', '*'),
-      rule('.flat', [decl('value', funcCall('inc', [dimension(4)]))])
+      rule('.flat', [
+        decl('explicit', reference(
+          variableReference('inc', 'live', '$inc'),
+          [{ type: 'Call', args: [callArg(dimension(4))] }],
+          '$inc(4)'
+        )),
+        decl('css', funcCall('inc', [dimension(4)]))
+      ])
     ]);
 
     await expect(Promise.resolve(serialize(document, { context, evaluator }))).resolves.toEqual({
-      css: '.named {\n  value: 3;\n}\n.flat {\n  value: 5;\n}\n'
+      css: '.named {\n  value: 3;\n}\n.flat {\n  explicit: 5;\n  css: inc(4);\n}\n'
     });
   });
 

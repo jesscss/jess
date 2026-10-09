@@ -1,7 +1,9 @@
 # Docs Site → "Alpha 2.0" Update Plan (Jess site, jesscss.github.io)
 
-> **Status:** scoping only. This is a **read-only map + plan**. No page, sidebar,
-> or config has been changed. The reviewed content rewrite is the follow-up.
+> **Status:** historical scoping plan. The content-pool design remains useful,
+> but the manual deployment description was superseded by
+> `.github/workflows/deploy-docs.yml`: every push to `dev` now builds and
+> publishes the Jess facing.
 >
 > **Reference for messaging:** root `README.md` + `docs/README-POSITIONING.md` on
 > `origin/dev` (the locked "What Jess unifies" convergence, honest tiering,
@@ -26,9 +28,9 @@
   a first-class current language.** The locked positioning says the alpha's
   "today" tier is **only Less.js v5**; Sass+ / `.jess` / minimal-browser-build are
   an **ordered roadmap.** Alpha-2.0 must re-tier the Jess facing accordingly.
-- **Deploy is fully manual** — there is no CI/GitHub Pages workflow. Nothing
-  publishes to jesscss.github.io until the owner runs `docusaurus deploy` locally.
-  So content can be staged on `dev` with zero risk of an accidental public update.
+- **Deployment is automatic.** The required CI job builds the production Jess
+  facing before merge, and every push to `dev` publishes it to
+  jesscss.github.io.
 
 ---
 
@@ -263,29 +265,16 @@ no structural change:
 
 ## 4. Deploy mechanism (what triggers a public update)
 
-**There is no CI/GitHub-Pages workflow.** `.github/workflows/` contains only
-`publish-alpha.yml` (npm package publish, `workflow_dispatch`, branch `alpha`) and
-`less-alpha-readiness.yml` — **neither deploys the docs site.** A repo-wide grep
-for pages/gh-pages/deploy in `.github/` returns nothing.
+`.github/workflows/deploy-docs.yml` runs on every push to `dev`. It validates
+the canonical content, builds `jess-docs`, and pushes the generated files to the
+root of `jesscss/jesscss.github.io`'s `master` branch without rewriting that
+repository's history. A source-revision marker lets the workflow wait for and
+verify the public GitHub Pages deployment.
 
-**Publishing is manual and local**, via Docusaurus' built-in deploy:
-- `packages/docs/package.json` scripts:
-  - `"deploy": "docusaurus deploy"`
-  - `"deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true pnpm deploy"`
-- `docusaurus.config.ts`: `organizationName: 'jesscss'`,
-  `projectName: 'jesscss.github.io'`, `url: https://jesscss.github.io`,
-  `baseUrl: '/'`.
-
-So `docusaurus deploy` **builds the site and force-pushes it to the `gh-pages`
-branch of the `jesscss/jesscss.github.io` repo**, which GitHub Pages serves at the
-root domain. **The public site changes only when the owner runs
-`pnpm --filter jess-docs deploy` (or `deploy:matthew`) from their machine.**
-
-**Implication for this plan:** all Alpha-2.0 content work can land on `dev` and be
-previewed locally (`pnpm --filter jess-docs dev`) with **zero risk of an
-accidental public update**. The owner's manual `deploy` run is the single,
-deliberate trigger — schedule it as an explicit final step once content is
-reviewed and the build is green.
+The production Jess docs build also runs inside the required CI job. A broken
+page or link therefore blocks the merge rather than landing a commit that the
+deployment workflow cannot publish. The local `deploy:matthew` command remains
+only as a recovery path and builds from `dev`.
 
 ---
 

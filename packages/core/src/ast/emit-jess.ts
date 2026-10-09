@@ -60,11 +60,11 @@ export interface EmitJessOptions {
   /**
    * The function module a converted file's calls resolved against, and the
    * names it exports: lowercase call name → export name. `.jess` has no ambient
-   * function namespace (ledger P17), so a call to one of these names needs a
-   * `@-from "<from>" import (…)` of its own; the printer writes one line per
-   * file naming exactly the functions the file calls. Which module and which
-   * names are the CONVERTER's facts (the source dialect's registry), not the
-   * printer's.
+   * function namespace (ledger P17), so a call to one of these names becomes
+   * an explicit `$name(…)` reference and needs a matching
+   * `@-from "<from>" import (…)`; the printer writes one line per file naming
+   * exactly the functions the file calls. Which module and which names are the
+   * CONVERTER's facts (the source dialect's registry), not the printer's.
    */
   readonly functions?: {
     readonly from: string;
@@ -858,7 +858,8 @@ class JessPrinter {
       }
       return this.value(value, inner);
     });
-    return `${node.name}(${args.join(', ')})`;
+    const name = exported === undefined ? node.name : `$${node.name}`;
+    return `${name}(${args.join(', ')})`;
   }
 
   paren(node: Block, at: At): string {

@@ -11,7 +11,7 @@
     "build": "pnpm run build:facings && docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "pnpm run build:facings && docusaurus deploy",
-    "deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true CURRENT_BRANCH=alpha pnpm run deploy",
+    "deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true CURRENT_BRANCH=dev pnpm run deploy",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },

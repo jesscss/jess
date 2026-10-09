@@ -171,6 +171,15 @@ jobs:
       - name: Cross-tool surface parity
         run: pnpm run verify:surface-parity
 
+      # The public site deploys from every dev merge. Build the exact production
+      # facing in this required job so a broken docs change cannot reach dev and
+      # leave the public site pinned to the preceding revision.
+      - name: Canonical docs content
+        run: pnpm run docs:content:validate
+
+      - name: Jess docs production build
+        run: pnpm run docs:jess:build
+
       # --- tests: the build-free opt-out suite (`pnpm -r --filter='!jess' test`)
       # runs in the PARALLEL `test-source` job below, not here — it needs only a
       # ~3s core/fns/parser-shared prime, so pinning it behind this job's full

@@ -41,12 +41,12 @@ describe('public module imports', () => {
     );
   });
 
-  it('executes Jess @-from and Less @use script functions through plugin-js', async () => {
+  it('calls Jess @-from functions through explicit references and preserves CSS-shaped calls', async () => {
     const directory = tempProject();
     write(directory, 'functions.js', 'export const inc = (value) => value + 1;');
     const jessEntry = write(directory, 'entry.jess', [
       '@-from "./functions.js" import (inc as next);',
-      '.jess { value: next(2); }'
+      '.jess { explicit: $next(2); css: next(2); }'
     ].join('\n'));
     const lessEntry = write(directory, 'entry.less', [
       '@use "./functions.js";',
@@ -54,7 +54,9 @@ describe('public module imports', () => {
     ].join('\n'));
 
     const compiler = new Compiler();
-    await expect(compiler.render(jessEntry)).resolves.toBe('.jess {\n  value: 3;\n}\n');
+    await expect(compiler.render(jessEntry)).resolves.toBe(
+      '.jess {\n  explicit: 3;\n  css: next(2);\n}\n'
+    );
     await expect(compiler.render(lessEntry)).resolves.toBe('.less {\n  value: 5;\n}\n');
     compiler.dispose();
   });
@@ -85,7 +87,7 @@ describe('public module imports', () => {
     compiler['createJsPluginProxy'] = () => undefined;
 
     await expect(compiler.renderString(
-      '@-from "#less" import (mix); .entry { color: mix(#ff0000, #0000ff, 50%); }',
+      '@-from "#less" import (mix); .entry { color: $mix(#ff0000, #0000ff, 50%); }',
       { filePath: 'entry.jess', extension: '.jess' }
     )).resolves.toBe('.entry {\n  color: #800080;\n}\n');
   });
@@ -100,7 +102,7 @@ describe('public module imports', () => {
     compiler['createJsPluginProxy'] = () => undefined;
 
     await expect(compiler.renderString(
-      '@-from "#less" import (mix, lighten); .entry { a: mix(red, blue, 50%); b: lighten(blue, 10%); }',
+      '@-from "#less" import (mix, lighten); .entry { a: $mix(red, blue, 50%); b: $lighten(blue, 10%); }',
       { filePath: 'entry.jess', extension: '.jess' }
     )).resolves.toBe('.entry {\n  a: #800080;\n  b: #3333ff;\n}\n');
   });
@@ -126,7 +128,7 @@ describe('public module imports', () => {
     write(directory, 'functions.js', 'export const identity = (value) => value;');
     const entry = write(directory, 'entry.jess', [
       '@-from "./functions.js" import (identity);',
-      '.entry { value: identity(2); }'
+      '.entry { value: $identity(2); }'
     ].join('\n'));
     const compiler = new Compiler();
     compiler['createJsPluginProxy'] = () => undefined;
