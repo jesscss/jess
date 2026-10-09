@@ -197,6 +197,38 @@ function splitArguments(children: readonly unknown[], from: number, to: number):
   return { segments, separators, commas, branches };
 }
 
+/*
+ * The arguments of a call whose body holds no `;` and no branch `:` — nearly
+ * every call — in the walk `splitArguments` makes, without its per-group
+ * bookkeeping: the values, and the authored run between each two as layout.
+ * An open branch is only ever built after a `:` among these same children, so
+ * no branch list is missed. `undefined` sends the call to the general reading.
+ */
+function plainCallArguments(children: readonly unknown[]): ValueSlot[] | undefined {
+  const args: ValueSlot[] = [];
+  const commas: string[] = [];
+  let padding = '';
+  for (let index = 1; index < children.length - 1; index++) {
+    const child = children[index];
+    if (isValueSlotValue(child)) {
+      if (args.length > 0) {
+        commas.push(padding);
+      }
+      padding = '';
+      args.push(child);
+    } else if (isKeywordArgument(child)) {
+      return undefined;
+    } else if (isTerminalText(child)) {
+      const text = tokenText(child);
+      if (text === ';' || text === ':') {
+        return undefined;
+      }
+      padding += text;
+    }
+  }
+  return withLayoutWhenComplete(args, commas, Math.max(0, args.length - 1));
+}
+
 /** Record `separators` as `value`'s layout when there is one per boundary. */
 function withLayoutWhenComplete<T extends object>(value: T, separators: readonly string[], expected: number): T {
   return separators.length === expected ? withValueLayout(value, separators) : value;
@@ -211,6 +243,10 @@ function withLayoutWhenComplete<T extends object>(value: T, separators: readonly
  */
 export function semicolonGroupedCall(children: readonly unknown[]): FunctionCall {
   const name = functionOpenName(children[0]);
+  const plain = plainCallArguments(children);
+  if (plain !== undefined) {
+    return funcCall(name, plain);
+  }
   const { segments, separators, commas, branches } = splitArguments(children, 1, children.length - 1);
   if (segments.length === 1) {
     const args = segments[0]!;
@@ -751,6 +787,15 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
  * — records its source bytes, so the emitter prints it as written.
  */
 export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  /* The usual group, `(` one query `)`: `generalEnclosedArgument` reads it back as that query, so build it directly. */
+  const middle = children[1];
+  if (
+    children.length === 3 && isValue(middle) && !isCommaList(middle)
+    && isToken(children[0]) && children[0].value === '(' && isToken(children[2]) && children[2].value === ')'
+  ) {
+    const group = block(middle);
+    return generalEnclosedSourceOf(middle) === undefined || middle.type === 'Block' ? group : withAuthoredGeneralEnclosed(group, span, state);
+  }
   const contents = children.filter(child => !isTerminalText(child) || (tokenText(child) !== '(' && tokenText(child) !== ')'));
   const group = block(generalEnclosedArgument(children) ?? []);
   const only = contents[0];
