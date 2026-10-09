@@ -30,3 +30,34 @@ index 0be784d9024c437586e53b7a42c969f8b8ee494d..464c737ff38122a0250261406f1fa3ee
  	&:extend(\%container-navbar-expand all);
  	&:extend(\%container-nesting all);
  }
+diff --git a/less/_root.less b/less/_root.less
+index af51350fd60e0bc319ab971707ad4592da71b023..86c75f48103a61dc6b1c991687cb9e2aaa627290 100644
+--- a/less/_root.less
++++ b/less/_root.less
+@@ -1,18 +1,21 @@
++// JESS PATCH: a custom property's value is CSS text in Less v5 (DESIGN-DECISIONS P2):
++// a bare `@var` there is written as authored and only `@{var}` inserts the value, so
++// each value below is interpolated.
+ :root {
+ 	each(@colors, #(@value, @color) {
+-		--@{color}: @value;
++		--@{color}: @{value};
+ 	});
+ 
+ 	each(@theme-colors, #(@value, @color) {
+-		--@{color}: @value;
++		--@{color}: @{value};
+ 	});
+ 
+ 	each(@grid-breakpoints, #(@value, @bp) {
+-		--breakpoint-@{bp}: @value;
++		--breakpoint-@{bp}: @{value};
+ 	});
+ 
+ 	// Use `inspect` for lists so that quoted items keep the quotes.
+ 	// See https://github.com/sass/sass/issues/2383#issuecomment-336349172
+-	--font-family-sans-serif: @font-family-sans-serif;
+-	--font-family-monospace: @font-family-monospace;
++	--font-family-sans-serif: @{font-family-sans-serif};
++	--font-family-monospace: @{font-family-monospace};
+ }

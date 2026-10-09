@@ -194,7 +194,8 @@
   "pnpm": {
     "patchedDependencies": {
       "superstruct@1.0.3": "patches/superstruct@1.0.3.patch",
-      "bootstrap-less-port@2.5.1": "patches/bootstrap-less-port@2.5.1.patch"
+      "bootstrap-less-port@2.5.1": "patches/bootstrap-less-port@2.5.1.patch",
+      "bootstrap-less-port@0.3.0": "patches/bootstrap-less-port@0.3.0.patch"
     },
     "overrides": {
       "chevrotain": "^12.0.0"

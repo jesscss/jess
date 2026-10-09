@@ -8,8 +8,11 @@ overrides:
   chevrotain: ^12.0.0
 
 patchedDependencies:
+  bootstrap-less-port@0.3.0:
+    hash: e269279fa32b38c773910a78645b248867522e2e43568c059e8f2c632946f3fa
+    path: patches/bootstrap-less-port@0.3.0.patch
   bootstrap-less-port@2.5.1:
-    hash: 0e4575d21bae47e97e779ae399d1f213171a240023542aec962a5b826a7fcbfe
+    hash: 3519d280805e992f8c8e38c0513ad238c1e3e802fa6b90b80ed8bb44c349f180
     path: patches/bootstrap-less-port@2.5.1.patch
   superstruct@1.0.3:
     hash: ce86b5498396fd300695814bdd98dd18d6cc130e40b64ad44878cb371a101a27
@@ -612,7 +615,7 @@ importers:
         version: 5.3.8(@popperjs/core@2.11.8)
       bootstrap-less-port:
         specifier: ~2.5.1
-        version: 2.5.1(patch_hash=0e4575d21bae47e97e779ae399d1f213171a240023542aec962a5b826a7fcbfe)(less@4.9.1)
+        version: 2.5.1(patch_hash=3519d280805e992f8c8e38c0513ad238c1e3e802fa6b90b80ed8bb44c349f180)(less@4.9.1)
       clinic:
         specifier: ~13.0.0
         version: 13.0.0
@@ -684,7 +687,7 @@ importers:
     dependencies:
       bootstrap-less-port:
         specifier: 0.3.0
-        version: 0.3.0
+        version: 0.3.0(patch_hash=e269279fa32b38c773910a78645b248867522e2e43568c059e8f2c632946f3fa)
 
   packages/lint:
     dependencies:
@@ -19013,9 +19016,9 @@ snapshots:
 
   boolbase@1.0.0: {}
 
-  bootstrap-less-port@0.3.0: {}
+  bootstrap-less-port@0.3.0(patch_hash=e269279fa32b38c773910a78645b248867522e2e43568c059e8f2c632946f3fa): {}
 
-  bootstrap-less-port@2.5.1(patch_hash=0e4575d21bae47e97e779ae399d1f213171a240023542aec962a5b826a7fcbfe)(less@4.9.1):
+  bootstrap-less-port@2.5.1(patch_hash=3519d280805e992f8c8e38c0513ad238c1e3e802fa6b90b80ed8bb44c349f180)(less@4.9.1):
     dependencies:
       less: 4.9.1
 
