@@ -104,21 +104,107 @@ describe('@jesscss/plugin-js security', () => {
     await expect(mod.plus(2, 3)).resolves.toBe(5);
   });
 
-  it('runs an installed @jesscss/fns package in-process when deno command is unavailable', async () => {
+  /*
+   * A package.json name is something any script author can write, so a package
+   * that merely CALLS itself @jesscss/fns must run in the sandbox like any other
+   * script, never in the compiler's Node process.
+   */
+  it('sandboxes a package that only claims the name @jesscss/fns', async () => {
     const root = makeTmpDir('jess-js-root-');
+    const outside = makeTmpDir('jess-js-out-');
+    const outsideFile = path.join(outside, 'secret.txt');
+    fs.writeFileSync(outsideFile, 'secret', 'utf8');
     const packageDir = path.join(root, 'node_modules', '@jesscss', 'fns');
     const modulePath = path.join(packageDir, 'lib', 'index.js');
     fs.mkdirSync(path.dirname(modulePath), { recursive: true });
     fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: '@jesscss/fns', type: 'module' }), 'utf8');
-    fs.writeFileSync(modulePath, 'export const fnValue = 7;', 'utf8');
-    const plugin = jsPlugin({
-      jsReadRoot: root,
-      denoCommand: '__definitely_missing_deno__'
-    }) as JsPlugin;
+    fs.writeFileSync(
+      modulePath,
+      [
+        'import * as fs from "node:fs";',
+        'export function runtime() { return typeof Deno === "undefined" ? "node" : "deno"; }',
+        'export function readOutside(p) {',
+        '  try {',
+        '    return fs.readFileSync(p, "utf8");',
+        '  } catch {',
+        '    return "DENIED";',
+        '  }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+
+    const withoutDeno = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(withoutDeno);
+    await expect(withoutDeno.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
+
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
     const mod = await plugin.import(modulePath);
-    expect(mod.fnValue).toBe(7);
+    await expect(mod.runtime()).resolves.toBe('deno');
+    await expect(mod.readOutside(outsideFile)).resolves.toBe('DENIED');
   });
+
+  it('sandboxes a symlink spelled @jesscss/fns that points away from the real package', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const other = path.join(root, 'other');
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(path.join(other, 'package.json'), JSON.stringify({ name: '@jesscss/fns', type: 'module' }), 'utf8');
+    fs.writeFileSync(path.join(other, 'index.js'), 'export const value = 1;', 'utf8');
+    const link = path.join(root, 'node_modules', '@jesscss', 'fns');
+    fs.mkdirSync(path.dirname(link), { recursive: true });
+    fs.symlinkSync(other, link, 'dir');
+    const plugin = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(plugin);
+    await expect(plugin.import(path.join(link, 'index.js'))).rejects.toThrow(/Deno runtime is required/);
+  });
+
+  it('runs the real @jesscss/fns in-process when reached through a symlink', async () => {
+    const realFns = path.dirname(fileURLToPath(new URL('../../fns/package.json', import.meta.url)));
+    const root = makeTmpDir('jess-js-root-');
+    const link = path.join(root, 'fns-link');
+    fs.symlinkSync(realFns, link, 'dir');
+    const plugin = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(path.join(link, 'src', 'util', 'mime.ts'));
+    expect(mod.lookupMime).toEqual(expect.any(Function));
+  });
+
+  it('kills the worker when a request times out, so a runaway script stops burning CPU', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'runaway.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'export function spin() {',
+        '  try { Deno.addSignalListener("SIGTERM", () => {}); } catch { /* ignore */ }',
+        '  while (true) { /* never returns */ }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root, requestTimeoutMs: 500 }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    const pid = plugin['worker']?.pid;
+    expect(typeof pid).toBe('number');
+
+    await expect(mod.spin()).rejects.toThrow(/Timed out waiting for Deno worker response/);
+
+    // The worker is gone: once it exits, `process.kill(pid, 0)` throws ESRCH.
+    const workerExited = async () => {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        try {
+          process.kill(pid!, 0);
+        } catch {
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return false;
+    };
+    expect(await workerExited()).toBe(true);
+  }, 15000);
 
   it('runs the workspace @jesscss/fns package in-process when deno command is unavailable', async () => {
     const modulePath = fileURLToPath(new URL('../../fns/src/util/mime.ts', import.meta.url));

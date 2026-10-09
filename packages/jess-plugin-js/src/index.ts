@@ -80,6 +80,14 @@ export interface JsPluginOptions extends JavaScriptSandboxConfig {
    * `@plugin` loading can opt into the Less-compatible global shape.
    */
   runtimeApi?: 'module' | 'less';
+
+  /**
+   * Milliseconds a single worker request may run before it is abandoned and
+   * the worker is killed (see {@link REQUEST_TIMEOUT_MS}). Mainly a test seam
+   * for proving a runaway script is terminated without waiting the full
+   * default.
+   */
+  requestTimeoutMs?: number;
 }
 
 const SCRIPT_EXTENSIONS = new Set([
@@ -184,76 +192,45 @@ const normalizePermissionPath = (value: string | null): string | null => {
   return value;
 };
 
-const TRUSTED_PACKAGE_NAME = '@jesscss/fns';
+/**
+ * The one package we load in this Node process instead of the Deno sandbox:
+ * the built-in `@jesscss/fns`. We identify it by the REALPATH of the copy this
+ * plugin itself resolves through its own dependency edge — never by a package
+ * name or a path spelling, both of which a script author controls. A
+ * `package.json` can name itself `@jesscss/fns`, and a directory or a symlink
+ * can be spelled `@jesscss/fns`, but the realpath of the dependency we resolve
+ * from our own location cannot be forged. Resolved once; `undefined` when
+ * `@jesscss/fns` is not installed beside this plugin, in which case nothing is
+ * trusted and every script runs sandboxed (fail closed).
+ */
+const trustedFnsRoot: string | undefined = (() => {
+  try {
+    const manifest = createRequire(import.meta.url).resolve('@jesscss/fns/package.json');
+    return fs.realpathSync.native(path.dirname(manifest));
+  } catch {
+    return undefined;
+  }
+})();
 
 /**
- * Directory → whether its nearest `package.json` names the trusted package.
- * ponytail: process-lifetime cache; a manifest renamed mid-process is not re-read.
+ * Whether `importPath` is a file inside the trusted `@jesscss/fns` package.
+ * Both the candidate and the trusted root are canonicalized with
+ * `realpathSync.native`, so a symlink, a `..` segment, or a case-variant
+ * spelling on a case-insensitive filesystem cannot pass off a file as trusted
+ * that does not physically live in the resolved package. A path that cannot be
+ * canonicalized (it does not exist) is untrusted.
  */
-const trustedPackageDirs = new Map<string, boolean>();
-
-const isMissingFileError = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && 'code' in error
-  && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
-
-/**
- * Whether `dir` lies in the trusted package: its nearest `package.json` names
- * `@jesscss/fns`. Trust follows the package's NAME, never a path spelling, so a
- * user's own `…/packages/fns/` or `…/@jesscss/fns/` directory is not trusted
- * unless it really is that package. A `package.json` that exists but cannot be
- * read or parsed ends the walk untrusted; no `package.json` at all is untrusted.
- */
-const isInTrustedPackage = (dir: string): boolean => {
-  const visited: string[] = [];
-  let current = dir;
-  let trusted = false;
-  for (;;) {
-    const cached = trustedPackageDirs.get(current);
-    if (cached !== undefined) {
-      trusted = cached;
-      break;
-    }
-    visited.push(current);
-    let manifest: string | undefined;
-    try {
-      manifest = fs.readFileSync(path.join(current, 'package.json'), 'utf8');
-    } catch (error) {
-      if (!isMissingFileError(error)) {
-        break;
-      }
-    }
-    if (manifest !== undefined) {
-      try {
-        const parsed: unknown = JSON.parse(manifest);
-        trusted = typeof parsed === 'object'
-          && parsed !== null
-          && 'name' in parsed
-          && parsed.name === TRUSTED_PACKAGE_NAME;
-      } catch {
-        // Unparseable manifest: not trusted.
-      }
-      break;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  for (const visitedDir of visited) {
-    trustedPackageDirs.set(visitedDir, trusted);
-  }
-  return trusted;
-};
-
 const isFnsPath = (importPath: string): boolean => {
-  const normalized = importPath.replace(/\\/g, '/');
-  if (normalized === TRUSTED_PACKAGE_NAME || normalized.startsWith(`${TRUSTED_PACKAGE_NAME}/`)) {
-    return true;
+  if (trustedFnsRoot === undefined) {
+    return false;
   }
-  return isInTrustedPackage(path.dirname(path.resolve(importPath)));
+  let realPath: string;
+  try {
+    realPath = fs.realpathSync.native(path.resolve(importPath));
+  } catch {
+    return false;
+  }
+  return isPathInside(realPath, trustedFnsRoot);
 };
 
 const isJsonValue = (value: unknown) => {
@@ -790,22 +767,49 @@ export class JsPlugin extends AbstractPlugin {
     const payload: RpcRequest = { ...request, id };
     return await new Promise<RpcResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (!pending) {
+          return;
+        }
         this.pending.delete(id);
-        reject(new Error('Timed out waiting for Deno worker response.'));
-      }, REQUEST_TIMEOUT_MS);
+        pending.reject(new Error('Timed out waiting for Deno worker response.'));
+
+        /*
+         * A timeout means the worker is still running the request — a script
+         * that loops forever or hangs on a never-resolving await. Abandoning the
+         * promise would leave that work burning a CPU in the background. Tear the
+         * worker down (SIGKILL, so a script that traps SIGTERM cannot keep
+         * running) and let the next call spin up a fresh one.
+         */
+        this.abortRuntime(new Error('Deno worker killed after a request timed out.'));
+      }, this.opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
   }
 
-  private shutdown() {
+  /**
+   * Kill the worker and reset to idle after an abnormal event (a request
+   * timeout). Remaining in-flight calls are rejected with `reason`; a later
+   * call restarts a clean worker. SIGKILL because a sandboxed script may trap
+   * SIGTERM, and a synchronous runaway loop never services a signal handler.
+   */
+  private abortRuntime(reason: Error) {
+    this.shutdown('SIGKILL');
+    this.rejectAllPending(reason);
+    if (this.runtimeState.status !== 'disposed') {
+      this.runtimeState = { status: 'idle' };
+    }
+  }
+
+  private shutdown(signal?: NodeJS.Signals) {
     this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
       this.shuttingDown = true;
       this.worker.stdin.destroy();
       this.worker.stdout.destroy();
       this.worker.stderr.destroy();
-      this.worker.kill();
+      this.worker.kill(signal);
     }
     this.worker = undefined;
     if (this.brokerServer) {
@@ -882,6 +886,16 @@ export class JsPlugin extends AbstractPlugin {
       }
       return moduleObject;
     }
+
+    /*
+     * Trust boundary: everything above runs in the Deno sandbox. We fall through
+     * to a direct in-process `import()` ONLY for a file whose realpath is inside
+     * the `@jesscss/fns` package this plugin itself resolved ({@link isFnsPath}),
+     * because that code is ours and must call compiler internals a sandboxed
+     * worker cannot reach. Any script a user imports — including one that names
+     * or symlinks itself `@jesscss/fns` — fails `isFnsPath` and is sandboxed
+     * above; it never reaches this line.
+     */
     const modulePath = pathToFileURL(path.resolve(absoluteFilePath)).href;
     const module = await import(modulePath);
     const safeModule: Record<string, any> = {};

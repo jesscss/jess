@@ -631,6 +631,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../fns
       deno:
         specifier: ^2.6.8
         version: 2.9.6
