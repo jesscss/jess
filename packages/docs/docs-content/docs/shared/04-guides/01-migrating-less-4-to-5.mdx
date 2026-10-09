@@ -282,6 +282,7 @@ The changes above are structural — features that moved or were removed. This s
 
 The bar for changing an evaluation result is high. Less 5 follows Less 4 unless the Less 4 behaviour is **defensible by history rather than by principle** — meaning it does something documented or long-standing, but has no rule that explains *why*. Every row below states the rule Less 5 follows instead.
 
+{/* v5-example-table {"template": ".a { v: $$; }", "conditionTemplate": ".a { v: if(($$), true, false); }"} */}
 | expression | Less 4 | Less 5 | why |
 | --- | --- | --- | --- |
 | `1in = 2.54cm` | `false` | **`true`** | Equal by definition. Less 4's `false` was a conversion-precision defect, not a language choice. |
@@ -309,6 +310,7 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 
 Note this is **not** the Jess / Sass+ rule, where a non-empty string *is* truthy. Do not carry that intuition into `.less`.
 
+{/* v5-example-table {"template": ".a { v: 1; }", "guardTemplate": ".a $$ { v: 1; }", "eachInput": true} */}
 | guard | Less 4 | Less 5 |
 | --- | --- | --- |
 | `when (true)`, `when (1 > 0)` | truthy | truthy |
@@ -333,6 +335,7 @@ Less 5 keeps the number and the units, and only changes how the result is
 you wrote. **The arithmetic always happens.** That is what lets a chain recover
 the moment a later operation cancels back to a real unit:
 
+{/* v5-example-table {"template": ".a { v: $$; }"} */}
 | expression | Less 4 | Less 5 |
 | --- | --- | --- |
 | `(2px / 1px)` | `2px` | **`2`** |
