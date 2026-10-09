@@ -39,9 +39,11 @@ function currentBranch() {
  */
 /*
  * The guardrails gate runs on EVERY push, including the docs-only fast path,
- * because the thing it catches IS a docs change: an agent redefining or closing
- * an owner requirement in `docs/`, `.cursor/rules/`, or `CLAUDE.md`. It reads
- * markdown and hashes one file — no build, no test, single spawn.
+ * because the thing it catches is usually a docs or comment change: an agent
+ * redefining or closing an owner requirement, offering Less 4.x / lessc
+ * behaviour as a reason, or editing an owner-ruled ledger row or conformance
+ * test without the lock. It reads text and hashes it — no build, no test,
+ * single spawn, about 2 s.
  */
 const guardrails = resolve(dirname(fileURLToPath(import.meta.url)), 'check-guardrails.mjs');
 if (existsSync(guardrails)) {
