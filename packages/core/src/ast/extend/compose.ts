@@ -29,7 +29,7 @@ import {
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
 import { pseudoJoin, textHoldsParentRef } from '../nodes.js';
 import type { PseudoSelector, SimpleToken } from '../nodes.js';
-import { irEndsWithPseudoElement, isUserActionPseudoClass } from '../is-grouping.js';
+import { irEndsWithPseudoElement, isUserActionPseudoClass, tokenPseudoElement } from '../is-grouping.js';
 import { leadsWithElement, placeComplex } from './conflict.js';
 
 /**
@@ -147,14 +147,14 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
   let structuredParent: Simple[] | null | undefined;
   const outSegs: SelectorPart[] = [];
   const outBnd: number[] = [];
-  const place = parentMultiSeg && !irEndsWithPseudoElement(parent);
+  const place = parentMultiSeg && pseudoElementSplits(parent);
   for (let i = 0; i < child.segments.length; i++) {
     const seg = child.segments[i]!;
 
     /* The compound that opens the selector: nothing, not even a combinator, before it. */
     const head = i === 0 && seg.combinator === ' ';
     if (place && !head && isBareAmp(seg)) {
-      outSegs.push({ combinator: seg.combinator, compound: { value: [isSimple([parent], false)] } });
+      outSegs.push({ combinator: seg.combinator, compound: { value: parentUnit(parent, NO_END) } });
       outBnd.push(bndAt(parent, parent.segments.length - 1) + 1);
       continue;
     }
@@ -221,6 +221,9 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         refToken = s;
       }
     }
+    if (ref !== -1) {
+      keepPseudoElementLast(value, ref, refEnd);
+    }
     if (ref > 0) {
       leadParentElement(value, ref, refEnd, parent, refToken!);
     }
@@ -230,6 +233,20 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
     outBnd.push(0);
   }
   return withBnd(mkBranch(outSegs), outBnd);
+}
+
+/**
+ * A pseudo-element a one-compound parent ends with (in `value[ref..refEnd)`) stays last
+ * in the compound: the simples after the `&` join it before the pseudo-element, but for
+ * the user-action pseudo-classes that end it, which may follow one (Selectors 4 §3.6.3):
+ * `&.k` under `.s::before` is `.s.k::before`, as the serializer writes it.
+ */
+function keepPseudoElementLast(value: Simple[], ref: number, refEnd: number): void {
+  const pe = ref + pseudoElementAt(value.slice(ref, refEnd));
+  const end = trailingUserAction(value, refEnd - 1);
+  if (pe < refEnd && end > refEnd) {
+    value.splice(pe, 0, ...value.splice(refEnd, end - refEnd));
+  }
 }
 
 /**
@@ -264,6 +281,63 @@ function compoundHasAmp(value: readonly Simple[]): boolean {
   return false;
 }
 
+const NO_END: readonly Simple[] = [];
+
+/** Where the pseudo-element of a compound begins: its first simple built from a pseudo-element token, else `value.length`. */
+function pseudoElementAt(value: readonly Simple[]): number {
+  for (let i = 0; i < value.length; i++) {
+    const s = value[i]!;
+    if (s.t === 'text' && s.src !== undefined && !('value' in s.src) && tokenPseudoElement(s.src) === true) {
+      return i;
+    }
+  }
+  return value.length;
+}
+
+/**
+ * Whether a parent that ends with a pseudo-element holds it as a simple of its own, so it
+ * can be kept last where the parent is placed ({@link placeFusedAmp}). A pseudo-element
+ * inside a substituted compound's text is not read back (ponytail: such a parent keeps
+ * {@link spliceFusedAmp}).
+ */
+function pseudoElementSplits(parent: Branch): boolean {
+  const last = parent.segments[parent.segments.length - 1]!.compound.value;
+  return !irEndsWithPseudoElement(parent) || pseudoElementAt(last) < last.length;
+}
+
+/** `parent` without the pseudo-element its last compound ends with, and that pseudo-element's simples. */
+function splitPseudoElement(parent: Branch): { body: Branch; pseudo: readonly Simple[] } {
+  const segments = parent.segments;
+  const last = segments.length - 1;
+  const value = segments[last]!.compound.value;
+  const at = pseudoElementAt(value);
+  if (at === value.length) {
+    return { body: parent, pseudo: NO_END };
+  }
+  const body = mkBranch([...segments.slice(0, last), { combinator: segments[last]!.combinator, compound: { value: value.slice(0, at) } }]);
+  body.bnd = parent.bnd;
+  return { body, pseudo: value.slice(at) };
+}
+
+/**
+ * `parent` as one unit where it stands, `:is(parent)`, then `end`; a pseudo-element it ends
+ * with stays outside the `:is()`, which cannot hold one (`.c &` under `.a .b::before` →
+ * `.c :is(.a .b)::before`), as the serializer writes it (`serialize.ts` `parentUnit`).
+ */
+function parentUnit(parent: Branch, end: readonly Simple[]): Simple[] {
+  const { body, pseudo } = splitPseudoElement(parent);
+  return [isSimple([body], false), ...pseudo.map(cloneSimple), ...end];
+}
+
+/** Where the user-action pseudo-classes that end `value` after its simple `at` begin (they may follow a pseudo-element, Selectors 4 §3.6.3). */
+function trailingUserAction(value: readonly Simple[], at: number): number {
+  let end = value.length;
+  while (end - 1 > at && value[end - 1]!.t === 'text' && isUserActionPseudoClass(simpleText(value[end - 1]!))) {
+    end--;
+  }
+  return end;
+}
+
 /**
  * A `&` fused into `seg`'s compound under a parent of several compounds, as the serializer
  * composes it (`serialize.ts` `placeParent`; owner 2026-10-09): the `&` is a plain reference
@@ -295,16 +369,18 @@ function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs
     }
   }
   const named = at === -1 ? null : namedParent(parent, value[at]!);
-  const ps = named?.segments;
+  const { body, pseudo } = named === null ? { body: null, pseudo: NO_END } : splitPseudoElement(named);
+  const ps = body?.segments;
   const last = ps === undefined ? 0 : ps.length - 1;
   const lead = at > 0 && leadsWithElement(simpleText(value[0]!), 0);
+  const trailing = pseudo.length === 0 ? value.length : trailingUserAction(value, at);
   if (named === null || ps === undefined || (lead && leadsWithElement(simpleText(ps[last]!.compound.value[0]!), 0))) {
-    outSegs.push({ combinator: seg.combinator, compound: { value: value.map(s => withParent(s, parent)) } });
+    outSegs.push({ combinator: seg.combinator, compound: { value: withParentUnits(value, parent) } });
     outBnd.push(0);
     return true;
   }
   const others: Simple[] = [];
-  for (let p = 0; p < value.length; p++) {
+  for (let p = 0; p < trailing; p++) {
     if (p !== at) {
       others.push(withParent(value[p]!, parent));
     }
@@ -316,9 +392,42 @@ function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs
     outSegs.push(placed[k]!);
     outBnd.push(bndAt(parent, k) + 1);
   }
+  if (pseudo.length > 0) {
+    /* A pseudo-element the parent ends with stays last, but for the user-action pseudo-classes that may follow it. */
+    const tail = placed[last]!;
+    const end = value.slice(trailing).map(s => withParent(s, parent));
+    placed[last] = { combinator: tail.combinator, compound: { value: [...tail.compound.value, ...pseudo.map(cloneSimple), ...end] } };
+  }
   outSegs.push(placed[last]!);
   outBnd.push(others.length > 0 || named !== parent ? 0 : bndAt(parent, last) + 1);
   return true;
+}
+
+/**
+ * The simples of a compound composed where it stands ({@link withParent}), a `&` among them
+ * one unit; a pseudo-element the parent ends with goes after the compound's own simples,
+ * before the user-action pseudo-classes that end it (`.c .x&` under `.a .b::before` →
+ * `.c .x:is(.a .b)::before`).
+ */
+function withParentUnits(value: readonly Simple[], parent: Branch): Simple[] {
+  const out: Simple[] = [];
+  let pseudo: readonly Simple[] = NO_END;
+  for (const s of value) {
+    if (holdsAmp(s) && pseudoWithArgs(s) === null && pseudo.length === 0) {
+      const split = splitPseudoElement(namedParent(parent, s));
+      if (split.pseudo.length > 0) {
+        out.push(isSimple([split.body], false));
+        pseudo = split.pseudo;
+        continue;
+      }
+    }
+    out.push(withParent(s, parent));
+  }
+  if (pseudo.length > 0) {
+    const end = trailingUserAction(out, -1);
+    out.splice(end, 0, ...pseudo.map(cloneSimple));
+  }
+  return out;
 }
 
 /** The structured pseudo a text token was built from, when its argument is a selector list. */
@@ -502,8 +611,12 @@ function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch
   for (const raw of childBranches) {
     const c = withNamesJoined(raw);
 
-    /* A name a `&` builds is built on each parent, as the serializer distributes it ({@link buildsName}). */
-    if (parentBranches.length > 1 && buildsName(c)) {
+    /*
+     * A name a `&` builds is built on each parent, as the serializer distributes it
+     * ({@link buildsName}); so is a `&` glued after another simple under a list holding a
+     * parent that ends with a pseudo-element, which one `:is()` cannot hold.
+     */
+    if (parentBranches.length > 1 && (buildsName(c) || (gluesAmp(c) && parentBranches.some(irEndsWithPseudoElement)))) {
       for (const p of parentBranches) {
         out.push(composeOne(cloneBranch(p), c));
       }
@@ -577,6 +690,19 @@ function buildsName(b: Branch): boolean {
   for (const seg of b.segments) {
     for (const s of seg.compound.value) {
       if (s.t === 'text' && s.text.length > 1 && s.text.charCodeAt(0) === 0x26 /* & */ && s.text.indexOf('&', 1) === -1) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Whether a compound of `b` holds a `&` after another of its simples (`.x&`). */
+function gluesAmp(b: Branch): boolean {
+  for (const seg of b.segments) {
+    const value = seg.compound.value;
+    for (let i = 1; i < value.length; i++) {
+      if (holdsAmp(value[i]!)) {
         return true;
       }
     }

@@ -139,6 +139,50 @@ describe('a `&` is a plain reference to a parent of several compounds', () => {
     expect(headers('li, .a { K }', '.x&').own).toBe('li.x, .x.a');
   });
 
+  /*
+   * A parent that ends with a pseudo-element: the simples glued to its `&` describe the
+   * element the pseudo-element belongs to, and no simple but a user-action pseudo-class
+   * may follow a pseudo-element (Selectors 4 §3.6.3), so they join its last compound
+   * before it (`.a .b.x::before`); never the ancestor (`.x.a .b::before`). Where the
+   * parent is one unit the pseudo-element stays outside the `:is()`, which cannot hold
+   * one (`.c .x:is(.a .b)::before`).
+   */
+  const PSEUDO_ELEMENT_PARENTS: ReadonlyArray<readonly [parent: string, child: string, written: string]> = [
+    ['.a .b::before { K }', '.x&', '.a .b.x::before'],
+    ['.a .b:before { K }', '.x&', '.a .b.x:before'],
+    ['.a li::after { K }', '.x&', '.a li.x::after'],
+    ['li::before { K }', '.x&', 'li.x::before'],
+    ['.a .b::before { K }', '.c .x&', '.c .x:is(.a .b)::before'],
+    ['.a .b::before { K }', '.x&.y', '.a .b.x.y::before'],
+    ['.a .b::before { K }', '&.k', '.a .b.k::before'],
+    ['.s::before { K }', '&.k', '.s.k::before'],
+    ['.a .b::before { K }', '.c &', '.c :is(.a .b)::before']
+  ];
+
+  for (const [parent, child, written] of PSEUDO_ELEMENT_PARENTS) {
+    it(`writes \`${child}\` under ${parent.replace(' K ', ' … ')} as \`${written}\`, flattened and extended`, () => {
+      expect(headers(parent, child)).toEqual({ own: written, extended: written });
+    });
+  }
+
+  it('keeps a user-action pseudo-class glued after `&` after the pseudo-element', () => {
+    expect(headers('.a .b::before { K }', '.x&:hover').own).toBe('.a .b.x::before:hover');
+  });
+
+  it('places `.x&` on each parent of a list that holds a pseudo-element parent', () => {
+    expect(headers('.a .b, .c::after { K }', '.x&')).toEqual({ own: '.a .b.x, .x.c::after', extended: '.a .b.x, .x.c::after' });
+    expect(headers('.a .b::before, .c .d { K }', '.x&')).toEqual({ own: '.a .b.x::before, .c .d.x', extended: '.a .b.x::before, .c .d.x' });
+  });
+
+  it('places a selector glued before `&` on each branch of a selector capture', () => {
+    expect(headers('@list: *[apple, pear]; @{list} { K }', '.fruit-cap-&').own).toBe('apple.fruit-cap-, pear.fruit-cap-');
+  });
+
+  it('writes escaped text a `&` references as written (owner 2026-10-09: "everywhere that is text should print AS WRITTEN")', () => {
+    expect(headers('@s: ~".a .b"; @{s} { K }', '.active&').own).toBe('.active.a .b');
+    expect(headers('@s: ~".a .b::before"; @{s} { K }', '.active&').own).toBe('.active.a .b::before');
+  });
+
   it('keeps a complex alternative an extend splits out of a one-unit parent wrapped', () => {
     expect(flat('.a .b { .c & { m: 1 } } #z:extend(.a all) {}'))
       .toBe('.c :is(.a .b),\n.c :is(#z .b) {\n  m: 1;\n}\n');

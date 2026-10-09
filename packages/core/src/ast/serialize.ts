@@ -194,7 +194,7 @@ import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOve
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { leadsWithElement } from './extend/conflict.js';
-import { isPseudoElementName, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
+import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
@@ -9664,6 +9664,15 @@ const PSEUDO_LAST = 1;
  */
 const PSEUDO_SUFFIXED = 2;
 
+/*
+ * Its last compound is an interpolation Jess does not read as a selector, escaped
+ * text or a value (`@{s}` with `@s: ~".a .b"`), which prints as written (owner
+ * 2026-10-09: "everywhere that is text should print AS WRITTEN"). It may hold
+ * anything, a pseudo-element included, so it counts as {@link PSEUDO_LAST} does,
+ * but a `&` takes it as written ({@link placeParent}).
+ */
+const PSEUDO_TEXT = 3;
+
 /* The flags of a {@link SplitBlock} an extend left with no branch of its own. */
 const NO_SPLIT = new Uint8Array(0);
 
@@ -9701,22 +9710,91 @@ function parentUnits(parents: readonly string[], flags: Uint8Array): string[] {
 }
 
 /*
- * [nesting] How a `&` that is not the one placing it ({@link placeParent}) writes
- * each parent ({@link resolveSelectorBranchAmp}'s `kinds`).
+ * [nesting] How a `&` writes each parent ({@link parentKind}), bits of
+ * {@link resolveSelectorBranchAmp}'s `kinds`.
  */
 
-/* One compound, written as it is (`.x&` under `.a` → `.x.a`). */
+/* One compound, or text, written as it is (`.x&` under `.a` → `.x.a`). */
 const PARENT_AS_WRITTEN = 0;
 
 /*
- * One compound that opens with a type or universal selector, the only simple that may
- * lead a compound (Selectors 4 §3.1): glued after another simple it is one unit,
- * `:is(li)`, since `.x` then `li` would be the class `.xli`.
+ * Its last compound opens with a type or universal selector, the only simple that may
+ * lead a compound (Selectors 4 §3.1): glued after another simple a one-compound parent
+ * is one unit, `:is(li)`, since `.x` then `li` would be the class `.xli`.
  */
 const PARENT_ELEMENT = 1;
 
 /* Several compounds: one unit, `:is(.a .b)`, since `.c .a .b` is not `.c :is(.a .b)`. */
 const PARENT_SEVERAL = 2;
+
+/*
+ * Its last compound ends with a pseudo-element, which `:is()` cannot hold and which no
+ * simple but a user-action pseudo-class may follow (Selectors 4 §3.6.3): glued simples
+ * join that compound before it (`.a .b.x::before`), and a unit keeps it outside
+ * (`:is(.a .b)::before`).
+ */
+const PARENT_PSEUDO = 4;
+
+/**
+ * [nesting] The {@link PARENT_AS_WRITTEN} bits of `parent`, whose
+ * {@link EvalCtx.pseudoElementLists} flag is `flag`.
+ */
+function parentKind(parent: string, flag: number): number {
+  if (flag === PSEUDO_TEXT) {
+    return PARENT_AS_WRITTEN;
+  }
+  const at = lastCompoundStart(parent);
+  const kind = (at > 0 ? PARENT_SEVERAL : 0) | (leadsWithElement(parent, at) ? PARENT_ELEMENT : 0);
+  return kind === 0 && flag === PSEUDO_NONE ? kind : kind | (flag === PSEUDO_NONE ? 0 : PARENT_PSEUDO);
+}
+
+/**
+ * [nesting] Where the pseudo-element of the last compound of `text` (from `at`) begins,
+ * `text.length` for none: a `::` name, or a legacy one-colon pseudo-element
+ * ({@link isPseudoElementName}).
+ *
+ * ponytail: reads a composed parent's text, as {@link lastCompoundStart} does.
+ */
+function pseudoElementStart(text: string, at: number): number {
+  let depth = 0;
+  let quote = 0;
+  for (let i = at; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x5C /* \ */) {
+      i++;
+    } else if (quote !== 0) {
+      if (c === quote) {
+        quote = 0;
+      }
+    } else if (c === 0x22 /* " */ || c === 0x27 /* ' */) {
+      quote = c;
+    } else if (c === 0x28 /* ( */ || c === 0x5B /* [ */) {
+      depth++;
+    } else if (c === 0x29 /* ) */ || c === 0x5D /* ] */) {
+      depth--;
+    } else if (depth === 0 && c === 0x3A /* : */) {
+      let end = i + 1;
+      while (end < text.length && (text.charCodeAt(end) === 0x3A || isNameCode(text.charCodeAt(end)))) {
+        end++;
+      }
+      if (isPseudoElementName(text.slice(i, end))) {
+        return i;
+      }
+      i = end - 1;
+    }
+  }
+  return text.length;
+}
+
+/**
+ * [nesting] `parent` as one unit, `:is(parent)`, `text` being what the `&` was written
+ * in (`&`, or `&-x`, which continues the parent's name); a pseudo-element the parent
+ * ends with ({@link PARENT_PSEUDO}) stays outside, where `:is()` cannot hold it.
+ */
+function parentUnit(parent: string, written: string, kind: number): string {
+  const pe = (kind & PARENT_PSEUDO) === 0 ? written.length : pseudoElementStart(parent, lastCompoundStart(parent));
+  return ':is(' + written.slice(0, pe) + ')' + written.slice(pe);
+}
 
 /** [nesting] One `&`-bearing token resolved against `parents`, position-aware.
  *  A list-accepting pseudo (`:is`/`:where`/`:not`/`:has`/`:matches`) whose args
@@ -9751,12 +9829,12 @@ function resolveTokenAmp(
       return [text];
     }
     if (first && text === '&') {
-      return kinds !== null && parents.length === 1 && kinds[0] === PARENT_SEVERAL ? [`:is(${subs[0]!})`] : subs;
+      return kinds !== null && parents.length === 1 && (kinds[0]! & PARENT_SEVERAL) !== 0 ? [parentUnit(subs[0]!, subs[0]!, kinds[0]!)] : subs;
     }
     return parents.map((p, i) => {
       const kind = kinds === null ? PARENT_AS_WRITTEN : kinds[i]!;
       const written = text.split('&').join(p);
-      return kind === PARENT_SEVERAL || (kind === PARENT_ELEMENT && glued) ? `:is(${written})` : written;
+      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && glued) ? parentUnit(p, written, kind) : written;
     });
   });
 }
@@ -9764,7 +9842,8 @@ function resolveTokenAmp(
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
  *  a distributing `&` (append/merge) multiplies its variants (cartesian). Where a
  *  parent cannot be taken as written (`kinds`), the compound's first `&` places it
- *  ({@link placeParent}). */
+ *  ({@link placeParent}); the user-action pseudo-classes that end the compound
+ *  (`trailing`) stay after a pseudo-element the parent ends with. */
 function resolveCompoundAmp(
   cmp: CompoundSelector,
   parents: string[],
@@ -9781,11 +9860,16 @@ function resolveCompoundAmp(
       ref = i;
     }
   }
+  let trailing = cmp.value.length;
+  while (ref !== -1 && trailing - 1 > ref && isUserActionToken(cmp.value[trailing - 1]!)) {
+    trailing--;
+  }
   const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0 && !continuesName(cmp.value[1]), i > 0, i === ref ? null : kinds, frame, e));
   return combineAll(tokens, (lists) => {
     /* The simples before the first `&` hold none, so each is one variant: `before`. */
     let before = '';
     let acc = [''];
+    let tail = [''];
     for (let i = 0; i < lists.length; i++) {
       if (i === ref) {
         before = acc[0]!;
@@ -9793,21 +9877,31 @@ function resolveCompoundAmp(
         continue;
       }
       const next: string[] = [];
-      for (const head of acc) {
+      for (const head of i < trailing ? acc : tail) {
         for (const v of lists[i]!) {
           next.push(head + v);
         }
       }
-      acc = next;
+      if (i < trailing) {
+        acc = next;
+      } else {
+        tail = next;
+      }
     }
     if (ref === -1) {
       return acc;
     }
     const lead = ref > 0 && leadsWithElement(lists[0]![0]!, 0) ? lists[0]![0]! : '';
+
+    /* One variant per parent where the `&` distributes; else one unit of them all, written as it is. */
+    const placed = lists[ref]!;
+    const aligned = kinds !== null && placed.length === parents.length;
     const out: string[] = [];
-    for (const parent of lists[ref]!) {
+    for (let j = 0; j < placed.length; j++) {
       for (const after of acc) {
-        out.push(placeParent(parent, before, lead, after, head));
+        for (const end of tail) {
+          out.push(placeParent(placed[j]!, before, lead, after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+        }
       }
     }
     return out;
@@ -9846,19 +9940,27 @@ function isNameCode(c: number): boolean {
  * written in place only in the compound that opens the selector (`head`); anywhere
  * else it is one unit (`.c .x&` → `.c .x:is(.a .b)`), since `.c .a .b.x` would move
  * `.c` above `.a`. A one-compound parent that does not open with an element is
- * written as it was (`.x&` under `.a` → `.x.a`). A name built on the parent (`&-x`,
- * `parent` is then `.a .b-x`) is placed the same way.
+ * written as it was (`.x&` under `.a` → `.x.a`). A pseudo-element the parent ends
+ * with stays last, the compound's other simples joining it before it (`.x&` under
+ * `.a .b::before` → `.a .b.x::before`, never `.x` on `.a`), but for the user-action
+ * pseudo-classes that end the compound (`end`), which may follow it. A name built
+ * on the parent (`&-x`, `parent` is then `.a .b-x`) is placed the same way; escaped
+ * text is written as it is ({@link PSEUDO_TEXT}).
  */
-function placeParent(parent: string, before: string, lead: string, after: string, head: boolean): string {
+function placeParent(parent: string, before: string, lead: string, after: string, end: string, head: boolean, kind: number): string {
+  if (kind === PARENT_AS_WRITTEN) {
+    return before + parent + after + end;
+  }
   const at = lastCompoundStart(parent);
-  const named = leadsWithElement(parent, at);
-  if ((at > 0 && !head) || (lead.length > 0 && named)) {
-    return before + ':is(' + parent + ')' + after;
+  const pe = (kind & PARENT_PSEUDO) === 0 ? parent.length : pseudoElementStart(parent, at);
+  const named = (kind & PARENT_ELEMENT) !== 0;
+  if (((kind & PARENT_SEVERAL) !== 0 && !head) || (lead.length > 0 && named)) {
+    return before + ':is(' + parent.slice(0, pe) + ')' + after + parent.slice(pe) + end;
   }
   if (at === 0 && !named) {
-    return before + parent + after;
+    return before + parent.slice(0, pe) + after + parent.slice(pe) + end;
   }
-  return parent.slice(0, at) + lead + parent.slice(at) + before.slice(lead.length) + after;
+  return parent.slice(0, at) + lead + parent.slice(at, pe) + before.slice(lead.length) + after + parent.slice(pe) + end;
 }
 
 /**
@@ -9920,6 +10022,29 @@ function ampNeedsPlacement(c: SelectorBranch): boolean {
   return false;
 }
 
+/**
+ * [nesting] Whether a simple other than a user-action pseudo-class follows a `&` of `c`
+ * in its compound (`&.k`): under a parent that ends with a pseudo-element it would
+ * follow the pseudo-element, which no such simple may (Selectors 4 §3.6.3), so it is
+ * placed before it ({@link placeParent}).
+ */
+function endsAfterPseudoElement(c: SelectorBranch): boolean {
+  const parts = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value : [c];
+  for (const part of parts) {
+    if (typeof part === 'string' || part.type !== 'CompoundSelector') {
+      continue;
+    }
+    let amp = false;
+    for (const sim of part.value) {
+      if (amp && !isUserActionToken(sim)) {
+        return true;
+      }
+      amp ||= sim.type === 'SimpleSelector' && selectorTermHasAmpersand(sim);
+    }
+  }
+  return false;
+}
+
 /** {@link ampNeedsPlacement} for one compound; `head` when it opens the selector. */
 function termNeedsPlacement(term: SelectorTerm, head: boolean): boolean {
   const n = term.type === 'CompoundSelector' ? term.value.length : 1;
@@ -9960,8 +10085,7 @@ function resolveTermAmp(
  *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
  *  interior `&` resolves by role in `resolveCompoundAmp`. A parent a `&` cannot take
  *  as written (`kinds`, {@link PARENT_AS_WRITTEN}) is placed by the first `&` of its compound
- *  ({@link placeParent}); a parent list holding one that ends with a pseudo-element
- *  (`flags`) keeps every parent as written, since `:is()` cannot hold it (O17). */
+ *  ({@link placeParent}), a pseudo-element it ends with (`flags`) kept last. */
 function resolveSelectorBranchAmp(
   c: SelectorBranch,
   parents: string[],
@@ -9980,9 +10104,9 @@ function resolveSelectorBranchAmp(
   const last = terms.length - 1;
   const lastSubs = flags !== undefined && keepsPseudoElementLast(terms[last]!) ? parentUnits(parents, flags) : subs;
   let kinds: Uint8Array | null = null;
-  if (flags === undefined && ampNeedsPlacement(c)) {
+  if (ampNeedsPlacement(c) || (flags !== undefined && endsAfterPseudoElement(c))) {
     for (let i = 0; i < parents.length; i++) {
-      const kind = lastCompoundStart(parents[i]!) > 0 ? PARENT_SEVERAL : leadsWithElement(parents[i]!, 0) ? PARENT_ELEMENT : PARENT_AS_WRITTEN;
+      const kind = parentKind(parents[i]!, flags === undefined ? PSEUDO_NONE : flags[i]!);
       if (kind !== PARENT_AS_WRITTEN) {
         (kinds ??= new Uint8Array(parents.length))[i] = kind;
       }
@@ -10052,7 +10176,7 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
     return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
       parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
   }
-  if ((parents.length >= 2 || branchHasAttributeAmp(child) || (flags === undefined && ampNeedsPlacement(child) && (lastCompoundStart(parents[0]!) > 0 || leadsWithElement(parents[0]!, 0))))
+  if ((parents.length >= 2 || branchHasAttributeAmp(child) || ((ampNeedsPlacement(child) || (flags !== undefined && endsAfterPseudoElement(child))) && parentKind(parents[0]!, flags === undefined ? PSEUDO_NONE : flags[0]!) !== PARENT_AS_WRITTEN))
     && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
@@ -10078,7 +10202,7 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
  * [nesting] `values` (the branches each of `branches` composed over `parents`, or
  * over nothing at the root) as one list, recorded in
  * {@link EvalCtx.pseudoElementLists} when one of them ends with a pseudo-element:
- * one whose own last compound has one ({@link endsWithPseudoElement}), or one a
+ * one whose own last compound has one ({@link pseudoElementFlag}), or one a
  * bare `&` keeping a parent's pseudo-element last stands for — the parent itself
  * (`&`, `.x &`), or its unit ({@link parentUnits}) with what follows the `&`
  * (`&:hover`), {@link PSEUDO_SUFFIXED}. Any other `&` form under a parent that ends
@@ -10093,14 +10217,22 @@ function recordPseudoElementBranches(
   e: EvalCtx
 ): string[] {
   const out = values.flat();
-  const parentEnds = parentFlags !== undefined && (parentFlags.includes(PSEUDO_LAST) || parentFlags.includes(PSEUDO_SUFFIXED));
+  const parentEnds = parentFlags !== undefined && (parentFlags.includes(PSEUDO_LAST) || parentFlags.includes(PSEUDO_SUFFIXED) || parentFlags.includes(PSEUDO_TEXT));
   let flags: Uint8Array | undefined;
   let at = 0;
   for (let k = 0; k < branches.length; k++) {
     const c = branches[k]!;
     const n = values[k]!.length;
-    if (endsWithPseudoElement(c, frame, e)) {
-      (flags ??= new Uint8Array(out.length)).fill(PSEUDO_LAST, at, at + n);
+    const own = pseudoElementFlag(c, frame, e);
+    if (own === PSEUDO_CAPTURE) {
+      /* A capture's branches are selectors the parser read: each says for itself. */
+      for (let j = at; j < at + n; j++) {
+        if (pseudoElementStart(out[j]!, lastCompoundStart(out[j]!)) < out[j]!.length) {
+          (flags ??= new Uint8Array(out.length))[j] = PSEUDO_LAST;
+        }
+      }
+    } else if (own !== PSEUDO_NONE) {
+      (flags ??= new Uint8Array(out.length)).fill(own, at, at + n);
     } else if (parentEnds && parentFlags !== undefined && selectorBranchHasAmpersand(c)) {
       const tail = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value[c.value.length - 1]! : c;
       if (typeof tail !== 'string' && keepsPseudoElementLast(tail)) {
@@ -10135,43 +10267,52 @@ function recordPseudoElementBranches(
   return out;
 }
 
+/* {@link pseudoElementFlag} of a lone `@{s}` that resolves to a `*[…]` selector capture. */
+const PSEUDO_CAPTURE = 4;
+
 /**
- * [nesting] Whether a parsed branch's last compound carries a pseudo-element
- * ({@link tokenPseudoElement}): read from the parser's tokens, and for a
- * one-colon interpolated pseudo (`:@{pe}`) from the name it resolves to, so
- * `&:@{state}` with `@state: valid` does not count. A token whose interpolation
- * awaits a plugin counts.
+ * [nesting] The {@link EvalCtx.pseudoElementLists} flag of a parsed branch: whether
+ * its last compound carries a pseudo-element ({@link tokenPseudoElement}), read from
+ * the parser's tokens, and for a one-colon interpolated pseudo (`:@{pe}`) from the
+ * name it resolves to, so `&:@{state}` with `@state: valid` does not count. A token
+ * whose interpolation awaits a plugin counts. A token an interpolation opens is
+ * {@link PSEUDO_TEXT}, but a lone `@{s}` that resolves to a `*[…]` capture, whose
+ * branches are selectors ({@link PSEUDO_CAPTURE}).
  *
  * ponytail: a one-colon interpolation is read a second time here, since the
  * selector's own resolution does not report its tokens' kinds.
  */
-function endsWithPseudoElement(c: SelectorBranch, frame: Frame | null, e: EvalCtx): boolean {
+function pseudoElementFlag(c: SelectorBranch, frame: Frame | null, e: EvalCtx): number {
   const tail = c.type === 'ComplexSelector' || c.type === 'RelativeSelector' ? c.value[c.value.length - 1]! : c;
   if (typeof tail === 'string') {
-    return false;
+    return PSEUDO_NONE;
   }
   if (tail.type !== 'CompoundSelector') {
-    return tokenEndsPseudoElement(tail, frame, e);
+    return tokenPseudoElementFlag(tail, frame, e);
   }
   for (const sim of tail.value) {
-    if (tokenEndsPseudoElement(sim, frame, e)) {
-      return true;
+    const flag = tokenPseudoElementFlag(sim, frame, e);
+    if (flag !== PSEUDO_NONE) {
+      return flag;
     }
   }
-  return false;
+  return PSEUDO_NONE;
 }
 
-function tokenEndsPseudoElement(sim: SimpleToken, frame: Frame | null, e: EvalCtx): boolean {
+function tokenPseudoElementFlag(sim: SimpleToken, frame: Frame | null, e: EvalCtx): number {
   const known = tokenPseudoElement(sim);
+  if (known === true && sim.interp !== null && sim.interp.parts[0] !== undefined && !('lit' in sim.interp.parts[0])) {
+    return simpleGroupInterp(sim, frame, e) === null ? PSEUDO_TEXT : PSEUDO_CAPTURE;
+  }
   if (known !== undefined) {
-    return known;
+    return known ? PSEUDO_LAST : PSEUDO_NONE;
   }
   const text = resolveSimpleText(sim, frame, e);
   if (isThenable(text)) {
     observeRejectedThenable(text);
-    return true;
+    return PSEUDO_LAST;
   }
-  return isPseudoElementName(text);
+  return isPseudoElementName(text) ? PSEUDO_LAST : PSEUDO_NONE;
 }
 
 function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {

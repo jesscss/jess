@@ -275,13 +275,17 @@ export function keepsPseudoElementLast(term: SelectorTerm): boolean {
     return false;
   }
   for (let i = 1; i < tokens.length; i++) {
-    const sim = tokens[i]!;
-    const text = sim.type === 'PseudoSelector' ? (sim.args === null ? sim.name : null) : sim.text;
-    if (sim.interp !== null || text === null || !isUserActionPseudoClass(text)) {
+    if (!isUserActionToken(tokens[i]!)) {
       return false;
     }
   }
   return true;
+}
+
+/** Whether a parsed token is a user-action pseudo-class ({@link isUserActionPseudoClass}). */
+export function isUserActionToken(sim: SimpleToken): boolean {
+  const text = sim.type === 'PseudoSelector' ? (sim.args === null ? sim.name : null) : sim.text;
+  return sim.interp === null && text !== null && isUserActionPseudoClass(text);
 }
 
 /**

@@ -497,7 +497,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // blocks it rises out of are closed before it and opened again after it
     // (`riseOut`, `insideAtRules`, over the writer's open blocks: `openBlock`,
     // `dropBlockPart`, `reopenBlock`, `putBlockHeader`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(606);
+    // +4 functions (owner 2026-10-09, J13: `.active&` "doesn't form a new name, so
+    // it's a plain reference to the parent"): a `&` places a parent of one compound
+    // that opens with an element, or one that ends with a pseudo-element, as it
+    // places a parent of several compounds (`parentKind`, `pseudoElementStart`,
+    // `parentUnit`, `endsAfterPseudoElement`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(610);
     expect(occurrences(/new Map/gu)).toBe(94);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);

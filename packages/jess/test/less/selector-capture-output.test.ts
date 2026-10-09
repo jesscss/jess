@@ -1,8 +1,10 @@
 /**
  * Selector captures are selector VALUES, not an instruction to flatten a
  * nested rule. The output option owns that boundary: nested output preserves
- * the authored parent/child structure, while an explicit collapse composes the
- * suffix ampersand over every captured parent branch. Less `each()` is the
+ * the authored parent/child structure, while an explicit collapse references
+ * every captured parent branch from the `&`. A selector glued before `&` is a
+ * class of its own, never a name prefix (owner 2026-10-09: "how do you know
+ * it's a prefix? that's why we can't do that"). Less `each()` is the
  * existing opt-in when the author wants one emitted rule per ordinary list item
  * without changing the document's nesting policy.
  */
@@ -36,10 +38,10 @@ describe('Less selector-capture output boundaries', () => {
     ].join('\n'));
   });
 
-  it('composes the suffix ampersand over every captured branch when explicitly collapsed', async () => {
+  it('references every captured branch from a `&` glued after `.fruit-` when explicitly collapsed', async () => {
     await expect(render(captured, true)).resolves.toBe([
-      '.fruit-apple,',
-      '.fruit-satsuma {',
+      'apple.fruit-,',
+      'satsuma.fruit- {',
       '  content: "Capture";',
       '}',
       ''
