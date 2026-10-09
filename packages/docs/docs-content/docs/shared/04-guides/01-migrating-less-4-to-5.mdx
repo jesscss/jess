@@ -413,9 +413,9 @@ Numeric comparison, unit conversion between compatible units, and colour equalit
 - `relativeUrls: true` is a deprecated spelling of `rewriteUrls: 'all'`, with a warning; an explicit `rewriteUrls` wins. `lessc` no longer accepts `--relative-urls`: use `--rewrite-urls=all`.
 - `ieCompat` is accepted and ignored, with a `deprecation/ie-compat-option` warning, and `lessc` no longer accepts `--ie-compat`.
 - `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
+- `strictImports` / `--strict-imports` is removed: it is still accepted, has no effect, and reports a `deprecation/strict-imports-option` warning. Every `@import` is processed where it is written, including one inside a selector block, which Less 4 silently dropped under this option.
 - `dumpLineNumbers` / `--line-numbers` → accepted with a warning and otherwise ignored; use sourcemaps.
 - built-in `compress` is **not** deprecated: it is a supported minifier in 5.x and replaces `less-plugin-clean-css`.
-- `strictImports` is deprecated; avoid it in new configs.
 
 ## Runs on the Jess engine
 

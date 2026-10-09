@@ -131,7 +131,7 @@ export default {
   },
   language: {
     less: {
-      strictImports: false
+      rewriteUrls: 'local'
     },
     scss: {
       precision: 10,
@@ -259,7 +259,7 @@ export default {
   },
   language: {
     less: {
-      strictImports: 'error'
+      rewriteUrls: 'local'
     },
     scss: {
       precision: 10,

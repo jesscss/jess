@@ -436,9 +436,12 @@ fixture status changed.
   warning per render (`packages/compiler/src/index.ts`; orchestrator judgment
   2026-10-05 under owner delegation, `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md`
   §8).
-- **`lint`**, **`strictImports`** are accepted by the options type and produce
-  no observable behaviour change in the cases probed. **Not investigated
-  further** — see §7.
+- **`strictImports`** has no effect: every `@import` is processed where it is
+  written, a selector block included (4.x silently dropped one there). It is
+  accepted with one `deprecation/strict-imports-option` warning per render
+  (`packages/compiler/src/index.ts`; owner ruling 2026-10-09, ledger A18).
+- **`lint`** is accepted by the options type and produces no observable
+  behaviour change in the cases probed. **Not investigated further** — see §7.
 
 ---
 
@@ -507,11 +510,8 @@ at-rule surfaces as enumerated in §3.
 - **Source-map *content*.** Established that no map is produced at all; did not
   evaluate mapping accuracy, `sourceMapRootpath`/`Basepath`/`URL`/
   `OutputFilename` handling, or the annotation comment.
-- **`lint`, `strictImports`, `depends`, `paths`, `globalVars`,
-  `modifyVars`, `processImports`, `color`, `quiet`.** Only spot-checked, or not
-  at all. `strictImports` in particular has three-valued semantics
-  (`false`/`true`/`'error'`, `packages/config/src/types.ts:123`) and none of the
-  three was verified against 4.x.
+- **`lint`, `depends`, `paths`, `globalVars`, `modifyVars`,
+  `processImports`, `color`, `quiet`.** Only spot-checked, or not at all.
 - **The `lessc` CLI surface.** jess ships `bin/jess`; the `lessc` shim lives in
   the external alpha repo and no CLI flag was exercised end to end.
 - **Error-message text and error *codes*.** Checked that diagnostics carry

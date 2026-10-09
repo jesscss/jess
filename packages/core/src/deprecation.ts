@@ -71,6 +71,9 @@ export class Deprecation {
     new Deprecation('insecure-option', {
       description: 'insecure is deprecated and has no effect: remote imports are https-only and always verify the server certificate.'
     }),
+    new Deprecation('strict-imports-option', {
+      description: 'strictImports is deprecated and has no effect: every @import is processed where it is written.'
+    }),
     new Deprecation('ie-compat-option', {
       description: 'ieCompat is deprecated and has no effect: data-uri() always inlines the file.'
     })

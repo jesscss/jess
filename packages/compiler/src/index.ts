@@ -1199,6 +1199,21 @@ export class Compiler {
     }
 
     /*
+     * `strictImports` is removed (owner ruling 2026-10-09): it ignored an
+     * `@import` inside a selector block while its help text said it forced
+     * evaluation of imports. Every `@import` is processed where it is written,
+     * so the option is accepted and has no effect; a real request warns.
+     */
+    if (contextOptions.strictImports) {
+      const deprecation = Deprecation.fromId('strict-imports-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"strictImports" is deprecated and has no effect: every @import is processed where it is written.',
+        fix: 'Remove the option.',
+        meta: { what: 'strictImports', use: '@import', deprecation }
+      }));
+    }
+
+    /*
      * Less 4.x `ieCompat` made `data-uri()` fall back to `url()` for a file too
      * large for IE8. `data-uri()` always inlines the file, so the option is
      * accepted and has no effect; a real request warns.
