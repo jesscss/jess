@@ -106,9 +106,9 @@ describe('owner rulings (Less 5)', () => {
     await expect(render('@c: red;\n.a { --x: @c; }')).resolves.toBe('.a {\n  --x: @c;\n}\n');
   });
 
-  it.fails('owner 2026-10-09 (golden review; J13 is stale): .active& under a multi-compound parent keeps .active as the subject', async () => {
+  it('owner 2026-10-09 (golden review): .active& under a multi-compound parent keeps .active as the subject', async () => {
     const out = await render('.extend-this { a: b; }\n.first-level {\n  .second-level {\n    .active&:extend(.extend-this) {}\n  }\n}');
-    expect(out).toContain('.active:is(.first-level .second-level)');
+    expect(out).toContain('.first-level .second-level.active');
   });
 
   it('owner 2026-10-09 (golden review): escaped selector text before & is written as authored, not :is()-wrapped', async () => {
