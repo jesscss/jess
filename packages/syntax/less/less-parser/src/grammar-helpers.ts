@@ -2295,13 +2295,20 @@ function isParenNot(value: unknown): boolean {
   return !isMathOperand(value) && isFunctionConditionNot(value);
 }
 
-/** The `and` / `or` token joining two terms of a value paren group. */
-function parenLogicalWord(value: unknown): 'and' | 'or' | null {
-  if (typeof value !== 'object' || value === null || 'type' in value || !('value' in value) || typeof value.value !== 'string') {
-    return null;
-  }
-  const word = value.value.trim().toLowerCase();
-  return word === 'and' || word === 'or' ? word : null;
+/** The `and` / `or` joining two terms of a value paren group, as the author spelled it. */
+interface LessParenLogical {
+  readonly kind: 'less-paren-logical';
+  readonly logical: 'and' | 'or';
+  readonly word: string;
+}
+
+function isLessParenLogical(value: unknown): value is LessParenLogical {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'less-paren-logical';
+}
+
+/** `ParenConditionAnd` / `ParenConditionOr`'s reduction: which keyword, and its spelling. */
+function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[]): LessParenLogical {
+  return { kind: 'less-paren-logical', logical, word: requireTerminalText(children[0]) };
 }
 
 /**
@@ -2341,22 +2348,31 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
  * and a condition written into a value keeps the group's parens.
  */
 function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
-  const operands = children.filter(isMathOperand);
-  if (operands.length === 1 && !children.some(isParenNot)) {
-    return withSourceSpan(block(lessMathInGroup(operands[0]!, state)), span);
+  /* One walk, allocating nothing: one operand and no `not` or keyword is a math group. */
+  let operand: ValueNode | LessMathRun | undefined;
+  let conditional = false;
+  for (const child of children) {
+    if (isMathOperand(child)) {
+      conditional ||= operand !== undefined;
+      operand = child;
+    } else if (isLessParenLogical(child) || isFunctionConditionNot(child)) {
+      conditional = true;
+    }
+  }
+  if (!conditional && operand !== undefined) {
+    return withSourceSpan(block(lessMathInGroup(operand, state)), span);
   }
   const ors: unknown[] = [];
   let ands: unknown[] = [];
   let term: unknown[] = [];
   for (const child of children) {
-    const logical = parenLogicalWord(child);
-    if (logical === null) {
+    if (!isLessParenLogical(child)) {
       term.push(child);
       continue;
     }
     ands.push(parenConditionTermFrom(term, state));
     term = [];
-    if (logical === 'or') {
+    if (child.logical === 'or') {
       ors.push(foldFunctionCondition('and', ands), child);
       ands = [];
     } else {
@@ -2371,7 +2387,8 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
 
 /**
  * Fold an `and` / `or` chain of condition facts, each joined by the keyword
- * token before it, kept as the author spelled it (`AND`).
+ * before it, kept as the author spelled it (`AND`): a value paren group's
+ * {@link LessParenLogical}, or a function condition's keyword token.
  */
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
   let first: FunctionConditionFact | undefined;
@@ -2381,9 +2398,9 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
   let word: string = kind;
   for (const child of children) {
     if (!isFunctionConditionFact(child)) {
-      const text = lessTerminalText(child);
-      if (text !== null) {
-        word = text.trim();
+      const text = isLessParenLogical(child) ? child.word : lessTerminalText(child)?.trim();
+      if (text !== undefined && text !== null) {
+        word = text;
       }
       continue;
     }
@@ -2779,6 +2796,7 @@ export {
   lessMathInGroup,
   lessMathInValue,
   lessParenFrom,
+  parenLogicalFrom,
   lessMathRun,
   requireMathSum,
   functionCallFromChildren,

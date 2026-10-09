@@ -107,6 +107,7 @@ import {
   lessMathOutsideParens,
   lessMathRun,
   lessParenFrom,
+  parenLogicalFrom,
   requireMathSum,
   lowerLogicalCallStatement,
   mixinArgumentSource,
@@ -2150,14 +2151,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * operand: `not`?, an operand, an optional comparison — which, after `not`,
    * only an operand led by a group takes (`(not (1px) > 2px)`; `(not 1px > 2px)`
    * fails at its `>`).
+   *
+   * Each term owns the gap after its operands, read once, so the operator and
+   * the `and` / `or` after it are matched where they start. `and` and `or` are
+   * their own facts, so the reduction folds them without reading their bytes;
+   * a group with neither, nor a comparison or `not`, is the ordinary math group
+   * and its tree is unchanged.
    */
-  const parenConditionCompared = optional(sequence(functionConditionOperator, g.MathSum));
+  const parenConditionCompared = optional(sequence(mixinGuardOperator, optional(whitespace), g.MathSum, optional(whitespace)));
   const parenConditionTerm = choice(
     sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace), choice(
-      sequence(peek(literal('(')), g.MathSum, parenConditionCompared),
-      g.MathSum
+      sequence(peek(literal('(')), g.MathSum, optional(whitespace), parenConditionCompared),
+      sequence(g.MathSum, optional(whitespace))
     )),
-    sequence(g.MathSum, parenConditionCompared)
+    sequence(g.MathSum, optional(whitespace), parenConditionCompared)
+  );
+  const parenConditionAnd = node(
+    'ParenConditionAnd',
+    lessCaseWord('and'),
+    children => parenLogicalFrom('and', children)
+  );
+  const parenConditionOr = node(
+    'ParenConditionOr',
+    lessCaseWord('or'),
+    children => parenLogicalFrom('or', children)
   );
   const Paren = node(
     'Block',
@@ -2168,8 +2185,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('('),
       optional(whitespace),
       parenConditionTerm,
-      many(sequence(choice(functionConditionAnd, functionConditionOr), parenConditionTerm)),
-      optional(whitespace),
+      many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm)),
       literal(')')
     )),
     (children, _fields, span, _rawChildren, _triviaLog, state) => lessParenFrom(children, span, state)
