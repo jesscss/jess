@@ -109,9 +109,13 @@ async function runCompile(args) {
 
   const inFile = positionals[0];
   const outFile = positionals[1]
-    ?? inFile.replace(/\.(less|jess)$/, '.css');
+    ?? inFile.replace(/\.[^./\\]*$/, '') + '.css';
   const outDir = path.resolve(values.out ?? path.dirname(outFile));
   const outName = path.basename(outFile);
+  if (path.join(outDir, outName) === path.resolve(inFile)) {
+    console.error(`Refusing to overwrite the input file: ${inFile}`);
+    process.exit(1);
+  }
 
   const { Compiler } = await import('../lib/index.js');
   const compiler = new Compiler(await remoteImportOptions(values['allow-remote-imports']));
