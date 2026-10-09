@@ -115,6 +115,21 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
       );
     }
   }
+
+  /*
+   * npm and Yarn run a dependency's install hooks in the consumer's tree, where
+   * only the published `files` exist. The consumer install below passes
+   * `--ignore-scripts`, so it cannot see a hook that fails there: a
+   * `postinstall` running an unpublished workspace script broke every npm
+   * install of `@jesscss/scss-parser`. No Jess package needs code to run at
+   * install, so a packed hook is a release defect, not a case to inspect.
+   */
+  for (const hook of ['preinstall', 'install', 'postinstall']) {
+    assert(
+      manifest.scripts?.[hook] === undefined,
+      `${pkg.name}: packed scripts.${hook} runs at consumer install: ${manifest.scripts?.[hook]}`
+    );
+  }
 }
 
 function packageDirFor(pkgName) {

@@ -92,7 +92,6 @@
     "lib"
   ],
   "scripts": {
-    "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
