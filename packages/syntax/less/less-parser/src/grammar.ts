@@ -4199,10 +4199,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => keyword(requireToken(children[0]).value)
   );
   const atRulePreludeIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
+  /*
+   * A header keyword, with any `<pseudo-page>`s glued to it: `@page Test:first`
+   * is one `<page-selector>`, and no whitespace is allowed between its
+   * productions (css-page-3 §3), so the glued run is one header atom written as
+   * authored, never `Test :first`. A pseudo-page written apart stays its own
+   * atom (`PagePseudo`).
+   */
   const AtRulePreludeKeyword = node(
     'Keyword',
-    routed(),
-    children => keyword(requireToken(children[0]).value)
+    noTrivia(sequence(
+      routed(),
+      many(g.PagePseudo)
+    )),
+    children => children.length === 1
+      ? keyword(requireToken(children[0]).value)
+      : any(requireToken(children[0]).value + children.slice(1).filter(isAny).map(pseudo => pseudo.src).join(''))
   );
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
@@ -4223,13 +4235,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
       g.Color,
       g.Dimension,
-      g.PagePseudo,
+      // Glued pseudo-pages are one header atom, as after a page name (`AtRulePreludeKeyword`).
+      noTrivia(oneOrMore(g.PagePseudo)),
       g.Paren,
       g.DottedAtRuleKeyword,
       atRulePreludeCustomProperty,
       AtRulePreludeIdentOrFunction
     ),
-    children => requireValueNode(children[0])
+    children => children.length === 1
+      ? requireValueNode(children[0])
+      : any(children.filter(isAny).map(pseudo => pseudo.src).join(''))
   );
   const AtRulePreludeValueTerm = node(
     'AtRulePreludeValueTerm',

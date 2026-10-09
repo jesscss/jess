@@ -100,3 +100,11 @@ describe('a glued condition keyword is a general-enclosed function written as au
     expect(preludeOf('@supports not(a: b)')).toMatchObject({ type: 'FunctionCall', name: 'not' });
   });
 });
+
+/* No whitespace is allowed inside a `<page-selector>` (css-page-3 §3); either way it is written as authored. */
+describe('a @page selector is written as authored', () => {
+  it.each(['@page Test:first', '@page :left:blank', '@page Test :first'])('%s', async (prelude) => {
+    const css = (await serialize(parse(`${prelude} { size: a4 }`))).css;
+    expect(css.slice(0, css.indexOf('{')).trimEnd()).toBe(prelude);
+  });
+});

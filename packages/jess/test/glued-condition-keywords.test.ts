@@ -106,3 +106,24 @@ describe('compiler-evaluated conditions keep reading and( / not( as the keyword'
     expect(await render(dialect, source)).toEqual({ css, warnings: [] });
   });
 });
+
+/*
+ * No whitespace is allowed between the productions of a `<page-selector>`
+ * (css-page-3 §3): `Test :first` matches no page, so a page selector is written
+ * exactly as authored, glued or not (owner 2026-10-09, ledger A11).
+ */
+describe('a @page selector is written as authored', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@page Test:first',
+      '@page wide:left:blank',
+      '@page :left:blank',
+      '@page :first',
+      '@page wide',
+      '@page Test :first',
+      '@page wide :left:blank'
+    ])(`${dialect}: %s`, async (source) => {
+      expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});

@@ -264,7 +264,14 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
    */
   ['tests-unit/media/media.less', [
     // OWNER-ACCEPTED 2026-10-09 (glued condition keywords as authored)
-    ['@media screen and (max-width: 1280px) {', '@media screen and(max-width: 1280px) {']
+    ['@media screen and (max-width: 1280px) {', '@media screen and(max-width: 1280px) {'],
+
+    /*
+     * No whitespace is allowed inside a `<page-selector>` (css-page-3 §3), so
+     * `Test :first` matches no page; the authored `Test:first` is written as is.
+     */
+    // OWNER-ACCEPTED 2026-10-09 (page selector as authored)
+    ['@page Test :first {', '@page Test:first {']
   ]],
   ['tests-unit/container/container.less', [
     // OWNER-ACCEPTED 2026-10-09 (glued condition keywords as authored)
