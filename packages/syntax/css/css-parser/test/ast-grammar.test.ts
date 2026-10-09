@@ -898,8 +898,13 @@ describe('CSS canonical-AST grammar', () => {
     });
     expect(preludeOf('@media and(max-width: 1280px) { a { b: c } }')).toMatchObject(fn('and'));
 
-    /* `only <type>` must be followed by the connective; a glued `and(` is not one. */
-    expect(() => parseAst('@media only screen and(color) { a { b: c } }')).toThrow();
+    /*
+     * A glued `and(` after `only <type>` is no connective but the same
+     * `<general-enclosed>` term, kept as written (owner 2026-10-09, ledger N17).
+     */
+    expect(preludeOf('@media only screen and(color) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }, fn('and')]
+    });
   });
 
   it('uses a supports-condition branch rather than the media/container query fallback', () => {

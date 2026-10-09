@@ -6085,8 +6085,7 @@ describe('Less AST grammar facts', () => {
       '@media screen and { .card { color: red; } }',
       '@container none (width > 10px) { .card { color: red; } }',
       '@container and (width > 10px) { .card { color: red; } }',
-      '@container only screen { .card { color: red; } }',
-      '@container selector(.card) { .card { color: red; } }'
+      '@container only screen { .card { color: red; } }'
     ]) {
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -6120,10 +6119,14 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '@container screen { .card { color: red; } }',
       '@container only { .card { color: red; } }',
-      '@container card (inline-size > 30em), style(--large: true) { .card { color: red; } }'
+      '@container card (inline-size > 30em), style(--large: true) { .card { color: red; } }',
+
+      /* A function the container grammar does not define is `<general-enclosed>`, as in css (ledger N17). */
+      '@container selector(.card) { .card { color: red; } }',
+      '@container size(min-width: 60ch) { .card { color: red; } }'
     ]) {
       const result = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source }
       });
       expect(
         result.ok

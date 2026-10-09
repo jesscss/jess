@@ -199,7 +199,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError, type TreeContextLike } from '../error/jess-error.js';
 import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -21995,6 +21995,23 @@ function normalizePreludeParts(
 }
 
 /**
+ * [glued-keyword] A glued `and(` / `or(` / `not(` in a condition is a
+ * `<general-enclosed>` call (css-syntax-3 §4.3.4): written as authored, it never
+ * matches (media-queries-4 §3.2), so it is reported where it is written. A group
+ * written whole around one (`(not(color))`) reports the call it holds. Called
+ * where the emitter writes a call or a whole group, so each is reported once.
+ */
+function warnGluedConditionKeyword(node: ValueSlot, e: EvalCtx): void {
+  if (e.context === undefined || isValueSlotArray(node)) {
+    return;
+  }
+  const call = node.type === 'Block' && !isValueSlotArray(node.value) ? node.value : node;
+  if (isGluedConditionKeyword(call)) {
+    e.context.warnAtNode('css/glued-condition-keyword', 'parse', call, { keyword: call.name });
+  }
+}
+
+/**
  * `Block` is transparent when it encloses an evaluated ordinary value, but an
  * `@supports` condition owns parentheses as syntax: dropping them changes the
  * condition's grouping (and can make a feature cease to be a feature). Preserve
@@ -22008,6 +22025,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
   /* A structured [general-enclosed] group is emitted as written, as below. */
   const verbatim = generalEnclosedSourceOf(node);
   if (verbatim !== undefined) {
+    warnGluedConditionKeyword(node, e);
     return [{ bytes: verbatim, protected: true }];
   }
   if (isValueSlotArray(node)) {
@@ -22031,6 +22049,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
      * the payload's spacing, comments, or quoting.
      */
     case 'FunctionCall': {
+      warnGluedConditionKeyword(node, e);
       const payload = generalEnclosedPayload(node.args);
       if (payload === null) {
         return mapMaybe(evalBytes(node, frame, e), plain);
@@ -22107,6 +22126,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
   const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
   const verbatim = generalEnclosedSourceOf(node);
   if (verbatim !== undefined) {
+    warnGluedConditionKeyword(node, e);
     return [{ bytes: verbatim, protected: true }];
   }
   if (isValueSlotArray(node)) {
@@ -22129,6 +22149,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
      * (`e("@{w}")` in a feature value) is evaluated as any value is.
      */
     case 'FunctionCall': {
+      warnGluedConditionKeyword(node, e);
       const payload = isGeneralEnclosedTemplate(node) ? generalEnclosedPayload(node.args) : null;
       if (payload !== null) {
         return mapMaybe(evalBytes(payload, frame, e), content =>
@@ -22260,8 +22281,10 @@ function conditionFeature(node: FunctionCall): Operation | null {
  *     emit spaced;
  *   - padding immediately inside a condition paren is stripped (`( width< 500px )`
  *     → `(width < 500px)`);
- *   - a logical `and` / `or` / `not` keeps a space before its `(` (`and(…)` →
- *     `and (…)`).
+ *   - a run of whitespace between a logical `and` / `or` / `not` and its `(`
+ *     is one space (`and  (…)` → `and (…)`). A glued `and(` is never spaced: it
+ *     is a `<function-token>` (css-syntax-3 §4.3.4), so `and (` would change
+ *     what the query means (media-queries-4 §3).
  * A quoted run (`"…"`, `'…'`) or a `/* … *\/` comment passes through untouched.
  * Only a call the walker writes as bytes or a raw fragment can still hold one
  * ({@link leaf}): a string, a resolved variable, a splice and an authored run
@@ -22322,7 +22345,8 @@ function normalizeQueryPlainRun(s: string, compress = false): string {
   if (compress) {
     /*
      * [compress] tighten the feature colon, comparisons, and ratio; keep a single
-     * space after `and`/`or`/`not` before `(` (`and(` would tokenize as a function).
+     * space after `and`/`or`/`not` before `(` (`and(` would tokenize as a function),
+     * and never add one to a glued `and(`, which is that function.
      */
     return s
       .replace(/\(\s+/gu, '(')
@@ -22332,7 +22356,7 @@ function normalizeQueryPlainRun(s: string, compress = false): string {
       .replace(/\s*(<=|>=|<|>)\s*/gu, '$1')
       .replace(/\s*,\s*/gu, ',')
       .replace(/[ \t\r\n]{2,}/gu, ' ')
-      .replace(/\b(and|or|not)\s*\(/gu, '$1 (');
+      .replace(/\b(and|or|not)\s+\(/gu, '$1 (');
   }
   return s
     .replace(/\(\s+/gu, '(') // strip padding right after `(`
@@ -22340,7 +22364,7 @@ function normalizeQueryPlainRun(s: string, compress = false): string {
     .replace(/\s*:\s*/gu, ': ') // feature colon → `name: value`
     .replace(/\s*\/\s*/gu, ' / ') // ratio `/` → spaced (v5 operators spaced)
     .replace(/\s*(<=|>=|<|>)\s*/gu, ' $1 ') // range comparison → spaced
-    .replace(/\b(and|or|not)\s*\(/gu, '$1 ('); // `and(` → `and (`
+    .replace(/\b(and|or|not)\s+\(/gu, '$1 ('); // `and  (` → `and (`; a glued `and(` stays
 }
 
 /**

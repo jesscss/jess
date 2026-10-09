@@ -163,9 +163,20 @@ const marginAtKeyword = keywords(
   ],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
+
+/*
+ * A condition's `not` / `and` / `or` is an `<ident-token>`: it ends where the
+ * identifier ends and is not glued to `(`, because an identifier immediately
+ * followed by `(` is one `<function-token>` (css-syntax-3 §4.3.4). A glued
+ * `not(` / `and(` / `or(` is a `<general-enclosed>` function
+ * (media-queries-4 §3, css-conditional-3 §6), which never matches
+ * (media-queries-4 §3.2); it is read as one and written as authored, never
+ * respelled `not (`. The boundary is `IDENT_BOUNDARY` plus `(`, spelled out at
+ * each site (the macro constraint).
+ */
 const queryNot = word(
   'not',
-  IDENT_BOUNDARY,
+  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(',
   { caseInsensitive: true }
 );
 const queryOnly = word(
@@ -175,14 +186,35 @@ const queryOnly = word(
 );
 const queryAndOr = keywords(
   ['and', 'or'],
-  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(' }
 );
 
 /*
- * `and` and `or` apart, for a dialect ladder that folds each at its own
- * precedence (SCSS's and Jess's logical operators). The query ladder keeps
- * `queryAndOr`, which takes either at one level.
+ * A glued `and(` / `or(` after a condition operand: no connective, but one more
+ * `<general-enclosed>` operand. A condition chain peeks it so the operand rule
+ * reads the function once and the prelude keeps it as authored
+ * (`@supports (a: b) and(c: d)`).
  */
+const queryGluedConnective = noTrivia(sequence(
+  keywords(
+    ['and', 'or'],
+    { caseInsensitive: true, boundary: IDENT_BOUNDARY }
+  ),
+  literal('(')
+));
+
+/*
+ * `not`, `and` and `or` apart, for a dialect ladder that folds each at its own
+ * precedence (SCSS's and Jess's logical operators, Sass `@if`, Jess guards).
+ * They are compiler-evaluated words, not CSS condition syntax, so a glued
+ * `not(` is still the word before a group. The query ladder keeps `queryNot` /
+ * `queryAndOr`, which are CSS `<ident-token>`s.
+ */
+const logicalNot = word(
+  'not',
+  IDENT_BOUNDARY,
+  { caseInsensitive: true }
+);
 const logicalAnd = word(
   'and',
   IDENT_BOUNDARY,
@@ -551,6 +583,8 @@ export const cssSyntax = rules(_g => ({
   QueryNot: queryNot,
   QueryOnly: queryOnly,
   QueryAndOr: queryAndOr,
+  QueryGluedConnective: queryGluedConnective,
+  LogicalNot: logicalNot,
   LogicalAnd: logicalAnd,
   LogicalOr: logicalOr,
   QueryComparisonOperator: queryComparisonOperator,

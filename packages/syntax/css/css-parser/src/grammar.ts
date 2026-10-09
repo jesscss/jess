@@ -167,6 +167,7 @@ type GrammarRuleName =
   | 'QueryAndOr'
   | 'QueryComparisonOperator'
   | 'QueryFunctionOpen'
+  | 'QueryGluedConnective'
   | 'QueryNot'
   | 'QueryOnly'
   | 'AtRuleKeyword'
@@ -3723,27 +3724,20 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A media connective is an `<ident-token>`. A glued `and(` / `or(` is a
-   * `<function-token>` (CSS Syntax §4.3.4), so it is a `<general-enclosed>`
-   * term, never `and` followed by a group (media-queries-4 §2.1, §3).
-   */
-  const mediaAndOr = noTrivia(sequence(
-    g.QueryAndOr,
-    not(literal('('))
-  ));
-
-  /*
    * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
    * operand after `and`/`or` is optional, so the word is never given back: a
    * missing or non-parenthesized operand ends the condition, and what follows
-   * is the enclosing group's `<general-enclosed>` rest.
+   * is the enclosing group's `<general-enclosed>` rest. The connective is an
+   * `<ident-token>` (`QueryAndOr`): a glued `and(` / `or(` is a
+   * `<function-token>` (CSS Syntax §4.3.4), so it is a `<general-enclosed>`
+   * term, never `and` followed by a group (media-queries-4 §2.1, §3).
    */
   const MediaCondition = node(
     'MediaCondition',
     sequence(
       g.MediaInParens,
       many(sequence(
-        mediaAndOr,
+        g.QueryAndOr,
         optional(g.MediaInParens)
       ))
     ),
@@ -3857,7 +3851,7 @@ const cssFactory = (g: GrammarSelf) => {
     choice(
       g.MediaInParens,
       sequence(
-        not(mediaAndOr),
+        not(g.QueryAndOr),
         g.MediaTypeTerm
       )
     ),
@@ -3866,8 +3860,9 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * `only <media-type> [ and <media-condition-without-or> ]`: after the type,
-   * every term is introduced by a connective. A glued `and(` is no connective,
-   * so `only screen and(color)` is rejected like any other malformed query.
+   * every term is introduced by a connective. A glued `and(` is no connective
+   * but a `<general-enclosed>` term, so `only screen and(color)` reads it as
+   * one, as `screen and(color)` does, and keeps it as written.
    */
   const QueryOnlyClause = node(
     'QueryOnlyClause',
@@ -3875,7 +3870,10 @@ const cssFactory = (g: GrammarSelf) => {
       g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        mediaAndOr,
+        choice(
+          g.QueryAndOr,
+          peek(g.QueryGluedConnective)
+        ),
         g.MediaTerm
       ))
     ),
@@ -3902,7 +3900,7 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.MediaTerm,
         many(sequence(
-          optional(mediaAndOr),
+          optional(g.QueryAndOr),
           g.MediaTerm
         ))
       )
@@ -3968,6 +3966,12 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => firstValue(children)
   );
+
+  /*
+   * `not <atom>`, or atoms joined by `and`/`or`. A glued `and(` / `or(` after an
+   * atom is no connective but one more atom, a `<general-enclosed>` function
+   * (css-syntax-3 §4.3.4): the chain peeks it and the atom reads it once.
+   */
   const ContainerQueryCondition = node(
     'ContainerQueryCondition',
     choice(
@@ -3978,7 +3982,10 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          g.QueryAndOr,
+          choice(
+            g.QueryAndOr,
+            peek(g.QueryGluedConnective)
+          ),
           g.ContainerQueryAtom
         ))
       )
@@ -4174,6 +4181,14 @@ const cssFactory = (g: GrammarSelf) => {
       return isValue(children[0]) ? value : block(value);
     }
   );
+
+  /*
+   * `not <supports-in-parens>`, or operands joined by `and`/`or`
+   * (css-conditional-3 §6). A glued `not(` / `and(` / `or(` is a
+   * `<function-token>`, so it is a `<general-enclosed>` operand, never the
+   * keyword (css-syntax-3 §4.3.4): `@supports not(a: b)` and
+   * `@supports (a: b) and(c: d)` match nothing and are kept as written.
+   */
   const SupportsCondition = node(
     'SupportsCondition',
     choice(
@@ -4184,7 +4199,10 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.SupportsInParens,
         many(sequence(
-          g.QueryAndOr,
+          choice(
+            g.QueryAndOr,
+            peek(g.QueryGluedConnective)
+          ),
           g.SupportsInParens
         ))
       )

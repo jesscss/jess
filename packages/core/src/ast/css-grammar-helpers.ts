@@ -36,7 +36,7 @@ import {
   selectorTermOf,
   selist
 } from './nodes.js';
-import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
 import { walkAuthoredValue } from './traversal.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
@@ -1000,7 +1000,7 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
   if (isValue(head)) {
     /* A lone value is no `<mf-plain>`/`<mf-range>`: the feature is general-enclosed. */
     if (children.length === 1) {
-      return withAuthoredGeneralEnclosed(head, span, state);
+      return withAuthoredGeneralEnclosed(withGluedKeywordSpan(head, span), span, state);
     }
 
     /* A value-first range is exactly `value op name [op value]`; anything else read is general-enclosed. */
@@ -1094,10 +1094,11 @@ const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector'
  * function. A template carrying the dialect's interpolation, which P16
  * evaluates, is marked a template instead: substituted, then printed as written.
  */
-export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
-  if (value.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(value.name.toLowerCase())) {
-    return value;
+export function generalEnclosedGroup<T extends ValueNode>(group: T, span: AstSourceSpan, state: unknown): T {
+  if (group.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(group.name.toLowerCase())) {
+    return group;
   }
+  const value = withGluedKeywordSpan(group, span);
   const payload = value.type === 'FunctionCall' ? value.args[0]?.value : value.type === 'Block' ? value.value : undefined;
   if (isInterpolation(payload) && payload.parts.some(part => 'ref' in part)) {
     return withGeneralEnclosedTemplate(value);

@@ -291,7 +291,8 @@ type LessRules = {
   MediaTypeTerm: Combinator<ValueNode>;
   RoutedQueryFunction: Combinator<FunctionCall | Block>;
   QueryFeature: Combinator<ValueNode>;
-  ContainerStyleQuery: Combinator<FunctionCall>;
+  /* `style()`, `scroll-state()`, or a function-form general-enclosed routed through its opener. */
+  ContainerStyleQuery: Combinator<unknown>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
   ContainerCondition: Combinator<ValueNode>;
@@ -454,8 +455,10 @@ type SharedSyntax = {
   QueryNot: Combinator<unknown>;
   QueryOnly: Combinator<unknown>;
   QueryAndOr: Combinator<unknown>;
+  QueryGluedConnective: Combinator<unknown>;
   QueryComparisonOperator: Combinator<unknown>;
   QueryFunctionName: Combinator<unknown>;
+  QueryFunctionOpen: Combinator<unknown>;
   ImportantToken: Combinator<unknown>;
   BlockCommentToken: Combinator<unknown>;
 };
@@ -3735,7 +3738,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atRuleBlock(
           requireToken(children[0]).value,
           requireValueNode(children[1]),
-          children.filter(isStatement),
+          // A function-form prelude (`selector(a)`, a glued `not(`) is also a legal
+          // statement: exclude the selected prelude object, as `AtRuleBlock` does.
+          children.filter(isStatement).filter(statement => statement !== children[1]),
           bodyExtensionsOf(children)
         ),
         rawChildren
@@ -3982,12 +3987,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
 
   /*
    * The container style-query leaf the css base names: Less reads `style()` and
-   * `scroll-state()` as structured queries where css reads general-enclosed.
+   * `scroll-state()` as structured queries where css reads general-enclosed,
+   * and any other function as the css base does, a function-form
+   * `<general-enclosed>` (`size(min-width: 60ch)`, a glued `not(`), its opener
+   * read once and its payload Less's `Enclosed` content.
    */
-  const ContainerStyleQuery = choice(styleQuery, g.ContainerScrollStateQuery);
+  const ContainerStyleQuery = choice(
+    styleQuery,
+    g.ContainerScrollStateQuery,
+    dispatch(
+      token(noTrivia(sequence(g.QueryFunctionName, literal('(')))),
+      otherwise(g.RoutedQueryFunction)
+    )
+  );
+
+  /*
+   * A `<container-name>` is a `<custom-ident>` (css-conditional-5 §3.1), never
+   * the head of a function: `size(min-width: 60ch)` is one `<general-enclosed>`,
+   * not a container named `size` before a query.
+   */
   const ContainerName = node(
     'ContainerName',
     sequence(
+      not(g.QueryFunctionOpen),
       not(word(
         'none',
         '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
@@ -3999,6 +4021,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => requireKeyword(children.at(-1))
   );
+
+  /* As the css base's `ContainerQueryCondition`: a glued `and(` / `or(` after an atom is one more atom. */
   const ContainerCondition = node(
     'ContainerCondition',
     choice(
@@ -4009,7 +4033,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          g.QueryAndOr,
+          choice(
+            g.QueryAndOr,
+            peek(g.QueryGluedConnective)
+          ),
           g.ContainerQueryAtom
         ))
       )
