@@ -5492,7 +5492,8 @@ function writtenGroup(v: EvalValue): Value {
  * grouping that gives it its meaning and `(3px > 2px and 3px < 5px)` is
  * written as css writes it; an implied truth test is written as its bare
  * operand (`implied`), so `(1 and 2)` stays `(1 and 2)`; and `and`, `or` and
- * `not` are spelled as the author spelled them (`word`) (ledger J20 —
+ * `not` are spelled as the author spelled them (`word`) and glued to the group
+ * after them where the author glued them (`gluedAt`) (ledger J20 —
  * orchestrator judgment under owner delegation 2026-10-09; SEMANTIC-INVARIANTS
  * 4). The operands are written in the condition, not reached, so a group the
  * author wrote around one keeps its parens however the condition is read, as a
@@ -5504,6 +5505,21 @@ function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx): Ma
   }
   const parens = guard.parens;
   const written = (bytes: string): string => parens === 0 ? bytes : `${'('.repeat(parens)}${bytes}${')'.repeat(parens)}`;
+
+  /*
+   * The gap after a keyword: none where the author glued it to the group after
+   * it (`or(2)`, `not(1 = 1)`), which CSS reads as one function token (CSS
+   * Syntax 3 §4.3.4), so it is written as authored and reported where it is
+   * written, as a glued keyword in a query is (ledger N17; owner 2026-10-09:
+   * "output them as authored BUT give a warning for and( / or( / not(").
+   */
+  const gap = (keyword: { readonly word: string; readonly gluedAt: number }): string => {
+    if (keyword.gluedAt === NO_SPAN) {
+      return ' ';
+    }
+    e.context?.warnAtNode('css/glued-condition-keyword', 'parse', { _s: keyword.gluedAt, _e: keyword.gluedAt + keyword.word.length }, { keyword: keyword.word });
+    return '';
+  };
   switch (guard.g) {
     case 'cmp':
     case 'match':
@@ -5514,10 +5530,15 @@ function writtenCondition(guard: GuardNode, frame: Frame | null, e: EvalCtx): Ma
         written(`${emitValueC(left!, e)} ${guard.op} ${emitValueC(right!, e)}`));
     case 'and':
     case 'or':
-      return combineAll([writtenCondition(guard.left, frame, e), writtenCondition(guard.right, frame, e)], ([left, right]) =>
-        written(`${left!} ${guard.word} ${right!}`));
-    case 'not':
-      return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`${guard.word} ${inner}`));
+      /* Left, keyword, right: in source order, so a glued keyword is reported in it. */
+      return mapMaybe(writtenCondition(guard.left, frame, e), (left) => {
+        const head = `${left} ${guard.word}${gap(guard)}`;
+        return mapMaybe(writtenCondition(guard.right, frame, e), right => written(`${head}${right}`));
+      });
+    case 'not': {
+      const head = `${guard.word}${gap(guard)}`;
+      return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`${head}${inner}`));
+    }
     case 'truth':
       return mapMaybe(evalValueSlot(guard.value, frame, e), v => written(emitValueC(v, e)));
     case 'call':

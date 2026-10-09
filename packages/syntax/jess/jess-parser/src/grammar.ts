@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, anonymousMixin, authoredSource, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { NO_SPAN, any, anonymousMixin, authoredSource, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
 import type { Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -1210,7 +1210,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children) => {
       const inner = requireExpressionFact(children[2]);
       const src = `not(${inner.src})`;
-      return { value: condition({ g: 'not', inner: { g: 'truth', value: inner.value, parens: 1 }, word: requireToken(children[0]).value, parens: 0 }, src), src };
+      return { value: condition({ g: 'not', inner: { g: 'truth', value: inner.value, parens: 1 }, word: requireToken(children[0]).value, gluedAt: NO_SPAN, parens: 0 }, src), src };
     }
   );
   const ExpressionLogicalOperand = node<ExpressionFact>(
@@ -1336,7 +1336,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         return requireGuardNode(children[0]);
       }
       if (requireToken(children[0]).value.toLowerCase() === 'not') {
-        return { g: 'not', inner: inParens(requireGuardNode(children[2])), word: requireToken(children[0]).value, parens: 0 };
+        return { g: 'not', inner: inParens(requireGuardNode(children[2])), word: requireToken(children[0]).value, gluedAt: NO_SPAN, parens: 0 };
       }
       if (requireToken(children[0]).value === '(') {
         return inParens(requireGuardNode(children[1]));
@@ -5477,7 +5477,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         return requireGuardNode(children[0]);
       }
       return requireToken(children[0]).value.toLowerCase() === 'not'
-        ? { g: 'not', inner: inParens(requireGuardNode(children[2])), word: requireToken(children[0]).value, parens: 0 }
+        ? { g: 'not', inner: inParens(requireGuardNode(children[2])), word: requireToken(children[0]).value, gluedAt: NO_SPAN, parens: 0 }
         : inParens(requireGuardNode(children[1]));
     }
   );

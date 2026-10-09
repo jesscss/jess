@@ -1397,14 +1397,14 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, parens: 0 }),
+      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, gluedAt: NO_SPAN, parens: 0 }),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
       return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
-      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, parens: 0 }) : call;
+      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, gluedAt: NO_SPAN, parens: 0 }) : call;
     case 'and':
       return boundaryCondition(fold('and'));
     case 'or':
@@ -2231,7 +2231,7 @@ function mixinGuardTermFrom(
       term = isLessGuardOperand(inner)
         ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: inParens(requireGuardTerm(inner, state)) }
         : inParens(requireGuardTerm(inner, state));
-      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
+      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
     }
     const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
     left = operand.run;
@@ -2262,7 +2262,7 @@ function mixinGuardTermFrom(
       parens: 0
     };
   }
-  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
+  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
 }
 
 /** One `MathSum` reduction: an operand, or an unfolded run. */
@@ -2284,7 +2284,7 @@ function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state
     if (isMixinGuard(child) || isLessGuardOperand(child)) {
       result = result === undefined
         ? child
-        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, parens: 0 };
+        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, gluedAt: NO_SPAN, parens: 0 };
     } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
       /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
       word = requireTerminalText(child);
@@ -2384,7 +2384,8 @@ function functionConditionOperandFact(value: unknown, state: unknown): FunctionC
 function functionConditionTermFrom(
   children: readonly unknown[],
   rawChildren: readonly unknown[],
-  state: unknown
+  state: unknown,
+  notGluedAt = NO_SPAN
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
@@ -2408,7 +2409,7 @@ function functionConditionTermFrom(
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return { guard: { g: 'not', inner: left.guard, word: notWord, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
+      return { guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
     }
     return { ...left, grouped };
   }
@@ -2416,12 +2417,26 @@ function functionConditionTermFrom(
   const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
   const src = `${left.src} ${operator} ${right.src}`;
   return negated
-    ? { guard: { g: 'not', inner: guard, word: notWord, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
+    ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
 }
 
 function isFunctionConditionNot(value: unknown): boolean {
   return isLessKeyword(value, 'not');
+}
+
+/**
+ * Where a condition keyword starts when the author glued it to the group after
+ * it (`or(2)`, `not(1 = 1)`): that group, or the group leading the operand's
+ * math run, opens exactly where the keyword's token ends. CSS reads the pair as
+ * one function token (CSS Syntax 3 §4.3.4), so a written condition keeps it as
+ * authored and warns there (ledger N17). Otherwise {@link NO_SPAN}.
+ */
+function gluedKeywordAt(keyword: SourceSpan, operand: unknown): number {
+  const lead = isLessMathRun(operand) ? operand.operands[0] : operand;
+  return isValueNode(lead) && lead.type === 'Block' && lead.delimiter === 'paren' && lead.escaped !== true && sourceStartOf(lead) === keyword.end
+    ? keyword.start
+    : NO_SPAN;
 }
 
 /** One `MathSum` reduction among other children. */
@@ -2439,6 +2454,8 @@ interface LessParenLogical {
   readonly kind: 'less-paren-logical';
   readonly logical: 'and' | 'or';
   readonly word: string;
+  readonly span: SourceSpan;
+  readonly gluedAt: number;
 }
 
 function isLessParenLogical(value: unknown): value is LessParenLogical {
@@ -2446,8 +2463,19 @@ function isLessParenLogical(value: unknown): value is LessParenLogical {
 }
 
 /** `ParenConditionAnd` / `ParenConditionOr`'s reduction: which keyword, and its spelling. */
-function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[]): LessParenLogical {
-  return { kind: 'less-paren-logical', logical, word: requireTerminalText(children[0]) };
+function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[], span: SourceSpan): LessParenLogical {
+  return { kind: 'less-paren-logical', logical, word: requireTerminalText(children[0]), span, gluedAt: NO_SPAN };
+}
+
+/** The keyword at `index`, glued (`and(2)`) when the operand after it opens where it ends ({@link gluedKeywordAt}). */
+function parenLogicalAt(children: readonly unknown[], index: number, logical: LessParenLogical): LessParenLogical {
+  for (let next = index + 1; next < children.length; next += 1) {
+    if (isMathOperand(children[next])) {
+      const gluedAt = gluedKeywordAt(logical.span, children[next]);
+      return gluedAt === NO_SPAN ? logical : { ...logical, gluedAt };
+    }
+  }
+  return logical;
 }
 
 /**
@@ -2456,9 +2484,11 @@ function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[]): 
  * is itself a group around a condition (`((a > b) and (c > d))`) is that
  * condition, grouped, as `FunctionConditionParen` reads `(a > b)`.
  */
-function parenConditionTermFrom(children: readonly unknown[], state: unknown): FunctionConditionFact {
+function parenConditionTermFrom(children: readonly unknown[], rawChildren: readonly unknown[], state: unknown): FunctionConditionFact {
   const lead = children.filter(isParenNot);
   const [left, right] = children.filter(isMathOperand);
+  const not = lead.length === 0 ? undefined : rawChildren[children.indexOf(lead[0])];
+  const notGluedAt = isSpannedToken(not) ? gluedKeywordAt(not.span, left) : NO_SPAN;
   if (right !== undefined) {
     const operator = children.find(child => !isMathOperand(child) && guardOperatorText(child) !== null);
     return functionConditionTermFrom([
@@ -2466,7 +2496,7 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
       functionConditionOperandFrom([left], state),
       operator,
       functionConditionOperandFrom([right], state)
-    ], [], state);
+    ], [], state, notGluedAt);
   }
   const value = lessMathInValue(left!, state);
   const inner = value.type === 'Block' && value.delimiter === 'paren' && isValueNode(value.value) && value.value.type === 'Condition'
@@ -2475,7 +2505,7 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
   return functionConditionTermFrom([
     ...lead,
     inner === null ? value : { guard: inParens(inner.guard), src: functionConditionSource(value), grouped: true, hasComparison: true }
-  ], [], state);
+  ], [], state, notGluedAt);
 }
 
 /**
@@ -2486,7 +2516,7 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
  * `(a > b)` replays the same condition source whichever production reads it,
  * and a condition written into a value keeps the group's parens.
  */
-function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
+function lessParenFrom(children: readonly unknown[], rawChildren: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
   /* One walk, allocating nothing: one operand and no `not` or keyword is a math group. */
   let operand: ValueNode | LessMathRun | undefined;
   let conditional = false;
@@ -2504,21 +2534,26 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
   const ors: unknown[] = [];
   let ands: unknown[] = [];
   let term: unknown[] = [];
-  for (const child of children) {
+  let termRaw: unknown[] = [];
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
     if (!isLessParenLogical(child)) {
       term.push(child);
+      termRaw.push(rawChildren[index]);
       continue;
     }
-    ands.push(parenConditionTermFrom(term, state));
+    ands.push(parenConditionTermFrom(term, termRaw, state));
     term = [];
+    termRaw = [];
+    const logical = parenLogicalAt(children, index, child);
     if (child.logical === 'or') {
-      ors.push(foldFunctionCondition('and', ands), child);
+      ors.push(foldFunctionCondition('and', ands), logical);
       ands = [];
     } else {
-      ands.push(child);
+      ands.push(logical);
     }
   }
-  ands.push(parenConditionTermFrom(term, state));
+  ands.push(parenConditionTermFrom(term, termRaw, state));
   ors.push(foldFunctionCondition('and', ands));
   const fact = foldFunctionCondition('or', ors);
   return withSourceSpan(block(condition(fact.guard, fact.src)), span);
@@ -2526,8 +2561,9 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
 
 /**
  * Fold an `and` / `or` chain of condition facts, each joined by the keyword
- * before it, kept as the author spelled it (`AND`): a value paren group's
- * {@link LessParenLogical}, or a function condition's keyword token.
+ * before it, kept as the author spelled it (`AND`) and glued as the author
+ * glued it (`and(2)`): a value paren group's {@link LessParenLogical}, or a
+ * function condition's keyword token.
  */
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
   let first: FunctionConditionFact | undefined;
@@ -2535,11 +2571,13 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
   let src = '';
   let hasComparison = false;
   let word: string = kind;
+  let gluedAt = NO_SPAN;
   for (const child of children) {
     if (!isFunctionConditionFact(child)) {
       const text = isLessParenLogical(child) ? child.word : lessTerminalText(child)?.trim();
       if (text !== undefined && text !== null) {
         word = text;
+        gluedAt = isLessParenLogical(child) ? child.gluedAt : NO_SPAN;
       }
       continue;
     }
@@ -2550,7 +2588,7 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
       hasComparison = child.hasComparison;
       continue;
     }
-    guard = { g: kind, left: guard, right: child.guard, word, parens: 0 };
+    guard = { g: kind, left: guard, right: child.guard, word, gluedAt, parens: 0 };
     src += ` ${word} ${child.src}`;
     hasComparison ||= child.hasComparison;
   }

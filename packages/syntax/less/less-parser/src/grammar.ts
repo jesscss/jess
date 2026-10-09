@@ -2175,12 +2175,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const parenConditionAnd = node(
     'ParenConditionAnd',
     lessCaseWord('and'),
-    children => parenLogicalFrom('and', children)
+    (children, _fields, span) => parenLogicalFrom('and', children, span)
   );
   const parenConditionOr = node(
     'ParenConditionOr',
     lessCaseWord('or'),
-    children => parenLogicalFrom('or', children)
+    (children, _fields, span) => parenLogicalFrom('or', children, span)
   );
   const Paren = node(
     'Block',
@@ -2194,7 +2194,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm)),
       literal(')')
     )),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => lessParenFrom(children, span, state)
+    (children, _fields, span, rawChildren, _triviaLog, state) => lessParenFrom(children, rawChildren, span, state)
   );
   // CSS grid line names are a bracketed value piece, not a map accessor or an
   // opaque post-parse string. Keep the delimited grammar fact as one existing
@@ -3308,7 +3308,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const term = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
       const guard = children.some(child => isLessTerminalText(child, '(')) ? inParens(term) : term;
       const not = children.find(child => isLessKeyword(child, 'not'));
-      return not === undefined ? guard : { g: 'not', inner: guard, word: requireTerminalText(not), parens: 0 };
+      return not === undefined ? guard : { g: 'not', inner: guard, word: requireTerminalText(not), gluedAt: NO_SPAN, parens: 0 };
     }
   );
   const MixinGuardTopAnd = node(

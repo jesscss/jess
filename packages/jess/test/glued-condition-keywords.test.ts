@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { serialize } from '@jesscss/core';
+import { parse as parseCss } from '@jesscss/css-parser';
 import { Compiler } from '../src/index.js';
 
 /**
@@ -86,6 +88,62 @@ describe('the spaced keyword and other condition functions', () => {
       '@supports selector(a > b)'
     ])(`${dialect}: writes %s as authored without a warning`, async (source) => {
       expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});
+
+/*
+ * A condition written into a declaration value is CSS: nothing evaluates it, so
+ * a glued keyword in it is written as authored, as css writes it, and Less,
+ * which reads the group as a condition, warns where the keyword is written
+ * (owner 2026-10-09: "output them as authored BUT give a warning for and( / or(
+ * / not("; ledger N17).
+ */
+describe('a glued and( / or( / not( in a written value condition', () => {
+  /* The value, how css writes it, and the 1-based column of each glued keyword in `.k { x: <value>; }`. */
+  const WRITTEN: ReadonlyArray<readonly [value: string, css: string, columns: readonly number[]]> = [
+    ['(1 or(2))', '(1 or(2))', [12]],
+    ['(not(1))', '(not(1))', [10]],
+    ['((1) and(2))', '((1) and(2))', [14]],
+    ['(not(1 = 1))', '(not(1 = 1))', [10]],
+    ['(NOT(1 = 1))', '(NOT(1 = 1))', [10]],
+    ['((1 = 1)and(2 = 2))', '((1 = 1) and(2 = 2))', [17]],
+    ['((1 = 1) or(2 = 2) and(3 = 3))', '((1 = 1) or(2 = 2) and(3 = 3))', [18, 28]]
+  ];
+
+  it.each(WRITTEN)('less: writes %s as css does and warns at each glued keyword', async (value, css, columns) => {
+    const source = `.k { x: ${value}; }`;
+    const plain = (await serialize(parseCss(source))).css;
+    expect(plain).toBe(`.k {\n  x: ${css};\n}\n`);
+    const { css: less, warnings } = await render('less', source);
+    expect(less).toBe(plain);
+    expect(warnings.map(warning => [warning.code, warning.line, warning.column])).toEqual(
+      columns.map(column => ['css/glued-condition-keyword', 1, column])
+    );
+  });
+
+  it('less: warns where a condition a variable holds is written', async () => {
+    expect(await render('less', '@c: (1 or(2));\n.k { x: @c; }')).toEqual({
+      css: '.k {\n  x: (1 or(2));\n}\n',
+      warnings: [expect.objectContaining({ code: 'css/glued-condition-keyword', line: 1, column: 8 })]
+    });
+  });
+
+  it('less: the spaced keyword is written as authored without a warning', async () => {
+    expect(await render('less', '.k { a: (1 or (2)); b: (not (1)); c: ((1) and (2)); }')).toEqual({
+      css: '.k {\n  a: (1 or (2));\n  b: (not (1));\n  c: ((1) and (2));\n}\n',
+      warnings: []
+    });
+  });
+
+  /*
+   * P45 (owner 2026-10-09): valid CSS parses in every dialect. Not yet: the
+   * SCSS and Jess value grammars reject a CSS `=` delimiter in a function
+   * argument (`x: foo(1 = 1)` stops the same way), so `not(1 = 1)` stops there.
+   */
+  for (const dialect of ['scss', 'jess'] as const) {
+    it.fails(`${dialect}: parses (not(1 = 1)) and writes it as css does`, async () => {
+      expect((await render(dialect, '.k { x: (not(1 = 1)); }')).css).toBe('.k {\n  x: (not(1 = 1));\n}\n');
     });
   }
 });
