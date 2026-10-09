@@ -110,11 +110,6 @@
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
-  "peerDependenciesMeta": {
-    "@jesscss/core": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
     "sass-spec": "github:sass/sass-spec#67c3b83a26fd3f9772dd0d3e318fe32aefb38eef"

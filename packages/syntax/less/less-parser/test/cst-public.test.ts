@@ -59,7 +59,7 @@ function expectNoModeLabels(tree: CstNode) {
 }
 
 describe('@jesscss/less-parser/cst', () => {
-  it('parses Less through the public core-free CST entry', () => {
+  it('parses Less through the public CST entry', () => {
     const result = parseLessCst('@color: red; .x { color: @color; }');
 
     expect(result.errors).toHaveLength(0);

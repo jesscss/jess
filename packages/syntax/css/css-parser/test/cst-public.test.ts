@@ -76,7 +76,7 @@ function expectNoModeLabels(tree: CstNode) {
 }
 
 describe('@jesscss/css-parser/cst', () => {
-  it('parses CSS through the public core-free CST entry', () => {
+  it('parses CSS through the public CST entry', () => {
     const result = parseCssCst('a { color: red; }');
 
     expect(result.errors).toHaveLength(0);

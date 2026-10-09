@@ -114,11 +114,6 @@
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
-  "peerDependenciesMeta": {
-    "@jesscss/core": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/shared": "workspace:*",
