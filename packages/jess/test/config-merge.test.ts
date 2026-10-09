@@ -321,6 +321,34 @@ describe('Config Merging', () => {
   });
 
   /*
+   * `strictImports` is removed (owner ruling 2026-10-09): every `@import` is
+   * processed where it is written, a selector block included, so the option is
+   * accepted, warns once, and changes nothing.
+   */
+  it.each([
+    ['language.less', { language: { less: { strictImports: true } } }],
+    ['compile', { compile: { strictImports: true } }]
+  ])('accepts deprecated %s.strictImports with one no-effect warning and unchanged output', async (_where, options) => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(path.join(tempDir, 'x.less'), '.x { b: 1; }\n');
+    fs.writeFileSync(testFile, '.container { @import "x"; }\n');
+
+    const plain = await new Compiler().renderToResult(testFile, { suppressWarnings: true });
+    const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+
+    const deprecations = result.warnings.filter(warning => warning.code === 'deprecation/strict-imports-option');
+    expect(deprecations).toHaveLength(1);
+    expect(deprecations[0]!.reason).toBe('"strictImports" is deprecated and has no effect: every @import is processed where it is written.');
+    expect(deprecations[0]!.filePath).toBeUndefined();
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(plain.css);
+    expect(result.css).toBe('.container {\n  .x {\n    b: 1;\n  }\n}\n');
+
+    const unset = await new Compiler({ language: { less: { strictImports: false } } }).renderToResult(testFile, { suppressWarnings: true });
+    expect(unset.warnings.map(warning => warning.code)).not.toContain('deprecation/strict-imports-option');
+  });
+
+  /*
    * Less 4.x `ieCompat` (`lessc --ie-compat`) made `data-uri()` fall back to `url()`
    * for a file too large for IE8. `data-uri()` always inlines the file, so the option
    * is accepted, warns once, and changes nothing; a Less 4.x caller can pass it through.

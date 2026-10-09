@@ -97,27 +97,13 @@ export interface LessOptions {
   color?: boolean;
 
   /**
-   * @deprecated This option has confusing behavior and may be removed in a future version.
+   * @deprecated Removed (owner ruling 2026-10-09): accepted, but it has no
+   * effect. Every `@import` is processed where it is written, a selector block
+   * included. Setting it reports a `deprecation/strict-imports-option` warning.
    *
-   * Controls how @import statements for .less files are handled inside selector blocks (rulesets).
-   *
-   * Behavior:
-   * - @import at root level: Always processed
-   * - @import inside @-rules (@media, @supports, etc.): Processed (these are not selector blocks)
-   * - @import inside selector blocks (.class, #id, etc.): Behavior depends on this option
-   *
-   * Options:
-   * - `false` (default): All @import statements are processed regardless of context.
-   * - `true`: @import statements inside selector blocks are silently ignored and not output.
-   * - `'error'`: @import statements inside selector blocks will throw an error instead of being silently ignored.
-   *
-   * Note: Only affects .less file imports. CSS imports (url(...) or .css files) are
-   * always output as CSS @import statements regardless of this setting.
-   *
-   * @see https://github.com/less/less.js/issues/656
    * @default false
    */
-  strictImports?: boolean | 'error';
+  strictImports?: boolean;
 
   /**
    * @deprecated Accepted for Less 4.x compatibility, but it has no effect:
@@ -412,7 +398,6 @@ export interface InputOptions extends FileMatchOptions {
   paths?: string[];
   globalVars?: Record<string, string> | null;
   modifyVars?: Record<string, string> | null;
-  strictImports?: boolean | 'error';
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
   rootpath?: string;
   allowLeakyScope?: boolean;

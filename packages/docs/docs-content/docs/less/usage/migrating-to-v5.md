@@ -524,9 +524,9 @@ Example:
 - `ieCompat` is accepted and ignored, with a `deprecation/ie-compat-option` warning when it is `true`, and `lessc` no longer accepts `--ie-compat`. `data-uri()` always inlines the file.
 - `dumpLineNumbers` / `--line-numbers` is deprecated and has no effect: no line-number comments or debug media queries are emitted, and setting it reports a `deprecation/dump-line-numbers-option` warning. Use source maps.
 - `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
+- `strictImports` / `--strict-imports` is removed: it is still accepted, has no effect, and reports a `deprecation/strict-imports-option` warning. Every `@import` is processed where it is written, including one inside a selector block, which Less 4 silently dropped under this option.
 - Error and warning positions count lines from the file as you wrote it. Less 4.x counted the text that `banner` and `globalVars` add in front of it.
 - Built-in `compress` is **not** deprecated in 5.x — it is a supported minifier and replaces `less-plugin-clean-css` (see [Compressed Output](../advanced/compressed-output)).
-- `strictImports` is deprecated and should be avoided in new configurations.
 
 Example:
 
