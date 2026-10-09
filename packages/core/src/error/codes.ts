@@ -52,6 +52,7 @@ export type JessErrorCode =
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
   | 'eval/url-option-skipped'
+  | 'eval/charset-conflict'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
   | 'eval/unit-conversion'
@@ -408,6 +409,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${expr} has no single CSS value: its units compose to one CSS cannot express, or + or - joins two units that do not convert.',
       fix: 'Cancel the units, or drop one side\'s unit. An expression calc() accepts can be wrapped in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/charset-conflict',
+    {
+      summary: '${charset} is dropped: the output already declares ${hoisted}',
+      reason: 'A stylesheet declares one encoding, read only from its first bytes, and ${hoisted} comes first, so the later ${charset} is not written.',
+      fix: 'Remove the @charset that names the other encoding, or make the files agree.'
     }
   ],
   [

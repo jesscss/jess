@@ -475,7 +475,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // planner and the walk raise the same error (`composeNotTopLevel`).
     // -1 function (owner 2026-10-09: text prints as written): escaped text is
     // never split into a nested header's branches (`splitListBytes`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(591);
+    // +1 function (ledger N11; orchestrator judgment under owner delegation
+    // 2026-10-09): an imported sheet's `@charset` goes to the top of the output,
+    // a later one naming another encoding warns (`hoistCharsets`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(592);
     expect(occurrences(/new Map/gu)).toBe(92);
     expect(occurrences(/new Set/gu)).toBe(44);
     expect(occurrences(/new WeakMap/gu)).toBe(11);

@@ -10610,6 +10610,9 @@ interface Emit extends EvalCtx {
   /** Block-comment trivia runs already replayed during this render. */
   emittedBlockTrivia: EmittedTrivia;
 
+  /** [charset] The output's one `@charset` ({@link hoistCharsets}); null where none is hoisted. */
+  charset: HoistedCharset | null;
+
   /** Pending trivia owned by the currently active leaf buffer. */
   pendingLeafBlockComments: string[] | null;
 
@@ -10690,6 +10693,7 @@ function scratchEmit(e: EvalCtx): Emit {
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
+    charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null
   };
@@ -13976,6 +13980,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
+    charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null,
     scopedFunctionNames: scopedFunctionNames(rootFns),
@@ -14087,6 +14092,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
+    charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null,
     scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
@@ -20550,16 +20556,60 @@ function isCharset(node: AtRuleStatement): boolean {
 }
 
 /**
- * [charset] Emit the FIRST document-level `@charset` at the top of the output.
- * Every inline occurrence (including this one) is dropped by
- * `emitAtRuleStatement`, so the single hoisted copy is the whole output — the
- * dedupe. Mirrors legacy jess / Less 4.x: first charset wins, rest dropped.
+ * [charset] The output's one `@charset`: its written bytes, and the chunk at the top of
+ * the output that holds them (`-1` where the entry's own was written there directly).
+ */
+interface HoistedCharset {
+  bytes: string | null;
+  at: number;
+}
+
+/**
+ * [charset] The top of the output, where the first document-level `@charset` goes
+ * (ledger N11): the entry's own is written there, and otherwise a chunk is reserved
+ * that the first `@charset` of a sheet an import places fills ({@link hoistCharsets}).
+ * Every inline occurrence is dropped by `emitAtRuleStatement`.
  */
 function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
   for (const c of rules) {
-    if (c.type === 'AtRuleStatement' && isCharset(c as AtRuleStatement)) {
-      emitAtRuleStatementRaw(c as AtRuleStatement, frame, e, null);
+    if (c.type === 'AtRuleStatement' && isCharset(c)) {
+      const start = e.chunks.length;
+      emitAtRuleStatementRaw(c, frame, e, null);
+      e.charset = { bytes: e.chunks.slice(start).join(''), at: -1 };
+      hoistCharsets(rules, frame, e, c);
       return;
+    }
+  }
+  e.charset = { bytes: null, at: e.chunks.length };
+  e.chunks.push('');
+}
+
+/**
+ * [charset] The document-level `@charset`s of `rules`, a document's top level, the
+ * entry's or a sheet's an import places, in order: the first in the output fills the
+ * chunk reserved at its top; a later one written the same is dropped; a later one that
+ * names another encoding is dropped with an `eval/charset-conflict` warning, since one
+ * stylesheet declares one encoding, read only from its first bytes (CSS Syntax 3 §3.2;
+ * orchestrator judgment under owner delegation 2026-10-09: a silent drop is
+ * surprising). `written` is the one already written.
+ */
+function hoistCharsets(rules: readonly Statement[], frame: Frame, e: Emit, written: AtRuleStatement | null = null): void {
+  const slot = e.charset;
+  if (slot === null) {
+    return;
+  }
+  for (const c of rules) {
+    if (c === written || c.type !== 'AtRuleStatement' || !isCharset(c)) {
+      continue;
+    }
+    const scratch = scratchEmit(e);
+    emitAtRuleStatementRaw(c, frame, scratch, null);
+    const bytes = scratch.chunks.join('');
+    if (slot.bytes === null) {
+      slot.bytes = bytes;
+      e.chunks[slot.at] = bytes;
+    } else if (slot.bytes !== bytes) {
+      e.context?.warnAtNode('eval/charset-conflict', 'eval', c, { charset: bytes.trim(), hoisted: slot.bytes.trim() });
     }
   }
 }
@@ -21562,6 +21612,11 @@ function expandStyleImport(
         return mapMaybe(publishChildren, () => {
           if (loaded.document === null) {
             return;
+          }
+
+          /* [charset] A placed sheet's `@charset` goes to the top of the output (ledger N11). */
+          if (e.referenceImportDepth === 0 && !importHasOption(request.options, 'reference')) {
+            hoistCharsets(loaded.document.rules, bodyFrame, e);
           }
           const emitSheet = () => emitLoaded
             ? emitLoaded(loaded.document!, bodyFrame)
