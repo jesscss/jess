@@ -2300,6 +2300,13 @@ describe('JessLanguageServiceEngine', () => {
       expect(targets).toContain('https://example.com/a.png');
     });
 
+    it('omits relative links an unsaved buffer cannot resolve', () => {
+      const engine = createEngine();
+      const text = '@import "foo.less";\n.a { background: url(img/a.png); border-image: url("https://example.com/a.png"); }';
+      engine.open('untitled:Untitled-1', 'less', 1, text);
+      expect(engine.getDocumentLinks('untitled:Untitled-1').map(l => l.target)).toEqual(['https://example.com/a.png']);
+    });
+
     it('handles Less @import options and repeated imports', () => {
       const engine = createEngine();
       const doc = createDocument(

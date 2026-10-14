@@ -2737,10 +2737,10 @@ export function createEngine(): JessLanguageServiceEngine {
       const doc = tracked.document;
       const text = doc.getText();
       const links: DocumentLink[] = [];
-      const tryResolveFileTarget = (rawTarget: string): string => {
+      const tryResolveFileTarget = (rawTarget: string): string | null => {
         const t = rawTarget.trim();
         if (!t) {
-          return t;
+          return null;
         }
         if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(t) || t.startsWith('file:')) {
           return t;
@@ -2756,9 +2756,9 @@ export function createEngine(): JessLanguageServiceEngine {
           basePath = null;
         }
 
-        // If we can't resolve, still return raw.
+        // A relative target in an unsaved buffer has nothing to resolve against.
         if (!basePath) {
-          return t;
+          return null;
         }
 
         // Strip query/hash for filesystem checks, but preserve for final URL.
@@ -2785,7 +2785,8 @@ export function createEngine(): JessLanguageServiceEngine {
         return String(pathToFileURL(finalPath));
       };
 
-      const pushLink = (startOffset: number, endOffset: number, target: string) => {
+      const pushLink = (startOffset: number, endOffset: number, rawTarget: string) => {
+        const target = tryResolveFileTarget(rawTarget);
         if (!target) {
           return;
         }
@@ -2796,7 +2797,7 @@ export function createEngine(): JessLanguageServiceEngine {
         }
         links.push({
           range: { start, end } as Range,
-          target: tryResolveFileTarget(target)
+          target
         });
       };
 
