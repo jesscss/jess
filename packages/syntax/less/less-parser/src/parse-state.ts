@@ -110,20 +110,24 @@ export function requireLessParseState(state: unknown): LessParseState {
     : { source, mathMode };
 }
 
+/** What the reducers of this parse share ({@link LessParseState.document}), or `undefined` for a raw `run()`. */
+function documentOf(state: unknown): LessDocumentFacts | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.document;
+}
+
 /**
  * The document's function scope, or `null` for a state without one (a raw
  * `run()` with no state). Read on every call node, so no re-validation of the
  * state `parseWith` itself built.
  */
 export function functionScopeOf(state: unknown): FunctionScope | null {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
-  return (state as LessParseState | undefined)?.document?.functions ?? null;
+  return documentOf(state)?.functions ?? null;
 }
 
 /** The recovered-problem sink `parseWith` gave this run, or `null` (a raw `run()`). */
 export function diagnosticsOf(state: unknown): LessRecoveredError[] | null {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
-  return (state as LessParseState | undefined)?.document?.diagnostics ?? null;
+  return documentOf(state)?.diagnostics ?? null;
 }
 
 /** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */
