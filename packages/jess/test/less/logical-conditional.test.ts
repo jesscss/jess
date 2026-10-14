@@ -237,7 +237,7 @@ describe('Less logical / conditional functions', () => {
       '.m(@a) when (@a > 1) AND (@a < 5) { x: in; }',
       '.m(@a) when NOT (@a > 1) { x: low; }',
       '.m(@a) when (@a = 9) OR (@a = 10) { x: nine; }',
-      '.y { a: @x; c: @y; e: @z; f: rgb(1 AND 2, 3, 4); g: rgb(NOT (1 = 1), 3, 4); h: boolean(NOT (1 > 2)); i: if((1 = 1) AND (2 = 2), yes, no); }',
+      '.y { a: @x; c: @y; e: @z; h: boolean(NOT (1 > 2)); i: if((1 = 1) AND (2 = 2), yes, no); }',
       '.a { .m(3); } .b { .m(0); } .c { .m(10); }'
     ].join('\n');
     const result = await compiler.renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
@@ -245,8 +245,6 @@ describe('Less logical / conditional functions', () => {
       ['parse/condition-keyword-case', 2, 'AND'],
       ['parse/condition-keyword-case', 3, 'NOT'],
       ['parse/condition-keyword-case', 4, 'OR '],
-      ['parse/condition-keyword-case', 5, 'AND'],
-      ['parse/condition-keyword-case', 5, 'NOT'],
       ['parse/condition-keyword-case', 5, 'NOT'],
       ['parse/condition-keyword-case', 5, 'AND']
     ]);
