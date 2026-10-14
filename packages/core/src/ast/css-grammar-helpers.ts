@@ -77,7 +77,8 @@ import type { Token } from './grammar-helpers.js';
 import type { GuardNode } from './guard.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
-type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
+type FieldCapture = { readonly value: unknown; readonly span?: { readonly start: number; readonly end: number } };
+type ReducerFields = Record<string, FieldCapture | ReadonlyArray<FieldCapture>>;
 
 export function tokenText(child: unknown): string {
   if (typeof child === 'string') {
@@ -622,13 +623,14 @@ function triviaRunText(triviaLog: readonly number[], source: string, first: numb
  * A comma list whose layout keeps the comments written either side of each comma
  * (`screen /* a *\/, /* b *\/ print`). Its separator field captures the `,` and the
  * whitespace after it; ambient trivia took the comments, so they are read from the
- * node's trivia log, before the separator's raw child and before the item after
- * it. A list whose separators cannot all be placed keeps the plain `, ` glue.
+ * node's trivia log: the run that ends where a separator starts and the run that
+ * starts where it ends. Placing them by source offset needs no raw children, so a
+ * reducer that leaves `rawChildren` unread does not pay for that capture tier.
+ * A list whose separators cannot all be placed keeps the plain `, ` glue.
  */
 export function commaListWithComments<T extends ValueSlot>(
   children: readonly unknown[],
   fields: ReducerFields | undefined,
-  rawChildren: readonly unknown[],
   triviaLog: readonly number[],
   state: unknown,
   pick: (child: unknown) => child is T
@@ -638,40 +640,37 @@ export function commaListWithComments<T extends ValueSlot>(
     return values[0]!;
   }
   const result = list(values, ',');
-  const separators = authoredSeparators(fields);
+  const capture = fields?.separator;
+  const captures = capture === undefined ? [] : Array.isArray(capture) ? capture : [capture];
   const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string'
     ? state.source
     : undefined;
-  if (source === undefined || separators.length !== values.length - 1) {
+  if (source === undefined || captures.length !== values.length - 1) {
     return result;
   }
   const layout: string[] = [];
-  let raw = 0;
-  let entry = 0;
-  for (const separator of separators) {
-    while (raw < rawChildren.length && rawLeafValue(rawChildren[raw]) !== separator) {
-      raw++;
-    }
-    if (raw === rawChildren.length) {
+
+  /* Log entries are in source order, so one cursor reads every separator's trivia. */
+  let from = 0;
+  for (const { value, span } of captures) {
+    if (span === undefined) {
       return result;
     }
-
-    /* The log's insert indices only grow, so one cursor reads every separator's trivia. */
-    entry = triviaEntryAt(triviaLog, entry, raw);
-    const before = triviaRunText(triviaLog, source, entry, raw);
-    entry = triviaEntryAt(triviaLog, entry, raw + 1);
-    layout.push(before + separator + triviaRunText(triviaLog, source, entry, raw + 1));
-    raw++;
+    let entry = from;
+    while (entry < triviaLog.length && triviaLog[entry]! < span.start) {
+      entry += CSS_NODE_TRIVIA_STRIDE;
+    }
+    const last = entry - CSS_NODE_TRIVIA_STRIDE;
+    const before = last >= from && triviaLog[last + 1] === span.start
+      ? triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, from, triviaLog[last + 2]!), triviaLog[last + 2]!)
+      : '';
+    const after = entry < triviaLog.length && triviaLog[entry] === span.end
+      ? triviaRunText(triviaLog, source, entry, triviaLog[entry + 2]!)
+      : '';
+    layout.push(before + authoredText(value) + after);
+    from = entry;
   }
   return withValueLayout(result, layout);
-}
-
-/** A raw child's text when it is a parseman leaf; a `sepBy` separator is one. */
-function rawLeafValue(entry: unknown): string | undefined {
-  return typeof entry === 'object' && entry !== null && '_tag' in entry && entry._tag === 'leaf'
-    && 'value' in entry && typeof entry.value === 'string'
-    ? entry.value
-    : undefined;
 }
 
 /**

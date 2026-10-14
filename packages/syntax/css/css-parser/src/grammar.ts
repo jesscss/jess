@@ -4008,16 +4008,21 @@ const cssFactory = (g: GrammarSelf) => {
     children => queryConditionChain(children)
   );
 
-  /* The list keeps the comments written either side of a `,` in its layout
-   * (`@media screen /* a *\/, /* b *\/ print`). */
+  /**
+   * A media query list. Its layout keeps the comments written either side of a
+   * `,` (`@media screen /* a *\/, /* b *\/ print`). The list's own repetition
+   * skips the comment before a `,`, so only this node's trivia log can hold it;
+   * the reducer places it by the separator's span and leaves the raw children
+   * unread, so that capture tier is not paid.
+   */
   const QueryPrelude = node(
     'QueryPrelude',
     oneOrMoreSep(
       g.QueryClause,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithComments(children, fields, rawChildren, triviaLog, state, isValue)
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithComments(children, fields, triviaLog, state, isValue)
   );
   const containerName = sequence(
     not(g.QueryFunctionOpen),

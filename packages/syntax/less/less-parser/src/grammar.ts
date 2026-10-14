@@ -2469,12 +2469,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         field('separator', regex(/,[ \t\n\r\f]*/))
       )
     ),
-    (children, fields, _span, rawChildren, triviaLog, state) => {
+    (children, fields, _span, _rawChildren, triviaLog, state) => {
       const referenceValue = children.find(isReference);
       if (referenceValue !== undefined) {
         return referenceValue;
       }
-      return commaListWithComments(children, fields, rawChildren, triviaLog, state, isLessValueSlotValue);
+      return commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue);
     }
   );
   // Variable declarations additionally permit Less trivia immediately after
@@ -2490,8 +2490,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ),
       optional(sequence(literal(','), optional(whitespace)))
     ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithComments(children, fields, rawChildren, triviaLog, state, isLessValueSlotValue)
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue)
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -4048,8 +4048,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ContainerConditionItem,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithComments(children, fields, rawChildren, triviaLog, state, isValueNode)
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithComments(children, fields, triviaLog, state, isValueNode)
   );
   // Media and container headers differ, but their child statement language is
   // one shared grammar production. Keep it shared so a valid nested Less
