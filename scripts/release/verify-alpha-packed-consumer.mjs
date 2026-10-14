@@ -35,6 +35,13 @@ const plan = getAlphaReleasePlan({ rootDir, allowlistPath });
 
 const keep = process.argv.includes('--keep');
 
+const PARSER_SHARED_CONSUMERS = new Set([
+  '@jesscss/css-parser',
+  '@jesscss/less-parser',
+  '@jesscss/scss-parser',
+  '@jesscss/jess-parser'
+]);
+
 function fail(message) {
   throw new Error(message);
 }
@@ -115,7 +122,12 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
     }
   }
 
-  if (pkg.name === '@jesscss/css-parser') {
+  /*
+   * The consumer install below is npm's flat tree, where every tarball is
+   * hoisted beside every other: a parser that imports parser-shared without
+   * declaring it still resolves. Assert the declaration directly.
+   */
+  if (PARSER_SHARED_CONSUMERS.has(pkg.name)) {
     assert(
       manifest.dependencies?.['@jesscss/parser-shared'] === expectedVersion,
       `${pkg.name}: packed dependencies must carry @jesscss/parser-shared@${expectedVersion}`

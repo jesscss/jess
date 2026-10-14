@@ -23,7 +23,6 @@ export const {
   Dimension,
   Color,
   Url,
-  Call,
   Quoted,
   AtRuleStatement
 } = cssCstGrammar;

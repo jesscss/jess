@@ -43,6 +43,11 @@ test('Less CST leaves detached binding semicolons at statement-list boundary', (
   expect(semicolon).toMatchObject({ _tag: 'leaf', value: ';' });
 });
 
+/*
+ * This test macro-compiles the whole Less grammar inside the test run (jess#176),
+ * which takes about 24s on a CI runner at dev: past the suite default under
+ * load, so it states its own budget until the build moves out of the test.
+ */
 test('canonical Less AST grammar macro-fuses recognition leaves with no runtime import', async () => {
   const server = await createServer({
     root: fileURLToPath(new URL('..', import.meta.url)),
@@ -63,7 +68,7 @@ test('canonical Less AST grammar macro-fuses recognition leaves with no runtime 
   } finally {
     await server.close();
   }
-});
+}, 120_000);
 
 test('compiler-facing Less entrypoint does not load compatibility grammar shims', async () => {
   const server = await createServer({

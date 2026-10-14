@@ -23,13 +23,13 @@ import {
   attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, sourceLeaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when, withCtx
+  dispatch, endsWith, startsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when, withCtx
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, generalEnclosedGroup, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -367,6 +367,13 @@ type LessRules = {
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
+  branchLead: Combinator<unknown>;
+  StyleTest: Combinator<unknown>;
+  StyleFeature: Combinator<ValueNode>;
+  MediaTest: Combinator<ValueNode>;
+  SupportsTest: Combinator<ValueNode>;
+  SupportsDeclaration: Combinator<ValueNode>;
+  functionArgument: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -383,6 +390,8 @@ type SharedSyntax = {
   SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
   SupportsCondition: Combinator<ValueNode>;
+  // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
+  IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -397,6 +406,14 @@ type SharedSyntax = {
   // overrides its operand slot (`calcValueAtom`) and its operator rungs.
   CalcParen: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
+  // Inherited from the CSS base: the rest of a P38 branch argument list after
+  // its first condition.
+  BranchRest: Combinator<ValueNode>;
+  // Inherited from the CSS base: the bodies of the media(), style() and
+  // supports() if-tests, read with the query grammar.
+  MediaTestBody: Combinator<unknown>;
+  StyleTestBody: Combinator<unknown>;
+  SupportsTestBody: Combinator<unknown>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -915,9 +932,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       span
     )
   );
+  /*
+   * A bare `@name` where only `@{name}` interpolates: a diagnostic. Its `@`
+   * is read only when a variable name follows, so on `@{`, `@(` or a lone `@`
+   * the rule fails at its start and the alternative after it reads the `@`
+   * once; after the `@`, `lessVariableName` has an arm for every character
+   * the `@` admitted, so the rule never fails past it.
+   */
   const BareVariableInterpolation = node(
     'BareVariableInterpolation',
-    noTrivia(sequence(literal('@'), lessVariableName)),
+    noTrivia(sequence(regex(/@(?=[-_a-zA-Z0-9\u0080-\uffff])/), lessVariableName)),
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.end);
       throw new LessBareVariableInterpolationError(span.start, span.end, name);
@@ -1711,12 +1735,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * A math expression may claim a function argument only at an actual argument
    * boundary. The enclosing call's ambient `functionTrivia` reaches this
    * sequence boundary first; this one-code-unit-or-end rejection then proves
-   * that the next non-trivia byte is comma, semicolon, or close. The enclosing
+   * that the next non-trivia byte is comma, semicolon, colon, or close — a `:`
+   * ends a branch condition (ledger P38), so a condition is read once here
+   * rather than read, rejected, and read again by a later arm. The enclosing
    * call still consumes the real delimiter, while Parseman's negative assertion
    * lowers to a capture-free recognizer instead of creating and rolling back
    * speculative delimiter CST leaves.
    */
-  const functionArgumentBoundaryAhead = not(regex(/[^,;)]|$/));
+  const functionArgumentBoundaryAhead = not(regex(/[^,;:)]|$/));
   const FunctionScalarArgument = node(
     'FunctionScalarArgument',
     sequence(g.MathValue, functionArgumentBoundaryAhead),
@@ -1822,14 +1848,38 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // still reach ArgumentValueSequence.
   const functionArgumentSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingFunctionArgumentSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
+  // A Less function argument: a quoted argument, a detached ruleset (a `{`
+  // is always a declaration list here — ledger P37, "LATER" for `{}`-wrapped
+  // values), or a Less value/condition/keyword argument. It is also CSS's
+  // `functionArgument` slot, so the values of a branch list (`if(c: …)`) are
+  // read by this same Less reader.
   const functionArgument = choice(
     g.DoubledQuoteArgument,
     g.ValueBlock,
     g.FunctionArgument
   );
-  const FunctionArguments = optional(sequence(
-    oneOrMoreSep(functionArgument, functionArgumentSeparator),
+  // BRANCH arguments (ledger P38): a call whose first argument is followed by a
+  // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
+  // css-values-5 §8.3 `if()` is its first user — in legacy and modern mode
+  // alike, with the `;`s preserved. The arguments are LEFT-FACTORED on the
+  // first one, read once as a Less argument, and the token after it decides:
+  // `:` continues as CSS's `BranchRest`, inherited; anything else continues
+  // Less's flat vector, where `;` separates arguments like `,` (`foo(a; b)`)
+  // and a legacy `if(cond, a, b)` is still lowered. A keyword argument
+  // (`darken(@color: red)`) is read whole, colon and value, as the first
+  // argument; one followed by a further `:` (`foo(@k: v: x)`) is not a
+  // condition, and the call's reducer rejects it. CSS's later branch
+  // conditions read through `branchLead`, which is this same Less argument.
+  const plainArgumentsAfterFirst = sequence(
+    many(sequence(functionArgumentSeparator, functionArgument)),
     optional(trailingFunctionArgumentSeparator)
+  );
+  const FunctionArguments = optional(sequence(
+    functionArgument,
+    choice(
+      g.BranchRest,
+      plainArgumentsAfterFirst
+    )
   ));
   // Value-position identifiers and glued function openers share one lexical
   // family. Parse that opener once, then route by the returned text. Branch
@@ -1950,11 +2000,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return keyword(children.map(child => requireToken(child).value).join(''));
     }
   );
+  // The value-position opener also admits a dashed ident (css-syntax-3 §4.3.9),
+  // read as one token like any other: glued to `(` it is a css-mixins-1
+  // `<dashed-function>` and takes the generic call tail, and bare it is the
+  // custom-property value. `FunctionStatement` keeps the plain
+  // `identOrFunction`: widening it would scan every `--x: …` custom-property
+  // declaration through its dispatch and turn `--f(…);` into a statement call.
+  const valueIdentOrFunction = token(noTrivia(sequence(
+    g.IdentToken,
+    optional(literal('('))
+  )));
+  const RoutedCustomPropertyValue = node(
+    'CustomPropertyValue',
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
   const IdentifierOrFunction = dispatch(
-    identOrFunction,
+    valueIdentOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
     caseOf('var(', g.VarFunction),
+    caseOf('media(', g.MediaTest),
+    caseOf('supports(', g.SupportsTest),
+    caseOf('style(', g.StyleTest),
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
      * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
@@ -1965,6 +2033,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
      */
     when(endsWith('\\('), Identifier),
     when(endsWith('('), g.GenericFunction),
+    when(startsWith('--'), RoutedCustomPropertyValue),
     otherwise(Identifier)
   );
   // Less 5 removed inline backtick JavaScript. Recognize the complete legacy
@@ -2095,7 +2164,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.IndirectVariableReference,
     g.VariableReferenceChain,
     g.PropertyReference,
-    g.CustomPropertyValue,
     g.Dimension,
     g.Color,
     g.FormatFunction,
@@ -2127,7 +2195,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.IndirectVariableReference,
       g.VariableReferenceChain,
       g.PropertyReference,
-      g.CustomPropertyValue,
       g.Dimension,
       g.Color,
       g.FormatFunction,
@@ -3760,15 +3827,85 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     IDENT_BOUNDARY,
     { caseInsensitive: true }
   ), literal('('))));
+  const styleQueryDeclaration = sequence(g.CustomPropertyToken, literal(':'), g.CustomValue);
   const styleQuery = node(
     'ContainerStyleQuery',
     // A style() payload is a `<declaration-value>` (css-conditional-5), the same
     // permissive custom-property value a `--x:` declaration takes (ledger P2): it
     // is never computed.
-    sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.CustomValue, literal(')')),
+    sequence(styleFunctionOpener, styleQueryDeclaration, literal(')')),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
+  );
+  /*
+   * A style query's `<style-feature>` (CSS's `StyleFeature` slot): the custom
+   * property the style contents dispatch read, `:`, and Less's own
+   * custom-property value — the same Operation a container style query builds.
+   */
+  const StyleFeature = node(
+    'StyleFeature',
+    sequence(routed(), optional(sequence(literal(':'), g.CustomValue))),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+      const name = keyword(requireToken(children[0]).value);
+      const value = children.find(isValueNode);
+      return value === undefined
+        ? name
+        : operation(':', name, value, false, lessMathOutsideParens(state, ':'));
+    }
+  );
+  /*
+   * The media(), supports() and style() if-tests are the css base's: its
+   * `MediaTest` / `SupportsTest` / `StyleTest` node over its body rule. They
+   * are restated here ONLY as the routed shell, because Less's value dispatch
+   * (`IdentifierOrFunction`) routes to them and parseman does not see a
+   * `routed()` through a rule this grammar inherits by compose: routed to the
+   * inherited node, the head is never handed over (`media(print)` fails with
+   * expected `routed()` after `media(`). The bodies stay the base's.
+   * TODO(jess#298): delete the three shells once parseman detects routed()
+   * through a composed rule. `SupportsTest` also carries Less's bare-`@variable`
+   * diagnostic; give that its own slot in the css body before deleting it.
+   */
+  const MediaTest = node(
+    'Call',
+    sequence(routed(), g.MediaTestBody),
+    children => ifTestCall(children)
+  );
+  /*
+   * As in an `@supports` prelude, a bare `@variable` is a diagnostic here: a
+   * supports condition interpolates as `@{a}`.
+   */
+  const SupportsTest = node(
+    'Call',
+    sequence(routed(), choice(g.BareVariableInterpolation, g.SupportsTestBody)),
+    children => ifTestCall(children)
+  );
+  const StyleTest = node(
+    'Call',
+    sequence(routed(), g.StyleTestBody),
+    children => ifTestCall(children)
+  );
+  /*
+   * The `<ident> : <declaration-value>` of a supports() if-test (CSS's
+   * `SupportsDeclaration` slot), after the name the contents dispatch read. Its
+   * grammar is css's: the name, then an optional `:` and one optional value run
+   * (a colon with no value is `<general-enclosed>`; a comma after the run
+   * belongs to the test's rest). Less restates it for its reducer: the `:`
+   * Operation carries Less's `lessMathOutsideParens(state, ':')` flag, where
+   * css's carries the css base flag.
+   */
+  const SupportsDeclaration = node(
+    'SupportsDeclaration',
+    sequence(routed(), optional(sequence(literal(':'), optional(g.ValueSequence)))),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+      const property = keyword(requireToken(children[0]).value);
+      const slot = children.find(isLessValueSlotValue);
+      const value = slot === undefined || isValueNode(slot) ? slot : spaced(slot.map(requireValueNode));
+      if (value !== undefined) {
+        return operation(':', property, value, false, lessMathOutsideParens(state, ':'));
+      }
+      return children.length === 1 ? property : spaced([property, any(':')]);
+    }
   );
   const ContainerScrollStateQuery = node(
     'ContainerScrollStateQuery',
@@ -5407,6 +5544,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GenericFunction,
     CalcFunction,
     FunctionArguments,
+    branchLead: functionArgument,
+    functionArgument,
+    StyleTest,
+    StyleFeature,
+    MediaTest,
+    SupportsTest,
+    SupportsDeclaration,
     whitespace,
     rw: whitespace
   };

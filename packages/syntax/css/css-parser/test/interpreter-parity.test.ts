@@ -24,7 +24,7 @@ const LIB = fileURLToPath(new URL('../lib', import.meta.url));
  * PINNED DEFECT, every variant: on these two failures the interpreter names
  * `token()` terminals by their regex source in the `expected` set where the
  * compiled table names them by label (`UnicodeRangeToken`,
- * `CustomPropertyName`), so the AST error degrades from "Expected a CSS value."
+ * `IdentToken`), so the AST error degrades from "Expected a CSS value."
  * to the generic "Expected valid CSS syntax here." Location and outcome agree.
  */
 const EXPECTED_SET_LABELS = 'interpreter reports token() terminals by regex source, not label, in `expected`';

@@ -9,13 +9,28 @@
  *      the specifier; `as ns` binds `@ns`; `as *` merges members unqualified. Members
  *      are reached through the forward member-access chain (`@foo.colors.primary`).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
-const fixtures = path.join(__dirname, 'fixtures', 'compose-isolation');
+/*
+ * Entry files are written beside a temp copy of the fixtures, never into the
+ * committed fixture dir: that dir is a Less oracle corpus root.
+ */
+const committedFixtures = path.join(__dirname, 'fixtures', 'compose-isolation');
+let fixtures = '';
+
+beforeAll(async () => {
+  fixtures = await fs.mkdtemp(path.join(os.tmpdir(), 'jess-compose-isolation-'));
+  await fs.cp(committedFixtures, fixtures, { recursive: true });
+});
+
+afterAll(async () => {
+  await fs.rm(fixtures, { recursive: true, force: true });
+});
 
 async function renderResult(entry: string, source: string): Promise<{ css: string; errors: { reason?: string }[] }> {
   const file = path.join(fixtures, entry);

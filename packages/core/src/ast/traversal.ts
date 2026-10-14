@@ -96,6 +96,8 @@ export type AstEdge =
   | 'value.value'
   | 'value.operation.left'
   | 'value.operation.right'
+  | 'value.branch.condition'
+  | 'value.branch.value'
   | 'value.function.arg'
   | 'value.interpolation.ref'
   | 'value.general.content'
@@ -591,6 +593,10 @@ function walkNode(
     case 'Operation':
       walkNode(node.left, hooks, 'value.operation.left', node, 0, depth + 1);
       walkNode(node.right, hooks, 'value.operation.right', node, 1, depth + 1);
+      break;
+    case 'Branch':
+      walkValueSlot(node.condition, hooks, 'value.branch.condition', node, 0, depth + 1);
+      walkValueSlot(node.value, hooks, 'value.branch.value', node, 1, depth + 1);
       break;
     case 'FunctionCall':
       walkFunctionCall(node, hooks, depth);

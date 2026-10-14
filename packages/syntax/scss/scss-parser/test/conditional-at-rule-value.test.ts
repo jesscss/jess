@@ -391,8 +391,13 @@ describe('SCSS conditional at-rule value holes', () => {
   /**
    * `<mf-value>` is ONE component value (mediaqueries-4 §4). A multi-part or
    * comma-separated operand is therefore not a feature at all: mediaqueries-5
-   * §3.1 makes it `<general-enclosed>`, which no dialect implements for
-   * media/container yet, so all four reject it today.
+   * §3.1 makes it `<general-enclosed>`, which this dialect does not read for
+   * media/container yet, so it rejects it today.
+   *
+   * DELIBERATE DIVERGENCE from the css copy of this matrix (jess#315): css reads
+   * a media feature's general-enclosed contents as structure, so its copy pins
+   * `@media (foo: bar baz)` and `@media (foo: a, b)` as parsed trees. This
+   * dialect's query grammar converges later; until then these rows differ.
    *
    * What is pinned here is the CONTRACT, not the rejection. css used to MATCH
    * this shape and then throw a raw internal `Error` out of its reduction, so a

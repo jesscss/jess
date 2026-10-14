@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/css-parser';
 import { serialize } from '@jesscss/core';
-import type { ValueEvaluator } from '@jesscss/core';
+import type { SerializeOptions } from '@jesscss/core';
 import { dimension, queryFeatureContents } from '@jesscss/core/ast';
+
+type ValueEvaluator = NonNullable<SerializeOptions['evaluator']>;
 
 /**
  * `<general-enclosed>` (media-queries-4 §3.1) is syntax a future spec may
@@ -95,5 +97,72 @@ describe('general-enclosed is emitted as written and never evaluated', () => {
 
   it('still evaluates a query feature value, so the refusing evaluator is live', async () => {
     await expect(prelude('@media (min-width: foo(1px))', refusingEvaluator)).rejects.toThrow();
+  });
+});
+
+/*
+ * An @container or @supports feature that is not a feature fails softly, so
+ * its owner's `Enclosed` fallback reads it as `<general-enclosed>` text: a
+ * committing route there would fail the whole stylesheet on valid CSS. Each
+ * form below parses on dev and must keep parsing, printed as written.
+ */
+const SOFT_FAILURES = [
+  /* a `not` group whose operand is not a media group */
+  '@supports (not (@x) b)',
+  '@supports (not (#) b)',
+  '@supports (not (@media) or (x))',
+  '@supports (a: b) and (not (@x) b)',
+  '@supports ((not (@x) b))',
+  '@container ((not (@x) b))',
+
+  /* a value-first bound that is not a range */
+  '@supports (1px < foo(@x))',
+  '@supports (1px < calc(@x))',
+  '@supports (1px < var(@x))',
+  '@supports (1px foo(@x))',
+  '@supports (1px < foo(a !important))',
+  '@supports (1px < foo(#))',
+  '@supports (1px < foo(a {b}))',
+  '@supports (1px < calc(1px+2px))',
+  '@container ((1px < foo(@x)))',
+  '@container ((1px foo(@x)))',
+
+  /* a function-first bound that is not a range */
+  '@supports (foo(x) < bar(@x))',
+  '@supports (foo(x) < calc(1px+2px))',
+  '@supports (url(a) < foo(@x))',
+  '@container ((foo(x) < bar(@x)))',
+
+  /* a bound followed by a comma, then a function that fails */
+  '@supports (foo(x), bar(@x))',
+  '@supports (url(a), bar(@x))',
+  '@supports (u+0-7f, bar(@x))',
+  '@supports (calc(1px), foo(@x))'
+];
+
+describe('@container and @supports features fail softly to their Enclosed fallback', () => {
+  for (const source of SOFT_FAILURES) {
+    it(`parses and prints ${source} as written`, async () => {
+      const css = (await serialize(parse(`${source} { a { b: c } }`))).css;
+      expect(css.startsWith(`${source} {`)).toBe(true);
+    });
+  }
+
+  it('reads a feature name with a colon and no value as structure', async () => {
+    expect(await prelude('@supports (foo: )')).toBe('@supports (foo: )');
+    expect(await prelude('@container (foo:)')).toBe('@container (foo:)');
+  });
+
+  it('keeps a supports() test with a failing group readable', async () => {
+    const css = (await serialize(parse('a { b: if(supports((not (@x) b)): 1); }'))).css;
+    expect(css).toBe('a {\n  b: if(supports((not (@x) b)): 1);\n}\n');
+  });
+});
+
+/* A unicode range at the head of an if-test's contents is one `<urange>` token. */
+describe('if-test contents read a unicode range as one token', () => {
+  it('prints media(), style() and supports() unicode ranges as written', async () => {
+    const css = (await serialize(parse('a { b: media(u+0025) style(u+0025) supports(u+0025) supports(not U+00-ff); }'))).css;
+    expect(css).toBe('a {\n  b: media(u+0025) style(u+0025) supports(u+0025) supports(not U+00-ff);\n}\n');
   });
 });
