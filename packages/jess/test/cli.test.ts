@@ -454,6 +454,7 @@ describe('jess CLI', () => {
     fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
 
     const result = await run(['a.less', '/dev/stdout'], { cwd: directory });
+    expect(result.stderr).toBe('');
     expect(result.code).toBe(0);
     expect(result.stdout).toBe('.a {\n  color: red;\n}\n');
   }));

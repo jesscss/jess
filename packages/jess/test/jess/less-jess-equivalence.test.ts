@@ -510,6 +510,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'css-mismatch',
     reason: 'URL rewriting (`rewriteUrls`/`rootpath`) is a Less-plugin transform; `.jess` documents get no URL rewrite'
   }],
+  ['all-less:tests-config/rootpath-escape-interpolation/rootpath-escape-interpolation.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Interpolation: a scoped (Less `@{name}`) read spliced into a string: `.jess` `${name}` reads the live store only (+1 more)'
+  }],
   ['all-less:tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',
@@ -699,6 +704,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements (+2 more)'
+  }],
+  ['all-less:tests-unit/lookup-interpolation/lookup-interpolation.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Interpolation: a `Lookup` spliced into a string: `${…}` takes a variable name (+6 more)'
   }],
   ['all-less:tests-unit/math-css-vars/math-css-vars.less', {
     cause: 'lost-info',
