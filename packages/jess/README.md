@@ -38,6 +38,7 @@ jess input.less
 # Choose the output file, or an existing output directory
 jess input.less output.css
 jess input.less -o dist
+jess input.less output.css -o dist   # writes dist/output.css
 
 # Compile several files: one run per file
 for f in src/*.less; do jess "$f" -o dist; done
@@ -52,7 +53,10 @@ Jess follows the common CLI pattern where the default command compiles a file an
 `jess lint` is a separate workflow. Use `jess <input> [output]` when you want CSS
 output; use `jess lint` when you want diagnostics without writing CSS.
 
-`jess <input> [output]` compiles one `.less`, `.scss`, or `.jess` file.
+`jess <input> [output]` compiles one `.less`, `.scss`, or `.jess` file. A `.css`
+input is refused (it is CSS already), and so is `-` (reading stdin is not
+supported; `/dev/stdout` works as an output). With `-o <dir>`, `[output]` is a
+file name in that directory.
 
 - An existing output file is replaced, not written into: the CSS goes to a new
   file that is renamed over it. A symlink there is replaced rather than
@@ -64,9 +68,9 @@ output; use `jess lint` when you want diagnostics without writing CSS.
   `jess a.less b.less` is refused rather than replacing `b.less`, and a third
   argument is an error.
 
-Diagnostics go to stderr. Color and terminal
-hyperlinks are on only when stderr is a terminal and `NO_COLOR` is unset;
-`--color` and `--no-color` override that. `jess --version` prints the version.
+Diagnostics go to stderr. Color and terminal hyperlinks are on only when
+stderr is a terminal and `NO_COLOR` is unset; `--color` and `--no-color`
+override that. `jess --version` and `jess lint --version` print the version.
 
 | Exit status | Meaning |
 | --- | --- |
@@ -76,8 +80,9 @@ hyperlinks are on only when stderr is a terminal and `NO_COLOR` is unset;
 
 By default, Jess preserves nesting instead of flattening it. If you want
 flattened selector output, set `output: { collapseNesting: true }` in a
-`styles.config.*` file (jess uses the nearest one at or above the input file,
-up to the package root).
+`styles.config.*` file. jess merges every `styles.config.*` from the input
+file's folder up to the package root (the first folder with a `package.json`),
+the nearest file winning setting by setting.
 
 `jess lint` prints compact per-file diagnostic rows by default. It supports
 `--format json`, `--max-warnings 0`, `--syntax-only`, `--quiet`, `--config`,

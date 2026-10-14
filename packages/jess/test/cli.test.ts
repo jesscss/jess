@@ -530,4 +530,53 @@ describe('jess CLI', () => {
     expect(lint.stdout).toContain('property-no-unknown');
     expect(lint.stdout).not.toContain(ESC);
   }));
+
+  it.each([
+    [['-'], 'jess: reading a stylesheet from stdin (-) is not supported; pass a file path\n'],
+    [['a.less', '-'], 'jess: writing CSS to stdout with - is not supported; pass /dev/stdout as the output\n'],
+    [['a.css'], 'jess: a.css is CSS already; jess compiles .less, .scss and .jess files to CSS\n'],
+    [['a.less', 'sub/a.css', '-o', 'dist'], 'jess: the output sub/a.css names a directory, and so does -o dist; pass the output path alone, or a file name with -o\n']
+  ])('refuses the command line %j', async (args, message) => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.writeFileSync(path.join(directory, 'a.css'), '.a { color: red; }');
+    fs.mkdirSync(path.join(directory, 'dist'));
+
+    const result = await run(args, { cwd: directory });
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(message);
+    expect(fs.readdirSync(path.join(directory, 'dist'))).toEqual([]);
+  }));
+
+  it('writes the output file name into the -o directory', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.mkdirSync(path.join(directory, 'dist'));
+
+    const result = await run(['a.less', 'b.css', '-o', 'dist'], { cwd: directory });
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(directory, 'dist', 'b.css'), 'utf8')).toContain('color: red');
+  }));
+
+  it('prints the version from jess lint --version', async () => {
+    const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    const result = await run(['lint', '--version']);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`${version}\n`);
+  });
+
+  /*
+   * process.exit() right after a large write to a pipe drops whatever the pipe
+   * has not taken yet (the report was cut off at 64 KiB); the CLI sets the exit
+   * code and returns instead.
+   */
+  it('writes a large lint report to a pipe in full', async () => inTempDir(async (directory) => {
+    const rules = Array.from({ length: 600 }, (_, index) => `.c${index} { colr: red; }`).join('\n');
+    fs.writeFileSync(path.join(directory, 'big.css'), rules);
+
+    const result = await run(['lint', 'big.css', '--format', 'json', '--max-warnings', '0'], { cwd: directory });
+    expect(result.code).toBe(1);
+    expect(result.stdout.length).toBeGreaterThan(65536);
+    const json = JSON.parse(result.stdout) as { warningCount: number };
+    expect(json.warningCount).toBe(600);
+  }));
 });

@@ -14,7 +14,8 @@ jess lint "src/**/*.{css,less,scss,jess}"
 ```
 
 The default command compiles one input file to CSS. The `lint` subcommand reports
-diagnostics without writing CSS.
+diagnostics without writing CSS. `jess --version` and `jess lint --version` print
+the installed version.
 
 ## Compile
 
@@ -24,13 +25,51 @@ Compile a stylesheet by passing the input file first:
 jess input.less
 ```
 
-Jess writes `input.css` next to the source file. Pass an output file or output
-directory when you want to control the destination:
+Jess compiles one `.less`, `.scss`, or `.jess` file per run. It writes
+`input.css` next to the source file. Pass an output file, or an existing output
+directory with `-o`, when you want to control the destination:
 
 ```bash
 jess input.less dist/input.css
 jess input.less -o dist
+jess input.less app.css -o dist   # writes dist/app.css
 ```
+
+To compile several files, run Jess once per file:
+
+```bash
+for f in src/*.less; do jess "$f" -o dist; done
+```
+
+`jess a.less b.less` does not compile two files: the second argument is the
+output, and Jess refuses it because it is named like a stylesheet. A third
+argument is an error. A `.css` input is refused (it is CSS already), and so is
+`-`: reading a stylesheet from stdin is not supported. Use `/dev/stdout` as the
+output to print the CSS.
+
+### How the output is written
+
+- An existing output file is replaced, not written into: the CSS goes to a new
+  file that is renamed over it. A symlink there is replaced rather than
+  followed, and other names of a hard-linked file keep their contents. A
+  terminal, pipe or device (such as `/dev/stdout`) is written directly.
+- Jess refuses an output that is the input file under any name (compared on
+  disk, so a hard link or a case variant counts), that is named like a
+  stylesheet (`.less`, `.scss`, `.sass`, `.jess`), or that is a symlink to one.
+
+Diagnostics go to stderr. Color and terminal hyperlinks are on only when stderr
+is a terminal and `NO_COLOR` is unset; `--color` and `--no-color` override that.
+
+| Exit status | Meaning |
+| --- | --- |
+| 0 | The CSS was written. |
+| 1 | The stylesheet failed to compile, or a file could not be read or written. |
+| 2 | Invalid command line: an unknown option, a missing or extra argument, or a refused output path. |
+
+Settings such as `output: { collapseNesting: true }` come from
+`styles.config.*` files. Jess merges every one from the input file's folder up
+to the package root (the first folder with a `package.json`), the nearest file
+winning setting by setting.
 
 To import stylesheets from hosts you trust over https, name them with
 `--allow-remote-imports` (comma-separated; the flag may repeat). It needs
@@ -84,7 +123,11 @@ Linted 1 file(s): 0 error(s), 2 warning(s)
 | `--syntax-only` | Report parser diagnostics only. |
 | `--quiet` | Suppress warnings in text output. |
 | `--config <path>` | Load a specific `styles.config.js` file. |
-| `--no-color` | Disable ANSI color and terminal hyperlinks. |
+| `--color`, `--no-color` | Turn ANSI color and terminal hyperlinks on or off. By default they are on only when stdout is a terminal and `NO_COLOR` is unset. |
+
+`jess lint` exits with 0 when it finds no errors and no more warnings than
+`--max-warnings`, 1 when it finds an error or too many warnings, and 2 for an
+invalid command line.
 
 ## Configure Lint
 

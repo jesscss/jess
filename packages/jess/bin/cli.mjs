@@ -7,6 +7,8 @@
  *
  * Streams: compiled CSS goes to a file. Diagnostics and errors go to stderr.
  * stdout carries the one-line "Compiled ..." report, and `jess lint`'s report.
+ * The CLI sets process.exitCode and returns instead of calling process.exit(),
+ * which could cut off output still being written to a pipe.
  *
  * Exit status:
  *   0  success
@@ -22,6 +24,7 @@ import { chmod, rename, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { getSystemErrorMap, parseArgs } from 'node:util';
+import { colorsByDefault, outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import { formatStyledLintResult, lintFiles } from '@jesscss/lint';
 
 const EXIT_FAILURE = 1;
@@ -41,7 +44,8 @@ const COMPILE_USAGE = `Usage: jess <input> [output] [options]
        jess lint [files...] [options]
 
 Compile one .less, .scss, or .jess file to CSS. The CSS is written to
-[output], or else next to the input with a .css extension.
+[output], or else next to the input with a .css extension. With -o, [output]
+is a file name in <dir>. Reading stdin with - is not supported.
 
 An existing output file is replaced, not written into: the CSS goes to a new
 file that is renamed over it. A symlink there is replaced rather than
@@ -92,6 +96,7 @@ Options:
   --quiet                Suppress warnings in text output
   --syntax-only          Report parser diagnostics only
   -h, --help             Show this help
+  --version              Print the jess version
 
 Exit status:
   0  no errors, and no more warnings than --max-warnings
@@ -103,10 +108,20 @@ Examples:
   jess lint packages/**/*.less --max-warnings 0
   jess lint src/app.scss --format json`;
 
-/** Prints `jess: <message>` to stderr and exits with `code`. */
-function fail(message, code) {
-  console.error(`jess: ${message}`);
-  process.exit(code);
+/** A refusal the CLI reports as `jess: <message>` before exiting with `exitCode`. */
+class CliError extends Error {
+  constructor(message, exitCode) {
+    super(message);
+    this.exitCode = exitCode;
+  }
+}
+
+function fail(message, exitCode) {
+  throw new CliError(message, exitCode);
+}
+
+function printVersion() {
+  console.log(createRequire(import.meta.url)('../package.json').version);
 }
 
 function parseCliArgs(config) {
@@ -115,15 +130,6 @@ function parseCliArgs(config) {
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err), EXIT_USAGE);
   }
-}
-
-/**
- * Whether to write ANSI color and OSC-8 hyperlinks to `stream`: as `--color` or
- * `--no-color` says when one is given; otherwise only to a terminal, and never
- * while NO_COLOR is set to a non-empty value (https://no-color.org).
- */
-function useColor(flag, stream) {
-  return flag ?? (stream.isTTY === true && !process.env.NO_COLOR);
 }
 
 /** The system's description of a file-system error, e.g. "no such file or directory". */
@@ -143,7 +149,7 @@ function stylesheetExtension(file) {
 }
 
 /**
- * Decides how the CSS reaches `outPath`, or exits (status 2) when the output
+ * Decides how the CSS reaches `outPath`, or refuses it (exit status 2) when the output
  * could cost a stylesheet.
  *
  * Refused: a name that is a stylesheet source (`jess a.less b.less` asks to
@@ -284,21 +290,34 @@ async function runCompile(args) {
 
   if (values.help) {
     console.log(COMPILE_USAGE);
-    process.exit(0);
+    return;
   }
   if (values.version) {
-    console.log(createRequire(import.meta.url)('../package.json').version);
-    process.exit(0);
+    printVersion();
+    return;
   }
   if (positionals.length === 0) {
     console.error(COMPILE_USAGE);
-    process.exit(EXIT_USAGE);
+    process.exitCode = EXIT_USAGE;
+    return;
   }
   if (positionals.length > 2) {
     fail(`expected an input file and at most one output file, but got ${positionals.length} arguments.\n${MANY_FILES_HINT}`, EXIT_USAGE);
   }
 
   const [inFile, outArg] = positionals;
+  if (inFile === '-') {
+    fail('reading a stylesheet from stdin (-) is not supported; pass a file path', EXIT_USAGE);
+  }
+  if (outArg === '-') {
+    fail('writing CSS to stdout with - is not supported; pass /dev/stdout as the output', EXIT_USAGE);
+  }
+  if (path.extname(inFile).toLowerCase() === '.css') {
+    fail(`${inFile} is CSS already; jess compiles .less, .scss and .jess files to CSS`, EXIT_USAGE);
+  }
+  if (values.out !== undefined && outArg !== undefined && path.basename(outArg) !== outArg) {
+    fail(`the output ${outArg} names a directory, and so does -o ${values.out}; pass the output path alone, or a file name with -o`, EXIT_USAGE);
+  }
   let input;
   try {
     input = statSync(inFile, { bigint: true });
@@ -313,15 +332,15 @@ async function runCompile(args) {
   const outPath = path.resolve(values.out ?? path.dirname(outFile), path.basename(outFile));
   const plan = planOutput(outPath, input, inFile, outArg);
 
-  const [{ Compiler }, { JessError, toDiagnostic }, { outputDiagnostics }] = await Promise.all([
+  const [{ Compiler }, { JessError, toDiagnostic }] = await Promise.all([
     import('../lib/index.js'),
-    import('@jesscss/core'),
-    import('@jesscss/compiler/diagnostics')
+    import('@jesscss/core')
   ]);
   const options = await remoteImportOptions(values['allow-remote-imports']);
   const startTime = Date.now();
 
-  const colors = useColor(values.color, process.stderr);
+  // Undefined unless --color or --no-color is given: diagnostics then color only a terminal.
+  const colors = values.color;
   let css;
   try {
     css = await new Compiler(options).render(path.resolve(inFile), { colors });
@@ -337,7 +356,8 @@ async function runCompile(args) {
     } else {
       console.error(`jess: ${err instanceof Error ? err.message : String(err)}`);
     }
-    process.exit(EXIT_FAILURE);
+    process.exitCode = EXIT_FAILURE;
+    return;
   }
 
   try {
@@ -361,13 +381,18 @@ async function runLint(args) {
       help: { type: 'boolean', short: 'h' },
       'max-warnings': { type: 'string' },
       quiet: { type: 'boolean' },
-      'syntax-only': { type: 'boolean' }
+      'syntax-only': { type: 'boolean' },
+      version: { type: 'boolean' }
     }
   });
 
   if (values.help) {
     console.log(LINT_USAGE);
-    process.exit(0);
+    return;
+  }
+  if (values.version) {
+    printVersion();
+    return;
   }
 
   const format = values.format ?? 'text';
@@ -393,16 +418,20 @@ async function runLint(args) {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log(formatStyledLintResult(values.quiet === true ? quietResult(result) : result, {
-      colors: useColor(values.color, process.stdout)
+      colors: values.color ?? colorsByDefault(process.stdout)
     }));
   }
 
-  process.exit(result.errored ? EXIT_FAILURE : 0);
+  process.exitCode = result.errored ? EXIT_FAILURE : 0;
 }
 
 const args = process.argv.slice(2);
-if (args[0] === 'lint') {
-  await runLint(args.slice(1));
-} else {
-  await runCompile(args);
+try {
+  await (args[0] === 'lint' ? runLint(args.slice(1)) : runCompile(args));
+} catch (err) {
+  if (!(err instanceof CliError)) {
+    throw err;
+  }
+  console.error(`jess: ${err.message}`);
+  process.exitCode = err.exitCode;
 }
