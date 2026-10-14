@@ -426,6 +426,9 @@ importers:
       '@csstools/selector-specificity':
         specifier: ^6.0.0
         version: 6.0.0(postcss-selector-parser@7.1.6)
+      '@jesscss/core':
+        specifier: workspace:*
+        version: link:../../core
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../../syntax/css/css-parser
