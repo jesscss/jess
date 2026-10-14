@@ -14,8 +14,8 @@
     "reject": 55,
     "emitError": 0
   },
-  "emittedBytes": 607124,
-  "aggregate": "25cf8987791c413ae43be8e2846bb7bd8da37975c88b72eca1ff9704f45a388d",
+  "emittedBytes": 607121,
+  "aggregate": "df5cc0d14097cc939995e644a03e967cf887286ff29a6fa8b502336d35e4d9cc",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -104,8 +104,8 @@
     "fixture/calc-sequence.css": {
       "bucket": "fixture",
       "status": "ok",
-      "bytes": 337,
-      "fingerprint": "aa81939a4fa8c912"
+      "bytes": 334,
+      "fingerprint": "5e391154dea2a30d"
     },
     "fixture/calc-signs-whitespace.css": {
       "bucket": "fixture",

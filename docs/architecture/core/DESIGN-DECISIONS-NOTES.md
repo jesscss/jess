@@ -53,6 +53,10 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 - 2026-10-09 — implementation note (agent, 2026-10-09): a parent reference is the parser's `&` token, which opens the token it builds (`&`, `&__el`, the literal `&` of `&@{x}`; `nodes.ts` `textHoldsParentRef`). Any other `&` in a token is a character of it — attribute text or an escaped `\&` (`.a\&b` is the class `a&b`, CSS Syntax 3 §4.3.7) — so it builds no name and is never substituted; before, the name-building rise-out read any `&` in a token's text, and `.p { .a\&b {} }` was written `.a\.pb` in nested output in every dialect (Chrome 152: that matches `class="a.pb"`, not `class="a&b"`). Pinned in `packages/jess/test/less/ampersand-name-build.test.ts`.
 
+## N12
+
+- 2026-10-13 — implementation (agent) of *"they're never meaningful unless in a custom property, so they can be collapsed"* (owner 2026-10-13): one owner, `value-eval.ts` `replayedRun`, which every dialect's authored value run passes through (`authoredSpace`, `itemBoundary`): outside a block comment, a run of spaces and tabs is one space, except the indentation after a line break, which stays (`a\n    b`); blanks inside a comment are text. Less already wrote one space, so only css, SCSS and `.jess` moved, and so did one CSS render-differential entry (`fixture/calc-sequence.css`, `min(1px   2px)` → `min(1px 2px)`). A custom-property value is text and never reaches this function. At-rule preludes already wrote one space (`@media screen   and (min-width:  1px)` → `@media screen and (min-width: 1px)` in css and Less). Chrome 152 computes `font-family: Times   New\tRoman`, `margin: 1px   2px` and `translate(1px,   2px)` exactly as their single-spaced forms, and keeps `--c: a   b` as written. Pinned in `packages/jess/test/value-whitespace.test.ts`.
+
 ## J16
 
 - 2026-10-09 — implementation note, moved from the row: The text value carries the group in its `groups` field (`value-eval.ts` `Any.groups`; `emitValue`/`writtenText` write it, `readText` reads without it).

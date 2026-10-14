@@ -434,27 +434,40 @@ export const runReplays = (authored: string): boolean => /[\r\n]|\/\*/u.test(aut
 /**
  * The authored run between two members of a space-separated group, as CSS
  * output replays it ({@link replayedRun}); one space when nothing was recorded.
- * A glued (`''`) or single-character run cannot hold a comment.
  */
 export const authoredSpace = (authored: string | undefined): string =>
-  authored === undefined ? ' ' : authored.length > 1 ? replayedRun(authored, ' ') : authored;
+  authored === undefined ? ' ' : replayedRun(authored, ' ');
 
 /**
  * An authored run as CSS output replays it: its block comments and line breaks
- * stay, a `//` line comment (Less, SCSS and .jess source only) is dropped with
- * the blanks before it, and a Less `;` argument separator is spelled as the
- * list's own `,`. A block comment is copied whole, so a `//` or `;` inside it
- * is text. A run without either character is returned as it is.
+ * stay, with the indentation after a line break (owner 2026-09-06), and any other
+ * run of spaces and tabs is one space (owner 2026-10-13: "they're never
+ * meaningful unless in a custom property, so they can be collapsed"; a
+ * custom-property value is text and never reaches here). A `//` line comment
+ * (Less, SCSS and .jess source only) is dropped with the blanks before it, and a
+ * Less `;` argument separator is spelled as the list's own `,`. A block comment
+ * is copied whole, so a `//`, `;` or blank inside it is text. A run with none of
+ * these is returned as it is.
  */
 function replayedRun(run: string, glue: string): string {
-  if (!run.includes('//') && !run.includes(';')) {
+  if (!run.includes('//') && !run.includes(';') && !run.includes('\t') && !run.includes('  ')) {
     return run;
   }
   const comma = glue.trim() === ',';
   let out = '';
   let inComment = false;
+  let lineStart = false;
   for (let index = 0; index < run.length; index++) {
     const char = run[index]!;
+    if (!inComment && (char === ' ' || char === '\t')) {
+      if (lineStart) {
+        out += char;
+      } else if (!out.endsWith(' ')) {
+        out += ' ';
+      }
+      continue;
+    }
+    lineStart = !inComment && (char === '\n' || char === '\r');
     if (inComment) {
       out += char;
       if (char === '*' && run[index + 1] === '/') {
