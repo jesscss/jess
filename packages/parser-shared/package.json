@@ -49,6 +49,6 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "dependencies": {
-    "parseman": "^0.51.2"
+    "parseman": "^0.53.0"
   }
 }
