@@ -157,7 +157,7 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    context, with argument snippets for `:nth-*`. Pure data + a selector-context
    check (reuse the brace-depth scanner already in `getCompletions`).
 4. ✅ **DONE (SCSS `@include` + Less `.foo()` calls).** **SCSS/Less mixin completions.** The declared-mixin inventory already exists
-   (`cstDeclaredSymbols().mixins`, used for did-you-mean). Surface it as
+   (`cstDeclaredSymbols().mixins`). Surface it as
    completions in `@include ` (scss) / `.` call context (less) — symmetric to the
    existing `cstVariableNames` path.
 5. ✅ **DONE.** **`!important`** after a value — trivial keyword completion; near-zero cost.
