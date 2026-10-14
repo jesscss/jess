@@ -1,11 +1,12 @@
 name: CI
 
-# The blocking PR gate. TWO jobs, run in parallel, that together prove the repo
+# The blocking PR gate. THREE jobs, run in parallel, that together prove the repo
 # is healthy along every axis — build, lint, types, tests, structural/perf
-# invariants — and are dialect-AGNOSTIC by construction: per-dialect correctness
-# is not a separate "Less readiness" headline, it lives in each parser's own
-# suite, all of which run across the two jobs here:
+# invariants, owner rulings — and are dialect-AGNOSTIC by construction:
+# per-dialect correctness is not a separate "Less readiness" headline, it lives
+# in each parser's own suite, all of which run across the jobs here:
 #
+#   owner-rulings — `pnpm check:guardrails` (no install, seconds). Add it too.
 #   verify       — full clean build + lint + strict types + the jess ratchet
 #                  (the CLI app's corpus/plugin suite, which needs BUILT artifacts)
 #                  + every structural/perf gate. Add THIS to branch protection.
@@ -14,14 +15,15 @@ name: CI
 #                  the full 22-package chain. Runs concurrently with `verify` so
 #                  the ~90s test payload leaves the critical path. Add it too.
 #
-# Why the split is safe: vitest source-aliases every `@jesscss/*` to `src` (see
-# vitest.config.ts), so the only BUILT artifacts a source test needs are (1) the
+# Why the split is safe: vitest source-aliases every `@jesscss/*` export, bare
+# name and subpath, to `src` (scripts/workspace-src-aliases.mjs), so the only
+# BUILT artifacts a source test needs are the ones loaded outside vite: (1) the
 # parser-shared macro-fusion pieces parseman's plugin reads at transform, and (2)
-# the handful of core/fns lib subpaths (`core/ast`, `fns/sass/*`) that are not
-# source-aliased — all produced by the cheap prime. The four parser `/positions`
-# and `compiler/diagnostics` subpaths are source-aliased in vitest.config so no
-# parser build is needed. `jess` is the sole genuinely build-bound suite and
-# stays in `verify`.
+# the core/fns libs that native loaders reach — a dialect plugin's provided
+# modules (`#less`, `sass:*`), for one, load through the plugin's own `require`
+# — all produced by the cheap prime. No parser
+# build is needed. `jess` is the sole genuinely build-bound suite and stays in
+# `verify`.
 #
 # Per-dialect suites, all still gated:
 #
@@ -62,6 +64,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Owner rulings are not reversible by an agent: `pnpm check:guardrails` fails
+  # on an edited owner requirement, an unattributed closure, Less 4.x / lessc
+  # behaviour offered as a reason, or an owner-ruled ledger row / conformance
+  # test changed without docs/architecture/core/owner-rulings.lock.json. Node
+  # built-ins only, so no install: it reports in seconds. The conformance tests
+  # and the executed migration-guide examples run in `verify` (they need the
+  # build). Add THIS job to branch protection too.
+  owner-rulings:
+    name: Owner rulings · guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: pnpm check:guardrails
+        run: node scripts/check-guardrails.mjs
+
   verify:
     name: Build · lint · types · tests · gates
     runs-on: ubuntu-latest
@@ -75,6 +99,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Also run inside this already-required check, so the owner-ruling gate
+      # blocks a merge even before `owner-rulings` is added to branch protection.
+      - name: Owner rulings — pnpm check:guardrails
+        run: node scripts/check-guardrails.mjs
 
       - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
         uses: actions/checkout@v4
@@ -137,6 +166,11 @@ jobs:
       - name: Node-engines guard
         run: node scripts/check-node-engines.mjs
 
+      # The release gates (packed-consumer import scan, alpha source-sync,
+      # version resolution) run only at release time; test their logic here.
+      - name: Release script tests
+        run: pnpm run test:release --run
+
       # Every dialect grammar's reducers must reference only IMPORTED helpers, never
       # a module-scope helper defined in grammar.ts. This is a NECESSARY (not
       # sufficient) condition for cross-package compose() fusion — it is a static
@@ -147,11 +181,13 @@ jobs:
         run: node scripts/probe/parseman-compose-reducer-census.mjs --check
 
       # Build-then-LOAD complement to the static census: the four Less, four
-      # SCSS AND four Jess variants actually compose on cssBaseRules (W0). Fails
-      # if a variant left a runtime compose( in its emitted table (did not fuse)
-      # or throws when its compiled table is first materialized by a real parse.
+      # SCSS AND four Jess variants actually compose on cssBaseRules (W0), and
+      # every CSS variant is a table. Fails if a variant (ESM or CommonJS) left a
+      # runtime compose( in its emitted table (did not fuse), reads
+      # @jesscss/parser-shared as grammar (recognition not fused), or throws when
+      # its compiled table is first materialized by a real parse.
       # Runs against the lib/ the build above produced.
-      - name: Compose fused + load gate (Less + SCSS + Jess)
+      - name: Compose fused + load gate (CSS + Less + SCSS + Jess)
         run: node scripts/probe/compose-fused-check.mjs
 
       # --- static analysis --- (run explicitly, NOT via `pnpm ci`, which would
@@ -188,6 +224,14 @@ jobs:
       # the real @less/test-data corpus from BUILT artifacts, so it is genuinely
       # build-bound. Its full suite — public-API contract, path resolution,
       # AST-v2 ratchet, CLI — runs inside test:ratchet.
+      # Named on its own so a reversed owner ruling is visible in the check list:
+      # the owner-ruling conformance tests (it.fails entries pass while the code
+      # still contradicts the ruling) and every marked example of the two Less
+      # 4 -> 5 migration guides, compiled and compared with the documented output.
+      # Explicit file paths: a vitest run that matches no file exits 1.
+      - name: Owner rulings — conformance tests + migration-guide examples
+        run: pnpm --filter jess exec cross-env TEST=true vitest run test/owner-rulings.test.ts test/migration-docs.test.ts
+
       - name: Jess suite (known-failures ratchet)
         run: pnpm --filter jess run test:ratchet
 
@@ -236,15 +280,17 @@ jobs:
   # a cheap prime:
   #
   #   * `@jesscss/parser-shared` — its COMPILED lib carries the macro-fused grammar
-  #     recognition pieces (cssSyntax / opaque-at-rule / pseudo-consts) that
+  #     recognition pieces (recognition / unknown-at-rule / pseudo-consts) that
   #     parseman's plugin reads at transform when it fuses each grammar's
   #     `composeLeaf(...)`. Without this lib the transform cannot fuse and the four
   #     grammars fail at runtime with `composeLeaf() must macro-fuse`. This is the
   #     one artifact the vite src-aliases cannot substitute (the plugin resolves it
   #     itself, compiled-only, ignoring vite aliases).
-  #   * `@jesscss/core` + `@jesscss/fns` — the `core/ast` and `fns/sass/*` lib
-  #     subpaths the parsers import at runtime are not source-aliased, so their
-  #     built libs must exist. Both are fast tsdown bundles; the whole prime is ~3s.
+  #   * `@jesscss/core` + `@jesscss/fns` — for the libs native loaders reach,
+  #     which no vite alias can redirect: a dialect plugin's provided modules
+  #     (`#less`, `sass:*`), for one, load `@jesscss/fns` lib (and that lib's own
+  #     `@jesscss/core`) through the plugin's `require`. Both are fast tsdown
+  #     bundles; the whole prime is ~3s.
   #
   # `pnpm --filter '@jesscss/core...' --filter '@jesscss/fns...'` pulls their shared
   # `awaitable-pipe` dep in too. The parser libs are built only for the

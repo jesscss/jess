@@ -6,5 +6,6 @@
     "outDir": "./lib",
     "rootDir": "./src",
     "noEmit": false
-  }
+  },
+  "include": ["src/**/*"]
 }

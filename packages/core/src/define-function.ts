@@ -1,5 +1,4 @@
 import { isPlainObject } from 'lodash-es';
-import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
@@ -8,8 +7,18 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 import { JessError } from './jess-error.js';
+import type { ClassOf, InstanceOf } from './tree/node-base.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
-export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
+
+/**
+ * `T` without its index signatures: type-fest's `OmitIndexSignature`, restated
+ * so core's published declarations import only packages core depends on.
+ */
+type OmitIndexSignature<T> = {
+  [K in keyof T as {} extends Record<K, unknown> ? never : K]: T[K];
+};
+
+export type ArgType = PrimitiveType | ClassOf;
 export type Lazy<T> = () => MaybePromise<T>;
 
 /**
@@ -102,8 +111,8 @@ type GetArgType<T extends ArgType> =
           ? null
           : T extends 'undefined'
             ? undefined
-            : T extends Class<any> | AbstractClass<any>
-              ? InstanceType<T>
+            : T extends ClassOf
+              ? InstanceOf<T>
               : never;
 
 // Helper type to get the inferred type from a parameter definition, accounting for lazy

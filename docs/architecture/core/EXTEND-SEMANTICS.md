@@ -10,8 +10,10 @@ The behavior below is anchored on two references, NOT on the current engine:
 
 1. **The extend fixtures** in less.js `alpha`
    (`packages/test-data/tests-unit/<fixture>/{<fixture>.less,<fixture>.css}`),
-   read read-only via `oracle-source.ts` and gated by
-   `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
+   rendered and gated by the Less fixture lane
+   (`packages/jess/test/less/all-less.test.ts`) and
+   `packages/jess/test/less/extend-exact-oracle.test.ts`, both applying the pending
+   golden edits in `packages/jess/test/less/pending-golden-edits.ts`.
    The `alpha` TOP-LEVEL `.css` (with `:is()` compaction) is the intended v5
    output.
 2. **Owner-confirmed corrections** in
@@ -94,6 +96,9 @@ gate: the extend paths may not name an evaluator entrypoint).
 | Attached to selector (Less) | `.a:extend(.b) {}` | extend clause must be LAST in the selector |
 | Space before clause (Less) | `.a :extend(.b) {}` | whitespace allowed |
 | Inside a ruleset body (Less) | `.a { &:extend(.b); }` | shorthand for attaching to every selector of the ruleset |
+| Inside a mixin definition body (Less) | `.m() { &:extend(.b); }` | carried on the definition (`MixinDefinition.extendInstructions`); each call extends the rule its body lands in, as if written in that rule's body; a call outside every rule extends nothing (ledger X16, J15) |
+| Inside a detached ruleset (Less) | `@r: { &:extend(.b); };` | carried on the block (`AnonymousMixin.extendInstructions`); each call — `@r()`, or a mixin calling it as an argument or parameter default — extends the rule it lands in, as a mixin definition's does (ledger X19) |
+| Inside an at-rule block (Less) | `.a { @media print { &:extend(.b); } }` | carried on the block (`AtRuleBlock.extendInstructions`); the rule the block lands in extends, inside the block's scope (§8), as if written in that rule's body within the block; a block outside every rule extends nothing (ledger X19) |
 | Multiple targets (Less) | `.a:extend(.b, .c) {}` | == two separate `:extend` clauses |
 | **Jess statement** | `$extend .b;` / `$extend .b !exact;` | Jess-native body statement — see §4 |
 
@@ -106,7 +111,28 @@ pre:hover, .some-class { &:extend(div pre); }
 pre:hover:extend(div pre), .some-class:extend(div pre) {}
 ```
 
-Grammar: the Jess `$extend` statement is `packages/jess-parser/src/grammar.ts`
+A body-form `&:extend()` parses in every braced Less statement body. One written directly
+in a mixin definition, a detached ruleset or an at-rule block is applied by the render walk
+where that body lands — the innermost open rule extends, at the walk's scope — so
+`@r: { &:extend(.sm); }; .x { @r(); }` gives `.sm, .x`, as does a detached ruleset passed
+to a mixin as an argument or a parameter default and called inside `.x`. An `each()`
+callback is a detached ruleset each iteration places: `.y { each(@l, { &:extend(.z); }); }`
+gives `.z, .y` (lessc 4.9.1 writes `.y` once per item). For a detached
+ruleset this is lessc 4.9.1's output (ledger X19). An at-rule block's extend is scoped to the
+block (§8): `.a { @media print { &:extend(.a .b); .b { c: 3; } } }` gives
+`@media print { .a .b, .a { … } }` while a top-level `.sm` stays unextended. lessc 4.9.1
+agrees inside `@media` and `@supports`, but applies one inside `@container` to the whole
+sheet, which the §8 scope does not.
+
+In nested output (`collapseNesting: false`, the Less v5 default) a rule that extends a
+rule nested inside it is written `&` beside the target (§7a), so the `@media print`
+example gives `.a { @media print { .b, & { … } } }`, the same selectors; so does the
+inline form `.a:extend(.a .b) { .b { … } }`. Known gap: a target that a mixin or a
+detached ruleset PLACES under a rule block is not rewritten in nested output (§6,
+`PINNED-DEFECTS-AUDIT.md` DF6), pinned in
+`packages/jess/test/less/mixin-public-semantics.test.ts`.
+
+Grammar: the Jess `$extend` statement is `packages/syntax/jess/jess-parser/src/grammar.ts`
 (search `$extend`); the core node is `Extend { target, flag }` with the parsed
 `ExtendInstruction { partial }` surfaced in `packages/core/src/ast/nodes.ts` and
 consumed by the engine under `packages/core/src/ast/extend/`.
@@ -152,7 +178,7 @@ individually fixture-gated here, flagged in §12):
 ## 4. Jess `$extend` — inverted default + `!exact`
 
 The Jess statement form flips the Less default. Per
-`packages/jess-parser/src/grammar.ts`:
+`packages/syntax/jess/jess-parser/src/grammar.ts`:
 
 > `$extend <target> [!exact];` — Jess/Sass default is a partial (`all`) match;
 > `!exact` flips it to Less's exact match.
@@ -172,7 +198,7 @@ compound position.
 
 `extend-clearfix` again: 4.x `legacy` emits `.clearfix:after, .foo:after,
 .bar:after`; v5 emits `:is(.clearfix, .foo, .bar):after`. This is why
-`legacy/*.css` is NOT a v5 reference (see `oracle-source.ts`).
+`legacy/*.css` is NOT a v5 reference.
 
 Two compaction behaviors:
 
@@ -192,6 +218,113 @@ Two compaction behaviors:
 :is(.error, .badError).intrusion { font-size: 1.3em; font-weight: bold; }
 .intrusion :is(.error, .badError) { display: none; }
 .badError { border-width: 3px; }
+```
+
+**Guarded grouping (ledger X3 and O10, both amended by the owner 2026-10-05).**
+Extend's own `:is()` groups — the `all` graft and sibling compaction (§7c) — keep
+native specificity, matching and
+invalid-selector behaviour, by the SAME rule `collapseNesting: 'native'` folds a
+nested child list by, and in EVERY output mode (nested, `'native'` and `'compact'`;
+extend grouping is not mode-coupled). One module owns that rule:
+`packages/core/src/ast/is-grouping.ts` (specificity, the "may this branch sit inside
+`:is()`" check, and the partition into groups); the serializer's `opaqueJoin` and
+the extend engine both call it.
+
+- Members of one `:is()` share one Selectors-4 §17 specificity. A group that would
+  mix specificities splits into equal-specificity groups, gathered across
+  non-adjacent members (branch order inside one selector list changes neither the
+  cascade nor specificity) and emitted in order of first appearance.
+- A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside
+  the standard allowlist, a token held as composed header text (its kind would have to
+  be read back out of serialized text), an `&` concatenation that does not continue a
+  one-simple class, id or type name (`.x&`; `&-x` under `.a.b`) — one that does
+  (`&-primary` under `.btn`) stands for that parent's token —, a resolved interpolation
+  that holds more than one simple (`@v: ~"x.y"; .@{v}`), or a
+  complex member the group does not lead with (ledger X17 records this reading of X3's
+  provenance clause) — is written as its own branch where the group was. The
+  compound's other simples describe the same element as the matched simple, the one a
+  complex member's LAST compound names (owner 2026-10-09: same element ⇒ same
+  compound): where the compound opens a top-level header the member is written in
+  place, those simples joining its last compound (`.active.btn .icon` +
+  `.toolbar .tool:extend(.btn all)` → `.toolbar .tool.active .icon`); anywhere else it
+  stays one `:is()` unit where the group was (`.a > .m:is(.c, .p .q).n` →
+  `.a > .m:is(.p .q).n`), the position rule a `&` referencing a parent of several
+  compounds follows too (ledger J13; `conflict.ts` `placeComplex`). A one-compound member
+  joins them in place, and a member that is the whole compound it stands in is written
+  in its place. Each joined compound is made valid: the type selector leads and a
+  repeated type is written once (`div` + `div.b` → `div.b`, never `divdiv.b`); a member
+  that would need two element types or two ids matches no element and is dropped
+  (`div.c` + `.p span:extend(.c all)`).
+- A group may hold a complex member only where it leads the whole selector: first in
+  the head compound of a top-level header. Only there `:is(.t .b).k .box` matches what
+  `.t .b.k .box` does; elsewhere a group would let the member's own compounds sit
+  across the combinator before it (`.p :is(.x .y)` lets `.x` sit above `.p`). A nested
+  header has an implicit `&` before it, so it never leads.
+- A group nested in a member (a chained extend, `.j.k:extend(.c all)` then
+  `.p .q:extend(.j all)`) is checked as an `:is()` argument first, and again where the
+  member lands when the outer group splits: with `.r .s:extend(.j all)` too,
+  `.a > .c` gives `.a > :is(.p .q).k, .a > :is(.r .s).k`, never
+  `.a > :is(.p .q, .r .s).k`.
+- The solve keeps each group whole (later instructions chain through it as one set of
+  alternatives); the split happens once, as a header is emitted (`emit.ts`
+  `groupedBranches`). Only extend-built groups (`Simple.fold`) split. An authored
+  `:is()` and the nesting `:is(parents)` token keep their arms as one list: an arm whose
+  extend group split keeps its first alternative there (the one holding the matched
+  selector, at the arm's own specificity), and every other alternative replaces the
+  whole `:is()` on its own — returned to the list it would raise elements the extend
+  never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
+  An alternative is written in place in X3's placement (`.p .q:extend(.c all)` gives
+  `.p .q.k .d`), except a complex alternative of a one-arm `:is()` that does not lead
+  its selector: that `:is()` is one unit (a `&` referencing a parent of several
+  compounds, or the author's), so it keeps it — `.a .b { .c & {} }` +
+  `#z:extend(.a all)` gives `.c :is(.a .b), .c :is(#z .b)`, never `.c #z .b` (owner
+  2026-10-09, ledger J13).
+- A `&` is a plain reference to its parent, `:is(parent)` (owner 2026-10-09, ledger
+  J13), and extend composes it as the serializer writes it. Under a parent of several
+  compounds, the compound that opens the selector writes the parent in place, its other
+  simples joined to the parent's LAST compound (`.b { .p { &.q {} } }` and `.q&` are
+  both `.b .p.q`, `&-foo` is `.b .p-foo`, `div&` is `.b div.p`); anywhere else the
+  parent is one `:is()` unit (`.c &` is `.c :is(.b .p)`, `& + &` is
+  `.b .p + :is(.b .p)`, `:not(.c &)` is `:not(.c :is(.b .p))`). A `&` inside an
+  `:is()` argument is composed too (`:is(&) .y` is `:is(.b .p) .y`). Extend matches
+  that composed selector: `.x:extend(.b .p.q)` reaches `.q&`, and an `all` graft on
+  `.x` in `.x { .arrow { &::before {} } }` gives `:is(.x, .y) .arrow::before`, never a
+  one-arm `:is(:is(.x, .y) .arrow)::before`. A parent ending with a pseudo-element
+  keeps the earlier splice, since `:is()` cannot hold it (O17).
+- An `all` match of a whole authored or nesting `:is()` arm appends the extender to
+  that list; the append is extend's own grouping and follows the same guard
+  (orchestrator judgment 2026-10-05). The extender joins the list only at the list's
+  specificity and where its shape may sit in the `:is()`; otherwise it replaces the
+  whole `:is()` on its own, so the authored list keeps its specificity
+  (`:is(.c, .z) .d` + `#b:extend(.c all)` → `:is(.c, .z) .d, #b .d`; `.y` joins:
+  `:is(.c, .z, .y) .d`; `.a :is(.c, .z)` + `.p .q:extend(.c all)` →
+  `.a :is(.c, .z), .a .p .q`).
+- A member written as its own branch that leaves a pseudo-element followed by more
+  (`.a .c:hover` + `.p::before:extend(.c all)` → `.a .p::before:hover`) gets a RULE OF
+  ITS OWN, its declarations written again, in every output mode, nested included
+  (orchestrator judgment under owner delegation 2026-10-07, principle O17; the ledger
+  O10 split): Chromium drops such a selector and every list holding it. The plan
+  records every extended header's suffixed branches (`emit.ts` `extendedHeaderTexts`,
+  `suffixedByRule`) — flat, nested and hoisted alike — and both writers split them
+  (`serialize.ts` `SplitBlock`, `writeNestedRule`, `splitOwnRules`, inner blocks
+  first). A header no extend rewrote is left as written.
+- KNOWN GAPS: SCSS `@extend` uses the same Less 4.x expansion, not
+  dart-sass's weave — deferred Sass-parity work, tracked with its repro in
+  `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not pinned").
+
+```less
+.a > .c { color: red; }
+.x:extend(.c all) {}
+#b:extend(.c all) {}
+.y:extend(.c all) {}
+.p .q:extend(.c all) {}
+```
+```css
+.a > :is(.c, .x, .y),
+.a > #b,
+.a > .p .q {
+  color: red;
+}
 ```
 
 **Sibling compaction** — exact extenders that append identical trailing parts are
@@ -255,6 +388,92 @@ Cross-`@import` closure resolves through the import boundary
 (`extend-cross-import.test.ts`, reference = real less@4): `.a:extend(.b)` in main +
 `.b:extend(.c)` in the imported sheet yields `.c, .b, .a { color: red; }`.
 
+Targets are graph-wide: a rule of an imported sheet is a target for an extend anywhere
+in the import graph, whether or not that sheet has an `:extend()` of its own
+(`@import "t.less"; .x:extend(.sm) {}` with `.sm` in `t.less` → `.sm, .x { … }`), subject
+to the same `@media` scoping as inlined rules (§8). An extend inside a mixin or loop body
+counts like any other. The zero-extend fast-reject is per import GRAPH, never per
+document: a graph with no extend plans nothing and records nothing in the render walk
+(jess#349). A sheet imported inside a ruleset is never planned; when nothing else in the
+graph extends, a statically addressed one is loaded before the walk only to learn whether
+it carries an extend the walk must record (one admission scan of the sheet, which an
+extend-free document pays too; a parse-time "has an extend" fact on the sheet would make it
+O(1)), and one imported through an interpolated path, whose sheet only the walk can
+address, arms the walk recorder outright. When no rule the walk recorded can meet an extend
+target the deferred fold re-solves nothing. Interpolated selectors are covered by §10.
+
+A rule a mixin call places (a ruleset called as a mixin, a detached ruleset's call and
+a Jess `$apply` included; each call or application is its own placement), or a loop or `$if`/`$while` body places — or an `@import` inside a ruleset,
+which runs as that ruleset's body (`.wrap { @import "t.less"; }` → `.wrap .sm`; ledger
+A2's source fold, N10's splice at the import position) — extends and is extended where
+it lands: as its selector composed under the rules it is placed in, in the `@media`
+scope it is placed in (§8), once per placement:
+
+```less
+.m() { .p { &.q, &.r { a: 1; } } }
+.m();
+.x:extend(.p.q) {}
+// → .p.q, .p.r, .x { a: 1; }
+
+.a { .p { a: 1; } }
+.z { .a(); }
+.x:extend(.z .p) {}
+// → .a .p { a: 1; }  .z .p, .x { a: 1; }
+```
+
+A body-form extend the called definition carries — written directly in a mixin
+definition's body, or in the body of a ruleset called as a mixin, with or without
+parentheses — extends the rule the call's body lands in, as if written in that rule's
+own body (ledger X16, J15; lessc copies the Extend into the caller). An inline `:extend()`
+on a called ruleset's selector stays that ruleset's own.
+
+```less
+.m { &:extend(.sm); c: d; }
+.sm { b: 2; }
+.x { .m; }
+// → .m { c: d; }  .sm, .m, .x { b: 2; }  .x { c: d; }
+```
+
+An interpolated selector in such a body is a target part by part, like any other (ledger
+X7 as amended): with recording armed the walk resolves it once, structurally, and both the
+header and the recorder read that resolution (`serialize.ts` `resolvedSelectorList`). A
+lone `@{name}` selector (it may expand to a captured selector list) or a resolved `&` the
+template did not write is still held as its composed text and matched whole.
+
+Nested output (`collapseNesting: false`) has known gaps; flat output is right in each, and
+each is recorded with its repro in `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not
+pinned"):
+
+- A placed EXTENDER folds in as its composed selector (`.a { .m(); } .b { .m(); }` →
+  `.sm, .a .x, .b .x`), but a placed TARGET written inside a parent block is not rewritten,
+  whoever extends it: a recorded rule under a parent block is no rewritable slot, and
+  moving an extender out is restructuring, not a header rewrite (§1a). So
+  `.m() { @media print { &:extend(.y .z); .z {…} } } .y { .m(); }` keeps `.z` alone,
+  where `.y { @media print { &:extend(.y .z); .z {…} } }` gives `.z, &` (§7a). The same
+  holds for a rule of a `(reference)` sheet imported
+  inside a ruleset, which flat output reveals under its extender
+  (`.wrap { @import (reference) "t.less"; }` + `.x:extend(.wrap .sm) {}` → `.x { b: 2; }`)
+  and nested output leaves hidden, and for a sheet imported inside a ruleset whose rules
+  extend each other.
+- A match of a nested rule's whole selector by a top-level extender that shares none of
+  the rule's parent levels is dropped (`.w { .k { k: 1; } } .w .y:extend(.w .k) {}` →
+  `.w { .k { … } }`; flat `.w .k, .w .y`). An extender nested under the same parent folds
+  in as its own-local remainder (`.w { .y { &:extend(.w .k); } .k {} }` → `.w { .k, .y {…} }`),
+  and the parent itself as `&` (§7a). An inline extend on one selector of a list
+  (`.y:extend(.y .z), .q { .z {…} }`) is dropped: `&` would also cover `.q` (DF7).
+- An `all` extender folded into the header of a rule with child rules joins the header
+  list even when its specificity differs, and native CSS nesting reads that list as one
+  `:is()` for the children, so they gain the extender's specificity
+  (`.b.k { a: 1; .p { m: 1; } } #x:extend(.b all) {}` → `.b.k, #x.k { … .p {…} }`, where
+  `.b.k .p` scores (1,2,0) instead of (0,3,0)); X3's guard holds in the header itself
+  only. Flat output writes `.b.k .p, #x.k .p`.
+
+Extend across `@compose` follows Sass module semantics (ledger X14): the composing
+sheet's extend reaches the composed module's rules, and a module's extend reaches only
+the module and what it composes — never the composing sheet's rules. A module is one
+module however many sheets compose it, so the extends of every sheet that composes it
+reach it, whichever loaded it first (`extend-cross-import.test.ts`).
+
 ## 7. Nested / ruleset-scoped extends
 
 Extend matches nested (compiled) selectors and can be authored from any nesting
@@ -268,7 +487,7 @@ depth. `extend-nest.less`:
 ```
 ```css
 .sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4 { width: 300px; background: red; }
-:is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box { … }
+:is(.sidebar, .sidebar2) .box, :is(.type1 .sidebar3, .type2.sidebar4) .box { … }
 .sidebar2 { background: blue; }
 .type1 .sidebar3 { background: green; }
 .type2.sidebar4 { background: red; }
@@ -276,7 +495,9 @@ depth. `extend-nest.less`:
 
 The extenders' compiled complex selectors (`.type1 .sidebar3`,
 `.type2.sidebar4`) join both the header list and the nested `.box` rule's `:is()`
-graft.
+graft — in their own group, since they score `(0,2,0)` where `.sidebar` and
+`.sidebar2` score `(0,1,0)` (§5 guarded grouping). The graft leads the selector, so
+the complex member keeps its matching inside `:is()`.
 
 ### 7a. NESTED-mode re-nesting, shared-prefix strip, flatten triggers (LANDED)
 
@@ -290,6 +511,25 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
   remainder — `.attributes .attribute-test` folded into `.attributes [data="test"]`
   surfaces as the sibling `.attribute-test`. A top-level extender (no shared ancestor)
   is unchanged; the strip is capped at parent depth so a self-extend never slices empty.
+  A level the render walk recorded (an at-rule block's extend, a placed body) or an
+  inline extender's narrowed level is its own object, so an equal selector list shares
+  as identity does. An extender that IS the parent has no remainder: where it replaces
+  the whole selector it is written `&` (`.y { &:extend(.y .z); .z {…} }` →
+  `.y { .z, & {…} }`; an exact one splits off a target with children as `& {…}`);
+  where it replaces part of the own-local selector (a sub-compound `all` match) it keeps
+  its own last compound, since that part sits below the parent
+  (`.y { &:extend(.z all); .z.k {…} }` → `.y { :is(.z, .y).k {…} }`, i.e. `.y .y.k`).
+  Flat output writes the same context once where it splices an extender in place of
+  the target (`emit.ts` `sharedContext`): `.attributes .attribute-test`, never
+  `.attributes .attributes .attribute-test`. The rule (PINNED-DEFECTS DF8,
+  orchestrator judgment under owner delegation 2026-10-07): the extender stands for
+  the target where it appears, so `A T` extended by `A R` is `A R` (what
+  `A :is(A R)` matches) and by `A` itself is `A A_last`; one answer in both modes. A
+  child or sibling join reduces the same way, by the narrower of the target's and the
+  extender's combinators when both are ancestor combinators (` `, `>`) or both sibling
+  ones (`+`, `~`): `.a { > .t {…} > .r { &:extend(.t all); } }` and
+  `.a { .t {…} > .r { &:extend(.t all); } }` write `.a > .r`, never `.a > .a > .r` or
+  `.a .a > .r`; a mixed join (`~` against `>`) does not reduce and is written in full.
 - **Flatten triggers** — a rule (and its descendants) FLATTEN to a top-level block when
   the match CROSSES the `&` (the parent-context ↔ child-appended-compound join), which
   nested structure cannot express locally:
@@ -301,11 +541,23 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
     alias that also rewrites the child's own compound does NOT cross → stays nested.
   - **trigger X** — a NESTED rule whose whole composed complex is matched EXACTLY by an
     extender that does not descend from its parent (hoisted whole-complex sibling).
+    An exact match into a rule with children does not fire it: the extender splits
+    off (§7b).
+  - **trigger A** — a rule (top-level included) one of whose at-rule blocks holds an
+    extend, in its own scope, that reaches the rule's declarations written in that
+    block (§8). Always `'collapse'`: only the flat writer's bubbled block carries it.
   A flatten whose subject STILL HAS surviving nested children RE-NESTS the corrected
   subtree under its hoisted header (`emit.ts` `'renest'` mode) rather than composing
-  the children flat (`'collapse'`, which cascades to descendants). Flatten only when
-  there is no shared prefix to strip and the match crosses; otherwise the local
-  rewrite / prefix strip keeps the rule nested.
+  the children flat (`'collapse'`, which cascades to descendants). A trigger-P/X
+  flatten's header is the full flat composition, so the rule rises out of EVERY
+  enclosing rule block (`hoistBubble` = its nesting depth); rising one block left
+  `.a { .b, .c { e } }` + `.d:extend(.a .b e)` as `.a { :is(.a .b, .a .c) e, .d {…} }`,
+  which needs two `.a` ancestors. An at-rule it rises out of is not a rule block but
+  goes with it: `.a { @media q { .b, .c { e {…} } } }` emits `@media q { … }` beside
+  `.a` (`serialize.ts` `HoistEntry.wrappers`). Only a sub-span match that crosses the `&`
+  (`emit.ts` trigger C, the per-boundary hoist) keeps outer ancestors as wrappers.
+  Flatten only when there is no shared prefix to strip and the match crosses;
+  otherwise the local rewrite / prefix strip keeps the rule nested.
 
 ### 7b. Exact-extender-into-children SPLIT (LANDED)
 
@@ -317,17 +569,46 @@ fold into the header and DO propagate to children. This is the corrected form ga
 against `proposed-alpha-corrections/{extend.css,extend-exact.css}`, superseding alpha's
 hand-converted leak (see §12.1).
 
+The split's header is the extender's own header. In nested output an extender that
+shares a parent with the target is written relative to it, beside the target; one
+that shares no level with the target's ancestors has a top-level header, so its
+block rises out of every rule block the target nests in, staying inside the
+at-rules it nests in (`emit.ts` `NestedRulePlan.rootSplits`, `serialize.ts`
+`HoistEntry.split`): `.a { .b { y: 1; .c { x: 1 } } } .q:extend(.a .b) {}` writes
+`.q { y: 1; }` beside `.a`. Flat output folds the same extender into the target's
+block, which has no child rules there: `.a .b, .q { y: 1; }`.
+
 ### 7c. Sibling `:is()` compaction, guarded (LANDED)
 
 `siblingCompact` / `tryMergeSiblings` / `mergeCompoundsToIs` (`emit.ts`) compact whole
 sibling branches differing in exactly ONE compound into `:is(...)` at that position
-(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with two guards:
+(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with three guards:
 
 - Single-compound rows merge only when they share a trailing suffix — two whole
   branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
 - Multi-segment (descendant-complex) rows compact only under a shared parent-composition
   prefix (`allowMultiSeg`, a flattened nested rule's hoisted header); a TOP-LEVEL rule's
   own header keeps `.foo .bar, .foo .baz` as a comma list (never `:is()`-collapsed).
+- The merged group is an extend group, so it follows §5's guarded grouping (ledger
+  X3, amended by the owner 2026-10-05) in every output mode: `.button:hover, #submit:hover` stays a comma list, and
+  `.arrow::before` / `.arrow::after` never share an `:is()`. A leading extend group on
+  either side flattens into the merge; an authored or nesting `:is()` joins it as one
+  member, so emission never splits a selector the author wrote. A lead already in
+  the group joins it once (`#b.x` reached twice is one `#b`).
+
+Compaction is not mode-coupled either: a top-level rule the extend changed compacts
+its header the same way in nested output (its `nestedPlan` header) as in flat
+output (`flatByRule`).
+
+The NESTING fold is mode-coupled, and an extended header keeps it (orchestrator
+judgment 2026-10-05): in a nested rule's extended, flattened header the branches its
+own child list produced fold by `collapseNesting` exactly as the serializer folds the
+unextended rule (ledger O10; `'compact'` unguarded, `'native'` and the nested output's
+hoisted headers by specificity), while the branches the extend added keep to the
+guarded grouping above. `.t { th, .x {} }` + `.foo:extend(.t th)` is
+`.t :is(th, .x), .foo` under `'compact'` and `.t th, .t .x, .foo` under `'native'`;
+`#y:extend(.x all)` on the same rule gives `.t :is(th, .x), .t #y` under `'compact'`
+(`emit.ts` `nestingFold`).
 
 ## 8. `@media` scoping — v5 does NOT merge media
 
@@ -364,6 +645,49 @@ reaches `tv` and its descendant `hires` but NOT the top-level `.ext2` rule.
 Crucially, v5 keeps the nested `@media` blocks nested — it does NOT merge/flatten
 them (contrast Less 4.x, which merges `@media (tv) and (hires)`).
 
+The scope is the placed one, across `@import`: an imported sheet's `@media` blocks
+scope its extends exactly as if the sheet were inlined, and an import inside an at-rule
+block (including the `@import "x" screen;` form) places the whole sheet in that block's
+scope. So `@media print { .x:extend(.sm) {} }` in one imported sheet does not reach a
+top-level `.sm` in another, while `@media print { @import "t.less"; .x:extend(.sm) {} }`
+extends the imported `.sm` (`extend-cross-import.test.ts`).
+
+A mixin call is placed the same way: `@media print { .m(); }` puts the rules and extends
+of `.m()`'s body in the `print` scope, wherever `.m()` is defined.
+
+An at-rule nested in a rule is a scope nested in the rule's, so an extend that reaches
+the rule reaches the at-rule too. Flattened, the at-rule is written outside the rule
+with the rule's selector inside it (bubbling), and that selector is the rule's EXTENDED
+header (orchestrator judgment under owner delegation 2026-10-07):
+`.a::before, .b { &:hover { @media print { x: 1 } } } .q:extend(.b:hover all) {}` gives
+`@media print { .a::before:hover { x: 1 } .b:hover, .q { x: 1 } }`, in every output
+mode, and lessc 4.9.1 also writes `.q` there. The walk keys the extended header by the
+context the rule's body walks under (`serialize.ts` `Emit.extendedContexts`,
+`emitBubbleBody`); while the walk records extends, the bubbled header is a slot of the
+rule open on the recorder's path, which the deferred fold rewrites with the rule's own
+(`recordDynExtendSlot`), so a rule a mixin call places gets it too. A rule nested output
+hoists for an extend composes its body against the context it was written under
+(`HoistEntry.source`, `emitHoisted`), so its bubbled at-rule keeps the rule's
+ancestors (`.a { .b { @media print {…} } }` → `@media print { .a .b, .q {…} }`). An
+extend in a sibling at-rule's scope does not reach it.
+
+The declarations an at-rule block written in a rule holds are the rule's, in the
+at-rule's scope, so an extend written in that scope reaches them too (lessc 4.9.1
+writes the same): `.b { @media print { y: 1; .q:extend(.b) {} } }` gives
+`@media print { .b, .b .q { y: 1; } }`, beside what an extend from outside adds.
+The plan records each such block (`plan.ts` `PlanBubble`; the import planner records
+an imported sheet's, `planImportedStaticExtend`) and solves its header only
+when an instruction's scope ends in an at-rule between the rule and the block
+(`emit.ts`, `ExtendResults.bubbleHeaders`, read by `serialize.ts` `emitBubbleBody`).
+Nested output cannot write that fold in the at-rule's implicit `&` block, so the
+rule is written as flat output writes it (`emit.ts` trigger A). **Known gap (open,
+follow-up):** a rule a mixin call or loop places is recorded by the render walk, not
+the static plan, so its at-rule's own extend is not folded there
+(`.m() { .b { @media print { y: 1; .q:extend(.b) {} } } } .m();` keeps `.b` alone;
+lessc 4.9.1 writes `.b, .b .q`). Folding it needs the walk to record the block as a
+bubble and its slot to read `bubbleHeaders`, and nested output would need the
+restructuring the deferred rewrite does not do (§1a).
+
 ## 9. Compound / complex / combinator targets
 
 The target can be a compound, a complex selector, or carry combinators, and each
@@ -397,12 +721,39 @@ adjacent/child targets each match their respective combinator form.
   [data], .attribute-test2 { extend: attributes2; }
   [data="test3"], .attribute-test { extend: attributes2; }
   ```
-- **Interpolated extender selector** — an `:extend` ATTACHED to an interpolated
-  selector works (`@{variable}:extend(.bucket)`), but an interpolated selector as
-  a match target/subject matches nothing (`extend.md`, "Selector Interpolation
-  with Extend"): "Extend is not able to match selectors with variables." (See
-  §12 — the interpolated-attribute extend in `extend-selector` is currently a
-  DEFERRED engine gap.)
+- **Interpolated selectors** — a rule whose selector is interpolated (`.@{v} {}`,
+  `.c-@{n} {}`) IS an extend target once resolved, at the root, in imported sheets and
+  in mixin/loop bodies alike (ledger X7, amended by the owner 2026-10-05, as lessc 4.9.1
+  behaves; it closes X15). 4.x `extend.md`'s "Extend is not able to match selectors
+  with variables" is superseded. Whenever the import graph has an extend, the root's
+  rules and a planned imported sheet's are resolved before planning (the sheet's in its
+  own frame under its importer's) and written as resolved, so both output modes see the
+  resolved rule, nested targets included; a selector that does not resolve there, and
+  every rule of a sheet the walk places (inside a ruleset or a placing body), is recorded
+  by the render walk where it lands. An interpolation glued onto a class or id name
+  continues that name when the value starts as a name: `.c-@{n}` with `@n: 1` is the one
+  class `.c-1`, as the parser keeps `.a.c-@{n}`'s `.c-@{n}` one token, while a value that
+  opens with a delimiter starts a simple of its own (`@v: ~".b"` makes `.a@{v}` the two
+  simples `.a.b`).
+  KNOWN GAPS: a resolved interpolation is one token, so a simple the parser folded into
+  the interpolation is not a part of its own — `.c-@{n}.k` and `@{n}.k` at the head of a
+  rule's selector resolve to the one token `.c-1.k` (mid-compound `.a.c-@{n}.k` keeps
+  `.k` apart), and `.x:extend(.c-1 all)` misses it where lessc 4.9.1 matches. An
+  inline `:extend` parses on any interpolated selector branch and extends from the
+  resolved branch (`@{s} .r:extend(.z)`, `div @{s}:extend(.z)`, and a branch that is
+  one interpolated simple: `@{s}:extend(.z)`, `.@{v}:extend(.b)`, `@{s}.r:extend(.z)`,
+  `.z, .p .q` under `.p`). The pre-pass that resolves a rule's selector points the
+  inline extend at the resolved branch (`resolveSelectorInterpForExtend`). A lone
+  `@{list}` naming a selector LIST stays as authored, so the static plan cannot read
+  it: an extend from it — inline, body-form, or from a rule nested under it — is
+  skipped, never written as an empty or parentless extender (`.z, {`, `.z, .c {`),
+  which would drop or widen the target's rule (ledger O17; `extend/plan.ts`
+  `writableLevel`). Placed by a mixin call, the walk records the same rule from
+  its written header and extends from it (`.z, .q, .w`). Still open for such a lone
+  list: flattened output (`collapseNesting`) composes a rule nested under it from the
+  unresolved IR, so `@{list} { .c {} } .y:extend(.c all)` writes ` :is(.c, .y)` with
+  the parent lost (the header writer itself writes `.q, .w .c` there).
+  (See §12 for the interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility
 
@@ -417,6 +768,41 @@ EXTENDER's selector only — the referenced target header never surfaces on its 
 .ext { background: blue; }  // .ext's own body
 // `.target` never appears in output
 ```
+
+Hiding follows the import placement, not the rule. Each `(reference)` or `(multiple)`
+import is its own placement of the sheet's rules, so an extend inside one `@media` block
+reaches only that block's copy — a `(reference)` import inside a sheet imported
+`(multiple)` twice is placed once per copy. Import-once counts only a copy placed in the
+same output context — the chain of rule selectors and at-rule preludes the copy renders
+into, a mixin call or loop iteration counting in the context it runs in and an imported
+sheet's root in its importer's (J14 as amended; owner 2026-10-09: once counts per scope,
+if the output would be different). An import of a sheet an
+enclosing import is still placing is a no-op in every scope, so a sheet that imports
+itself through a nested scope ends. Import-once drops a `(reference)` import of a sheet any `@import`
+already placed in its scope — plain, `(multiple)` or `(reference)` — (ledger J14,
+jess#359; X18, orchestrator judgment under owner delegation 2026-10-06):
+`@import "t.less"; @import (reference) "t.less";` places the sheet once, visibly, and
+`@import (multiple) "t.less"; @import (reference) "t.less";` places only the `(multiple)`
+copy. A `(reference)` import that comes first does not stop a later plain import, which
+renders the sheet the author asked to see as its own visible copy; the earlier hidden
+copy is a placement of its own, so it still writes what an extend reveals there
+(`@import (reference) "t.less"; @import "t.less"; .x:extend(.sm) {}` → `.x { … }` then
+`.sm, .x { … }`). A `(multiple)` import places its own copy outside import-once, so a later
+plain import of the sheet is its first `once` import and renders it too, wherever the
+`(multiple)` copy landed (`@media print { @import (multiple) "t.less"; } @import "t.less";`
+keeps the root copy). Every import other than `(multiple)` and `(reference)` is import-once,
+`(once)`, `(optional)` and `(less)` included (X18, orchestrator judgment under owner
+delegation 2026-10-07: a sheet the author asked to see is never hidden). A copy in
+another scope never makes an import a no-op: after `.wrap { @import "t.less"; }` or
+`@media print { @import "t.less"; }`, a root `@import "t.less";` renders the sheet at the
+root and makes its mixins callable there, and a root `@import (reference) "t.less";` places
+its hidden copy there. The
+other way round, a scoped import after a root one places its own copy too. A sheet a `(reference)` sheet imports is
+referenced too, and a reference sheet's rule called as a mixin from outside the import
+renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the
+render walk) may still reveal renders as a reserved block, which the deferred fold
+rewrites to the extender, or blanks when nothing reveals it; a hidden at-rule around it
+renders as a reserved container that goes with it when nothing in it is revealed.
 
 ---
 
@@ -458,11 +844,10 @@ a fixture. These are the owner questions:
    intended to fold merge-anchoring in here — confirm it stays out of the extend
    surface.
 
-5. **Cross-`@import` extend is EVAL-routed, not spine-folded.** The transitive
-   closure through an import boundary currently routes to the legacy eval path
-   (per `extend-cross-import.test.ts`), a separate WIP from the spine fold. The
-   OUTPUT reference holds regardless of routing, but the intended final routing for
-   cross-import extend is unsettled.
+5. **Cross-`@import` extend routing (ledger X9).** No longer eval-routed: the import
+   planner records each imported sheet's statically-placed rules and extends from
+   their selector shapes (`planImportedStaticExtend`), and the one render walk records
+   loop/mixin-body placements (§1a). Extend across `@compose` follows ledger X14 (§6).
 
 6. **`div.ext5` / duplicated-extender dedup.** `extend.md` "Duplication
    Detection" notes Less 4.x has NONE (`.alert:extend(.alert-info, .widget)`
@@ -473,11 +858,10 @@ a fixture. These are the owner questions:
 
 - Engine: `packages/core/src/ast/extend/` (clean-room `ir`/`compose`/`match`/`plan`/`solve`/`emit`; barrel `packages/core/src/ast/extend.ts`).
 - Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
-- Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/architecture/core/REFERENCE.md`.
-- Byte-identity gate: `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
+- Reference plumbing: `docs/architecture/core/REFERENCE.md`.
+- Byte-identity gates: `packages/jess/test/less/all-less.test.ts`, `packages/jess/test/less/extend-exact-oracle.test.ts` (pending golden edits: `packages/jess/test/less/pending-golden-edits.ts`).
 - Corrections: `docs/architecture/core/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
 - Handoff / status: `docs/architecture/core/R1-EXTEND-HANDOFF.md`.
-- Kill-list (extend cleanup): `docs/architecture/core/TREE2-KILL-LIST.md`.
 - User-facing pages (canonical source `packages/docs-content/`):
   - Less: `docs/less/features/extend.md` (syntax), `docs/less/advanced/extend-is-wrapping.md` (`:is()` grafting), `docs/less/advanced/extend-semantics.md` (full behavior + nuances).
   - Jess: `docs/jess/02-Language/05a-advanced-extend.mdx`, `docs/jess/06-Advanced/05-extend.md`.

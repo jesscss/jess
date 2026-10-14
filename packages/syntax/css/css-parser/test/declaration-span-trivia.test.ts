@@ -85,13 +85,28 @@ describe('CSS declaration source spans', () => {
   });
 
   /*
-   * Left unspanned on purpose, exactly as Less leaves its own
-   * `CustomDeclaration` unspanned: a custom-property value is retained as
-   * authored bytes, so spanning the declaration would additionally claim the
-   * run that FOLLOWS the value and splice it into the value text.
+   * Ledger F12: a comment at either edge of a custom-property value is kept in
+   * the value, in place, and a comment-only value is not the empty value; only
+   * the edge whitespace is dropped (css-syntax-3 §5.5.6).
    */
-  it('keeps a comment after a custom-property value as a body comment', () => {
-    expect(css('a{--var:/* 1 */}')).toBe('a {\n  --var: ;\n  /* 1 */\n}\n');
+  it.each([
+    ['a{--var:/* 1 */}', 'a {\n  --var: /* 1 */;\n}\n'],
+    ['a { --x: /* lead */ red; }', 'a {\n  --x: /* lead */ red;\n}\n'],
+    ['a { --x: red /* trail */ ; }', 'a {\n  --x: red /* trail */;\n}\n'],
+    ['a { --x:/*g*/red/*h*/; }', 'a {\n  --x: /*g*/red/*h*/;\n}\n'],
+    ['a { --x:   red   ; }', 'a {\n  --x: red;\n}\n'],
+    ['a { --x: /* c */ red /* d */ !important; }', 'a {\n  --x: /* c */ red /* d */ !important;\n}\n']
+  ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
+    expect(css(source)).toBe(expected);
+  });
+
+  /* A final `\` keeps the whitespace after it: trimmed, it would escape the `;` (css-syntax-3 §4.3.7). */
+  it.each([
+    ['a { --x: a\\\n; }', 'a {\n  --x: a\\\n    ;\n}\n'],
+    ['a { --x: a\\ ; }', 'a {\n  --x: a\\ ;\n}\n'],
+    ['a { --x: a\\;b; }', 'a {\n  --x: a\\;b;\n}\n']
+  ])('keeps an escape at the end of a custom-property value whole: %j', (source, expected) => {
+    expect(css(source)).toBe(expected);
   });
 
   /*

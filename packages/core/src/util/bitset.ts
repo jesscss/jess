@@ -1,4 +1,10 @@
-import { default as OriginalBitSet } from 'bitset';
+/*
+ * The named export, not the default: bitset types its ESM build with a
+ * CommonJS-format `.d.ts`, so under `moduleResolution: node16/nodenext` a
+ * consumer's default import is the module object, not the class. `BitSet` is
+ * the class in both the ESM and CommonJS builds.
+ */
+import { BitSet as OriginalBitSet } from 'bitset';
 
 function isNumberArray(value: unknown): value is number[] {
   if (!Array.isArray(value)) {

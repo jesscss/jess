@@ -1,11 +1,12 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/naming-convention */
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const moduleCache = new Map();
-const lessPluginFunctionCache = new Map();
+const lessPluginRuntimeCache = new Map();
 
 /*
  * This module runs twice: as the process's main thread, which only relays
@@ -13,25 +14,6 @@ const lessPluginFunctionCache = new Map();
  */
 const isRuntimeThread = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
 const runtimeApi = isRuntimeThread ? self.name : Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
-
-/**
- * A deliberate, attributable failure for a `less.tree` member the Jess
- * compatibility shim cannot honour. Structural Less 4 nodes (rulesets,
- * selectors, at-rules, imports, extends) have no representation on the value
- * bridge that carries plugin results back to the engine, so exposing a
- * look-alike constructor would silently produce wrong CSS. Throwing names the
- * member and points at the supported surface instead.
- */
-class UnsupportedTreeNodeError extends Error {
-  constructor(name, reason) {
-    super(`Less @plugin: "tree.${name}" is not supported by the Jess less-compat shim.\n`
-      + `${reason}\n`
-      + 'Supported members: Node, Anonymous, Keyword, Quoted, Dimension, Unit, Color, '
-      + 'Expression, Value, Declaration, Variable, Property, Operation, Paren, Negative, '
-      + 'Call, URL, Comment, Assignment, UnicodeDescriptor, Ruleset, DetachedRuleset, Mixin, Nil.');
-    this.name = 'UnsupportedTreeNodeError';
-  }
-}
 
 /**
  * The Less 4 `Node` base. `find` is the member bootstrap-era plugins reach for
@@ -205,18 +187,21 @@ class Color extends Node {
    * unmodified (`@white: #fff`), mirroring less.js's Color `value`/originalForm:
    * a pass-through keeps its short form, while a plugin-CONSTRUCTED colour has
    * none and serialises to 6-digit hex.
+   *
+   * An RGB triple keeps its raw channels, as in less.js: a computed colour
+   * reaches the plugin unrounded, and only `toCSS` rounds and clamps.
    */
   constructor(rgb, alpha = 1, originalForm) {
     super();
     this.originalForm = typeof originalForm === 'string' ? originalForm : undefined;
     if (Array.isArray(rgb)) {
-      this.rgb = rgb.slice(0, 3).map(clampByte);
+      this.rgb = rgb.slice(0, 3);
       this.alpha = typeof alpha === 'number' ? alpha : 1;
       return;
     }
     const text = String(rgb).replace(/^#/, '');
     const expanded = text.length >= 6
-      ? [text.slice(0, 2), text.slice(2, 4), text.slice(4, 6), text.slice(6, 8)]
+      ? [text.slice(0, 2), text.slice(2, 4), text.slice(4, 6), text.length >= 8 ? text.slice(6, 8) : undefined]
       : [text[0] + text[0], text[1] + text[1], text[2] + text[2], text[3] ? text[3] + text[3] : undefined];
     const channels = expanded.slice(0, 3).map(pair => parseInt(pair, 16));
     if (channels.some(Number.isNaN)) {
@@ -372,10 +357,7 @@ class Ruleset extends Node {
   constructor(selectors, rules) {
     super();
     if (selectors !== undefined && selectors !== null && (!Array.isArray(selectors) || selectors.length > 0)) {
-      throw new UnsupportedTreeNodeError(
-        'Ruleset',
-        'A selector-bearing ruleset cannot cross the plugin value boundary; only an anonymous declaration list can.'
-      );
+      refuseLessPluginApi('tree.Ruleset with selectors');
     }
     this.selectors = [];
     this.rules = Array.isArray(rules) ? rules : [];
@@ -523,26 +505,15 @@ class Assignment extends Node {
 }
 
 /**
- * Structural Less 4 nodes with no value-bridge representation. Each is exposed
- * as a constructor that fails loudly and names itself, so a 4.x plugin reaching
- * for one gets an attributable error instead of a silently wrong value.
+ * Structural Less 4 nodes with no value-bridge representation: a function
+ * plugin returns a value, and the rest of the 4.x tree API is the A12 non-goal.
+ * Reaching for one is refused like the plugin-manager hooks, and the host
+ * reports it as `plugin/unsupported-feature`, whose wording lives in core.
  */
-const UNSUPPORTED_TREE_NODES = {
-  AtRule: 'At-rules are statements, not values; a plugin function can only return a value.',
-  Attribute: 'Attribute selectors are part of selector structure, which the value bridge does not carry.',
-  Combinator: 'Combinators are part of selector structure, which the value bridge does not carry.',
-  Condition: 'Guard conditions are evaluated by the engine, not reconstructed by a plugin.',
-  Element: 'Selector elements are part of selector structure, which the value bridge does not carry.',
-  Extend: ':extend is resolved by the engine\'s extend pass, not by plugin values.',
-  Import: '@import is resolved during document loading, before plugin functions run.',
-  JavaScript: 'Inline JavaScript evaluation was removed in Jess; use an @plugin function instead.',
-  Media: '@media is a statement, not a value; a plugin function can only return a value.',
-  MixinCall: 'Mixin calls are dispatched by the engine, not constructed by plugin values.',
-  MixinDefinition: 'Mixin definitions are statements, not values.',
-  NamespaceValue: 'Namespace lookups are resolved by the engine\'s scope walk.',
-  Selector: 'Selectors are part of statement structure, which the value bridge does not carry.',
-  VariableCall: 'Detached-ruleset calls are dispatched by the engine, not by plugin values.'
-};
+const UNSUPPORTED_TREE_NODES = [
+  'AtRule', 'Attribute', 'Combinator', 'Condition', 'Element', 'Extend', 'Import',
+  'JavaScript', 'Media', 'MixinCall', 'MixinDefinition', 'NamespaceValue', 'Selector', 'VariableCall'
+];
 
 const treeNamespace = {
   Anonymous,
@@ -571,13 +542,11 @@ const treeNamespace = {
   Variable
 };
 
-for (const [name, reason] of Object.entries(UNSUPPORTED_TREE_NODES)) {
+for (const name of UNSUPPORTED_TREE_NODES) {
   Object.defineProperty(treeNamespace, name, {
     enumerable: true,
     configurable: false,
-    get() {
-      throw new UnsupportedTreeNodeError(name, reason);
-    }
+    get: () => refuseLessPluginApi(`tree.${name}`)
   });
 }
 
@@ -597,23 +566,18 @@ const facadeLogger = {
 
 const lessFacade = {
   tree: treeNamespace,
-  logger: facadeLogger,
-  dimension(value, unit) {
-    return new Dimension(value, unit);
-  },
-  value(values, separator = ',') {
-    return new Value(values, separator);
-  },
-  anonymous(value) {
-    return new Anonymous(value);
-  },
-  color(rgb, alpha) {
-    return new Color(rgb, alpha);
-  },
-  quoted(quote, value, escaped = false) {
-    return new Quoted(quote, value, escaped);
-  }
+  logger: facadeLogger
 };
+
+/*
+ * Less 4.x exposes every `tree` constructor as a lowercase factory on the
+ * plugin's `less` object (`less.dimension(1, 'px')`, `less.keyword('a')`). The
+ * member is read at call time, so an unsupported node (`less.atrule(…)`) is
+ * refused as `tree.AtRule` is.
+ */
+for (const name of Object.keys(treeNamespace)) {
+  lessFacade[name.toLowerCase()] = (...args) => new treeNamespace[name](...args);
+}
 
 if (runtimeApi === 'less') {
   globalThis.less ??= lessFacade;
@@ -625,6 +589,9 @@ const isBridgeValue = value =>
   && typeof value === 'object'
   && value.__jessBridge === true
   && typeof value.kind === 'string';
+
+/** A map declaration's `Anonymous` reading aid → the bridge value it stands for. */
+const facadeValues = new WeakMap();
 
 const decodeBridgeValue = (value) => {
   if (!isBridgeValue(value)) {
@@ -639,6 +606,8 @@ const decodeBridgeValue = (value) => {
       return new Color(value.rgb, value.alpha ?? 1, value.bytes);
     case 'quoted':
       return new Quoted(value.quote ?? '"', value.value, value.escaped === true);
+    case 'keyword':
+      return new Keyword(value.value);
     case 'anonymous':
       return new Anonymous(value.value);
     case 'list':
@@ -652,10 +621,15 @@ const decodeBridgeValue = (value) => {
         /*
          * Legacy Less @plugin map helpers read the declaration's `.value.value`
          * as the raw CSS string (e.g. "576px"), then parseFloat it. Mirror the
-         * less.js Anonymous shape so that access pattern keeps working.
+         * less.js Anonymous shape so that access pattern keeps working. The
+         * shape is a reading aid, not the value: one a plugin returns
+         * unchanged (`theme-color` handing back a map colour) crosses back as
+         * the typed value it carried (`facadeValues`), not as raw text.
          */
         const cssText = decoded?.toCSS ? decoded.toCSS() : String(decoded);
-        return new Declaration(decl.name, new Anonymous(cssText));
+        const carrier = new Anonymous(cssText);
+        facadeValues.set(carrier, decl.value);
+        return new Declaration(decl.name, carrier);
       });
       return new Mixin(rules);
     }
@@ -711,6 +685,10 @@ const encodeBridgeValue = (value) => {
           escaped: value.escaped
         };
   }
+  const carried = facadeValues.get(value);
+  if (carried !== undefined) {
+    return carried;
+  }
   if (value instanceof Keyword || value instanceof Anonymous) {
     /*
      * `raw` marks a true `Anonymous` (not a `Keyword`, `Comment`, …): Less 4.x
@@ -764,6 +742,28 @@ const isJsonValue = (value) => {
   }
 };
 
+/**
+ * Why a function result cannot cross the JSON transport back to the engine, or
+ * `null` when it can. `JSON.stringify` writes NaN and ±Infinity as `null`,
+ * which the engine reads as a declined call (`@plugin`) or a null value that
+ * drops its declaration (`@use`) — so a non-finite number is refused here,
+ * while it is still visible, and the engine reports it at the call.
+ */
+const unsendableResult = (value) => {
+  let nonFinite = null;
+  try {
+    JSON.stringify(value, (_key, item) => {
+      if (nonFinite === null && typeof item === 'number' && !Number.isFinite(item)) {
+        nonFinite = String(item);
+      }
+      return item;
+    });
+  } catch {
+    return 'is not JSON-serializable';
+  }
+  return nonFinite === null ? null : `is ${nonFinite}, which has no CSS spelling`;
+};
+
 const send = (payload) => {
   self.postMessage(`${JSON.stringify(payload)}\n`);
 };
@@ -788,6 +788,146 @@ const loadModule = async (modulePath) => {
   return exports;
 };
 
+/**
+ * A refusal of the Less 4 plugin-manager API, or of a tree node beyond the
+ * function-plugin value surface, which v5 deliberately does not provide (A12).
+ * The message is only the member refused (`pluginManager.addVisitor()`,
+ * `less.visitors`, `tree.AtRule`, ...): the host turns it into a `plugin/unsupported-feature`
+ * diagnostic whose wording and replacement come from `@jesscss/core`, the same
+ * one the in-process bridge of `@jesscss/plugin-less-compat` reports.
+ */
+class UnsupportedLessPluginApiError extends Error {
+  constructor(feature) {
+    super(feature);
+    this.name = 'UnsupportedLessPluginApiError';
+  }
+}
+
+const refuseLessPluginApi = (feature) => {
+  throw new UnsupportedLessPluginApiError(feature);
+};
+
+const refusedGetters = (owner, members) => Object.fromEntries(members.map(member =>
+  [member, { get: () => refuseLessPluginApi(`${owner}.${member}`) }]));
+
+/*
+ * 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`).
+ * The worker-global `less` / `Less` refuses them too, so every view of the
+ * facade does. The getters are non-enumerable, so spreading the facade skips them.
+ */
+const REFUSED_LESS_MEMBERS = refusedGetters('less', ['visitors', 'FileManager', 'environment']);
+Object.defineProperties(lessFacade, REFUSED_LESS_MEMBERS);
+
+/** The `less` a plugin, and every file it requires, sees: the facade plus its function registry. */
+const createPluginLess = functionRegistry =>
+  Object.defineProperties({ ...lessFacade, functions: { functionRegistry } }, REFUSED_LESS_MEMBERS);
+
+/* The 4.x PluginManager members that add, list or expose what v5 never runs. */
+const REFUSED_MANAGER_METHODS = [
+  'addVisitor', 'getVisitors', 'visitor',
+  'addPreProcessor', 'getPreProcessors',
+  'addPostProcessor', 'getPostProcessors',
+  'addFileManager', 'getFileManagers'
+];
+const REFUSED_MANAGER_FIELDS = refusedGetters('pluginManager', ['visitors', 'iterator', 'preProcessors', 'postProcessors', 'fileManagers', 'Loader']);
+
+/**
+ * The Less 4 `PluginManager` (`less/lib/less/plugin-manager.js`): installing
+ * plugins works as in 4.x; every hook member is refused.
+ */
+const createPluginManager = (less) => {
+  const pluginCache = {};
+  const manager = {
+    less,
+    installedPlugins: [],
+    pluginCache,
+    addPlugins(plugins) {
+      for (const plugin of Array.from(plugins ?? [])) {
+        manager.addPlugin(plugin);
+      }
+    },
+    addPlugin(plugin, filename, functionRegistry) {
+      manager.installedPlugins.push(plugin);
+      if (filename) {
+        pluginCache[filename] = plugin;
+      }
+      plugin.install?.(less, manager, functionRegistry ?? less.functions.functionRegistry);
+    },
+    get: filename => pluginCache[filename]
+  };
+  for (const member of REFUSED_MANAGER_METHODS) {
+    manager[member] = () => refuseLessPluginApi(`pluginManager.${member}()`);
+  }
+  return Object.defineProperties(manager, REFUSED_MANAGER_FIELDS);
+};
+
+/* Node's file and directory lookup, minus `.node` addons and package.json `main`. */
+const REQUIRE_SUFFIXES = ['', '.js', '.json', '/index.js', '/index.json'];
+
+const isRequirableFile = (candidate) => {
+  try {
+    return Deno.statSync(candidate).isFile;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw err;
+  }
+};
+
+/**
+ * `require()` for a legacy `@plugin` file: RELATIVE specifiers only, resolved
+ * against the requiring file as Node resolves a file path. Every stat and read
+ * goes through the same permission broker as the plugin file itself, so a
+ * require can never reach past jsReadRoot. A `.json` file is parsed. Any other
+ * required file is plain CommonJS: it gets `module`, `exports`, `require`,
+ * `__filename`, `__dirname` and the plugin's own `less` (so its hook refusals
+ * and function registry too), not the other plugin globals, and no Node
+ * `process`. Each file evaluates once per load, and is cached before it runs,
+ * so a require cycle sees partial exports (as in Node).
+ */
+const createLegacyRequire = (fromPath, cache, less) => (specifier) => {
+  const request = String(specifier);
+  if (!request.startsWith('./') && !request.startsWith('../')) {
+    throw new Error(`Less @plugin require("${request}") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.`);
+  }
+  let resolved;
+  try {
+    /*
+     * Resolve from the requiring file's real path, as Node does: the broker
+     * compares canonical paths, and a candidate that does not exist cannot be
+     * canonicalized, so under a symlinked read root it would read as outside.
+     */
+    const base = resolve(dirname(Deno.realPathSync(fromPath)), request);
+    resolved = REQUIRE_SUFFIXES.map(suffix => base + suffix).find(isRequirableFile);
+  } catch (err) {
+    throw new Error(`Less @plugin require("${request}") from "${fromPath}" was refused: ${err?.message ?? String(err)}`);
+  }
+  if (resolved === undefined) {
+    throw new Error(`Less @plugin require("${request}"): no file found from "${fromPath}".`);
+  }
+  let module = cache.get(resolved);
+  if (!module) {
+    module = { exports: {} };
+    cache.set(resolved, module);
+    const source = Deno.readTextFileSync(resolved);
+    if (resolved.endsWith('.json')) {
+      module.exports = JSON.parse(source);
+      return module.exports;
+    }
+    new Function('module', 'exports', 'require', '__filename', '__dirname', 'process', 'less', source)(
+      module,
+      module.exports,
+      createLegacyRequire(resolved, cache, less),
+      resolved,
+      dirname(resolved),
+      undefined,
+      less
+    );
+  }
+  return module.exports;
+};
+
 /*
  * Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
  * pass through this injected-variable wrapper.
@@ -809,23 +949,8 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
       return localFunctions.get(String(name).toLowerCase());
     }
   };
-  const manager = {
-    visitors: [],
-    addVisitor(visitor) {
-      this.visitors.push(visitor);
-    },
-    addPreProcessor() {},
-    addPostProcessor() {},
-    registerPlugin(plugin) {
-      installPlugin(plugin);
-    }
-  };
-  const less = {
-    ...lessFacade,
-    functions: {
-      functionRegistry: functions
-    }
-  };
+  const less = createPluginLess(functions);
+  const manager = createPluginManager(less);
   const installPlugin = (plugin) => {
     if (!plugin) {
       return;
@@ -842,9 +967,9 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     if (candidate && options != null && typeof candidate.setOptions === 'function') {
       candidate.setOptions(options);
     }
-    if (candidate && typeof candidate.install === 'function') {
-      candidate.install(less, manager, functions);
-    }
+
+    /* As 4.x's loader does: the plugin is installed, and cached under its file. */
+    manager.addPlugin(candidate, modulePath);
     if (candidate && options != null && typeof candidate.setOptions === 'function') {
       candidate.setOptions(options);
     }
@@ -862,19 +987,14 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
       candidate.eval(less);
     }
   };
-  const require = (specifier) => {
-    throw new Error(`Less @plugin require("${specifier}") is not supported in the Deno sandbox yet.`);
-  };
-  const registerPlugin = (plugin) => {
-    installPlugin(plugin);
-  };
   return {
     exports: {},
     functions,
     localFunctions,
+    less,
     manager,
-    require,
-    registerPlugin,
+    require: createLegacyRequire(modulePath, new Map(), less),
+    registerPlugin: installPlugin,
     fileInfo: { filename: modulePath }
   };
 };
@@ -883,9 +1003,9 @@ const lessPluginCacheKey = (modulePath, options) => `${modulePath}\u0000${option
 
 const loadLessPlugin = async (modulePath, options = null) => {
   const cacheKey = lessPluginCacheKey(modulePath, options);
-  let functions = lessPluginFunctionCache.get(cacheKey);
-  if (functions) {
-    return Array.from(functions.keys());
+  const cached = lessPluginRuntimeCache.get(cacheKey);
+  if (cached) {
+    return Array.from(cached.localFunctions.keys());
   }
   const source = await Deno.readTextFile(modulePath);
   const runtime = createLegacyLessPluginRuntime(modulePath, options);
@@ -909,12 +1029,7 @@ const loadLessPlugin = async (modulePath, options = null) => {
     runtime.registerPlugin,
     runtime.functions,
     lessFacade.tree,
-    {
-      ...lessFacade,
-      functions: {
-        functionRegistry: runtime.functions
-      }
-    },
+    runtime.less,
     runtime.fileInfo,
     undefined
   );
@@ -922,9 +1037,8 @@ const loadLessPlugin = async (modulePath, options = null) => {
   if (typeof exported === 'function' || (exported && typeof exported.install === 'function')) {
     runtime.registerPlugin(exported);
   }
-  functions = runtime.localFunctions;
-  lessPluginFunctionCache.set(cacheKey, functions);
-  return Array.from(functions.keys());
+  lessPluginRuntimeCache.set(cacheKey, runtime);
+  return Array.from(runtime.localFunctions.keys());
 };
 
 /**
@@ -943,15 +1057,24 @@ class HostFactNeeded {
   }
 }
 
-const hostCallKey = (name, args) => `${String(name).toLowerCase()} ${JSON.stringify(args)}`;
+/*
+ * The host learns a plugin's function names when the plugin loads, so a
+ * function or plugin added from inside a function body would never be callable.
+ */
+const refuseRegistrationInBody = () => {
+  throw new Error('Less @plugin: functions and plugins can only be added while the plugin loads, not from inside a function body.');
+};
+
+const hostCallKey = (name, args) => `${String(name).toLowerCase()}\u0000${JSON.stringify(args)}`;
 
 /**
  * Builds the `this` a Less 4 plugin function body expects: `this.context` with
  * `frames` / `importantScope` / `pluginManager`, plus `this.currentFileInfo`.
  * Without this the body's `this` is the sandbox global and every `this.context`
- * read is `undefined`.
+ * read is `undefined`. The `pluginManager` is the one the plugin was installed
+ * with, its `less` serving built-ins from the live call site.
  */
-const createPluginCallContext = (facts, logs) => {
+const createPluginCallContext = (facts, manager) => {
   const importantScope = [{ important: '' }];
 
   const frame = {
@@ -993,22 +1116,14 @@ const createPluginCallContext = (facts, logs) => {
         return decodeBridgeValue(answer);
       };
     },
-    add() {
-      throw new Error('Less @plugin: functions cannot be registered from inside a function body.');
-    }
+    add: refuseRegistrationInBody
   };
 
-  void logs;
-  const pluginManager = {
-    less: {
-      ...lessFacade,
-      functions: { functionRegistry }
-    },
-    getPreProcessors: () => [],
-    getPostProcessors: () => [],
-    getVisitors: () => [],
-    getFileManagers: () => []
-  };
+  const pluginManager = Object.create(manager, {
+    less: { value: createPluginLess(functionRegistry) },
+    addPlugin: { value: refuseRegistrationInBody },
+    addPlugins: { value: refuseRegistrationInBody }
+  });
 
   const context = {
     frames: [frame],
@@ -1029,18 +1144,17 @@ const createPluginCallContext = (facts, logs) => {
 
 const invokeLessPluginFunction = async (modulePath, functionName, args, options = null, facts = null) => {
   const cacheKey = lessPluginCacheKey(modulePath, options);
-  let functions = lessPluginFunctionCache.get(cacheKey);
-  if (!functions) {
+  if (!lessPluginRuntimeCache.has(cacheKey)) {
     await loadLessPlugin(modulePath, options);
-    functions = lessPluginFunctionCache.get(cacheKey);
   }
-  const fn = functions?.get(String(functionName).toLowerCase());
+  const runtime = lessPluginRuntimeCache.get(cacheKey);
+  const fn = runtime?.localFunctions.get(String(functionName).toLowerCase());
   if (typeof fn !== 'function') {
     throw new Error(`Less @plugin function "${functionName}" is not registered.`);
   }
   const logs = [];
   const resolved = facts ?? { vars: {}, calls: {}, fileInfo: null };
-  const callContext = createPluginCallContext(resolved, logs);
+  const callContext = createPluginCallContext(resolved, runtime.manager);
   const previousSink = activeLogSink;
   activeLogSink = logs;
   let raw;
@@ -1055,8 +1169,9 @@ const invokeLessPluginFunction = async (modulePath, functionName, args, options 
     activeLogSink = previousSink;
   }
   const result = encodeBridgeValue(raw);
-  if (!isJsonValue(result)) {
-    throw new Error(`Result for Less @plugin function "${functionName}" is not JSON-serializable.`);
+  const unsendable = unsendableResult(result);
+  if (unsendable !== null) {
+    throw new Error(`Result for Less @plugin function "${functionName}" ${unsendable}.`);
   }
   return {
     value: result,
@@ -1073,8 +1188,9 @@ const invokeExport = async (modulePath, exportName, args) => {
     throw new Error(`Export "${exportName}" is not callable.`);
   }
   const result = encodeBridgeValue(await target(...args.map(decodeBridgeValue)));
-  if (!isJsonValue(result)) {
-    throw new Error(`Result for "${exportName}" is not JSON-serializable.`);
+  const unsendable = unsendableResult(result);
+  if (unsendable !== null) {
+    throw new Error(`Result for "${exportName}" ${unsendable}.`);
   }
   return result;
 };

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   emitValue,
   isValueGroupArray,
+  makeAny,
   makeKeyword,
   makeList,
   makeQuoted
@@ -80,5 +81,15 @@ describe('replace()', () => {
       throw new TypeError('Expected a keyword value.');
     }
     expect(result.text).toBe('alpha_beta');
+  });
+
+  it('keeps an escaped string escaped, with its quote (ledger V3)', async () => {
+    const result = await call(
+      replace,
+      makeAny('alpha-beta', '\''),
+      makeQuoted('-', '"', false),
+      makeQuoted('_', '"', false)
+    );
+    expect(result).toEqual(makeAny('alpha_beta', '\''));
   });
 });

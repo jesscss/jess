@@ -55,6 +55,7 @@ function unwrapInterpolatedExpression(value: unknown): unknown {
 
 const ROWS: Row[] = [
   { less: '@w: @a * 2;', jess: '$w: $($a * 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
+  { less: '@w: @a + 2;', jess: '$w: $($a + 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: @a * 2 / @b;', jess: '$w: $($a * 2) / $b;', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: (@a * 2 / @b);', jess: '$w: $($a * 2 / $b);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: 'a { font: 12px/1.5 Arial; }', jess: 'a { font: 12px/1.5 Arial; }' },

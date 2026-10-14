@@ -307,8 +307,9 @@ styles out of a reference-imported sheet.
 - **It is selector-level, not property-level.** Extend shares a rule's *whole*
   declaration block. It cannot cherry-pick a single property — reach for a mixin or a
   variable for that.
-- **It does not match variable targets.** An interpolated selector used as a match
-  *target* matches nothing. (An interpolated selector as the *extender* is fine.)
+- **It does not match variable targets.** An interpolated selector inside the extend
+  target matches nothing. (A rule whose selector is interpolated is matched once
+  resolved, and an interpolated selector as the *extender* is fine.)
 - **It does not normalize the target form.** Matching is exact: a leading star, the
   order of pseudo-classes, and the `nth` form all matter. Only attribute-selector quote
   type is normalized.

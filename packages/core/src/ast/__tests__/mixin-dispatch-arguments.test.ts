@@ -189,14 +189,12 @@ describe('mixin bound-source cleanup', () => {
   const trackedSelection = (
     tracker: BoundSourceTracker,
     typed: () => ReturnType<typeof makeBool> | Promise<ReturnType<typeof makeBool>>,
-    guard = { g: 'truth' as const, value: any('guard') }
+    guard = { g: 'truth' as const, value: any('guard'), parens: 0 }
   ) => selectDefinitions(
     [mixinDef('.tracked', [{ name: 'value' }], [], guard)],
     mixinCall('.tracked', [any('source')]),
     resolve,
-    () => typed,
-    null,
-    DEFAULT_MODES,
+    (_def, _bindings, isDefault) => ({ resolveTyped: typed, ev: null, modes: DEFAULT_MODES, isDefault }),
     undefined,
     undefined,
     tracker

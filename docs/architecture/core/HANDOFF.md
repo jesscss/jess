@@ -4073,6 +4073,1251 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-06 a string is one string, and text the parser typed is
+  never re-read from its bytes (owner ruling 2026-10-06 on PINNED-DEFECTS-AUDIT
+  D22; ledger V3 and C2). Every string — escaped or not, interpolating or not,
+  in Less, `.jess` and SCSS — is one `Quoted`: `interp: Interpolation | null`
+  holds the content template (the quotes stay on the node), and `src` / `value`
+  are the authored spelling and content. An escaped string lands as the same
+  `Any` (with its quote) in every typed position, a plain one as the same quoted
+  string. The evaluator's byte sniff is gone from every parser-produced input:
+  `ValueEvaluator.materialize` and `materializeAny` are deleted, an opaque `Any`
+  leaf is opaque bytes (V3), and an eager mixin-argument snapshot carries the
+  value it was evaluated to (`snapshotValues`) — so `@d: ~"0.5"; .m(@d)` stays
+  `percentage(0.5)`. Fixes from review of the first two commits: a prelude's
+  escaped string is a protected part (spliced quotes no longer corrupt it;
+  `@import (css) ~"a.css"` writes `a.css`), a comma-grouped selector string
+  groups the same interpolating or not, a merged `+:` accessor is its members'
+  typed values (`length` 2 for two members, as lessc), the `@plugin` sandbox
+  hands back a map value it returns unchanged as the typed value it carried.
+- Architecture surface: `nodes.ts` (`Quoted.interp`; `escapedTemplate`
+  deleted; `importTargetSpelling` reads a template's literal parts); the Less
+  `Quoted` / `EscapedQuoted` / `LiteralQuoted` reducers (`quotedFromChildren`),
+  the jess `Quoted` / `ExpressionQuoted` reducers (`quotedFromChildren` over the
+  source-fact holes `ExpressionDollarBrace` / `ExpressionInterpolation`), the
+  SCSS `Quoted` (`LiteralQuoted` | `InterpolatedQuoted`; the latter reads the
+  parse input, now in SCSS parse state, through `authoredSource`) and
+  `ScssParseError` (an expected set names each token once); `css-grammar-helpers.ts` (`selectorTemplate`, `authoredSource`);
+  `serialize.ts` (`evalTyped` `Quoted` / `Interpolation` / `Lookup` `prop` /
+  `Any`, `evalValue` `Quoted` / `Url`, the query-prelude `Quoted`, the CSS
+  import writer, `refGroupInterp`, `mergedPropertyValue`, `quotedContentSync`,
+  `eagerSnapshot` / `carrySnapshot` / `eagerSource(s)`, the typed spread,
+  `force`, `looseMemberLookup`, `diagnosticMessage`); `mixin-dispatch.ts`
+  (`selectDefinitions` takes the untracked eager adapter); `emit-jess.ts`;
+  `traversal.ts`; `literal-tag.ts`; the `@plugin` sandbox map facade.
+- Separation/duplication: one string node and one reducer per dialect for
+  static and interpolating, escaped and plain strings. The Less string body is
+  written once per quote character (`doubleQuotedContent` /
+  `singleQuotedContent`, shared by `Quoted` and `EscapedQuoted`); the jess
+  interpolating body once (shared by the value and expression families); the
+  SCSS static arms once (`Quoted` is `LiteralQuoted` | `InterpolatedQuoted`, no
+  longer a copy of `LiteralQuoted`'s arms plus the template arms). The eager
+  snapshot is one implementation (`eagerSnapshot`), the compressed route no
+  longer a parallel one; `mixin-dispatch`'s escaped-string copy is deleted.
+- Cumulative node weight: one field on `Quoted`, set by its one factory, so
+  every `Quoted` has one shape (`type,src,value,quote,escaped,interp`); the
+  shape gate's corpus now holds Less and `.jess` templates and catches a split
+  (control: a reordered template shape fails it). No new node kind; a string
+  template is one `Quoted` around its template instead of a bare `Interpolation`.
+- New traversal: [loop/traversal] `quotedFromChildren` (Less, jess) reads a
+  string's children once at parse time; the SCSS reducer's part loop is the
+  existing one; `mergedPropertyValue` walks a merged property's members once, as
+  the byte join does; `templateLiteralText` walks a template's parts for an
+  import extension check only; the emit-jess gap check walks a template's parts
+  once. No new walk on the render path.
+- New node/materialization: [materialized array/object] the typed merged
+  property builds one list of its members (`eval-to-immediate-value`, consumed
+  by the typed position); `selectorTemplate` builds one template with the quote
+  literals at parse time (an attribute selector or a `:lang()` range whose
+  string interpolates); the jess reducer
+  builds a template's parts with `flatMap` once at parse time. [side map/set]
+  `snapshotValues` is one `WeakMap` per render entry (`semantic placement
+  state`): it replaces the sniff of every typed snapshot read — 745 sniffs per
+  `benchmark.less` render to 0.
+- Render path: still stringify-only. A typed snapshot read is a `WeakMap` get
+  instead of a regex/hex/number scan; an eager argument is evaluated once,
+  typed, and spelled from that value (the compressed route's existing shape).
+- Helper/API surface: added `quotedFromChildren` (Less, jess — replaces two
+  reducers each), `authoredSource` (shared with general-enclosed),
+  `selectorTemplate`, `templateLiteralText`, `mergedPropertyValue`,
+  `quotedContentSync`, `carrySnapshot`; deleted `escapedTemplate`,
+  `materializeAny`, `ValueEvaluator.materialize`, `resolveEagerBytes`,
+  `quotedInterpolationFromChildren`, `escapedInterpolationFromChildren`,
+  `quotedExpressionParser`, the jess `ExpressionQuoted` escaped branch, the
+  quote-stripping branch of `importSpecifier`, `diagnosticMessage`'s
+  quote-wrapped scan, the evaluator's quote-delimiter arm, and
+  `expandSpreadArgs`' unused resolver.
+- Metadata mutations: none. The SCSS parse passes `state: { source }` (as CSS
+  does); only `InterpolatedQuoted` reads it, so a static string pays nothing
+  (reading it in one combined reducer cost ~1% of SCSS parse instructions, the
+  per-match state copy; measured and rejected).
+- Review-flagged diff tokens: [loop/traversal] as above; [array helper]
+  `children.slice` in the reducers (the existing reducer shape), the template
+  `flatMap` / `map(...).join('')` (parse time / emit-jess), `merged.map` (the
+  member values); [array spread/materialization] the attribute template's
+  `...child.interp.parts`, the existing `{ ...e, … }` frames; [side map/set]
+  `snapshotValues` (one `WeakMap` per render), the sandbox `facadeValues`
+  `WeakMap` (one per worker); [materialized array/object] the merged-property
+  item array and run, the `state: { source }` parse state; [node
+  construction] the two `new WeakMap()` that create `snapshotValues` (one per
+  render entry) and the `new TypeError` of `authoredSource` and the Less
+  `staticText` / `@use` checks (recognition defects, not output); [routine
+  error control] `authoredSource` throws when a run has no input in its state
+  (a wiring defect, as general-enclosed already does).
+- Behavior evidence: `packages/core/src/ast/__tests__/escaped-string-one-shape.test.ts`
+  (23 tests; 8 red on 2af229534 and 18 red on def29ef87, all green here;
+  disabling the `snapshotValues` read turns 3 red); the Less/jess/SCSS parser
+  shape tests, the Less `public-parse` replay / static-slot / every-slot tests,
+  the jess `discovered-constructs` replay tests; the sandbox facade test
+  (`plugin-diagnostics.test.ts`, red on 2af229534); the compat forwarded
+  escaped-string test. Core 3,407 passed / 10 skipped / 2 todo.
+- Build evidence: serial core, parser-shared and four-parser builds;
+  `check:macro`, `verify:compose-integrity`, `verify:shape-stability`,
+  `verify:types` (25/25) and `check:guardrails` pass.
+- Boundary evidence: the Less byte-identity oracle against def29ef87 leaves the
+  CST byte-identical (aggregate `1e282ab4c77b9a66…`, also at 2af229534) and
+  moves the AST in 329 of 827 entries (rejects 113 → 113); folding the one
+  `Quoted` back to the old shapes makes every one of the 539 Less corpus files
+  parse-identical to def29ef87. Corpus renders against def29ef87: Less (214
+  files × nested/flat × compress) changes only `functions.less`
+  `length($list-1)` (proposal), compressed `media.less` (an escaped prelude is
+  an opaque run, like its literal) and the sandboxed `bootstrap-less-port`
+  render (map colours now compute, as the `bootstrap4` golden and lessc 4.x);
+  SCSS (2,404 sass-spec inputs × 2) and `.jess` (22 files × 4) are unchanged.
+- Evidence: behavior as above; no speed claim. Counts: typed-snapshot byte
+  sniffs 745 → 0 per `benchmark.less` render and 101 → 0 over the 136
+  tests-unit renders; Less parse, marginal instructions retired per
+  `benchmark.less` AST parse (median of 3, interleaved): 571.70M (def29ef87),
+  572.23M (2af229534), 571.45M (here); SCSS, per pass over 400 sass-spec
+  inputs: 197.34M / 197.72M / 198.01M; `.jess`, per pass over the 22-file
+  corpus: 31.51M / 31.52M / 31.55M — all inside the run-to-run spread.
+  `benchmark.less` render (parse + eval + emit), marginal instructions per
+  render, median of 5: 1.2496G (2af229534) → 1.2164G (here).
+- Verdict: accepted as a semantic change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "A string is one Quoted node whether or not it interpolates or is escaped (owner ruling 2026-10-06, V3/C2), and the evaluator no longer types parser-produced text by sniffing it: an opaque Any leaf is opaque bytes, templates and property accessors are typed by what the parser built, and an eager mixin-argument snapshot carries the value it was evaluated to. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "One field on Quoted set by its one factory keeps the node monomorphic; the snapshot's typed value rides in one per-render WeakMap that replaces a regex sniff on every typed read, the eager argument is evaluated once typed (the compressed route's existing shape), and the typed lanes reuse the frames and joins the byte lane already builds; no render-path walk is added.",
+    "behaviorEvidence": "packages/core/src/ast/__tests__/escaped-string-one-shape.test.ts, the Less/jess/SCSS parser shape tests, the sandbox facade test and the compat forwarded-escape test pass; the core suite and the all-Less lane pass with the functions.less edit registered.",
+    "buildEvidence": "Serial core, parser-shared and four-parser builds pass; check:macro, verify:compose-integrity and verify:types pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.19,
+      "outputSha256": "11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8",
+      "outputBytes": 123571
+    }
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
+    "why": "The evaluator loses its materialize member, whose only body was the byte sniff of a computed string; the call path, registry lookup, optional-call bytes and synchronous/asynchronous recovery are untouched, so the boundary's three cases behave as before.",
+    "dangerTokensJustification": "The change only deletes a closure and its import from buildEvaluator; it adds no allocation, Error construction, recovery path or lookup to the call path, and async recovery still attaches only to a genuine thenable.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.19,
+      "outputSha256": "11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8",
+      "outputBytes": 123571
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-05 extend follow-ups (the `lane/v5-extend-followups`
+  integration). Owner rulings 2026-10-05 (O10 and X3 amended, X7 amended) and
+  orchestrator judgments J11-J15 under the owner's delegation: an `all` match of
+  an authored or nesting `:is()` arm appends the extender only under the
+  grouping guard; an extended header keeps its nesting fold; a fused `&` under a
+  multi-compound parent composes as the parent spliced in place (no one-arm
+  `:is()`); an interpolated rule is an extend target wherever it is placed; a
+  mixin definition's body-form `&:extend()` is carried on the definition and
+  applied at each call site; import-once drops a `(reference)` re-import of a
+  plainly imported sheet. Also: detached-ruleset calls and `$apply` are their
+  own extend placements, hidden `(reference)` at-rules around a revealable rule
+  render as reserved containers, a sheet imported inside a ruleset (static or
+  interpolated path) arms the walk recorder when it alone extends, an `all`
+  match of several compounds keeps the span's extra simples on the extender, a
+  parent `&` and a composed token's kind are read from the token, not its text.
+  Open questions are ledger X17-X19 and O14; nested-output gaps are
+  `PINNED-DEFECTS-AUDIT.md` DF4-DF6.
+- Architecture surface: `packages/core/src/ast/serialize.ts` (import planner:
+  `isReferenceReimport`, per-placement `ImportPlacements`, interpolated-rule
+  resolution before planning, the ruleset-placed import admission scan and the
+  interpolated-path arm; walk: `resolvedSelectorList`/`resolvedCompoundTokens`,
+  `recordCalledExtends` in `expandCall`, `referenceAtRuleShown` and the reserved
+  at-rule containers, detached-ruleset/`$apply` `extendPlacement`);
+  `extend/compose.ts` (`spliceFusedAmp`, `joinedSimple`); `extend/match.ts`
+  (first/last-compound guard, multi-compound `all` span); `extend/emit.ts`
+  (`splitArms` guard, `nestingFold`); `extend/conflict.ts` (`mergeCompound`,
+  allocation-free `wouldConflict`); `is-grouping.ts` (`isName`); `nodes.ts`
+  (`MixinDefinition.extendInstructions`, `textHoldsParentRef`); Less parser
+  `MixinDefinitionContinuation` reads `rulesetBody`, `bodyExtensionsOf` in
+  `grammar-helpers.ts`.
+- Separation/duplication: the import planner and the render walk ask one
+  question (`isReferenceReimport`) about which imports place a sheet; the
+  statement-keyed boundary map is replaced by the placement-keyed one; every
+  writer's hidden at-rule gate reads `referenceAtRuleShown`; the body-extend
+  reducer expression spelled four times in the Less grammar has one owner
+  (`bodyExtensionsOf`); the compound merge that leads with the type selector is
+  shared by the match splice and emission (`conflict.ts`); the private
+  `textOfSimples` duplicate of `textSimpleTokens` and the one-caller
+  `plannedImportPlacement` wrapper are deleted. GRAMMAR-DEDUP-LOG #59 records
+  the remaining four-fold ruleset-body tail.
+- Cumulative node weight: one AST field, `MixinDefinition.extendInstructions`,
+  declared right after `rules` by every constructor (undefined when empty), so
+  the parser's arms stay two (`verify:shape-stability` allowlist names both).
+  No CST field and no new `Emit`/`Frame` field: `Emit.importPlacements` is now
+  keyed by placement, then statement, and the statement-keyed `importBoundaries`
+  map is deleted. Render-local state: `DynamicExtendState` gains
+  `pathSelectors`, `revealAtRules` and two parallel chunk-range arrays;
+  `ExtendClass` gains `placedImports` and `placesUnaddressedImport`.
+- New traversal: [loop/traversal] a sheet with no interpolated rule selector
+  pays one allocation-free boolean walk before planning; a statically addressed
+  sheet imported inside a ruleset is scanned once for an extend only when
+  nothing else in the graph extends (the walk reuses the loaded document;
+  `extend-preflight-contract` pins one scan, nothing planned, nothing recorded);
+  `hiddenRulesToReveal` climbs each revealed rule's reference at-rule chain once;
+  the match guard reads the simples around a match once per match. On
+  `benchmark.less` (both collapse modes) every planner, matcher and solver
+  counter is unchanged (17 of 19 `astExtend.*` counters identical, among them
+  `plan.subjects` 1360 and `match.branchComparisons` 5492);
+  `emit.regroupWalks` 702 -> 690 and `emit.groupMemberScores` 339 -> 321.
+- New node/materialization: the placement-keyed `ImportPlacements` map (one
+  inner Map per placement that holds a `(reference)`/`(multiple)` import),
+  `hiddenRulesToReveal`'s `atRules` Set, and the existing `dynamicTargetAtoms`
+  Set now also filled from a definition-level extend, each allocated lazily on
+  the first entry and dropped with the render.
+  `wouldConflict` no longer allocates (was up to 8 Sets per extender per matched
+  compound). The interpolation-resolution closure in both writers is allocated
+  only when the resolution runs.
+- Render path: one walk; the deferred fold is unchanged in shape. Recording
+  still runs only when `e.dynamicExtend` is allocated (`recorded` in both
+  writers, `e.dynamicExtend !== null` in `expandCall`); the
+  `ast-extend-dynamic-fold` source anchor now names that guard
+  (`flattenWithHeader` / `recorded` / `recordOpenRule(`), since the walk's
+  recording moved out of `foldDynamicExtends` before this lane.
+- Helper/API surface: no package export. Internal: `mergeCompound`,
+  `NO_SIMPLES` (`extend/conflict.ts`), `textHoldsParentRef` (`nodes.ts`),
+  `bodyExtensionsOf` (less-parser `grammar-helpers.ts`); the serializer surface
+  ratchet (`serialize-projection-ratchet.test.ts`) records each added function.
+- Metadata mutations: only render-local planner and recorder state; the
+  planner resolves an interpolated rule selector in place before planning so
+  the walk writes that same resolution (ledger X12: nothing resolved twice).
+- Review-flagged diff tokens: [loop/traversal] the loops are over one compound's
+  simples, one header's branches or one rule's at-rule chain, run only on
+  extend-touched headers or with recording armed. [array helper] the `.slice`/
+  `.map` calls build a split member or an emitted branch once per header; the
+  `split('&').join` runs only for a token that holds a parent reference.
+  [array spread/materialization] `mergeCompound` builds one merged compound per
+  placed extender; the `extendInstructions` copy happens only when the list is
+  non-empty; the `[head, ...tail]` forms rebuild one branch once. [node
+  construction] the `new Map()`/`new Set()` calls are the lazy render-scoped
+  containers above. [side map/set] `ImportPlacements`, `dynamicTargetAtoms`,
+  `atRules` and the planner's `seen` (now remembering whether an `@import`
+  loaded the document) are strong, render-scoped and dropped wholesale, not
+  per-node weak side tables (invariant 11). [materialized array/object]
+  `NO_SIMPLES` is a shared empty constant; the `Simple[]` outputs are the
+  emitted compounds themselves; `nestingFold`'s keys array is one per extended
+  header.
+- Evidence: clean `pnpm run build:release`; core 3403 passed / 10 skipped / 2
+  todo; fns 729; css-parser 712, less-parser 936 (2 expected fail, 8 todo),
+  scss-parser 691, jess-parser 631; plugins green; language-service 276;
+  `verify:jess-suite-ratchet` 2272 tests, 0 failing, matches its baseline;
+  `test:jess-ast-v2-ratchet` 4/4; all-Less lane 151 passed / 28 skipped;
+  `check:macro` 0 interpreter fallbacks. `benchmark.less` rendered through the
+  `measure:less:hotpath` Compiler (plugin-less + plugin-less-compat): flat
+  (collapseNesting true) SHA-256
+  `ec0196947fb844faf55ca7c8c5f605cd16930c73f9c4c452823fe65dd8cb61d9` (123,316
+  bytes; the base `def29ef87` gives `11aca08c…`, 123,571 bytes — six headers
+  whose extended rule keeps its equal-specificity nesting fold, ledger J12);
+  nested output identical to the base (`f095836c…`, 132,977 bytes).
+  `measure:less:hotpath` on `benchmark.less`, bracketed head/base/head: 58.31 /
+  53.75 / 53.16 ms medians, every run `signal=unstable` (load average 11-15);
+  no speed or neutrality claim.
+- Behavior evidence: less-parser AST/CST tests pin `MixinDefinition`'s key list
+  with and without an extend (guarded too) and the `ExtendStatement` under a
+  mixin definition; `is-grouping.test.ts` pins how `nestingGroupKey` scores the `.\31 0` escape;
+  `extend-root-ampersand.test.ts` pins `textHoldsParentRef` (a `&` inside an
+  attribute value is text); `mixin-public-semantics` flips jess#356 to passing.
+- Build evidence: clean `pnpm run build:release`; `check:macro` 0 interpreter
+  fallbacks in parser-shared, css, less, scss and jess; `verify:types` and
+  `verify:import-graph` pass; `pnpm run lint` 0 errors.
+- Boundary evidence: Less parser oracle before/after on one build of each side
+  (base `def29ef87` digest vs head, 827 shared entries): CST 0 entries moved;
+  AST 113 moved, every one a file holding a mixin definition (the
+  always-declared `extendInstructions` key), threw 113 -> 113; 24 entries are
+  the lane's new fixtures. `verify:shape-stability` 8/8 with both
+  `MixinDefinition` signatures allowlisted. No package export changes.
+- Verdict: accepted as semantic output work with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-extend-dynamic-fold",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "The walk recorder is the only carrier for extend facts the planner cannot see: a mixin definition's body-form extend applies to whichever rule a call lands in, a detached-ruleset call or $apply is a placement of its own, and a sheet imported inside a ruleset (or through an interpolated path) is only addressed by the walk. Each is recorded once, at the moment the one walk places it, from the shape it already composed; nothing re-evaluates (ledger X12).",
+    "dangerTokensJustification": "Recording stays behind the e.dynamicExtend admission (recorded in both writers, e.dynamicExtend !== null in expandCall). The new containers (placement-keyed ImportPlacements, dynamicTargetAtoms, the reserved at-rule set) are allocated on first use, render-scoped and dropped wholesale. A graph with no extend plans nothing and records nothing; a ruleset-placed import costs one admission scan only when nothing else extends.",
+    "falsePath": {
+      "fixture": "extend-preflight-contract:no-extend",
+      "counters": {
+        "calls": 1,
+        "preflight.collectCalls": 0,
+        "preflight.overlaySubjects": 0,
+        "preflight.overlayInstructions": 0,
+        "preflight.loopPlacements": 0
+      }
+    },
+    "featurePath": {
+      "fixture": "extend-preflight-contract:imported-loop",
+      "counters": {
+        "preflight.importsVisited": 1,
+        "preflight.importsFeatureBearing": 1
+      }
+    },
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "parse-render",
+      "currentMedianMs": 53.16,
+      "outputSha256": "ec0196947fb844faf55ca7c8c5f605cd16930c73f9c4c452823fe65dd8cb61d9",
+      "outputBytes": 123316
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "Extend composition, matching and emission follow the owner's 2026-10-05 rulings and the J11-J15 judgments: the guarded append to an authored :is(), the nesting fold kept in an extended header, the spliced fused &, interpolated targets wherever placed, call-site application of a definition's body-form extend, and import-once for a (reference) re-import. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The added loops walk one compound, one header's branches or one at-rule chain, only on extend-touched headers or with recording armed; wouldConflict and the match guard now allocate less than the base, and on benchmark.less every planner, matcher and solver counter is unchanged while regroup walks fall 702 -> 690.",
+    "behaviorEvidence": "extend-root-ampersand, extend-mixin-loop-body, extend-nested-boundary, extend-conflict-acceptance, extend-preflight-contract and is-grouping in core; extend-cross-import, extend-is-grouping and mixin-public-semantics in jess; the all-Less lane with the bootstrap4, extend-nest and selectors edits registered in pending-golden-edits.ts.",
+    "buildEvidence": "pnpm run build:release passes from clean; check:macro reports 0 interpreter fallbacks; verify:types passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 53.16,
+      "outputSha256": "ec0196947fb844faf55ca7c8c5f605cd16930c73f9c4c452823fe65dd8cb61d9",
+      "outputBytes": 123316
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05:
+  extend's own `:is()` groups follow the same keep-native-specificity rule as
+  the `'native'` nesting fold, in every output mode; a member that cannot fold
+  is written as its own branch where the group was (X3; its placement amended by
+  the owner 2026-10-09: same element ⇒ same compound); branch order inside one selector
+  list may change, so equal-specificity branches group across non-adjacent
+  positions). One module, `packages/core/src/ast/is-grouping.ts`, owns
+  specificity, the "may this branch sit inside `:is()`" check and the partition
+  into groups; the serializer's `opaqueJoin` and extend emission both call it.
+  Extend splits a mixed group into equal-specificity groups at header emission
+  and writes an unfoldable member (pseudo-element, unlisted pseudo-class, a
+  token without parser provenance, a complex member the group does not lead
+  with) as its own branch: simples before the group join the member's first
+  compound, simples after it its last compound. A chained group is checked again
+  where its member lands; an authored or nesting `:is()` keeps its arm list and
+  an alternative of another specificity stands alone. A changed top-level rule
+  compacts its siblings in nested output as in flat output. A trigger-P/X
+  flattened nested rule rises to the top level, re-opening any at-rule it rose
+  out of.
+- Architecture surface: new `packages/core/src/ast/is-grouping.ts`;
+  `serialize.ts` `opaqueJoin` (partitions instead of scanning runs; one-group
+  fast path), `HoistEntry.wrappers` + `emitHoistEntry` + `nestedAtRuleShell`
+  (a nested at-rule passes its body's hoisted rules outward with itself as a
+  wrapper); `extend/emit.ts` header emission (`groupedBranches`,
+  `regroupBranch` with a resume cursor, `planGroup` + the per-header
+  `groupPlans` memo, `splitGroup`, `splitArms`, `spliceMember`,
+  `mergeCompound`), sibling compaction dedup in `mergeCompoundsToIs`, the
+  nested top-level header compaction, the P/X `hoistBubble`; `extend/ir.ts`
+  (`Simple.src` on text tokens, `Simple.fold` on `:is()` grafts);
+  `extend/compose.ts` and `extend/match.ts` carry the two fields;
+  `extend/conflict.ts` exports its type check for the compound merge.
+- Separation/duplication: one owner for specificity and foldability. The
+  module walks two representations — the parsed selector AST (nesting fold)
+  and extend's selector IR — through one token scorer: an IR text token keeps
+  the AST token it was built from (`src`) and is scored by the same
+  `tokenSpecificity`; a token without `src` scores -1 (no text is read back).
+  `conflict.ts` `classify` stays separate: it answers which simple must lead a
+  compound and which pairs make an invalid compound (type/id), treating every
+  unknown head as a type; the grouping refuses to score those heads. They ask
+  different questions, so neither replaces the other.
+- Cumulative node weight: zero AST/CST node kinds or fields. The extend IR (not
+  an AST node) gains `src` on text simples and `fold` on `:is()` simples, both
+  set by their one factory shape so every IR simple of a kind has one shape.
+  `HoistEntry` (serializer-private) gains `wrappers`, set at both literals.
+- New traversal: [loop/traversal] `extendBranchSpecificity` walks a member's
+  segments and simples; `regroupBranch` scans a header branch's compounds from a
+  cursor, so a split resumes where it happened and never rescans the prefix;
+  `planGroup` resolves and scores each member of a group once per header
+  (`groupPlans` memo, created only after the first split, so a group repeated
+  by a split is planned once); `partitionGroups` scans its keys. All run only on
+  extend-touched headers (the candidate set the fast reject admits) and on
+  `opaqueJoin` child lists; the matcher's work is unchanged. Per render
+  (collapseNesting true; false/native/compact equal): `benchmark.less` 702
+  regroup walks, 339 member scores, 0 splits; `bootstrap4.less` 1086, 268, 124
+  group splits + 8 authored-arm splits; extend 110/44/4; extend-chaining
+  192/16/2; extend-nest 64/12/2; extend-selector 137/64/7; extend-exact 35/2/0.
+  Matcher and planner counters (`astExtend.match.branchComparisons`,
+  `astExtend.plan.subjects`, …) are identical to the previous lane head on all
+  44 fixture×mode renders, and so is every output byte.
+- New node/materialization: [node construction] the `groupPlans` `Map` (one per
+  header that splits) and the `seen` `Set` in `mergeCompoundsToIs` (a merge
+  only); [materialized array/object] a group that stays whole allocates
+  nothing (scores are compared before a keys array exists; every group on
+  `benchmark.less`); a split allocates its plan (keys, sizes, the resolved
+  member list when a member split), the output list and one branch per
+  alternative; `groupedBranches` copies the header list only when a branch
+  split. [array spread/materialization] `mergeCompound` spreads the three runs
+  of a spliced compound; a hoisted entry crossing an at-rule copies its wrapper
+  list. [array helper] `slice()` copies in `withSimple`/`spliceMember`/
+  `planGroup`/`splitArms`/`groupedBranches`, `values.join` for the one-group
+  fold, `members.map(branchText)` for the merge dedup.
+- Render path: still stringify-only. Groups are emitted through `branchOut`; a
+  wrapper at-rule re-emits its already-resolved prelude string.
+- Helper/API surface: `is-grouping.ts` exports `nestingGroupKey`,
+  `extendBranchSpecificity` and `partitionGroups` inside core (no package
+  export); `conflict.ts` exports `isTypeSelector` inside core; emit and
+  serializer helpers above are module-private.
+- Metadata mutations: none. [parent/source mutation] flagged
+  `groupedBranches(header, s.parent === null)` reads the plan subject's parent;
+  nothing is assigned.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [array
+  spread/materialization], [node construction], [side map/set] (the
+  pseudo-class allowlist `Set` moved from `serialize.ts`, built once at load;
+  the merge-dedup `Set`; the `groupPlans` `Map`) and [materialized
+  array/object] as above.
+- Behavior evidence: `packages/jess/test/less/extend-is-grouping.test.ts` (16
+  tests, every output mode: X3 placement after a combinator and at the head,
+  chained groups checked where spliced, authored `:is()` arm splits, nested
+  top-level compaction and dedup, at-rule wrappers on the nested hoist),
+  `packages/core/src/ast/__tests__/is-grouping.test.ts` (7) and the
+  `extend-op-budget.test.ts` regroup gate (84 member scores at n=20 and 164 at
+  n=40, 924 without the plan memo); probes of each case fail on the previous
+  lane head 4969cf9ef. Core suite 221 files / 3372 tests, the Less fixture lane
+  151 passed / 28 skipped, `extend-exact-oracle.test.ts` 3/3.
+- Build evidence: `pnpm --filter @jesscss/core build` and `pnpm run
+  build:release` pass; `tsc --noEmit -p packages/core` reports no error in
+  `src/` (the test-file type errors predate this lane).
+- Boundary evidence: `is-grouping.ts` is core-internal — no package export, no
+  public type; its three exports are imported only by `serialize.ts`,
+  `extend/emit.ts` and its unit test. Corpus renders (149 fixtures plus
+  `benchmark.less` and `bootstrap.less`, harness/false/true/native/compact) are
+  byte-identical to the previous lane head; against the base
+  (`origin/lane/v5-native-is-fold`) only bootstrap4, extend, extend-chaining,
+  extend-nest and extend-selector change, as registered in
+  `pending-golden-edits.ts`.
+- Evidence: `benchmark.less` (collapseNesting true) SHA-256
+  `ac5ea0650e8339dd405c49746523b663eb1d2b2fa6a6e469639c19fdc2d9669e` (123,303
+  bytes), unchanged by this fix pass. `measure:less:hotpath` on
+  `benchmark.less`: median 50.17 ms, signal unstable (load average 13); no
+  speed or neutrality claim.
+- Verdict: accepted as a semantic output change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode, writes an unfoldable member as its own branch where the group was (X3), and a flattened nested rule rises to the top level with the at-rules it crossed. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The new walks run only on extend-touched headers and multi-branch nesting child lists; each group member is resolved and scored once per header (op-budget gate), a split resumes from its cursor, a group that stays whole allocates nothing, and matcher and planner counters are identical before and after.",
+    "behaviorEvidence": "packages/jess/test/less/extend-is-grouping.test.ts, packages/core/src/ast/__tests__/is-grouping.test.ts, the extend-op-budget regroup gate and the updated collapse-nesting-mode.test.ts pin the rule; the all-Less lane passes with the extend goldens' new groups registered in pending-golden-edits.ts.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 50.17,
+      "outputSha256": "ac5ea0650e8339dd405c49746523b663eb1d2b2fa6a6e469639c19fdc2d9669e",
+      "outputBytes": 123303
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-05 `collapseNesting: 'native'` child-list fold (owner
+  ruling 2026-10-05: fold what keeps native specificity; ledger O10 amended). `'native'` now folds a run of consecutive nested child branches into
+  `:is()` when every branch is a single compound of the same specificity and
+  nothing in it changes matching or invalid-selector behaviour inside `:is()`:
+  no interpolation, pseudo-element, namespace prefix, attribute `s` flag,
+  `:scope`, functional pseudo-class other than `:is()`/`:not()`/`:has()`/
+  `:where()`, nested `:has()`, or pseudo-class outside an allowlist of standard
+  ones every major engine implements. `'compact'` and nested output are
+  unchanged.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only —
+  `opaqueJoin` (one fold loop for both flatten styles, keyed per branch) and the
+  new `tokenFoldSpecificity`/`branchFoldSpecificity` with the module-level
+  `NATIVE_FOLD_PSEUDO_CLASSES`. No parser, evaluator, extend or AST change.
+- Separation/duplication: `'native'` reuses `'compact'`'s fold loop; the only
+  difference is the per-branch key (specificity vs combinator shape), so there is
+  no second fold implementation. Specificity is read from the selector IR the
+  parser built, never from emitted CSS. The language service (postcss parse plus
+  `@csstools/selector-specificity`) and diagnostics-core (`tolerant-cst.ts`) score
+  other representations for hover and lint; extend's `conflict.ts` `classify`
+  answers a different question (which simples can conflict) with a different
+  default for unknown heads.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: [loop/traversal] `branchFoldSpecificity` walks one child
+  branch's compounds and `tokenFoldSpecificity` walks a structured pseudo's
+  argument list, recursing only into `:is()`/`:not()`/`:has()`/`:where()`
+  arguments. Both run only in `opaqueJoin` under `'native'` for a child list of
+  two or more branches, once per branch, over IR already in hand; the fact is
+  not carried by the parser (a SimpleSelector keeps no kind or specificity), so
+  there is no existing edge to read it from. Measured per `benchmark.less`
+  render: 30 joins, 152 branch and 108 token visits; per `bootstrap4.less`: 65
+  joins, 197 and 83.
+- New node/materialization: [node construction] [side map/set] the
+  `NATIVE_FOLD_PSEUDO_CLASSES` `Set`, built once at module load. Per join, the
+  native path allocates the `out` array, one `run` array, the `flushRun` closure,
+  and one `run` array per non-empty run flushed (34 per `benchmark.less` render,
+  35 per `bootstrap4.less`); `'compact'` already allocated the same shapes. The
+  pseudo-class lookup lowercases only on a Set miss (0 per render on both
+  fixtures); the structured-pseudo name lowercase allocates nothing for an
+  already-lowercase short name.
+- Render path: still stringify-only. A folded run is written as
+  `a + ' :is(' + run.join(', ') + ')'`; no node is built to print it.
+- Helper/API surface: two module-private functions, no export.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] the two IR walks above;
+  [array helper] the `run.join(', ')` that writes a folded run (moved from the
+  compact-only branch, not new work per run); [node construction] and
+  [side map/set] the module-load `Set` above.
+- Behavior evidence: `packages/jess/test/less/collapse-nesting-mode.test.ts`
+  pins every guard; 15 mutations of the guards (each removed or weakened) each
+  turn at least one test red. The all-Less lane renders all 140 recorded cases
+  under the harness config and again with `JESS_FORCE_COLLAPSE_NESTING=true`:
+  only `tests-config/3rd-party/bootstrap4.less` changes against
+  `origin/feat/less-v5-completion` (27 rule headers, registered in
+  `pendingGoldenEdits`).
+- Evidence: `benchmark.less` (collapseNesting true, plugin-less) changes by
+  design from SHA-256
+  `0750e502564808e2f54ddfc9feaf79085cabc1ba693d710fac38e1930e302349` (124,811
+  bytes) to `a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84`
+  (123,383 bytes): 11 equal-specificity folds such as
+  `#ad div.footer div.vote_views :is(#login_register_msg, #encourage_vote_msg)`.
+  `'compact'` and `false` output are byte-identical to the base. Op counts above
+  are the cost evidence. `measure:less:hotpath` on `benchmark.less` (Node
+  24.11.1) reported an 86.31 ms median with signal noisy (81.8% RSD, load
+  average about 37); a baseline only, no speed or neutrality claim.
+- Verdict: accepted as a semantic output change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The AST serializer joins a nested child list under collapseNesting 'native' by folding runs of branches whose specificity it reads from the selector IR, instead of always distributing them. No evaluator or value change; semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The two IR walks run only for a multi-branch child list under 'native', once per branch, bounded by that branch's compounds and its selector-function arguments; the allowlist Set is built once at module load; the join that writes a folded run is the one 'compact' already used.",
+    "behaviorEvidence": "packages/jess/test/less/collapse-nesting-mode.test.ts pins every guard, each red under its mutation; the all-Less lane passes with bootstrap4's 27 folded headers registered in pendingGoldenEdits.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 86.31,
+      "outputSha256": "a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84",
+      "outputBytes": 123383
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-05 remote-import follow-up review fixes
+  (`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §6/§8). An import the media
+  desugar wrapped that stays a CSS terminal is written as one `@import "…" q;`
+  instead of `@media q { @import "…"; }`, which browsers ignore (ledger A10: a
+  real CSS `@import` carries its query). An import that must load and that no plugin
+  claims is an error instead of an `@import`/`@compose`/`@-import` written out.
+  A `@use` that cannot load is `import/load-failed` at the `@use`, as `@plugin`
+  is `plugin/load-failed`.
+- Architecture surface: the serializer's `expandAtRuleBlock` (new
+  `mediaImportStayingCss`), `emitCssImportAtRule` (an optional media query),
+  the two `getModule` call sites (new `moduleLoadFailed`); Context's
+  `loadImportUncached`.
+- Separation/duplication: the media-wrapped terminal reuses the
+  planned import answer `expandStyleImport` consumes, so the import is asked
+  once; `@use` failures use the attribution shape `@plugin` already had.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: none. `mediaImportStayingCss` reads one `rules.length` and
+  returns for every at-rule block that is not `@media` wrapping exactly one
+  `StyleImport`.
+- New node/materialization: [node construction] the `Error` thrown by
+  `loadImportUncached` for an unclaimed must-load import and the
+  `ImportDocumentRequest` literal `mediaImportStayingCss` builds only when no
+  planned answer exists — both on the import path, not per node; the
+  `moduleLoadFailed` closure is built once per `@use` load.
+- Render path: one extra call per at-rule block, returning on its first test for
+  every block but a media-wrapped import.
+- Helper/API surface: none exported.
+- Metadata mutations: `plannedImportDocuments` gains the entry for a
+  media-wrapped import when no planner recorded one — the same record the
+  planner writes.
+- Review-flagged diff tokens: [node construction] and [routine error control]
+  the must-load refusal and the `@use` failure wrapper above; [array
+  spread/materialization] the `...callSiteLocation(statement, e)` spread into
+  that wrapper's diagnostic, built only when a `@use` fails; [materialized
+  array/object] the `ImportDocumentRequest` literal `mediaImportStayingCss`
+  builds only for a media-wrapped import no planner recorded.
+- Behavior evidence: core `import-at-rule.test.ts` (must-load refusal when
+  unclaimed, media-wrapped terminal) and
+  `module-import-evaluation.test.ts` (`@use` load failure while preparing and
+  while rendering); jess `remote-imports.test.ts` (media-tailed URL left CSS
+  with and without the plugin, the mustLoad cache key, must-load imports
+  without the plugin, `@use` and `@plugin` codes). Each
+  was red with its code path reverted.
+- Evidence: the `benchmark.less` render output (collapseNesting true) is
+  byte-identical to the previous pass (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). `measure:less:hotpath` on Node 24.11.1 reported a 52.02 ms median
+  (10.5% RSD) on a shared machine; a baseline only, no speed or neutrality
+  claim.
+- Verdict: accepted as a semantic import change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["claimed-external-import", "unclaimed-external-terminal", "unclaimed-must-load-refusal", "ordinary-local-import", "import-inside-remote-document"],
+    "why": "An external import no plugin claims stays a CSS terminal unless it must load; then Context refuses it instead of returning an unclaimed result the serializer would write out as a non-CSS at-rule. Local imports take the same path as before.",
+    "dangerTokensJustification": "The refusal is a terminal throw after the existing claim loop, reached only for an unclaimed external specifier that must load; it is never control flow on a successful load.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 52.02,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context's loadImportUncached refuses an unclaimed must-load external import. The serializer's at-rule surface asks, for a @media block wrapping exactly one StyleImport, whether that import stays a CSS terminal and then writes it as one @import with the query. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "expandAtRuleBlock gains one synchronous call that returns on its first length test for every at-rule but a media-wrapped import; that one reuses the planned import answer and allocates a request only when none was planned.",
+    "behaviorEvidence": "Core import-at-rule.test.ts pins the media-wrapped terminal and the must-load refusal; jess remote-imports.test.ts pins both end to end; each red with its code reverted. benchmark.less output unchanged.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 52.02,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The two getModule call sites attribute a failed @use load to the @use as import/load-failed, as @plugin already is plugin/load-failed. No evaluator or value change and no speed claim.",
+    "dangerTokensJustification": "The moduleLoadFailed closure is built once per @use load on the cold module path, not per node.",
+    "behaviorEvidence": "Core module-import-evaluation.test.ts pins the @use failure code while preparing and while rendering; each call site red with its wrapper removed.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 52.02,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-05 remote-import follow-ups (orchestrator judgment under
+  owner delegation, `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §8). The
+  allow list now names the hosts that are fetched and inlined, not the ones a
+  stylesheet may reference: Context tells every `canResolveImport` claim
+  whether the import `mustLoad` (`(inline)`, `(reference)`, `(less)`,
+  `@-import`, `@compose`), and the remote-import plugin leaves an extensionless
+  URL it will not fetch a CSS terminal and refuses anything else it will not
+  fetch. IP-literal hosts are never fetched. `@use`/`@plugin` refuse a URL
+  before resolution, so the refusal no longer depends on a plugin locating it.
+  The Less plugin's `transformUrl` rebases a rewritten `url()` in a fetched
+  document onto the document's URL instead of a filesystem-relative path (which
+  leaked the local working directory into the CSS). The compiler warns that
+  Less `insecure` has no effect, and the `jess` CLI gains
+  `--allow-remote-imports`.
+- Architecture surface: `packages/core/src/import-options.ts`
+  (`ImportOptions.mustLoad`), `packages/core/src/plugin.ts` (the
+  `canResolveImport` `mustLoad` argument), `packages/core/src/context.ts`
+  (`isClaimed`, `loadedImportCacheKey`, `loadImportUncached`,
+  `readInlineImport`, `refuseRemoteModule` in `getModuleUncached` and
+  `getPluginModule`), the serializer's `importThroughContext`, the Less plugin's
+  `transformUrl`, `packages/compiler/src/index.ts` (the `insecure` warning) and
+  `packages/core/src/deprecation.ts`. Evaluation, lookup, render and parser code
+  are unchanged.
+- Separation/duplication: one fact (`mustLoad`) is computed once in
+  `importThroughContext` and carried by the existing `ImportOptions`; the
+  plugin, not core, owns which unfetched URLs may stay CSS. The module refusal
+  is one function called at the specifier and at the located path, replacing
+  the shared message helper. The remote rebase reuses `escapeUnquotedUrlPath`
+  and the shared `EXTERNAL_IMPORT_SPECIFIER`, now exported from core so the Less
+  plugin does not copy it.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: none. `rebaseOntoDocumentUrl` walks only the leading `./`/`../`
+  segments of one URL string.
+- New node/materialization: [node construction] the `Error` thrown by
+  `refuseRemoteModule` (a terminal refusal) and the registry's new
+  `Deprecation`, built once at module load; [materialized array/object] the
+  `searchPaths: string[]` in the widened `canResolveImport` signature, a type
+  only. `importThroughContext` still allocates the one `ImportOptions` literal
+  per import it did before.
+- Render path: unchanged for local documents. `transformUrl` adds one string
+  test for a rewritten URL and constructs a `URL` only for a document that was
+  itself fetched.
+- Helper/API surface: `ImportOptions.mustLoad`, the fourth `canResolveImport`
+  argument, the `EXTERNAL_IMPORT_SPECIFIER` export, and the
+  `deprecation/insecure-option` id.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] and [routine error control]
+  the `refuseRemoteModule` throw and the `insecure-option` `Deprecation` above;
+  [materialized array/object] the signature type above.
+- Behavior evidence: core `import-at-rule.test.ts` pins which imports reach the
+  claim with `mustLoad` (red before: the argument was absent); plugin
+  `remote-import.test.ts` pins fetched / left-CSS / refused claims, IP entries,
+  and every private DNS answer through an injected lookup; jess
+  `remote-imports.test.ts` pins the classification end to end, `@compose`, the
+  `@use` refusal with and without the plugin, and `rewriteUrls`/`rootpath`
+  inside a fetched document (red before: a filesystem path was emitted);
+  `cli.test.ts` the CLI flag; `config-merge.test.ts` the `insecure` warning.
+  All-Less passes 140 with 40 skips, unchanged.
+- Build evidence: `pnpm run build:release` before the change, then
+  dependency-ordered builds of core, plugin-less, compiler and
+  plugin-remote-import; `pnpm run verify:types` passes 25/25.
+- Boundary evidence: core exports `EXTERNAL_IMPORT_SPECIFIER` (the Less plugin
+  reads it) and `PluginInterface.canResolveImport` gains a fourth argument that
+  existing implementations may ignore; `ImportOptions` gains `mustLoad`. The jess
+  API report is unchanged (`pnpm run verify:jess-api`); the `jess` package adds
+  `@jesscss/plugin-remote-import` as an optional peer dependency for its CLI
+  flag.
+- Evidence: the `benchmark.less` render output (collapseNesting true) is
+  byte-identical to the previous pass's baseline (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). `measure:less:hotpath` on Node 24.11.1 reported a 48.89 ms median,
+  signal noisy (25.1% RSD) on a shared machine; a baseline only, no speed or
+  neutrality claim.
+- Verdict: accepted as a semantic import-policy change with
+  `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import", "import-inside-remote-document"],
+    "why": "Context still owns external-import admission alone. A claim now also learns whether the import can stay a CSS @import (mustLoad), so a plugin that will not fetch a URL can leave an extensionless one a terminal and refuse one that must be inlined. @use and @plugin refuse a URL before resolution as well as after it. Unclaimed URLs remain CSS terminals with no network action; local imports take the same path as before.",
+    "dangerTokensJustification": "mustLoad rides the ImportOptions literal each import already allocated and is passed to the existing claim loop, which runs only for an external specifier; the cache key adds a constant suffix only when it is set. The refuseRemoteModule throw is a terminal refusal, never control flow on a successful load. The string[] token is the widened signature's type, not an allocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 48.89,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context's claim dispatch passes the mustLoad fact to each plugin, keys the loaded-import cache on it, and the module loaders refuse a URL specifier before resolving it. This changes which external imports a plugin may leave as CSS; it is semantic dispatch work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "No traversal or side table is added: the fact is threaded through the existing claim loop and cache key, and the module refusal is one string test at the specifier and one at the located path. The deprecation registry entry is built once at module load.",
+    "behaviorEvidence": "Core import-at-rule.test.ts pins which imports reach the claim with mustLoad (red before); jess remote-imports.test.ts pins the classification, @compose and the @use refusal with and without the plugin; config-merge.test.ts pins the insecure warning; all-Less passes 140 with 40 skips, unchanged.",
+    "buildEvidence": "Dependency-ordered builds of core, plugin-less, compiler and plugin-remote-import pass; pnpm run verify:types passes 25/25.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 48.89,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The serializer's importThroughContext computes mustLoad once per import from facts it already reads — the (less)/@-import parse selection, the compose mode and the (reference) option — and passes it in the ImportOptions it already built. No evaluator, value or render change and no speed claim.",
+    "dangerTokensJustification": "One more option-word test and a mode compare on the cold per-import load path; the ImportOptions literal existed before. No loop, node, array or side table is added to the serializer.",
+    "behaviorEvidence": "Core import-at-rule.test.ts pins the mustLoad facts for plain, (optional), (reference), (less), @-import, @compose and (inline) imports; jess remote-imports.test.ts covers them end to end; all-Less passes 140 with 40 skips, unchanged.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes and pnpm run verify:types passes 25/25.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 48.89,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-04 graph-wide extend admission for imported documents
+  (jess#349). An `:extend()` whose target lived in an imported sheet was dropped
+  unless that sheet carried an extend of its own, because the import planner
+  admitted each imported document to static extend planning on a per-document
+  "has extends" test. Admission is now per import graph: the root's extend
+  classification (static OR loop/mixin-body) seeds the flag, and an imported
+  document visited before the first extend-bearing one waits in render-local
+  parallel arrays that are planned, in visit order, when that extend appears.
+  Widening admission exposed the import planner's flat at-rule scope (every
+  imported `@media` shared its parent's scope), so at-rule scope ids are now one
+  render-scoped `AtRuleScopes` map shared by the import planner and
+  `collectPlan`, and an import nested in an at-rule block inherits that block's
+  scope (EXTEND-SEMANTICS §8). The planner gate also sees an import nested in an
+  at-rule block, and the prepare pass no longer plans extend facts it discards.
+- Architecture surface: `packages/core/src/ast/serialize.ts` `planImportedFacts`
+  (the root gate and its classification, `graphHasExtend` and the `pending*`
+  arrays, the `atRules` chain on `visit`, the prepare-mode guard),
+  `planImportedStaticExtend` (at-rule scopes), `bodyHasPlannedImport`, and
+  `continueRender` (reads the planner's classification); `packages/core/src/ast/extend/plan.ts`
+  (`AtRuleScopes`, `atRuleScope`, `PlanOverlay.atRuleScopes`, `collectPlan`'s
+  scope ids). Output tests in `packages/jess/test/less/extend-cross-import.test.ts`;
+  cost cases in `extend-preflight-contract.test.ts`. Parser, AST shapes, the
+  extend matcher/solver, the dynamic recorder, and public APIs are unchanged.
+- Separation/duplication: one admission rule replaces two. The special case that
+  always planned `(reference)` imports is deleted. The root and the imported
+  documents are classified by the same rule (`classifyExtend` static||dynamic
+  for the root, its stack-safe boolean twin `bodyMayPlanExtend` for imports);
+  before, the root seed was static-only. The import planner and `collectPlan`
+  now share one at-rule scope helper instead of two diverging counters.
+  `planImportedStaticExtend` remains the only imported-document planner.
+- Cumulative node weight: zero AST/CST fields, zero `Emit`/`Frame` fields;
+  `PlanOverlay` and the planner result gain one field each.
+- New traversal: the root's extend surface is classified once, in the planner,
+  and handed to the render (before: `documentHasExtend` in the planner plus
+  `classifyExtend` in the render — one root walk fewer). `bodyHasPlannedImport`
+  scans document-level statements and at-rule bodies only, and only when the root
+  has no static extend. Per import, an extend-bearing graph now runs the planner
+  walk (`planImportedStaticExtend`) instead of the admission scan once the flag
+  is set: on bootstrap 4 the render pass went from 81 admission scans + 5 planner
+  walks to 32 admission scans + 81 planner walks, and planner walks are the
+  heavier kind (selector IR per rule). The prepare pass (`Compiler.compile`)
+  previously ran the same planner walks and discarded them; it now runs none.
+- New node/materialization: one `AtRuleScopes` Map per render that reaches the
+  import planner, with one entry per at-rule block a planner walk enters; one
+  `atRules` array per at-rule block `visit` enters while planning extends; three
+  lazily allocated parallel arrays holding imported documents visited before the
+  graph is known to carry an extend (no per-entry tuple objects). Subject IR for
+  every imported rule in an extend-bearing graph is the existing planner's cost,
+  now paid by the 76 bootstrap 4 imports it previously skipped: `plan.subjects`
+  2183 → 2746 (+26%).
+- Render path: unchanged. The walk, the dynamic recorder, and the post-walk fold
+  are untouched; imported rules that were previously recorded only by the dynamic
+  recorder's opaque fallback are now ordinary static subjects.
+- Helper/API surface: `atRuleScope` and the `AtRuleScopes` type exported from
+  `extend/plan.ts` (internal module), one private function
+  (`bodyHasPlannedImport`), one private closure (`planImported`). No package
+  export, node contract, fallback, source scan, or reparse.
+- Metadata mutations: only render-local planner state (`overlay`,
+  `e.importedStaticExtendRules`, the scope map) is written.
+- Review-flagged diff tokens: [loop/traversal] the drain loop plans each pending
+  document once, when the first extend-bearing document appears; the scope loop
+  in `planImported` is bounded by at-rule nesting depth.
+  [array spread/materialization] the `[...atRules, st]` and `atRuleScope`'s
+  `[...scope, id]` are one per at-rule block entered, the same shape
+  `collectPlan` already used. [node construction] the `new Map()` is the one
+  `AtRuleScopes` per planner call; the planner result's `new Set()`/`new Map()`
+  are its existing empty `hiddenRules`/`referenceBoundaries`, unchanged. [side
+  map/set] `AtRuleScopes` is a strong, render-scoped Map dropped wholesale with
+  the plan, not a per-node weak side table (invariant 11). [materialized
+  array/object] the `ExtendClass` is the one the render already built, now built
+  in the planner and passed on; the `pending*` arrays replace per-entry tuple
+  objects; the overlay literals gain one field; `NO_AT_RULES` is a shared empty
+  constant.
+- Evidence: red-to-green — `extend-cross-import` gains plain, `(multiple)`,
+  nested chain, later-import extender and `extend all` cases (graph-wide
+  admission); three root mixin/loop-body extender cases (classification seed);
+  four imported-`@media` scope cases that the first cut of this change had
+  regressed; two at-rule-nested import cases and the `@import … print` form
+  (gate + scope inheritance); and a `@compose` pin. `extend-preflight-contract`
+  pins that a no-extend graph plans nothing and that the prepare pass plans
+  nothing. Core suite 219 files / 3346 passed / 10 skipped / 2 todo; all-Less
+  lane 183 discovered / 139 passed / 44 skipped / 0 failed with bootstrap 4 back
+  as a full byte gate against its golden plus the pending owner edit (the 20
+  restored `.input-group-sm/lg > ...` extenders). `benchmark.less` render output
+  is unchanged (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). Timing on a contended machine was `signal=noisy` (92.27 ms median,
+  69.4% RSD) and supports no claim; the last usable baseline is 55.60 ms.
+- Verdict: accepted as a semantic correction with `performanceClaim: none`.
+  Follow-up: build subject IR lazily, only for rules whose atoms can meet a
+  target, in one planner shared by the root and imports.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-extend-dynamic-fold",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "Extend matching is graph-wide: any extend anywhere in the import graph, including one in a root mixin or loop body, can target any imported rule, so the static import preflight must admit every imported document once the graph is known to carry an extend. A per-document gate cannot know about extends in the importer or in later imports, and the only alternative carrier, the walk-time dynamic recorder, records unplanned rules as opaque text that cannot match a branch of a nested multi-branch rule. Admitting every imported rule requires each imported at-rule block to carry its own scope, so an @media-scoped extend stays inside its @media.",
+    "dangerTokensJustification": "Imported documents visited before the first extend-bearing one wait in three lazily allocated parallel arrays, drained once and dropped. A graph with no extend never plans, and the prepare pass never plans. bodyMayPlanExtend stops running once the graph is known to carry an extend. At-rule scope ids live in one strong render-scoped Map, not a WeakMap. The root is classified once instead of twice. No AST field, Frame or Emit field, or WeakMap is added.",
+    "falsePath": {
+      "fixture": "extend-preflight-contract:no-extend",
+      "counters": {
+        "calls": 1,
+        "preflight.collectCalls": 0,
+        "preflight.overlaySubjects": 0,
+        "preflight.overlayInstructions": 0,
+        "preflight.loopPlacements": 0
+      }
+    },
+    "featurePath": {
+      "fixture": "extend-preflight-contract:imported-loop",
+      "counters": {
+        "preflight.importsVisited": 1,
+        "preflight.importsFeatureBearing": 1
+      }
+    },
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "parse-render",
+      "currentMedianMs": 55.6,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The import planner now admits imported documents to static extend planning per import graph instead of per document, scopes each imported at-rule block on its own, and places an import nested in an at-rule block in that block's scope. A rule in an imported sheet is an extend target whether or not that sheet carries an extend of its own, and an @media-scoped extend stays inside its @media across imports. This changes emitted CSS for affected import graphs and makes no speed, neutrality, or byte-identity claim.",
+    "dangerTokensJustification": "The additions are three lazily allocated parallel arrays of imported documents awaiting the first extend in the graph, drained once; one render-scoped at-rule scope Map; one at-rule chain array per at-rule block visited while planning; and one planner closure per planner call. No-extend graphs and the prepare pass plan nothing; no new AST traversal, WeakMap, Frame or Emit field is added.",
+    "behaviorEvidence": "extend-cross-import 21/21 (graph-wide admission, root mixin/loop-body seed, imported @media scope, at-rule-nested import and @compose cases), extend-preflight-contract 4/4 (no-extend graph and prepare pass plan nothing), the core suite (3346 passed), and the all-Less fixture lane (139 passed, 44 skipped, bootstrap 4 gated against its golden plus the pending owner edit).",
+    "buildEvidence": "The dependency-ordered release build and the core package build pass; the core build tsconfig typechecks clean.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.6,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-04 remote-import route through Context, with its review
+  fixes. The opt-in `@jesscss/plugin-remote-import` needs Context/plugin-contract
+  facts that were wrong for a URL: the source of a located path comes from the
+  plugin that located it; a URL is neither expanded into filesystem candidates
+  nor stripped of its query; `AbstractPlugin.resolve` passes a URL through and
+  `AbstractPlugin.locate` skips one; and every path written inside a fetched
+  document is rebased onto that document's URL. The rebase lives in `_getPath`,
+  the one resolver behind `@import`, `@import (inline)`, `data-uri()`/
+  `image-size()`, `@use` and `@plugin`, so no route from a fetched document
+  reaches a local file; a path that does not resolve onto the document's host
+  is an error. A located URL is read only by its locator: `(inline)` passes the
+  same claim gate as `@import` and reads through the locator's `getSource`
+  (`Context.readInlineImport`), `readBinary` reports a URL missing so
+  `data-uri()` keeps its `url()` fallback, and `@use`/`@plugin` refuse a URL. An
+  extensionless URL takes its extension from the importing document. The shared
+  external-specifier pattern moved to `import-options.ts` and needs a
+  two-character scheme, so a Windows drive path is a file path.
+  `@jesscss/plugin-less` no longer claims jsDelivr npm URLs.
+- Architecture surface: `packages/core/src/context.ts` (`importTarget`,
+  `isClaimed`, `readSource`, `_getPath`, `getTree`, `loadImportUncached`,
+  `readInlineImport`, `readBinary`, `getModuleUncached`, `getPluginModule`),
+  `packages/core/src/plugin.ts` (`AbstractPlugin.resolve`/`locate`, contract
+  docs), `packages/core/src/import-options.ts`, the serializer's `(inline)`
+  branch in `packages/core/src/ast/serialize.ts` (one call swapped for
+  `readInlineImport`), and the Less plugin's resolver. Evaluation, render,
+  lookup, and parser code are unchanged.
+- Separation/duplication: one external-specifier pattern serves Context and
+  `AbstractPlugin`; the second copy in `context.ts` is gone. `_getPath` computes
+  the dispatch extension once and its callers read it instead of re-deriving it.
+  The claim loop moved out of `loadImportUncached` into `isClaimed` and the
+  reader choice out of `getTree` into `readSource`, each now shared by `@import`
+  and `(inline)` instead of copied. No second loader, resolver, or network path
+  exists in core; only the plugin's `getSource` touches the network.
+- Cumulative node weight: zero AST/CST node kinds or fields. The private
+  `ResolvedPathResult` gains `ext` and `locator`.
+- New traversal: [loop/traversal] the plugin loop in `isClaimed` is the claim
+  loop moved out of `loadImportUncached`; it runs only for an external
+  specifier, now for an `(inline)` one too. The locator is recorded inside the
+  existing locate loop. No added walk or scan.
+- New node/materialization: [node construction] `new URL` in `importTarget`,
+  one or two per path named inside a fetched document, and one in `_getPath` to
+  read a located URL's extension from its path; local documents and local paths
+  construct none (string tests guard both). [materialized array/object] the
+  `searchPaths = []` default in `isClaimed` is the claim loop's existing
+  default, moved. No AST node, wrapper, or materialized array is added.
+- Render path: unchanged. Import loading happens before evaluation writes, and
+  render still streams strings; the `(inline)` branch now returns the reader's
+  string instead of converting a `Buffer`.
+- Helper/API surface: private `importTarget`, `isClaimed` and `readSource`,
+  public `Context.readInlineImport`, and the shared `remoteModuleMessage`. Each
+  replaces code that would otherwise be repeated per route: the rebase and claim
+  loop formerly inline in `loadImportUncached`, the reader choice in `getTree`,
+  and `readBinary(…).toString()` in the serializer's `(inline)` branch.
+- Metadata mutations: none. No parent, provenance, or source fact is written.
+- Review-flagged diff tokens: [loop/traversal] the moved claim loop above;
+  [node construction] the `URL` constructions above, all on cold per-import
+  paths that never run for local files; [routine error control] the refusals —
+  a path off a fetched document's host, `@use`/`@plugin` of a URL, and the
+  `No source getter found` error moved from `getTree` — each a terminal import
+  error, never control flow on a successful path; [materialized array/object]
+  the moved `searchPaths` default.
+- Behavior evidence: core `import-at-rule.test.ts` pins the external-specifier
+  passthrough in `AbstractPlugin.resolve`, sourcing from the locating plugin
+  with the query kept and the fragment dropped, the rebase and claim of an
+  import inside a remote document, and the Windows drive path (each red before
+  the change). The jess `remote-imports.test.ts` suite (15 tests) pins the
+  default stack leaving URL imports (jsDelivr included) as terminals with no
+  fetch, the plugin path end to end, and — red before the review fixes — a
+  fetched document naming a real local file through `@import (inline)`,
+  `data-uri()`, `@use` and `@plugin` (each leaked the file before), a path off
+  the document's host, `(inline)` and `data-uri()` of a URL, the `@use` refusal,
+  `(optional)` over a 404, and extensionless URLs. Core passes 219 files /
+  3,348 tests; the jess ratchet passes 1,956 tests with 0 failing; all-Less
+  passes 140 with 43 skips, with `tests-unit/import/import-remote.less` a gate.
+- Build evidence: dependency-ordered `pnpm run build:release` passed for the
+  route; after the review fixes `pnpm --filter @jesscss/core build` and
+  `pnpm --filter @jesscss/plugin-remote-import build` pass and core
+  `tsc -p tsconfig.build.json` is clean.
+- Boundary evidence: core's public `Context` gains `readInlineImport`, the
+  `(inline)` reader the serializer calls; no type or export of the jess API
+  report changes. The new package `@jesscss/plugin-remote-import` is on the
+  alpha allowlist and imports only `@jesscss/core/diagnostics` at runtime.
+- Evidence: behavior evidence is tests only. The current `benchmark.less`
+  render output (collapseNesting true) is byte-identical to the previous pass's
+  recorded baseline (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). `measure:less:hotpath` on Node 24.11.1 reported a 64.10 ms median
+  with a noisy signal (39.8% RSD) on a shared machine; it is a baseline only and
+  carries no speed or neutrality claim.
+- Verdict: accepted as a semantic boundary correction with
+  `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import", "import-inside-remote-document"],
+    "why": "Context still owns external-import admission alone. A URL now reaches the plugin that claimed it intact: it is not expanded, joined onto a directory, or stripped of its query, and only the plugin that located it reads it. Every path inside a fetched document is rebased onto that document's URL in _getPath, the resolver all import, inline, data-uri, @use and @plugin routes share, so none of them reaches a local file; @import and (inline) meet the same claim gate. Unclaimed URLs remain CSS terminals with no network action.",
+    "dangerTokensJustification": "The URL constructions run only for a path written inside a fetched document or a located URL, guarded by string tests, so local documents and local paths allocate nothing new. The claim loop is the existing one moved into a shared method and runs only for an external specifier; the locator is captured inside the existing locate loop. The added throws are terminal refusals, never control flow on a successful import.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 64.1,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context's plugin source dispatch now asks the plugin that located a path for its source, falling back to the first source getter, for @import and (inline) alike, and reads the dispatch extension from the one place that computes it. Byte readers and module loaders refuse a located URL. This corrects which plugin reads a located URL; it is semantic dispatch work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The dispatch change records the locating plugin inside the existing locate loop, moves the reader choice out of getTree into one shared method, and replaces three path.extname re-derivations with one computed value; no traversal or side table is added. The URL constructions and refusals belong to the external-import boundary record and run only for fetched documents or located URLs.",
+    "behaviorEvidence": "Core vitest 219 files / 3,348 tests pass, including the locator-source, query, remote-rebase, and drive-path cases in import-at-rule.test.ts; jess remote-imports 15/15 cover every route from a fetched document; the jess ratchet passes 1,956 tests and all-Less 140.",
+    "buildEvidence": "pnpm --filter @jesscss/core build and pnpm --filter @jesscss/plugin-remote-import build pass; core tsc -p tsconfig.build.json is clean.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 64.1,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The serializer's (inline) import branch now asks Context.readInlineImport for the text instead of reading bytes itself, so an (inline) URL passes the same claim gate and source reader as @import and a fetched document's (inline) path stays on its host. It is a semantic import-route correction with no evaluator, value, or render change and no speed claim.",
+    "dangerTokensJustification": "One call is swapped inside the existing async (inline) branch: the Buffer read and toString become one string read, so no loop, node, array, or side table is added to the serializer. The danger tokens in this diff belong to Context and are accounted for by the external-import boundary record.",
+    "behaviorEvidence": "jess remote-imports 15/15 cover (inline) of a local file, an allowed URL, an off-list host, and a fetched document's local path; the jess ratchet passes 1,956 tests and all-Less 140.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes and core tsc -p tsconfig.build.json is clean after the change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 64.1,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-01 explicit imported-callable references. Jess selected,
   default, flat, and namespace function imports now dispatch only through
   `$name(…)` or `$namespace.name(…)`; importing a name cannot change a bare

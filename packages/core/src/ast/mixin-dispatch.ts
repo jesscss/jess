@@ -23,8 +23,7 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
-import type { EvalModes, ValueEvaluator } from './value-eval.js';
-import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
+import { evalGuard, guardUsesDefault, type GuardEvalDeps, type ValueResolver } from './guard.js';
 
 /** The call-argument shape now lives with the nodes that carry it — a
  *  {@link CallArg} is the same node for a mixin call and a function call, so it
@@ -420,6 +419,12 @@ function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<
   if (isTypedCallValue(v)) {
     return v;
   }
+
+  /*
+   * The bytes-only fallback for a caller that supplies no source resolver. The
+   * serializer always supplies one (its typed eager snapshot), so an argument
+   * keeps its type across the boundary there.
+   */
   return mapMaybe(resolveCaller(v), any);
 }
 
@@ -435,6 +440,15 @@ export function isTypedCallValue(v: CallValue): v is ValueSlot {
   }
   if (v.type === 'List') {
     return v.value.every(isTypedCallValue);
+  }
+
+  /*
+   * `~( … )` is a value list (owner 2026-10-09: "the parens are supposed to be around a
+   * valueList"), the node a `;` list stores each comma run as (P46), so it binds as the
+   * `List` it holds does.
+   */
+  if (v.type === 'Block' && v.escaped === true) {
+    return isTypedCallValue(v.value);
   }
   return v.type === 'Sequence' && v.parts.every(isTypedCallValue);
 }
@@ -474,39 +488,34 @@ export function isValueSlot(value: CallValue): value is ValueSlot {
 /**
  * Select every definition that matches a call, in definition order, with
  * its bindings. Args resolve to bytes in the caller frame (arity/pattern);
- * guard leaves compare TYPED values in the callee frame through the injected
- * `ValueEvaluator`.
+ * guard leaves compare TYPED values in the callee frame through the evaluator
+ * and modes `guardDeps` gives each definition: those of the document it is
+ * written in, so candidates from different files each answer their own.
+ *
+ * A guard resolves its free variables in the mixin's DEFINITION scope
+ * (closure), so `guardDeps` keys the typed resolver off the def (see serialize
+ * `dispatch`). `isDefault` also threads to the resolver so a `default()`
+ * OPERAND (`@x = default()`) folds to the decision, not just a bare
+ * `default()` guard term.
  */
 export function selectDefinitions(
   candidates: MixinDefinition[],
   call: MixinCall,
   resolveCaller: ValueResolver,
-  makeCalleeTyped: (
+  guardDeps: (
     def: MixinDefinition,
     bindings: Map<string, CallValue> | null,
     isDefault: () => boolean,
-  ) => TypedResolver,
-  ev: ValueEvaluator | null,
-  modes: EvalModes,
+  ) => GuardEvalDeps,
   resolveDefault?: DefaultResolver,
   onNoViable?: () => void,
-  boundSources?: BoundSourceTracker
+  boundSources?: BoundSourceTracker,
+  untrackedSources?: BoundSourceResolvers
 ): MaybePromise<Selection[]> {
   type Viable = {
     def: MixinDefinition;
     bindings: Map<string, CallValue> | null;
     order: number;
-  };
-
-  const guardDeps = (def: MixinDefinition, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
-    /*
-     * A guard resolves its free variables in the mixin's DEFINITION scope (closure),
-     * so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
-     * `isDefault` also threads to the resolver so a `default()` OPERAND (`@x =
-     * default()`) folds to the decision, not just a bare `default()` guard term.
-     */
-    const typed = makeCalleeTyped(def, bindings, isDefault);
-    return { resolveTyped: typed, ev, modes, isDefault };
   };
 
   /**
@@ -556,7 +565,7 @@ export function selectDefinitions(
     if (boundSources === undefined) {
       for (; index < candidates.length; index++) {
         const def = candidates[index]!;
-        const bound = bindArgs(def, call, resolveCaller, resolveDefault);
+        const bound = bindArgs(def, call, resolveCaller, resolveDefault, untrackedSources);
         if (isThenable(bound)) {
           const at = index;
           return bound.then((bindings) => {

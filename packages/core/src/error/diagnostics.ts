@@ -1,11 +1,6 @@
-import {
-  type IRecognitionException,
-  type ILexingError,
-  type ILexingResult
-} from 'chevrotain';
 import type { Deprecation } from '../deprecation.js';
-import { type JessErrorCode, type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
-import { lineColAt, extractRelevantLines } from './code-frame.js';
+import { type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
+import { INJECTED_TEXT_NOTE, authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
 import {
   JessError,
   inlineSpanEnd,
@@ -31,6 +26,10 @@ export interface ErrorDiagnostic {
     path: string;
     fullPath: string;
     source?: string;
+
+    /** Where the authored file sits in a host-prepared `source` (see {@link SourceOwner}). */
+    sourceOffset?: number;
+    sourceEnd?: number;
   };
   filePath?: string;
   line: number;
@@ -43,10 +42,6 @@ export interface ErrorDiagnostic {
    * (error line + before/after context), e.g. `{ 55: 'before', 56: 'err', 57: 'after' }`.
    */
   lines?: Record<number, string>;
-
-  // Raw error data (for parser/lexer errors)
-  errors?: ReadonlyArray<IRecognitionException | JessError>;
-  lexerErrors?: ILexingResult['errors'];
 }
 
 /**
@@ -528,6 +523,37 @@ export function parserDiagnostic({
 }
 
 /**
+ * A diagnostic a parser reported against host-prepared text (Less `banner` /
+ * `globalVars` written ahead of the file), re-positioned in the file as authored
+ * (ledger O16): its line, column and code frame count from where the file
+ * starts, and its file carries that start so a later frame does too. One in the
+ * injected text keeps the prepared text's lines and says where it is
+ * ({@link fileAt}).
+ */
+export function inAuthoredFile<T extends ErrorDiagnostic | WarningDiagnostic>(
+  diagnostic: T,
+  source: string,
+  owner: SourceOwner
+): T {
+  const start = authoredLineCol(source, diagnostic.line, diagnostic.column, owner);
+  if (start === undefined) {
+    return { ...diagnostic, note: diagnostic.note ?? INJECTED_TEXT_NOTE };
+  }
+  const end = diagnostic.endLine === undefined || diagnostic.endColumn === undefined
+    ? undefined
+    : authoredLineCol(source, diagnostic.endLine, diagnostic.endColumn, owner);
+  return {
+    ...diagnostic,
+    file: diagnostic.file === undefined ? undefined : { ...diagnostic.file, ...owner },
+    line: start.line,
+    column: start.column,
+    endLine: end?.line,
+    endColumn: end?.column,
+    lines: diagnostic.lines === undefined ? undefined : extractRelevantLines(source, start.line, 1, owner)
+  };
+}
+
+/**
  * Normalized warning format for all phases (lexing, parsing, evaluation).
  * This is the format returned by safeParse/safeRender methods.
  */
@@ -564,6 +590,71 @@ export function makeJessError(init: JessErrorInit): JessError {
   return new JessError(init);
 }
 
+const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what it does to a function plugin or to a step that runs on the compiled CSS.';
+const NO_PRE_PROCESSORS = 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.';
+const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.';
+const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
+const VALUES_ONLY = 'A Less v5 function plugin returns a value (a dimension, color, string, keyword, list or declaration list): write the rest in the stylesheet.';
+
+/*
+ * Less 4 tree nodes beyond the function-plugin value surface, each with the
+ * reason it is not provided. Both plugin runtimes refuse `tree.<Name>` and its
+ * 4.x factory `less.<name>()` (A12).
+ */
+const UNSUPPORTED_TREE_NODE_REASONS: ReadonlyArray<readonly [string, string]> = [
+  ['AtRule', `At-rules are statements, not values. ${VALUES_ONLY}`],
+  ['Attribute', `Attribute selectors are selector structure. ${VALUES_ONLY}`],
+  ['Combinator', `Combinators are selector structure. ${VALUES_ONLY}`],
+  ['Condition', `Guard conditions are evaluated by the compiler. ${VALUES_ONLY}`],
+  ['Element', `Selector elements are selector structure. ${VALUES_ONLY}`],
+  ['Extend', `:extend is resolved by the compiler. ${VALUES_ONLY}`],
+  ['Import', `@import is resolved while documents load, before plugin functions run. ${VALUES_ONLY}`],
+  ['JavaScript', 'Inline JavaScript evaluation was removed: write the expression as a function plugin.'],
+  ['Media', `@media is a statement, not a value. ${VALUES_ONLY}`],
+  ['MixinCall', `Mixin calls are dispatched by the compiler. ${VALUES_ONLY}`],
+  ['MixinDefinition', `Mixin definitions are statements, not values. ${VALUES_ONLY}`],
+  ['NamespaceValue', `Namespace lookups are resolved by the compiler. ${VALUES_ONLY}`],
+  ['Selector', `Selectors are statement structure. ${VALUES_ONLY}`],
+  ['VariableCall', `Detached-ruleset calls are dispatched by the compiler. ${VALUES_ONLY}`]
+];
+
+/** The Less 4 `tree` constructors a Less v5 plugin runtime refuses (A12). */
+export const UNSUPPORTED_LESS_TREE_NODES: readonly string[] = UNSUPPORTED_TREE_NODE_REASONS.map(([name]) => name);
+
+/**
+ * The Less 4 plugin-manager API that Less v5 deliberately does not run, keyed
+ * by the member a plugin reaches for, with the replacement its refusal names.
+ * One table for both Less plugin runtimes: the in-process bridge of
+ * `@jesscss/plugin-less-compat`, and the `@plugin` sandbox of
+ * `@jesscss/plugin-js`, whose worker reports only the member it refused.
+ * Every other 4.x `PluginManager` member (`addPlugin`, `addPlugins`, `get`,
+ * `less`, `installedPlugins`, `pluginCache`) works in both runtimes.
+ */
+const UNSUPPORTED_PLUGIN_API_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
+  ['pluginManager.addVisitor()', NO_VISITORS],
+  ['pluginManager.getVisitors()', NO_VISITORS],
+  ['pluginManager.visitor()', NO_VISITORS],
+  ['pluginManager.visitors', NO_VISITORS],
+  ['pluginManager.iterator', NO_VISITORS],
+  ['pluginManager.addPreProcessor()', NO_PRE_PROCESSORS],
+  ['pluginManager.getPreProcessors()', NO_PRE_PROCESSORS],
+  ['pluginManager.preProcessors', NO_PRE_PROCESSORS],
+  ['pluginManager.addPostProcessor()', NO_POST_PROCESSORS],
+  ['pluginManager.getPostProcessors()', NO_POST_PROCESSORS],
+  ['pluginManager.postProcessors', NO_POST_PROCESSORS],
+  ['pluginManager.addFileManager()', NO_FILE_MANAGERS],
+  ['pluginManager.getFileManagers()', NO_FILE_MANAGERS],
+  ['pluginManager.fileManagers', NO_FILE_MANAGERS],
+  ['pluginManager.Loader', 'Less v5 loads plugins only from @plugin and the plugins option: declare the plugin there, or install it from this one with pluginManager.addPlugin().'],
+
+  /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+  ['less.visitors', NO_VISITORS],
+  ['less.FileManager', NO_FILE_MANAGERS],
+  ['less.environment', NO_FILE_MANAGERS],
+  ...UNSUPPORTED_TREE_NODE_REASONS.map(([name, reason]): [string, string] => [`tree.${name}`, reason]),
+  ['tree.Ruleset with selectors', `Only an anonymous declaration list crosses the plugin value boundary. ${VALUES_ONLY}`]
+]);
+
 export function makeJessErrorFromDiagnostic(
   diagnostic: ErrorDiagnostic
 ): JessError {
@@ -584,9 +675,7 @@ export function makeJessErrorFromDiagnostic(
     endColumn: diagnostic.endColumn,
     reason: diagnostic.reason,
     fix: diagnostic.fix,
-    note: diagnostic.note,
-    errors: diagnostic.errors,
-    lexerErrors: diagnostic.lexerErrors
+    note: diagnostic.note
   });
 }
 
@@ -639,6 +728,20 @@ export const ERR = {
   circularCompose(args: Common & { meta: { chain: string } }) {
     return makeJessError({
       code: 'import/circular-compose',
+      phase: 'import',
+      ...args
+    });
+  },
+  composeNotTopLevel(args: Common) {
+    return makeJessError({
+      code: 'compose/not-top-level',
+      phase: 'import',
+      ...args
+    });
+  },
+  importCycle(args: Common & { meta: { specifier: string } }) {
+    return makeJessError({
+      code: 'import/cycle',
       phase: 'import',
       ...args
     });
@@ -849,11 +952,36 @@ export const ERR = {
   },
 
   // Plugin
+  /**
+   * A plugin reached for an API this compiler deliberately does not provide
+   * (e.g. a Less 4 plugin-manager hook). The fix names the native replacement
+   * from {@link UNSUPPORTED_PLUGIN_API_REPLACEMENTS}.
+   */
   pluginUnsupported(
     args: Common & { meta: { plugin: string; feature: string } }
   ) {
     return makeJessError({
       code: 'plugin/unsupported-feature',
+      phase: 'plugin',
+      ...args,
+      meta: {
+        ...args.meta,
+        replacement: UNSUPPORTED_PLUGIN_API_REPLACEMENTS.get(args.meta.feature)
+          ?? 'Remove the plugin, or replace what it does with a supported plugin API.'
+      }
+    });
+  },
+
+  /**
+   * A plugin option is set to a value outside its documented set. Options are
+   * not a stylesheet, so the diagnostic names the option, and `filePath` is the
+   * config file when one sets the value; a value passed in code has no file.
+   */
+  pluginInvalidOption(
+    args: Common & { meta: { plugin: string; option: string; value: string; allowed: string } }
+  ) {
+    return makeJessError({
+      code: 'plugin/invalid-option',
       phase: 'plugin',
       ...args
     });
@@ -999,99 +1127,13 @@ export const WARN = {
   }
 };
 
-/* =========================
- * Chevrotain adapter
- * ========================= */
-
-function hasObjectShape(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function isLexerError(
-  error: IRecognitionException | ILexingError | JessError
-): error is ILexingError {
-  return !('token' in error);
-}
-
-function lexerTokenText(error: ILexingError): string {
-  const match = error.message.match(/unexpected character:\s*->([^<-]+)<-/i);
-  return match?.[1] ?? '/';
-}
-
-/**
- * Converts a Chevrotain parser/lexer error into a friendly diagnostic.
- * If you pass `ctx`, the error will be clickable and include a code-frame.
- *
- * @param errors Chevrotain recognition errors
- * @param lexerErrors Chevrotain lexing result errors
- * @param filePath Absolute path to the file (legacy fallback)
- * @param source File contents (legacy fallback)
- * @param ctx Optional TreeContext to auto-fill file/line/col/source
- */
-export function getErrorFromParser(
-  errors: ReadonlyArray<IRecognitionException | JessError>,
-  lexerErrors: ILexingResult['errors'] | undefined,
-  filePath: string,
-  source: string,
-  ctx?: TreeContextLike
-): JessError {
-  const error = lexerErrors?.[0] ?? errors[0];
-  if (!error) {
-    return new JessError({
-      code: 'parse/syntax-error',
-      phase: 'parse',
-      filePath,
-      source,
-      ctx
-    });
-  }
-
-  const record: Record<string, unknown> = hasObjectShape(error) ? error : {};
-  const token = 'token' in error ? error.token : undefined;
-  const line = finiteNumber(token?.startLine) ?? finiteNumber(record.line);
-  const column =
-    finiteNumber(token?.startColumn) ?? finiteNumber(record.column);
-  const message = typeof record.message === 'string' ? record.message : '';
-
-  let code: JessErrorCode = 'parse/syntax-error';
-  let meta: Record<string, unknown> = {};
-
-  if (isLexerError(error)) {
-    code = 'parse/unexpected-token';
-    meta = { token: lexerTokenText(error) };
-  } else if (/unterminated|string not closed/i.test(message)) {
-    code = 'parse/unterminated-string';
-  } else if (/expecting/i.test(message)) {
-    code = 'parse/unexpected-syntax';
-    const m = message.match(/expecting\s+([^,]+).*?but found\s+'?([^']+)'?/i);
-    meta = m
-      ? { expected: m[1], got: m[2] }
-      : { expected: 'token', got: 'other' };
-  }
-
-  return new JessError({
-    code,
-    phase: 'parse',
-    meta,
-    ctx,
-    filePath,
-    source,
-    line: line ?? 1,
-    column: column ?? 1,
-    errors,
-    lexerErrors
-  });
-}
-
 /**
  * Converts a JessError to a normalized ErrorDiagnostic or WarningDiagnostic,
  * extracting the source lines around the site for code-frame display.
+ *
+ * Both shapes are the same object; the diagnostic does not record which one it
+ * is. A caller routing it to an errors or warnings list decides by
+ * `error.severity`, never by inspecting the result's keys.
  */
 export function toDiagnostic(
   error: JessError,
@@ -1121,7 +1163,7 @@ export function toDiagnostic(
       }
     : undefined;
 
-  const base = {
+  return {
     code: error.code,
     phase: error.phase,
     message: error.message,
@@ -1136,13 +1178,4 @@ export function toDiagnostic(
     endColumn: error.endColumn ?? endLc?.column,
     lines
   };
-
-  if (error.severity === 'error') {
-    return {
-      ...base,
-      errors: error.errors,
-      lexerErrors: error.lexerErrors
-    } as ErrorDiagnostic;
-  }
-  return base as WarningDiagnostic;
 }

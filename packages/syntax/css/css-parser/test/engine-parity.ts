@@ -1,6 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect } from 'vitest';
 import { createTriviaMapFromParseman } from '@jesscss/core/ast';
 import type { TriviaMap } from '@jesscss/core';
@@ -92,6 +93,64 @@ export async function loadEnginePair(
     compiled: grammarOf(await import(compiledFile), compiledFile),
     interpreter: grammarOf(await import(interpreterFile), interpreterFile)
   };
+}
+
+export const ENGINES = ['compiled', 'interpreter'] as const;
+
+const VARIANTS: readonly Variant[] = [...AST_VARIANTS, ...CST_VARIANTS];
+const CST_HOST = pathToFileURL(fileURLToPath(new URL('../lib/cst-host.js', import.meta.url))).href;
+
+/**
+ * Loads `engine`'s four grammar variants in a fresh Node and parses `source`
+ * with each, counting every call to `Function` and `eval` from before parseman
+ * loads. The child also runs with `--disallow-code-generation-from-strings`,
+ * Node's form of a Content-Security-Policy without `'unsafe-eval'`. Counting
+ * matters as well as the flag: a path that tries `new Function`, catches the
+ * `EvalError` and falls back still parses, but a browser reports the attempt as
+ * a policy violation.
+ */
+function runtimeCodegen(libDir: string, engine: Engine, source: string): { calls: number; parsed: Record<string, unknown> } {
+  const dir = engine === 'compiled' ? 'grammar' : join('grammar', 'interpreter');
+  const grammars = VARIANTS.map(variant => [variant, pathToFileURL(join(libDir, dir, `${variant}.js`)).href]);
+  const script = `let calls = 0;
+const RealFunction = globalThis.Function;
+globalThis.Function = new Proxy(RealFunction, {
+  construct(target, args, newTarget) { calls++; return Reflect.construct(target, args, newTarget); },
+  apply(target, self, args) { calls++; return Reflect.apply(target, self, args); }
+});
+const realEval = globalThis.eval;
+globalThis.eval = code => { calls++; return realEval(code); };
+const { run } = await import('parseman');
+const { parseCst } = await import(${JSON.stringify(CST_HOST)});
+const source = ${JSON.stringify(source)};
+const parsed = {};
+for (const [variant, url] of ${JSON.stringify(grammars)}) {
+  try {
+    const module = await import(url);
+    const grammar = module[Object.keys(module).find(name => name.endsWith('Grammar'))];
+    parsed[variant] = variant.startsWith('cst') ? parseCst(grammar, source, 'Stylesheet', {}, []).ok : run(grammar.Stylesheet, source).ok;
+  } catch (error) {
+    parsed[variant] = error.name + ': ' + error.message;
+  }
+}
+process.stdout.write(JSON.stringify({ calls, parsed }));`;
+  const child = spawnSync(
+    process.execPath,
+    ['--disallow-code-generation-from-strings', '--input-type=module', '-e', script],
+    { cwd: dirname(libDir), encoding: 'utf8' }
+  );
+  expect(child.stderr, 'child stderr').toBe('');
+  return JSON.parse(child.stdout) as { calls: number; parsed: Record<string, unknown> };
+}
+
+/**
+ * Every variant of `engine` loads and parses `source` without turning a string
+ * into code, so a page whose policy omits `'unsafe-eval'` can use it.
+ */
+export function assertNoRuntimeCodegen(libDir: string, engine: Engine, source: string): void {
+  const { calls, parsed } = runtimeCodegen(libDir, engine, source);
+  expect(parsed).toEqual(Object.fromEntries(VARIANTS.map(variant => [variant, true])));
+  expect(calls, `${engine}: Function/eval calls`).toBe(0);
 }
 
 function isTriviaMap(value: Record<string, unknown>): value is Record<string, unknown> & TriviaMap {

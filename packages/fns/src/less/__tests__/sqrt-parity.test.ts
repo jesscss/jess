@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { invoke } from '../../__tests__/harness.js';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core';
 import { sqrt } from '../sqrt.js';
@@ -33,7 +34,7 @@ describe('Less sqrt canonical cutover', () => {
 
     for (const [number, unit] of vectors) {
       const expected = legacySqrtOracle(number, unit);
-      const actual = sqrt(makeDimension(number, unit));
+      const actual = invoke(sqrt, makeDimension(number, unit));
 
       expect(actual).toMatchObject({
         type: 'Dimension',
@@ -51,7 +52,7 @@ describe('Less sqrt canonical cutover', () => {
    * fails and `functionMode` decides what the stylesheet shows.
    */
   it('refuses a negative radicand rather than emitting NaN', () => {
-    expect(() => sqrt(makeDimension(-2.4, 'rem'))).toThrow(RangeError);
+    expect(() => invoke(sqrt, makeDimension(-2.4, 'rem'))).toThrow(RangeError);
   });
 
   it('registers the one canonical callable in the Less registry', () => {

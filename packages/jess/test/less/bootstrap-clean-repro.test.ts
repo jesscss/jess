@@ -61,7 +61,9 @@ describe('bootstrap clean render', () => {
     /*
      * Sanity: responsive grid + breakpoint custom properties are present. The
      * default render is nested/expanded (not compressed), so the custom property
-     * carries a space after the colon — byte-for-byte what lessc 4.x emits.
+     * carries a space after the colon. The patched bootstrap-less-port writes
+     * `--breakpoint-@{bp}: @{value};`: a custom-property value is written as
+     * authored, and only `@{…}` inserts a value (DESIGN-DECISIONS P2).
      */
     expect(css).toContain('--breakpoint-sm: 576px');
     expect(css).toMatch(/\.col-sm-/);

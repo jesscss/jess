@@ -1,0 +1,9 @@
+@plugin "color-channels";
+.literal { a: channels(#ffc107); }
+.computed { a: channels(darken(#ffc107, 7.5%)); }
+.m(@c: darken(#ffc107, 7.5%)) { a: channels(@c); }
+.mixin-default { .m(); }
+.mixed { a: channels(mix(#ffc107, #000, 50%)); }
+.hsl { a: channels(hsl(45, 100%, 50%)); }
+.named { a: channels(white); }
+.round-trip { a: channels(same(darken(#ffc107, 7.5%))); }

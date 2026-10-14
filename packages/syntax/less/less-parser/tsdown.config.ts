@@ -38,7 +38,7 @@ export default defineConfig([
     },
     shared: SHARED,
     external: COMPOSE_EXTERNAL,
-    plugins: [parseman.rolldown()]
+    plugins: [parseman.rolldown({})]
   }),
-  ...grammarVariantBuilds({ shared: SHARED, external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown()] })
+  ...grammarVariantBuilds({ shared: SHARED, external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown({})] })
 ]);

@@ -57,6 +57,7 @@ export const AUTHORED_FILES: readonly string[] = [
   'nesting-qualified-rule.css',
   'selector-attribute-case-flag.css',
   'selector-attribute-unquoted-flag.css',
+  'selector-nth-anb-spacing.css',
   'selectors-full.css',
   'value-slash-separator.css',
   'values-full.css'

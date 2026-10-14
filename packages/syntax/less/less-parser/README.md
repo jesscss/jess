@@ -1,6 +1,6 @@
 # @jesscss/less-parser
 
-The Less grammar, layered on the CSS base parser, with core-free CST entry points.
+The Less grammar, layered on the CSS base parser, with AST and CST entry points.
 
 > **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess). The broader
 > language/tooling picture is still early. Expect gaps and
@@ -32,13 +32,13 @@ core-owned parser driver or AST construction host.
 ## Install
 
 ```sh
-npm install @jesscss/less-parser
+npm install @jesscss/less-parser @jesscss/core
 ```
 
-`@jesscss/core` is an optional peer for consumers using the default AST v2
-`parse()` result. The explicit CST and grammar subpaths remain core-free.
-Those explicit entries expose Parseman types and grammar values; Parseman ships
-as a bundled dependency, so it installs with the package automatically.
+`@jesscss/core` is a peer dependency of every entry, `./cst` included: the
+compiled grammar tables carry core's AST reductions, so install it alongside
+the parser. The CST and grammar entries expose Parseman types and grammar values;
+Parseman is a regular dependency, so it installs with the package.
 
 ## Canonical AST parsing
 
@@ -50,7 +50,7 @@ const stylesheet = parse('@c: red;\n.foo { color: @c; }')
 stylesheet.type // 'Stylesheet'
 ```
 
-## Standalone usage (core-free)
+## CST parsing
 
 ```js
 import { parseLessCst } from '@jesscss/less-parser/cst'
@@ -75,7 +75,7 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 
 | Entry | Export | Purpose |
 | --- | --- | --- |
-| `@jesscss/less-parser/cst` | `parseLessCst` | Core-free parse of a Less string to a CST. |
+| `@jesscss/less-parser/cst` | `parseLessCst` | Parse a Less string to a CST. |
 | `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
@@ -129,9 +129,10 @@ both and requires identical AST and CST results.
 Browser bundlers pick it up automatically: the package's `browser` field maps
 each `lib/grammar/<variant>` file to its interpreter twin, so a browser bundle
 carries the combinator graph instead of the compiled table, while Node keeps the
-table. The grammar is composed when the module loads, and parseman's runtime
-`compose()` calls `new Function`, so a page whose Content-Security-Policy omits
-`'unsafe-eval'` cannot load it.
+table. The grammar is composed when the module loads, without generating code,
+so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
+`test/interpreter-parity.test.ts` loads every variant of both engines with code
+generation disallowed and counts every call to `Function` and `eval`.
 
 
 ## Default CST shape

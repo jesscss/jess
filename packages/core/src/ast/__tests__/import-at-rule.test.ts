@@ -567,6 +567,148 @@ describe('StyleImport', () => {
     });
   });
 
+  it('keeps an external specifier intact through the filesystem resolver', () => {
+    const files = new (class extends AbstractPlugin {
+      name = 'files';
+    })();
+
+    expect(files.resolve(['https://h.example/a.less', '//h.example/b.less', 'c.less'], '/base', ['/include'])).toEqual([
+      'https://h.example/a.less',
+      '//h.example/b.less',
+      '/base/c.less',
+      '/include/c.less'
+    ]);
+  });
+
+  /*
+   * A plugin that claims `https://h.example/…` and serves canned sources, next to
+   * a filesystem-shaped parser plugin listed FIRST. The parser's own source getter
+   * must never be asked for a URL: the plugin that located a path supplies it.
+   */
+  const remoteFixture = (documents: Record<string, ReturnType<typeof stylesheet>>) => {
+    const claimed: string[] = [];
+    const parsed: Array<[string, string]> = [];
+    const parser = new (class extends AbstractPlugin {
+      name = 'less';
+      supportedExtensions = ['.less'];
+
+      override async getSource(filePath: string): Promise<string> {
+        throw new Error(`read ${filePath} from disk`);
+      }
+
+      safeParse(filePath: string, source: string) {
+        parsed.push([filePath, source]);
+        return { document: documents[filePath], errors: [], warnings: [] };
+      }
+    })();
+    const remote = {
+      name: 'remote',
+      canResolveImport: (specifier: string) => {
+        claimed.push(specifier);
+        return specifier.startsWith('https://h.example/');
+      },
+      locate: (paths: string[]) => paths.find(candidate => candidate.startsWith('https://h.example/')) ?? null,
+      getSource: async (location: string) => `/* ${location} */`
+    };
+    return { context: new Context({}, [parser, remote]), claimed, parsed };
+  };
+
+  it('sources a claimed external import from the plugin that located it, query included', async () => {
+    const remoteUrl = 'https://h.example/dir/tokens.less?v=2';
+    const { context, parsed } = remoteFixture({
+      [remoteUrl]: stylesheet([variableDeclaration('tone', color('red'), { mode: 'declare' })])
+    });
+    const document = stylesheet([
+      authoredImport('@import', url(quoted(`"${remoteUrl}#frag"`, `${remoteUrl}#frag`, '"', false)), list([keyword('reference')], ',')),
+      rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({
+      css: '.uses-token {\n  color: red;\n}\n'
+    });
+    expect(parsed).toEqual([[remoteUrl, `/* ${remoteUrl} */`]]);
+  });
+
+  it('resolves an import inside a remote document against its URL, through the same claim gate', async () => {
+    const parent = 'https://h.example/dir/a.less';
+    const child = 'https://h.example/dir/b.less';
+    const { context, claimed, parsed } = remoteFixture({
+      [parent]: stylesheet([authoredImport('@import', quoted('"b.less"', 'b.less', '"', false))]),
+      [child]: stylesheet([variableDeclaration('tone', color('red'), { mode: 'declare' })])
+    });
+    const document = stylesheet([
+      authoredImport('@import', quoted(`"${parent}"`, parent, '"', false), list([keyword('reference')], ',')),
+      rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({
+      css: '.uses-token {\n  color: red;\n}\n'
+    });
+    expect(claimed).toEqual([parent, child]);
+    expect(parsed.map(([filePath]) => filePath)).toEqual([parent, child]);
+  });
+
+  /*
+   * A claim is told whether the import could stay a CSS `@import`: one with no
+   * CSS meaning — `(reference)`, `(less)`, `@-import`, `@compose`, `(inline)` —
+   * must load. Left unclaimed, the rest stay CSS terminals and those are errors.
+   */
+  it('tells a claiming plugin which external imports must load, and refuses those left unclaimed', async () => {
+    const target = (name: string) => quoted(`"https://h.example/${name}"`, `https://h.example/${name}`, '"', false);
+    const cases: Array<[name: string, statement: StyleImport, mustLoad: boolean]> = [
+      ['plain', authoredImport('@import', target('plain')), false],
+      ['optional', authoredImport('@import', target('optional'), list([keyword('optional')], ',')), false],
+      ['reference', authoredImport('@import', target('reference'), list([keyword('reference')], ',')), true],
+      ['less', authoredImport('@import', target('less'), list([keyword('less')], ',')), true],
+      ['source', authoredImport('@-import', target('source')), true],
+      ['compose', styleImport('@compose', target('compose'), { mode: 'compose' }), true]
+    ];
+    const claims: Array<[string, boolean]> = [];
+    const declining = () => new Context({}, [{
+      name: 'remote',
+      canResolveImport: (specifier: string, _currentDir: string, _searchPaths: string[], mustLoad: boolean) => {
+        claims.push([specifier.slice('https://h.example/'.length), mustLoad]);
+        return false;
+      }
+    }]);
+
+    for (const [name, statement, mustLoad] of cases) {
+      const rendered = Promise.resolve(serialize(stylesheet([statement]), { context: declining() }));
+      if (mustLoad) {
+        await expect(rendered, name).rejects.toMatchObject({
+          code: 'import/load-failed',
+          message: expect.stringContaining(`https://h.example/${name}, and this import cannot stay a CSS @import`)
+        });
+      } else {
+        await expect(rendered, name).resolves.toEqual({ css: `@import "https://h.example/${name}";\n` });
+      }
+    }
+    await expect(declining().readInlineImport('https://h.example/inline')).rejects.toMatchObject({ code: 'import/not-found' });
+
+    expect(new Map(claims)).toEqual(new Map([
+      ['plain', false],
+      ['optional', false],
+      ['reference', true],
+      ['less', true],
+      ['source', true],
+      ['compose', true],
+      ['inline', true]
+    ]));
+  });
+
+  it('does not mistake a Windows drive path for an external specifier', async () => {
+    const drivePath = 'C:/styles/tokens.less';
+    const imported = stylesheet([]);
+    const context = new Context({}, [{
+      name: 'drive',
+      canResolveImport: () => false,
+      locate: paths => paths.includes(drivePath) ? drivePath : null
+    }]);
+    context.sourceTrees.set(drivePath, imported);
+
+    await expect(context.loadImport(drivePath)).resolves.toMatchObject({ node: imported, resolvedPath: drivePath });
+  });
+
   it('renders a composed module with its own variable when it is not configured', async () => {
     const moduleDoc = stylesheet([
       variableDeclaration('x', color('blue'), { mode: 'declare' }),
@@ -755,6 +897,28 @@ describe('StyleImport', () => {
     )).toThrow(SyntaxError);
   });
 
+  /*
+   * An import nothing loads is a real CSS `@import`, which carries its media
+   * query verbatim (ledger A10): `@media q { @import … }` is ignored by browsers.
+   */
+  it('writes an unclaimed import inside the media wrapper as one @import carrying the query', async () => {
+    const wrapped = (target: string) => atRuleBlock(
+      '@media',
+      any('screen and (max-width: 600px)'),
+      [styleImport('@import', url(quoted(`"${target}"`, target, '"', false)), { mode: 'import' })]
+    );
+    const requested: string[] = [];
+    const rendered = await Promise.resolve(serialize(stylesheet([wrapped('https://fonts.example/css?family=A'), rule('.x', [decl('color', keyword('red'))])]), {
+      importDocument: ({ specifier }) => {
+        requested.push(specifier);
+        return undefined;
+      }
+    }));
+
+    expect(rendered).toEqual({ css: '@import url("https://fonts.example/css?family=A") screen and (max-width: 600px);\n.x {\n  color: red;\n}\n' });
+    expect(requested).toEqual(['https://fonts.example/css?family=A']);
+  });
+
   it('loads a stylesheet import at its lexical position', async () => {
     const imported = stylesheet([rule('body', [decl('width', keyword('100%'))])]);
     const document = stylesheet([
@@ -766,7 +930,12 @@ describe('StyleImport', () => {
     }))).resolves.toEqual({ css: 'body {\n  width: 100%;\n}\n' });
   });
 
-  it('keeps an async duplicate import inside nested @media ahead of a later sibling', async () => {
+  /*
+   * The `@media` block is a scope of its own, so its import places the sheet there too
+   * (import-once counts only a copy in the same scope: ledger J14 as amended,
+   * orchestrator judgment under owner delegation 2026-10-07).
+   */
+  it('keeps an async import of a sheet the root placed inside nested @media, ahead of a later sibling', async () => {
     const imported = stylesheet([rule('.imported', [decl('background', color('green'))])]);
     const importNode = () => authoredImport('@import', quoted('"imported.less"', 'imported.less', '"', false));
     const document = stylesheet([
@@ -783,7 +952,7 @@ describe('StyleImport', () => {
       importDocument: ({ specifier }) => Promise.resolve(specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined)
     })).resolves.toEqual({
       css: '.imported {\n  background: green;\n}\n'
-        + '@media (max-width: 768px) {\n  .mobile {\n    color: red;\n  }\n}\n'
+        + '@media (max-width: 768px) {\n  .imported {\n    background: green;\n  }\n  .mobile {\n    color: red;\n  }\n}\n'
         + '.container {\n  .nested {\n    color: blue;\n  }\n}\n'
     });
   });
@@ -930,10 +1099,16 @@ describe('StyleImport', () => {
       authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
       rule('.child', [decl('color', keyword('green'))])
     ]);
-    for (const option of ['less', 'optional']) {
+
+    /*
+     * `(multiple)` places each occurrence; without it an option-bearing import is
+     * import-once like a plain one (ledger X18), which the last check pins.
+     */
+    for (const options of [['less', 'multiple'], ['optional', 'multiple'], ['less'], ['optional']]) {
+      const twice = options.includes('multiple');
       const entry = stylesheet([
-        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ',')),
-        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ','))
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list(options.map(option => keyword(option)), ',')),
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list(options.map(option => keyword(option)), ','))
       ]);
       const documents = new Map([
         [entryPath, entry],
@@ -960,9 +1135,10 @@ describe('StyleImport', () => {
 
       const context = new Context({}, [new OptionImportPlugin()]);
       const loadedEntry = await context.getTree(entryPath);
-      await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
-        css: '@import "child.css";\n@import "child.css";\n'
-          + '.child {\n  color: green;\n}\n.child {\n  color: green;\n}\n'
+      await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context })), options.join(', ')).resolves.toEqual({
+        css: twice
+          ? '@import "child.css";\n@import "child.css";\n.child {\n  color: green;\n}\n.child {\n  color: green;\n}\n'
+          : '@import "child.css";\n.child {\n  color: green;\n}\n'
       });
     }
   });
@@ -974,11 +1150,11 @@ describe('StyleImport', () => {
     const entry = stylesheet([
       authoredImport(
         '@import',
-        interpolation([
-          { lit: '"target-' },
+        quoted('"target-@{segment}.less"', 'target-@{segment}.less', '"', false, interpolation([
+          { lit: 'target-' },
           { ref: variableReference('segment', 'scoped'), unquote: true },
-          { lit: '.less"' }
-        ])
+          { lit: '.less' }
+        ]))
       ),
       authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false))
     ]);
@@ -1064,11 +1240,11 @@ describe('StyleImport', () => {
       variableDeclaration('theme', keyword('night'), { mode: 'declare' }),
       styleImport(
         '@-export',
-        url(interpolation([
-          { lit: '"themes/' },
+        url(quoted('"themes/@{theme}.less"', 'themes/@{theme}.less', '"', false, interpolation([
+          { lit: 'themes/' },
           { ref: variableReference('theme', 'scoped'), unquote: true },
-          { lit: '.less"' }
-        ])),
+          { lit: '.less' }
+        ]))),
         {
           options: list([keyword('less'), keyword('reference')], ','),
           alias: keyword('tokens'),
@@ -1229,10 +1405,17 @@ describe('StyleImport', () => {
         ? { document: imported, key: 'reference.less' }
         : undefined)
     });
+
+    /*
+     * A `&` inside an attribute value is attribute text, not a parent reference, so
+     * `[title="&"]` nests as a descendant and the `all` extend reaches it (lessc 4.9.1
+     * writes the same).
+     */
     const expected = {
       css: '.visible {\n  color: green;\n}\n'
         + '.visible:hover {\n  color: darkgreen;\n}\n'
         + '.visible:is(.enabled, .focused) {\n  color: purple;\n}\n'
+        + '.visible [title="&"] {\n  color: red;\n}\n'
     };
 
     await expect(render(true)).resolves.toEqual(expected);
@@ -1714,11 +1897,11 @@ describe('StyleImport', () => {
     const document = stylesheet([
       authoredImport(
         '@import',
-        interpolation([
-          { lit: '"target-' },
+        quoted('"target-@{segment}.less"', 'target-@{segment}.less', '"', false, interpolation([
+          { lit: 'target-' },
           { ref: variableReference('segment', 'scoped'), unquote: true },
-          { lit: '.less"' }
-        ])
+          { lit: '.less' }
+        ]))
       ),
       authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false)),
       rule('.card', [decl('color', variableReference('answer', 'scoped'))])
@@ -1739,11 +1922,11 @@ describe('StyleImport', () => {
 
   it('reports a structured unresolved-target diagnostic after its one retry without loading it', async () => {
     const document = stylesheet([
-      authoredImport('@import', interpolation([
-        { lit: '"target-' },
+      authoredImport('@import', quoted('"target-@{never}.less"', 'target-@{never}.less', '"', false, interpolation([
+        { lit: 'target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
-        { lit: '.less"' }
-      ]))
+        { lit: '.less' }
+      ])))
     ]);
     let loads = 0;
 
@@ -1761,11 +1944,11 @@ describe('StyleImport', () => {
 
   it('leaves unresolved dynamic import targets for render-time handling during static prep', async () => {
     const document = stylesheet([
-      authoredImport('@import', interpolation([
-        { lit: '"target-' },
+      authoredImport('@import', quoted('"target-@{never}.less"', 'target-@{never}.less', '"', false, interpolation([
+        { lit: 'target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
-        { lit: '.less"' }
-      ]))
+        { lit: '.less' }
+      ])))
     ]);
     let loads = 0;
 

@@ -224,10 +224,15 @@ export function parseWith(grammar: JessAstGrammar, input: string, options: JessP
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('Jess AST grammar is missing its public document entry.');
   }
+
+  /*
+   * `state.source` lets the CSS base's media reducers keep a
+   * `<general-enclosed>` query group as written (ledger N14).
+   */
   const result = run(
     entry,
     input,
-    { trivia, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok) {
     throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));

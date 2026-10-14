@@ -104,7 +104,7 @@ Output:
 
 ### data-uri
 
-> Inlines a resource and falls back to `url()` if the ieCompat option is on and the resource is too large, or if you use the function in the browser. If the MIME type is not given then node uses the mime package to determine the correct mime type.
+> Inlines a resource, and falls back to `url()` if the file cannot be read, as in the browser. If the MIME type is not given, it is guessed from the file extension.
 
 Parameters:
 * `mimetype`: (Optional) A MIME type string.

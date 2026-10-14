@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emitValue, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
+import { emitValue, isValueGroupArray, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
 import type { Fn, FnCtx, UrlValue, ValueGroup } from '@jesscss/core';
 import {
   iscolor,
@@ -55,7 +55,7 @@ describe('types()', () => {
 
 function bool(fn: Fn, value: ValueGroup, context: FnCtx): boolean {
   const result = fn(value, context);
-  if (result instanceof Promise || Array.isArray(result) || result.type !== 'Bool') {
+  if (result instanceof Promise || isValueGroupArray(result) || result.type !== 'Bool') {
     throw new TypeError('Expected a synchronous Bool result.');
   }
   return result.value;

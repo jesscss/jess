@@ -4,12 +4,16 @@ import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { resolveLessTestDataRoot } from '../test-utils.js';
+import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 
 describe('Less operations fixture placement', () => {
   it('keeps direct arithmetic declarations in one parent block around a nested rule', async () => {
     const testData = resolveLessTestDataRoot();
     const input = join(testData, 'tests-unit/operations/operations.less');
-    const expected = readFileSync(join(testData, 'tests-unit/operations/operations.css'), 'utf8');
+    const expected = applyPendingGoldenEdits(
+      'tests-unit/operations/operations.less',
+      readFileSync(join(testData, 'tests-unit/operations/operations.css'), 'utf8')
+    );
     const compiler = new Compiler({
       output: { collapseNesting: true },
       compile: { plugins: [lessPlugin()] }

@@ -49,10 +49,14 @@ describe('sass:string — quote / unquote', () => {
     expect(bytes(quote, q('c'))).toBe('"c"');
     expect(bytes(quote, q('c', '\''))).toBe('"c"');
     expect(bytes(quote, q(''))).toBe('""');
+
     // A payload containing `"` switches to single quotes so nothing needs escaping.
     expect(bytes(quote, k('a"b'))).toBe('\'a"b\'');
-    // Both quote characters present: double-quote and escape, since the value
-    // serializer writes the payload verbatim.
+
+    /*
+     * Both quote characters present: double-quote and escape, since the value
+     * serializer writes the payload verbatim.
+     */
     expect(bytes(quote, k('a"b\'c'))).toBe('"a\\"b\'c"');
   });
 
@@ -72,6 +76,7 @@ describe('sass:string — to-upper-case / to-lower-case', () => {
     expect(bytes(toLowerCase, q('ABCDEFGHIJKLMNOPQRSTUVQXYZ'))).toBe('"abcdefghijklmnopqrstuvqxyz"');
     expect(bytes(toLowerCase, k('aBcDeF'))).toBe('abcdef');
     expect(bytes(toLowerCase, q('1234567890'))).toBe('"1234567890"');
+
     // sass-spec `non_ascii`: only ASCII characters have their case changed.
     expect(bytes(toUpperCase, q('äçðøþ'))).toBe('"äçðøþ"');
     expect(bytes(toLowerCase, q('ÄÇÐØÞ'))).toBe('"ÄÇÐØÞ"');
@@ -84,6 +89,7 @@ describe('sass:string — length', () => {
     expect(bytes(length, q('c'))).toBe('1');
     expect(bytes(length, q('fblthp abatement'))).toBe('16');
     expect(bytes(length, k('loofamonster'))).toBe('12');
+
     // sass-spec `double_width_character`: one code point, two UTF-16 units.
     expect(bytes(length, q('👭'))).toBe('1');
     expect(bytes(length, q('a😊b'))).toBe('3');
@@ -96,6 +102,7 @@ describe('sass:string — index', () => {
     expect(bytes(index, q('Hello'), q('ll'))).toBe('3');
     expect(bytes(index, q('cde'), q(''))).toBe('1');
     expect(bytes(index, k('Hello'), k('ll'))).toBe('3');
+
     // Code-point indexing: the emoji counts as one character.
     expect(bytes(index, q('😊abc'), q('abc'))).toBe('2');
     expect(call(index, q('cde'), q('f'))).toMatchObject({ type: 'Null' });
@@ -143,6 +150,7 @@ describe('sass:string — insert', () => {
     expect(bytes(insert, q('Hello'), q('X'), n(1))).toBe('"XHello"');
     expect(bytes(insert, q('Hello'), q('X'), n(0))).toBe('"XHello"');
     expect(bytes(insert, q('Hello'), q('X'), n(100))).toBe('"HelloX"');
+
     // Quoting comes from `$string` alone.
     expect(bytes(insert, k('Hello'), q('X'), n(3))).toBe('HeXllo');
     expect(bytes(insert, q('Hello'), k('X'), n(3))).toBe('"HeXllo"');
@@ -186,14 +194,18 @@ describe('sass:string — module and global names', () => {
       'quote', 'str-index', 'str-insert', 'str-length', 'str-slice',
       'to-lower-case', 'to-upper-case', 'unique-id', 'unquote'
     ]);
+
     // A renamed global delegates to the one body in the module file.
     expect(bytes(stringGlobals.strLength, q('fblthp abatement'))).toBe('16');
     expect(bytes(stringGlobals.strIndex, q('Hello'), q('ll'))).toBe('3');
     expect(bytes(stringGlobals.strSlice, q('Hello'), n(2), n(4))).toBe('"ell"');
     expect(bytes(stringGlobals.strSlice, q('Hello'), n(2))).toBe('"ello"');
     expect(bytes(stringGlobals.strInsert, q('Hello'), q('X'), n(3))).toBe('"HeXllo"');
-    // The `sass:list` and `sass:string` members that collide on the bare name
-    // `length` are two different functions; only a per-module table can hold both.
+
+    /*
+     * The `sass:list` and `sass:string` members that collide on the bare name
+     * `length` are two different functions; only a per-module table can hold both.
+     */
     expect(stringModule.length.name).toBe('length');
     expect(stringGlobals.strLength.name).toBe('str-length');
   });

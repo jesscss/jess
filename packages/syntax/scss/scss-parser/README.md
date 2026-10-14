@@ -34,20 +34,19 @@ Two parser representations are available:
 
 - **Canonical AST v2** — the default `parse()` entry constructs a `Stylesheet`
   directly through parser-local Parseman reductions.
-- **Explicit CST** — the `./cst` entry has **no dependency on
-  `@jesscss/core`** and parses SCSS source text into a concrete syntax tree for
-  language-service/document consumers.
+- **Explicit CST** — the `./cst` entry parses SCSS source text into a
+  concrete syntax tree for language-service/document consumers.
 
 ## Install
 
 ```sh
-npm install @jesscss/scss-parser
+npm install @jesscss/scss-parser @jesscss/core
 ```
 
-`@jesscss/core` is an **optional** peer dependency — needed for the default
-AST v2 `parse()` entry, not for `./cst` or `./grammar`.
-Those explicit entries expose Parseman types and grammar values; Parseman ships
-as a bundled dependency, so it installs with the package automatically.
+`@jesscss/core` is a peer dependency of every entry, `./cst` included: the
+compiled grammar tables carry core's AST reductions, so install it alongside
+the parser. The CST and grammar entries expose Parseman types and grammar values;
+Parseman is a regular dependency, so it installs with the package.
 
 ## Canonical AST parsing
 
@@ -59,7 +58,7 @@ const stylesheet = parse('$c: red;\n.foo { color: $c; }')
 stylesheet.type // 'Stylesheet'
 ```
 
-## Standalone usage (core-free)
+## CST parsing
 
 ```js
 import { parseScssCst } from '@jesscss/scss-parser/cst'
@@ -84,7 +83,7 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 
 | Entry | Export | Purpose |
 | --- | --- | --- |
-| `@jesscss/scss-parser/cst` | `parseScssCst` | Core-free parse of an SCSS string to a CST. |
+| `@jesscss/scss-parser/cst` | `parseScssCst` | Parse an SCSS string to a CST. |
 | `@jesscss/scss-parser/cst` | `ScssCstNode`, `ScssCstLeaf`, `ScssCstError`, `ScssCstChild`, `ScssCstParseResult`, `ScssCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/scss-parser` (`.`) | `parse` | Parse SCSS directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
@@ -138,9 +137,10 @@ both and requires identical AST and CST results.
 Browser bundlers pick it up automatically: the package's `browser` field maps
 each `lib/grammar/<variant>` file to its interpreter twin, so a browser bundle
 carries the combinator graph instead of the compiled table, while Node keeps the
-table. The grammar is composed when the module loads, and parseman's runtime
-`compose()` calls `new Function`, so a page whose Content-Security-Policy omits
-`'unsafe-eval'` cannot load it.
+table. The grammar is composed when the module loads, without generating code,
+so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
+`test/interpreter-parity.test.ts` loads every variant of both engines with code
+generation disallowed and counts every call to `Function` and `eval`.
 
 
 ## Default CST shape

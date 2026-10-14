@@ -71,3 +71,48 @@ width: $($w + 1px);
 
 Use a variable reference inside the expression. Do not write unwrapped arithmetic
 such as `$w + 1px`.
+
+## Units
+
+An expression computes with units. A unitless number added to or subtracted
+from a dimension takes the dimension's unit, multiplying or dividing by one
+keeps the unit, compatible units convert, and like units cancel:
+
+```less
+value: $(1 + 2px);         // 3px
+value: $(2px * 3);         // 6px
+value: $(1cm + 10mm);      // 2cm
+value: $(2px / 1px);       // 2
+value: $(1px * 1px / 1px); // 1px
+```
+
+Mixing units that do not convert is an error by default: `$(1px + 3em)` stops
+the compile with `eval/invalid-unit-arithmetic` at the operation that mixed
+them. So does a result whose unit CSS cannot express — an area such as
+`$(1px * 2px)` or a reciprocal such as `$(1 / 2px)`. Write `calc(1px + 3em)`
+when the browser should resolve it.
+
+The rule follows the expression wherever its value is used:
+`calc(100% - $(1px + 3em))` is the same error, because the math belongs to the
+`$( … )`, not to the `calc()` around it.
+
+A `calc()` around an expression that computes to one number keeps its wrapper:
+`calc($(1px + 2px))` is `calc(3px)`. The browser clamps a math function's result
+to what the property allows and does not clamp a bare value, so
+`padding: calc($(1px - 5px))` stays valid as `calc(-4px)`, where `padding: -4px`
+would be dropped.
+
+Comparing units that do not convert is only an error when you ask for an
+order. `$(1em = 1px)` and `$(1em == 1px)` are `false`, so a mixin guard can
+dispatch on a unit; `$(1em > 1px)` is an error, as it is in Sass.
+
+The `unitMode` compile option changes that default, exactly as it does for
+Less: `preserve` keeps the math as `calc(1px + 3em)` and warns
+(`eval/unexpressible-unit`), and `loose` computes Less 4.x's answer
+(`$(1px + 3em)` is `4px`). Without the option, `.jess` uses `strict`. A
+unitless number takes the other operand's unit under every setting. The
+default belongs to each file: a `.jess` file uses `strict` even when a `.less`
+file imports it, and a `.less` file imported by a `.jess` file keeps the Less
+default, `preserve`. A `compile.unitMode` applies to every file a config covers,
+whatever its language; `language.jess.unitMode` applies only to `.jess` files
+and wins over it (see [Configuration](/docs/getting-started/config#compile-settings)).

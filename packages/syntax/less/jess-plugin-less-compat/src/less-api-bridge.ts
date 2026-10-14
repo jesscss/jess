@@ -1,7 +1,9 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
+  coerceNamedColorKeyword,
   defineFunction,
   emitValue,
+  ERR,
   FunctionDeclined,
   groupItems,
   HEX,
@@ -12,6 +14,7 @@ import {
   makeList,
   makeQuoted,
   sniffLiteral,
+  UNSUPPORTED_LESS_TREE_NODES,
   type Fn,
   type PluginCallCtx,
   type PluginHost,
@@ -34,7 +37,53 @@ export type ContextualPluginFunction = (
 export type NativeLessPlugin = {
   readonly name?: string;
   readonly opts?: unknown;
-  install?(less: NativeLessApi, manager: undefined, functions: NativeLessFunctionRegistry): void;
+  install?(less: NativeLessApi, manager: NativeLessPluginManager, functions: NativeLessFunctionRegistry): void;
+};
+
+/**
+ * The Less 4 `PluginManager` (`less/lib/less/plugin-manager.js`). Installing
+ * plugins works as in 4.x. v5 runs no visitors, pre/post-processors or file
+ * managers, so every member that adds, lists or exposes them is refused with a
+ * `plugin/unsupported-feature` diagnostic naming the native replacement, and
+ * the plugin cannot install half-working. The refused fields are
+ * non-enumerable getters, so spreading or serializing the manager skips them.
+ */
+export interface NativeLessPluginManager {
+  readonly less: NativeLessApi;
+  readonly installedPlugins: NativeLessPlugin[];
+  readonly pluginCache: Record<string, NativeLessPlugin>;
+  addPlugins(plugins?: ArrayLike<NativeLessPlugin>): void;
+  addPlugin(plugin: NativeLessPlugin, filename?: string, functionRegistry?: NativeLessFunctionRegistry): void;
+  get(filename: string): NativeLessPlugin | undefined;
+  addVisitor(visitor: unknown): never;
+  getVisitors(): never;
+  visitor(): never;
+  readonly visitors?: never;
+  readonly iterator?: never;
+  addPreProcessor(processor: unknown, priority?: number): never;
+  getPreProcessors(): never;
+  readonly preProcessors?: never;
+  addPostProcessor(processor: unknown, priority?: number): never;
+  getPostProcessors(): never;
+  readonly postProcessors?: never;
+  addFileManager(fileManager: unknown): never;
+  getFileManagers(): never;
+  readonly fileManagers?: never;
+  readonly Loader?: never;
+}
+
+/**
+ * What a refusal calls the plugin: its `name`, else its class name, else its
+ * position in the `plugins` option. A 4.x plugin built as a constructor with an
+ * object-literal prototype (less-plugin-clean-css) has neither name, and an ESM
+ * namespace or `Object.create(null)` plugin has no `constructor` at all.
+ */
+const pluginLabel = (plugin: NativeLessPlugin, index: number): string => {
+  if (plugin.name) {
+    return plugin.name;
+  }
+  const ctor: unknown = Reflect.get(plugin, 'constructor');
+  return typeof ctor === 'function' && ctor !== Object && ctor.name !== '' ? ctor.name : `plugins[${index}]`;
 };
 
 export interface NativeLessFunctionRegistry {
@@ -49,6 +98,7 @@ export interface NativeLessApi {
     Dimension: new (value: number, unit?: string) => NativeLessDimension;
     Quoted: new (quote: string, value: string, escaped?: boolean) => NativeLessQuoted;
     Color: new (rgb: string | readonly [number, number, number], alpha?: number) => NativeLessColor;
+    Keyword: new (value: string) => NativeLessKeyword;
     Anonymous: new (value: unknown) => NativeLessAnonymous;
   };
 }
@@ -72,6 +122,12 @@ export interface NativeLessColor {
   readonly type: 'Color';
   readonly rgb: string | readonly [number, number, number];
   readonly alpha: number;
+  readonly value: string;
+  valueOf(): string;
+}
+
+export interface NativeLessKeyword {
+  readonly type: 'Keyword';
   readonly value: string;
   valueOf(): string;
 }
@@ -142,6 +198,16 @@ class LessColor implements NativeLessColor {
       ? (rgb.startsWith('#') ? rgb : `#${rgb}`)
       : `rgb(${rgb.join(', ')})`;
   }
+
+  valueOf(): string {
+    return this.value;
+  }
+}
+
+class LessKeyword implements NativeLessKeyword {
+  readonly type = 'Keyword';
+
+  constructor(readonly value: string) {}
 
   valueOf(): string {
     return this.value;
@@ -254,15 +320,25 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   if (isPluginDetached(value)) {
     return new LazyDetachedRuleset(value);
   }
-  switch (value.type) {
-    case 'Dimension': return new LessDimension(value.number, value.unit);
-    case 'Quoted': return new LessQuoted(value.quote, value.value, value.escaped);
-    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, bytes: value.bytes, valueOf: () => value.bytes };
+
+  /*
+   * A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+   * A Color's `value` is its CSS text, as the sandboxed bridge's `tree.Color` reports it.
+   */
+  const node = coerceNamedColorKeyword(value);
+  switch (node.type) {
+    case 'Dimension': return new LessDimension(node.number, node.unit);
+    case 'Quoted': return new LessQuoted(node.quote, node.value, node.escaped);
+
+    /* An escaped string (`~"…"`, `e()`) is an escaped Quoted to a 4.x plugin. */
+    case 'Any': return node.escapedQuote === '' ? new LessAnonymous(node.bytes) : new LessQuoted(node.escapedQuote, node.bytes, true);
+    case 'Keyword': return new LessKeyword(node.bytes);
+    case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, value: node.bytes, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':
-      return value.sep === ',' || value.sep === '/'
-        ? new LazyValueList(value)
-        : new LessAnonymous(value.bytes);
-    default: return new LessAnonymous(value.bytes);
+      return node.sep === ',' || node.sep === '/'
+        ? new LazyValueList(node)
+        : new LessAnonymous(node.bytes);
+    default: return new LessAnonymous(node.bytes);
   }
 }
 
@@ -292,7 +368,11 @@ export function fromNativeLessResult(result: unknown): ValueGroup {
   if (result === null || result === undefined) {
     throw new FunctionDeclined();
   }
-  if (result === true || !result) {
+
+  /* NaN is falsy, but it is a fault in the plugin, not a "null function": it
+   * takes the number path, where a non-finite number has no CSS spelling and
+   * throws — as the sandboxed path refuses it too. */
+  if (result === true || (!result && !Number.isNaN(result))) {
     return makeAny('');
   }
   if (typeof result === 'string') {
@@ -310,6 +390,11 @@ function isAnonymousResult(value: unknown): value is { readonly type: 'Anonymous
 }
 
 export function fromNativeLessValue(value: unknown): ValueGroup {
+  /*
+   * A legacy plugin's return value never passed through a parser: a plain
+   * string, or a tree node's string payload, is typed by its text (`sniffLiteral`)
+   * because that text is its only fact.
+   */
   if (isNativeValue(value)) {
     return value;
   }
@@ -335,7 +420,16 @@ export function fromNativeLessValue(value: unknown): ValueGroup {
       return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
     }
     if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
-      return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
+      /*
+       * An empty quote character is less.js's raw-text spelling (bootstrap's
+       * escape-svg returns `new tree.Quoted('', str)`): it is never re-quoted,
+       * exactly as the @plugin sandbox bridge reads it.
+       */
+      if (candidate.quote === '') {
+        return sniffLiteral(candidate.value);
+      }
+      const quote = candidate.quote === '\'' ? '\'' : '"';
+      return candidate.escaped === true ? makeAny(candidate.value, quote) : makeQuoted(candidate.value, quote, false);
     }
     if (candidate.type === 'Color') {
       if (Array.isArray(candidate.rgb)) {
@@ -391,12 +485,73 @@ export class LessApiBridge {
         Dimension: LessDimension,
         Quoted: LessQuoted,
         Color: LessColor,
+        Keyword: LessKeyword,
         Anonymous: LessAnonymous
       }
     };
-    for (const plugin of plugins) {
-      plugin.install?.(this.less, undefined, this.registry);
-    }
+    const installedPlugins: NativeLessPlugin[] = [];
+    const pluginCache: Record<string, NativeLessPlugin> = {};
+    plugins.forEach((plugin, index) => {
+      /*
+       * Each configured plugin gets its own manager and `less` view, so a
+       * refusal names the plugin that reached for the hook, even when a function
+       * it registered reads `less.visitors` long after install. A plugin it adds
+       * through `addPlugin()` shares them: the configured plugin is the one to
+       * remove.
+       */
+      const label = pluginLabel(plugin, index);
+      const refuse = (feature: string): never => {
+        throw ERR.pluginUnsupported({ meta: { plugin: label, feature } });
+      };
+      const refusedGetters = (owner: string, members: readonly string[]): PropertyDescriptorMap =>
+        Object.fromEntries(members.map(member => [member, { get: () => refuse(`${owner}.${member}`) }]));
+
+      /*
+       * 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`).
+       * A tree node beyond the value surface is refused as `tree.<Name>`, read
+       * through `less.tree` or as its lowercase 4.x factory (`less.atrule()`).
+       */
+      const tree = Object.defineProperties(
+        { ...this.less.tree },
+        Object.fromEntries(UNSUPPORTED_LESS_TREE_NODES.map(name => [name, { get: () => refuse(`tree.${name}`) }]))
+      );
+      const less = Object.defineProperties(
+        { ...this.less, tree },
+        {
+          ...refusedGetters('less', ['visitors', 'FileManager', 'environment']),
+          ...Object.fromEntries(UNSUPPORTED_LESS_TREE_NODES.map(name => [name.toLowerCase(), { get: () => refuse(`tree.${name}`) }]))
+        }
+      );
+      const manager: NativeLessPluginManager = {
+        less,
+        installedPlugins,
+        pluginCache,
+        addPlugins: (more) => {
+          for (const added of Array.from(more ?? [])) {
+            manager.addPlugin(added);
+          }
+        },
+        addPlugin: (added, filename, functionRegistry) => {
+          installedPlugins.push(added);
+          if (filename) {
+            pluginCache[filename] = added;
+          }
+          added.install?.(less, manager, functionRegistry ?? this.registry);
+        },
+        get: filename => pluginCache[filename],
+        addVisitor: () => refuse('pluginManager.addVisitor()'),
+        getVisitors: () => refuse('pluginManager.getVisitors()'),
+        visitor: () => refuse('pluginManager.visitor()'),
+        addPreProcessor: () => refuse('pluginManager.addPreProcessor()'),
+        getPreProcessors: () => refuse('pluginManager.getPreProcessors()'),
+        addPostProcessor: () => refuse('pluginManager.addPostProcessor()'),
+        getPostProcessors: () => refuse('pluginManager.getPostProcessors()'),
+        addFileManager: () => refuse('pluginManager.addFileManager()'),
+        getFileManagers: () => refuse('pluginManager.getFileManagers()')
+      };
+      Object.defineProperties(manager, refusedGetters('pluginManager', ['visitors', 'iterator', 'preProcessors', 'postProcessors', 'fileManagers', 'Loader']));
+      manager.addPlugin(plugin);
+    });
     this.globalFns = this.#fns;
   }
 

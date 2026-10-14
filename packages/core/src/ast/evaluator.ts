@@ -1,41 +1,71 @@
 /**
  * The `ValueEvaluator` seam implementation — boundary-clean, synchronous on the
  * ordinary path and awaitable only when an injected fn capability needs it,
- * built entirely on the value domain (materialize + operate + kind-dispatch + free
+ * built entirely on the value domain (operate + kind-dispatch + free
  * serializer): no legacy `../tree` node, no reparse, no `render()` walk, no async
  * record/replay.
  *
  * Named calls dispatch through a caller-populated {@link FnRegistry}; every other
  * named call is treated as an unknown function emitted verbatim.
  *
- * HARD MODULE BOUNDARY: imports only the engine value modules.
+ * HARD MODULE BOUNDARY: imports only the engine value modules, and the
+ * provenance side table only to read the authored layout of a call it writes
+ * out as-is.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value } from './value-eval.js';
+import { emitValue, isValueGroupArray, itemBoundary, joinGroup, readText, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { valueLayoutOf } from './provenance.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
-import { operate } from './value-operate.js';
+import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js';
+import { isMathFunctionName } from './math-functions.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
-import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
+import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
- *  comma list-divider tightens (`,`); space and `/` separators are significant
- *  and kept (v5 keeps `/` spaced). Arg SPELLINGS stay verbatim either way. */
-function verbatimArgs(args: ValueGroup, modes?: EvalModes): string {
+ *  comma list-divider tightens (`,`) and each arg folds by its type, as in any
+ *  other value position; space and `/` separators are significant and kept
+ *  (v5 keeps `/` spaced). A keyword argument keeps its keyword
+ *  ({@link writtenArgument}), and pretty output keeps the comments and line
+ *  breaks the parser recorded between and inside the `authored` arguments
+ *  (ledger F11). */
+function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly ArgumentKeyword[], math = false): string {
   const separator = groupSeparator(args);
-  const glue = separator === ' '
-    ? ' '
-    : (separator === ',' && modes?.compress === true ? ',' : sepGlue(separator));
-  return groupItems(args).map(emitValue).join(glue);
+  const compress = modes?.compress === true;
+  const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
+  const plain = compress ? emitCompressed : emitValue;
+  const emit = math ? (v: ValueGroup): string => isValueGroupArray(v) ? plain(v) : keptMathOf(v) ?? mathText(v, plain(v)) : plain;
+  const items = groupItems(args);
+  if (authored === undefined) {
+    return items.map(emit).join(glue);
+  }
+  const separators = compress ? undefined : valueLayoutOf(authored);
+  let out = '';
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+    const argument = authored[index];
+    const members = argument === undefined || !Array.isArray(argument.value) ? undefined : valueLayoutOf(argument.value);
+    const bytes = members !== undefined && isValueGroupArray(item)
+      ? joinGroup(item, ' ', emit, members, compress)
+      : emit(item);
+    const spelled = argument === undefined ? bytes : writtenArgument(argument, bytes, compress);
+    out += index === 0 ? spelled : itemBoundary(separators?.[index - 1], glue, compress) + spelled;
+  }
+  return out;
 }
 
-/** Preserve an optional CSS call after name resolution or invocation failed. */
-function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes): Value {
-  return makeKeyword(`${name}(${verbatimArgs(args, modes)})`);
+/**
+ * Preserve an optional CSS call, as written, after name resolution or invocation
+ * failed. A math function's argument is math, so kept math in it is written as
+ * its arithmetic, never a nested `calc()` (`max(1px + 1em, 1px)`; {@link keptMathOf}),
+ * and text in the groups written around it (`min((1px + 2px), 3px)`; {@link mathText}).
+ */
+function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments, authored?: readonly ArgumentKeyword[]): Value {
+  return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(written?.args ?? args, modes, written?.keywords ?? authored, isMathFunctionName(name))})`));
 }
 
 /**
@@ -47,12 +77,14 @@ function recoverCallFailure(
   error: unknown,
   name: string,
   args: ValueGroup,
-  modes: EvalModes
+  modes: EvalModes,
+  written?: WrittenArguments,
+  authored?: readonly ArgumentKeyword[]
 ): Value {
   if (modes.functionMode === 'error' && !(error instanceof FunctionDeclined)) {
     throw error;
   }
-  return fallbackCall(name, args, modes);
+  return fallbackCall(name, args, modes, written, authored);
 }
 
 /** Keep the ordinary synchronous path allocation-free; attach recovery only to an async result. */
@@ -60,22 +92,26 @@ function recoverAsyncCall(
   result: MaybePromise<ValueGroup>,
   name: string,
   args: ValueGroup,
-  modes: EvalModes
+  modes: EvalModes,
+  written?: WrittenArguments,
+  authored?: readonly ArgumentKeyword[]
 ): MaybePromise<ValueGroup> {
   if (!isThenable(result)) {
     return result;
   }
-  return result.catch(error => recoverCallFailure(error, name, args, modes));
+  return result.catch(error => recoverCallFailure(error, name, args, modes, written, authored));
 }
 
 /**
  * The value→string hook supplied to Tier-B fns: a Quoted's INNER text (unquoted;
  * escaped `~"…"` already
- * arrives as a `Keyword` whose bytes ARE the inner text), any other value its
- * canonical emitted bytes. Boundary-clean (operates on the value domain only).
+ * arrives as an `Any` whose bytes ARE the inner text), text without the paren
+ * groups written around it (a callable reads the text: `escape((e("a b")))` is
+ * `a%20b`; ledger J16), any other value its canonical emitted bytes.
+ * Boundary-clean (operates on the value domain only).
  */
 const stringify = (v: ValueGroup): string =>
-  !isValueGroupArray(v) && v.type === 'Quoted' ? v.value : emitValue(v);
+  !isValueGroupArray(v) && v.type === 'Quoted' ? v.value : readText(v);
 
 /**
  * Build the typed `ValueEvaluator`. No pre-pass: values are computed
@@ -84,9 +120,7 @@ const stringify = (v: ValueGroup): string =>
  * `makeSassRegistry()` in `@jesscss/fns`), so registration stays outside core.
  * Core imports no fn bodies here.
  */
-export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
-  const materialize = (bytes: string): Value => sniffLiteral(bytes);
-
+export function buildEvaluator(registry: FnRegistry, options: { readonly sassCalculations?: boolean } = {}): ValueEvaluator {
   const call = (
     name: string,
     args: ValueGroup,
@@ -94,7 +128,9 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     scope?: FnScope | null,
     io?: FnIo,
     scopedFn?: Fn,
-    ambient = true
+    ambient = true,
+    written?: WrittenArguments,
+    authored?: readonly ArgumentKeyword[]
   ): MaybePromise<ValueGroup> => {
     /*
      * [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
@@ -105,14 +141,14 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     const scoped = scopedFn ?? scope?.lookup(name);
     if (scoped) {
       try {
-        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes);
+        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, written, authored);
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes);
+        return recoverCallFailure(err, name, args, modes, written, authored);
       }
     }
     if (ambient && registry.has(name)) {
       try {
-        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes);
+        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, written, authored);
       } catch (err) {
         /*
          * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
@@ -124,12 +160,12 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
          * caught here; variable-resolution / mixin-recursion errors are thrown
          * outside `dispatch` and still propagate.)
          */
-        return recoverCallFailure(err, name, args, modes);
+        return recoverCallFailure(err, name, args, modes, written, authored);
       }
     }
 
     // Unknown function: emit verbatim.
-    return fallbackCall(name, args, modes);
+    return fallbackCall(name, args, modes, written, authored);
   };
 
   /* The callee's declared parameter names — the binding surface a keyword
@@ -161,5 +197,14 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { materialize, operate, call, paramNames, compare, compareMatch, typeCheck };
+  return {
+    operate,
+    call,
+    paramNames,
+    has: name => registry.has(name),
+    compare,
+    compareMatch,
+    typeCheck,
+    sassCalculations: options.sassCalculations === true
+  };
 }

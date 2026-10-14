@@ -56,7 +56,7 @@ function leafText(node: CstNode | CstNode['children'][number]): string {
 }
 
 describe('@jesscss/scss-parser/cst', () => {
-  it('parses SCSS through the public core-free CST entry', () => {
+  it('parses SCSS through the public CST entry', () => {
     const result = parseScssCst('$color: red; .x { color: $color; }');
 
     expect(result.errors).toHaveLength(0);
@@ -100,7 +100,7 @@ describe('@jesscss/scss-parser/cst', () => {
   });
 
   it('uses one semantic group label for nested generic pseudo arguments', () => {
-    const result = parseScssCst('.a:lang(([wide])) { color: red; }');
+    const result = parseScssCst('.a:state(([wide])) { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -128,7 +128,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('ForwardRule')).toBe(1);
     expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
     expect(grammarTypes.get('Interpolation')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('TypedNthPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyConditionalBlock')).toBe(1);
@@ -254,11 +254,14 @@ const SCSS_DOC_CORPUS: string[] = [
   '@media (min-width: $w) { .a { display: block; } }',
   '// line comment\n.a { color: red; } /* block */',
   '.a { .b { .c { color: red } } }',
-  '@if true { .a { color: red; } } @else { .b { color: blue; } }'
+  '@if true { .a { color: red; } } @else { .b { color: blue; } }',
+  '.a { color: red; }\n\n  ',
+  '.a { color: red; }\n/* c */\n',
+  '.a { color: red; }\n// c\n'
 ];
 
 describe('@jesscss/scss-parser/cst — parseScssDoc structural parity', () => {
-  it('parseScssDoc().tree (absolutized) equals parseScssCst().tree across a corpus', () => {
+  it('parseScssDoc() matches parseScssCst() (tree and leftover input) across a corpus', () => {
     for (const input of SCSS_DOC_CORPUS) {
       const oneShot = parseScssCst(input);
       const doc = parseScssDoc(input);
@@ -269,6 +272,9 @@ describe('@jesscss/scss-parser/cst — parseScssDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(oneShot.unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseScssCst(`${input}\n`).unconsumedFrom);
     }
   });
 });

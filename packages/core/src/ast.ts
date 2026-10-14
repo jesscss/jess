@@ -18,6 +18,7 @@ export {
   createTriviaMapFromRootIndex,
   generalEnclosedSourceOf,
   isGeneralEnclosedTemplate,
+  isGluedConditionKeyword,
   hasAmbientFunctions,
   sourceEndOf,
   sourceStartOf,
@@ -26,6 +27,7 @@ export {
   valueBoundaryTriviaOf,
   valueLayoutOf,
   withBodySpan,
+  withGluedKeywordSpan,
   withSourceSpan,
   withTriviaMap,
   withValueBoundaryTrivia,
@@ -63,12 +65,14 @@ export {
   queryConditionChain,
   queryFeatureBlock,
   generalEnclosedGroup,
+  authoredSource,
   queryFeatureContents,
   enclosedCall,
   styleFeature,
   supportsDeclaration,
   generalEnclosedArgument,
   queryValueRatio,
+  attributeSelectorFrom,
   complexSegments,
   cssRelativeCombinator,
   customValueFromChildren,
@@ -93,6 +97,7 @@ export {
   isImportTarget,
   isInterpolation,
   isKeyword,
+  isList,
   isMathOperator,
   isMixinCall,
   isMixinDefinition,
@@ -117,7 +122,16 @@ export {
   isValueSlotOf,
   isValueSlotValue,
   isWhile,
+  anPlusBFrom,
+  commaListWithComments,
+  directionKeyword,
+  isAnPlusB,
+  isNthArgument,
   keyframeSelectorList,
+  languageRangeList,
+  nthArgument,
+  requireStructuredPseudo,
+  structuredPseudoFrom,
   unknownBodyText,
   optionalValue,
   parenGroupBlock,
@@ -139,10 +153,14 @@ export {
   spaceRun,
   STRUCTURED_PSEUDOS,
   tokenText,
+  triviaTextAt,
   valueChildren,
   valueSlot,
   valueSlotChildren,
-  withAuthoredSeparators
+  withAuthoredSeparators,
+  withTriviaGaps
 } from './ast/css-grammar-helpers.js';
-export type { GuardNode } from './ast/guard.js';
+export type { GuardNode } from './ast/guard-node.js';
+export { inParens } from './ast/guard-node.js';
 export type { CallArg } from './ast/mixin-dispatch.js';
+export type { BareVariableRejection, NthArgument } from './ast/css-grammar-helpers.js';

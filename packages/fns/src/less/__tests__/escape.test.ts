@@ -1,20 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { makeKeyword, makeList, makeQuoted, type FnCtx } from '@jesscss/core';
+import { ctx } from '../../__tests__/harness.js';
+import { makeKeyword, makeList, makeQuoted } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { escape } from '../escape.js';
 
-const context: FnCtx = {
-  modes: { unitMode: 'preserve' },
-  stringify: value => value.type === 'Quoted' ? value.value : value.bytes
-};
-
 describe('escape()', () => {
   it('URL-encodes a typed value using the canonical value callable', () => {
-    const result = escape(makeList([makeQuoted('a b=x:y#z;()')], ','), context);
+    const result = escape(makeList([makeQuoted('a b=x:y#z;()', '"', false)], ','), ctx);
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       type: 'Any',
-      bytes: 'a%20b%3Dx%3Ay%23z%3B%28%29'
+      bytes: 'a%20b%3Dx%3Ay%23z%3B%28%29',
+      escapedQuote: '',
+      groups: 0
     });
   });
 

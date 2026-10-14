@@ -15,8 +15,8 @@
  * name the mode they assert rather than assuming one answer.
  */
 import { describe, expect, it } from 'vitest';
-import { operate, validateFinalUnits } from '../value-operate.js';
-import { makeBlock, makeDimension, makeList } from '../value-factory.js';
+import { groupAsWritten, operate, preservedUnitClashes, validateFinalUnits } from '../value-operate.js';
+import { makeBlock, makeDimension, makeKeyword, makeList } from '../value-factory.js';
 import { UnitArithmeticError } from '../value-eval.js';
 import type { EvalModes, Value } from '../value-eval.js';
 
@@ -215,5 +215,77 @@ describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7;
 
   it('strict still rejects incompatible additive units immediately', () => {
     expect(() => operate('+', dim(1, 'px'), dim(1, 'em'), STRICT)).toThrow(/Incompatible units/);
+  });
+
+  it('a strict diagnostic names the whole unit multiset, not its display unit', () => {
+    const product = operate('*', dim(1, 'px'), dim(1, 'em'), STRICT);
+    expect(() => validateFinalUnits(product, STRICT)).toThrow('Bad unit: em*px');
+    const ratio = operate('/', dim(1, 'px'), dim(3, 'em'), STRICT);
+    expect(() => validateFinalUnits(ratio, STRICT)).toThrow('Bad unit: px/em');
+
+    const squared = operate('*', dim(1, 'px'), dim(2, 'px'), STRICT);
+    const mixed = operate('*', dim(3, 'em'), dim(3, 'px'), STRICT);
+    expect(() => operate('+', squared, mixed, STRICT)).toThrow('Bad units: \'px*px\' and \'em*px\'.');
+  });
+});
+
+/*
+ * Owner 2026-10-06 (ledger V27): a unitless number added to or subtracted from a
+ * dimension with a unit adopts that unit in every mode, `strict` included, as
+ * Less 4.x `strictUnits` and dart-sass do. `strict` means only that two
+ * different real units are an error.
+ */
+describe('a unitless number ± a dimension with a unit', () => {
+  it('adopts the unit in every mode, and is no clash', () => {
+    for (const m of [LOOSE, PRESERVE, STRICT]) {
+      expect(bytesOf('+', dim(4), dim(3, 'px'), m)).toBe('7px');
+      expect(bytesOf('-', dim(3, 'px'), dim(1), m)).toBe('2px');
+      expect(bytesOf('-', dim(1.5), dim(1, 'rem'), m)).toBe('0.5rem');
+      expect(bytesOf('+', dim(10), dim(5, '%'), m)).toBe('15%');
+      expect(preservedUnitClashes.has(operate('+', dim(4), dim(3, 'px'), m))).toBe(false);
+    }
+  });
+
+  it('two different real units stay a clash: preserve keeps calc(), strict raises, loose folds', () => {
+    expect(bytesOf('+', dim(1, 'px'), dim(1, 'em'))).toBe('calc(1px + 1em)');
+    expect(() => operate('+', dim(1, 'px'), dim(1, 'em'), STRICT)).toThrow(UnitArithmeticError);
+    expect(bytesOf('+', dim(1, 'px'), dim(1, 'em'), LOOSE)).toBe('2px');
+  });
+
+  it('a compound operand has no CSS unit to adopt and keeps the V18 calc() spelling', () => {
+    const ratio = operate('/', dim(2, 'em'), dim(1, 'px'), PRESERVE);
+    expect(bytesOf('+', ratio, dim(20))).toBe('calc(2em / 1px + 20)');
+  });
+
+  it('an authored paren group keeps its parens around math kept as written, and only there', () => {
+    const grouped = groupAsWritten(operate('+', makeKeyword('foo'), dim(1), PRESERVE));
+    expect(grouped.bytes).toBe('(foo + 1)');
+    expect(operate('*', grouped, dim(2), PRESERVE).bytes).toBe('(foo + 1) * 2');
+
+    // A computed value is one value the parens no longer delimit.
+    const computed = dim(7, 'px');
+    expect(groupAsWritten(computed)).toBe(computed);
+  });
+
+  it('kept math chains as one calc() by precedence, never nesting one', () => {
+    const kept = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE);
+    const scaled = operate('*', kept, dim(2), PRESERVE);
+    expect(scaled.bytes).toBe('calc((1px + 3em) * 2)');
+    expect(operate('-', dim(10, 'px'), kept, PRESERVE).bytes).toBe('calc(10px - (1px + 3em))');
+    expect(operate('+', kept, dim(1, 'px'), PRESERVE).bytes).toBe('calc(1px + 3em + 1px)');
+    expect(operate('-', kept, dim(2, 'px'), PRESERVE).bytes).toBe('calc(1px + 3em - 2px)');
+
+    // The chain stays one clash, so the boundary still warns about it.
+    expect(preservedUnitClashes.has(scaled)).toBe(true);
+  });
+
+  it('an authored paren group becomes the calc() parens, and a second one stays inside', () => {
+    const kept = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE);
+    const grouped = groupAsWritten(kept);
+    expect(grouped.bytes).toBe('calc(1px + 3em)');
+    expect(groupAsWritten(grouped).bytes).toBe('calc((1px + 3em))');
+
+    // The group keeps the author's precedence: `((1px + 3em) + 1px)`.
+    expect(operate('+', grouped, dim(1, 'px'), PRESERVE).bytes).toBe('calc((1px + 3em) + 1px)');
   });
 });

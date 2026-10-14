@@ -91,9 +91,9 @@ identity. Focused core tests pin repeated renders, caller-owned prepared
 imports, option-only import differences, script module reuse, and duplicate
 static imports in one stylesheet: prepare plus repeated render locates/parses
 the shared imported document once. These are local session and
-prepared-static-import fixes; they do not change the remote URL import
-deferral, which remains excluded from the alpha lane pending an explicit
-network/security model.
+prepared-static-import fixes; they do not touch remote URL imports, which are
+handled by the opt-in `@jesscss/plugin-remote-import` (ledger **A13**, owner
+2026-10-04).
 
 Release tooling now has a narrow `pnpm run test:release` gate. The alpha
 publish-set scanner recurses through `packages/**`, so nested syntax packages
@@ -117,8 +117,9 @@ lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29 — **superseded
 lane at **109 / 110**, and this file also carries a conflicting `80 / 80`
 unit figure below. Do not quote any lane total from this document; take it
 from HANDOFF). The remote URL import
-fixture is deliberately excluded from the alpha lane until resolver network
-access has an explicit allowlist/security model.
+fixture gates in the alpha lane through the opt-in
+`@jesscss/plugin-remote-import` (ledger **A13**, owner 2026-10-04), with its
+transport answering from the local test-data checkout.
 
 Graduated in the current pass:
 
@@ -488,7 +489,8 @@ The alpha blocks only on these advertised correctness and release-safety gates:
 
 Full upstream parity, unadvertised Less 4.x CLI parity, browser compilation,
 source-map artifacts, and performance parity remain follow-up work unless they
-are expressly advertised for a later alpha.
+are expressly advertised for a later alpha. (Source maps, compress and remote
+imports are v5 scope per the 2026-10-04 owner rulings; see the release plan.)
 
 - `[~]` **Performance — baseline required for alpha; numeric gate for GA remains
   an owner decision.** The alpha has no measured timing threshold and must not
@@ -697,7 +699,10 @@ Known gaps to add or close:
   plugin graphs, and pre-eval/tree visitor behavior are Phase E items in
   [`less-v5-release-plan.md`](../process/less-v5-release-plan.md). The active
   alpha lane still covers ordinary Less `@plugin` function registration and
-  diagnostics through the Jess plugin route.
+  diagnostics through the Jess plugin route. Their scope is decided by ledger
+  **A12** (owner 2026-09-14, reaffirmed 2026-10-04): the host-hook ABI is a
+  deliberate non-goal, answered by an opt-in compat-plugin diagnostic that names
+  the native replacement, not by a later port.
 - `[ ]` Add focused core tests when a Less fixture exposes a parser/runtime
   invariant gap, then use the package-level fixture as the compatibility proof.
 

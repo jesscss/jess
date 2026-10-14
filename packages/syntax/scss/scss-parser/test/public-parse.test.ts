@@ -172,7 +172,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [{ type: 'Ruleset', selector: { selectors: [compoundComplex(
         simpleSelector('.card'),
-        simpleSelector('[data-state="open"i]')
+        simpleSelector('[data-state="open" i]')
       )] } }]
     });
   });
@@ -333,8 +333,8 @@ describe('@jesscss/scss-parser public parse API', () => {
       expect(parse(source)).toMatchObject({
         type: 'Stylesheet',
         rules: [{ type: 'AtRuleStatement', name: '@import', prelude: source.includes('url(')
-          ? { type: 'Url', value: { type: 'Interpolation' } }
-          : { type: 'Interpolation' } }]
+          ? { type: 'Url', value: { type: 'Quoted', interp: { type: 'Interpolation' } } }
+          : { type: 'Quoted', interp: { type: 'Interpolation' } } }]
       });
     }
   });
@@ -418,7 +418,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         prelude: {
           type: 'Sequence',
           parts: [
-            { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false },
+            { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false, interp: null },
             {
               type: 'Sequence',
               parts: [
@@ -447,8 +447,7 @@ describe('@jesscss/scss-parser public parse API', () => {
      * neighbouring sass-spec `error/wrong_order/*` cases before this change.
      */
     for (const unsupported of [
-      '@import "theme.css" layer(#{$name}) screen;',
-      '@import "a.css", "b.css";'
+      '@import "theme.css" layer(#{$name}) screen;'
     ]) {
       expect(() => parse(unsupported), unsupported).toThrow(SyntaxError);
     }
@@ -466,7 +465,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         prelude: {
           type: 'Sequence',
           parts: [
-            { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false },
+            { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false, interp: null },
             {
               type: 'FunctionCall', name: 'supports', modern: false,
               args: [{ name: undefined, spread: false, value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' }, inMathFunction: false, mathOutsideParens: true } } }]
@@ -545,11 +544,13 @@ describe('@jesscss/scss-parser public parse API', () => {
     for (const source of [
       '@import "theme.css" #{$media};',
       '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};',
-      '@import "a.css", "b.css" screen;'
+      '@import "theme.css" screen, #{$media};'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+
+    /* A comma-separated `@import` is one import per argument; the tail belongs to the last. */
+    expect(serialize(parse('@import "a.css", "b.css" screen;')).css).toBe('@import "a.css";\n@import "b.css" screen;\n');
   });
 
   it('classifies static SCSS module directives through the public Stylesheet route', () => {
@@ -837,7 +838,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [
-          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false }, merge: null, important: false },
+          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false, interp: null }, merge: null, important: false },
           { type: 'Declaration', name: 'inherits', value: { type: 'Keyword', src: 'false' }, merge: null, important: false },
           { type: 'Declaration', name: 'initial-value', value: { type: 'Keyword', src: 'red' }, merge: null, important: false }
         ]
@@ -874,7 +875,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@keyframes',
-        prelude: { type: 'Quoted', src: '"fade\\20name"', value: 'fade\\20name', quote: '"', escaped: false }
+        prelude: { type: 'Quoted', src: '"fade\\20name"', value: 'fade\\20name', quote: '"', escaped: false, interp: null }
       }]
     });
     expect(serialize(root)).toEqual({ css: '@keyframes "fade\\20name" {\n  to {\n    opacity: 1;\n  }\n}\n' });

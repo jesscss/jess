@@ -98,7 +98,7 @@ a blanket optimization exemption or a new active architecture queue.
     "coverage": "owner-plus-named-carry-forward-support",
     "necessity": {
       "status": "proven",
-      "factSource": "A dynamic extend placement (an extend inside a $for/each loop body or a mixin-definition body, in the main document or an import) is only resolved by the ONE render walk that expands it; its extender selector is recorded from the already-composed shape at that moment (recordDynamicExtendFacts, guarded by e.dynamicExtend).",
+      "factSource": "A dynamic extend placement (an extend inside a $for/each loop body or a mixin-definition body, in the main document or an import) is only resolved by the ONE render walk that expands it; its extender selector is recorded from the already-composed shape at that moment. Both writers (flattenWithHeader, writeNestedRule) call recordOpenRule -> recordDynamicExtendFacts only when `recorded` (`dyn !== null && …`, dyn = e.dynamicExtend) holds, and expandCall records a called definition's body-form extends (recordCalledExtends) only when e.dynamicExtend !== null.",
       "rediscovery": "Without walk-time recording the renderer would need a second, re-evaluating pass over loops/mixins/imports to discover those placements — the cold twin the owner ruled illegal and unsound (ledger X12); it is deleted.",
       "carryForward": "Each dynamic extender's fact is recorded inline as its rule emits, keyed to the emitted header slot; after the single walk foldDynamicExtends re-runs computeExtends over static + dynamic facts and rewrites only the target header slots whose complete selector changed.",
       "whyNotCarried": "A target can be emitted before the extender that augments it, so the complete selector is unknown at emit time; the deferred rewrite over addressable render-buffer slots resolves the forward reference without a second evaluation.",
@@ -119,10 +119,10 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/serialize.ts",
-      "caller": "function foldDynamicExtends(",
-      "guard": "e.dynamicExtend",
-      "call": "recordDynamicExtendFacts",
-      "profile": "recordAstExtendProfile"
+      "caller": "function flattenWithHeader(",
+      "guard": "recorded",
+      "call": "recordOpenRule(",
+      "profile": ["recordAstExtendProfile", "e.dynamicExtend", "recordDynamicExtendFacts", "function foldDynamicExtends("]
     },
     "evidence": {"command":["pnpm","--filter","@jesscss/core","test","--","--run","src/ast/__tests__/extend-preflight-contract.test.ts"]}
   },
@@ -198,7 +198,7 @@ a blanket optimization exemption or a new active architecture queue.
       "file": "packages/core/src/ast/value-operate.ts",
       "caller": "export function operate(",
       "guard": "modes.unitMode === 'preserve'",
-      "call": "makeKeyword(`calc("
+      "call": "keptMathKeyword("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-units.test.ts", "packages/jess/test/less/calc-explicit-compose.test.ts"]}
   },
@@ -223,6 +223,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/value-guards.ts",
       "packages/core/src/ast/value-list.ts",
       "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/conflict.ts",
       "packages/core/src/ast/extend/emit.ts",
       "packages/core/src/ast/extend/ir.ts",
       "packages/core/src/ast/extend/match.ts",
@@ -263,8 +264,8 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/context.ts"],
     "semanticBoundary": {
       "trigger": "a stylesheet import has a URL or protocol-relative identifier before Context path dispatch",
-      "scope": "Context alone owns the external-import admission decision. An unclaimed identifier returns to serializer as a CSS terminal without resolver, locator, source getter, parser, cache, or network action. A claiming plugin then uses the existing Context resolve, locate, source, and parser route exactly once; core does not classify a resolver result or implement a second loader.",
-      "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import"],
+      "scope": "Context alone owns the external-import admission decision. Every path written inside a remote document is first rebased onto that document's URL in _getPath, the one resolver behind @import, (inline), data-uri()/image-size(), @use and @plugin, so no route from a fetched document reaches a local file and @import/(inline) meet the same admission. An unclaimed identifier returns to serializer as a CSS terminal without resolver, locator, source getter, parser, cache, or network action, unless the import must load (it has no CSS meaning), which Context refuses at the same point. A claiming plugin then uses the existing Context resolve, locate, source, and parser route exactly once: a URL is not expanded and keeps its query, and only the plugin that located it reads it; byte readers and module loaders refuse a located URL. Core does not classify a resolver result or implement a second loader.",
+      "cases": ["claimed-external-import", "unclaimed-external-terminal", "unclaimed-must-load-refusal", "ordinary-local-import", "import-inside-remote-document"],
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "sourceCheck": {
@@ -272,7 +273,7 @@ a blanket optimization exemption or a new active architecture queue.
       "caller": "async loadImport(",
       "guard": "EXTERNAL_IMPORT_SPECIFIER.test(importPath)",
       "call": "plugin.canResolveImport?.(",
-      "profile": ["const EXTERNAL_IMPORT_SPECIFIER", "plugin.canResolveImport?.("]
+      "profile": ["EXTERNAL_IMPORT_SPECIFIER } from './import-options.js'", "plugin.canResolveImport?.("]
     },
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   },

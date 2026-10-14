@@ -1,34 +1,12 @@
 import { defineConfig } from 'vitest/config';
 import { resolve, dirname } from 'path';
-import { readdirSync, readFileSync, existsSync } from 'fs';
+import { existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import parseman from 'parseman/plugin';
+import { workspaceSrcAliases } from './scripts/workspace-src-aliases.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
-
-/** Mirror of vitest.config.ts's workspaceSrcAliases. */
-function workspaceSrcAliases() {
-  const alias: { find: RegExp; replacement: string }[] = [];
-  for (const d of readdirSync(resolve(root, 'packages'))) {
-    const pj = resolve(root, 'packages', d, 'package.json');
-    const src = resolve(root, 'packages', d, 'src/index.ts');
-    if (!existsSync(pj) || !existsSync(src)) {
-      continue;
-    }
-    let name: string | undefined;
-    try {
-      name = JSON.parse(readFileSync(pj, 'utf8')).name;
-    } catch {
-      continue;
-    }
-    if (!name) {
-      continue;
-    }
-    alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
-  }
-  return alias;
-}
 
 function lessTestDataRoot(): string | undefined {
   const env = process.env.LESS_TEST_DATA_ROOT;
@@ -45,12 +23,13 @@ function lessTestDataRoot(): string | undefined {
 
 /**
  * RUNG 8 SWEEP — whole core extend suite through real renders with the differential sink installed.
- * Single fork so one accumulator (sweep-sink.ts module Map) spans every extend test file.
+ * One fork with one module registry (`maxWorkers: 1`, `isolate: false` — vitest 4's replacement for
+ * `poolOptions.forks.singleFork`) so one accumulator (sweep-sink.ts module Map) spans every extend test file.
  */
 export default defineConfig({
-  plugins: [parseman.vite()],
+  plugins: [parseman.vite({})],
   resolve: {
-    alias: workspaceSrcAliases(),
+    alias: workspaceSrcAliases(root),
     mainFields: ['module', 'import', 'exports', 'main']
   },
   test: {
@@ -63,7 +42,8 @@ export default defineConfig({
     },
     testTimeout: 60_000,
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
+    isolate: false,
     setupFiles: [
       resolve(root, './test/setup.ts'),
       resolve(root, './packages/core/src/tree/extend/__tests__/sweep-sink.ts')

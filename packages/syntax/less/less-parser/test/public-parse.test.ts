@@ -10,12 +10,14 @@ import {
 } from '../../../../core/src/ast/provenance.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import {
+  LessAmbiguousNotError,
   LessBareVariableInterpolationError,
   LessImportPostludeError,
   LessParseError,
   LessSourceImportSyntaxError,
   LessUnsupportedVariableNameError,
-  parse
+  parse,
+  safeParse
 } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
 
@@ -444,7 +446,7 @@ describe('public Less parse()', () => {
 
   it('keeps direct parse error messages free of raw Parseman expected tokens', () => {
     const source =
-      '.theme(){foo:bar;} .val { @alias: .theme; foo: @alias[foo]; }';
+      '.theme(){foo:bar;} .val { @alias: ~; foo: @alias[foo]; }';
     let thrown: unknown;
 
     try {
@@ -459,15 +461,11 @@ describe('public Less parse()', () => {
     }
 
     /*
-     * The failure lands on the `:` in `@alias:`. Under parseman 0.48.1's honest
-     * narrowing the deepest frame is a rule/selector position — a block,
-     * combinator, class/id selector, or mixin call could continue — not a value
-     * position; it only reported "Expected a Less value" while the 0.46.0
-     * OP_CHOICE union bug widened the expected set into the value-atom
-     * signature. The direct-parse message summary has no selector-context
-     * branch, so it falls to the bare-generic form. That is clean (the point of
-     * this test); a nicer selector summary lives on the core-classifier path and
-     * is a consistency follow-up, not a regression.
+     * The failure lands on the `:` in `@alias:`, and its expected set mixes the
+     * selector-context and value-atom facts. The direct-parse message summary
+     * names neither, so it falls to the bare-generic form. That is clean (the
+     * point of this test). `@alias: .theme;` used to be the input here; it now
+     * reports its own uncalled-mixin-reference diagnostic (jess#236).
      */
     expect(thrown.message).toBe(
       'Unexpected Less syntax. Expected valid Less syntax here.'
@@ -658,7 +656,7 @@ describe('public Less parse()', () => {
       rules: [
         {
           type: 'Plugin',
-          target: { type: 'Interpolation' },
+          target: { type: 'Quoted', src: '"./plugin-@{name}.js"', interp: { type: 'Interpolation' } },
           options: { type: 'Interpolation' }
         }
       ]
@@ -671,6 +669,14 @@ describe('public Less parse()', () => {
     expect(directive.options?.parts).toEqual(
       expect.arrayContaining([{ lit: 'mode=' }, { lit: ', nested=(a b)' }])
     );
+  });
+
+  it('spans a Plugin directive, so a failed load is reported at its statement', () => {
+    const source = '.a { color: red; }\n@plugin "./p";\n';
+    const directive = parse(source).rules[1];
+    expect(directive?.type).toBe('Plugin');
+    const span = directive === undefined ? undefined : sourceSpanOf(directive);
+    expect(span === undefined ? undefined : source.slice(span.start, span.end)).toBe('@plugin "./p";');
   });
 
   it('keeps explicit empty Less declaration values as canonical empty facts', () => {
@@ -1269,15 +1275,21 @@ describe('public Less parse()', () => {
         {
           type: 'StyleImport',
           target: {
-            type: 'Interpolation',
-            parts: [
-              { lit: '"theme-' },
-              {
-                ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
-                unquote: true
-              },
-              { lit: '.css"' }
-            ]
+            type: 'Quoted',
+            src: '"theme-@{name}.css"',
+            quote: '"',
+            escaped: false,
+            interp: {
+              type: 'Interpolation',
+              parts: [
+                { lit: 'theme-' },
+                {
+                  ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
+                  unquote: true
+                },
+                { lit: '.css' }
+              ]
+            }
           }
         }
       ]
@@ -1309,6 +1321,54 @@ describe('public Less parse()', () => {
       .toThrow(LessImportPostludeError);
     expect(() => parse('@import (less) "theme.less" layer;'))
       .toThrow(LessImportPostludeError);
+  });
+
+  /*
+   * A string that interpolates is one `Quoted` whose `src` is what the author
+   * wrote, so a source replay built from it reads the author's text — never
+   * the literal text with every hole emptied (`~"@{x}"` as `~""`).
+   */
+  it('replays an interpolating string by its authored spelling', () => {
+    const reference = parse('.a { b: .m(~"@{x}")[@r]; }').rules[0];
+    expect(reference).toMatchObject({ rules: [{ value: { type: 'Reference', raw: '.m(~"@{x}")[@r]' } }] });
+
+    // The Condition's replay (written verbatim when no evaluator is injected).
+    expect(JSON.stringify(parse('.a { c: if((~"@{x}" = 0.5), y, n); }'))).toContain('"src":"~\\"@{x}\\" = 0.5"');
+    expect(parse('.a { b: ~"a@{x}b"; c: "a@{x}b"; }').rules[0]).toMatchObject({
+      rules: [
+        { value: { type: 'Quoted', src: '~"a@{x}b"', value: 'a@{x}b', escaped: true } },
+        { value: { type: 'Quoted', src: '"a@{x}b"', value: 'a@{x}b', escaped: false } }
+      ]
+    });
+  });
+
+  it('keeps a static-only string slot static: @use, @charset', () => {
+    expect(() => parse('@use "a-@{x}.js";')).toThrow();
+    expect(() => parse('@x: 8; @charset "UTF-@{x}";')).toThrow(/@charset/u);
+  });
+
+  /*
+   * Every slot that takes a string takes the one `Quoted`, interpolating or
+   * not: a `url()` body, an import target, a `calc()` operand and a keyframes
+   * name each receive it and write its spliced content.
+   */
+  it('reads an interpolating string the same in every slot that takes one', () => {
+    const source = '@a: x; @n: kf; @w: 1px;\n'
+      + '.u { b: url(~"@{a}/y.png"); c: url(\'@{a}/z.png\'); d: calc(~"@{w}" + 1px); }\n'
+      + '@keyframes ~\'@{n}-x\' { from { a: b; } }\n'
+      + '@import (css) url("@{a}.css");\n';
+    const document = parse(source);
+    expect(document.rules[3]).toMatchObject({
+      rules: [
+        { value: { type: 'Url', value: { type: 'Quoted', escaped: true, interp: { type: 'Interpolation' } } } },
+        { value: { type: 'Url', value: { type: 'Quoted', escaped: false, quote: '\'', interp: { type: 'Interpolation' } } } },
+        { value: { type: 'FunctionCall', name: 'calc' } }
+      ]
+    });
+    expect(document.rules[4]).toMatchObject({ type: 'AtRuleBlock', prelude: { type: 'Quoted', escaped: true, interp: { type: 'Interpolation' } } });
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '@import url("x.css");\n.u {\n  b: url(x/y.png);\n  c: url(\'x/z.png\');\n  d: calc(1px + 1px);\n}\n@keyframes kf-x {\n  from {\n    a: b;\n  }\n}\n'
+    );
   });
 
   it('retains CSS import boundary comments outside the public AST shape', () => {
@@ -1375,8 +1435,10 @@ describe('public Less parse()', () => {
       between: null,
       after: null
     });
+
+    /* The boundary is the whole authored run after the `:`, its padding included. */
     expect(valueBoundaryTriviaOf(tail.value)).toMatchObject({
-      between: { start, end: start + '/* inside */ '.length }
+      between: { start: start - 1, end: start + '/* inside */ '.length }
     });
   });
 
@@ -1450,12 +1512,17 @@ describe('public Less parse()', () => {
       ]
     });
 
-    for (const invalid of [
-      '@import "theme.css" @{media} screen;',
-      '@import "theme.css" screen @{media};',
-      '@import "theme.css" @{media}@{print};'
+    /*
+     * The tail is the CSS base's media query list, whose terms may stand side by
+     * side with no connective, so an interpolation beside a type is one list, as
+     * in css and lessc 4.9.1.
+     */
+    for (const [source, css] of [
+      ['@media: print; @import "theme.css" @{media} screen;', '@import "theme.css" print screen;\n'],
+      ['@media: print; @import "theme.css" screen @{media};', '@import "theme.css" screen print;\n'],
+      ['@media: print; @print: tv; @import "theme.css" @{media}@{print};', '@import "theme.css" print tv;\n']
     ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+      expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css, source).toBe(css);
     }
   });
 
@@ -1587,17 +1654,23 @@ describe('public Less parse()', () => {
       '@import url(theme.css);\n.asset {\n  image: url(icons/path.svg);\n  template: url(theme/icon.svg);\n}\n@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
-    for (const invalid of [
-      '@media @{query} screen { .media { color: red; } }',
-      '@container @{query} { .media { color: red; } }',
-      '@custom @{query} { .media { color: red; } }',
-      '@custom foo@{query} { .media { color: red; } }',
-      '@custom foo @{query} { .media { color: red; } }',
-      '@custom foo@{query};',
-      '@custom foo @{query};'
-    ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
-    }
+    /*
+     * `@container @a` is the bare-variable diagnostic, and its advice is
+     * `@{a}`, so the interpolated container name parses as a static one does
+     * (jess#319).
+     */
+    expect(
+      serialize(parse('@query: card; @container @{query} { .c { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@container card {\n  .c {\n    color: red;\n  }\n}\n');
+
+    expect(
+      serialize(parse('@query: tv; @media @{query} screen { .media { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@media tv screen {\n  .media {\n    color: red;\n  }\n}\n');
+
+    /* An unknown at-rule's prelude interpolates `@{…}` (ledger P2). */
+    expect(
+      serialize(parse('@query: card; @custom @{query} { .m { color: red; } } @custom foo@{query}; @custom foo @{query};'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@custom card {\n  .m {\n    color: red;\n  }\n}\n@custom foocard;\n@custom foo card;\n');
   });
 
   it('keeps invalid interpolation-shaped quoted import text literal', () => {
@@ -2090,8 +2163,7 @@ describe('public Less parse()', () => {
       '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     );
     for (const invalid of [
-      '. @{name}-item { color: red; }',
-      '.@{name}:extend(.target) { color: red; }'
+      '. @{name}-item { color: red; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -2157,7 +2229,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      ':is(.a, .b):is(.c, .d),\n:is(.a, .b):is(.c, .d) {\n  color: red;\n}\n'
+      ':is(.a, .b):is(.c, .d),\n.a, .b.c, .d {\n  color: red;\n}\n'
     );
   });
 
@@ -2387,7 +2459,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - 20px / 2);\n}\n'
+      '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - (20px / 2));\n}\n'
     );
   });
 
@@ -2638,7 +2710,7 @@ describe('public Less parse()', () => {
             selectors: [
               compoundComplex(
                 simpleSelector('.card'),
-                simpleSelector(':lang(en-US)'),
+                { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
                 simpleSelector('::part(icon)'),
                 simpleSelector(':state(foo[bar])')
               )
@@ -2750,6 +2822,27 @@ describe('public Less parse()', () => {
     );
   });
 
+  /*
+   * `@media` reads the CSS base's media query list: valid CSS the Less copy
+   * rejected or rewrote parses and writes as written. A glued `and(` is a
+   * function token (css-syntax-3 §4.3.4), a `<general-enclosed>` term, so it
+   * keeps its spelling instead of becoming `and (color)`.
+   */
+  it.each([
+    ['@media (foo: bar baz) { a { b: c; } }', '@media (foo: bar baz) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media ((a) and (b c)) { a { b: c; } }', '@media ((a) and (b c)) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media screen and(color) { a { b: c; } }', '@media screen and(color) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media (min-width:1px)and(max-width:2px) { a { b: c; } }', '@media (min-width: 1px) and(max-width:2px) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media screen print { a { b: c; } }', '@media screen print {\n  a {\n    b: c;\n  }\n}\n']
+  ])('writes the CSS media query %j as written', (source, css) => {
+    expect(serialize(parse(source)).css).toBe(css);
+  });
+
+  /* Media Queries excludes `layer` from `<media-type>` (it is `@import`'s keyword); the CSS base rejects it too. */
+  it('rejects `layer` as a media type', () => {
+    expect(() => parse('@media layer { a { b: c; } }')).toThrow();
+  });
+
   it('returns and renders structural media/container query preludes from the public route', () => {
     const document = parse(
       '@limit: 40rem; @media only screen and (min-width: @limit), print { .card { color: red; } } @container sidebar (400px < width < @limit) { .card { color: blue; } }'
@@ -2805,12 +2898,14 @@ describe('public Less parse()', () => {
     ).toBe(
       '@media only screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container sidebar (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
-    for (const source of [
-      '@container selector(.card) { .card { color: red; } }',
-      '@media screen (width > 10px) { .card { color: red; } }'
-    ]) {
-      expect(() => parse(source), source).toThrow(SyntaxError);
-    }
+
+    /* A function the container grammar does not define is `<general-enclosed>`, written as authored, as in css (ledger N17). */
+    expect(serialize(parse('@container selector(.card) { .card { color: red; } }')).css)
+      .toBe('@container selector(.card) {\n  .card {\n    color: red;\n  }\n}\n');
+
+    /* A media type and a group side by side are one media query list, as in css and lessc 4.9.1. */
+    expect(serialize(parse('@media screen (width > 10px) { .card { color: red; } }')).css)
+      .toBe('@media screen (width > 10px) {\n  .card {\n    color: red;\n  }\n}\n');
   });
 
   it('accepts unknown CSS block at-rules as opaque blocks on the public Less route', () => {
@@ -3006,7 +3101,7 @@ describe('public Less parse()', () => {
                   text: null,
                   crossable: false
                 },
-                simpleSelector(':nth-child(2n + 1)')
+                { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', src: '2n+1' } }
               )
             ]
           }
@@ -3016,7 +3111,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.card:not(.disabled, .muted, .a > .b):nth-child(2n + 1) {\n  color: red;\n}\n'
+      '.card:not(.disabled, .muted, .a > .b):nth-child(2n+1) {\n  color: red;\n}\n'
     );
   });
 
@@ -3271,6 +3366,18 @@ describe('public Less parse()', () => {
       '.host { .join(@first; @second, @third,); .join(@first - 1); }'
     ].join('\n'));
 
+    /* Both lists hold a `;`, so each comma run is ONE comma-list value, stored as
+     * the `~( … )` node (ledger P46): in the definition it is a pattern. */
+    const commaList = (...names: string[]) => ({
+      type: 'Block',
+      delimiter: 'paren',
+      escaped: true,
+      value: {
+        type: 'List',
+        sep: ',',
+        value: names.map(name => ({ type: 'Lookup', kind: 'var', name, raw: `@${name}` }))
+      }
+    });
     expect(document).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'first' },
@@ -3279,7 +3386,7 @@ describe('public Less parse()', () => {
         {
           type: 'MixinDefinition',
           name: '.join',
-          params: [{ name: 'first' }, { name: 'second' }, { name: 'third' }]
+          params: [{ pattern: commaList('first', 'second') }, { name: 'third' }]
         },
         {
           type: 'Ruleset',
@@ -3289,16 +3396,7 @@ describe('public Less parse()', () => {
               name: '.join',
               args: [
                 { value: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' } },
-                {
-                  value: {
-                    type: 'List',
-                    sep: ',',
-                    value: [
-                      { type: 'Lookup', kind: 'var', name: 'second', raw: '@second' },
-                      { type: 'Lookup', kind: 'var', name: 'third', raw: '@third' }
-                    ]
-                  }
-                }
+                { value: commaList('second', 'third') }
               ]
             },
             {
@@ -3340,9 +3438,63 @@ describe('public Less parse()', () => {
         }
       ]
     });
-    expect(() => parse('.x when (@{dynamic}) { color: red; }')).toThrow(
-      SyntaxError
-    );
+
+    /*
+     * A guard operand is a value-position math run (`MathValue`, as in an
+     * `if()` condition), so an interpolated value is an operand like any other
+     * value atom rather than a syntax error.
+     */
+    expect(parse('.x when (@{dynamic}) { color: red; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', guard: { g: 'match', op: '==', left: { type: 'Interpolation' } } }]
+    });
+  });
+
+  /*
+   * Ledger A8: `.name(args)` on a module namespace is a statement call. A
+   * statement call is the variable's lookup/call chain ending in a call, so it
+   * reads the same steps as the value-position chain, in any order.
+   */
+  it('reads a statement call through a namespace member', () => {
+    expect(parse('.a { @theme.ns.elevate(3px); }')).toMatchObject({
+      rules: [{
+        rules: [{
+          type: 'Reference',
+          base: { type: 'Lookup', kind: 'var', name: 'theme' },
+          steps: [
+            { type: 'LookupStep', kind: 'member', name: 'ns' },
+            { type: 'LookupStep', kind: 'member', name: 'elevate' },
+            { type: 'Call', args: [{ value: { type: 'Dimension', src: '3px' } }] }
+          ],
+          raw: '@theme.ns.elevate(3px)'
+        }]
+      }]
+    });
+    expect(parse('.a { @map[@key].next(1px)(); }')).toMatchObject({
+      rules: [{
+        rules: [{
+          type: 'Reference',
+          base: { type: 'Lookup', kind: 'var', name: 'map' },
+          steps: [
+            { type: 'LookupStep', kind: 'var' },
+            { type: 'LookupStep', kind: 'member', name: 'next' },
+            { type: 'Call', args: [{ value: { type: 'Dimension', src: '1px' } }] },
+            { type: 'Call', args: [] }
+          ],
+          raw: '@map[@key].next(1px)()'
+        }]
+      }]
+    });
+    expect(parse('.a { @theme .elevate(3px); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'AtRuleStatement', name: '@theme' }] }]
+    });
+    expect(parse('.a { @foo.bar { c: d } }')).toMatchObject({
+      rules: [{ rules: [{ type: 'AtRuleBlock', name: '@foo' }] }]
+    });
+  });
+
+  /* lessc 4.x rejects whitespace inside the variable name of a statement call too. */
+  it('rejects a statement call with whitespace after its `@`', () => {
+    expect(() => parse('@detached: { a: b; }\n.a { @ detached(); }')).toThrow();
   });
 
   it('returns bare function-call statements through the public Stylesheet route', () => {
@@ -3498,7 +3650,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'error',
-                args: [{ value: { type: 'Interpolation' } }]
+                args: [{ value: { type: 'Quoted', interp: { type: 'Interpolation' } } }]
               }
             }
           ]
@@ -3556,6 +3708,65 @@ describe('final declaration without a trailing semicolon', () => {
     expect(() => parse('.a { @o: 3 color: red; }')).toThrow(LessParseError);
     expect(() => parse('.a { @o: 3 b { x: 1 } }')).toThrow(LessParseError);
     expect(() => parse('.a { color: red b { x: 1 } }')).toThrow(LessParseError);
+  });
+});
+
+/*
+ * `not` negates a group, which a comparison may follow, or a bare operand,
+ * which none may: `not 1 > 2` does not say what `not` negates. It is still
+ * well-formed, so it is an error diagnostic at the comparison and the parse
+ * carries on (P45, owner 2026-10-09), reading it as `not (1 > 2)`, the reading
+ * `not (1) > 2` already gets.
+ */
+describe('a `not` before a bare compared operand', () => {
+  const CASES = [
+    ['a { b: boolean(not 1 > 2); }', '>'],
+    ['a { b: if(not 1 > 2, y, n); }', '>'],
+    ['@x: (not 1px > 2px);', '>'],
+    ['@x: (1 and not 2 >= 1);', '>=']
+  ] as const;
+
+  it.each(CASES)('%s is reported at its comparison and the document survives', (source, operator) => {
+    const at = source.indexOf(operator);
+    const result = safeParse('entry.less', source);
+    expect(result.document?.rules).toHaveLength(1);
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([['parse/ambiguous-not', 1, at + 1]]);
+    expect(() => parse(source)).toThrow(LessAmbiguousNotError);
+  });
+
+  it('accepts a group or an uncompared operand after it', () => {
+    for (const source of ['@x: (not (1px) > 2px);', '@x: (not 1);', 'a { b: boolean(not (1) > 2); c: boolean(not false); }']) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+  });
+});
+
+/*
+ * Owner 2026-10-13: "B: CSS any case, Less lowercase". A Less condition — a
+ * mixin guard, an `if()` or `boolean()` condition — reads lowercase `and`,
+ * `or` and `not`; another case is an error diagnostic at the keyword, and the
+ * parse carries on reading it as the keyword (P45).
+ */
+describe('a Less condition keyword is lowercase', () => {
+  it.each([
+    ['.m(@a) when (@a) AND (@b) { x: y }', 'AND'],
+    ['.m(@a) when NOT (@a) { x: y }', 'NOT'],
+    ['.m(@a) when (@a) Or (@b) { x: y }', 'Or'],
+    ['.m(@a) when (@a), (@b) AND (@c) { x: y }', 'AND'],
+    ['a { b: if((1 = 1) OR (2 = 2), 1, 2); }', 'OR'],
+    ['a { b: if(NOT (1 = 1), 1, 2); }', 'NOT'],
+    ['a { b: boolean((1 = 1) And (2 = 2)); }', 'And']
+  ])('%s reports %s', (source, keyword) => {
+    const result = safeParse('entry.less', source);
+    expect(result.document?.rules).toHaveLength(1);
+    expect(result.errors.map(error => [error.code, error.column])).toEqual([['parse/condition-keyword-case', source.indexOf(keyword) + 1]]);
+    expect(result.errors[0]?.message).toBe(`Write \`${keyword.toLowerCase()}\` in lowercase: a Less condition reads lowercase \`and\`, \`or\` and \`not\`.`);
+  });
+
+  it('accepts lowercase keywords without a diagnostic', () => {
+    for (const source of ['.m(@a) when (@a) and (@b), not (@c) or (@d) { x: y }', 'a { b: if(not (1 = 1) and (2 = 2) or (3 = 3), 1, 2); }']) {
+      expect(safeParse('entry.less', source).errors, source).toEqual([]);
+    }
   });
 });
 

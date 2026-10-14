@@ -3,7 +3,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { parse } from '@jesscss/less-parser';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
-import { triviaMapOf } from '../../../../core/src/ast/provenance.js';
+import { sourceSpanOf, triviaMapOf } from '../../../../core/src/ast/provenance.js';
 
 /**
  * A custom property is permissive at the CSS base, and valid CSS must parse in
@@ -88,8 +88,26 @@ describe('Less custom properties', () => {
     });
   });
 
-  it('parses raw Less variables inside custom-property values structurally', () => {
-    const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; }');
+  it.each([
+    ['a variable', 'var(@v)', { type: 'Lookup', kind: 'var', name: 'v' }],
+    ['an indirect variable', 'var(@@v)', { type: 'Lookup', kind: 'var', raw: '@@v' }],
+    ['an escape', 'var(~"--x")', { type: 'Quoted', escaped: true, value: '--x' }],
+    ['a call', 'var(e("--x"))', { type: 'FunctionCall', name: 'e' }],
+    ['an identifier', 'var(foo)', { type: 'Keyword', src: 'foo' }],
+    ['a string', 'var("--x")', { type: 'Quoted', escaped: false, value: '--x' }]
+  ])('keeps %s written as the var() name for evaluation to resolve', (_label, call, name) => {
+    expect(parse(`a { b: ${call}; }`)).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'var', args: [{ value: name }] } }] }]
+    });
+  });
+
+  /*
+   * Ledger P2 (owner, reaffirmed 2026-10-09): a custom-property value is CSS
+   * text, so a bare `@name` — and `@@name`, `@m[k]`, `@d()`, anything after an
+   * `@` — is literal bytes, never a variable read. Only `@{…}` interpolates.
+   */
+  it('keeps a bare Less variable inside a custom-property value as literal text', () => {
+    const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; --calc: calc(@value + 1px); --forms: @@value @value[k] @value(); --missing: @nope; }');
 
     expect(document).toMatchObject({
       rules: [
@@ -97,39 +115,28 @@ describe('Less custom properties', () => {
         {
           type: 'Ruleset',
           rules: [
-            {
-              type: 'Declaration',
-              name: '--color',
-              value: {
-                type: 'Interpolation',
-                parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }]
-              }
-            },
-            {
-              type: 'Declaration',
-              name: '--fallback',
-              value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: 'solid ' },
-                  { ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }
-                ]
-              }
-            }
+            { type: 'Declaration', name: '--color', value: { type: 'Any', src: '@value' } },
+            { type: 'Declaration', name: '--fallback', value: { type: 'Any', src: 'solid @value' } },
+            { type: 'Declaration', name: '--calc', value: { type: 'Any', src: 'calc(@value + 1px)' } },
+            { type: 'Declaration', name: '--forms', value: { type: 'Any', src: '@@value @value[k] @value()' } },
+            { type: 'Declaration', name: '--missing', value: { type: 'Any', src: '@nope' } }
           ]
         }
       ]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       ':root {\n'
-      + '  --color: #fff;\n'
-      + '  --fallback: solid #fff;\n'
+      + '  --color: @value;\n'
+      + '  --fallback: solid @value;\n'
+      + '  --calc: calc(@value + 1px);\n'
+      + '  --forms: @@value @value[k] @value();\n'
+      + '  --missing: @nope;\n'
       + '}\n'
     );
   });
 
-  it('keeps strict custom-property interpolation unquoted while raw variables preserve quotes', () => {
-    const document = parse('@value: "red"; :root { --raw: @value; --strict: @{value}; }');
+  it('interpolates only a strict @{…} in a custom-property value, unquoted', () => {
+    const document = parse('@value: "red"; :root { --raw: @value; --strict: @{value}; --mixed: @{value} @value; }');
 
     expect(document).toMatchObject({
       rules: [
@@ -137,23 +144,25 @@ describe('Less custom properties', () => {
         {
           type: 'Ruleset',
           rules: [
-            { type: 'Declaration', name: '--raw', value: { type: 'Interpolation', parts: [{ unquote: false }] } },
-            { type: 'Declaration', name: '--strict', value: { type: 'Interpolation', parts: [{ unquote: true }] } }
+            { type: 'Declaration', name: '--raw', value: { type: 'Any', src: '@value' } },
+            { type: 'Declaration', name: '--strict', value: { type: 'Interpolation', parts: [{ unquote: true }] } },
+            { type: 'Declaration', name: '--mixed', value: { type: 'Interpolation', parts: [{ unquote: true }, { lit: ' @value' }] } }
           ]
         }
       ]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       ':root {\n'
-      + '  --raw: "red";\n'
+      + '  --raw: @value;\n'
       + '  --strict: red;\n'
+      + '  --mixed: red @value;\n'
       + '}\n'
     );
   });
 
   it('keeps known at-rule-looking custom-property bytes opaque', () => {
     expect(parse('.card { --x:red @media all {x:y} }')).toMatchObject({
-      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y} ' } }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y}' } }] }]
     });
   });
 
@@ -188,5 +197,110 @@ describe('Less custom properties', () => {
       + '  --f: "@{literal}"/* q */blue;\n'
       + '}\n'
     );
+  });
+
+  /*
+   * A block comment before the first value part opens the value: the value's
+   * span starts at it, so it is written in place. The comment-free value keeps
+   * no edge whitespace. Only whitespace after the `:` stays outside: CSS has no
+   * `//` comment, so a `//` there opens the value too.
+   */
+  it('starts a custom-property value at a comment that opens it', () => {
+    const source = '@v: red; .x { --a: /* c */ @{v}; --b: /* d */ blue; --c: // l\n  green; }';
+    const document = parse(source);
+    const rule = document.rules[1];
+    if (rule?.type !== 'Ruleset') {
+      throw new TypeError('expected a ruleset');
+    }
+    const spans = rule.rules.map((declaration) => {
+      const span = declaration.type === 'Declaration' && !Array.isArray(declaration.value) ? sourceSpanOf(declaration.value) : undefined;
+      return span === undefined ? undefined : source.slice(span.start, span.end);
+    });
+
+    expect(spans).toEqual(['/* c */ @{v}', '/* d */ blue', '// l\n  green']);
+    expect(rule.rules[1]).toMatchObject({ type: 'Declaration', value: { type: 'Any', src: 'blue' } });
+    expect(serialize(document).css).toBe('.x {\n  --a: /* c */ red;\n  --b: /* d */ blue;\n  --c: // l\n    green;\n}\n');
+  });
+
+  /*
+   * A custom-property value is CSS `<declaration-value>` in every dialect, so a
+   * `//` after the `:` is value text, not a Less line comment that hides the `;`
+   * after it (Less 4.x read `--x: //b; c: d;` as `--x: c: d;`).
+   */
+  it('reads a `//` that opens a custom-property value as value text', () => {
+    expect(parse('a { --x: //b; c: d; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--x', value: { type: 'Any', src: '//b' } },
+        { type: 'Declaration', name: 'c' }
+      ] }]
+    });
+    expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
+  });
+
+  /*
+   * A `var()` fallback and a style query's value are the same custom-property
+   * value (ledger P2), so the gap before them is the same whitespace-only gap:
+   * a `//` that opens one is value text, not a comment that drops it or hides
+   * the `)` after it.
+   */
+  /*
+   * The other side of that reading: a `//` "comment" that opens a value is now
+   * value text, so a quote in it opens a string that the line ends unclosed (a
+   * bad string, css-syntax-3 §4.3.5). lessc 4.9.1 read it as a comment; dart-sass
+   * rejects it.
+   */
+  it('rejects an unclosed quote in a `//` that opens a custom-property value', () => {
+    expect(() => parse('a {\n  --x: // don\'t\n    red;\n}')).toThrow();
+  });
+
+  it.each([
+    ['a { b: var(--y, //c\n); }', 'a {\n  b: var(--y, //c);\n}\n'],
+    ['a { b: var(--y, //c); }', 'a {\n  b: var(--y, //c);\n}\n'],
+    ['a { b: var(--y, //c d); }', 'a {\n  b: var(--y, //c d);\n}\n']
+  ])('reads a `//` that opens a var() fallback as value text: %j', (source, expected) => {
+    expect(serialize(parse(source)).css).toBe(expected);
+  });
+  it.each([
+    '@container style(--x: //c\n) { a { b: c; } }',
+    '@container style(--x: //c) { a { b: c; } }'
+  ])('reads a `//` that opens a style query value as value text: %j', (source) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ prelude: { type: 'FunctionCall', name: 'style', args: [
+        { value: { type: 'Operation', operator: ':', right: { type: 'Any', src: expect.stringMatching(/^\/\/c\s*$/) } } }
+      ] } }]
+    });
+  });
+
+  /*
+   * A Less `//` inside a custom-property value is value text: a custom property
+   * is verbatim CSS, and CSS has no `//` comments (orchestrator judgment under
+   * owner delegation 2026-10-06, ledger F13). lessc 4.9.1 drops it.
+   */
+  it('keeps a // inside a custom-property value as value text', () => {
+    expect(serialize(parse('.x { --a: red // c\n; --b: red // c\n  blue; --c: a//b; }')).css)
+      .toBe('.x {\n  --a: red // c;\n  --b: red // c\n    blue;\n  --c: a//b;\n}\n');
+  });
+
+  /* U+00A0 is an ident code point (css-syntax-3 §4.2), not whitespace, so a value keeps it at either edge. */
+  it('keeps a non-CSS space at a custom-property value edge', () => {
+    expect(serialize(parse('.x { --a:\u00a0red; --b: (\u00a0red\u00a0); --c: var(--y, red\u00a0); }')).css)
+      .toBe('.x {\n  --a: \u00a0red;\n  --b: (\u00a0red\u00a0);\n  --c: var(--y, red\u00a0);\n}\n');
+  });
+
+  /*
+   * Ledger F12: a comment at either edge of a custom-property value is kept in
+   * the value, in place, and a comment-only value is not the empty value; only
+   * the edge whitespace is dropped (css-syntax-3 §5.5.6). Asserted in all four
+   * dialects.
+   */
+  it.each([
+    ['a{--var:/* 1 */}', 'a {\n  --var: /* 1 */;\n}\n'],
+    ['a { --x: /* lead */ red; }', 'a {\n  --x: /* lead */ red;\n}\n'],
+    ['a { --x: red /* trail */ ; }', 'a {\n  --x: red /* trail */;\n}\n'],
+    ['a { --x:/*g*/red/*h*/; }', 'a {\n  --x: /*g*/red/*h*/;\n}\n'],
+    ['a { --x:   red   ; }', 'a {\n  --x: red;\n}\n'],
+    ['a { --x: /* c */ red /* d */ !important; }', 'a {\n  --x: /* c */ red /* d */ !important;\n}\n']
+  ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
+    expect(serialize(parse(source)).css).toBe(expected);
   });
 });

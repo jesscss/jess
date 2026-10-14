@@ -3,23 +3,28 @@ import {
   buildEvaluator,
   createFnRegistry,
   parserDiagnostic,
-  type Context,
   type ISafeParseResult,
   type ModuleConfigRejection,
   type ModuleConfigRequest,
   type Plugin,
-  type SafeParseOptions
+  type SafeParseOptions,
+  type ValueEvaluator
 } from '@jesscss/core';
 import { parse, type JessParseOptions } from '@jesscss/jess-parser';
 
+/**
+ * The selector policies for one document: the settings the host scopes to it
+ * when it supplies them (so another language's settings never reach a `.jess`
+ * file), else the compile's.
+ */
 function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions {
-  const compilerOptions = options?.compilerOptions;
+  const settings = options?.sourceOptions ?? options?.compilerOptions;
   return {
-    ...(compilerOptions?.allowApplySelectors !== undefined
-      ? { allowApplySelectors: compilerOptions.allowApplySelectors }
+    ...(settings?.allowApplySelectors !== undefined
+      ? { allowApplySelectors: settings.allowApplySelectors }
       : {}),
-    ...(compilerOptions?.allowExtendSelectors !== undefined
-      ? { allowExtendSelectors: compilerOptions.allowExtendSelectors }
+    ...(settings?.allowExtendSelectors !== undefined
+      ? { allowExtendSelectors: settings.allowExtendSelectors }
       : {})
   };
 }
@@ -35,7 +40,7 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  *
  * What the evaluator is needed for is everything ELSE it carries: `operate`
  * (the `$( … )` expression form — ledger P13(d) — is the only arithmetic
- * spelling in `.jess`), `materialize`, `compare` and `typeCheck`. Without a
+ * spelling in `.jess`), `compare` and `typeCheck`. Without a
  * registered evaluator `serialize.ts` takes its `!e.ev` fallback branches and
  * re-emits operand bytes unevaluated (`packages/core/src/ast/serialize.ts:3191`),
  * so `$(1 + 2)` rendered as `1 + 2`.
@@ -48,21 +53,28 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  */
 const jessValueEvaluator = buildEvaluator(createFnRegistry());
 
+/**
+ * `.jess` arithmetic is strict about units by default: `$(1px + 3em)` and
+ * `$(1px * 2px)` are errors, while `$(1 + 2px)` is `3px` (owner 2026-10-06).
+ * It is a default, not a rule — an explicit compile `unitMode` wins over it,
+ * as it does over every dialect's default (`resolveOptions`).
+ */
+const JESS_DIALECT_DEFAULTS = Object.freeze({ unitMode: 'strict' as const });
+
 /** Parses `.jess` source into the canonical AST-v2 `Stylesheet` document. */
 export class JessPlugin extends AbstractPlugin {
   name = 'jess';
   supportedExtensions = ['.jess'];
-
-  setContext(context: Context): void {
-    if (context.documentContext?.plugin !== this) {
-      return;
-    }
-    context.registerValueEvaluator(jessValueEvaluator);
-  }
+  readonly valueEvaluator: ValueEvaluator = jessValueEvaluator;
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     try {
-      return { document: parse(source, parseOptionsFromSafeParse(parseOptions)), errors: [], warnings: [] };
+      return {
+        document: parse(source, parseOptionsFromSafeParse(parseOptions)),
+        errors: [],
+        warnings: [],
+        dialectDefaults: JESS_DIALECT_DEFAULTS
+      };
     } catch (error) {
       return {
         errors: [parserDiagnostic({ dialect: 'Jess', error, filePath, source })],

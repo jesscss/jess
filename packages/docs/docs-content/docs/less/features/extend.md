@@ -308,21 +308,26 @@ _You can think of this mode of operation as essentially doing a non-destructive 
 
 
 ### Selector Interpolation with Extend
-> Extend is **not** able to match selectors with variables. If selector contains variable, extend will ignore it.
-
-However, extend can be attached to interpolated selector.
-
-Selector with variable will not be matched:
+A rule whose selector is interpolated is matched once its selector is resolved:
 
 ```less
 @variable: .bucket;
 @{variable} { // interpolated selector
   color: blue;
 }
-.some-class:extend(.bucket) {} // does nothing, no match is found
+.some-class:extend(.bucket) {}
 ```
 
-and extend with variable in target selector matches nothing:
+compiles to:
+
+```less
+.bucket,
+.some-class {
+  color: blue;
+}
+```
+
+An extend with a variable in its target selector matches nothing:
 
 ```less
 .bucket {
@@ -332,7 +337,7 @@ and extend with variable in target selector matches nothing:
 @variable: .bucket;
 ```
 
-Both of the above examples compile into:
+compiles to:
 
 ```less
 .bucket {
@@ -452,6 +457,58 @@ compiles into:
   .topLevel { /* ruleset inside nested media was extended */
     color: blue;
   }
+}
+```
+
+A `@media` written inside a ruleset holds that ruleset's declarations, so an extend written inside that `@media` reaches them:
+
+```less
+.b {
+  @media print {
+    y: 1;
+    .q:extend(.b) {}
+  }
+}
+```
+
+compiles into:
+
+```css
+@media print {
+  .b,
+  .b .q {
+    y: 1;
+  }
+}
+```
+
+### Exact extend of a ruleset with nested rulesets
+
+An exact extend (no `all`) reaches only the target's own declarations, never its nested rulesets. When the target has nested rulesets, the extending selector gets a ruleset of its own with the target's declarations; in nested output (the default) it is written at the top level when its selector is a top-level one:
+
+```less
+.a {
+  .b {
+    y: 1;
+    .c { x: 1; }
+  }
+}
+.q:extend(.a .b) {}
+```
+
+compiles into:
+
+```css
+.a {
+  .b {
+    y: 1;
+    .c {
+      x: 1;
+    }
+  }
+}
+.q {
+  y: 1;
 }
 ```
 

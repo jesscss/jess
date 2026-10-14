@@ -13,7 +13,7 @@
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
-  "description": "Jess LESS parser",
+  "description": "Less parser for Jess, layered on the Jess CSS parser",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "browser": {
@@ -102,6 +102,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
@@ -118,24 +119,15 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "known-css-properties": "~0.37.0",
     "parseman": "^0.53.0"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
-  "peerDependenciesMeta": {
-    "@jesscss/core": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
-    "less": "^4.6.3",
-    "postcss-less": "~6.0.0",
-    "tsx": "~4.21.0"
+    "postcss-less": "~6.0.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

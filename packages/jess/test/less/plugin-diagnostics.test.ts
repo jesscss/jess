@@ -15,12 +15,14 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
-import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { lessCompatPlugin, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
+import { resolveLessTestDataRoot } from '../test-utils.js';
 
 const tempDirs: string[] = [];
 
@@ -140,6 +142,20 @@ describe('@plugin function failures are never silent', () => {
     expect(result.errors.length + result.warnings.length).toBeGreaterThan(0);
   }, 30000);
 
+  /* Ledger P23: a preserved call is written as authored, keyword included. */
+  it('writes a failed call out as written, keyword arguments included', async () => {
+    const { dir, entry } = makeProject(
+      THROWING_PLUGIN,
+      '@plugin "./p";\n.a {\n  width: boom(@x: 1, 2);\n}\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, {
+      suppressWarnings: true,
+      breakOnError: false
+    });
+
+    expect(result.css).toContain('width: boom(@x: 1, 2);');
+  }, 30000);
+
   it('points the diagnostic at the real call site, not a placeholder position', async () => {
     const { dir, entry } = makeProject(
       THROWING_PLUGIN,
@@ -160,6 +176,38 @@ describe('@plugin function failures are never silent', () => {
     /* Not the 1:1 placeholder a position-less diagnostic would carry. */
     expect(warning!.column).toBeGreaterThan(1);
   }, 30000);
+
+  /*
+   * NaN has no CSS spelling, and the sandbox's JSON transport turns it into
+   * `null` — which reads as a declined call. It is a fault in the plugin, named
+   * at the call.
+   */
+  it.each(['NaN', 'Infinity'])('reports a %s result at the call site instead of dropping or re-emitting the call', async (result) => {
+    const { dir, entry } = makeProject(
+      `functions.add('bad', function () { return ${result}; });`,
+      '@plugin "./p";\n\n.a {\n  width: bad(1);\n  height: 1px;\n}\n'
+    );
+    const outcome = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
+
+    expect(outcome.css).toBe('');
+    const failure = outcome.errors.find(e => e.code === 'plugin/function-threw');
+    expect(failure, `expected plugin/function-threw, got ${JSON.stringify(outcome.errors.map(e => e.code))}`).toBeDefined();
+    expect(failure!.reason).toContain('bad');
+    expect(failure!.reason).toMatch(/NaN|Infinity/);
+    expect(failure!.line).toBe(4);
+    expect(failure!.column).toBeGreaterThan(1);
+  }, 30000);
+
+  it('reports a NaN result from an in-process plugin the same way', async () => {
+    const plugin = {
+      install(api: { functions: { functionRegistry: { add(name: string, fn: () => unknown): void } } }) {
+        api.functions.functionRegistry.add('bad', () => Number.NaN);
+      }
+    };
+    const compiler = new Compiler({ compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] } });
+    await expect(compiler.renderString('.a {\n  width: bad(1);\n}\n', { language: 'less' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'plugin/function-threw', line: 2 }));
+  });
 
   it('surfaces a plugin that cannot be loaded at its own @plugin statement', async () => {
     const { dir, entry } = makeProject(
@@ -200,6 +248,76 @@ describe('the less-compat tree shim', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('hands a sandboxed @plugin an escaped string as an escaped tree.Quoted and writes one back unquoted', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'describe\', function (...args) {',
+        '  return args.map(({ type, quote, value, escaped }) => type === \'Quoted\'',
+        '    ? `Quoted(${quote}${value}${quote} escaped=${escaped})`',
+        '    : `${type}(${value})`).join(\' \');',
+        '});',
+        'functions.add(\'wrap\', function ({ value }) { return new tree.Quoted(\'"\', value, true); });'
+      ].join('\n'),
+      '@plugin "./p";\n@v: ~"a b";\n.a { x: describe(~"x", ~\'q\', e("y"), @v, escape("z")); y: wrap(z); }\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, {
+      suppressWarnings: true,
+      breakOnError: true
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('x: Quoted("x" escaped=true) Quoted(\'q\' escaped=true) Quoted("y" escaped=true) Quoted("a b" escaped=true) Anonymous(z);');
+    expect(result.css).toContain('y: z;');
+  }, 30000);
+
+  /*
+   * A map declaration reaches a sandboxed plugin as the `tree.Anonymous` reading
+   * aid legacy helpers expect (`.value` is its CSS text), but handing it back
+   * unchanged returns the typed value it stands for: bootstrap's `theme-color`
+   * returns a map colour that `darken()` and `color-yiq` then read as a colour.
+   * It came back as raw text, so `darken(theme-color(primary), 15%)` was written
+   * out uncomputed.
+   */
+  it('hands back a map value a sandboxed @plugin returns unchanged as the typed value it carried', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'pick\', function (map, { value: key }) {',
+        '  const rule = map.ruleset.rules.find(r => r.name === key);',
+        '  return rule.eval(this.context).value;',
+        '});',
+        'functions.add(\'text\', function (map, { value: key }) {',
+        '  const rule = map.ruleset.rules.find(r => r.name === key);',
+        '  return `${rule.value.type}:${rule.value.value}`;',
+        '});'
+      ].join('\n'),
+      '@plugin "./p";\n@blue: #007bff;\n@colors: { primary: @blue; gap: 576px; };\n.a { b: darken(pick(@colors, primary), 15%); c: pick(@colors, gap) * 2; d: text(@colors, gap); }\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.a {\n  b: #0056b3;\n  c: 1152px;\n  d: Anonymous:576px;\n}\n');
+  }, 30000);
+
+  /*
+   * A six-digit hex has no alpha pair: it is opaque, not `parseInt('', 16)`
+   * (NaN). The alpha is read inside the plugin, where the engine's own handling
+   * of a NaN result cannot hide it.
+   */
+  it('builds an opaque tree.Color from six- and three-digit hex', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'six\', () => new tree.Color(\'b8daff\'));',
+        'functions.add(\'three\', () => new tree.Color(\'fc0\'));',
+        'functions.add(\'alphas\', () => `${new tree.Color(\'b8daff\').alpha} ${new tree.Color(\'fc0\').alpha} ${new tree.Color(\'b8daff80\').alpha}`);'
+      ].join('\n'),
+      '@plugin "./p";\n.a { b: six(); c: three(); d: alphas(); }\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.a {\n  b: #b8daff;\n  c: #ffcc00;\n  d: 1 1 0.5019607843137255;\n}\n');
+  }, 30000);
 
   it('exposes tree.Variable.prototype.find and a real this.context', async () => {
     const { dir, entry } = makeProject(
@@ -427,10 +545,51 @@ describe('the less-compat tree shim', () => {
       breakOnError: false
     });
 
-    const warning = result.warnings.find(w => w.code === 'plugin/function-threw');
-    expect(warning).toBeDefined();
-    expect(warning!.reason).toContain('tree.Media');
-    expect(warning!.reason).toContain('not supported');
+    /* A tree node beyond the function-plugin value surface is the A12 non-goal. */
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "p.js" uses tree.Media, which is not supported');
+    expect(refusal!.line).toBe(2);
+  }, 30000);
+
+  it('refuses a hook reached from a file the plugin requires, at its @plugin statement', async () => {
+    const { dir, entry } = makeProject(
+      'require("./file-manager");',
+      '.a { color: red; }\n@plugin "./p";\n'
+    );
+    fs.writeFileSync(path.join(dir, 'file-manager.js'), 'module.exports = new less.FileManager();', 'utf8');
+
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "p.js" uses less.FileManager, which is not supported');
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(2);
+  }, 30000);
+
+  /*
+   * jess#300: an at-rule is a statement, not a value, so `less.atrule()` (the
+   * 4.x factory for `tree.AtRule`) is outside the function-plugin value surface
+   * and refused as the A12 tree-API non-goal, at the call.
+   */
+  it('refuses a plugin function that builds an at-rule (less.atrule) at its call', async () => {
+    const { dir, entry } = makeProject(
+      'functions.add(\'test-atrule\', function (name, value) { return less.atrule(name.value, value.value); });',
+      '@plugin "./p";\n\ntest-atrule("@charset"; \'"utf-8"\');\n.a { b: 1; }\n'
+    );
+
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "p.js" uses tree.AtRule, which is not supported');
+    expect(refusal!.fix).toContain('At-rules are statements, not values.');
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(3);
   }, 30000);
 
   it('registers @plugin functions declared in an imported file', async () => {
@@ -448,4 +607,89 @@ describe('the less-compat tree shim', () => {
     expect(result.errors).toEqual([]);
     expect(result.css).toContain('width: 42px');
   }, 30000);
+});
+
+/*
+ * The Less 4 plugin-manager hook ABI (visitors, pre/post-processors, file
+ * managers) is a deliberate v5 non-goal. The corpus fixtures that exercise it
+ * stay skipped or expected-failing in all-less.test.ts; this pins WHY they
+ * fail: the plugin is refused with a diagnostic naming the native replacement.
+ */
+describe('legacy Less plugin-manager hooks in the corpus fixtures', () => {
+  const testData = resolveLessTestDataRoot();
+
+  it('refuses tests-unit/plugin-preeval at its @plugin statement, naming the missing visitor API', async () => {
+    const entry = path.join(testData, 'tests-unit/plugin-preeval/plugin-preeval.less');
+    const result = await new Compiler({
+      compile: {
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+      }
+    }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "plugin-preeval.js" uses less.visitors, which is not supported');
+    expect(refusal!.fix).toContain('no visitor API');
+
+    /* The sandbox knows no source; the refusal is attributed to the `@plugin` statement. */
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(1);
+  }, 30000);
+
+  /*
+   * `@plugin "clean-css"` resolves to the clean-css library itself (jess has no
+   * 4.x `less-plugin-` name-prefix lookup). Its relative requires load in the
+   * sandbox; the Node built-in it reaches for next is refused.
+   */
+  it('refuses tests-unit/plugin-module at the clean-css library\'s Node built-in require', async () => {
+    const entry = path.join(testData, 'tests-unit/plugin-module/plugin-module.less');
+    const result = await new Compiler({
+      compile: {
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+      }
+    }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const failure = result.errors.find(e => e.code === 'plugin/load-failed');
+    expect(failure, `expected plugin/load-failed, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(failure!.reason).toContain('require("http") is not supported');
+    expect(failure!.filePath).toBe(entry);
+  }, 30000);
+
+  /*
+   * These fixtures name their plugin through the lessc `--plugin` path option
+   * (`language.less.plugin` in styles.config.cjs), which is not a jess option.
+   * The plugin files live beside the corpus in a less.js checkout; passed
+   * in-process — as less.render's `plugins` option passes them — each is refused.
+   */
+  const lessTestPlugins = path.resolve(testData, '../less/test/plugins');
+  const isNativeLessPlugin = (value: unknown): value is NativeLessPlugin =>
+    typeof value === 'object' && value !== null && 'install' in value && typeof value.install === 'function';
+  const hookFixtures: Array<[string, string, string, string]> = [
+    ['tests-config/visitorPlugin/visitor.less', 'visitor', 'less.visitors', 'no visitor API'],
+    ['tests-config/preProcessorPlugin/preProcessor.less', 'preprocess', 'pluginManager.addPreProcessor()', 'pre-processors'],
+    ['tests-config/postProcessorPlugin/postProcessor.less', 'postprocess', 'pluginManager.addPostProcessor()', 'output.compress'],
+    ['tests-config/filemanagerPlugin/filemanager.less', 'filemanager', 'less.environment', '@jesscss/plugin-node-modules']
+  ];
+
+  for (const [fixture, pluginDir, feature, replacement] of hookFixtures) {
+    const pluginFile = path.join(lessTestPlugins, pluginDir, 'index.cjs');
+    it.skipIf(!fs.existsSync(pluginFile))(`refuses the ${fixture} plugin with plugin/unsupported-feature`, async () => {
+      const plugin: unknown = createRequire(import.meta.url)(pluginFile);
+      if (!isNativeLessPlugin(plugin)) {
+        throw new Error(`${pluginFile} does not export a Less plugin`);
+      }
+      const result = await new Compiler({
+        compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] }
+      }).renderToResult(path.join(testData, fixture), { suppressWarnings: true, breakOnError: false });
+
+      const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+      expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+        .toBeDefined();
+      expect(refusal!.message).toContain(feature);
+      expect(refusal!.fix).toContain(replacement);
+      expect(result.css).toBe('');
+    }, 30000);
+  }
 });

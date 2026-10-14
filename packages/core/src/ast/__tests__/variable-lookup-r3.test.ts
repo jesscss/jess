@@ -73,16 +73,21 @@ describe('R3 live and scoped variable stores', () => {
     expect(render(document)).toBe('.card {\n  live: blue;\n  scoped: navy;\n}\n');
   });
 
-  it('publishes only selected branch declarations after the control point and preserves nested source order', () => {
+  /*
+   * Ledger N15: a selected arm's declarations are inline declarations at the
+   * `$if`, so a scoped read before it sees them too (order-independent,
+   * last-wins); a live read stays in execution order.
+   */
+  it('publishes selected branch declarations at the control point and preserves nested source order', () => {
     const document = stylesheet([
       variableDeclaration('tone', keyword('gray'), { mode: 'declare' }),
       rule('.before', [decl('scoped', variableReference('tone', 'scoped'))]),
       ifNode([{
-        guard: { g: 'truth', value: keyword('true') },
+        guard: { g: 'truth', value: keyword('true'), parens: 0 },
         rules: [
           variableDeclaration('tone', keyword('navy'), { mode: 'declare' }),
           ifNode([{
-            guard: { g: 'truth', value: keyword('true') },
+            guard: { g: 'truth', value: keyword('true'), parens: 0 },
             rules: [variableDeclaration('nested', keyword('blue'), { mode: 'declare' })]
           }]),
           variableDeclaration('tone', keyword('green'), { mode: 'declare' }),
@@ -99,7 +104,7 @@ describe('R3 live and scoped variable stores', () => {
       ])
     ]);
 
-    expect(render(document)).toBe('.before {\n  scoped: gray;\n}\n'
+    expect(render(document)).toBe('.before {\n  scoped: green;\n}\n'
       + '.inside {\n  live: green;\n  scoped: green;\n  nested: blue;\n}\n'
       + '.after {\n  live: green;\n  scoped: green;\n}\n');
   });
@@ -109,7 +114,7 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('tone', keyword('gray'), { mode: 'declare' }),
       ifNode([
         {
-          guard: { g: 'truth', value: keyword('false') },
+          guard: { g: 'truth', value: keyword('false'), parens: 0 },
           rules: [variableDeclaration('tone', keyword('red'), { mode: 'declare' })]
         },
         {
@@ -136,19 +141,19 @@ describe('R3 live and scoped variable stores', () => {
     const document = stylesheet([
       variableDeclaration('tone', keyword('gray'), { mode: 'declare' }),
       ifNode([{
-        guard: { g: 'truth', value: keyword('true') },
+        guard: { g: 'truth', value: keyword('true'), parens: 0 },
         rules: [variableDeclaration('tone', variableReference('tone', 'scoped'), { mode: 'declare' })]
       }]),
       forNode(spaced([dimension(1)]), [
         ifNode([{
-          guard: { g: 'truth', value: keyword('true') },
+          guard: { g: 'truth', value: keyword('true'), parens: 0 },
           rules: [variableDeclaration('tone', keyword('blue'), { mode: 'declare' })]
         }]),
         rule('.loop', [decl('scoped', variableReference('tone', 'scoped'))])
       ], { kind: 'single', name: 'item' }),
       mixinDef('.m', [], [
         ifNode([{
-          guard: { g: 'truth', value: keyword('true') },
+          guard: { g: 'truth', value: keyword('true'), parens: 0 },
           rules: [variableDeclaration('tone', keyword('navy'), { mode: 'declare' })]
         }]),
         decl('from-mixin', variableReference('tone', 'scoped'))
@@ -165,7 +170,7 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('a', keyword('root-a'), { mode: 'declare' }),
       variableDeclaration('b', keyword('root-b'), { mode: 'declare' }),
       ifNode([{
-        guard: { g: 'truth', value: keyword('true') },
+        guard: { g: 'truth', value: keyword('true'), parens: 0 },
         rules: [
           variableDeclaration('a', variableReference('b', 'scoped'), { mode: 'declare' }),
           variableDeclaration('b', variableReference('a', 'scoped'), { mode: 'declare' })
@@ -184,7 +189,7 @@ describe('R3 live and scoped variable stores', () => {
     const document = stylesheet([
       mixinDef('.m', [{ name: 'seed' }], [
         ifNode([{
-          guard: { g: 'truth', value: keyword('true') },
+          guard: { g: 'truth', value: keyword('true'), parens: 0 },
           rules: [variableDeclaration('branch', keyword('selected'), { mode: 'declare' })]
         }]),
         variableDeclaration('after', keyword('later'), { mode: 'declare' }),

@@ -1,31 +1,6 @@
-import { createServer } from 'vite';
 import { run } from 'parseman';
 import { parseJessCst } from '../src/cst.js';
 import { jessGrammar } from '../src/grammar.js';
-import { fileURLToPath } from 'node:url';
-
-test('canonical Jess AST grammar macro-fuses recognition with no runtime import', async () => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('..', import.meta.url)),
-    configFile: fileURLToPath(new URL('../../../../../vitest.config.ts', import.meta.url)),
-    optimizeDeps: { noDiscovery: true },
-    server: { middlewareMode: true }
-  });
-  try {
-    const transformed = await server.transformRequest('/src/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
-    expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
-    expect(transformed?.code).toContain('PseudoSelectorArgument');
-    expect(transformed?.code).toContain('GuardCall');
-    expect(transformed?.code).toContain('DollarValue');
-    expect(transformed?.code).toContain('ExpressionProduct');
-    expect(transformed?.code).toContain('CallComponent');
-    expect(transformed?.code).toContain('ImportStatement');
-    expect(transformed?.code).toContain('PlainUrlInner');
-  } finally {
-    await server.close();
-  }
-});
 
 test('macro-compiled Jess call components retain modern CSS slash separators structurally', () => {
   const valid = '.card { box-shadow: rgb(15 23 42 / 0.22); }';

@@ -91,6 +91,7 @@ describe('value-domain defineFunction', () => {
     expect(collect(makeDimension(2, 'px'), { precision: makeDimension(3) })).toEqual(makeDimension(5, 'px'));
     expect(collect(makeDimension(2, 'px'), { rest: [makeDimension(4)] })).toEqual(makeDimension(4, 'px'));
     expect(collect({ value: makeDimension(2, 'px'), rest: [makeDimension(4), makeDimension(5)] })).toEqual(makeDimension(5, 'px'));
+    expect(collect({ value: makeDimension(2, 'px') })).toEqual(makeDimension(3, 'px'));
     expect(collect(makeDimension(2, 'px'), makeDimension(3), makeDimension(4), makeDimension(5))).toEqual(makeDimension(7, 'px'));
   });
 

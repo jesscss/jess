@@ -17,6 +17,7 @@
   "@jesscss/plugin-less",
   "@jesscss/plugin-scss",
   "@jesscss/plugin-node-modules",
+  "@jesscss/plugin-remote-import",
   "@jesscss/plugin-js",
   "@jesscss/plugin-less-compat",
   "@jesscss/patch-css",

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { invoke, node } from '../../__tests__/harness.js';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core';
 import { mod } from '../mod.js';
@@ -40,7 +41,7 @@ function legacyModOracle(a: { number: number; unit: string }, b: { number: numbe
 describe('Less pi/mod canonical cutover', () => {
   it('keeps pi unitless and byte-identical to the pre-cutover tree result', () => {
     const expected = legacyPiOracle();
-    const result = pi();
+    const result = node(invoke(pi), 'Dimension');
 
     expect(result.type).toBe('Dimension');
     expect(result.number).toBe(expected.number);
@@ -58,7 +59,7 @@ describe('Less pi/mod canonical cutover', () => {
 
     for (const [a, b] of vectors) {
       const expected = legacyModOracle(a, b);
-      const result = mod(makeDimension(a.number, a.unit), makeDimension(b.number, b.unit));
+      const result = node(invoke(mod, makeDimension(a.number, a.unit), makeDimension(b.number, b.unit)), 'Dimension');
 
       expect(result.type).toBe('Dimension');
       expect(result.number).toBe(expected.number);

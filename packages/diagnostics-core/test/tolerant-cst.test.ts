@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { safeParse } from '@jesscss/less-parser';
 import { collectTolerantDiagnostics, LINT_CODES } from '../src/index.js';
 
 describe('collectTolerantDiagnostics', () => {
@@ -1006,6 +1007,17 @@ describe('collectTolerantDiagnostics', () => {
       'Duplicate collection key "null"; the later value wins'
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+
+    /* Each key is read from the typed node the grammar built, never re-classified from its text. */
+    expect(collectTolerantDiagnostics({
+      source: '$m: { [1px]: 1; [-1px]: 2; [1PX]: 3; [50%]: 4; [50%]: 5; [1e3]: 6; [1000]: 7; [a b]: 8; [a b]: 9; };',
+      language: 'jess'
+    }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Duplicate collection key "50%"; the later value wins',
+      'Duplicate collection key "1000"; the later value wins'
+    ]);
     expect(collectTolerantDiagnostics({ source: '$m: (a: 1, a: 2);', language: 'scss' }).diagnostics
       .some(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)).toBe(false);
     expect(collectTolerantDiagnostics({
@@ -1795,6 +1807,19 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  /* Owner 2026-10-09, verbatim: "`all` only applies to target right before, `!all` is supposed to apply to the entire seletor list". */
+  it('reads every target of a `!all` extend list as partial, and `all` as its own target only', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.hit {}\n.a:extend(.maybe, .hit !all) {}\n.b { &:extend(.gone, .hit !ALL); }\n.c:extend(.missing, .hit all) {}',
+      language: 'less'
+    });
+    expect(less.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deadExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target ".missing" does not match any same-file selector', 4, 11]
+    ]);
+  });
+
   it('reports exact static extend targets that do not match same-file selectors', () => {
     const less = collectTolerantDiagnostics({
       source: '.hit {}\n.a:extend(.hit) {}\n.b:extend(.missing) {}\n.c:extend(.maybe all) {}',
@@ -2444,5 +2469,36 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
+  });
+
+  it('reports every item a `;` makes invalid in a Less mixin list, each at its item (P46)', () => {
+    const source = '.x { .t(@a: 1, @b: 2; c, @d...); @r: .t(a, b; c, ...); .ok(@a: 1, @b: 2); }';
+    const found = collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === 'parse/invalid-mixin-argument')
+      .map(diagnostic => [diagnostic.message, source.slice(diagnostic.start, diagnostic.end)]);
+
+    expect(found).toEqual([
+      ['A named argument must start its ;-separated argument.', '@b: 2'],
+      ['A spread or rest argument cannot be part of a comma list.', '@d...'],
+      ['A spread or rest argument cannot be part of a comma list.', '...']
+    ]);
+  });
+
+  /* One rule, two readers: the tolerant CST reports what the parser reports (ledger P46). */
+  it('reports the `;`-list problems the Less parser reports', () => {
+    for (const source of [
+      '.x { .t(a, foo...; b); }',
+      '.m(@a, @rest...; @c) { x: y }',
+      '.m(@a: 1, @b: 2; @c) { x: y }',
+      '.x { .t(@a: x, @b: y; z, @w...); }'
+    ]) {
+      const tolerant = collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
+        .filter(diagnostic => diagnostic.code === 'parse/invalid-mixin-argument')
+        .map(diagnostic => [diagnostic.message, source.slice(diagnostic.start, diagnostic.end)]);
+      const parsed = safeParse('entry.less', source).errors
+        .map(error => [error.message, source.slice(error.column - 1, error.endColumn === undefined ? undefined : error.endColumn - 1)]);
+      expect(tolerant, source).toEqual(parsed);
+      expect(tolerant.length, source).toBeGreaterThan(0);
+    }
   });
 });

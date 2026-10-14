@@ -55,6 +55,7 @@ import {
   getTestCases,
   lessFixturePackagesPlugin,
   lessHarnessFunctionsPlugin,
+  lessTestDataRemoteImports,
   resolveLessTestDataRoot
 } from '../test-utils.js';
 
@@ -83,18 +84,18 @@ interface Known {
 const ALL_EXTEND_KINDS = ['class', 'simple', 'basic', 'pseudo', 'complex', 'compound', 'placeholder'] as const;
 
 /**
- * The options whose DIALECT defaults differ between `.less` and `.jess`, pinned
+ * The modes whose DIALECT defaults differ between `.less` and `.jess`, pinned
  * to the Less values for both arms so neither falls back to its own dialect's
  * defaults.
  */
-const PINNED_COMPILE = {
+const PINNED_MODES = {
   mathMode: 'parens-division',
   unitMode: 'preserve',
   allowLeakyScope: true,
   allowCallerScope: false,
-  processImports: true,
-  allowExtendSelectors: [...ALL_EXTEND_KINDS]
+  processImports: true
 } as const;
+const PINNED_COMPILE = { ...PINNED_MODES, allowExtendSelectors: [...ALL_EXTEND_KINDS] } as const;
 
 const P35 = 'P35 not landed';
 const TIMEOUT_MS = 30_000;
@@ -162,16 +163,17 @@ const CORPORA: Corpus[] = [
 
     /*
      * The upstream checkout layout: the Less plugin maps `@less/test-import-module`
-     * to the `packages/` sibling of `packages/test-data`, and remote jsDelivr
-     * imports name `@less/test-data` itself.
+     * to the `packages/` sibling of `packages/test-data`. Remote jsDelivr imports
+     * of `@less/test-data` are answered from the copy, as in all-less.test.ts.
      */
     layout: 'packages/test-data',
     packages: [['@less/test-data', 'packages/test-data'], ['@less/test-import-module', 'packages/test-import-module']],
     fixtures: allLessFixtures(),
-    plugins: () => [
+    plugins: copy => [
       lessPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
       lessCompatPlugin(),
       lessFixturePackagesPlugin(),
+      lessTestDataRemoteImports(copy),
       jessPlugin()
     ]
   },
@@ -203,12 +205,24 @@ const shape = (tree: object): string =>
 function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigOptions {
   const { compile = {}, language = {}, output, ...rest } = fixture.config;
   const { plugins: fixturePlugins = [], ...fixtureCompile } = compile;
-  const lessOptions = { bubbleRootAtRules: true, ...(language.less ?? {}) };
+
+  /*
+   * The pins are language settings, under the fixture's own canonical modes, from
+   * its `compile` block and its `language.less`: a language setting wins over a
+   * compile one (ledger C19), so a fixture's compile mode joins the pins' tier to
+   * win over them. A fixture's deprecated spelling (`math`, `strictUnits`) sits in
+   * the same object as the pinned canonical name, which wins, so those fixtures
+   * render under the pins in both arms: `.jess` reads only the canonical names.
+   */
+  const fixtureModes = Object.fromEntries(Object.entries(fixtureCompile).filter(
+    ([name, value]) => value !== undefined && Object.hasOwn(PINNED_MODES, name)
+  ));
+  const lessOptions = { ...PINNED_MODES, bubbleRootAtRules: true, ...fixtureModes, ...(language.less ?? {}) };
   const fixtureOutput = Array.isArray(output) ? {} : (output ?? {});
   return {
     ...rest,
     compile: {
-      ...PINNED_COMPILE,
+      allowExtendSelectors: PINNED_COMPILE.allowExtendSelectors,
       ...fixtureCompile,
       jsReadRoot: corpus.copy,
       plugins: [...corpus.plugins(corpus.copy), ...fixturePlugins]
@@ -496,6 +510,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'css-mismatch',
     reason: 'URL rewriting (`rewriteUrls`/`rootpath`) is a Less-plugin transform; `.jess` documents get no URL rewrite'
   }],
+  ['all-less:tests-config/rootpath-escape-interpolation/rootpath-escape-interpolation.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Interpolation: a scoped (Less `@{name}`) read spliced into a string: `.jess` `${name}` reads the live store only (+1 more)'
+  }],
   ['all-less:tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',
@@ -520,16 +539,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements'
-  }],
-  ['all-less:tests-config/units/loose/loose.less', {
-    cause: 'cannot-express',
-    outcome: 'arm-b-error',
-    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
-  }],
-  ['all-less:tests-config/units/no-strict/no-strict.less', {
-    cause: 'cannot-express',
-    outcome: 'arm-b-error',
-    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
   }],
   ['all-less:tests-config/url-args/urls.less', {
     cause: 'cannot-express',
@@ -566,10 +575,10 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
-  ['all-less:tests-unit/color-functions/operations.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'the `.jess` arm clamps rgba() channels the Less arm keeps out of range (`rgba(-99.9, 31.4159, 321, 0.42)` vs `rgba(0, 31, 255, 0.42)`)'
+  ['all-less:tests-unit/color-functions/rgba.less', {
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`rgba(var(--color-accent), 0.2)`) converts to a call through its imported binding (`$rgba(…)`), which ruling J1 makes an eval error'
   }],
   ['all-less:tests-unit/comments/comments.less', {
     cause: 'cannot-express',
@@ -696,6 +705,16 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements (+2 more)'
   }],
+  ['all-less:tests-unit/lookup-interpolation/lookup-interpolation.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Interpolation: a `Lookup` spliced into a string: `${…}` takes a variable name (+6 more)'
+  }],
+  ['all-less:tests-unit/math-css-vars/math-css-vars.less', {
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`sin(var(--angle))`) converts to a call through its imported binding (`$sin(…)`), which ruling J1 makes an eval error'
+  }],
   ['all-less:tests-unit/media/media.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -756,11 +775,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'VariableDeclaration: bound to a mixin call: no `.jess` value spelling for a call\'s output (+1 more)'
   }],
-  ['all-less:tests-unit/operations/operations-advanced.less', {
-    cause: 'cannot-express',
-    outcome: 'arm-b-error',
-    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
-  }],
   ['all-less:tests-unit/operations/operations.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -784,12 +798,12 @@ const KNOWN = new Map<string, Known>([
   ['all-less:tests-unit/plugin-module/plugin-module.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "clean-css" could not be loaded: Less @plugin function "index.js" threw: Less @plugin require("./lib/clean") is not supported in the Deno sandbox yet.'
+    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "clean-css" could not be loaded: Less @plugin function "index.js" threw: Less @plugin require("http") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.'
   }],
   ['all-less:tests-unit/plugin-preeval/plugin-preeval.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "../../plugin/plugin-preeval" could not be loaded: Less @plugin function "plugin-preeval.js" threw: Cannot read properties of undefined (reading \'Visitor\')'
+    reason: 'the Less arm itself does not render: plugin/unsupported-feature: Plugin "plugin-preeval.js" uses less.visitors, which is not supported'
   }],
   ['all-less:tests-unit/plugin/plugin.less', {
     cause: 'no-arm-a',
@@ -936,12 +950,64 @@ for (const corpus of CORPORA) {
 
 describe('converted function imports', () => {
   it('imports exactly the Less built-ins a file calls, under their call names', () => {
-    const printed = emitJess(parseLess('@charset "utf-8";\n.a { b: lighten(#00f, 10%); c: data-uri("x.png"); d: rgba(1, 2, 3, 0.5); e: unknown(1); }'), { functions: LESS_FUNCTIONS });
+    const printed = emitJess(parseLess('@charset "utf-8";\n.a { b: lighten(#00f, 10%); c: data-uri("x.png"); d: rgba(1, 2, 3, 0.5); e: unknown(1); f: fade(rgba(1, 2, 3, 0.5), 10%); }'), { functions: LESS_FUNCTIONS });
     expect(printed.split('\n').slice(0, 2)).toEqual([
       '@charset "utf-8";',
-      '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
+      '@-from "#less" import (dataUri as data-uri, fade, lighten, rgba);'
     ]);
-    expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: $rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n}');
+    expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n  f: $fade($rgba(1, 2, 3, 0.5), 10%);\n}');
+  });
+
+  /*
+   * Ledger F5: Less writes a CSS-shaped color call in a property's value out as
+   * authored and never dispatches it, so the converter prints it as a plain CSS
+   * call. A variable's value, which a callable may read, keeps the binding.
+   */
+  it('prints a CSS-shaped color call a property writes out as a plain call', () => {
+    const printed = emitJess(parseLess('@c: rgba(1, 2, 3, 0.5);\n.a { b: rgb(0 128 255); c: hsl(198deg 28% 50% / 50%); d: alpha(@c); }'), { functions: LESS_FUNCTIONS });
+    expect(printed).toContain('$c: $rgba(1, 2, 3, 0.5);');
+    expect(printed).toContain('.a {\n  b: rgb(0 128 255);\n  c: hsl(198deg 28% 50% / 50%);\n  d: $alpha($^c);\n}');
+  });
+});
+
+/*
+ * The Less corpus has no paren group around one value or a function call outside
+ * `calc()`, so the ratchet cannot see one. Each case renders the Less source and
+ * its converted `.jess` and compares the bytes. (`@@name`, `$prop`, a map member
+ * and a splice of a value holding a comment have no `.jess` spelling yet.)
+ */
+describe('round trip of paren groups', () => {
+  const render = async (source: string, language: 'less' | 'jess'): Promise<string> =>
+    new Compiler().renderString(source, { language, extension: `.${language}` });
+  const cases = [
+    '.x { a: (10vh); b: (percentage(0.5)); c: var(--a, (10px)); d: (10px) * 2; e: (unit(5, px)); }',
+    '@w: 10px; @a: 1px + 2px; @p: percentage(0.5); .x { a: (@w); b: (@a); c: ((10px)); d: (@p); }',
+    '.m(@x) { a: (@x); } .y { .m(1px + 2px); } .z { .m(10px); }'
+  ];
+  for (const less of cases) {
+    it(less, async () => {
+      const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+      expect(await render(jess, 'jess'), jess).toBe(await render(less, 'less'));
+    });
+  }
+
+  it('a group a computation holds is judged where it is written, not inside the `calc()` that reads it', async () => {
+    /*
+     * `(@v + 30px)` lowers to `$(($^v + 30px))`; `((@v + 30px))` is a group
+     * inside the boundary in Less too. Read through a variable inside `calc()`,
+     * each is the value it computed, not a group authored in the math function.
+     */
+    const less = '@v: 10px; @c: (@v + 30px); @d: ((@v + 30px)); .x { a: calc(100% - @c); b: calc(100% - @d); }';
+    const css = '.x {\n  a: calc(100% - 40px);\n  b: calc(100% - 40px);\n}\n';
+    expect(await render(less, 'less')).toBe(css);
+    expect(await render(emitJess(parseLess(less), { functions: LESS_FUNCTIONS }), 'jess')).toBe(css);
+  });
+});
+
+describe('converted custom properties', () => {
+  it('prints a custom property\'s value comments in the value, once', () => {
+    expect(emitJess(parseLess('.a { --x: /* c */ red; --y: a /* d */ b; /* e */ z: 1; }')))
+      .toBe('.a {\n  --x: /* c */ red;\n  --y: a /* d */ b;\n  /* e */\n  z: 1;\n}\n');
   });
 });
 
@@ -966,6 +1032,244 @@ describe('spellings the emitter names instead of printing', () => {
       'Declaration: an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value',
       'FunctionCall: an IE-style `name=value` argument (`alpha(opacity=100)`): no `.jess` `CallArgument` spelling reads it back'
     ]);
+  });
+
+  /* A body-form extend the render walk applies where a body lands (X16, X19) has no `.jess` spelling: printing the body without it would drop it. */
+  it('names a body-form extend in a mixin definition, an at-rule block, a detached ruleset and an each() callback', () => {
+    for (const [source, owner] of [
+      ['.m() { &:extend(.z); }', 'a mixin definition (ledger X16)'],
+      ['.y { @media print { &:extend(.z); } }', 'an at-rule block (ledger X19)'],
+      ['@r: { &:extend(.z); };', 'a detached ruleset (ledger X19)'],
+      ['@l: a; .y { each(@l, { &:extend(.z); }); }', 'an `each()` callback (ledger X19)']
+    ] as const) {
+      let gaps: string[] = [];
+      try {
+        emitJess(parseLess(source), { functions: LESS_FUNCTIONS });
+      } catch (error) {
+        if (!(error instanceof NoJessSpelling)) {
+          throw error;
+        }
+        gaps = error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
+      }
+      expect(gaps, source).toContain(`ExtendInstruction: a body-form extend in ${owner} has no \`.jess\` spelling yet`);
+    }
+  });
+});
+
+describe('a Less paren group lowers to a group inside the boundary', () => {
+  it('prints `(@a + 3px)` as `$(($^a + 3px))` and bare `@a + 3px` as `$($^a + 3px)`', () => {
+    /*
+     * Less parens are the computation boundary AND the author's parens, which
+     * the value keeps where its math is kept as written (J16). `$( … )` alone
+     * is only the boundary, so the group is written inside it.
+     */
+    expect(emitJess(parseLess('.a {\n  b: (@a + 3px);\n  c: @a + 3px;\n}\n')))
+      .toBe('.a {\n  b: $(($^a + 3px));\n  c: $($^a + 3px);\n}\n');
+  });
+});
+
+/*
+ * The corpus cannot see this case: every fixture that holds a unitless number
+ * ± a unit is listed in KNOWN for another cause. A unitless operand adopts the
+ * other operand's unit in every dialect (owner 2026-10-06, ledger V27), so both
+ * arms compute `4 + 3px` to `7px`.
+ */
+describe('targeted round trip: a unitless number ± a unit', () => {
+  it('both arms compute it', async () => {
+    const less = '@a: 4;\n.a {\n  b: (@a + 3px);\n  c: @a * 2px;\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = async (source: string, extension: '.less' | '.jess') => {
+      const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+      return result.css.replace(/\s+/g, ' ').trim();
+    };
+    expect(await render(less, '.less')).toBe('.a { b: 7px; c: 8px; }');
+    expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
+  });
+});
+
+/*
+ * Math that does not compute — two units that do not convert, or a keyword
+ * operand — lowers into `$( … )` like all Less math (P35), an authored group
+ * as `$(( … ))`. `.jess` answers an explicit `unitMode` exactly as `.less`
+ * does (owner 2026-10-06; `strict` is only its default), so under each rung
+ * both arms write the same bytes and report the same diagnostics.
+ */
+describe('targeted round trip: kept math', () => {
+  it('`.less` and its `.jess` lowering agree under every explicit `unitMode`', async () => {
+    const less = '@a: 4px;\n@x: @a + 1em;\n.a {\n  b: (@a + 3em);\n  c: @a - 3em;\n  d: @x;\n  e: calc(@x * 2);\n  f: (foo + 1);\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = async (source: string, extension: '.less' | '.jess', unitMode: 'loose' | 'preserve' | 'strict') => {
+      const result = await new Compiler({ compile: { ...PINNED_COMPILE, unitMode, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+      return {
+        css: result.css.replace(/\s+/g, ' ').trim(),
+        warnings: result.warnings.map(w => w.code),
+        errors: result.errors.map(e => e.code)
+      };
+    };
+    for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
+      expect(await render(jess, '.jess', unitMode), unitMode).toEqual(await render(less, '.less', unitMode));
+    }
+    const kept = await render(less, '.less', 'preserve');
+    expect(kept.css).toContain('calc(4px + 3em)');
+    expect(kept.warnings).toContain('eval/unexpressible-unit');
+    expect((await render(less, '.less', 'strict')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+});
+
+/*
+ * Once a sheet is `.jess`, it answers the `.jess` default (owner: "once it is a .jess
+ * file, it should error"): the conversion writes mixed-unit math honestly as `$( … )`,
+ * never in a form that dodges `unitMode: 'strict'`, so the converted sheet stops the
+ * compile where the `.less` one kept the math. The equivalence harness compares the two
+ * under one explicit `unitMode` ({@link PINNED_MODES}), where they agree. A `.less` sheet
+ * imported by a `.jess` one keeps the Less default (DESIGN-DECISIONS C19).
+ */
+/*
+ * The slash before the alpha in a CSS colour function's modern syntax is a
+ * separator, never division (css-color-4 §4, ledger F5): under `math: always`
+ * Less lowers `255 / 50%` to a computation, and neither arm divides it, so
+ * the converter prints it as the separator (`rgb(0 128 255 / 50%)`, never
+ * `rgb(0 128 $(255 / 50%))`). A `/` anywhere else, a paren group the author
+ * wrote around one included, is still Less math.
+ */
+describe('targeted round trip: the alpha slash of a colour function', () => {
+  it('neither arm divides it under `math: always`, and the converter prints it as a separator', async () => {
+    const colours = ['rgb(0 128 255 / 50%)', 'rgba(0 128 255 / 0.5)', 'hsl(198deg 28% 50% / 50%)', 'hsla(198 28% 50% / 0.5)',
+      'hwb(1 2% 3% / 0.5)', 'lab(50% 40 59.5 / 0.5)', 'lch(52.2% 72.2 50 / 0.5)', 'oklab(59% 0.1 0.1 / 0.5)',
+      'oklch(60% 0.15 50 / 0.5)', 'color(srgb 1 0 0 / 50%)', 'color(display-p3 1 0.5 0 / 0.5)'];
+    const less = `@a: 50%; .a {\n${colours.map((c, i) => `  c${i}: ${c};\n`).join('')}  v: rgb(0 128 255 / @a);\n  p: hwb(1 2% (6% / 2));\n  d: 10px / 2;\n}\n`;
+    const jess = emitJess(parseLess(less, { mathMode: 'always' }), { functions: LESS_FUNCTIONS });
+    for (const colour of colours) {
+      expect(jess).toContain(colour);
+    }
+    expect(jess).toContain('v: rgb(0 128 255 / $^a);');
+    expect(jess).toContain('d: $(10px / 2);');
+    const render = async (source: string, extension: '.less' | '.jess'): Promise<string> =>
+      new Compiler({ compile: { ...PINNED_COMPILE, mathMode: 'always' } }).renderString(source, { extension });
+    const css = await render(less, '.less');
+    expect(await render(jess, '.jess')).toBe(css);
+    expect(css).toBe(`.a {\n${colours.map((c, i) => `  c${i}: ${c};\n`).join('')}  v: rgb(0 128 255 / 50%);\n  p: hwb(1 2% 3%);\n  d: 5px;\n}\n`);
+  });
+});
+
+describe('targeted round trip: the converted sheet answers the .jess default', () => {
+  it('errors on mixed units by default, and agrees under an explicit unitMode', async () => {
+    const less = '@a: 4px;\n@x: @a + 1em;\n.m(@v) { m: @v; }\n.a {\n  b: (@a + 3em);\n  d: @x;\n  g: 1px + 1em;\n  .m(1px + 1em);\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    for (const honest of ['$($^a + 1em)', '$(($^a + 3em))', '$(1px + 1em)']) {
+      expect(jess).toContain(honest);
+    }
+    const render = async (source: string, extension: '.less' | '.jess', compile: ConfigOptions['compile'] = {}) => {
+      const result = await new Compiler({ compile: { plugins: [lessPlugin(), jessPlugin()], ...compile }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+      return { css: result.css.replace(/\s+/g, ' ').trim(), errors: result.errors.map(e => e.code) };
+    };
+    expect((await render(less, '.less')).errors).toEqual([]);
+    expect((await render(jess, '.jess')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+    expect(await render(jess, '.jess', { unitMode: 'preserve' })).toEqual(await render(less, '.less', { unitMode: 'preserve' }));
+    expect(await render(jess, '.jess', PINNED_COMPILE)).toEqual(await render(less, '.less', PINNED_COMPILE));
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-converted-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'part.less'), less);
+      fs.writeFileSync(path.join(dir, 'entry.jess'), '@-import \'./part.less\';\n');
+      const imported = await new Compiler({ compile: { plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult(path.join(dir, 'entry.jess'), { quiet: true });
+      expect(imported.errors).toEqual([]);
+      expect(imported.css.replace(/\s+/g, ' ').trim()).toBe((await render(less, '.less')).css);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/*
+ * A condition keyword glued to its `(` is a `<general-enclosed>` function in every CSS
+ * condition, written as authored with a warning (owner 2026-10-09: "output them as
+ * authored BUT give a warning for and( / or( / not("), and so is a glued
+ * `@container size(…)` (CSS Conditional 5: `size (…)` would name a container). The
+ * fixtures that hold these (`media.less`, `container.less`) are listed in KNOWN for other
+ * gaps, so the round trip is checked here.
+ */
+describe('targeted round trip: a glued condition keyword and `@container size(…)`', () => {
+  const conditions = [
+    '@media screen and(max-width: 100px)',
+    '@media (min-width: 1px) and(color)',
+    '@supports not(display: grid)',
+    '@supports (display: grid) and(display: flex)',
+    '@container size(min-width: 60ch)',
+    '@container card and(min-width: 1px)'
+  ];
+  const less = conditions.map(c => `${c} { .a { b: c; } }\n`).join('');
+  const render = async (source: string, extension: '.less' | '.jess') => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+    return { css: result.css, warnings: result.warnings.map(w => w.code) };
+  };
+
+  it('converts each as authored, and both arms write the same CSS and warnings', async () => {
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    for (const condition of conditions) {
+      expect(jess).toContain(`${condition} {`);
+    }
+    const lessArm = await render(less, '.less');
+    expect(lessArm.css).toContain('@container size(min-width: 60ch) {');
+    expect(await render(jess, '.jess')).toEqual(lessArm);
+  });
+});
+
+/*
+ * Less's `;` rule (owner 2026-10-09, ledger P46) stores each comma run of a `;`
+ * mixin list as the node `~( … )` builds, so a `;` list converts exactly as its
+ * escaped spelling does. `.jess` has no spelling for that node yet and the
+ * converter names it, so these round trips are held by that one gap, not by the
+ * `;` form: the `.less` arm renders, and both spellings name the same gap.
+ */
+describe('targeted round trip: a `;` mixin list converts as its `~( … )` spelling', () => {
+  const TAKES = '.t1(@a) { one: @a; }\n.t2(@a; @b) { one: @a; two: @b; }\n';
+  const gapsOf = (source: string): string[] => {
+    try {
+      emitJess(parseLess(source), { functions: LESS_FUNCTIONS });
+      return [];
+    } catch (error) {
+      if (!(error instanceof NoJessSpelling)) {
+        throw error;
+      }
+      return error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
+    }
+  };
+  const render = async (source: string) => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+    expect(result.errors).toEqual([]);
+    return result.css.replace(/\s+/g, ' ').trim();
+  };
+  const ESCAPED_BLOCK_GAP = 'Block: escaped `~( … )` block: no `.jess` production';
+
+  it.each([
+    ['.x { .t2(@a : a; @b : b, c); }', '.x { .t2(@a: a, @b: ~(b, c)); }', '.x { one: a; two: b, c; }'],
+    ['.x { .t2(@a : d, e; @b : f); }', '.x { .t2(@a: ~(d, e), @b: f); }', '.x { one: d, e; two: f; }'],
+    ['.x { .t2(o, p; q); }', '.x { .t2(~(o, p), q); }', '.x { one: o, p; two: q; }'],
+    ['.x { .t2(r, s; t;); }', '.x { .t2(~(r, s), t); }', '.x { one: r, s; two: t; }'],
+    ['.x { .t1(m, n;); }', '.x { .t1(~(m, n)); }', '.x { one: m, n; }'],
+    [
+      '.d(@c; @p; @m: 2, 2, 2, 2) { margin: @m; }\n.x { .d(#33acfe; 4); }',
+      '.d(@c, @p, @m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(#33acfe, 4); }',
+      '.x { margin: 2, 2, 2, 2; }'
+    ],
+    ['.d(@m: 2, 2, 2, 2;) { margin: @m; }\n.x { .d(); }', '.d(@m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(); }', '.x { margin: 2, 2, 2, 2; }']
+  ])('%s', async (semicolons, escaped, expected) => {
+    expect(await render(TAKES + semicolons)).toBe(expected);
+    expect(await render(TAKES + escaped)).toBe(expected);
+    expect(gapsOf(TAKES + semicolons)).toEqual([ESCAPED_BLOCK_GAP]);
+    expect(gapsOf(TAKES + escaped)).toEqual([ESCAPED_BLOCK_GAP]);
+  });
+
+  it('converts a `;` list that holds no comma run', () => {
+    expect(emitJess(parseLess(`${TAKES}.x { .t2(@a: h; @b: i;); }`), { functions: LESS_FUNCTIONS }))
+      .toBe(emitJess(parseLess(`${TAKES}.x { .t2(@a: h, @b: i); }`), { functions: LESS_FUNCTIONS }));
   });
 });
 

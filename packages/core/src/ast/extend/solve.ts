@@ -12,7 +12,7 @@ import { branchSharesAtom, branchText, cloneBranch, collectBranchAtoms } from '.
 import type { Branch } from './ir.js';
 import { composePath } from './compose.js';
 import { applyInstruction } from './match.js';
-import { reaches, recordAstExtendProfile } from './plan.js';
+import { boundaryReaches, reaches, recordAstExtendProfile } from './plan.js';
 import type { Plan, PlanInstruction, PlanSubject } from './plan.js';
 
 /** An instruction's precomputed composed extender branches + their text keys. */
@@ -105,7 +105,13 @@ export interface SolveResult {
  * this never recomposes. Returns the RAW seed with `changed: false` on a prefilter
  * miss or a no-op fixpoint, else the extended list with `changed: true`.
  */
-export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan, contribMemo?: ContribMap): SolveResult {
+export function solveComposed(
+  seed: Branch[],
+  scope: PlanSubject['scope'],
+  boundary: PlanSubject['boundary'],
+  plan: Plan,
+  contribMemo?: ContribMap
+): SolveResult {
   /*
    * Target-atom PREFILTER: the fixpoint can only ever change a subject whose
    * composed seed shares at least one individual simple atom with some instruction
@@ -121,12 +127,12 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan, 
   const reachable = plan.instructions.filter(i =>
 
     /*
-     * A visible instruction may pull a reference subject into output. A hidden
-     * instruction is confined to the reference document that defined it, so it
-     * never aliases authored siblings outside that import boundary.
+     * A visible instruction may pull a reference subject into output. A confined
+     * instruction (a reference sheet's, a composed module's) never aliases rules
+     * outside the sheets it was loaded with.
      */
-    (i.referenceBoundary === null || i.referenceBoundary === subject.referenceBoundary)
-    && reaches(i.scope, subject.scope));
+    boundaryReaches(i.boundary, boundary)
+    && reaches(i.scope, scope));
   if (reachable.length === 0) {
     return { list: seed, changed: false };
   }

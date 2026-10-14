@@ -22,10 +22,17 @@ export type JessErrorCode =
   | 'parse/unsupported-variable-name'
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
+  | 'parse/leading-separator-value'
+  | 'parse/uncalled-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
+  | 'parse/invalid-mixin-argument'
+  | 'parse/ambiguous-not'
+  | 'parse/condition-keyword-case'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
+  | 'compose/not-top-level'
+  | 'import/cycle'
   | 'import/not-found'
   | 'import/load-failed'
   | 'eval/bad-call-arity'
@@ -47,6 +54,8 @@ export type JessErrorCode =
   | 'eval/invalid-unit-arithmetic'
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
+  | 'eval/url-option-skipped'
+  | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
   | 'eval/unit-conversion'
@@ -54,6 +63,7 @@ export type JessErrorCode =
   | 'extend/not-found'
   | 'extend/not-accessible'
   | 'plugin/unsupported-feature'
+  | 'plugin/invalid-option'
   | 'plugin/function-threw'
   | 'plugin/load-failed'
   | 'plugin/log'
@@ -61,7 +71,8 @@ export type JessErrorCode =
   | 'resolve/unused-variable'
   | 'selector/duplicate'
   | 'selector/parentless-ampersand'
-  | 'selector/comma-list-interpolation';
+  | 'selector/comma-list-interpolation'
+  | 'css/glued-condition-keyword';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -162,6 +173,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'parse/leading-separator-value',
+    {
+      summary: 'A Less value cannot start with "/"',
+      reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
+      fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+    }
+  ],
+  [
+    'parse/uncalled-mixin-reference',
+    {
+      summary: 'A mixin reference is not a value',
+      reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
+      fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
+    }
+  ],
+  [
     'parse/import-postlude-on-compile-time-import',
     {
       summary: 'A compile-time @import cannot carry a layer or supports condition',
@@ -175,6 +202,30 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@-import cannot carry a media, supports or layer condition without (css)',
       reason: '@-import has Less import semantics, so a CSS import condition needs the (css) option.',
       fix: 'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.'
+    }
+  ],
+  [
+    'parse/invalid-mixin-argument',
+    {
+      summary: 'Invalid mixin argument',
+      reason: 'This item cannot be an argument or parameter of a mixin in this position.',
+      fix: 'Rewrite the argument as a value, or separate it with ";".'
+    }
+  ],
+  [
+    'parse/condition-keyword-case',
+    {
+      summary: 'Less condition keyword not lowercase',
+      reason: 'A Less condition (a mixin guard, if() or boolean()) reads lowercase and, or and not; a CSS condition reads them in any case.',
+      fix: 'Write the keyword in lowercase.'
+    }
+  ],
+  [
+    'parse/ambiguous-not',
+    {
+      summary: '`not` before a compared operand',
+      reason: '`not` negates the condition or group right after it, so a comparison after a bare operand leaves open what it negates.',
+      fix: 'Group what `not` negates, for example: not (1 > 2).'
     }
   ],
 
@@ -193,6 +244,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Circular @-compose detected',
       reason: '${chain}',
       fix: 'Break the cycle (extract shared bits and compose that).'
+    }
+  ],
+  [
+    'compose/not-top-level',
+    {
+      summary: '@compose is only allowed at the top level of a stylesheet',
+      reason: 'A @compose is written inside a ruleset, at-rule, mixin, guard or loop body; a module is composed by the stylesheet, at its top level.',
+      fix: 'Move the @compose to the top level of the stylesheet, or use @import to bring the sheet into this block.'
+    }
+  ],
+  [
+    'import/cycle',
+    {
+      summary: 'Import cycle',
+      reason: '"${specifier}" is imported with (multiple) while an enclosing import is still placing it, so each copy would import another without end.',
+      fix: 'Remove the (multiple) option, or the import that leads back to the sheet.'
     }
   ],
   [
@@ -368,8 +435,32 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     {
       summary: 'Unit has no CSS spelling',
       reason:
-        '${expr} composes a unit CSS cannot express, so no result can carry it honestly.',
-      fix: 'Cancel the units, drop one side\'s unit, or wrap the expression in calc() to keep it as authored.'
+        '${expr} has no single CSS value: its units compose to one CSS cannot express, or + or - joins two units that do not convert.',
+      fix: 'Cancel the units, or drop one side\'s unit. An expression calc() accepts can be wrapped in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/charset-not-utf8',
+    {
+      summary: '${charset} in ${file} is dropped: the output is UTF-8',
+      reason: 'A stylesheet declares one encoding, read from its first bytes, and Jess writes its output as UTF-8, so a @charset naming another encoding would make every non-ASCII character read wrongly.',
+      fix: 'Save ${file} as UTF-8 and remove its @charset, or change it to @charset "UTF-8".'
+    }
+  ],
+  [
+    'eval/url-option-skipped',
+    {
+      summary: '${option} is not added to ${url}',
+      reason: '${url} has an escaped body, which no URL option changes, so ${option} is not added to it.',
+      fix: 'Write the URL as a quoted string, url("…"), to have ${option} added, or write it into the escaped string.'
+    }
+  ],
+  [
+    'css/glued-condition-keyword',
+    {
+      summary: '`${keyword}(` is read by CSS as a function, so this condition never matches — write `${keyword} (` if you meant the keyword',
+      reason: 'An identifier glued to "(" is one function token (CSS Syntax 3 §4.3.4), so `${keyword}(` is an unknown function, not the `${keyword}` keyword, and a condition holding it matches nothing (Media Queries 4 §3.2). It is written as authored.',
+      fix: 'Write `${keyword} (`, with a space, if you meant the keyword.'
     }
   ],
   [
@@ -429,9 +520,17 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'plugin/unsupported-feature',
     {
-      summary: 'Unsupported feature',
-      reason: 'Plugin "${plugin}" does not implement ${feature}.',
-      fix: 'Use a supported alternative or enable a fallback.'
+      summary: 'Plugin "${plugin}" uses ${feature}, which is not supported',
+      reason: 'Plugin "${plugin}" uses ${feature}, which this compiler does not provide, so the plugin cannot be installed.',
+      fix: '${replacement}'
+    }
+  ],
+  [
+    'plugin/invalid-option',
+    {
+      summary: 'The ${plugin} option ${option} must be ${allowed}; got ${value}',
+      reason: 'The ${plugin} plugin has no ${option} value ${value}, so it would have to guess which mode was meant.',
+      fix: 'Set ${option} to ${allowed}.'
     }
   ],
 

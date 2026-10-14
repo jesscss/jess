@@ -7,6 +7,18 @@ origin: less
 ---
 ## Cross-Platform Options
 
+Less 5 also reads `styles.config.*` files: every one in the folder of the file it compiles and the folders above it, up to the package root (the first folder up with a `package.json`), merged, the nearest winning setting by setting. An option passed to `less.render()` or `lessc` is a Less option, so it sits in the config's `language.less` block: it wins over the same option there and over a `compile` mode (including the `strict` preset), and the config files apply to the options the call leaves unset.
+
+The mode options (`math`, `unitMode`, `strictUnits`, …) are worked out for each file the compile reads, so an imported file compiles the same way whichever file imports it:
+
+- Each file uses the `styles.config.*` files in its own folder and above it, merged; an imported file in another folder uses the ones above it, not the entry's. No config is loaded for a file in an installed package (under `node_modules`).
+- The options passed to `less.render()` or `lessc` are merged over those configs, option by option.
+- On the result, a file's settings are its language's defaults (or the options the Less plugin was built with), under the `compile` block, under the block for its language. So `language.less` applies only to `.less` files and wins over `compile`; an option passed to `less.render()` or `lessc` reaches `.less` files only, and an imported `.jess` or `.scss` file keeps its own settings. With nothing set, a `.less` file uses `unitMode: 'preserve'`, while a `.jess` file imported by it keeps `.jess`'s default, where `$(1px + 3em)` is an error.
+- Math follows the file it is written in: a variable declared in a `.jess` file and read in a `.less` file, or a mixin and its guard defined in one folder and called from another, keep the settings of the file that declares them. A file also keeps its own language's built-in functions, so `percentage()` works in a `.less` file imported by a `.jess` file.
+- A deprecated spelling (`strictUnits`, `math`, `strictMath`) counts where it is written: `strictUnits` in a `language.less` block wins over a `unitMode` in the same config's `compile` block. Each one warns, once, wherever it is set.
+
+The mode options (`math`, `unitMode`, `moduleMode`) accept only the values listed for them. Any other value is an error, not a fallback to another mode.
+
 ### Include Paths
 
 | | |
@@ -25,6 +37,8 @@ If the file in an `@import` rule does not exist at that exact location, Less wil
 Allows you to add a path to every generated import and url in your css. This does not affect Less import statements that are processed, just ones that are left in the output css.
 
 For instance, if all the images the css use are in a folder called resources, you can use this option to add this on to the URL's and then have the name of that folder configurable.
+
+An escaped string inside `url()` (`url(~"@{base}/x.png")`, or a variable holding one) is text you wrote verbatim, so `rootpath`, `rewriteUrls` and `urlArgs` all leave it as written. Less 4 rewrote it, which could write a broken URL: under `rootpath: 'r/'`, `url(~"'b.png'")` became `url(r/'b.png')`. Use a quoted string (`url("@{base}/x.png")`) when you want the options to apply. With `urlArgs` set, each escaped `url()` body that does not get the argument reports an `eval/url-option-skipped` warning naming the URL, since Less 4 added it there.
 
 ### Rewrite URLs
 
@@ -92,14 +106,14 @@ _Released v3.7.0_
 
 Less has re-built math options to offer an in-between feature between the previous `strictMath` setting, which required parentheses all the time, and the default, which performed math in all situations.
 
-In order to cause fewer conflicts with CSS, which now liberally uses the `/` symbol between values, there is now a math mode that _only_ requires parentheses for division. (This is now the default in Less 4.) "Strict math" has also been tweaked to operate more intuitively, although the legacy behavior is supported.
+In order to cause fewer conflicts with CSS, which now liberally uses the `/` symbol between values, there is now a math mode that _only_ requires parentheses for division. (This is now the default in Less 4.) "Strict math" has also been tweaked to operate more intuitively.
 
 The four options available for `math` are:
 
 - `always`  (3.x default) - Less does math eagerly
-- `parens-division` **(4.0 default)** - No division is performed outside of parens using `/` operator (but can be "forced" outside of parens with `./` operator - `./` is deprecated)
+- `parens-division` **(4.0 default)** - No division is performed outside of parens using `/` operator. (Less 4 also let the `./` operator force a division outside parens; Less 5 removed it, and `2px ./ 2` is a parse error.)
 - `parens` | `strict` - Parens required for all math expressions.
-- `strict-legacy` (removed in 4.0) - In some cases, math will not be evaluated if any part of the expression cannot be evaluated.
+- `strict-legacy` (removed in 4.0) - Still accepted, and means `parens`, as in Less 4.
 
 **always**
 Example:
@@ -107,8 +121,7 @@ Example:
 .math {
   a: 1 + 1;
   b: 2px / 2;
-  c: 2px ./ 2;
-  d: (2px / 2);
+  c: (2px / 2);
 }
 ```
 Outputs:
@@ -117,7 +130,6 @@ Outputs:
   a: 2;
   b: 1px;
   c: 1px;
-  d: 1px;
 }
 ```
 
@@ -128,8 +140,7 @@ Example:
 .math {
   a: 1 + 1;
   b: 2px / 2;
-  c: 2px ./ 2;
-  d: (2px / 2);
+  c: (2px / 2);
 }
 ```
 Outputs:
@@ -138,7 +149,6 @@ Outputs:
   a: 2;
   b: 2px / 2;
   c: 1px;
-  d: 1px;
 }
 ```
 
@@ -159,29 +169,13 @@ Output:
 }
 ```
 
-**strict-legacy**
-
-In legacy `strictMath` mode, mixed expressions outside of parentheses means entire parentheses won't evaluate. (Probably not what you want.)
-
-```less
-.math {
-  a: 1 + 1;
-  b: 2px / 2;
-  c: (2px / 2) + (3px / 1);
-}
-```
-Output:
-```css
-.math {
-  a: 1 + 1;
-  b: 2px / 2;
-  c: (2px / 2) + (3px / 1);
-}
-```
-
 #### Strict Math (Deprecated)
 
-_This has been replaced by the [`math`](#math) option._
+| | |
+|---|---|
+| `lessc -sm=on`<br>`lessc --strict-math=on` | `{ strictMath: true }` |
+
+_This has been replaced by the [`math`](#math) option._ Less 5 still accepts it as an alias: `on` / `true` is `math: 'parens'`, and `off` / `false` leaves the default (`parens-division`). As in Less 4.x, `lessc` also takes `t`, `y`, `yes`, `f`, `n` and `no`, in any case. An explicit `math` wins. When `strictMath` decides the math mode, that is, when no `math` is set, a deprecation warning names the mapping.
 
 
 
@@ -189,9 +183,9 @@ _This has been replaced by the [`math`](#math) option._
 
 | | |
 |---|---|
-| `lessc -ru`<br>`lessc --relative-urls` | `{ relativeUrls: true }` |
+| `lessc --relative-urls` | `{ relativeUrls: true }` |
 
-_Has been replaced by `rewriteUrls: "all"`_
+_Has been replaced by `rewriteUrls: "all"`._ Less 5 accepts `relativeUrls` in options and in a `styles.config` as a deprecated spelling of `rewriteUrls`: `true` means `rewriteUrls: "all"`, `false` leaves the default, and an explicit `rewriteUrls` wins. Setting it logs a deprecation warning. As in Less 4.x, `lessc --relative-urls` ignores a value (`--relative-urls=off` is `--relative-urls`), and `-ru` is the short form of `--rewrite-urls`, not of `--relative-urls`.
 
 
 ### Unit Mode
@@ -214,7 +208,11 @@ In this case, things are clearly not right - a length multiplied by a length giv
 
 - `loose` — this guessing behavior (the Less 1.x–4.x default).
 - `strict` — assume this is a bug in the calculation and throw an error.
-- `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing; anything `strict` computes, `preserve` computes identically.
+- `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing, with an `eval/unexpressible-unit` warning; anything `strict` computes, `preserve` computes identically.
+
+A unitless number added to or subtracted from a dimension takes the dimension's unit in every mode, as in Less 4 and Sass: `4 + 3px` is `7px` and `1.5 - 1rem` is `0.5rem`, under `strict` too. `strict` keeps its Less 4 meaning — an error only where two different real units meet (`1px + 1em`).
+
+Math `preserve` keeps stays one `calc()`. The parts of the expression that do compute are computed, and the kept expression keeps its grouping, whether you wrote the parentheses or it reached an operator through a variable or a mixin argument (`@x * 2` with `@x: 1px + 1em` is `calc((1px + 1em) * 2)`); an outer pair of parentheses you wrote becomes the `calc()`'s own. Inside a math function the kept math is its arithmetic, never a nested `calc()`, however it gets there — a variable, a group around it, a mixin argument (`calc(@x * 2)` and `calc((@x) * 2)` are `calc((1px + 1em) * 2)`, `max(@x, 1px)` is `max(1px + 1em, 1px)`) — and it warns there too; math you write inside the `calc()` is yours and stays silent. A guard, an `if()` or a function that reads kept math gets no number from it: the comparison is not true and the call is written out as-is, each with the warning. A unitless `min()`/`max()` argument compares as carrying the other arguments' unit, and takes that unit when it wins (`max(4, 3px)` is `4px`, as `4 + 3px` is `7px`); only two different real units are not comparable.
 
 #### Strict Units (deprecated)
 
@@ -222,13 +220,13 @@ In this case, things are clearly not right - a length multiplied by a length giv
 |---|---|
 | `lessc -su=on`<br>`lessc --strict-units=on` | `{ strictUnits: true }` |
 
-_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). A deprecation warning naming the mapping is logged during compile whenever it is used._
+_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). `lessc` takes the same on/off spellings as `--strict-math`. When `strictUnits` decides the unit mode, that is, when no `unitMode` is set, a deprecation warning names the mapping during compile._
 
 ### Module Mode
 
 | | |
 |---|---|
-| | `{ moduleMode: MODE }` |
+| `lessc --module-mode=MODE` | `{ moduleMode: MODE }` |
 
 `MODE` is `auto` (the default) or `modern`, and decides whether the Less built-in functions are available in a `.less` file without importing them.
 
@@ -243,7 +241,7 @@ In modern mode a Less built-in must be imported, for example `@use "#less";` and
 |---|---|
 | `lessc --ie-compat` | `{ ieCompat: true }` |
 
-False by default starting in v3.0.0. Currently only used for the data-uri function to ensure that images aren't created that are too large for the browser to handle.
+Less 5 accepts `ieCompat` and ignores it, reporting a `deprecation/ie-compat-option` warning when it is set to `true`; `lessc` no longer accepts `--ie-compat`. In Less 4 it was false by default and only made `data-uri()` fall back to `url()` for a file too large for IE8; `data-uri()` now always inlines the file.
 
 #### Enable Inline JavaScript (Deprecated)
 
@@ -277,7 +275,7 @@ As opposed to the global variable option, this puts the declaration at the end o
 |---|---|
 | `lessc --url-args="cache726357"` | `{ urlArgs: 'cache726357' }` |
 
-This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance.
+This option allows you to specify a argument to go on to every URL. This may be used for cache-busting for instance. An escaped `url(~"…")` body is left as written, so it gets no argument (Less 4 appended one): in `url(~"'e.png'")` it would land after the closing quote, `url('e.png'?v=1)`, which is not a valid URL.
 
 #### Line Numbers (Deprecated)
 
@@ -285,7 +283,7 @@ This option allows you to specify a argument to go on to every URL. This may be 
 |---|---|
 | `lessc --line-numbers=comments`<br>`lessc --line-numbers=mediaquery`<br>`lessc --line-numbers=all` | `{ dumpLineNumbers: 'comments' }` |
 
-Generates inline source-mapping. This was the only option before browsers started supporting sourcemaps. 
+In Less 4.x this generated inline source-mapping, the only option before browsers supported source maps. Less 5 accepts the option but ignores it: no line-number comments or debug media queries are emitted, and setting it reports a `deprecation/dump-line-numbers-option` warning. Use [source maps](#source-map-options) instead.
 
 #### Pre-Loaded Plugin
 
@@ -301,20 +299,67 @@ See: [Pre-Loaded Plugins](./plugins)
 Runs the less parser and just reports errors without any output.
 
 
-#### Compress (Deprecated)
+#### Compress
 
 | | |
 |---|---|
 | `lessc --compress -x` | `{ compress: true }` |
 
-Compress using less built-in compression. This does an okay job but does not utilise all the tricks of dedicated css compression. In general, we recommend looking at third-party tools that clean and compress CSS after your Less has been transformed to CSS.
+Emits minified CSS. In 5.x, compressed output is a supported feature rather than a deprecated one: it applies every safe fold that Less 4.x `compress` and dart-sass `compressed` apply, and never a transform that could change what the CSS means. It also replaces minifying plugins such as `less-plugin-clean-css`. See [Compressed Output](../advanced/compressed-output) for exactly what it changes.
 
+
+#### Remote Imports
+
+| | |
+|---|---|
+| `lessc --allow-remote-imports=cdn.example.com` | `{ allowRemoteImports: ['cdn.example.com'] }` |
+| | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
+
+Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. A URL import that can never be plain CSS — `(reference)`, `(less)`, `(inline)`, `@compose` — is a compile error instead. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI. `lessc` and the `jess` CLI also take the hosts directly: `--allow-remote-imports cdn.example.com,fonts.example.com` (comma-separated, and the flag may repeat), as does `less.render()` with `allowRemoteImports`; the flag and the option need the plugin installed next to `less` or `jess`.
+
+```js
+// styles.config.mjs
+import { remoteImportPlugin } from '@jesscss/plugin-remote-import';
+
+export default {
+  compile: {
+    plugins: [
+      remoteImportPlugin({
+        allow: ['cdn.example.com'], // required: exact host names
+        maxBytes: 512 * 1024,       // optional: the default, in bytes
+        timeout: 5000               // optional: the default, in milliseconds
+      })
+    ]
+  }
+};
+```
+
+With the plugin configured:
+
+- Only `https://` URLs on an `allow` host are downloaded. Hosts are matched exactly by name — no wildcards, no ports, and no IP addresses. A host that resolves to a private, loopback or link-local address is refused.
+- A URL Less treats as CSS — one written with a `.css` file name, such as `@import "@{cdn}/theme.css"`, or one marked `(css)` — is never downloaded, on an allowed host or not. A URL spelled entirely by a variable (`@import "@{url}"`) is judged by how it is written, not its value, so it follows the rules below.
+- A URL on an allowed host is downloaded exactly as written, with or without a file extension. One without an extension is parsed in the language of the file that imports it.
+- A URL without a file extension that isn't downloaded — on another host, an IP address, or plain `http://` — stays in the output as a plain CSS `@import`, so a Google Fonts stylesheet such as `@import url("https://fonts.googleapis.com/css?family=Open+Sans");` keeps working.
+- Any other URL import that isn't downloaded — one with a file extension, such as `.less`, or an `(inline)`, `(reference)` or `(less)` import, which can never stay CSS — is a compile error. `(optional)` does not hide that error.
+- An import that stays CSS keeps its media query: `@import url("https://fonts.googleapis.com/css?family=Open+Sans") screen;` comes out as written. An import that is downloaded is wrapped in `@media screen { … }`, as a local one is.
+- `(optional)` skips a URL the server answers with 404 or 410, as it skips a missing local file.
+- `@import (inline)` of an allowed URL downloads it and inlines it like a local file.
+- Every path inside a downloaded file — in `@import`, `@import (inline)`, `data-uri()`, `@use` or `@plugin` — is resolved against the file's URL, so `@import "vars.less"` in `https://cdn.example.com/theme/main.less` loads `https://cdn.example.com/theme/vars.less`. A downloaded file can't read a file from your disk.
+- `rewriteUrls` and `rootpath` work inside a downloaded file as they do inside a local import. When `rewriteUrls` rewrites a relative `url()`, it points it at the downloaded file's location: `url(img/a.png)` in `https://cdn.example.com/theme/main.less` becomes `url(https://cdn.example.com/theme/img/a.png)`.
+- `data-uri()` and `image-size()` never download: a URL in `data-uri()` keeps its `url()` fallback. `@use` and `@plugin` load from local files only, so a URL there is an error, with or without the plugin.
+- Redirects are followed only within the same origin, at most five times.
+- A response larger than `maxBytes`, or an import that takes longer than `timeout` (redirects and body included), is an error.
+- Downloads are not pinned to a lockfile or an integrity hash: a host that changes a file changes your build.
+
+Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hosts (for example `deno run --allow-net=cdn.example.com …`). Deno then refuses a connection to any other host even if the plugin's own check were wrong. The plugin refuses to start under Deno with unrestricted network access (`--allow-net` with no host list, or `-A`), because then nothing at runtime backs the allow list. Node has no per-host network permission, so on Node the plugin's check is the only one.
 
 #### Allow Imports from Insecure HTTPS Hosts
 
 | | |
 |---|---|
 | `lessc --insecure` | `{ insecure: true }` |
+
+Less 5 ignores `insecure`, and `lessc` no longer accepts `--insecure`. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
 
 
 ## Source Map Options
@@ -328,6 +373,8 @@ Most of these options are not applicable to using Less.js in the browser, as you
 | `lessc --source-map` | `{ sourceMap: {} }` |
 
 Tells less to generate a sourcemap.
+
+The CSS ends with a `/*# sourceMappingURL=… */` annotation. Without a [Source Map URL](#source-map-url), the URL is the map's file name: `sourceMapFilename`, else `sourceMapOutputFilename` with `.map` appended, else the input file's name with `.css.map` (`main.less` → `main.css.map`). With none of those known, as for `less.render()` without a `filename`, no annotation is written. Empty output gets neither a map nor an annotation.
 
 #### Source Map Output Filename
 
@@ -361,7 +408,7 @@ dev-files/main.less
 
 This is the opposite of the rootpath option, it specifies a path which should be removed from the output paths. For instance if you are compiling a file in the less-files directory but the source files will be available on your web server in the root or current directory, you can specify this to remove the additional `less-files` part of the path.
 
-It defaults to the path to the input less file.
+It defaults to the path to the input less file. It is also removed from the front of the `sourceMappingURL` written into the CSS, so a map URL under the basepath becomes relative to it.
 
 #### Include Less Source in the Source Map
 

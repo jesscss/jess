@@ -1,8 +1,10 @@
 /**
  * Selector captures are selector VALUES, not an instruction to flatten a
  * nested rule. The output option owns that boundary: nested output preserves
- * the authored parent/child structure, while an explicit collapse composes the
- * suffix ampersand over every captured parent branch. Less `each()` is the
+ * the authored parent/child structure, while an explicit collapse references
+ * every captured parent branch from the `&`. A selector glued before `&` is a
+ * class of its own, never a name prefix (owner 2026-10-09: "how do you know
+ * it's a prefix? that's why we can't do that"). Less `each()` is the
  * existing opt-in when the author wants one emitted rule per ordinary list item
  * without changing the document's nesting policy.
  */
@@ -36,14 +38,78 @@ describe('Less selector-capture output boundaries', () => {
     ].join('\n'));
   });
 
-  it('composes the suffix ampersand over every captured branch when explicitly collapsed', async () => {
+  it('references every captured branch from a `&` glued after `.fruit-` when explicitly collapsed', async () => {
     await expect(render(captured, true)).resolves.toBe([
-      '.fruit-apple,',
-      '.fruit-satsuma {',
+      'apple.fruit-,',
+      'satsuma.fruit- {',
       '  content: "Capture";',
       '}',
       ''
     ].join('\n'));
+  });
+
+  /* Ledger O8(b), jess#347: an escaped selector's leading whitespace is canonicalized away at the header. */
+  it('drops the leading whitespace an escaped selector brings to a nested header', async () => {
+    const source = [
+      '@c-quoted: ~\'.a, .b\';',
+      '@d-quoted: ~\'.c, .d\';',
+      '@e-quoted: ~\' + .e-quoted\';',
+      '@{c-quoted}@{d-quoted} {',
+      '  @{e-quoted} {',
+      '    foo: baz;',
+      '  }',
+      '}'
+    ].join('\n');
+
+    await expect(render(source, false)).resolves.toBe([
+      '.a, .b.c, .d {',
+      '  + .e-quoted {',
+      '    foo: baz;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    await expect(render(source, true)).resolves.toBe([
+      '.a, .b.c, .d + .e-quoted {',
+      '  foo: baz;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  /*
+   * Escaped text in a selector prints as written, never read as selector syntax
+   * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"): its
+   * commas are characters, so a nested header keeps it on one line and a
+   * collapsed one glues it after its parent, never in an `:is()`. The
+   * whitespace it opens with is still dropped at the header (ledger O8(b)).
+   * One branch per line (O8(a)) is for a structured list (`*[…]`).
+   */
+  it('prints a quoted selector text as written in a nested header', async () => {
+    const source = [
+      '@g: ~\' .e, .f\';',
+      '.a {',
+      '  @{g} {',
+      '    foo: baz;',
+      '  }',
+      '}'
+    ].join('\n');
+
+    await expect(render(source, false)).resolves.toBe([
+      '.a {',
+      '  .e, .f {',
+      '    foo: baz;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    await expect(render(source, true)).resolves.toBe([
+      '.a .e, .f {',
+      '  foo: baz;',
+      '}',
+      ''
+    ].join('\n'));
+    await expect(render('@g: ~\' .e, .f\';\n@{g} { foo: baz; }', false)).resolves.toBe('.e, .f {\n  foo: baz;\n}\n');
   });
 
   it('uses Less each() for explicit rule multiplication without enabling global collapse', async () => {

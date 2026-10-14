@@ -6,17 +6,23 @@
  * legacy tree provenance module.
  */
 
+import type { SourceOwner } from './code-frame.js';
+
 interface EvalErrorLocationCarrier {
   _jessEvalSpanStart?: number;
   _jessEvalSpanEnd?: number;
-  _jessEvalSource?: string;
+  _jessEvalFile?: SourceOwner;
 }
 
-/** The resolved eval location previously stamped onto an error, if any. */
+/**
+ * The resolved eval location previously stamped onto an error, if any. `file`
+ * is the source file the span is in, so the frame counts lines in the file as
+ * written, past any text a host prepared ahead of it (ledger O16).
+ */
 export interface EvalErrorLocation {
   spanStart: number;
   spanEnd?: number;
-  source?: string;
+  file?: SourceOwner;
 }
 
 /**
@@ -27,7 +33,7 @@ export function stampEvalErrorLocation(
   err: unknown,
   spanStart: number | undefined,
   spanEnd: number | undefined,
-  source: string | undefined
+  file: SourceOwner | undefined
 ): void {
   if (err === null || typeof err !== 'object' || spanStart === undefined) {
     return;
@@ -38,7 +44,7 @@ export function stampEvalErrorLocation(
   }
   carrier._jessEvalSpanStart = spanStart;
   carrier._jessEvalSpanEnd = spanEnd;
-  carrier._jessEvalSource = source;
+  carrier._jessEvalFile = file;
 }
 
 /** Read back the eval location an earlier stamp attached, if present. */
@@ -51,5 +57,5 @@ export function readEvalErrorLocation(err: unknown): EvalErrorLocation | undefin
   if (spanStart === undefined) {
     return undefined;
   }
-  return { spanStart, spanEnd: carrier._jessEvalSpanEnd, source: carrier._jessEvalSource };
+  return { spanStart, spanEnd: carrier._jessEvalSpanEnd, file: carrier._jessEvalFile };
 }

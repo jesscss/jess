@@ -97,33 +97,32 @@ export interface LessOptions {
   color?: boolean;
 
   /**
-   * @deprecated This option has confusing behavior and may be removed in a future version.
+   * @deprecated Removed (owner ruling 2026-10-09): accepted, but it has no
+   * effect. Every `@import` is processed where it is written, a selector block
+   * included. Setting it reports a `deprecation/strict-imports-option` warning.
    *
-   * Controls how @import statements for .less files are handled inside selector blocks (rulesets).
-   *
-   * Behavior:
-   * - @import at root level: Always processed
-   * - @import inside @-rules (@media, @supports, etc.): Processed (these are not selector blocks)
-   * - @import inside selector blocks (.class, #id, etc.): Behavior depends on this option
-   *
-   * Options:
-   * - `false` (default): All @import statements are processed regardless of context.
-   * - `true`: @import statements inside selector blocks are silently ignored and not output.
-   * - `'error'`: @import statements inside selector blocks will throw an error instead of being silently ignored.
-   *
-   * Note: Only affects .less file imports. CSS imports (url(...) or .css files) are
-   * always output as CSS @import statements regardless of this setting.
-   *
-   * @see https://github.com/less/less.js/issues/656
    * @default false
    */
-  strictImports?: boolean | 'error';
+  strictImports?: boolean;
 
   /**
-   * Allow Imports from Insecure HTTPS Hosts
+   * @deprecated Accepted for Less 4.x compatibility, but it has no effect:
+   * remote imports are https-only and always verify the server certificate.
+   * Setting it reports a `deprecation/insecure-option` warning.
+   *
    * @default false
    */
   insecure?: boolean;
+
+  /**
+   * @deprecated Accepted for Less 4.x compatibility, but it has no effect:
+   * `data-uri()` always inlines the file, where Less 4 fell back to `url()` for
+   * a file too large for IE8. Setting it reports a
+   * `deprecation/ie-compat-option` warning.
+   *
+   * @default false
+   */
+  ieCompat?: boolean;
 
   /**
    * Allows you to add a path to every generated import and url in your css.
@@ -141,6 +140,14 @@ export interface LessOptions {
    * @default false
    */
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
+
+  /**
+   * @deprecated Use `rewriteUrls` instead. The Less 4.x boolean alias of
+   * `rewriteUrls`: `true` means `rewriteUrls: 'all'`; `false` leaves the default.
+   * An explicit `rewriteUrls` wins; otherwise it warns.
+   * @default undefined
+   */
+  relativeUrls?: boolean;
 
   /**
    * How to process math operations
@@ -195,10 +202,18 @@ export interface LessOptions {
   math?: 0 | 1 | 2 | 3 | MathMode | 'strict-legacy';
 
   /**
-   * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict'.
-   * If `false`, sets the unitMode to 'loose'.
-   * If undefined, uses the `unitMode` value (defaults to 'preserve').
-   * @default false
+   * @deprecated Use `mathMode` instead. The Less 4.x boolean alias of `math`:
+   * `true` sets `mathMode` to 'parens'; `false` leaves the default
+   * ('parens-division'). An explicit `mathMode` or `math` wins; otherwise it warns.
+   * @default undefined
+   */
+  strictMath?: boolean;
+
+  /**
+   * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict';
+   * `false` leaves the default ('preserve'), never the Less 4.x 'loose' fold.
+   * An explicit `unitMode` wins; otherwise it warns.
+   * @default undefined
    */
   strictUnits?: boolean;
 
@@ -224,7 +239,9 @@ export interface LessOptions {
   urlArgs?: string;
 
   /**
-   * @removed The dumpLineNumbers option is not useful nor supported in browsers. Use sourcemaps instead.
+   * @deprecated Accepted for Less 4.x compatibility, but it has no effect: no
+   * line-number comments or `-sass-debug-info` media queries are emitted. Setting
+   * it reports a `deprecation/dump-line-numbers-option` warning. Use source maps instead.
    *
    * @default undefined
    */
@@ -316,10 +333,11 @@ export interface LessOptions {
   /**
    * Whether/how to flatten nested selectors.
    * - `false` (default): keep authored nesting, emit no `:is()`.
-   * - `'native'`: flatten like native CSS Nesting — parent wrapped in `:is()`,
-   *   child selector lists DISTRIBUTED (each branch keeps its own specificity).
-   * - `'compact'`: like `'native'`, but also fold same-combinator descendant
-   *   child runs into a single `:is(…)` (group-max specificity).
+   * - `'native'`: flatten with native CSS Nesting specificity and matching —
+   *   parent wrapped in `:is()`; a child selector list folds into `:is(…)` only
+   *   where every folded branch has the same specificity.
+   * - `'compact'`: like `'native'`, but fold every same-combinator descendant
+   *   child run into a single `:is(…)` (group-max specificity).
    * `true` is a deprecated alias for `'native'`.
    * @default false
    */
@@ -380,7 +398,6 @@ export interface InputOptions extends FileMatchOptions {
   paths?: string[];
   globalVars?: Record<string, string> | null;
   modifyVars?: Record<string, string> | null;
-  strictImports?: boolean | 'error';
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
   rootpath?: string;
   allowLeakyScope?: boolean;

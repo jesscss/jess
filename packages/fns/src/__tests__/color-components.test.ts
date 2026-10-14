@@ -7,6 +7,7 @@ import {
 
 import { makeColorRgb, makeDimension, makeKeyword, RGB, type Color } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
+import { invoke } from './harness.js';
 
 let testColor: Color;
 
@@ -25,11 +26,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      expect(() => red(makeDimension(100, 'px'))).toThrow('red: arg 0 expected Color, got Dimension');
+      expect(() => invoke(red, makeDimension(100, 'px'))).toThrow('red: arg 0 expected Color, got Dimension');
     });
 
     it('rejects missing argument', () => {
-      expect(() => red()).toThrow('red: missing required argument color');
+      expect(() => invoke(red)).toThrow('red: missing required argument color');
     });
   });
 
@@ -45,11 +46,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      expect(() => blue(makeDimension(100))).toThrow('blue: arg 0 expected Color, got Dimension');
+      expect(() => invoke(blue, makeDimension(100))).toThrow('blue: arg 0 expected Color, got Dimension');
     });
 
     it('rejects missing argument', () => {
-      expect(() => blue()).toThrow('blue: missing required argument color');
+      expect(() => invoke(blue)).toThrow('blue: missing required argument color');
     });
   });
 
@@ -65,11 +66,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      expect(() => green(makeKeyword('not a color'))).toThrow('green: arg 0 expected Color, got Keyword');
+      expect(() => invoke(green, makeKeyword('not a color'))).toThrow('green: arg 0 expected Color, got Keyword');
     });
 
     it('rejects missing argument', () => {
-      expect(() => green()).toThrow('green: missing required argument color');
+      expect(() => invoke(green)).toThrow('green: missing required argument color');
     });
   });
 
@@ -85,11 +86,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      expect(() => alpha(makeDimension(100, '%'))).toThrow('alpha: arg 0 expected Color, got Dimension');
+      expect(() => invoke(alpha, makeDimension(100, '%'))).toThrow('alpha: arg 0 expected Color, got Dimension');
     });
 
     it('rejects missing argument', () => {
-      expect(() => alpha()).toThrow('alpha: missing required argument color');
+      expect(() => invoke(alpha)).toThrow('alpha: missing required argument color');
     });
   });
 });

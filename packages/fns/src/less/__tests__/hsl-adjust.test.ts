@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HEX, HSL, colorHsl, makeColorHsl, makeColorRgb, makeDimension, makeList, type Color, type Keyword } from '@jesscss/core';
+import { call as evaluate, node } from '../../__tests__/harness.js';
+import { HEX, HSL, colorHsl, makeColorHsl, makeColorRgb, makeDimension, type Color, type Fn, type Keyword, type ValueGroup } from '@jesscss/core';
 import { darken as darkenFn } from '../darken.js';
 import { desaturate as desaturateFn } from '../desaturate.js';
 import { lighten as lightenFn } from '../lighten.js';
@@ -7,15 +8,7 @@ import { saturate as saturateFn } from '../saturate.js';
 
 const percent = (number: number) => makeDimension(number, '%');
 const relative: Keyword = { type: 'Keyword', text: 'relative', bytes: 'relative' };
-const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
-
-const call = (fn: (args: ReturnType<typeof makeList>, context: typeof ctx) => unknown, ...args: Parameters<typeof makeList>[0]): Color => {
-  const value = fn(makeList(args, ','), ctx);
-  if (value === null || typeof value !== 'object' || !('type' in value) || value.type !== 'Color') {
-    throw new TypeError('Expected a Color result.');
-  }
-  return value;
-};
+const call = (fn: Fn, ...args: ValueGroup[]): Color => node(evaluate(fn, ...args), 'Color');
 
 describe('Less HSL channel adjustment', () => {
   it('clamps absolute saturation changes to the HSL channel domain', () => {

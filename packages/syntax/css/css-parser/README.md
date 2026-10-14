@@ -73,12 +73,15 @@ both and requires identical AST and CST results.
 Browser bundlers pick it up automatically: the package's `browser` field maps
 each `lib/grammar/<variant>` file to its interpreter twin, so a browser bundle
 carries the combinator graph instead of the compiled table, while Node keeps the
-table. The grammar is composed when the module loads, and parseman's runtime
-`compose()` calls `new Function`, so a page whose Content-Security-Policy omits
-`'unsafe-eval'` cannot load it.
+table. The grammar is composed when the module loads, without generating code,
+so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
+`test/interpreter-parity.test.ts` loads every variant of both engines with code
+generation disallowed and counts every call to `Function` and `eval`.
 
 The CST and grammar entries expose Parseman types and grammar values. Parseman
-ships as a bundled dependency, so it installs with the package automatically.
+is a regular dependency, so it installs with the package. `@jesscss/core` is a
+peer dependency of every parse entry, `./cst` included, because the compiled
+grammar tables carry core's AST reductions; install it alongside the parser.
 
 The former `./jess` Chevrotain/functional-builder surface is deleted. CSS has
 no legacy tree parser or construction host. Its public parser constructs the

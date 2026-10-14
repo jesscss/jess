@@ -26,10 +26,21 @@ configure `@jesscss/plugin-js`; that path runs the legacy Less wrapper inside a
 Deno sandbox with Less-compatible injected variables such as `functions`, `tree`,
 `less`, and `registerPlugin`.
 
-The sandbox read root defaults to the entry Less file/config root unless the
-plugin-js options provide a narrower `jsReadRoot`. File reads outside that root
-are denied, environment/process access is denied, and network access is disabled
-unless explicitly allowed by plugin-js policy.
+The sandbox read root is the project root: the directory of the
+`styles.config.*` above the entry Less file, or the entry file's own directory
+when there is none. A source with no file path (`less.render()` without
+`filename`) has the current working directory as its root. A plugin script
+outside that root is refused, and so is any file read outside it, with one
+exception: an installed package the stylesheet names (`@plugin "name"`), which
+package resolution found in a `node_modules` outside the root. The directory of
+that package is readable too, and nothing else around it. Set
+`compile.jsReadRoot` in a `styles.config.*` to an absolute path to choose
+another root. Environment and process access are denied, and network access is
+disabled unless plugin-js policy explicitly allows it.
+
+This is a deliberate difference from Less 4.x, which ran a plugin script in the
+Node process with full access to the file system, the environment, and the
+network.
 
 Use `disableScriptModules` to disable executable script modules entirely,
 including file-based `@plugin`. The old Less-compatible `disablePluginRule`
@@ -40,9 +51,9 @@ While the easiest way to use a plugin is using the [`@plugin` at-rule](../featur
 
 ### Preprocessing
 
-Pre-loading plugins is necessary if you want to add a Less.js Pre-processor. That is, a plugin that gets called and passed the raw Less source before parsing even starts. An example of this would be a [Sass-To-Less Pre-processor plugin](../tools/plugins).
+In Less 4.x, pre-loading plugins was necessary to add a Less.js Pre-processor. That is, a plugin that gets called and passed the raw Less source before parsing even starts. An example of this would be a [Sass-To-Less Pre-processor plugin](../tools/plugins). Less 5 does not run pre-processors (or visitors, post-processors, or file managers): such a plugin is refused with an error naming the replacement. See [Plugins](../features/plugins).
 
-Note: pre-loading is not necessary for _pre-evaluation_ plugins (after Less source is parsed, but before it is evaluated).
+Less 4.x _pre-evaluation_ plugins (visitors that run after the Less source is parsed, but before it is evaluated) are refused in the same way.
 
 ## Node.js
 

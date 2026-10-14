@@ -5,6 +5,7 @@ import {
   compoundSelectorOf, complexSelector, decl, keyword, stylesheet, rule, sel, selist, simpleSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
@@ -85,7 +86,13 @@ describe('extend element/id conflict guard', () => {
       rule(selist(extender), [], [{ target: selist(sel('.a')), partial: true }])
     ]);
 
-    expect(render(document)).toBe('div:is(.a, div.b) {\n'
+    /*
+     * `.a` (0,1,0) and `div.b` (0,1,1) cannot share an `:is()` without raising
+     * `div.a`, so each is its own branch. The repeated `div` merges into one type
+     * selector (Less 4.x writes the invalid `divdiv.b`).
+     */
+    expect(render(document)).toBe('div.a,\n'
+      + 'div.b {\n'
       + '  color: red;\n'
       + '}\n');
   });
@@ -172,6 +179,25 @@ describe('extend element/id conflict guard', () => {
     expect(render(document)).toBe('div:is(.y, .a, .z) {\n'
       + '  color: red;\n'
       + '}\n');
+  });
+
+  /*
+   * The simples around the match describe the same element as the matched simple, the
+   * one a complex extender's LAST compound names (ledger X3; owner 2026-10-09: same
+   * element ⇒ same compound), so the guard checks them against that compound: two
+   * element types or two ids there match no element, and the extender is dropped.
+   */
+  it('checks a complex extender\'s last compound against the simples around the match', () => {
+    const renderLess = (src: string): string | undefined => render(parseLess(src));
+
+    // `div` and `span`, `#a` and `#b`, would name one element.
+    expect(renderLess('div.c { m: 1 } .p span:extend(.c all) {}')).toBe('div.c {\n  m: 1;\n}\n');
+    expect(renderLess('#a.c .d { m: 1 } .q #b:extend(.c all) {}')).toBe('#a.c .d {\n  m: 1;\n}\n');
+    expect(renderLess('.c#a { m: 1 } .q #b:extend(.c all) {}')).toBe('.c#a {\n  m: 1;\n}\n');
+
+    // The first compound names an ancestor: `div` with `span.p .q` is `span.p div.q`.
+    expect(renderLess('div.c { m: 1 } span.p .q:extend(.c all) {}'))
+      .toBe('div.c,\nspan.p div.q {\n  m: 1;\n}\n');
   });
 
   it('allows extending #foo#foo.class with .bar (single distinct id → no conflict)', () => {

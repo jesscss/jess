@@ -63,18 +63,23 @@ The v5 alpha CHANGELOG (`~/git/oss/less.js/CHANGELOG.md`, `v5.0.0-alpha.1
 > rejects `sourceMap*`, `rootpath`, `rewriteUrls`, `urlArgs`, and `compress` via
 > `unsupportedAlphaOptions`, and whose `mapRenderResult` does not forward
 > `result.map`. Wiring these through the wrapper (as was done for
-> `collapseNesting`) — plus a source-map annotation/artifact harness — is the
-> real Less-parity work here, not new engine features. The rows below marked
+> `collapseNesting`) is the real Less-parity work here, not new engine features.
+> **Re-checked 2026-10-05:** the less.js `alpha` wrapper now forwards all of
+> them and returns `result.map`; `unsupportedAlphaOptions` holds only
+> `globalVars`, `modifyVars` and `javascriptEnabled`, and the fork branch
+> `lane/v5-4-lessjs` supports the first two.
+> The source-map annotation/artifact harness now exists (rows 3 and 5, updated
+> 2026-10-04). The rows below marked
 > "re-measured 2026-09-13" reflect this; the rest still carry the 2026-07-30
 > provenance and should be re-measured before use.
 
 | # | Declared WIP | Verified status | Evidence |
 | --- | --- | --- | --- |
-| 1 | legacy plugin execution | **PARTIAL — function registration works, hooks do not** | `plugin.install?.(this.less, undefined, this.registry)` — `packages/syntax/less/jess-plugin-less-compat/src/less-api-bridge.ts:360`; the manager parameter is typed `undefined` at `:35`. `less.functions.functionRegistry.add/addMultiple` work (used by the `all-less` harness plugin, `packages/jess/test/less/all-less.test.ts:32-48`). `less.tree` exposes only `Dimension`, `Quoted`, `Color`, `Anonymous` (`less-api-bridge.ts:46-52`) against 4.x's full `tree` export. |
-| 2 | file-manager and pre/post-processor hooks | **MISSING — confirmed, structurally unreachable** | `addVisitor` / `addPreProcessor` / `addPostProcessor` / `addFileManager` appear **nowhere in any source package** — only in two test files. Because the manager argument is `undefined` (row 1) there is no object to call them on. The four corresponding fixtures are skipped as "needs scope decision": `packages/jess/test/less/all-less.test.ts:145-149,161`. |
-| 3 | source maps | **IMPLEMENTED (engine) — re-measured 2026-09-13; wrapper gap remains** | `renderToResult` with `output.sourceMap: true` now returns a v3 map alongside `css,errors,warnings,loadedUrls`: `{ version: 3, sources: ["virtual..less"], mappings }`. Assembled by `assembleSourceMap`/`buildAstSourceMap` (`packages/compiler/src/index.ts:136,1198`) from `packages/core/src/ast/sourcemap.ts`. **Wrapper gap:** the public `less.render` API still rejects `sourceMap*` (`unsupportedAlphaOptions`, `packages/less/lib/options.js`) and `mapRenderResult` does not forward `result.map`; the annotation is only written when an `outputFile`/`sourceMapURL` is given. The nine `sourcemaps*` fixtures stay skipped/xfail pending the wrapper wire-through + an annotation/artifact harness (`all-less.test.ts:152-159,214-229`). |
+| 1 | legacy plugin execution | **PARTIAL — function registration works, hooks are refused (A12)** | `less.functions.functionRegistry.add/addMultiple` work (used by the `all-less` harness plugin, `packages/jess/test/less/all-less.test.ts`). `less.tree` in the in-process bridge exposes only `Dimension`, `Quoted`, `Color`, `Anonymous` (`packages/syntax/less/jess-plugin-less-compat/src/less-api-bridge.ts`) against 4.x's full `tree` export. `@plugin` scripts may `require()` sibling CommonJS files inside the read root (`packages/jess-plugin-js/src/runtime-worker.ts`, `createLegacyRequire`). |
+| 2 | file-manager, visitor and pre/post-processor hooks | **REFUSED WITH A DIAGNOSTIC — A12 non-goal (owner 2026-09-14, reaffirmed 2026-10-04)** | Both runtimes hand plugins the whole 4.x `PluginManager`: `addPlugin` / `addPlugins` / `get` / `installedPlugins` / `pluginCache` work (in the sandbox they are per `@plugin` script, and adding a plugin from inside a function body is refused), while every member that adds, lists or exposes visitors (with their `iterator`), pre/post-processors, file managers or the `Loader` (and `less.visitors` / `less.FileManager` / `less.environment`, however a script or its required files reach `less`, including the sandbox's global `less` / `Less`) refuses the plugin with one `plugin/unsupported-feature` diagnostic whose replacement text lives in core (`ERR.pluginUnsupported`, `packages/core/src/error/diagnostics.ts`): raised in-process by `less-api-bridge.ts`, and for `@plugin` scripts mapped by the `@jesscss/plugin-js` host from the sandbox's refusal (`runtime-worker.ts`) and attributed to the `@plugin` statement. The four corresponding fixtures are intended divergences, and their plugins are asserted refused in `packages/jess/test/less/plugin-diagnostics.test.ts`. |
+| 3 | source maps | **IMPLEMENTED (engine and wrapper) — corpus fixtures gated 2026-10-04** | `renderToResult` with `output.sourceMap` (or the Less `language.less.sourceMap` shape) returns a v3 map and appends `/*# sourceMappingURL=… */` with no trailing newline: `sourceMapURL`, else `sourceMapFilename`, else `<output>.css.map`, with `sourceMapBasepath` stripped from it as from every source (Less 4.x `removeBasepath`); empty output gets neither. One mapping per emitted node; text injected around the entry (`banner`/`globalVars` ahead, `modifyVars` after) stays unmapped and out of its `sourcesContent`; `sourcesContent` only for sources a mapping names (ledger O12). Assembled by `assembleSourceMap` (`packages/compiler/src/index.ts`) from `packages/core/src/ast/sourcemap.ts`. **Gate:** `packages/jess/test/less/sourcemaps.test.ts` renders the eleven `tests-config/sourcemaps*` fixtures the way the upstream harness does and checks `file`/`sources`/`sourcesContent` against the upstream expected maps, every mapping at its exact columns, and line attribution against Less 4.x; `packages/jess/test/sourcemap-roundtrip.test.ts` covers imports, reordering, compress, injected prefixes and suffixes, and `(inline)` imports. `tests-config/sourcemaps/comprehensive/comprehensive.less` stays skipped in `all-less`: its golden's annotation names `tests-config/sourcemaps-comprehensive/`, which its config does not yield; the one-line golden correction is proposed on the less.js fork branch `lane/v5-sourcemap-comprehensive-golden`. **Wrapper:** less.js `alpha` forwards `sourceMap*` and returns `result.map`; the fork branch `lane/v5-4-lessjs` adds `banner`/`globalVars`/`modifyVars` through the compiler's `prepareSource` hook (`prepareLessRootSource`), gated with `sourceMap` on in its `test/alpha-sourcemaps.mjs`. |
 | 4 | URL rewriting options | **WRONG — these are IMPLEMENTED** | `output.rewriteUrls:'all'` on `@import "sub/inner.less"` gives `url("sub/rel.png")`, byte-identical to `lessc --rewrite-urls=all`. `output.rootpath:'/cdn/'` → `url("/cdn/img/a.png")` = `lessc --rootpath`. `output.urlArgs:'v=1'` → `url("img/a.png?v=1")` = `lessc --url-args`. **The options live in `output`, not `compile`** — passing them in `compile` is silently ignored, which is how this was mis-recorded. See §6. |
-| 5 | compressed-output parity | **IMPLEMENTED (engine) — re-measured 2026-09-13; wrapper gap remains** | `output.compress: true` now returns compressed CSS: `.x { color: red; .y { width: (1 + 1) } }` → `.x{color:red;.y{width:2}}` (whitespace stripped; `.y` stays nested because `collapseNesting` defaults to `false`). Ledger **O3** still reads `SETTLED (impl pending)` — that "impl pending" is now stale and wants an owner refresh. **Wrapper gap:** `compress` is in `unsupportedAlphaOptions` (`packages/less/lib/options.js`), so the public `less.render` API rejects it; the three compression fixtures stay skipped (`all-less.test.ts:141-144`). |
+| 5 | compressed-output parity | **IMPLEMENTED (engine and wrapper) — fixtures gated 2026-10-04** | `output.compress: true` implements ledger **O3** in the live serializer (`packages/core/src/ast/compress.ts` owns the folds; `serialize.ts` threads the mode): zero units kept, hex 6→3/8→4, a classified color as the shorter of name/hex, function-form colors compact in their own form, `!important` and `@media(` tightened, interpolated text never re-spelled. The three `tests-config/*compress*` fixtures pass in `all-less` and their source maps hold in `sourcemaps.test.ts`; `packages/jess/test/compress.test.ts` covers the rest. Ledger **O3** records this implementation and its test gates. A mixin argument is evaluated once and binds as written, carrying the value it was evaluated to, so a parameter interpolated inside the mixin body keeps its spelling while its declaration still folds by that value's type (`eagerSnapshot` in `serialize.ts`). **Wrapper:** less.js `alpha` forwards `compress` to the compiler's `output.compress` (`packages/less/lib/options.js`, re-checked 2026-10-05). |
 | 6 | browser compilation | **MISSING — confirmed, as declared** | `packages/jess/package.json` has no `browser` field, `exports` is `"."` + `"./package.json"` only, and no browser entry/bundle target exists in any package. |
 | 7 | "the remaining long-tail Less 4 fixture corpus" | **Not a status — this is the admission §2-§5 replaces** | — |
 
@@ -421,12 +426,22 @@ fixture status changed.
 
 - **`isurl`** (§2) is fixed under V15; **`style()`** (§2) is reachable both as a
   function and as a typed container-query prelude.
-- **`dumpLineNumbers`** has no effect in either option bucket. Less 4.x
-  deprecates it and `packages/config/src/types.ts:225-229` marks it `@removed`,
-  so this is consistent with intent — recorded, not filed.
-- **`lint`**, **`insecure`**, **`strictImports`** are accepted by the options
-  type and produce no observable behaviour change in the cases probed. **Not
-  investigated further** — see §7.
+- **`dumpLineNumbers`** has no effect on output in either option bucket. Owner
+  ruling 2026-10-04: it is accepted with one
+  `deprecation/dump-line-numbers-option` warning per render and otherwise
+  ignored (`packages/compiler/src/index.ts`, `createContextFromResolved`), so the
+  `tests-config/debug/*` line-number goldens are intended divergences.
+- **`insecure`** has no effect: remote imports are https-only and always verify
+  the certificate. It is accepted with one `deprecation/insecure-option`
+  warning per render (`packages/compiler/src/index.ts`; orchestrator judgment
+  2026-10-05 under owner delegation, `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md`
+  §8).
+- **`strictImports`** has no effect: every `@import` is processed where it is
+  written, a selector block included (4.x silently dropped one there). It is
+  accepted with one `deprecation/strict-imports-option` warning per render
+  (`packages/compiler/src/index.ts`; owner ruling 2026-10-09, ledger A18).
+- **`lint`** is accepted by the options type and produces no observable
+  behaviour change in the cases probed. **Not investigated further** — see §7.
 
 ---
 
@@ -495,11 +510,8 @@ at-rule surfaces as enumerated in §3.
 - **Source-map *content*.** Established that no map is produced at all; did not
   evaluate mapping accuracy, `sourceMapRootpath`/`Basepath`/`URL`/
   `OutputFilename` handling, or the annotation comment.
-- **`lint`, `insecure`, `strictImports`, `depends`, `paths`, `globalVars`,
-  `modifyVars`, `processImports`, `color`, `quiet`.** Only spot-checked, or not
-  at all. `strictImports` in particular has three-valued semantics
-  (`false`/`true`/`'error'`, `packages/config/src/types.ts:123`) and none of the
-  three was verified against 4.x.
+- **`lint`, `depends`, `paths`, `globalVars`, `modifyVars`,
+  `processImports`, `color`, `quiet`.** Only spot-checked, or not at all.
 - **The `lessc` CLI surface.** jess ships `bin/jess`; the `lessc` shim lives in
   the external alpha repo and no CLI flag was exercised end to end.
 - **Error-message text and error *codes*.** Checked that diagnostics carry

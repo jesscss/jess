@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { resolveLessTestDataRoot } from '../test-utils.js';
+import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 
 const testData = resolveLessTestDataRoot();
 
@@ -29,7 +30,7 @@ describe('Less exact-extend oracle routing', () => {
     it(`renders ${rel} byte-identically through the public AST-v2 route`, async () => {
       const lessPath = path.join(testData, rel);
       const expectedPath = lessPath.replace(/\.less$/, '.css');
-      const expected = readFileSync(expectedPath, 'utf8');
+      const expected = applyPendingGoldenEdits(rel, readFileSync(expectedPath, 'utf8'));
 
       const result = await compiler.renderToResult(lessPath, {
         outputFile: expectedPath

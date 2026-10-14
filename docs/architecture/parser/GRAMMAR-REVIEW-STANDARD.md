@@ -16,7 +16,7 @@ review with the same method you intend to use for the change.
 These grammars are parseman's reference implementation. "Exemplary" has been
 asked for repeatedly and has not stuck, because _make it good_ is not checkable
 and a passing test ends the job. This document replaces that instruction with
-sixteen questions and a rule about how many things you ask them of.
+seventeen questions and a rule about how many things you ask them of.
 
 ---
 
@@ -279,7 +279,7 @@ and helper.
 
 The exhaustiveness _is_ the method. The failure mode being fixed is an agent
 reading linearly, pattern-matching locally, and stopping when the immediate task
-looks done. "Review the grammar" gets skimmed. "Answer these sixteen questions
+looks done. "Review the grammar" gets skimmed. "Answer these seventeen questions
 for every `const` in this file" cannot be.
 
 Two things make this tractable rather than crushing:
@@ -611,6 +611,20 @@ that shape intentionally and fail with the richer diagnostic.
     claim that this rule accepts a different language than its unprefixed
     counterpart. **Either show the accepted languages actually differ, or it is
     one rule.** See _naming is a duplication mechanism_ below.
+
+17. **Does well-formed input still parse?** Ledger **P45** (owner 2026-10-09):
+    every parser accepts every well-formed shape — it tokenizes per CSS Syntax 3,
+    its blocks and functions balance, and it sits in a structurally valid
+    position — in every dialect. A construct the dialect rejects or cannot give
+    meaning to is a diagnostic at its own span, and parsing and evaluation
+    continue. **Any change that makes well-formed input stop parsing in any
+    dialect is a defect**, however narrow the rule looks locally. For every new
+    `throw`, new rejection, narrowed `choice` arm or tightened recognizer, name
+    the input it now refuses and show it is not well-formed; otherwise it must
+    become a diagnostic. The _Unsupported Syntax Policy_ above reads through this
+    item: for well-formed input, "reports a fatal parse diagnostic" means an
+    error diagnostic, not a stop. `pnpm check:guardrails` ratchets the count of
+    author-facing `throw` sites per parser package (it may only shrink).
 
 ### Naming is a duplication mechanism, not a style preference
 

@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-09T17:30:04.526Z`
+- Generated: `2026-10-05T21:29:48.102Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `foundation-sites/**/*.scss`)
 
-- files: **136**, parsed: **115**, failed: **21**
+- files: **136**, parsed: **116**, failed: **20**
 
 Blocking constructs. `gives up on` counts files whose `gave up at` POSITION lands
 on this blocker — the one the parser actually stopped at, so that column ranks
@@ -26,8 +26,8 @@ plausible name: it means this list is missing an entry.
 | blocking construct | gives up on | contains |
 |---|--:|--:|
 | trailing comma in a parenthesized list | 5 | 8 |
-| keyword argument ($name: v) in a function-call argument list | 3 | 16 |
 | interpolation inside a pseudo-class argument list | 3 | 5 |
+| keyword argument ($name: v) in a function-call argument list | 2 | 15 |
 | comparison (== / !=) inside a function-call argument list | 1 | 5 |
 | @at-root with a selector prelude | 1 | 1 |
 | nested selector list `type:pseudo, .class` | 0 | 0 |
@@ -50,7 +50,6 @@ Unattributed failures:
 |---|---|---|---|---|
 | `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` | 24:40 | `@return length($missing-dependencies) > 0;` | — | — |
 | `_vendor/sassy-lists/stylesheets/helpers/_true.scss` | 12:73 | `@return if($value == null, false, $value and $value != null and $value != '' and $value != ());` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
-| `docs/assets/scss/_docs-footer.scss` | 39:0 | `.footer-nav-left {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `docs/assets/scss/docs.scss` | 243:11 | `li:not(:last-child) {` | — | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_button-group.scss` | 131:37 | `&:first-child:nth-last-child(#{$i}) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
 | `scss/components/_dropdown-menu.scss` | 84:4 | `> li.opens-left { // sass-lint:disable-line no-qualifying-elements` | — | keyword argument ($name: v) in a function-call argument list |

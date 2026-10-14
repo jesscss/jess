@@ -24,7 +24,7 @@
  * THE CORPUS IS THE POINT
  * -----------------------
  * `.cache/sass-spec/inputs` is 2404 real sass-spec cases, materialised by the
- * package's own `postinstall`. That is the widest SCSS surface available in
+ * workspace root's `postinstall`. That is the widest SCSS surface available in
  * this repo by a wide margin, and it is what makes a differential here worth
  * running: a corpus that never exercises the production under review reports
  * "identical" for a correct change and a broken one alike.
@@ -66,8 +66,9 @@ const repo = resolve(here, '../../../../..');
 /**
  * Corpus roots, widest first.
  *
- * `.cache/sass-spec/inputs` is materialised by this package's `postinstall`
- * (`scripts/materialize-sass-spec-cache.cjs`) and is not checked in, so it is
+ * `.cache/sass-spec/inputs` is materialised by the workspace root's
+ * `postinstall` (`scripts/materialize-sass-spec-cache.cjs`, or run
+ * `pnpm --filter @jesscss/scss-parser sass-spec:cache`) and is not checked in, so it is
  * allowed to be missing — but a missing root SHRINKS the corpus and therefore
  * moves the aggregate, which is reported rather than silently absorbed. The
  * two `test/` roots are checked in and always resolve, so the gate still has

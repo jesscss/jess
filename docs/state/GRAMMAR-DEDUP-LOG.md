@@ -182,6 +182,22 @@ not count) before anything is pushed.
 
 ## Lanes (done)
 
+### `lane/v5-escaped-string-no-sniff` — one `Quoted` per string, string bodies written once (2026-10-06)
+
+Every string is one `Quoted` (`interp: Interpolation | null`) in Less, `.jess`
+and SCSS (ledger V3, C2). Dedup on the touched consts: Less `Quoted` /
+`EscapedQuoted` share `doubleQuotedContent` / `singleQuotedContent` and one
+reducer (`quotedFromChildren`, also `LiteralQuoted`'s); jess `Quoted` /
+`ExpressionQuoted` share `interpolated{Double,Single}QuotedContent` (holes are the
+source-fact `ExpressionDollarBrace` / `ExpressionInterpolation`, so the CST
+names a string's hole `ExpressionDollarBrace`; `quotedExpressionParser` deleted);
+SCSS `Quoted` is `LiteralQuoted` | `InterpolatedQuoted` (the static arms written
+once; only the interpolating node reads the parse input, so a static string
+pays no state copy).
+Evidence: Less oracle CST aggregate unchanged (`1e282ab4c77b9a66…`), AST moved in
+329/827 entries and folds back to def29ef87 on all 539 Less corpus files;
+`check:macro` and `verify:compose-integrity` green.
+
 ### Batch 1 / Lane 7 — NamedColor→Keyword + eval coercion — ✅ LANDED + INDEPENDENTLY VERIFIED
 
 **PUSHED: `origin/dev` fast-forwarded `bbda2ec9f..411733b9d` (FF-only, no force).**
@@ -744,6 +760,13 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
 - #52 node-shape survey hole · #54 collectTolerantDiagnostics ignores rule config
 - #55 oracle byte-identity blind to wrong-but-round-trippable trees
 - #56 Opaque* family removal (`docs/design/OPAQUE-FAMILY-REMOVAL.md`) — depends on lane 5
+- #59 less ruleset-body tail: `literal('{'), blockBody, optional(g.Call), literal('}'),
+  optional(literal(';'))` is spelled in four rules (RulesetWithExtends,
+  NestedRulesetWithExtends, MixinDefinitionContinuation, RulesetTail; the reducers already
+  share `bodyExtensionsOf`, 2026-10-05). Hoisting the tail into one parameterless const
+  changes CST nesting, so it needs its own before/after oracle. The former `rulesetBody`
+  is now `blockBody` itself: every braced body takes the `ExtendStatement` arm since
+  ledger X19 was ruled (2026-10-06).
 - #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
   dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
   and it is in the alpha release preflight (PR CI deliberately skips it — see
@@ -1201,3 +1224,20 @@ now quantified — a big multi-week effort, not a switch.
   re-dispatch until that fold's slice 5 lands. Two grammar dedups noted for later
   (the four `<query-in-parens>` forks vs scss's unified one; the typed at-rule
   prelude duplicated across jess/less/scss).
+- 2026-10-05 — **Macro-fusion checks moved onto the built artifacts (jess#176).**
+  `check:compose-fused` (`scripts/probe/compose-fused-check.mjs`) now covers CSS
+  (its four variants and `grammar/base.js`) as well as Less/SCSS/Jess, reads the
+  CommonJS build of each variant beside the ESM one, counts runtime
+  `compose(`/`composeLeaf(` from the syntax tree (a doc comment no longer
+  counts), asserts each public entry loads only its own variant's table, and
+  asserts recognition fusion with `recognitionReads`
+  (`scripts/parseman-fallback-detector.mjs`). The Vite build-in-a-test fusion
+  and entry checks it replaces are deleted. One correction to #176's own
+  wording: a fused grammar still imports `@jesscss/parser-shared` BY DESIGN —
+  the tsdown configs keep it external so a downstream `compose()` can follow
+  `parseman.composedPieces` across the package boundary (see
+  `LESS-COMPOSE-REAUTHOR-PLAN.md` §2) — so the gate asserts "read only as
+  compose metadata", not "no import". `check:macro` now also reports a
+  side-effect `import 'parseman'`; jess-parser's helpers carried one
+  (`import {} from 'parseman'`), which loaded the parseman root runtime in all
+  four fused Jess variants; removed.

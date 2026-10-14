@@ -37,14 +37,14 @@
 import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, CollectionItem, ComplexSelector, CompoundSelector,
   Declaration, Expression, ExtendInstruction, FunctionCall, Interpolation, Lookup, LookupStep, MixinCall,
-  MixinDefinition, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
+  MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
-import { selectorBranchCanonical } from './nodes.js';
+import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import { renderCombinator } from './node.js';
-import { NO_SPAN, bodyEndOf, bodyStartOf, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
 export interface EmitJessOptions {
@@ -171,11 +171,17 @@ const isSpaceRun = (slot: ValueSlot | CallValue): boolean =>
 class JessPrinter {
   readonly gaps: JessSpellingGap[] = [];
   readonly #comments: readonly Trivia[];
+
+  /** Comment runs a custom-property value printed in place ({@link customValue}). */
+  readonly #printed = new Set<Trivia>();
   readonly #importPath: (path: string) => string;
   readonly #functions: EmitJessOptions['functions'];
 
   /** Call name → export name of every module function this file calls. */
   readonly calledFunctions = new Map<string, string>();
+
+  /** Set while a property's value prints: a value written to the output, not one a callable reads. */
+  #propertyValue = false;
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
@@ -224,15 +230,31 @@ class JessPrinter {
       return '';
     }
     let out = '';
-    for (const run of this.#comments) {
+    for (let index = this.firstRunFrom(from); index < this.#comments.length; index++) {
+      const run = this.#comments[index]!;
       if (run.start >= to) {
         break;
       }
-      if (run.start >= from && run.end <= to) {
+      if (run.end <= to && !this.#printed.has(run)) {
         out += `${indent}${run.src.slice(run.start, run.end).trim()}\n`;
       }
     }
     return out;
+  }
+
+  /** Index of the first comment run that starts at or after `offset`; the runs are in source order. */
+  firstRunFrom(offset: number): number {
+    let low = 0;
+    let high = this.#comments.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.#comments[middle]!.start < offset) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
   }
 
   block(rules: readonly Statement[], where: Body, owner: object, indent: string): string {
@@ -291,6 +313,9 @@ class JessPrinter {
       case 'Comment': return `${indent}${node.text}\n`;
       case 'Reference': return `${indent}${this.referenceCall(node)};\n`;
       case 'For': {
+        if (node.extendInstructions !== undefined) {
+          gap('ExtendInstruction', 'a body-form extend in an `each()` callback (ledger X19) has no `.jess` spelling yet');
+        }
         const b = node.binding;
 
         // `ForBinding`: `[$a, $b]`, or one to three comma names.
@@ -387,7 +412,17 @@ class JessPrinter {
     if (!custom && !isSlotArray(node.value) && node.value.type === 'Any' && node.value.src === '') {
       gap('Declaration', 'an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value');
     }
-    const value = custom ? this.customValue(node.value) : this.value(node.value, At.Value);
+    let value: string;
+    if (custom) {
+      value = this.customValue(node.value);
+    } else {
+      this.#propertyValue = true;
+      try {
+        value = this.value(node.value, At.Value);
+      } finally {
+        this.#propertyValue = false;
+      }
+    }
     return `${name}: ${value}${node.important ? ' !important' : ''}`;
   }
 
@@ -397,10 +432,27 @@ class JessPrinter {
       : gap('Declaration', 'a property name that is not an identifier (a Less map key such as `100` or `<`): the `.jess` `Declaration` name is an `Identifier`');
   }
 
-  /** `CustomDeclaration`: custom-property values are raw CSS. */
+  /**
+   * `CustomDeclaration`: custom-property values are raw CSS, so one with a
+   * comment written in it prints its source bytes, comments in place; the body
+   * replay then skips those comments.
+   */
   customValue(value: ValueSlot): string {
     if (!isSlotArray(value) && (value.type === 'Any' || value.type === 'Keyword')) {
-      return value.src;
+      const start = sourceStartOf(value);
+      const end = sourceEndOf(value);
+      let src: string | undefined;
+      for (let index = this.firstRunFrom(start); index < this.#comments.length; index++) {
+        const run = this.#comments[index]!;
+        if (run.start >= end) {
+          break;
+        }
+        if (run.end <= end) {
+          this.#printed.add(run);
+          src = run.src;
+        }
+      }
+      return src === undefined ? value.src : src.slice(start, end);
     }
     return this.value(value, At.Value);
   }
@@ -457,6 +509,9 @@ class JessPrinter {
   mixinDefinition(node: MixinDefinition, indent: string): string {
     if (!MIXIN_NAME.test(node.name)) {
       gap('MixinDefinition', 'a mixin name outside `mixinNameToken` (e.g. an escaped or `!`-bearing name)');
+    }
+    if (node.extendInstructions !== undefined) {
+      gap('ExtendInstruction', 'a body-form extend in a mixin definition (ledger X16) has no `.jess` spelling yet');
     }
     const guard = node.guard === undefined ? '' : ` when (${this.guard(node.guard, true, true)})`;
     return `${node.name}${this.params(node.params)}${guard} ${this.block(node.rules, 'nested', node, indent)}`;
@@ -526,6 +581,9 @@ class JessPrinter {
   }
 
   atRuleBlock(node: AtRuleBlock, indent: string): string {
+    if (node.extendInstructions !== undefined) {
+      gap('ExtendInstruction', 'a body-form extend in an at-rule block (ledger X19) has no `.jess` spelling yet');
+    }
     const prelude = node.prelude === null ? '' : ` ${this.value(node.prelude, At.Prelude)}`;
     return `${node.name}${prelude} ${this.block(node.rules, 'at', node, indent)}`;
   }
@@ -564,7 +622,7 @@ class JessPrinter {
      * so it prints as the plain quoted path the `.jess` rule takes.
      */
     const target = node.target.type === 'Url' ? node.target.value : node.target;
-    if ((target.type !== 'Quoted' && target.type !== 'Any') || (target.type === 'Quoted' && target.escaped)) {
+    if ((target.type !== 'Quoted' && target.type !== 'Any') || (target.type === 'Quoted' && (target.escaped || target.interp !== null))) {
       return gap('StyleImport', 'an interpolated or escaped import target: `.jess` imports take a plain quoted path');
     }
     const quote = target.type === 'Quoted' ? target.quote : '"';
@@ -633,6 +691,9 @@ class JessPrinter {
     if (node.interp !== null) {
       return this.template(node.interp, 'selector');
     }
+    if (node.arg !== null) {
+      return `${node.name}(${pseudoArgumentText(node.arg)}${node.args === null ? '' : ` of ${this.selectorList(node.args)}`})`;
+    }
     return node.args === null ? (node.text ?? '') : `${node.name}(${this.selectorList(node.args)})`;
   }
 
@@ -679,11 +740,19 @@ class JessPrinter {
         return node.src;
       case 'Null':
         return 'null';
-      case 'Quoted':
-        if (/\$[[({]/u.test(node.value)) {
+      case 'Quoted': {
+        /*
+         * A template's holes print as `.jess` holes; only its literal text can
+         * hold a `$` that `.jess` would read as one.
+         */
+        const text = node.interp === null ? node.value : node.interp.parts.map(part => 'lit' in part ? part.lit : '').join('');
+        if (/\$[[({]/u.test(text)) {
           return gap('Quoted', 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
         }
-        return node.src;
+        return node.interp === null
+          ? node.src
+          : `${node.escaped ? '~' : ''}${node.quote}${this.template(node.interp, 'string')}${node.quote}`;
+      }
       case 'Any':
         if (node.src.includes('$')) {
           return gap('Any', 'opaque bytes containing `$`, which `.jess` reads as a sigil');
@@ -824,8 +893,11 @@ class JessPrinter {
       if (typeof name === 'number') {
         return gap('LookupStep', 'numeric member step');
       }
-      if (name.type === 'Keyword' || name.type === 'Quoted') {
+      if (name.type === 'Keyword') {
         return `[${name.src}]`;
+      }
+      if (name.type === 'Quoted') {
+        return `[${this.value(name, At.Value)}]`;
       }
     }
     if (step.kind === 'index' && typeof name === 'number' && step.indexBase === 0) {
@@ -845,11 +917,24 @@ class JessPrinter {
       return gap('FunctionCall', 'a function name that is not an identifier (Less `%()`)');
     }
     const lower = node.name.toLowerCase();
-    const exported = this.#functions?.names.get(lower);
+
+    /*
+     * A CSS-shaped color call a property's value writes out is never dispatched
+     * (ledger F5), and no Less callable computes a CSS colour function in its
+     * channel shape (`color(srgb 1 0 0)`), so it stays a plain CSS call.
+     * Anywhere a callable or a variable can read it, it computes, and goes
+     * through its binding.
+     */
+    const exported = this.#propertyValue && at === At.Value && isCssColorFunction(node) ? undefined : this.#functions?.names.get(lower);
     if (exported !== undefined) {
       this.calledFunctions.set(lower, exported);
     }
     const inner = at === At.Prelude ? At.Prelude : At.Math;
+    const alpha = colorAlphaSlash(node);
+    if (alpha !== null) {
+      const name = exported === undefined ? node.name : `$${node.name}`;
+      return `${name}(${this.colorChannels(node.args[0]!.value, alpha, inner)})`;
+    }
     const args = node.args.map((arg) => {
       if (arg.spread || arg.name !== undefined) {
         return gap('FunctionCall', 'keyword or spread argument: `CallArgument` is positional');
@@ -865,6 +950,24 @@ class JessPrinter {
     });
     const name = exported === undefined ? node.name : `$${node.name}`;
     return `${name}(${args.join(', ')})`;
+  }
+
+  /**
+   * A CSS colour function's modern slot with its alpha slash a separator
+   * ({@link colorAlphaSlash}): `0 128 255 / 50%`, which `.jess` reads as the
+   * channels and a slash list, as Less writes it; `$(255 / 50%)` would divide.
+   */
+  colorChannels(slot: ValueSlot, alpha: Operation, at: At): string {
+    if (!isSlotArray(slot)) {
+      return this.value(slot, at);
+    }
+    const layout = valueLayoutOf(slot);
+    const channels = slot.slice(0, -1);
+    const sep = layout?.[channels.length - 1] ?? ' ';
+    if (!WHITESPACE.test(sep)) {
+      return gap('Comment', 'a comment between value parts: `ValueSpaceGroup` separators are whitespace only');
+    }
+    return `${this.spaceRun(channels, layout, at, '')}${sep}${this.value(alpha.left, at)} / ${this.value(alpha.right, at)}`;
   }
 
   paren(node: Block, at: At): string {
@@ -884,7 +987,11 @@ class JessPrinter {
     return `(${this.value(node.value, at)})`;
   }
 
-  /** `Expression`: `$( … )`, the only `.jess` math boundary. */
+  /**
+   * `Expression`: `$( … )`, the only `.jess` math boundary. A Less paren group
+   * is the boundary AND the author's parens, which the value keeps where its
+   * math is kept as written (J16), so it prints as `$(( … ))`.
+   */
   expression(node: Expression, at: At): string {
     if (at === At.Expr) {
       return gap('Expression', 'a nested `$( … )`: `ExpressionAtom` has no `$(` arm');
@@ -892,15 +999,26 @@ class JessPrinter {
     if (at === At.Prelude) {
       return gap('Expression', '`$( … )` inside an at-rule prelude');
     }
-    return `$(${this.value(node.value, At.Expr)})`;
+    const inner = this.value(node.value, At.Expr);
+    return isAuthoredGroupExpression(node) ? `$((${inner}))` : `$(${inner})`;
   }
 
   /**
-   * An `Interpolation` in value position: a quoted template (`"a${b}"`), an
-   * escaped one (`~"a${b}"`), or `$( … )`-headed parts with literal tails
-   * (`InterpolatedValue`).
+   * An `Interpolation` in value position: `$( … )`-headed parts with literal
+   * tails (`InterpolatedValue`), or an unquoted template (Less `@{n}px`), which
+   * `.jess` spells as the escaped string it is (`~"${n}px"`). A quoted template
+   * is a `Quoted`.
    */
   valueInterpolation(node: Interpolation, at: At): string {
+    /*
+     * In a prelude, a template of literal text alone is the authored content of a
+     * `<general-enclosed>` function — a glued `and(…)` / `not(…)` or `@container
+     * size(…)` (CSS Conditional 5; ledger N17) — which `.jess` reads as CSS does, so it
+     * is written as authored, never as escaped text.
+     */
+    if (at === At.Prelude && node.parts.every(part => 'lit' in part)) {
+      return node.parts.map(part => ('lit' in part ? part.lit : '')).join('');
+    }
     const first = node.parts[0];
     if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
       let out = '';
@@ -914,9 +1032,6 @@ class JessPrinter {
         }
       }
       return out;
-    }
-    if (first !== undefined && 'lit' in first && (first.lit.startsWith('"') || first.lit.startsWith('\''))) {
-      return this.template(node, 'string');
     }
     const body = this.template(node, 'string');
     if (body.includes('"')) {
@@ -954,6 +1069,9 @@ class JessPrinter {
 
   /** `BlockLambda`: `@{ … }` / `@(params) { … }`. */
   anonymousMixin(node: AnonymousMixin, indent: string): string {
+    if (node.extendInstructions !== undefined) {
+      gap('ExtendInstruction', 'a body-form extend in a detached ruleset (ledger X19) has no `.jess` spelling yet');
+    }
     const params = node.params === undefined ? '' : this.params(node.params);
     return `@${params}${params === '' ? '' : ' '}${this.block(node.rules, 'nested', node, indent)}`;
   }
@@ -971,9 +1089,13 @@ class JessPrinter {
       if (entry.merge !== null || entry.valueOnNewLine === true) {
         return gap('CollectionEntry', 'merge marker or value-on-new-line layout on a collection entry');
       }
-      const key = !isSlotArray(entry.key) && (entry.key.type === 'Keyword' || entry.key.type === 'Quoted')
-        ? entry.key.src
-        : `[${this.value(entry.key, At.Value, inner)}]`;
+      const key = isSlotArray(entry.key)
+        ? `[${this.value(entry.key, At.Value, inner)}]`
+        : entry.key.type === 'Keyword'
+          ? entry.key.src
+          : entry.key.type === 'Quoted'
+            ? this.value(entry.key, At.Value, inner)
+            : `[${this.value(entry.key, At.Value, inner)}]`;
       const value = !isSlotArray(entry.value) && entry.value.type === 'Collection'
         ? this.collection(entry.value, inner)
         : this.value(entry.value, At.Value, inner);

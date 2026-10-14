@@ -43,6 +43,7 @@
     "@jesscss/plugin-node-modules": "workspace:*"
   },
   "devDependencies": {
+    "@jesscss/fns": "workspace:*",
     "less-plugin-autoprefix": "^2.0.0",
     "less-plugin-clean-css": "^1.6.0",
     "less-plugin-dls": "^1.5.0"

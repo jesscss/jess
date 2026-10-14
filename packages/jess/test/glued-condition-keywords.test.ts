@@ -1,0 +1,231 @@
+import { describe, expect, it } from 'vitest';
+import { serialize } from '@jesscss/core';
+import { parse as parseCss } from '@jesscss/css-parser';
+import { Compiler } from '../src/index.js';
+
+/**
+ * A condition keyword glued to its `(` (`and(`, `or(`, `not(`) is one function
+ * token (css-syntax-3 §4.3.4), so in a CSS condition it is a `<general-enclosed>`
+ * function, never the keyword: the condition never matches (media-queries-4
+ * §3.2). Inserting a space would change what the author's query means, so it is
+ * written as authored, with one `css/glued-condition-keyword` warning where it
+ * is written (owner ruling 2026-10-09, ledger N17). Conditions the compiler
+ * evaluates — Less guards, `if()`, Sass `@if` — are never written, keep reading
+ * `and(` as the keyword and a group, and do not warn.
+ */
+type Dialect = 'less' | 'scss' | 'jess';
+const DIALECTS: readonly Dialect[] = ['less', 'scss', 'jess'];
+
+async function render(dialect: Dialect, source: string) {
+  const result = await new Compiler().renderToResult({ source, filePath: `/proj/glued.${dialect}` }, {});
+  expect(result.errors).toEqual([]);
+  return { css: String(result.css), warnings: result.warnings };
+}
+
+async function prelude(dialect: Dialect, source: string) {
+  const { css, warnings } = await render(dialect, source.startsWith('@page') ? `${source} { size: a4 }` : `${source} { a { b: c } }`);
+  return {
+    prelude: css.slice(0, css.indexOf('{')).trimEnd(),
+    warnings: warnings.map(warning => [warning.code, warning.line, warning.column])
+  };
+}
+
+/* The authored prelude, and the 1-based column of the glued keyword it warns at. */
+const GLUED: ReadonlyArray<readonly [prelude: string, column: number]> = [
+  ['@media screen and(max-width: 1280px)', 15],
+  ['@media (min-width: 1px) or(max-width: 2px)', 25],
+  ['@media not(color)', 8],
+  ['@media (not(hover))', 9],
+  ['@media only screen AND(color)', 20],
+  ['@media ((a: b) and(c: d))', 16],
+  ['@media ((a) or(b))', 13],
+  ['@container (min-width: 1px) and(max-width: 2px)', 29],
+  ['@container card (min-width: 1px) or(orientation: portrait)', 34],
+  ['@container not(width > 1px)', 12],
+  ['@container ((a) and(b))', 17],
+  ['@supports not(display: grid)', 11],
+  ['@supports (display: grid) and(gap: 1px)', 27],
+  ['@supports (display: grid) or(display: flex)', 27],
+  ['@supports ((display: grid) and(gap: 1px))', 28]
+];
+
+describe('a glued and( / or( / not( in a CSS condition', () => {
+  for (const dialect of DIALECTS) {
+    it.each(GLUED)(`${dialect}: writes %s as authored and warns once at its column`, async (source, column) => {
+      expect(await prelude(dialect, source)).toEqual({
+        prelude: source,
+        warnings: [['css/glued-condition-keyword', 1, column]]
+      });
+    });
+  }
+
+  it('says which keyword was meant', async () => {
+    const { warnings } = await render('less', '@supports not(display: grid) { a { b: c } }');
+    expect(warnings.map(warning => warning.message)).toEqual([
+      '`not(` is read by CSS as a function, so this condition never matches — write `not (` if you meant the keyword'
+    ]);
+  });
+
+  it('warns once for an interpolated glued keyword and writes the substitution as authored', async () => {
+    expect(await prelude('less', '@w: max-width;\n@media screen and(@{w}: 1px)')).toEqual({
+      prelude: '@media screen and(max-width: 1px)',
+      warnings: [['css/glued-condition-keyword', 2, 15]]
+    });
+  });
+});
+
+describe('the spaced keyword and other condition functions', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@media screen and (max-width: 1280px)',
+      '@media not all and (color)',
+      '@container (min-width: 1px) and (max-width: 2px)',
+      '@container not (width > 1px)',
+      '@container size(min-width: 60ch)',
+      '@container size (min-width: 60ch)',
+      '@supports not (display: grid)',
+      '@supports (display: grid) and (gap: 1px)',
+      '@supports selector(a > b)'
+    ])(`${dialect}: writes %s as authored without a warning`, async (source) => {
+      expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});
+
+/*
+ * A condition written into a declaration value is CSS: nothing evaluates it, so
+ * a glued keyword in it is written as authored, as css writes it, and Less,
+ * which reads the group as a condition, warns where the keyword is written
+ * (owner 2026-10-09: "output them as authored BUT give a warning for and( / or(
+ * / not("; ledger N17).
+ */
+describe('a glued and( / or( / not( in a written value condition', () => {
+  /* The value, how css writes it, and the 1-based column of each glued keyword in `.k { x: <value>; }`. */
+  const WRITTEN: ReadonlyArray<readonly [value: string, css: string, columns: readonly number[]]> = [
+    ['(1 or(2))', '(1 or(2))', [12]],
+    ['(not(1))', '(not(1))', [10]],
+    ['((1) and(2))', '((1) and(2))', [14]],
+    ['(not(1 = 1))', '(not(1 = 1))', [10]],
+    ['(NOT(1 = 1))', '(NOT(1 = 1))', [10]],
+    ['((1 = 1)and(2 = 2))', '((1 = 1) and(2 = 2))', [17]],
+    ['((1 = 1) or(2 = 2) and(3 = 3))', '((1 = 1) or(2 = 2) and(3 = 3))', [18, 28]]
+  ];
+
+  it.each(WRITTEN)('less: writes %s as css does and warns at each glued keyword', async (value, css, columns) => {
+    const source = `.k { x: ${value}; }`;
+    const plain = (await serialize(parseCss(source))).css;
+    expect(plain).toBe(`.k {\n  x: ${css};\n}\n`);
+    const { css: less, warnings } = await render('less', source);
+    expect(less).toBe(plain);
+    expect(warnings.map(warning => [warning.code, warning.line, warning.column])).toEqual(
+      columns.map(column => ['css/glued-condition-keyword', 1, column])
+    );
+  });
+
+  it('less: warns where a condition a variable holds is written', async () => {
+    expect(await render('less', '@c: (1 or(2));\n.k { x: @c; }')).toEqual({
+      css: '.k {\n  x: (1 or(2));\n}\n',
+      warnings: [expect.objectContaining({ code: 'css/glued-condition-keyword', line: 1, column: 8 })]
+    });
+  });
+
+  it('less: the spaced keyword is written as authored without a warning', async () => {
+    expect(await render('less', '.k { a: (1 or (2)); b: (not (1)); c: ((1) and (2)); }')).toEqual({
+      css: '.k {\n  a: (1 or (2));\n  b: (not (1));\n  c: ((1) and (2));\n}\n',
+      warnings: []
+    });
+  });
+
+  /*
+   * P45 (owner 2026-10-09): valid CSS parses in every dialect. Not yet: the
+   * SCSS and Jess value grammars reject a CSS `=` delimiter in a function
+   * argument (`x: foo(1 = 1)` stops the same way), so `not(1 = 1)` stops there.
+   */
+  for (const dialect of ['scss', 'jess'] as const) {
+    it.fails(`${dialect}: parses (not(1 = 1)) and writes it as css does`, async () => {
+      expect((await render(dialect, '.k { x: (not(1 = 1)); }')).css).toBe('.k {\n  x: (not(1 = 1));\n}\n');
+    });
+  }
+});
+
+describe('compiler-evaluated conditions keep reading and( / not( as the keyword', () => {
+  it.each([
+    ['less', '@a: true; @b: true; .m() when (@a) and(@b) { x: y } .z { .m(); }', '.z {\n  x: y;\n}\n'],
+    ['less', '@a: false; .m() when not(@a) { x: y } .z { .m(); }', '.z {\n  x: y;\n}\n'],
+    ['less', '@a: false; @b: true; .m() when (@a) or(@b) { x: y } .z { .m(); }', '.z {\n  x: y;\n}\n'],
+    ['less', '@a: true; .z when (@a) and(@a) { x: y }', '.z {\n  x: y;\n}\n'],
+    ['less', '@a: 1; .z { x: if((@a = 1) and(@a > 0), yes, no); }', '.z {\n  x: yes;\n}\n'],
+    ['less', '@a: 1; .z { x: if(not(@a = 2), yes, no); }', '.z {\n  x: yes;\n}\n'],
+    ['less', '@a: 1; .z { x: boolean((@a = 1) and(true)); }', '.z {\n  x: true;\n}\n'],
+    ['scss', '$a: true; .z { @if $a and($a) { x: y } }', '.z {\n  x: y;\n}\n'],
+    ['scss', '$a: false; .z { @if not($a) { x: y } }', '.z {\n  x: y;\n}\n'],
+    ['scss', '$a: false; .z { x: not($a); }', '.z {\n  x: true;\n}\n'],
+    ['jess', '$a: true; $b: false; $if (($a = true) and not($b)) { .z { x: y; } }', '.z {\n  x: y;\n}\n'],
+    ['jess', 'm($v) when (($v = true) and not(false)) { x: y; } .z { $ > m(true); }', '.z {\n  x: y;\n}\n']
+  ] as const)('%s: %s', async (dialect, source, css) => {
+    expect(await render(dialect, source)).toEqual({ css, warnings: [] });
+  });
+});
+
+/*
+ * No whitespace is allowed between the productions of a `<page-selector>`
+ * (css-page-3 §3): `Test :first` matches no page, so a page selector is written
+ * exactly as authored, glued or not (owner 2026-10-09, ledger A11).
+ */
+describe('a @page selector is written as authored', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@page Test:first',
+      '@page wide:left:blank',
+      '@page :left:blank',
+      '@page :first',
+      '@page wide',
+      '@page Test :first',
+      '@page wide :left:blank',
+      '@page wide :left',
+      '@page wide:left, narrow :right'
+    ])(`${dialect}: %s`, async (source) => {
+      expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});
+
+/*
+ * A `<pseudo-page>` is `:` glued to an identifier (css-page-3 §3); a `:` the
+ * author spaced from what follows is no pseudo-page, so a generic at-rule's
+ * header keeps the authored bytes css writes for it.
+ */
+describe('a generic at-rule header is not read as a page selector', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@foo bar: baz;',
+      '@foo bar :baz;',
+      '@foo bar:baz;'
+    ])(`${dialect}: %s`, async (source) => {
+      const { css, warnings } = await render(dialect, source);
+      expect({ css, warnings }).toEqual({ css: `${source}\n`, warnings: [] });
+    });
+  }
+});
+
+/*
+ * Owner 2026-10-13: "B: CSS any case, Less lowercase". In a CSS condition
+ * `and`, `or`, `not` and `only` are ASCII case-insensitive, as every CSS
+ * keyword is, and are written as authored in every dialect.
+ */
+describe('a CSS condition keyword is read in any case and written as authored', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@media SCREEN AND (color)',
+      '@media ONLY screen And (color)',
+      '@media NOT all AND (color)',
+      '@media (a) OR (b)',
+      '@supports NOT (display: grid)',
+      '@supports (a: b) OR (c: d)',
+      '@container (a) AND (b)',
+      '@container NOT (width > 1px)'
+    ])(`${dialect}: %s`, async (source) => {
+      expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});

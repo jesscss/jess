@@ -61,6 +61,7 @@ const lessSources: CorpusSource[] = [
   s('media-math', '@media (min-width: 100px) { .r { top: (1px + 2px) * 3; } }'),
   s('interp-selector', '.sel-@{name} { color: red; }'),
   s('interp-value', '.q { content: "a@{b}c"; background: ~"raw"; }'),
+  s('escaped-template', '.q { background: ~"x@{b}y"; u: url(~"@{b}/y.png"); }'),
   s('fn-and-negation', '.call { width: percentage(0.5); margin: -@x; }'),
   s('import-reference', '@import (reference) "file.less";'),
   s('slash-and-important', '.x { font: 12px/1.5 sans-serif; color: red !important; }'),
@@ -69,6 +70,7 @@ const lessSources: CorpusSource[] = [
   s('var-indirect', '.vi { color: @@name; }'),
   s('url', '.u { background: url(foo.png); }'),
   s('mixin-call', '.mx() { a: 1; } .use { .mx(); }'),
+  s('mixin-def-extend', '.mde() { &:extend(.a); c: d; } .mdg() when (true) { &:extend(.a); }'),
   s('at-statement', '@charset "utf-8";')
 ];
 
@@ -107,7 +109,8 @@ const jessSources: CorpusSource[] = [
   s('apply-and-for', 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $ > paint(); $held(); $apply .paint; $for ($item of $items) { .item-${item} { order: $item; } } }'),
   s('apply-selectors', '$apply .rounded, #theme, button[data-x]:hover;', ALL_APPLY_KINDS),
   s('mixin-params', 'outer($tone) { .inside { color: $tone; } } .one { $ > outer(red); }'),
-  s('collection-spread', '$a: { x: 1; }; $b: { ...$a; x: 2; };')
+  s('collection-spread', '$a: { x: 1; }; $b: { ...$a; x: 2; };'),
+  s('string-templates', '.q { a: ~"x${b}y"; c: "x$(1 + 1)y"; d: ~"static"; }')
 ];
 
 interface DialectCorpus {
@@ -140,8 +143,12 @@ const DISCOVER = process.env.SHAPE_DISCOVER === 'true';
  *
  * `Expression` added: Less math has lowered into it since #277 (ledger P35), so
  * the less corpus constructs it.
+ *
+ * `AnPlusB` added: an `:nth-*()` pseudo keeps its `An+B` as a structured
+ * argument (ledger F2), and the corpus's `:nth-child()` selectors construct it.
  */
 const CORPUS_NODE_TYPES: readonly string[] = [
+  'AnPlusB',
   'AnonymousMixin',
   'Any',
   'Apply',

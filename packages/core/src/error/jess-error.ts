@@ -1,7 +1,6 @@
-import { type IRecognitionException, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from '../context.js';
 import { type JessErrorCode, type Phase, type Severity, resolveTemplate } from './codes.js';
-import { lineColAt } from './code-frame.js';
+import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from './code-frame.js';
 
 type JessFile = TreeContext['file'];
 
@@ -61,10 +60,6 @@ export type JessErrorInit = {
 
   /** Optional one-liner for extra context */
   note?: string;
-
-  /** Raw parser/lexer error data */
-  errors?: ReadonlyArray<IRecognitionException | JessError>;
-  lexerErrors?: ILexingResult['errors'];
 };
 
 /**
@@ -96,16 +91,16 @@ export class JessError {
   fix = '';
   note?: string;
 
-  errors?: ReadonlyArray<IRecognitionException | JessError>;
-  lexerErrors?: ILexingResult['errors'];
-
   constructor(init: JessErrorInit) {
     // Resolve context from ctx/node first, else from explicit fields.
-    const fileObj = init.ctx?.file;
-    const source = fileObj?.source ?? init.source;
+    const authored = init.ctx?.file;
+    const source = authored?.source ?? init.source;
 
     // Line/col derive from the node's source offset + source (not stored on nodes).
     const nodeOffset = inlineSpanStart(init.node);
+    const fileObj = authored !== undefined && nodeOffset !== undefined && source !== undefined
+      ? fileAt(authored, source, nodeOffset)
+      : authored;
     const derived = nodeOffset !== undefined && source !== undefined
       ? lineColAt(source, nodeOffset, fileObj)
       : undefined;
@@ -127,10 +122,23 @@ export class JessError {
 
     this.reason = init.reason ?? t.reason;
     this.fix = init.fix ?? t.fix;
-    this.note = init.note;
+    this.note = init.note ?? (fileObj === authored ? undefined : INJECTED_TEXT_NOTE);
+  }
 
-    this.errors = init.errors;
-    this.lexerErrors = init.lexerErrors;
+  /**
+   * Attributes a diagnostic raised by code that knew no source (a plugin
+   * runtime refusing a Less 4 hook, a disabled `@plugin` load) to the statement
+   * or call it was raised under. One that already has a location keeps it.
+   */
+  attributeTo(at: { ctx?: TreeContextLike; line?: number; column?: number }): this {
+    if (this.filePath === undefined) {
+      this.fileObj = at.ctx?.file;
+      this.filePath = this.fileObj?.fullPath;
+      this.source = this.fileObj?.source;
+      this.line = at.line ?? this.line;
+      this.column = at.column ?? this.column;
+    }
+    return this;
   }
 
   /** Plain-text diagnostic: header + reason/fix. No colors, links, or frame. */

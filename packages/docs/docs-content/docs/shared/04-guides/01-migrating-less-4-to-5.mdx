@@ -123,8 +123,8 @@ See [Modules & imports](/docs/language/modules-and-imports).
 ## CSS nesting is preserved by default (`collapseNesting: false`)
 
 Less 5.x has first-class CSS nesting, and it **keeps nested structure by default**
-(`collapseNesting: false`). Output stays in the familiar nested shape unless you
-explicitly opt into collapsing.
+(`collapseNesting: false`), where Less 4.x always flattened. Output stays nested
+unless you explicitly opt into flattening.
 
 ```less
 .card {
@@ -136,13 +136,29 @@ explicitly opt into collapsing.
 ```
 
 By default this compiles to nested CSS (`.title` stays nested under `.card`).
-Enable `collapseNesting: true` for the older flattened (`.card .title { … }`)
-output when you need deduplication or wider tooling support.
+Set `collapseNesting: 'native'` for the flattened (`.card .title { … }`) output
+when you need wider tooling support (`true` is a deprecated spelling of
+`'native'`). A flattened rule under a selector list factors the list into one
+`:is()` (`.a, #b { .c {} }` → `:is(.a, #b) .c`), as native nesting does, where
+Less 4.x wrote `.a .c, #b .c`.
+
+A selector list that nesting or an extend writes never joins a selector Chromium drops
+to the ones it keeps; for an extend this holds in nested output too. A parent ending with a pseudo-element, given
+a user-action pseudo-class by `&`, gets a rule of its own, inside an at-rule bubbled out of
+the rule too: `.a::before, .b { &:hover { color: red } }` flattens to
+`.a::before:hover { color: red }` and `.b:hover { color: red }`, where Less 4 wrote one
+list, `.a::before:hover, .b:hover`, which Chromium drops whole — `.b:hover` included. An
+extend does the same for a selector with something after its pseudo-element:
+`.b:hover { color: red } .q::after:focus:extend(.b:hover) {}` gives `.b:hover` and
+`.q::after:focus` a rule each, and so does an `all` extend that places a pseudo-element
+before what follows the match: `.a .c:hover { color: red } .p::before:extend(.c all) {}`
+gives `.a .c:hover` and `.a .p::before:hover` a rule each. A list you write yourself is
+left as written.
 
 <AudienceGate include={['jess']}>
 
 If you are porting a 4.x project that assumed flattened output, set
-`collapseNesting: true` while you migrate, then move to native nesting once your
+`collapseNesting: 'native'` while you migrate, then move to native nesting once your
 toolchain supports it.
 
 </AudienceGate>
@@ -202,6 +218,32 @@ includes ordinary declaration values and media feature values:
 }
 ```
 
+## Custom properties are written as authored
+
+A custom property's value is CSS text. Less 5.x writes it exactly as you wrote
+it and adds only `@{…}` interpolation, so a bare variable is **no longer
+replaced** — Less 4.x replaced it. This also holds in a `style()` query value
+and for a `var()` written inside a custom property. Write `@{…}` where you want
+the variable's value:
+
+```less
+@brand: #0af;
+
+.card {
+  --x: @brand;                // 5.x: --x: @brand;   (Less 4.x wrote --x: #0af;)
+  --y: @{brand};              // 5.x: --y: #0af;
+  --z: calc(@{brand} + 1px);  // 5.x: --z: calc(#0af + 1px);
+  color: var(--x, @brand);    // 5.x: color: var(--x, #0af);
+}
+```
+
+Because the variable is never looked up, an undefined `@name` in a custom
+property is written as is rather than reported. Escapes (`~"…"`), function calls
+and math in a custom property are written as they are, too.
+
+In an ordinary declaration such as `color` above, `var()` is a CSS function: its
+fallback is an argument, so a bare variable there is still replaced.
+
 ## `extend` and the `!all` flag
 
 `extend` behavior is validated against fixture parity, including nested and
@@ -218,8 +260,10 @@ in favor of a single `!all` flag:
 .b !all);
 ```
 
-With `collapseNesting: true`, `extend … !all` in nested selector-list cases may
-emit `:is(…)` selectors to reduce duplication.
+In every output mode, an `all` extend that matches part of a selector adds the
+extender inside an `:is()` at that spot, grouped only with alternatives of the
+same specificity: `.a .c { color: red; }` with `.d:extend(.c all) {}` gives
+`.a :is(.c, .d) { color: red; }`, where Less 4.x wrote `.a .c, .a .d`.
 
 ## Variable resolution follows source order
 
@@ -241,9 +285,15 @@ side effect does not rewrite an already-evaluated sibling declaration.
 
 ## Math modes
 
-- Move `strictMath` workflows to the `math` option.
-- `strict-legacy` math mode is removed.
-- `math=always` is deprecated; treat it as legacy behavior.
+- Move `strictMath` workflows to the `math` option. `strictMath: true` is still
+  accepted as `math: 'parens'`, with a deprecation warning.
+- `strict-legacy` was removed in Less 4.0; it is still accepted and means `parens`.
+- `math=always` still works; `parens-division` is the default.
+- Under `math=always`, the slash before the alpha in a CSS colour function
+  (`rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`)
+  is a separator, never a division: `rgb(0 128 255 / 50%)` stays as written,
+  where Less 4.x divided it. Converted to `.jess`, it stays a separator too.
+- The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
 
 ```bash
 # old
@@ -254,10 +304,11 @@ lessc --math=parens-division styles.less styles.css
 
 ## Evaluation differences (comparison, truthiness, arguments)
 
-The changes above are structural — features that moved or were removed. This section is the smaller, more important set: input that compiles in **both** Less 4 and Less 5 and **evaluates to something different**.
+The changes above are structural — features that moved or were removed. This section is the smaller, more important set: input that Less 5 **evaluates to something different** — a different value, or a value where Less 4 stopped with an error.
 
 The bar for changing an evaluation result is high. Less 5 follows Less 4 unless the Less 4 behaviour is **defensible by history rather than by principle** — meaning it does something documented or long-standing, but has no rule that explains *why*. Every row below states the rule Less 5 follows instead.
 
+{/* v5-example-table {"template": ".a { v: $$; }", "conditionTemplate": ".a { v: if(($$), true, false); }"} */}
 | expression | Less 4 | Less 5 | why |
 | --- | --- | --- | --- |
 | `1in = 2.54cm` | `false` | **`true`** | Equal by definition. Less 4's `false` was a conversion-precision defect, not a language choice. |
@@ -267,10 +318,17 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `(2px / 1px)` | `2px` | **`2`** | Like units cancel. A ratio of two lengths *is* a number; Less 4 re-attached a unit the value no longer carried. |
 | `(1px * 2px)` | `2px` | **`calc(1px * 2px)`** | An area has no CSS unit. Less 4 kept the left operand's unit, which is dimensionally false. See *Unit algebra* below. |
 | `(1 / 2px)` | `0.5px` | **`calc(1 / 2px)`** | There is no `px⁻¹` in CSS. Same rule as the row above. |
+| `url(~"b.png")` with `rootpath: 'r/'` | `url(r/b.png)` | **`url(b.png)`** | An escaped string is text you wrote verbatim, so no URL option changes it; rewriting `url(~"'b.png'")` wrote the invalid `url(r/'b.png')`. Write the path into it, or use a quoted string to have it rewritten. |
+| `url(~"'e.png'")` with `urlArgs: 'v=1'` | `url('e.png'?v=1)` | **`url('e.png')`** | The same rule: `urlArgs` adds nothing to an escaped body, where the argument landed after the closing quote and made the URL invalid. That includes `url(~"img.png")`, which Less 4 wrote `url(img.png?v=1)`; use a quoted string to have the argument added. Each such `url()` reports an `eval/url-option-skipped` warning naming it. |
 | `when (~"true")` | truthy | **falsy** | See *Truthiness* below — the one row where Less 4 promoted a **string** to truthy. |
 | `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |
 | `foo(bar=@v)` | `foo(bar=50)` | **`foo(bar=@v)`** | A `name=value` argument is verbatim bytes. The IE-filter form is dropped in Less 5, and resolving inside it had no purpose. |
-| `@import "x.less" screen;` | wraps in `@media` | **parse error** | A media postlude belongs to a **CSS** `@import`. On a compile-time import it is bogus, and the shape is now decided at parse time. |
+| `1px + 1em` | `2px` | **`calc(1px + 1em)`** | Two units that do not convert have no single value; Less 4 kept the left unit. See *Unit algebra* below. `4 + 3px` is still `7px`. |
+| `min(100% - 30px)` | `70%` | **`min(100% - 30px)`** | The same rule inside a math function: the browser resolves the percentage. |
+| `max(4, 3px)` | `4` | **`4px`** | The unitless `4` was compared as `4px`, as `4 + 3px` is `7px`, so it is written as the length it was compared as. |
+| `percentage(~"0.5")` | *error* | **`percentage(0.5)`** | An escaped string is text and is never read back as a number. A built-in that cannot use its argument is written out as-is. |
+| `calc(2 * @t)` with `@t: (e("1px + 2px"))` | `calc(2 * 1px + 2px)` | **`calc(2 * (1px + 2px))`** | Text is not a computed value, so it prints as written, the parentheses around it included (`(e("foo"))` is `(foo)`). Less 4 dropped them in math and changed the arithmetic. Only an interpolation or a function reading the text gets it without them. |
+| `@media print { @import "t"; } @import "t";` | `t` inside `@media print` only | **`t` there and at the root** | An import is skipped only after a copy of the same file **in the same place**: under the same selectors and at-rule preludes, where its output would be the same (a mixin call imports where it is called, and a bare `&` ruleset where its parent does). Less 4 skipped it after a copy anywhere, so the root never got the styles — or the mixins — the author imported there. A file that imports itself, directly or through another file, still stops there. |
 
 ### Truthiness is unchanged — with one exception
 
@@ -278,6 +336,7 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 
 Note this is **not** the Jess / Sass+ rule, where a non-empty string *is* truthy. Do not carry that intuition into `.less`.
 
+{/* v5-example-table {"template": ".a { v: 1; }", "guardTemplate": ".a $$ { v: 1; }", "eachInput": true} */}
 | guard | Less 4 | Less 5 |
 | --- | --- | --- |
 | `when (true)`, `when (1 > 0)` | truthy | truthy |
@@ -302,6 +361,7 @@ Less 5 keeps the number and the units, and only changes how the result is
 you wrote. **The arithmetic always happens.** That is what lets a chain recover
 the moment a later operation cancels back to a real unit:
 
+{/* v5-example-table {"template": ".a { v: $$; }"} */}
 | expression | Less 4 | Less 5 |
 | --- | --- | --- |
 | `(2px / 1px)` | `2px` | **`2`** |
@@ -329,13 +389,22 @@ An unexpressible result also warns (`eval/unexpressible-unit`), and the
 No mode is silent. Silent preservation is the worst outcome — the stylesheet
 looks fine and you never learn the expression was meaningless.
 
+<AudienceGate include={['jess']}>
+
+The table is the `.less` default. A `.jess` entry file defaults to `strict`, so
+`$(1 / 2px)` and `$(1px + 3em)` are `eval/invalid-unit-arithmetic` errors unless
+you set `unitMode`. A unitless number still takes the other operand's unit
+(`$(1 + 2px)` is `3px`) in every mode.
+
+</AudienceGate>
+
 The canonical statement of this rule is §4.7 of
 `docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` in the repository.
 
 ### A guard *selects*; it does not assert
 
-The `1px > red` row above is about a **value**: `@x: (1px > red)` has no answer,
-so it errors. In a **guard** the same comparison does not error — the definition
+The `1px > red` row above is about a **value**: `if((1px > red), a, b)` has no
+answer, so it errors. In a **guard** the same comparison does not error — the definition
 simply does not match, and overload resolution moves on:
 
 ```less
@@ -368,17 +437,14 @@ An **explicit comparison** is never affected by the truthiness change:
 
 Numeric comparison, unit conversion between compatible units, and colour equality all behave as before. `@import` of a `.css` file, `url(…)` imports and `(inline)` are unchanged.
 
-### Not yet changed
-
-Math-function preservation (`min(100% - 30px)` returning the expression rather than folding to `70%`) is specified for Jess but **not yet wired into `.less`** — Less 5 still folds it, matching Less 4. If you rely on the fold, nothing has moved.
-
 ## Deprecated CLI / option paths
 
-- `--relative-urls` → `--rewrite-urls=all` (or `rewriteUrls`).
-- `--ie-compat` is a no-op in modern pipelines.
-- built-in `compress` → use a dedicated CSS minifier.
-- `dumpLineNumbers` / `--line-numbers` → use sourcemaps.
-- `strictImports` is deprecated; avoid it in new configs.
+- `relativeUrls: true` is a deprecated spelling of `rewriteUrls: 'all'`, with a warning; an explicit `rewriteUrls` wins. `lessc` no longer accepts `--relative-urls`: use `--rewrite-urls=all`.
+- `ieCompat` is accepted and ignored, with a `deprecation/ie-compat-option` warning, and `lessc` no longer accepts `--ie-compat`.
+- `insecure` is ignored, and `lessc` no longer accepts `--insecure`: remote imports are https-only and always verify the certificate.
+- `strictImports` / `--strict-imports` is removed: it is still accepted, has no effect, and reports a `deprecation/strict-imports-option` warning. Every `@import` is processed where it is written, including one inside a selector block, which Less 4 silently dropped under this option.
+- `dumpLineNumbers` / `--line-numbers` → accepted with a warning and otherwise ignored; use sourcemaps.
+- built-in `compress` is **not** deprecated: it is a supported minifier in 5.x and replaces `less-plugin-clean-css`.
 
 ## Runs on the Jess engine
 

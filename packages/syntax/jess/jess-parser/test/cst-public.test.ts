@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseJessCst } from '../src/cst.js';
+import { parseJessCst, parseJessDoc } from '../src/cst.js';
 
 type CstNode = ReturnType<typeof parseJessCst>['tree'];
 
@@ -33,7 +33,7 @@ function expectNoModeLabels(tree: CstNode) {
 }
 
 describe('@jesscss/jess-parser/cst', () => {
-  it('parses Jess through the public core-free CST entry', () => {
+  it('parses Jess through the public CST entry', () => {
     const result = parseJessCst('$color: red; .x { color: $color; }');
 
     expect(result.errors).toHaveLength(0);
@@ -144,11 +144,12 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
 
     /*
-     * Two from the `@media` list, one from the `@unknown` prelude: a generic
-     * at-rule prelude is a `<media-query-list>`, so its clause is the same
-     * production and carries the same label.
+     * Two from the `@media` list, which is the CSS base's media query list,
+     * and one header clause from the `@unknown` prelude, which has no media
+     * connectives to read.
      */
-    expect(grammarTypes.get('QueryClause')).toBe(3);
+    expect(grammarTypes.get('QueryClause')).toBe(2);
+    expect(grammarTypes.get('AtRulePreludeClause')).toBe(1);
     expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('ContainerQueryClause')).toBe(2);
     expect(grammarTypes.get('ContainerQueryPrelude')).toBe(1);
@@ -204,21 +205,22 @@ describe('@jesscss/jess-parser/cst', () => {
   /*
    * A `${…}` inside a quoted string has to break the string into structured
    * parts — otherwise the fast flat-string path swallows it as literal bytes and
-   * the editor shows no interpolation at all.
+   * the editor shows no interpolation at all. A string's hole is the
+   * source-fact form `ExpressionDollarBrace`, the one both quoted families share.
    */
   it('structures ${…} inside a quoted string without disturbing plain strings', () => {
     const interpolated = parseJessCst('.a { content: "font-${family}.woff"; }');
 
     expect(interpolated.errors).toHaveLength(0);
     expect(interpolated.unconsumedFrom).toBeNull();
-    expect(stats(interpolated.tree).grammarTypes.get('DollarBrace')).toBe(1);
+    expect(stats(interpolated.tree).grammarTypes.get('ExpressionDollarBrace')).toBe(1);
 
     // A lone `$` that opens nothing stays literal text inside the flat string.
     const plain = parseJessCst('.a { content: "costs $5 and $x too"; }');
 
     expect(plain.errors).toHaveLength(0);
     expect(plain.unconsumedFrom).toBeNull();
-    expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
+    expect(stats(plain.tree).grammarTypes.get('ExpressionDollarBrace')).toBeUndefined();
   });
 
   it('keeps CSS import targets static while unquoted value URLs retain ${…} templates', () => {
@@ -290,5 +292,22 @@ describe('@jesscss/jess-parser/cst', () => {
     const result = parseJessCst('.widget-${side { color: red; }');
 
     expect(result.errors.length + Number(result.unconsumedFrom !== null)).toBeGreaterThan(0);
+  });
+});
+
+describe('@jesscss/jess-parser/cst — parseJessDoc leftover input', () => {
+  it('matches parseJessCst() before and after an edit', () => {
+    for (const input of [
+      '$c: red; .x { color: $c; }',
+      '.a { color: red; }\n\n  ',
+      '.a { color: red; }\n/* c */\n',
+      '.a { color: red; }\n// c\n',
+      '.a { color: red; }\n}'
+    ]) {
+      const doc = parseJessDoc(input);
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(parseJessCst(input).unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseJessCst(`${input}\n`).unconsumedFrom);
+    }
   });
 });

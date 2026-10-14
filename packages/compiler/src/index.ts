@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { mergeWith } from 'lodash-es';
-import { getConfigWithMeta } from './config.js';
+import { getConfigWithMeta, type ConfigWithMeta } from './config.js';
 import {
   Context,
   type ContextOptions,
@@ -13,16 +13,17 @@ import {
   toDiagnostic,
   evalErrorFrameFrom,
   WARN,
-  logger,
   Deprecation,
   type WarningsConfigInput,
   type ErrorsConfigInput,
   serialize,
   prepareStaticImports,
   buildAstSourceMap,
+  removeSourceMapBasepath,
   type PreparedImports,
   type PluginInterface,
-  type Position
+  type Position,
+  type SourceSettings
 } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
 import {
@@ -47,7 +48,10 @@ export type ConfigOptions = StylesConfig & {
   /** Show detailed reason and fix in diagnostics. Default: false */
   verbose?: boolean;
 
-  /** Emit ANSI color and terminal hyperlinks in diagnostics. Default: true */
+  /**
+   * Emit ANSI color and terminal hyperlinks in diagnostics. Default: only when
+   * stderr is a terminal and NO_COLOR is unset.
+   */
   colors?: boolean;
 
   /** Deprecation warnings of these types will cause an error to be thrown */
@@ -106,7 +110,8 @@ function internalUnknownDiagnostic(
     filePath,
     line: frame?.line ?? 1,
     column: frame?.column ?? 1,
-    lines: frame?.lines
+    lines: frame?.lines,
+    ...(frame?.note === undefined ? {} : { note: frame.note })
   };
 }
 
@@ -120,50 +125,68 @@ export interface RenderedStylesheet {
   /** v3 source map JSON (external form), when source maps are enabled. */
   map?: string;
 
-  /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
+  /**
+   * The external map's URL, basepath-stripped. The annotation names it, except
+   * that `sourceMapFileInline` writes a `data:` URI and
+   * `disableSourcemapAnnotation` writes nothing; it is returned either way.
+   */
   sourceMapURL?: string;
 }
 
 /**
  * Assemble the source map + CSS annotation from the render's position stream.
  *
- * Mirrors Less 4.x `SourceMapBuilder.getCSSAppendage`: an explicit
- * `sourceMapURL` wins over `sourceMapFilename`; `sourceMapFileInline` embeds the
- * map as a base64 `data:` URI; `disableSourcemapAnnotation` writes nothing. The
- * external `.map` string is always returned for callers that write it to disk —
- * this compiler has no file-writing CLI, so that is a caller concern.
+ * Sources are relative to the input file's directory unless `sourceMapBasepath`
+ * is given; the map's `file` is the output CSS name (`<input>.css` when none is
+ * known); the annotation URL is `sourceMapURL`, else `sourceMapFilename`, else
+ * that output name + `.map`, appended with no trailing newline;
+ * `sourceMapFileInline` embeds the map as a base64 `data:` URI;
+ * `disableSourcemapAnnotation` writes nothing; and empty output gets neither a
+ * map nor an annotation. Like Less 4.x (`source-map-builder.js`), the basepath
+ * is stripped from the annotation URL as from every source. The corpus
+ * `sourcemaps*` fixtures (goldens and expected maps) pin these. The external
+ * `.map` string is returned for callers that write it to disk — this compiler
+ * has no file-writing CLI.
  */
 function assembleSourceMap(
   css: string,
   positions: Position[],
   option: SourceMapConfig,
+  inputFilePath: string | undefined,
   outputFilePath: string | undefined
 ): RenderedStylesheet {
+  if (css.length === 0) {
+    return { css };
+  }
+  const outputFilename = option.sourceMapOutputFilename
+    ?? (outputFilePath === undefined
+      ? (inputFilePath === undefined ? 'output.css' : `${path.basename(inputFilePath, path.extname(inputFilePath))}.css`)
+      : path.basename(outputFilePath));
+  const basepath = (option.sourceMapBasepath
+    ?? (inputFilePath === undefined ? undefined : path.dirname(path.resolve(inputFilePath))))?.replace(/\\/g, '/');
   const encoded = buildAstSourceMap(css, positions, {
-    /*
-     * The map's `file` is the GENERATED css filename (Less `_outputFilename`),
-     * not the `.map` filename.
-     */
-    outputFilename: option.sourceMapOutputFilename ?? outputFilePath ?? option.sourceMapFullFilename,
+    outputFilename,
     sourceMapRootpath: option.sourceMapRootpath,
-    sourceMapBasepath: option.sourceMapBasepath,
+    sourceMapBasepath: basepath,
     outputSourceFiles: option.outputSourceFiles
   });
   const map = JSON.stringify(encoded);
 
-  let sourceMapURL = option.sourceMapURL ?? option.sourceMapFilename;
-  let annotationURL = sourceMapURL;
-  if (option.sourceMapFileInline === true) {
-    annotationURL = `data:application/json;base64,${Buffer.from(map, 'utf8').toString('base64')}`;
-  }
+  const url = option.sourceMapURL
+    ?? option.sourceMapFilename?.replace(/\\/g, '/')
+    ?? (option.sourceMapFullFilename === undefined ? undefined : path.basename(option.sourceMapFullFilename))
+    ?? (inputFilePath === undefined && outputFilePath === undefined && option.sourceMapOutputFilename === undefined
+      ? undefined
+      : `${outputFilename}.map`);
+  const sourceMapURL = url === undefined ? undefined : removeSourceMapBasepath(url, basepath);
+  const annotationURL = option.sourceMapFileInline === true
+    ? `data:application/json;base64,${Buffer.from(map, 'utf8').toString('base64')}`
+    : sourceMapURL;
+  const annotatedCss = option.disableSourcemapAnnotation !== true && annotationURL !== undefined
+    ? `${css}/*# sourceMappingURL=${annotationURL} */`
+    : css;
 
-  let annotatedCss = css;
-  if (option.disableSourcemapAnnotation !== true && annotationURL) {
-    const newline = css.length > 0 && !css.endsWith('\n') ? '\n' : '';
-    annotatedCss = `${css}${newline}/*# sourceMappingURL=${annotationURL} */\n`;
-  }
-
-  return { css: annotatedCss, map, sourceMapURL: sourceMapURL ?? undefined };
+  return { css: annotatedCss, map, sourceMapURL };
 }
 
 /**
@@ -194,7 +217,7 @@ function appendThrownJessDiagnostic(
   error: JessError
 ): void {
   const diagnostic = toDiagnostic(error);
-  const target = 'errors' in diagnostic ? errors : warnings;
+  const target = error.severity === 'error' ? errors : warnings;
   if (!target.some(existing => sameDiagnosticSite(existing, diagnostic))) {
     target.push(diagnostic);
   }
@@ -245,15 +268,28 @@ export type CompilerPluginContext = {
   language?: string;
   resolutionBaseDir?: string;
   optionsFor(language?: string): Record<string, unknown>;
+
+  /**
+   * The options `configFilePath` alone sets (empty when no config file was
+   * found), so a plugin can name that file when one of its values is invalid.
+   */
+  configFileOptionsFor(language?: string): Record<string, unknown>;
 };
 
 export type CompilerHooks = {
   defaultPlugins?(context: CompilerPluginContext): readonly PluginInterface[];
   normalizeConfiguredPlugin?(plugin: PluginInterface, context: CompilerPluginContext): PluginInterface;
+
+  /**
+   * Rewrite the entry source before it is parsed. The object form keeps the
+   * authored source unchanged at `sourceOffset`, with any injected text ahead
+   * of it and after it, so source maps still point into, and embed, the file as
+   * written.
+   */
   prepareSource?(
     source: string,
     context: CompilerPluginContext
-  ): string;
+  ): string | { source: string; sourceOffset: number };
   scriptPluginSpecifier?: string | false;
   scriptPluginResolveFrom?: string | URL;
 };
@@ -274,7 +310,26 @@ type ResolvedRenderConfig = {
   /** Dialect of this render's entry source; selects the built-in fn set. */
   language?: string;
   optionsFor(language?: string): Record<string, unknown>;
+  configFileOptionsFor(language?: string): Record<string, unknown>;
+
+  /** The compile modes passed to the compiler or the render; the Context's own. */
+  explicitModes: NonNullable<StylesConfig['compile']>;
+
+  /** The settings covering one source file; see `ContextOptions.sourceOptions`. */
+  sourceOptions(filePath: string, language: string): SourceSettings;
 };
+
+const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
+  typeof value === 'boolean' || (typeof value === 'object' && value !== null);
+
+/** The prepared entry source, and where the authored source sits in it. */
+const preparedSourceOf = (
+  prepared: string | { source: string; sourceOffset: number },
+  authored: string
+): { source: string; sourceOffset: number; sourceEnd?: number } =>
+  typeof prepared === 'string'
+    ? { source: prepared, sourceOffset: 0 }
+    : { ...prepared, sourceEnd: prepared.sourceOffset + authored.length };
 
 /**
  * Serialize accepts only `false | 'native' | 'compact'`; `collapseNesting: true`
@@ -583,26 +638,66 @@ export class Compiler {
     renderOptions?: Partial<ConfigOptions>,
     parseInput: { language?: string; extension?: string } = {}
   ): ResolvedRenderConfig {
-    const { config: loadedFileConfig, configFilePath } = filePath
-      ? getConfigWithMeta(path.dirname(filePath))
-      : { config: {}, configFilePath: undefined };
+    const entryFolder: ConfigWithMeta = filePath ? getConfigWithMeta(path.dirname(filePath)) : { config: {} };
+    const { config: loadedFileConfig, configFilePath } = entryFolder;
+    const explicitConfig: ConfigOptions = mergeWith(
+      createBaseConfig(),
+      this.baseOptsNormalized,
+      renderOptions || {},
+      arrayConcatCustomizer
+    );
     const effectiveConfig: ConfigOptions = mergeWith(
       createBaseConfig(),
       loadedFileConfig,
-      this.baseOptsNormalized,
-      renderOptions || {},
+      explicitConfig,
       arrayConcatCustomizer
     );
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the
-     * bundle it sets (unitMode/allowLeakyScope/allowCallerScope/allowOverloadedImport)
-     * reaches eval via `context.opts` (contextOptions spreads compile). Individual
-     * options already set always win.
+     * non-mode option it sets (`allowOverloadedImport`) reaches the Context; the
+     * modes it sets are read per source file, below. Individual options already
+     * set always win.
      */
     if (effectiveConfig.compile?.strict) {
       effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
     }
+
+    /*
+     * Compile settings resolve per source file (DESIGN-DECISIONS C19). A file's
+     * settings are its nearest `styles.config` merged under the settings passed
+     * to the compiler and the render, which win field by field (O13). On that
+     * merge they are computed for the file's language: its language's defaults,
+     * under the `compile` settings (the `strict` preset filling only what nothing
+     * sets), under `language.<lang>`. The Context asks for them once per parsed
+     * file, through `sourceOptions`; the compile modes passed in are its own
+     * mode options only for a source it has no settings for.
+     */
+    const explicitModes = explicitConfig.compile ?? {};
+    const sourceOptions = (sourcePath: string, sourceLanguage: string): SourceSettings => {
+      /*
+       * A config file is code: none is loaded for a file in an installed
+       * package, so compiling a project never runs a dependency's config.
+       */
+      const folder: ConfigWithMeta = sourcePath === filePath
+        ? entryFolder
+        : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
+          ? getConfigWithMeta(path.dirname(sourcePath))
+          : { config: {} };
+      const params = { language: sourceLanguage, input: sourcePath };
+
+      /*
+       * ponytail: an invalid value is reported against the nearest config file
+       * only when that file sets it itself; one a config above it sets names no
+       * file. Pass every file with its own settings if that location is needed.
+       */
+      return {
+        options: getOptions([folder.config, explicitConfig], params),
+        configFile: folder.configFilePath === undefined
+          ? undefined
+          : { path: folder.configFilePath, options: getOptions(folder.ownConfig ?? {}, params) }
+      };
+    };
     const jsPluginConfig: JsPluginConfig = {
       jsReadRoot: resolveJsReadRoot(filePath, configFilePath, effectiveConfig.compile?.jsReadRoot)
     };
@@ -687,15 +782,16 @@ export class Compiler {
     };
 
     /*
-     * Resolve all three output options here. `compress` also honors the less.js
-     * `language.less.compress` shape surfaced on `activeOptions`; `sourceMap`
-     * keeps its object form so the sub-options survive.
+     * Resolve all three output options here. `compress` and `sourceMap` also
+     * honor the less.js `language.less.*` shape surfaced on `activeOptions`;
+     * `sourceMap` keeps its object form so the sub-options survive.
      */
+    const lessSourceMap: unknown = activeOptions.sourceMap;
     const printOptions = {
       collapseNesting: readOutput('collapseNesting') ?? activeOptions.collapseNesting,
       compress: readOutput('compress')
         ?? (typeof activeOptions.compress === 'boolean' ? activeOptions.compress : undefined),
-      sourceMap: readOutput('sourceMap')
+      sourceMap: readOutput('sourceMap') ?? (isSourceMapOption(lessSourceMap) ? lessSourceMap : undefined)
     };
 
     return {
@@ -707,8 +803,16 @@ export class Compiler {
       jsPluginConfig,
       printOptions,
       language,
+      explicitModes,
+      sourceOptions,
       optionsFor: (targetLanguage?: string) =>
         getOptions(effectiveConfig, {
+          language: targetLanguage,
+          input: configInputPath,
+          output: resolvedOutputFilePath
+        }) as Record<string, unknown>,
+      configFileOptionsFor: (targetLanguage?: string) =>
+        getOptions(entryFolder.ownConfig ?? {}, {
           language: targetLanguage,
           input: configInputPath,
           output: resolvedOutputFilePath
@@ -966,17 +1070,38 @@ export class Compiler {
       resolvedOutputFilePath: resolved.resolvedOutputFilePath,
       language: resolved.language,
       resolutionBaseDir,
-      optionsFor: resolved.optionsFor
+      optionsFor: resolved.optionsFor,
+      configFileOptionsFor: resolved.configFileOptionsFor
     };
   }
 
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
     const searchPaths = getSearchPaths(resolved.activeOptions)
       ?? getSearchPaths(resolved.effectiveConfig.compile ?? {});
+    const explicit = resolved.explicitModes;
     const contextOptions: ContextOptions & Record<string, unknown> = {
       ...resolved.effectiveConfig.compile,
       ...resolved.activeOptions,
-      ...(searchPaths ? { searchPaths } : {})
+      ...(searchPaths ? { searchPaths } : {}),
+
+      /*
+       * The Context's mode options are the compile modes passed in alone, for a
+       * source with no settings of its own; every parsed file, the entry
+       * included, gets its settings through `sourceOptions`, so the entry's
+       * config file and language settings never reach the files it imports. A parser
+       * reads its other per-file settings (the selector policies) from
+       * `sourceOptions` too, so the entry's copies spread above are never read
+       * for another file.
+       */
+      mathMode: explicit.mathMode,
+      unitMode: explicit.unitMode,
+      functionMode: explicit.functionMode,
+      allowLeakyScope: explicit.allowLeakyScope,
+      leakyScope: explicit.leakyScope,
+      allowCallerScope: explicit.allowCallerScope,
+      bubbleRootAtRules: undefined,
+      processImports: explicit.processImports,
+      sourceOptions: resolved.sourceOptions
     };
 
     /*
@@ -1038,14 +1163,69 @@ export class Compiler {
     };
 
     const context = new Context(contextOptions, plugins);
+
+    /* Option deprecations are about the options, not a stylesheet, so they carry no source location. */
     if (usesDeprecatedDisablePluginRule) {
-      context.warn(WARN.deprecated({
-        filePath: resolved.filePath,
-        meta: {
-          what: 'disablePluginRule',
-          use: 'disableScriptModules',
-          deprecation: Deprecation.fromId('disable-plugin-rule-option') ?? Deprecation.userAuthored
-        }
+      const deprecation = Deprecation.fromId('disable-plugin-rule-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        meta: { what: 'disablePluginRule', use: 'disableScriptModules', deprecation }
+      }));
+    }
+
+    /*
+     * Less 4.x `dumpLineNumbers` is accepted and otherwise ignored: v5 emits no
+     * line-number comments or debug media queries. A falsy value is 4.x's "off"
+     * and requests nothing, so only a real request warns.
+     */
+    if (contextOptions.dumpLineNumbers) {
+      const deprecation = Deprecation.fromId('dump-line-numbers-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"dumpLineNumbers" is deprecated and has no effect: no line-number comments or debug media queries are emitted.',
+        fix: 'Remove the option; use "sourceMap" to map the output back to its source.',
+        meta: { what: 'dumpLineNumbers', use: 'sourceMap', deprecation }
+      }));
+    }
+
+    /*
+     * Less 4.x `insecure` let a remote import skip certificate checks. Remote
+     * imports are https-only and always verify the certificate, so the option
+     * is accepted and has no effect; a real request warns.
+     */
+    if (contextOptions.insecure) {
+      const deprecation = Deprecation.fromId('insecure-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"insecure" is deprecated and has no effect: remote imports are https-only and always verify the server certificate.',
+        fix: 'Remove the option.',
+        meta: { what: 'insecure', use: 'https', deprecation }
+      }));
+    }
+
+    /*
+     * `strictImports` is removed (owner ruling 2026-10-09): it ignored an
+     * `@import` inside a selector block while its help text said it forced
+     * evaluation of imports. Every `@import` is processed where it is written,
+     * so the option is accepted and has no effect; a real request warns.
+     */
+    if (contextOptions.strictImports) {
+      const deprecation = Deprecation.fromId('strict-imports-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"strictImports" is deprecated and has no effect: every @import is processed where it is written.',
+        fix: 'Remove the option.',
+        meta: { what: 'strictImports', use: '@import', deprecation }
+      }));
+    }
+
+    /*
+     * Less 4.x `ieCompat` made `data-uri()` fall back to `url()` for a file too
+     * large for IE8. `data-uri()` always inlines the file, so the option is
+     * accepted and has no effect; a real request warns.
+     */
+    if (contextOptions.ieCompat) {
+      const deprecation = Deprecation.fromId('ie-compat-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"ieCompat" is deprecated and has no effect: data-uri() always inlines the file.',
+        fix: 'Remove the option.',
+        meta: { what: 'ieCompat', use: 'data-uri()', deprecation }
       }));
     }
     return context;
@@ -1099,12 +1279,14 @@ export class Compiler {
     await measureProfileAsync(profile, 'prewarmPlugins', () => this.prewarmPlugins(context));
 
     if (source != null) {
-      const preparedSource = this.hooks.prepareSource?.(source, pluginContext) ?? source;
+      const prepared = preparedSourceOf(this.hooks.prepareSource?.(source, pluginContext) ?? source, source);
       const parsed = await measureProfileAsync(profile, 'parseString', () =>
-        context.parseString(preparedSource, {
+        context.parseString(prepared.source, {
           filePath,
           type: language,
-          extension
+          extension,
+          sourceOffset: prepared.sourceOffset,
+          sourceEnd: prepared.sourceEnd
         }));
       return parsed.node;
     }
@@ -1116,14 +1298,16 @@ export class Compiler {
             throw new Error('No source getter found');
           }
           const rootSource = await sourceGetter.getSource(resolvedPath);
-          const preparedSource = this.hooks.prepareSource?.(rootSource, {
+          const prepared = preparedSourceOf(this.hooks.prepareSource?.(rootSource, {
             ...pluginContext,
             filePath: resolvedPath
-          }) ?? rootSource;
-          const parsed = await context.parseString(preparedSource, {
+          }) ?? rootSource, rootSource);
+          const parsed = await context.parseString(prepared.source, {
             filePath: resolvedPath,
             type: language,
-            extension
+            extension,
+            sourceOffset: prepared.sourceOffset,
+            sourceEnd: prepared.sourceEnd
           });
           if (parsed.node) {
             context.sourceTrees.set(resolvedPath, parsed.node);
@@ -1169,7 +1353,7 @@ export class Compiler {
     context: Context,
     profile?: RenderProfile,
     preparedImports?: PreparedImports,
-    outputFilePath?: string
+    files?: Pick<ResolvedRenderConfig, 'filePath' | 'resolvedOutputFilePath'>
   ): Promise<RenderedStylesheet> {
     const sourceMapOption = context.opts.output?.sourceMap;
     const trackPositions = Boolean(sourceMapOption);
@@ -1204,7 +1388,7 @@ export class Compiler {
      * also built pre-postprocess). Regenerate through postprocessors if needed.
      */
     const option: SourceMapConfig = typeof sourceMapOption === 'object' ? sourceMapOption : {};
-    return assembleSourceMap(css, result.positions, option, outputFilePath);
+    return assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath);
   }
 
   /** @internal AST document preparation; no legacy evaluator tree is exposed. */
@@ -1215,16 +1399,7 @@ export class Compiler {
       const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       const preparedImports = await this.prepareStaticImportsForStylesheet(document, context, profile);
 
-      if (context.errors.length > 0 || context.warningCount > 0) {
-        outputDiagnostics(context.errors, context.warnings, {
-          suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false,
-          warnings: options?.warnings,
-          errors: options?.errors,
-          colors: options?.colors
-        });
-      }
+      this.reportCollected(context, options);
 
       finalizeRenderProfile(profile, {
         method: 'compile',
@@ -1234,18 +1409,7 @@ export class Compiler {
       });
       return { document, context, preparedImports };
     } catch (err: unknown) {
-      if (context.errors.length > 0 || context.warningCount > 0) {
-        outputDiagnostics(context.errors, context.warnings, {
-          suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false,
-          warnings: options?.warnings,
-          errors: options?.errors,
-          colors: options?.colors
-        });
-      } else {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, options, err);
       finalizeRenderProfile(profile, {
         method: 'compile',
         filePath,
@@ -1259,16 +1423,29 @@ export class Compiler {
   }
 
   /**
-   * Emits whatever the render collected. A SUCCESSFUL render can still have
+   * Prints the diagnostics a call collected. A SUCCESSFUL render can still have
    * recorded real problems (a plugin function that threw, an unresolved
    * function); dropping those on the floor is how a broken plugin stays
-   * invisible, so they are always surfaced here.
+   * invisible, so they are always printed here.
+   *
+   * A FAILED call passes the error it is about to throw, and that error is not
+   * printed here, even when it was also recorded (a parse error is both
+   * recorded and thrown). A library call never prints what it throws: the
+   * caller receives the error and reports it, so printing it here too is how
+   * a caller such as a bundler plugin ends up showing it twice.
    */
-  private reportCollected(context: Context, options?: Partial<ConfigOptions>): void {
-    if (context.errors.length === 0 && context.warningCount === 0) {
+  private reportCollected(context: Context, options?: Partial<ConfigOptions>, thrown?: unknown): void {
+    let errors = context.errors;
+    let warnings = context.warningCount === 0 ? [] : context.warnings;
+    if (thrown instanceof JessError) {
+      const site = toDiagnostic(thrown, { includeLines: false });
+      errors = errors.filter(error => !sameDiagnosticSite(error, site));
+      warnings = warnings.filter(warning => !sameDiagnosticSite(warning, site));
+    }
+    if (errors.length === 0 && warnings.length === 0) {
       return;
     }
-    outputDiagnostics(context.errors, context.warnings, {
+    outputDiagnostics(errors, warnings, {
       suppressWarnings: options?.suppressWarnings ?? false,
       breakOnError: options?.breakOnError ?? true,
       verbose: options?.verbose ?? false,
@@ -1287,7 +1464,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
       context.finalizeWarnings();
       this.reportCollected(context, options);
@@ -1299,10 +1476,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
-      this.reportCollected(context, options);
-      if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, options, err);
       finalizeRenderProfile(profile, {
         method: 'render',
         filePath,
@@ -1331,7 +1505,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
       context.finalizeWarnings();
       this.reportCollected(context, renderOptions);
@@ -1343,10 +1517,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
-      this.reportCollected(context, renderOptions);
-      if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, renderOptions, err);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
@@ -1361,11 +1532,13 @@ export class Compiler {
 
   async renderToResult(
     input: string | { source: string; filePath?: string; language?: string; extension?: string },
-    options?: Partial<ConfigOptions> & {
-      filePath?: string;
-      language?: string;
-      extension?: string;
-    }
+
+    /*
+     * `language` here is the per-language config (`language.less`), as
+     * everywhere in `ConfigOptions`. The entry's language name comes only from
+     * the input object, else from the file extension.
+     */
+    options?: Partial<ConfigOptions>
   ): Promise<{
     css: string;
     errors: ErrorDiagnostic[];
@@ -1381,8 +1554,8 @@ export class Compiler {
     const isSourceContent = typeof input === 'object' && 'source' in input;
     const source = isSourceContent ? input.source : undefined;
     const filePath = isSourceContent ? input.filePath : input;
-    const language = isSourceContent ? input.language : options?.language;
-    const extension = isSourceContent ? input.extension : options?.extension;
+    const language = isSourceContent ? input.language : undefined;
+    const extension = isSourceContent ? input.extension : undefined;
     const renderOptions = options;
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
@@ -1393,7 +1566,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
 
       context.finalizeWarnings();
@@ -1536,7 +1709,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
 
       finalizeRenderProfile(profile, {

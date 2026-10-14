@@ -1,6 +1,6 @@
 import { run } from 'parseman';
-import { valueLayoutOf } from '@jesscss/core/ast';
-import type { Ruleset, SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
+import { quoted, valueLayoutOf } from '@jesscss/core/ast';
+import type { Declaration, Ruleset, SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessGrammar } from '../src/grammar.js';
@@ -762,9 +762,11 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                type: 'SimpleSelector',
-                text: ':lang(en)',
-                interp: null
+                type: 'PseudoSelector',
+                name: ':lang',
+                text: null,
+                interp: null,
+                arg: { type: 'List', value: [{ type: 'Keyword', src: 'en' }] }
               }
             ]
           }
@@ -1491,7 +1493,8 @@ describe('Less AST grammar facts', () => {
             src: '"dark"',
             value: 'dark',
             quote: '"',
-            escaped: false
+            escaped: false,
+            interp: null
           },
           write: { mode: 'declare' }
         },
@@ -1522,7 +1525,8 @@ describe('Less AST grammar facts', () => {
             src: '"theme.less"',
             value: 'theme.less',
             quote: '"',
-            escaped: false
+            escaped: false,
+            interp: null
           },
           alias: null,
           mode: 'import',
@@ -1539,7 +1543,8 @@ describe('Less AST grammar facts', () => {
             src: '\'tokens.less\'',
             value: 'tokens.less',
             quote: '\'',
-            escaped: false
+            escaped: false,
+            interp: null
           },
           alias: null,
           mode: 'import',
@@ -2305,7 +2310,8 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('constructs static body and inline extends with exact/all multi-target semantics', () => {
+  /* Owner 2026-10-09, verbatim. */
+  it('"`all` only applies to target right before, `!all` is supposed to apply to the entire seletor list"', () => {
     const source =
       '.target { color: navy; } .rules { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }';
     const result = run(lessGrammar.Document, source, {
@@ -2321,7 +2327,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'Ruleset',
           extendInstructions: [
-            { target: { type: 'SelectorList' }, partial: false },
+            { target: { type: 'SelectorList' }, partial: true },
             { target: { type: 'SelectorList' }, partial: true }
           ]
         },
@@ -2348,6 +2354,23 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+  });
+
+  it('makes every target of an inline :extend(…) partial for `!all` and only the one before `all`', () => {
+    const extensions = (source: string) => {
+      const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+      expect(result.ok).toBe(true);
+      const ruleset = stylesheet(result.value).rules[0];
+      if (ruleset?.type !== 'Ruleset') {
+        throw new Error('expected a ruleset');
+      }
+      return (ruleset.extendInstructions ?? []).map(instruction => instruction.partial);
+    };
+    expect(extensions('.c:extend(.x, .y !all) { r: 3 }')).toEqual([true, true]);
+    expect(extensions('.c:extend(.x, .y !ALL) { r: 3 }')).toEqual([true, true]);
+    expect(extensions('.c:extend(.x all, .y) { r: 3 }')).toEqual([true, false]);
+    expect(extensions('.c:extend(.x, .y all) { r: 3 }')).toEqual([false, true]);
+    expect(extensions('.c { &:extend(.x, .y !all, .z); }')).toEqual([true, true, true]);
   });
 
   it('gives a body extend on a comma list no subject, so every branch extends', () => {
@@ -2381,6 +2404,79 @@ describe('Less AST grammar facts', () => {
     for (const instruction of (ruleset as Ruleset).extendInstructions ?? []) {
       expect(instruction.subject).toBeUndefined();
     }
+  });
+
+  /*
+   * Ledger X16: a body-form `&:extend()` written directly in a mixin definition is
+   * carried on the definition, with no subject, for its call sites to apply. The
+   * body keeps only its statements; no synthetic `&` rule stands for the extend.
+   */
+  it('carries a body-form extend written directly in a mixin definition on the definition', () => {
+    const source = '.m() { c: d; &:extend(.sm all); e: f; }';
+    const result = run(lessGrammar.Document!, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const [definition] = stylesheet(result.value).rules;
+    expect(definition).toMatchObject({
+      type: 'MixinDefinition',
+      rules: [{ type: 'Declaration' }, { type: 'Declaration' }],
+      extendInstructions: [{ target: { type: 'SelectorList' }, partial: true }]
+    });
+    expect((definition as { extendInstructions: Array<{ subject?: unknown }> }).extendInstructions[0]!.subject).toBeUndefined();
+
+    /* Declared either way, so a definition with an extend shares one without's shape. */
+    const plain = stylesheet(run(lessGrammar.Document!, '.m() { c: d; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    }).value).rules[0];
+    expect(Object.keys(plain!)).toEqual(Object.keys(definition!));
+    expect(plain).toMatchObject({ type: 'MixinDefinition', extendInstructions: undefined });
+  });
+
+  it('carries a body-form extend written in a guarded mixin definition on the definition', () => {
+    const result = run(lessGrammar.Document!, '.m() when (@a = 1) { &:extend(.sm, .t all); c: d; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stylesheet(result.value).rules[0]).toMatchObject({
+      type: 'MixinDefinition',
+      guard: expect.anything(),
+      rules: [{ type: 'Declaration' }],
+      extendInstructions: [{ partial: false }, { partial: true }]
+    });
+  });
+
+  /*
+   * Ledger X19: a body-form `&:extend()` in an at-rule block or a detached ruleset is
+   * carried on that block, with no subject, for the render walk to apply where it
+   * lands. The body keeps only its statements, and the field is declared either way.
+   */
+  it.each([
+    ['a @media block in a rule', '.a { @media print { c: d; &:extend(.sm all); } }', (rules: readonly unknown[]) => (rules[0] as { rules: unknown[] }).rules[0]],
+    ['a @supports block in a mixin', '.m() { @supports (display: grid) { &:extend(.sm); c: d; } }', (rules: readonly unknown[]) => (rules[0] as { rules: unknown[] }).rules[0]],
+    ['a generic at-rule block in a rule', '.a { @layer x { &:extend(.sm); c: d; } }', (rules: readonly unknown[]) => (rules[0] as { rules: unknown[] }).rules[0]],
+    ['a detached ruleset', '@r: { c: d; &:extend(.sm); };', (rules: readonly unknown[]) => (rules[0] as { value: unknown }).value]
+  ])('carries a body-form extend written in %s on the block', (_label, source, blockOf) => {
+    const result = run(lessGrammar.Document!, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const block = blockOf(stylesheet(result.value).rules) as { rules: unknown[]; extendInstructions: Array<{ subject?: unknown }> | undefined };
+    expect(block.rules).toEqual([expect.objectContaining({ type: 'Declaration' })]);
+    expect(block.extendInstructions).toEqual([expect.objectContaining({ target: expect.objectContaining({ type: 'SelectorList' }) })]);
+    expect(block.extendInstructions![0]!.subject).toBeUndefined();
+
+    const plain = blockOf(stylesheet(run(lessGrammar.Document!, source.replace(/&:extend\([^)]*\); ?/, ''), {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    }).value).rules) as object;
+    expect(Object.keys(plain)).toEqual(Object.keys(block));
+    expect(plain).toMatchObject({ extendInstructions: undefined });
   });
 
   it('parses a leading-combinator nested rule inside a detached ruleset body', () => {
@@ -2920,23 +3016,26 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('keeps standalone extend statements out of direct detached and callback bodies until they have a statement fact', () => {
+  /* An `each()` callback is a detached ruleset each iteration places: it carries its body-form extend as one does (ledger X19). */
+  it('carries a body-form extend in an each() callback on the loop', () => {
     for (const source of [
-      '@theme: { &:extend(.target); };',
-      'each(1, { &:extend(.target); });'
+      'each(1, { &:extend(.target); c: d; });',
+      'each(1, .(@v) { c: d; &:extend(.target); });'
     ]) {
-      const cst = parseLessCst(source);
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
 
-      expect(cstIssueCount(cst), source).toBeGreaterThan(0);
-      expect(
-        result.ok
-        && result.unconsumedFrom === null
-        && isStylesheet(result.value),
-        source
-      ).toBe(false);
+      expect(cstIssueCount(parseLessCst(source)), source).toBe(0);
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      expect(result.value, source).toMatchObject({
+        type: 'Stylesheet',
+        rules: [{
+          type: 'For',
+          rules: [{ type: 'Declaration', name: 'c' }],
+          extendInstructions: [{ target: { selectors: [{ text: '.target' }] }, partial: false }]
+        }]
+      });
     }
   });
 
@@ -3144,7 +3243,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: '--x',
-              value: { type: 'Any', src: 'red @media all {x:y} ' }
+              value: { type: 'Any', src: 'red @media all {x:y}' }
             }
           ]
         }
@@ -3234,12 +3333,15 @@ describe('Less AST grammar facts', () => {
      * A pure media query on a legacy compile-time `@import` desugars to a
      * `@media` wrapper (owner 2026-09-02), but a `supports(...)`/`layer`
      * condition has no wrapping and still rejects. This tail carries a
-     * `supports(...)` condition, so it is a parse error rather than a wrap.
+     * `supports(...)` condition, so it is a parse error rather than a wrap. The
+     * query grammar is the CSS base's, which keeps a general-enclosed term's
+     * authored bytes from the parse input, so the state carries the source.
      */
+    const misplacedCondition = '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");';
     expect(() => run(
       lessGrammar.Document,
-      '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
-      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+      misplacedCondition,
+      { trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source: misplacedCondition } }
     )).toThrow(LessImportPostludeError);
 
     const result = run(
@@ -3275,16 +3377,21 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
+    /*
+     * A CSS import keeps its postlude: the CSS base's media query list, where a
+     * `supports()` written after the query is a general-enclosed term.
+     */
+    const cssImportSource = '@import url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");';
     const cssImport = run(
       lessGrammar.Document,
-      '@import url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
-      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+      cssImportSource,
+      { trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source: cssImportSource } }
     );
 
     expect(cssImport.ok).toBe(true);
     expect(cssImport.unconsumedFrom).toBeNull();
     expect(isStylesheet(cssImport.value)).toBe(true);
-    expect(bare(cssImport.value)).toEqual({
+    expect(bare(cssImport.value)).toMatchObject({
       type: 'Stylesheet',
       rules: [
         {
@@ -3295,8 +3402,13 @@ describe('Less AST grammar facts', () => {
             parts: [
               { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
               {
-                type: 'Any',
-                src: 'screen and (min-width: 600px) supports(label: "wide mode")'
+                type: 'Sequence',
+                parts: [
+                  { type: 'Keyword', src: 'screen' },
+                  { type: 'Keyword', src: 'and' },
+                  { type: 'Block' },
+                  { type: 'FunctionCall', name: 'supports' }
+                ]
               }
             ]
           }
@@ -3373,15 +3485,22 @@ describe('Less AST grammar facts', () => {
             ]
           },
           target: {
-            type: 'Interpolation',
-            parts: [
-              { lit: '"theme-' },
-              {
-                ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
-                unquote: true
-              },
-              { lit: '.css"' }
-            ]
+            type: 'Quoted',
+            src: '"theme-@{name}.css"',
+            value: 'theme-@{name}.css',
+            quote: '"',
+            escaped: false,
+            interp: {
+              type: 'Interpolation',
+              parts: [
+                { lit: 'theme-' },
+                {
+                  ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
+                  unquote: true
+                },
+                { lit: '.css' }
+              ]
+            }
           }
         }
       ]
@@ -3566,15 +3685,11 @@ describe('Less AST grammar facts', () => {
       '@import "theme.less" @media;',
       '@import "theme.less" @@media;',
       '@import "theme.less" @ {media};',
-      '@import "theme.less" @{media} screen;',
-      '@import "theme.less" screen @{media};',
-      '@import "theme.less" @{media}@{print};',
       '@import "theme.less" ${media};',
       '@import "theme.less" screen and (min-width: 600px;',
       '@import "theme.less" screen and [min-width: 600px);',
       '@import "theme.less" screen and [min-width: 600px];',
       '@import "theme.less" screen and {min-width: 600px};',
-      '@import "theme.less" screen and (min-width: {600px});',
       '@import "theme.less" screen and "unterminated;',
       '@import \'theme.less\' screen and \'unterminated;',
       '@import "theme.less" screen and (min-width: 600px));',
@@ -3602,6 +3717,32 @@ describe('Less AST grammar facts', () => {
       ).toBe(false);
       expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
     }
+  });
+
+  /*
+   * The import postlude reads the CSS base's media query list. Terms juxtaposed
+   * with no connective (`@{media} screen`, two glued interpolations) and a `{}`
+   * block inside a group are that grammar's — a query that matches nothing is
+   * `not all`, never a syntax error — so each parses as a typed query list, as in
+   * css and lessc 4.9.1, and a compile-time import wraps itself in `@media`.
+   */
+  it.each([
+    '@import "theme.less" @{media} screen;',
+    '@import "theme.less" screen @{media};',
+    '@import "theme.less" @{media}@{print};',
+    '@import "theme.less" screen and (min-width: {600px});'
+  ])('reads the import postlude %j as a typed media query list', (source) => {
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source }
+    });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stylesheet(result.value).rules).toMatchObject([{
+      type: 'AtRuleBlock',
+      name: '@media',
+      prelude: { type: 'Sequence' },
+      rules: [{ type: 'StyleImport' }]
+    }]);
   });
 
   it('constructs keyword and variable-reference values without recovering value text', () => {
@@ -4041,24 +4182,86 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads a comparison in a value paren group as a group around the condition if() and boolean() read', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@x: (1px > 2px); @y: (1px>2px); x: if((@a = rem), 1, 2);',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const comparison = {
+      type: 'Block',
+      delimiter: 'paren',
+      value: {
+        type: 'Condition',
+        guard: { g: 'cmp', op: '>', left: { type: 'Dimension', src: '1px' }, right: { type: 'Dimension', src: '2px' } },
+        src: '1px > 2px'
+      }
+    };
+    expect(result.value).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'x', value: comparison },
+        { type: 'VariableDeclaration', name: 'y', value: comparison },
+        {
+          value: {
+            branches: [
+              { guard: { g: 'cmp', op: '=', left: { type: 'Lookup', name: 'a' }, right: { type: 'Keyword', src: 'rem' } } },
+              {}
+            ]
+          }
+        }
+      ]
+    });
+  });
+
+  it('reads and / or / not in a value paren group as a group around one condition', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@w: (1px > 2px and 1 = 1); @x: ((1px > 2px) and (1 = 1)); @y: (not (1px > 2px)); @z: (1 < 0 or 1 > 0 and 2 > 1); @v: (not);',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const cmp = (op: string, left: string, right: string) => ({ g: 'cmp', op, left: { src: left }, right: { src: right } });
+    const group = (guard: object) => ({ type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard } });
+    expect(result.value).toMatchObject({
+      rules: [
+        { name: 'w', value: group({ g: 'and', left: cmp('>', '1px', '2px'), right: cmp('=', '1', '1') }) },
+        { name: 'x', value: group({ g: 'and', left: cmp('>', '1px', '2px'), right: cmp('=', '1', '1') }) },
+        { name: 'y', value: group({ g: 'not', inner: cmp('>', '1px', '2px') }) },
+        { name: 'z', value: group({ g: 'or', left: cmp('<', '1', '0'), right: { g: 'and', left: cmp('>', '1', '0'), right: cmp('>', '2', '1') } }) },
+        { name: 'v', value: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'not' } } }
+      ]
+    });
+  });
+
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
     expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
   });
 
+  /*
+   * A comparison binds tighter than `and` / `or`, so it needs no group of its
+   * own in a condition (`if(1 > 0 and 2 > 1, y, n)`); a `not` followed by a
+   * comparison takes a grouped operand, since `not 1 = 1` does not say what it
+   * negates — in a function condition and in a value paren group alike.
+   */
   it('enforces Less function condition grouping for boolean() and if()', () => {
     const accepts = [
       'x: boolean(1 = 1);',
       'x: boolean(not (1 = 1));',
       'x: boolean((1 = 1) and (2 = 2));',
+      'x: boolean(1 = 1 and (2 = 2));',
       'x: if(1 = 1, yes, no);',
       'x: if(not (1 = 1), yes, no);',
-      'x: if((1 = 1) and (2 = 2), yes, no);'
+      'x: if((1 = 1) and (2 = 2), yes, no);',
+      'x: if(1 = 1 and (2 = 2), yes, no);',
+      'x: if((1 = 1) or (2 = 2) and (3 = 3), yes, no);'
     ];
     const rejects = [
       'x: boolean(not 1 = 1);',
-      'x: boolean(1 = 1 and (2 = 2));',
       'x: if(not 1 = 1, yes, no);',
-      'x: if(1 = 1 and (2 = 2), yes, no);'
+      'x: (not 1 = 1);'
     ];
 
     for (const source of accepts) {
@@ -4471,15 +4674,20 @@ describe('Less AST grammar facts', () => {
               value: {
                 type: 'Url',
                 value: {
-                  type: 'Interpolation',
-                  parts: [
-                    { lit: '"' },
-                    {
-                      ref: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' },
-                      unquote: true
-                    },
-                    { lit: '/icon.svg"' }
-                  ]
+                  type: 'Quoted',
+                  src: '"@{base}/icon.svg"',
+                  quote: '"',
+                  escaped: false,
+                  interp: {
+                    type: 'Interpolation',
+                    parts: [
+                      {
+                        ref: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' },
+                        unquote: true
+                      },
+                      { lit: '/icon.svg' }
+                    ]
+                  }
                 }
               }
             }
@@ -4706,22 +4914,24 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    for (const dynamic of [
-      '@custom @{query} { .card { color: red; } }',
-      '@custom foo@{query} { .card { color: red; } }',
-      '@custom foo @{query} { .card { color: red; } }',
-      '@custom foo@{query};',
-      '@custom foo @{query};'
-    ]) {
-      const rejected = run(lessGrammar.Document, dynamic, {
+    /*
+     * The one thing Less evaluates in an unknown at-rule's prelude is `@{…}`
+     * (ledger P2): the prelude is an interpolation over its bytes.
+     */
+    for (const [dynamic, parts] of [
+      ['@custom @{query} { .card { color: red; } }', [{ ref: { name: 'query' } }]],
+      ['@custom foo@{query} { .card { color: red; } }', [{ lit: 'foo' }, { ref: { name: 'query' } }]],
+      ['@custom foo @{query} { .card { color: red; } }', [{ lit: 'foo ' }, { ref: { name: 'query' } }]],
+      ['@custom foo@{query};', [{ lit: 'foo' }, { ref: { name: 'query' } }]],
+      ['@custom foo @{query};', [{ lit: 'foo ' }, { ref: { name: 'query' } }]]
+    ] as const) {
+      const interpolated = run(lessGrammar.Document, dynamic, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
-      expect(
-        rejected.ok
-        && rejected.unconsumedFrom === null
-        && isStylesheet(rejected.value),
-        dynamic
-      ).toBe(false);
+      expect(interpolated.ok && interpolated.unconsumedFrom === null, dynamic).toBe(true);
+      expect(interpolated.value, dynamic).toMatchObject({
+        rules: [{ name: '@custom', prelude: { type: 'Interpolation', parts } }]
+      });
     }
   });
 
@@ -4851,15 +5061,6 @@ describe('Less AST grammar facts', () => {
         { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
       )
     ).toThrow(LessDynamicCharsetError);
-
-    const rejected = run(lessGrammar.Document, '@custom foo@{name};', {
-      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-    });
-    expect(
-      rejected.ok
-      && rejected.unconsumedFrom === null
-      && isStylesheet(rejected.value)
-    ).toBe(false);
   });
 
   /*
@@ -5904,8 +6105,7 @@ describe('Less AST grammar facts', () => {
       '@media screen and { .card { color: red; } }',
       '@container none (width > 10px) { .card { color: red; } }',
       '@container and (width > 10px) { .card { color: red; } }',
-      '@container only screen { .card { color: red; } }',
-      '@container selector(.card) { .card { color: red; } }'
+      '@container only screen { .card { color: red; } }'
     ]) {
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -5939,10 +6139,14 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '@container screen { .card { color: red; } }',
       '@container only { .card { color: red; } }',
-      '@container card (inline-size > 30em), style(--large: true) { .card { color: red; } }'
+      '@container card (inline-size > 30em), style(--large: true) { .card { color: red; } }',
+
+      /* A function the container grammar does not define is `<general-enclosed>`, as in css (ledger N17). */
+      '@container selector(.card) { .card { color: red; } }',
+      '@container size(min-width: 60ch) { .card { color: red; } }'
     ]) {
       const result = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source }
       });
       expect(
         result.ok
@@ -6416,19 +6620,7 @@ describe('Less AST grammar facts', () => {
                       {
                         type: 'Declaration',
                         name: '--foo',
-                        value: {
-                          type: 'Interpolation',
-                          parts: [
-                            {
-                              ref: {
-                                type: 'Lookup', kind: 'var',
-                                name: 'replace',
-                                raw: '@replace',
-                                scope: 'scoped'
-                              }
-                            }
-                          ]
-                        },
+                        value: { type: 'Any', src: '@replace' },
                         important: true
                       }
                     ]
@@ -6551,6 +6743,7 @@ describe('Less AST grammar facts', () => {
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
 
+    /* Each comma run is stored as the `~( … )` node (ledger P46). */
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -6566,24 +6759,34 @@ describe('Less AST grammar facts', () => {
               args: [
                 {
                   value: {
-                    type: 'List',
-                    sep: ',',
-                    value: [
-                      { type: 'Keyword', src: 'a' },
-                      { type: 'Keyword', src: 'b' },
-                      { type: 'Keyword', src: 'c' }
-                    ]
+                    type: 'Block',
+                    delimiter: 'paren',
+                    escaped: true,
+                    value: {
+                      type: 'List',
+                      sep: ',',
+                      value: [
+                        { type: 'Keyword', src: 'a' },
+                        { type: 'Keyword', src: 'b' },
+                        { type: 'Keyword', src: 'c' }
+                      ]
+                    }
                   }
                 },
                 {
                   value: {
-                    type: 'List',
-                    sep: ',',
-                    value: [
-                      { type: 'Keyword', src: 'a' },
-                      { type: 'Keyword', src: 'b' },
-                      { type: 'Keyword', src: 'c' }
-                    ]
+                    type: 'Block',
+                    delimiter: 'paren',
+                    escaped: true,
+                    value: {
+                      type: 'List',
+                      sep: ',',
+                      value: [
+                        { type: 'Keyword', src: 'a' },
+                        { type: 'Keyword', src: 'b' },
+                        { type: 'Keyword', src: 'c' }
+                      ]
+                    }
                   }
                 }
               ]
@@ -7006,7 +7209,16 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
-    expect(serialize(result.value).css).toContain('value: 42;');
+
+    // `@theme` is unbound, so its member read is an eval error; the call chain alone evaluates.
+    expect(() => serialize(result.value)).toThrow(expect.objectContaining({ code: 'resolve/name-not-found' }));
+    const bound = run(lessGrammar.Document, source.replace(' member: @theme[key].next(1);', ''), {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    if (!isStylesheet(bound.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
+    expect(serialize(bound.value).css).toContain('value: 42;');
   });
 
   it('constructs $@variable namespace property keys without flattening their indirection', () => {
@@ -8040,24 +8252,30 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'content',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: '"pre-' },
-                  {
-                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
-                    unquote: true
-                  },
-                  { lit: '-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'prop',
-                      name: 'tone',
-                      raw: '$tone'
+                type: 'Quoted',
+                src: '"pre-@{theme}-${tone}"',
+                value: 'pre-@{theme}-${tone}',
+                quote: '"',
+                escaped: false,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: 'pre-' },
+                    {
+                      ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
+                      unquote: true
                     },
-                    unquote: true
-                  },
-                  { lit: '"' }
-                ]
+                    { lit: '-' },
+                    {
+                      ref: {
+                        type: 'Lookup', kind: 'prop',
+                        name: 'tone',
+                        raw: '$tone'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             },
             {
@@ -8193,15 +8411,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: '--literal',
-              value: {
-                type: 'Interpolation',
-                parts: [
-                  {
-                    ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name', scope: 'scoped' },
-                    unquote: false
-                  }
-                ]
-              }
+              value: { type: 'Any', src: '@name' }
             },
             {
               type: 'Declaration',
@@ -8433,43 +8643,53 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'plain',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: '"a\\"b\\@{literal}-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'prop',
-                      name: 'tone',
-                      raw: '$tone'
-                    },
-                    unquote: true
-                  },
-                  { lit: '"' }
-                ]
+                type: 'Quoted',
+                src: '"a\\"b\\@{literal}-${tone}"',
+                quote: '"',
+                escaped: false,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: 'a\\"b\\@{literal}-' },
+                    {
+                      ref: {
+                        type: 'Lookup', kind: 'prop',
+                        name: 'tone',
+                        raw: '$tone'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             },
             {
               type: 'Declaration',
               name: 'interpolated',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: '"a\\"b\\@{literal}-' },
-                  {
-                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
-                    unquote: true
-                  },
-                  { lit: '-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'prop',
-                      name: 'tone',
-                      raw: '$tone'
+                type: 'Quoted',
+                src: '"a\\"b\\@{literal}-@{theme}-${tone}"',
+                quote: '"',
+                escaped: false,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: 'a\\"b\\@{literal}-' },
+                    {
+                      ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
+                      unquote: true
                     },
-                    unquote: true
-                  },
-                  { lit: '"' }
-                ]
+                    { lit: '-' },
+                    {
+                      ref: {
+                        type: 'Lookup', kind: 'prop',
+                        name: 'tone',
+                        raw: '$tone'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             }
           ]
@@ -8534,14 +8754,21 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('constructs escaped quoted Less interpolation as an unquoted structural template', () => {
-    const source = '@tone: red; .x { color: ~"pre-@{tone}"; }';
+  it('constructs an interpolating string as the same Quoted, carrying its template', () => {
+    /*
+     * `~"pre-@{tone}"` is one escaped `Quoted`, exactly the node `~"pre-red"`
+     * is (owner 2026-10-06, ledger V3), and `"pre-@{tone}"` the same unescaped
+     * one (C2): same `escaped`, same `quote`, with its content template in
+     * `interp` and its authored spelling in `src`/`value`.
+     */
+    const source = '@tone: red; .x { color: ~"pre-@{tone}"; b: ~\'@{tone}\'; c: "pre-@{tone}"; }';
     const result = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    const tone = { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'scoped' };
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       rules: [
@@ -8553,27 +8780,48 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'color',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: 'pre-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'var',
-                      name: 'tone',
-                      raw: '@tone',
-                      scope: 'scoped'
-                    },
-                    unquote: true
-                  }
-                ]
+                type: 'Quoted',
+                src: '~"pre-@{tone}"',
+                value: 'pre-@{tone}',
+                quote: '"',
+                escaped: true,
+                interp: { type: 'Interpolation', parts: [{ lit: 'pre-' }, { ref: tone, unquote: true }] }
+              }
+            },
+            {
+              type: 'Declaration',
+              name: 'b',
+              value: {
+                type: 'Quoted',
+                src: '~\'@{tone}\'',
+                quote: '\'',
+                escaped: true,
+                interp: { type: 'Interpolation', parts: [{ ref: tone, unquote: true }] }
+              }
+            },
+            {
+              type: 'Declaration',
+              name: 'c',
+              value: {
+                type: 'Quoted',
+                src: '"pre-@{tone}"',
+                value: 'pre-@{tone}',
+                quote: '"',
+                escaped: false,
+                interp: { type: 'Interpolation', parts: [{ lit: 'pre-' }, { ref: tone, unquote: true }] }
               }
             }
           ]
         }
       ]
     });
+
+    /* One shape (V8-ARCHITECTURE invariant 1): the same fields, in the same order, as `~"x"`. */
+    const rules = ((result.value as Stylesheet).rules[1] as Ruleset).rules as Declaration[];
+    expect(Object.keys(rules[0]!.value)).toEqual(Object.keys(quoted('~"x"', 'x', '"', true)));
+    expect(Object.keys(rules[2]!.value)).toEqual(Object.keys(quoted('"x"', 'x', '"', false)));
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '.x {\n  color: pre-red;\n}\n'
+      '.x {\n  color: pre-red;\n  b: red;\n  c: "pre-red";\n}\n'
     );
   });
 
@@ -9017,6 +9265,79 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps a bare selector interpolation as one simple before a combinator or another compound', () => {
+    const interpolated = {
+      type: 'SimpleSelector',
+      text: null,
+      interp: { parts: [{ ref: { type: 'Lookup', kind: 'var', name: 's' }, unquote: true }] }
+    };
+    const selectorOf = (source: string) => {
+      const result = run(lessGrammar.Document, `@s: ~".q"; ${source} { a: b; }`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok).toBe(true);
+      expect(result.unconsumedFrom).toBeNull();
+      return (stylesheet(result.value).rules[1] as Ruleset).selector;
+    };
+
+    expect(selectorOf('@{s} .r')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [interpolated, ' ', { text: '.r' }] }]
+    });
+    expect(selectorOf('@{s} > .r')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [interpolated, '>', { text: '.r' }] }]
+    });
+    expect(selectorOf('.r @{s} .t')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [{ text: '.r' }, ' ', interpolated, ' ', { text: '.t' }] }]
+    });
+    expect(selectorOf('@{s}:hover')).toMatchObject({
+      selectors: [{ type: 'CompoundSelector', value: [interpolated, { text: ':hover' }] }]
+    });
+  });
+
+  it('reads an interpolated namespace prefix as one namespaced type selector', () => {
+    const selectorOf = (source: string) => {
+      const result = run(lessGrammar.Document, `@ns: svg; ${source} { a: b; }`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return (stylesheet(result.value).rules[1] as Ruleset).selector;
+    };
+    const namespaced = (lit: string) => ({
+      type: 'SimpleSelector',
+      text: null,
+      interp: { parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'ns' }, unquote: true }, { lit }] }
+    });
+
+    expect(selectorOf('@{ns}|a')).toMatchObject({ selectors: [namespaced('|a')] });
+    expect(selectorOf('@{ns}|*')).toMatchObject({ selectors: [namespaced('|*')] });
+    expect(selectorOf('.x @{ns}|a')).toMatchObject({
+      selectors: [{ type: 'ComplexSelector', value: [{ text: '.x' }, ' ', namespaced('|a')] }]
+    });
+    expect(selectorOf('@{ns}|a.b')).toMatchObject({
+      selectors: [{ type: 'CompoundSelector', value: [namespaced('|a'), { text: '.b' }] }]
+    });
+  });
+
+  it('collects an inline extend on a selector an interpolation leads', () => {
+    const extendsOf = (source: string, nested = false) => {
+      const result = run(lessGrammar.Document, `@s: ~".q"; ${nested ? `.p { ${source} { a: b; } }` : `${source} { a: b; }`}`, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      const rule = stylesheet(result.value).rules[1] as Ruleset;
+      return (nested ? rule.rules[0] as Ruleset : rule).extendInstructions;
+    };
+    const target = (text: string, partial = false) => ({ partial, target: { selectors: [{ text }] } });
+
+    expect(extendsOf('@{s} .r:extend(.z)')).toMatchObject([target('.z')]);
+    expect(extendsOf('@{s}:extend(.z all)')).toMatchObject([target('.z', true)]);
+    expect(extendsOf('div @{s}:extend(.z), .t')).toMatchObject([target('.z')]);
+    expect(extendsOf('.@{s} .r:extend(.y, .z)')).toMatchObject([target('.y'), target('.z')]);
+    expect(extendsOf('@{s} > .r:extend(.z)', true)).toMatchObject([target('.z')]);
+  });
+
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
     const source =
       '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
@@ -9179,10 +9500,9 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps malformed, whitespace-split, and extend selector interpolation out of the ambiguous selector route', () => {
+  it('keeps malformed, whitespace-split selector interpolation out of the ambiguous selector route', () => {
     for (const source of [
-      '. @{name}-item { color: red; }',
-      '.@{name}:extend(.target) { color: red; }'
+      '. @{name}-item { color: red; }'
     ]) {
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -9299,12 +9619,12 @@ describe('Less AST grammar facts', () => {
       findCstNodes(cst.tree, 'GenericPseudo').map(
         cstLeafValues
       )
-    ).toEqual([[':hover'], [':lang(', 'en', ')']]);
+    ).toEqual([[':hover']]);
     expect(
-      findCstNodes(cst.tree, 'PseudoArgumentText').map(
+      findCstNodes(cst.tree, 'LangPseudo').map(
         cstLeafValues
       )
-    ).toEqual([['en']]);
+    ).toEqual([[':lang(', 'en', ')']]);
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -9325,7 +9645,7 @@ describe('Less AST grammar facts', () => {
                     text: null,
                     crossable: false
                   },
-                  { type: 'SimpleSelector', text: ':lang(en)' }
+                  { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List' } }
                 ]
               }
             ]
@@ -9348,7 +9668,7 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs macro-fused static An+B pseudos as existing SimpleSelector text', () => {
+  it('constructs macro-fused static An+B pseudos as structured pseudos', () => {
     const source =
       '.card:nth-child(odd):nth-last-child(2n + 1), .note:nth-child(even) { color: red; }';
     const cst = parseLessCst(source);
@@ -9372,15 +9692,15 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.card' },
-                  { type: 'SimpleSelector', text: ':nth-child(odd)' },
-                  { type: 'SimpleSelector', text: ':nth-last-child(2n + 1)' }
+                  { type: 'PseudoSelector', name: ':nth-child', text: null, args: null, arg: { type: 'AnPlusB', src: 'odd' } },
+                  { type: 'PseudoSelector', name: ':nth-last-child', text: null, args: null, arg: { type: 'AnPlusB', src: '2n+1' } }
                 ]
               },
               {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.note' },
-                  { type: 'SimpleSelector', text: ':nth-child(even)' }
+                  { type: 'PseudoSelector', name: ':nth-child', arg: { type: 'AnPlusB', src: 'even' } }
                 ]
               }
             ]
@@ -9394,18 +9714,18 @@ describe('Less AST grammar facts', () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
      * surrounding the argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; insignificant space surrounding the argument is
-     * normalized away, matching the canonical CSS grammar and the other dialects.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning, so the An+B emits unspaced (ledger F2), matching the canonical
+     * CSS grammar and the other dialects.
      */
     for (const [source, expected] of [
       [
         'a:nth-child(2n + 1) { color: red; }',
-        'a:nth-child(2n + 1) {\n  color: red;\n}\n'
+        'a:nth-child(2n+1) {\n  color: red;\n}\n'
       ],
       [
         'a:nth-last-child(n - 3) { color: red; }',
-        'a:nth-last-child(n - 3) {\n  color: red;\n}\n'
+        'a:nth-last-child(n-3) {\n  color: red;\n}\n'
       ],
       [
         'a:nth-child(2n+1) { color: red; }',
@@ -9636,7 +9956,7 @@ describe('Less AST grammar facts', () => {
     );
   });
 
-  it('constructs static non-selector functional pseudos as existing SimpleSelector text', () => {
+  it('constructs :lang() structured and other static non-selector functional pseudos as SimpleSelector text', () => {
     const source =
       '.card:lang(en-US)::part(icon):state(foo /* note */ [bar]) { color: blue; }';
     const cst = parseLessCst(source);
@@ -9659,7 +9979,7 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.card' },
-                  { type: 'SimpleSelector', text: ':lang(en-US)' },
+                  { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
                   { type: 'SimpleSelector', text: '::part(icon)' },
                   { type: 'SimpleSelector', text: ':state(foo [bar])' }
                 ]
@@ -9730,6 +10050,49 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  /*
+   * A `:lang()` range is an `<ident>` or a CSS `<string>`. A Less escaped string is
+   * neither, so `:lang(~"en")` stays an error, as in css and scss (ledger G39).
+   */
+  it('rejects an escaped string as a :lang() range', () => {
+    const result = run(lessGrammar.Document, ':lang(~"en") { a: b; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+  });
+
+  /*
+   * Whitespace and comments inside a `:lang()` / `:dir()` / `:nth-*()` paren are
+   * insignificant in CSS, so valid CSS stays valid here although Less selector
+   * whitespace is a combinator: the CSS base's arguments own that padding. A
+   * quoted range that interpolates keeps the argument a template.
+   */
+  it('accepts the padding CSS allows inside structured pseudo arguments', () => {
+    for (const [source, css] of [
+      ['a:lang( en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en /* c */) { x: y; }', 'a:lang(en)'],
+      ['a:lang(/* c */en) { x: y; }', 'a:lang(en)'],
+      ['a:lang( en , "fr" ) { x: y; }', 'a:lang(en, "fr")'],
+      ['a:dir( ltr ) { x: y; }', 'a:dir(ltr)'],
+      ['a:dir(rtl /* c */) { x: y; }', 'a:dir(rtl)'],
+      ['a:nth-child(2n + 1 /* c */) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child( 2n+1 of .b /* c */ ) { x: y; }', 'a:nth-child(2n+1 of .b)'],
+      ['a:nth-of-type( -n+2 ) { x: y; }', 'a:nth-of-type(-n+2)'],
+      ['a:nth-col( 2n + 1 ) { x: y; }', 'a:nth-col(2n+1)'],
+      ['a:is( .b ) { x: y; }', 'a:is(.b)'],
+      [':host-context( .b .c ) { x: y; }', ':host-context(.b .c)'],
+      ['@l: en; a:lang("@{l}", fr) { x: y; }', 'a:lang("en", fr)'],
+      ['@n: 3; b:nth-child(@{n} of .a) { x: y; }', 'b:nth-child(3 of .a)']
+    ]) {
+      expect(parseLessCst(source).errors, source).toHaveLength(0);
+      expect(serialize(parse(source)).css, source).toBe(`${css} {\n  x: y;\n}\n`);
+    }
+    expect(parse('a:nth-col(3n) { x: y; }').rules[0]).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { type: 'PseudoSelector', name: ':nth-col', arg: { type: 'AnPlusB', src: '3n' } }] }] }
+    });
+  });
+
   it('constructs the complete static An+B pseudo family without raw fallback', () => {
     const source =
       '.child:nth-child(-n+2 of .item):nth-last-child(2n + 1), .type:nth-of-type(odd):nth-last-of-type(3n) { color: blue; }';
@@ -9750,16 +10113,16 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { text: '.child' },
-                  { text: ':nth-child(-n+2 of .item)' },
-                  { text: ':nth-last-child(2n + 1)' }
+                  { name: ':nth-child', arg: { type: 'AnPlusB', src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
+                  { name: ':nth-last-child', arg: { type: 'AnPlusB', src: '2n+1' }, args: null }
                 ]
               },
               {
                 type: 'CompoundSelector',
                 value: [
                   { text: '.type' },
-                  { text: ':nth-of-type(odd)' },
-                  { text: ':nth-last-of-type(3n)' }
+                  { name: ':nth-of-type', arg: { src: 'odd' } },
+                  { name: ':nth-last-of-type', arg: { type: 'AnPlusB', src: '3n' } }
                 ]
               }
             ]
@@ -9877,7 +10240,7 @@ describe('Less AST grammar facts', () => {
                     text: null,
                     crossable: false
                   },
-                  { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
+                  { type: 'PseudoSelector', name: ':nth-child', arg: { src: '2n+1' } }
                 ]
               }
             ]
@@ -10177,8 +10540,7 @@ describe('Less AST grammar facts', () => {
     );
 
     for (const invalid of [
-      '.card[@{ spaced }=button] { color: red; }',
-      '@{namespace}|a { color: red; }'
+      '.card[@{ spaced }=button] { color: red; }'
     ]) {
       const direct = run(lessGrammar.Document, invalid, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE

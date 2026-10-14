@@ -5,6 +5,7 @@ import {
   compoundSelectorOf, complexSelector, decl, keyword, stylesheet, rule, sel, selist, simpleSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
 /**
  * NESTED-mode (`collapseNesting: false`, Jess's DEFAULT output) acceptance tests for
@@ -17,13 +18,17 @@ import { serialize } from '../serialize.js';
  * strictly-outer ancestors it does NOT reach — not blindly one level, not always root.
  *
  * The correctness bar these pin (verified against the flat solve as the semantic oracle):
- *   - crossing at 1 level: hoists to root (the crossed ancestor is absorbed into `:is`);
+ *   - crossing at 1 level: hoists to root;
  *   - crossing 2 levels deep (Case G): hoists ONE level, preserving the outer wrapper —
  *     it must NOT double-compose that wrapper (`.outer { .outer :is(…) }` was the bug);
  *   - crossing 2 BOUNDARIES (bubble = 2): re-hoists two levels via the serializer queue;
  *   - within-ampersand: the parent carries the extend, the child inherits in place;
  *   - local: substituted in place, no hoist;
  *   - multiple / interior `&`: crosses correctly across a spliced multi-segment parent.
+ *
+ * The matched span is complex and never leads its header, so it cannot share an
+ * `:is()` with `.z` (`.a :is(.p .leaf)` would let `.p` sit above `.a`): each crossing
+ * header lists the span and its extender as separate branches.
  */
 
 const evaluator = buildEvaluator(makeLessRegistry());
@@ -64,7 +69,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.p', '.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe('.a :is(.p .leaf, .z) {\n'
+    expect(nested(document())).toBe('.a .p .leaf,\n'
+      + '.a .z {\n'
       + '  c: d;\n'
       + '}\n');
 
@@ -76,7 +82,7 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
     /*
      * `.outer { .mid { & .leaf { … } } }` composes to `.outer .mid .leaf` (origins 2,1,0).
      * `.z:extend(.mid .leaf all)` crosses `.mid`(anc)+`.leaf`(own): maxBnd 1, so the rule
-     * hoists out of ONLY `.mid` and re-nests under `.outer` — `.outer :is(.mid .leaf, .z)`.
+     * hoists out of ONLY `.mid` and re-nests under `.outer` — `.outer { .mid .leaf, .z }`.
      * The naive one-level-up hoist double-composed `.outer` (`.outer { .outer :is(…) }`);
      * the per-boundary header STRIPS the preserved `.outer` prefix.
      */
@@ -86,11 +92,12 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
     ]);
 
     expect(nested(document())).toBe('.outer {\n'
-      + '  :is(.mid .leaf, .z) {\n'
+      + '  .mid .leaf,\n'
+      + '  .z {\n'
       + '    c: d;\n'
       + '  }\n'
       + '}\n');
-    expect(nested(document())).not.toContain('.outer :is'); // the double-compose regression guard
+    expect(nested(document())).not.toContain('.outer .mid'); // the double-compose regression guard
   });
 
   it('CROSSING two BOUNDARIES re-hoists two levels, preserving only the un-crossed outermost', () => {
@@ -106,13 +113,15 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
     ]);
 
     expect(nested(document())).toBe('.top {\n'
-      + '  :is(.outer .mid .leaf, .z) {\n'
+      + '  .outer .mid .leaf,\n'
+      + '  .z {\n'
       + '    c: d;\n'
       + '  }\n'
       + '}\n');
 
     // Same selectors as flat, just with `.top` kept as a nesting wrapper.
-    expect(flat(document())).toBe('.top :is(.outer .mid .leaf, .z) {\n'
+    expect(flat(document())).toBe('.top .outer .mid .leaf,\n'
+      + '.top .z {\n'
       + '  c: d;\n'
       + '}\n');
   });
@@ -134,7 +143,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.p', '.b', '.p')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe('.a :is(.p .b .p, .z) {\n'
+    expect(nested(document())).toBe('.a .p .b .p,\n'
+      + '.a .z {\n'
       + '  c: d;\n'
       + '}\n');
     expect(flat(document())).toBe(nested(document()));
@@ -160,7 +170,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       + '      e: f;\n'
       + '    }\n'
       + '  }\n'
-      + '  :is(.mid .leaf, .z) {\n'
+      + '  .mid .leaf,\n'
+      + '  .z {\n'
       + '    c: d;\n'
       + '  }\n'
       + '}\n');
@@ -249,5 +260,136 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
 
     // The nested projection must equal the flat solve (the semantic oracle).
     expect(nested(document())).toBe(flat(document()));
+  });
+});
+
+/*
+ * A match of a nested rule's whole composed selector by an extender nested under the
+ * same parent folds in as the extender's own-local remainder: `.y` beside `.k`, both
+ * under `.w` (the flat output is `.w .k, .w .y`). An exact one splits when the rule
+ * has children of its own.
+ */
+describe('nested-mode whole-selector extend from a sibling under the same parent', () => {
+  const nestedLess = (src: string): string | undefined => nested(parseLess(src));
+
+  it('folds the sibling extender into the local header, exact or all', () => {
+    expect(nestedLess('.w { .y { &:extend(.w .k); } .k { k: 1; } }'))
+      .toBe('.w {\n  .k,\n  .y {\n    k: 1;\n  }\n}\n');
+    expect(nestedLess('.w { .y { &:extend(.w .k all); } .k { k: 1; } }'))
+      .toBe('.w {\n  .k,\n  .y {\n    k: 1;\n  }\n}\n');
+  });
+
+  it('splits an exact sibling extender off a rule with children', () => {
+    expect(nestedLess('.w { .y { &:extend(.w .k); } .k { k: 1; .c { c: 1; } } }'))
+      .toBe('.w {\n  .k {\n    k: 1;\n    .c {\n      c: 1;\n    }\n  }\n  .y {\n    k: 1;\n  }\n}\n');
+  });
+
+  /*
+   * An exact extender that shares no level with the nested target's ancestors
+   * splits off a target with children too (EXTEND-SEMANTICS §7b, ledger X2):
+   * its header is a top-level selector, so its block rises out of every rule
+   * block the target nests in, inside the at-rules it nests in. The flat output
+   * folds it into the target's childless block, carrying the same declarations.
+   */
+  it('splits an exact extender from another rule off a nested target with children', () => {
+    const flatLess = (src: string): string | undefined => flat(parseLess(src));
+    expect(nestedLess('.a { .b { y: 1; .c { x: 1; } } } .q:extend(.a .b) {}'))
+      .toBe('.a {\n  .b {\n    y: 1;\n    .c {\n      x: 1;\n    }\n  }\n}\n.q {\n  y: 1;\n}\n');
+    expect(flatLess('.a { .b { y: 1; .c { x: 1; } } } .q:extend(.a .b) {}'))
+      .toBe('.a .b,\n.q {\n  y: 1;\n}\n.a .b .c {\n  x: 1;\n}\n');
+    expect(nestedLess('.a { .m { .b { y: 1; .c { x: 1; } } } .n { z: 1; } } .z { .q:extend(.a .m .b) {} }'))
+      .toBe('.a {\n  .m {\n    .b {\n      y: 1;\n      .c {\n        x: 1;\n      }\n    }\n  }\n  .n {\n    z: 1;\n  }\n}\n.z .q {\n  y: 1;\n}\n');
+    expect(nestedLess('.a { @media print { .b { y: 1; .c { x: 1; } } } } .q:extend(.a .b) {}'))
+      .toBe('.a {\n  @media print {\n    .b {\n      y: 1;\n      .c {\n        x: 1;\n      }\n    }\n  }\n}\n@media print {\n  .q {\n    y: 1;\n  }\n}\n');
+  });
+});
+
+/*
+ * An extender that IS the target's parent — a body-form `&:extend()` or an inline
+ * `:extend()` on the rule the target nests in, or the rule an at-rule block inside it
+ * lands in — is `&` in the target's local header, so nested output keeps its block:
+ * `.y { .z, & { … } }` is `.y .z, .y`, the flat output. An exact one splits off a rule
+ * with children as `& { … }`. Before, the relative extender path came out empty and
+ * the render threw in both output modes; a parent recorded by the render walk (an
+ * at-rule block's extend) or narrowed by an inline extend shared no level object with
+ * the target and was dropped.
+ */
+describe('nested-mode extend whose extender is the target\'s parent', () => {
+  const nestedLess = (src: string): string | undefined => nested(parseLess(src));
+  const flatLess = (src: string): string | undefined => flat(parseLess(src));
+  const parentFold = '.y {\n  .z,\n  & {\n    c: 3;\n  }\n}\n';
+
+  it.each([
+    '.y { &:extend(.y .z); .z { c: 3; } }',
+    '.y { .z { c: 3; } &:extend(.y .z); }',
+    '.y:extend(.y .z) { .z { c: 3; } }'
+  ])('writes the parent as `&` beside the target: %s', (src) => {
+    expect(nestedLess(src)).toBe(parentFold);
+    expect(flatLess(src)).toBe('.y .z,\n.y {\n  c: 3;\n}\n');
+  });
+
+  it('writes it one level down, and inside an at-rule block the parent holds', () => {
+    expect(nestedLess('.a { .y { &:extend(.a .y .z); .z { c: 3; } } }'))
+      .toBe('.a {\n  .y {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n');
+    expect(nestedLess('.y { @media print { &:extend(.y .z); .z { c: 3; } } }'))
+      .toBe('.y {\n  @media print {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n');
+    expect(nestedLess('.m() { &:extend(.y .z); }\n.y { @media print { .m(); .z { c: 3; } } }'))
+      .toBe('.y {\n  @media print {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n');
+  });
+
+  it('splits an exact parent extender off a target with children; `all` carries them', () => {
+    expect(nestedLess('.y { &:extend(.y .z); .z { c: 3; .w { d: 4; } } }'))
+      .toBe('.y {\n  .z {\n    c: 3;\n    .w {\n      d: 4;\n    }\n  }\n  & {\n    c: 3;\n  }\n}\n');
+    expect(nestedLess('.y { &:extend(.y .z all); .z { c: 3; .w { d: 4; } } }'))
+      .toBe('.y {\n  .z,\n  & {\n    c: 3;\n    .w {\n      d: 4;\n    }\n  }\n}\n');
+  });
+
+  /*
+   * A sub-compound `all` match is one answer in both modes: the extender stands for
+   * the target where it appears, writing the context it shares with that position
+   * once (PINNED-DEFECTS DF8; orchestrator judgment under owner delegation
+   * 2026-10-07). A sibling under the shared parent is its own-local remainder
+   * (`.attributes .attribute-test`, never `.attributes .attributes .attribute-test`);
+   * the parent itself keeps its own compound below the parent (`.y .y.k`, folded
+   * with the target as `:is(.z, .y).k`; never the broader `&.k`).
+   */
+  it('writes a sub-compound `all` match by an extender sharing the parent once, in both modes', () => {
+    const sibling = '.attributes { [data="test"] { c: 1; } .attribute-test { &:extend([data="test"] all); } }';
+    expect(nestedLess(sibling)).toBe('.attributes {\n  [data="test"],\n  .attribute-test {\n    c: 1;\n  }\n}\n');
+    expect(flatLess(sibling)).toBe('.attributes [data="test"],\n.attributes .attribute-test {\n  c: 1;\n}\n');
+
+    expect(nestedLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y {\n  :is(.z, .y).k {\n    c: 3;\n  }\n}\n');
+    expect(flatLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y :is(.z, .y).k {\n  c: 3;\n}\n');
+
+    const deeper = '.p { .y { &:extend(.z all); .z.k { c: 3; } } }';
+    expect(nestedLess(deeper)).toBe('.p {\n  .y {\n    :is(.z, .y).k {\n      c: 3;\n    }\n  }\n}\n');
+    expect(flatLess(deeper)).toBe('.p .y .z.k,\n.p .y .y.k {\n  c: 3;\n}\n');
+    const merged = '.p { &.y { &:extend(.z all); .z.k { c: 3; } } }';
+    expect(nestedLess(merged)).toBe('.p {\n  &.y {\n    .z.k,\n    .p.y.k {\n      c: 3;\n    }\n  }\n}\n');
+    expect(flatLess(merged)).toBe('.p.y .z.k,\n.p.y .p.y.k {\n  c: 3;\n}\n');
+
+    // A context the extender does not lead with in full: the extender is one `:is()` unit where it stands.
+    expect(flatLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a .b [d],\n.a .b :is(.a .e) {\n  c: 1;\n}\n');
+    expect(nestedLess('.a { .b { [d] { c: 1; } } } .a .e:extend([d] all) {}')).toBe('.a {\n  .b {\n    [d],\n    :is(.a .e) {\n      c: 1;\n    }\n  }\n}\n');
+  });
+
+  /*
+   * A shared context joined by a child or sibling combinator is written once too, by the
+   * narrower of the target's and the extender's combinators (`.a > :is(.a .r)` is
+   * `.a > .r`), so both modes agree; mixed ancestor and sibling joins do not reduce.
+   */
+  it('writes a shared context once across child and sibling combinators, in both modes', () => {
+    const cases: Array<[string, string, string]> = [
+      ['.a { > .t { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  > .t,\n  > .r {\n    c: 1;\n  }\n}\n', '.a > .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { .t { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  .t,\n  > .r {\n    c: 1;\n  }\n}\n', '.a .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { > .t { c: 1; } .r { &:extend(.t all); } }', '.a {\n  > :is(.t, .r) {\n    c: 1;\n  }\n}\n', '.a > .t,\n.a > .r {\n  c: 1;\n}\n'],
+      ['.a { + .t { c: 1; } + .r { &:extend(.t all); } }', '.a {\n  + .t,\n  + .r {\n    c: 1;\n  }\n}\n', '.a + .t,\n.a + .r {\n  c: 1;\n}\n'],
+      ['.a { > .t.k { c: 1; } > .r { &:extend(.t all); } }', '.a {\n  > .t.k,\n  > .r.k {\n    c: 1;\n  }\n}\n', '.a > .t.k,\n.a > .r.k {\n  c: 1;\n}\n']
+    ];
+    for (const [src, nestedOut, flatOut] of cases) {
+      expect(nestedLess(src), src).toBe(nestedOut);
+      expect(flatLess(src), src).toBe(flatOut);
+    }
+    expect(flatLess('.a { ~ .t { c: 1; } > .r { &:extend(.t all); } }')).toBe('.a ~ .t,\n.a ~ :is(.a > .r) {\n  c: 1;\n}\n');
   });
 });

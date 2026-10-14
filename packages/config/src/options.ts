@@ -11,6 +11,9 @@ export interface StrictPresetOptions {
   unitMode?: 'loose' | 'preserve' | 'strict';
   allowLeakyScope?: boolean;
 
+  /** @deprecated Use `unitMode`. */
+  strictUnits?: boolean;
+
   /** @deprecated Use `allowLeakyScope`. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
@@ -31,13 +34,46 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
     return opts;
   }
   const filled = { ...opts };
-  filled.unitMode ??= 'strict';
 
-  /* Fill the canonical name; a deprecated `leakyScope` still resolves downstream. */
-  filled.allowLeakyScope ??= false;
+  /* A deprecated spelling set counts as set: fill the canonical name only when neither is. */
+  if (filled.strictUnits === undefined) {
+    filled.unitMode ??= 'strict';
+  }
+  if (filled.leakyScope === undefined) {
+    filled.allowLeakyScope ??= false;
+  }
   filled.allowCallerScope ??= false;
   filled.allowOverloadedImport ??= false;
   return filled;
+}
+
+/** Each mode with its deprecated spellings ({@link layerOptions}). */
+const MODE_SPELLINGS: ReadonlyArray<readonly string[]> = [
+  ['unitMode', 'strictUnits'],
+  ['mathMode', 'math', 'strictMath'],
+  ['allowLeakyScope', 'leakyScope']
+];
+
+/**
+ * `upper`'s settings over `lower`'s; a value `upper` leaves undefined keeps
+ * `lower`'s. A mode `upper` sets in any spelling replaces every spelling of it
+ * in `lower`, so a deprecated spelling keeps the precedence of the place it is
+ * written in (`language.less.strictUnits` wins over `compile.unitMode`).
+ */
+export function layerOptions(lower: object, upper: object): Record<string, any> {
+  const layered: Record<string, unknown> = { ...lower };
+  const set = Object.entries(upper).filter(([, value]) => value !== undefined);
+  for (const spellings of MODE_SPELLINGS) {
+    if (set.some(([name]) => spellings.includes(name))) {
+      for (const name of spellings) {
+        delete layered[name];
+      }
+    }
+  }
+  for (const [name, value] of set) {
+    layered[name] = value;
+  }
+  return layered;
 }
 
 /**
@@ -145,16 +181,47 @@ function getMatchingOptions<T extends FileMatchOptions>(
   return result;
 }
 
+/** The compile settings that reach a file's options ({@link getOptions}). */
+function compileOptions(compile: NonNullable<StylesConfig['compile']>): StrictPresetOptions & Record<string, unknown> {
+  return {
+    strict: compile.strict,
+    mathMode: compile.mathMode,
+    unitMode: compile.unitMode,
+    functionMode: compile.functionMode,
+    allowLeakyScope: compile.allowLeakyScope,
+    leakyScope: compile.leakyScope,
+    allowCallerScope: compile.allowCallerScope,
+    allowExtendSelectors: compile.allowExtendSelectors,
+    allowApplySelectors: compile.allowApplySelectors,
+    processImports: compile.processImports,
+    disableScriptModules: compile.disableScriptModules ?? compile.disablePluginRule,
+    paths: compile.searchPaths
+  };
+}
+
 /**
- * Get merged options by combining compile, language, input, and output settings.
+ * Get one file's options from its config (DESIGN-DECISIONS C19).
  *
- * Merge priority (later wins):
- * 1. compile options (base)
+ * Several configs (`[styles.config, options passed in]`) are merged first, field
+ * by field, a later config over an earlier one: each `compile` setting, each
+ * `language.<lang>` setting, and the `input`/`output` entries (concatenated). A
+ * mode a later config sets in any spelling replaces every spelling of it at the
+ * same place in an earlier one ({@link layerOptions}).
+ *
+ * On the merged config, the options are computed for the file's language
+ * (later wins):
+ * 1. compile options
  * 2. language-specific options (inferred from input extension or explicitly specified)
  * 3. matched input options (if input path provided and matches)
  * 4. matched output options (if output path provided and matches)
  *
- * @param config - The styles configuration object
+ * The language's own defaults sit below all of these, where a file's modes are
+ * resolved. The `strict` preset is not itself a mode: the most specific place
+ * that sets `strict` decides it, and when true it fills the modes that place
+ * leaves unset, so `language.less.strict` wins over `compile.unitMode` for
+ * `.less` files and `language.less.unitMode` wins over it.
+ *
+ * @param config - The styles configuration object, or the configs to merge, earliest first
  * @param params - Options specifying language, input file, and output file
  * @returns Merged options object
  *
@@ -166,54 +233,72 @@ function getMatchingOptions<T extends FileMatchOptions>(
  * });
  *
  * @example
- * // Explicitly specify language
- * const options = getOptions(config, { language: 'less' });
+ * // A styles.config under the options passed in
+ * const options = getOptions([fileConfig, passedConfig], { language: 'less' });
  *
  * @example
  * // Get base options without language-specific settings
  * const options = getOptions(config);
  */
 export function getOptions(
-  config: StylesConfig = {},
+  config: StylesConfig | readonly StylesConfig[] = {},
   params: GetOptionsParams = {}
 ): Record<string, any> {
+  const configs: readonly StylesConfig[] = Array.isArray(config) ? config : [config];
   const { input: inputFile, output: outputFile } = params;
-  const { compile = {}, input, output, language: languageConfig = {} } = config;
 
   // Determine language: explicit param > inferred from input extension
   const language = params.language ?? inferLanguage(inputFile);
 
-  // Get language-specific options if language is determined
-  const languageOptions = language ? (languageConfig[language] ?? {}) : {};
+  let compile: Record<string, unknown> = {};
+  let languageOptions: Record<string, unknown> = {};
+  for (const { compile: compileConfig, language: languageConfig } of configs) {
+    compile = layerOptions(compile, compileOptions(compileConfig ?? {}));
+    if (language) {
+      languageOptions = layerOptions(languageOptions, languageConfig?.[language] ?? {});
+    }
+  }
+  const tiers: ReadonlyArray<StrictPresetOptions & Record<string, unknown>> = [
+    compile,
+    languageOptions,
+    getMatchingOptions(configs.flatMap(c => c.input ?? []), inputFile),
+    getMatchingOptions(configs.flatMap(c => c.output ?? []), outputFile)
+  ];
+  const decides = tiers.findLastIndex(tier => tier.strict !== undefined);
+  return tiers.reduce<Record<string, any>>((options, tier, index) => {
+    const { strict, ...filled } = applyStrictPreset({ ...tier, strict: index === decides && tier.strict === true });
+    void strict;
+    return layerOptions(options, filled);
+  }, {});
+}
 
-  // Get matched input and output options
-  const matchedInput = getMatchingOptions(input, inputFile);
-  const matchedOutput = getMatchingOptions(output, outputFile);
+/** One config's `input` or `output` over another's: two single objects merge, a list of entries replaces. */
+function mergeEntries<T extends object>(lower: T | T[] | undefined, upper: T | T[] | undefined): T | T[] | undefined {
+  if (upper === undefined || lower === undefined || Array.isArray(lower) || Array.isArray(upper)) {
+    return upper ?? lower;
+  }
+  return { ...lower, ...upper };
+}
 
-  /*
-   * Build result with proper merge priority:
-   * 1. compile (base)
-   * 2. language-specific
-   * 3. matched input
-   * 4. matched output
-   */
+/**
+ * `upper`'s config over `lower`'s, setting by setting, as the `styles.config`
+ * files from a file's folder up to its package root merge (DESIGN-DECISIONS
+ * O19): each `compile` and `language.<lang>` setting ({@link layerOptions}, so a
+ * mode `upper` spells differently replaces `lower`'s spelling), each `input` and
+ * `output` setting when both are single objects (a list of file entries replaces
+ * the other), and any other key whole.
+ */
+export function mergeConfigs(lower: StylesConfig, upper: StylesConfig): StylesConfig {
+  const language: NonNullable<StylesConfig['language']> = { ...lower.language };
+  for (const [name, options] of Object.entries(upper.language ?? {})) {
+    language[name] = layerOptions(lower.language?.[name] ?? {}, options ?? {});
+  }
   return {
-    // Start with compile-level settings
-    mathMode: compile.mathMode,
-    unitMode: compile.unitMode,
-    allowExtendSelectors: compile.allowExtendSelectors,
-    allowApplySelectors: compile.allowApplySelectors,
-    processImports: compile.processImports,
-    disableScriptModules: compile.disableScriptModules ?? compile.disablePluginRule,
-    paths: compile.searchPaths,
-
-    // Override with language-specific settings
-    ...languageOptions,
-
-    // Override with matched input settings
-    ...matchedInput,
-
-    // Override with matched output settings
-    ...matchedOutput
+    ...lower,
+    ...upper,
+    compile: layerOptions(lower.compile ?? {}, upper.compile ?? {}),
+    language,
+    input: mergeEntries(lower.input, upper.input),
+    output: mergeEntries(lower.output, upper.output)
   };
 }

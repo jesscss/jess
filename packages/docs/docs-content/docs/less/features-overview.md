@@ -216,12 +216,36 @@ You can change the [Math](./usage/less-options#math) setting to a more eager mod
 _Released [v3.0.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)_
 
 For CSS compatibility, `calc()` does not evaluate math expressions, but will evaluate variables
-and math in nested functions.
+and math in nested functions. Parentheses written inside `calc()` are kept as written when
+nothing in them computes: math written in the `calc()`, or a single value. Parentheses around
+a calculation that is resolved — a function that runs, or a variable that names one value — are
+dropped, as they are anywhere else; the `calc()` itself stays. A variable that names a list keeps
+them. Text, such as `e("1px + 2px")`, is never a computed value and prints as written, its
+parentheses included (`(e("foo"))` is `(foo)`); only an interpolation or a function reading it
+gets the text alone.
+
+The `calc()` stays even when its argument resolves to one number, as in Less 4.x:
+`calc(percentage(0.5))` is `calc(50%)`. The browser clamps a math function's result to what the
+property allows, so `padding: calc(min(-5px, 1px))` gives the valid `calc(-5px)`; a bare
+`padding: -5px` would be dropped. A variable holding the `calc()` still reads as the number in
+math (`@c: calc(50%); width: @c * 2` is `100%`).
 
 ```less
 @var: 50vh/2;
-width: calc(50% + (@var - 20px));  // result is calc(50% + (25vh - 20px))
+@a: 10px;
+@c: 10px + 20px;
+width: calc(50% + (@var - 20px));  // result is calc(50% + (50vh / 2 - 20px))
+height: calc((@var));              // result is calc((50vh / 2))
+top: calc(100% - ((min(@a, 20px))));   // result is calc(100% - 10px)
+left: calc(100% - (@c));           // result is calc(100% - 30px)
+right: calc((min(@a, 20px)));      // result is calc(10px)
+margin: calc(2 * (@a));            // result is calc(2 * 10px)
+bottom: calc(2 * (e("1px + 2px")));   // result is calc(2 * (1px + 2px))
 ```
+
+Under the default `parens-division` math, `50vh/2` is not divided, so `@var` is
+substituted as written. With `math: always` it is `25vh`, and the first line
+gives `calc(50% + (25vh - 20px))`.
 
 
 # Interpolation

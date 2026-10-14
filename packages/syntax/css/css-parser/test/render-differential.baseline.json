@@ -10,12 +10,12 @@
     "bootstrapVersion": "5.3.8"
   },
   "counts": {
-    "ok": 64,
-    "reject": 57,
+    "ok": 65,
+    "reject": 56,
     "emitError": 0
   },
-  "emittedBytes": 608586,
-  "aggregate": "54af2f7047d6915ed68f077c4c662d48907ed8e785c7fb71b9985f78b7f88bca",
+  "emittedBytes": 609242,
+  "aggregate": "80c49a424b2a92e58426cbffc4a681e8af2184022db427d7e647ced713e4e62b",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -104,8 +104,8 @@
     "fixture/calc-sequence.css": {
       "bucket": "fixture",
       "status": "ok",
-      "bytes": 337,
-      "fingerprint": "aa81939a4fa8c912"
+      "bytes": 334,
+      "fingerprint": "5e391154dea2a30d"
     },
     "fixture/calc-signs-whitespace.css": {
       "bucket": "fixture",
@@ -199,9 +199,9 @@
     },
     "repo/packages/jess/test/files/nested.css": {
       "bucket": "repo",
-      "status": "reject",
-      "bytes": null,
-      "fingerprint": "ceb7099105050501"
+      "status": "ok",
+      "bytes": 670,
+      "fingerprint": "1c68833d35d993e0"
     },
     "repo/packages/jess/test/files/simple.css": {
       "bucket": "repo",
@@ -224,8 +224,8 @@
     "repo/packages/syntax/css/css-parser/test/css/apply.css": {
       "bucket": "repo",
       "status": "ok",
-      "bytes": 128,
-      "fingerprint": "e30050cf6c086e38"
+      "bytes": 123,
+      "fingerprint": "931a33837abf4263"
     },
     "repo/packages/syntax/css/css-parser/test/css/atrule-decls.css": {
       "bucket": "repo",
@@ -698,8 +698,8 @@
     "repo/packages/syntax/css/css-parser/test/css/pseudo-selectors.css": {
       "bucket": "repo",
       "status": "ok",
-      "bytes": 332,
-      "fingerprint": "09b7e283fc51fb3b"
+      "bytes": 326,
+      "fingerprint": "fa583f2e9675ca18"
     },
     "repo/packages/syntax/css/css-parser/test/css/quotes.css": {
       "bucket": "repo",

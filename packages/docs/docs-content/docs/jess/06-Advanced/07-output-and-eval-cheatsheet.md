@@ -58,16 +58,36 @@ not real CSS functions.
 ```
 
 ### Grouping parens dissolve after evaluation
-`keyword (expr)` — a **space** then parens — is math grouping. Once the
-expression computes, the parens do not survive to output. (A no-space
-`keyword(expr)` is the function shape above and stays verbatim.)
+`keyword (expr)` — a **space** then parens — is math grouping. Parens are
+dropped when the calculation in them is resolved: a `$( … )` that computes, a
+function that runs, or a variable or member that names one value (`$w: 10vh;
+height: ($w)` → `height: 10vh`). (A no-space `keyword(expr)` is the function
+shape above and stays verbatim.) Parens around something that computes nothing —
+one value, a CSS function such as `var()`, math kept as written, a variable that
+names a list — stay as you wrote them, as they do in plain CSS. The same holds
+inside a math function: math written in `calc()` is not computed, so
+`calc(100% - ((1px + 2px)))` keeps its parens, while
+`calc(100% - (($(1px + 2px))))` is `calc(100% - 3px)` and `calc(($(1px + 2px)))`
+is `calc(3px)`. Text is never a computed value, and it prints as written: parens
+around an escaped string, such as `$e("1px + 2px")`, stay wherever it is written,
+so `calc(2 * ($e("1px + 2px")))` is `calc(2 * (1px + 2px))` and `($e("foo"))` is
+`(foo)`. Only where the text is spliced into a selector, a property name or a
+string, or read by a function, the group gives its text.
 
 ```jess
 $a: #a80000; $b: #00000b;
-.a { border: 1px solid ($a * .66 + $b * .33); }
+.a { border: 1px solid ($($a * .66 + $b * .33)); }
 ```
 ```css
-.a { border: 1px solid #a8000b; }
+.a { border: 1px solid #6f0004; }
+```
+
+```jess
+$w: 10vh;
+.a { height: ($w); width: ($(1px + 2px)); top: var(--top, (10px)); left: (10px); }
+```
+```css
+.a { height: 10vh; width: 3px; top: var(--top, (10px)); left: (10px); }
 ```
 
 ### Color functions pass through un-operated

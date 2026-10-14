@@ -23,34 +23,17 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { ValueSlot } from './nodes.js';
 import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
+import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
+import type { GuardNode } from './guard-node.js';
 
-/**
- * A guard condition tree. Never serialized to CSS — evaluated to a boolean.
- *
- * `cmp` and `match` are the SAME comparison in the two positions §4.2a
- * distinguishes, and carry the identical shape so they are one hidden class:
- *
- *  - `cmp` — VALUE position (`if(@a < @b, …)`, `$( … )`, `@if`). An ASSERTION:
- *    operands with no common ground raise, because "is a less than b" has no
- *    honest answer and `false` in both directions is a lie (§4.2).
- *  - `match` — GUARD position (`when ( … )`). A MATCH TEST: no common ground
- *    means this definition does not apply to these arguments, which IS an
- *    answer. `.m(1, true) when (@a < @b)` must not fail the compile.
- *
- * Which one a comparison is, is decided by the front end at PARSE time from the
- * position it was written in (§12.0 — lower to the `.jess` you want, then read
- * off the node). Nothing at eval time inspects context or a mode to choose.
+/*
+ * The guard node and its constructor live in `guard-node.ts`, which imports nothing
+ * at runtime, so the parsers that build guards (through `@jesscss/core/ast`) do not
+ * load this evaluator and its value domain.
  */
-export type GuardNode =
-  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
-  | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
-  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode }
-  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
-  | { readonly g: 'not'; readonly inner: GuardNode }
-  | { readonly g: 'truth'; readonly value: ValueSlot }
-  | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[] }
-  | { readonly g: 'default' };
+export type { GuardNode } from './guard-node.js';
+export { inParens } from './guard-node.js';
 
 /**
  * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.
@@ -135,10 +118,17 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * The node's own `g` picks the primitive — the assertion or the match test
        * (§4.2a). Both read the SAME ground; they differ only in what they make
        * of a pair that has none, so the two positions cannot drift apart.
+       *
+       * An operation `preserve` kept for its units (`1px + 3em`) has no
+       * value to compare, so a comparison reading one is not true — in a guard
+       * and in an `if()` alike, where the assertion would otherwise raise on a
+       * pair with no ground. The operand's warning is the consumer's
+       * (`warnConsumedKept`); `strict` raised at the operation already
+       * (orchestrator judgment under owner delegation 2026-10-06).
        */
-      const compare = node.g === 'match'
-        ? (a: ValueGroup, b: ValueGroup): boolean => ev.compareMatch(node.op, a, b, deps.modes)
-        : (a: ValueGroup, b: ValueGroup): boolean => ev.compare(node.op, a, b, deps.modes);
+      const compare = (a: ValueGroup, b: ValueGroup): boolean =>
+        !holdsKeptOperation(a) && !holdsKeptOperation(b)
+        && (node.g === 'match' ? ev.compareMatch(node.op, a, b, deps.modes) : ev.compare(node.op, a, b, deps.modes));
       return isThenable(left) || isThenable(right)
         ? Promise.all([left, right]).then(([a, b]) => compare(a, b))
         : compare(left, right);

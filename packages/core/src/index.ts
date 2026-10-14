@@ -11,7 +11,9 @@ import '@ungap/set-methods';
 export {
   Context,
   type ContextOptions,
-  type SourceContext
+  type SourceContext,
+  type SourceOptions,
+  type SourceSettings
 } from './context.js';
 export { logger, type Logger } from './logger.js';
 export {
@@ -28,6 +30,7 @@ export {
   resolveErrorsConfig
 } from './warnings.js';
 export * from './plugin.js';
+export { EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export * from './provided-modules.js';
 export * from './jess-error.js';
 export * from './deprecation.js';
@@ -42,11 +45,12 @@ export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
 export type { EmitJessOptions, JessSpellingGap } from './ast/emit-jess.js';
 
 /** Build a v3 source map from the render's position stream (see `trackPositions`). */
-export { buildAstSourceMap } from './ast/sourcemap.js';
+export { buildAstSourceMap, removeSourceMapBasepath } from './ast/sourcemap.js';
 export type { AstSourceMapOptions } from './ast/sourcemap.js';
 
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
 export { buildEvaluator } from './ast/evaluator.js';
+export type { ValueEvaluator } from './ast/value-eval.js';
 export type {
   ValueGroup,
   Value,

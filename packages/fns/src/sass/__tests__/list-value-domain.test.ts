@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, makeBlock, makeDimension, makeKeyword, makeList, makeQuoted, type Fn, type ValueGroup } from '@jesscss/core';
+import { call as evaluate, ctx, sync } from '../../__tests__/harness.js';
+import { isValueGroupArray, makeBlock, makeDimension, makeKeyword, makeList, makeQuoted, type Fn, type ValueGroup } from '@jesscss/core';
 import append from '../list/append.js';
 import isBracketed from '../list/is-bracketed.js';
 import listIndex from '../list/list-index.js';
@@ -10,14 +11,7 @@ import setNth from '../list/set-nth.js';
 import zip from '../list/zip.js';
 import join from '../list/join.js';
 
-const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: ValueGroup) => emitValue(value) };
-const call = (fn: Fn, ...args: ValueGroup[]): ValueGroup => {
-  const result = fn(makeList(args, ','), ctx);
-  if (result === undefined) {
-    throw new TypeError('Expected Sass list function to return a value.');
-  }
-  return result;
-};
+const call = (fn: Fn, ...args: ValueGroup[]): ValueGroup => sync(evaluate(fn, ...args));
 
 describe('Sass list functions on the AST-v2 value domain', () => {
   it('uses List.value and preserves separator facts for append and join', () => {
@@ -25,7 +19,7 @@ describe('Sass list functions on the AST-v2 value domain', () => {
     const appended = call(append, comma, makeDimension(3));
     expect(appended).toMatchObject({ type: 'List', sep: ',', value: [{ number: 1 }, { number: 2 }, { number: 3 }] });
 
-    const joined = call(join, appended, makeList([makeDimension(4)], '/'), makeQuoted('slash'));
+    const joined = call(join, appended, makeList([makeDimension(4)], '/'), makeQuoted('slash', '"', false));
     expect(joined).toMatchObject({ type: 'List', sep: '/', value: [{ number: 1 }, { number: 2 }, { number: 3 }, { number: 4 }] });
   });
 
@@ -61,11 +55,11 @@ describe('Sass list functions on the AST-v2 value domain', () => {
   });
 
   it('uses the variadic registry contract for zip', () => {
-    const value = zip(makeList([
+    const value = sync(zip(makeList([
       [makeDimension(1), makeDimension(2)],
       [makeDimension(3), makeDimension(4)]
-    ], ','), ctx);
-    if (Array.isArray(value) || value.type !== 'List') {
+    ], ','), ctx));
+    if (isValueGroupArray(value) || value.type !== 'List') {
       throw new TypeError('Expected zip() to return a list.');
     }
     const result = value;

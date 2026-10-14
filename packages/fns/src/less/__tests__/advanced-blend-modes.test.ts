@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { invoke } from '../../__tests__/harness.js';
 import { makeColorRgb, RGB } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { overlay, overlayBase } from '../overlay.js';
@@ -27,9 +28,9 @@ describe('advanced blend modes', () => {
     const color1 = makeColorRgb([30, 120, 220], 1, RGB);
     const color2 = makeColorRgb([220, 80, 40], 1, RGB);
 
-    expect(overlay(color1, color2)).toMatchObject({ type: 'Color' });
-    expect(softlight(color1, color2)).toMatchObject({ type: 'Color' });
-    expect(hardlight(color1, color2)).toMatchObject({ type: 'Color' });
+    expect(invoke(overlay, color1, color2)).toMatchObject({ type: 'Color' });
+    expect(invoke(softlight, color1, color2)).toMatchObject({ type: 'Color' });
+    expect(invoke(hardlight, color1, color2)).toMatchObject({ type: 'Color' });
   });
 
   it('uses the canonical overlay implementation registered for Less', () => {

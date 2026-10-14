@@ -19,18 +19,20 @@
  * parameterised by.
  */
 
-import {  } from 'parseman';
 import type { FieldCapture, FieldMap } from 'parseman';
-import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withSourceSpan } from '@jesscss/core/ast';
+import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
-type JessOperatorFact = { readonly value: string; readonly src: string };
+type JessOperatorFact = { readonly value: string; readonly src: string; readonly start: number };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
 type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
 type JessQueryFeatureName = { readonly property: Keyword };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
+
+/** A call argument after the first, with the padded comma written before it. */
+type JessCallArgument = { readonly separator: string; readonly value: ValueSlot };
 
 /*
  * Core's shared reducer helpers, bound to this grammar: its name is the only
@@ -179,6 +181,11 @@ function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument
     && 'name' in value && (value.name === undefined || typeof value.name === 'string');
 }
 
+function isJessCallArgument(value: unknown): value is JessCallArgument {
+  return typeof value === 'object' && value !== null && 'separator' in value && typeof value.separator === 'string'
+    && 'value' in value && isJessValueSlotValue(value.value);
+}
+
 function requireValueNode(value: unknown): ValueNode {
   if (!isValueNode(value)) {
     throw new TypeError('Jess grammar produced a non-value child.');
@@ -203,30 +210,41 @@ function requireExpressionFact(value: unknown): ExpressionFact {
  * symbol itself and the exact authored bytes around it. They are identical for a
  * plain whitespace-flanked operator token, and differ only when the boundary
  * also carries a block comment, which the operator-boundary productions recognize
- * as grammar structure rather than trimming out of a token.
+ * as grammar structure rather than trimming out of a token. `start` is where the
+ * boundary begins, which is where the operand before it ends.
  */
-function requireJessOperatorFact(value: unknown): JessOperatorFact {
-  if (typeof value === 'object' && value !== null && 'value' in value && 'src' in value
-    && typeof value.value === 'string' && typeof value.src === 'string') {
-    return { value: value.value, src: value.src };
-  }
-  const token = requireToken(value);
-  return { value: token.value.trim(), src: token.value };
+function isJessOperatorFact(value: unknown): value is JessOperatorFact {
+  return typeof value === 'object' && value !== null && 'value' in value && 'src' in value && 'start' in value
+    && typeof value.value === 'string' && typeof value.src === 'string' && typeof value.start === 'number';
 }
 
-function foldExpression(children: readonly unknown[]): ExpressionFact {
+function requireJessOperatorFact(value: unknown): JessOperatorFact {
+  if (isJessOperatorFact(value)) {
+    return value;
+  }
+  throw new TypeError('Jess grammar produced an invalid operator fact.');
+}
+
+/**
+ * Fold one `noTrivia` run of `$( … )` operands left to right. Every operation
+ * of a left fold starts where the run starts and ends where the next operator's
+ * boundary begins (the run's end for the last), so each gets its exact source
+ * span — what a unit error or warning points at, as a Less operation's does.
+ */
+function foldExpression(children: readonly unknown[], span: { readonly start: number; readonly end: number }): ExpressionFact {
   let fact = requireExpressionFact(children[0]);
   for (let index = 1; index < children.length; index += 2) {
     const operator = requireJessOperatorFact(children[index]);
     const right = requireExpressionFact(children[index + 1]);
+    const next = children[index + 2];
     fact = {
-      value: operation(
+      value: withSourceSpan(operation(
         operator.value,
         fact.value,
         right.value,
         false,
         cssBaseMathOutsideParens(operator.value)
-      ),
+      ), { start: span.start, end: next === undefined ? span.end : requireJessOperatorFact(next).start }),
       src: `${fact.src}${operator.src}${right.src}`
     };
   }
@@ -303,8 +321,12 @@ function declarationMemberReferenceFromVariableBase(
   if (base.scope !== 'live' || base.name === 'type' || !isMemberStep(tails[0]?.step)) {
     return null;
   }
+
+  /* The `$ns` the author wrote is the base's source: a failed member read reports there. */
+  const span = sourceSpanOf(base);
+  const root = declarationReference('$');
   return reference(
-    declarationReference('$'),
+    span === undefined ? root : withSourceSpan(root, span),
     [
       lookupStep('member', base.name),
       ...tails.map(tail => tail.step)
@@ -450,74 +472,48 @@ function sourceFromState(state: unknown): string | undefined {
     : undefined;
 }
 
-function interpolationValue(child: unknown): Interpolation {
-  if (isInterpolation(child)) {
-    return child;
-  }
-  const fact = requireExpressionFact(child);
+function interpolationValue(fact: ExpressionFact): Interpolation {
   if (!isInterpolation(fact.value)) {
     throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
   }
   return fact.value;
 }
 
-function quotedInterpolationFromChildren(children: readonly unknown[]): Quoted | Interpolation {
-  const open = requireToken(children[0]);
-  if (children.length === 3 && !isInterpolation(children[1])) {
-    const content = requireToken(children[1]);
-    return quoted(
-      `${open.value}${content.value}${open.value}`,
-      content.value,
-      open.value,
-      false
-    );
-  }
-  const parts: Interpolation['parts'] = [{ lit: open.value }];
-  for (const child of children.slice(
-    1,
-    -1
-  )) {
-    if (isInterpolation(child) || isExpressionFact(child)) {
-      parts.push(...interpolationValue(child).parts);
-    } else {
-      parts.push({ lit: requireToken(child).value });
-    }
-  }
-  parts.push({ lit: open.value });
-  return interpolation(parts);
-}
-
-/*
- * `~"…"` drops its quotes, so an escaped string that carries interpolation is
- * exactly the Interpolation of its content — the `~` and both quote tokens are
- * authored escape syntax, not output bytes, and never become literal parts.
+/**
+ * One `.jess` string — `"…"`, `'…'`, optionally escaped `~"…"` — whether or
+ * not it interpolates (ledger V3, C2). The `~` and the quotes are syntax, not
+ * content: `src`/`value` are the authored spelling and content, each `${…}` /
+ * `$(…)` hole spelled by its source fact, and an interpolating string also
+ * carries its content as a template.
  */
-function escapedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
-  const parts: Interpolation['parts'] = [];
-  for (const child of children.slice(
-    2,
-    -1
-  )) {
-    if (isInterpolation(child)) {
-      parts.push(...child.parts);
+function quotedFromChildren(children: readonly unknown[]): Quoted {
+  const escaped = requireToken(children[0]).value === '~';
+  const quote = requireToken(children[escaped ? 1 : 0]).value;
+  const content = children.slice(escaped ? 2 : 1, -1);
+  let value = '';
+  let interpolates = false;
+  for (const child of content) {
+    if (isExpressionFact(child)) {
+      value += child.src;
+      interpolates = true;
     } else {
-      parts.push({ lit: requireToken(child).value });
+      value += requireToken(child).value;
     }
   }
-  return interpolation(parts);
+  return quoted(
+    `${escaped ? '~' : ''}${quote}${value}${quote}`,
+    value,
+    quote,
+    escaped,
+    interpolates
+      ? interpolation(content.flatMap(child => isExpressionFact(child) ? interpolationValue(child).parts : [{ lit: requireToken(child).value }]))
+      : null
+  );
 }
 
 function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
-  const value = quotedInterpolationFromChildren(children);
-  const src = children.map(child =>
-    isExpressionFact(child)
-      ? requireExpressionFact(child).src
-      : isInterpolation(child)
-        ? (() => {
-            throw new TypeError('Jess expression quote lost interpolation source.');
-          })()
-        : requireToken(child).value).join('');
-  return { value, src };
+  const value = quotedFromChildren(children);
+  return { value, src: value.src };
 }
 
 function reduceColonFeature(children: readonly unknown[], lostMessage: string): ValueNode {
@@ -638,7 +634,7 @@ function urlFromChildren(children: readonly unknown[]): Url {
 }
 
 function requireLiteralQuoted(value: unknown): Quoted {
-  if (!isQuoted(value)) {
+  if (!isQuoted(value) || value.interp !== null) {
     throw new TypeError('Jess module syntax requires a literal quoted path.');
   }
   return value;
@@ -693,7 +689,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
  * positions genuinely differ (§4.2a) and it gets a reducer each, below.
  */
 function reduceGuardTruth(children: readonly unknown[]): GuardNode {
-  return { g: 'truth', value: requireExpressionFact(children[0]).value };
+  return { g: 'truth', value: requireExpressionFact(children[0]).value, parens: 0 };
 }
 
 /*
@@ -710,7 +706,9 @@ function reduceIfCompare(children: readonly unknown[]): GuardNode {
     g: 'cmp',
     op: requireToken(children[1]).value.trim(),
     left: requireExpressionFact(children[0]).value,
-    right: requireExpressionFact(children[2]).value
+    right: requireExpressionFact(children[2]).value,
+    implied: false,
+    parens: 0
   };
 }
 function reduceGuardCompare(children: readonly unknown[]): GuardNode {
@@ -718,20 +716,22 @@ function reduceGuardCompare(children: readonly unknown[]): GuardNode {
     g: 'match',
     op: requireToken(children[1]).value.trim(),
     left: requireExpressionFact(children[0]).value,
-    right: requireExpressionFact(children[2]).value
+    right: requireExpressionFact(children[2]).value,
+    implied: false,
+    parens: 0
   };
 }
 function reduceGuardAnd(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
+    result = { g: 'and', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
   }
   return result;
 }
 function reduceGuardOr(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
+    result = { g: 'or', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
   }
   return result;
 }
@@ -761,21 +761,27 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
  * Every block-bodied lambda spelling reduces the same way: an `AnonymousMixin`
  * over the body statements, carrying the declared params. The `params` field is
  * OMITTED for an empty list so the plain `@{ … }` block keeps the monomorphic
- * shape core's value paths already expect.
+ * shape core's value paths already expect. The body span records where the
+ * block's comments are, so a call replays them.
  */
-function reduceLambda(children: readonly unknown[]): AnonymousMixin {
+function reduceLambda(
+  children: readonly unknown[],
+  _fields: unknown,
+  _span: unknown,
+  rawChildren: readonly unknown[]
+): AnonymousMixin {
   const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
   if (bodyOpen < 0) {
     throw new TypeError('Jess grammar produced a lambda without a body.');
   }
   const params = children.find(isParamArray) ?? [];
-  return anonymousMixin(
+  return withBlockBody(anonymousMixin(
     collectBodyStatements(
       children,
       bodyOpen + 1
     ),
     params.length > 0 ? params : undefined
-  );
+  ), rawChildren);
 }
 
 /*
@@ -800,7 +806,11 @@ function reduceSelectorList(children: readonly unknown[]): SelectorList {
  * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
  * defeat any attempt to recover the operator from the padded text.
  */
-function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
+function dollarValueFromChildren(
+  children: readonly unknown[],
+  _fields: unknown,
+  span: { readonly start: number; readonly end: number }
+): ValueNode {
   const base = requireValueNode(children[0]);
   if (children.length === 1) {
     if (base.type !== 'Lookup' || base.kind !== 'var') {
@@ -812,14 +822,14 @@ function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
   if (base.type === 'Lookup' && base.kind === 'entry') {
     const name = requireToken(rest[0]).value;
     const tails = rest.slice(1).map(requireJessReferenceTail);
-    return reference(
+    return withSourceSpan(reference(
       base,
       [
         lookupStep('member', name),
         ...tails.map(tail => tail.step)
       ],
       `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
-    );
+    ), span);
   }
   if (base.type !== 'Lookup' || base.kind !== 'var') {
     throw new TypeError('Jess reference base must be a variable reference.');
@@ -827,14 +837,11 @@ function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
   if (isJessReferenceTail(rest[0])) {
     const tails = rest.map(requireJessReferenceTail);
     const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
-    if (memberReference) {
-      return memberReference;
-    }
-    return reference(
+    return withSourceSpan(memberReference ?? reference(
       base,
       tails.map(tail => tail.step),
       `${base.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
-    );
+    ), span);
   }
   if (rest.some(child => isToken(child) && child.value === '/')) {
     return list(
@@ -913,6 +920,7 @@ export {
   isJessValueSlotValue,
   requireValueSlot,
   isJessMixinCallArgument,
+  isJessCallArgument,
   requireValueNode,
   requireGuardNode,
   isInterpolationLiteral,
@@ -934,8 +942,7 @@ export {
   tokenSource,
   sourceFromState,
   interpolationValue,
-  quotedInterpolationFromChildren,
-  escapedInterpolationFromChildren,
+  quotedFromChildren,
   quotedExpressionFact,
   reduceColonFeature,
   jessFunctionOpenName,
@@ -977,5 +984,6 @@ export type {
   JessComplexTail,
   JessQueryFeatureName,
   JessAtRuleHeader,
-  JessMixinCallArgument
+  JessMixinCallArgument,
+  JessCallArgument
 };

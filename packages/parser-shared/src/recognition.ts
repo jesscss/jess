@@ -5,7 +5,7 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { choice, keywords, literal, noTrivia, not, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
+import { choice, keywords, literal, noTrivia, not, oneOrMore, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = cssIdentifier;
@@ -68,6 +68,14 @@ const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
  * @see https://drafts.csswg.org/css-syntax-3/#consume-name
  */
 const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+
+/*
+ * `IDENT_BOUNDARY` plus `(`: a word that ends where its identifier ends and is
+ * not glued to `(`. An identifier immediately followed by `(` is one
+ * `<function-token>` (css-syntax-3 §4.3.4), so the condition words below
+ * never match a glued `not(` / `and(` / `or(`.
+ */
+const IDENT_FUNCTION_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(';
 
 /*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
@@ -163,9 +171,19 @@ const marginAtKeyword = keywords(
   ],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
+
+/*
+ * A condition's `not` / `and` / `or` is an `<ident-token>`: it ends where the
+ * identifier ends and is not glued to `(`, because an identifier immediately
+ * followed by `(` is one `<function-token>` (css-syntax-3 §4.3.4). A glued
+ * `not(` / `and(` / `or(` is a `<general-enclosed>` function
+ * (media-queries-4 §3, css-conditional-3 §6), which never matches
+ * (media-queries-4 §3.2); it is read as one and written as authored, never
+ * respelled `not (`.
+ */
 const queryNot = word(
   'not',
-  IDENT_BOUNDARY,
+  IDENT_FUNCTION_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryOnly = word(
@@ -175,14 +193,46 @@ const queryOnly = word(
 );
 const queryAndOr = keywords(
   ['and', 'or'],
-  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_FUNCTION_BOUNDARY }
 );
 
 /*
- * `and` and `or` apart, for a dialect ladder that folds each at its own
- * precedence (SCSS's and Jess's logical operators). The query ladder keeps
- * `queryAndOr`, which takes either at one level.
+ * A glued `and(` / `or(` after a condition operand: no connective, but one more
+ * `<general-enclosed>` operand. A condition chain peeks it so the operand rule
+ * reads the function once and the prelude keeps it as authored
+ * (`@supports (a: b) and(c: d)`).
  */
+const queryGluedConnective = noTrivia(sequence(
+  keywords(
+    ['and', 'or'],
+    { caseInsensitive: true, boundary: IDENT_BOUNDARY }
+  ),
+  literal('(')
+));
+
+/*
+ * A run of `<pseudo-page>`s (css-page-3 §3): `:` glued to an identifier, one or
+ * more, with no whitespace between the productions of a `<page-selector>`, so a
+ * page selector's glue is the token's own spelling (`:left:blank`; after a page
+ * name, `Test:first`). A `:` spaced from what follows is no pseudo-page.
+ */
+const pagePseudoRun = noTrivia(oneOrMore(sequence(
+  literal(':'),
+  cssIdentifier
+)));
+
+/*
+ * `not`, `and` and `or` apart, for a dialect ladder that folds each at its own
+ * precedence (SCSS's and Jess's logical operators, Sass `@if`, Jess guards).
+ * They are compiler-evaluated words, not CSS condition syntax, so a glued
+ * `not(` is still the word before a group. The query ladder keeps `queryNot` /
+ * `queryAndOr`, which are CSS `<ident-token>`s.
+ */
+const logicalNot = word(
+  'not',
+  IDENT_BOUNDARY,
+  { caseInsensitive: true }
+);
 const logicalAnd = word(
   'and',
   IDENT_BOUNDARY,
@@ -460,10 +510,13 @@ const customPropertyName = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-
  * that precedes `!` (the value keeps no trailing space), and requires `[;}]` after
  * the marker so a non-final `!important` stays ordinary value text. Only the outer
  * leaf carries this: inside a balanced group the marker is never the declaration's.
- * The `i` flag is inert for the rest of the pattern — its remaining classes are
- * punctuation or already span both cases.
+ * A whitespace run is taken whole, and only when a value character follows it,
+ * so the run also stops before the whitespace that ends the value (`;`, `}`, the
+ * end of input) and the value keeps no trailing space there either (css-syntax-3
+ * §5.5.6, ledger F12). The `i` flag is inert for the rest of the pattern — its
+ * remaining classes are punctuation or already span both cases.
  */
-const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n\r\f]|[^(){}[\];'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({])))+/i);
+const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n\r\f]|[ \t\n\r\f]+(?=[^ \t\n\r\f;}])|[^(){}[\];'"\\/#$ \t\n\r\f]|\/(?!\*)|#(?!\{)|\$(?![[({])))+/i);
 const customInnerContent = regex(/(?:\\[^\n\r\f]|[^(){}[\]'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
 const customSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
@@ -490,12 +543,13 @@ const lessInterpolatedValueStart = cssIdentifier;
 const identToken = regex(/(?:--|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
 /*
- * Custom-property values remain CSS declaration-value text in Less, except for
- * Less variable references that Less evaluates inside those values. These leaves
- * deliberately exclude balanced delimiters, strings, comments, strict `@{…}`
- * interpolation, raw `@name`-shaped tokens, and legacy backtick JavaScript so
- * the direct Less grammar can decide whether each is literal content or a
- * structural language construct instead of scanning a completed value span.
+ * Custom-property values remain CSS declaration-value text in Less. These
+ * leaves deliberately exclude balanced delimiters, strings, comments, a strict
+ * `@{…}` opener, a bare `@name`, and legacy backtick JavaScript so the direct
+ * Less grammar keeps each of those structurally instead of scanning a
+ * completed value span. A bare `@name` is literal text in a custom-property
+ * value (ledger P2) and a variable read in an ordinary declaration's `var()`
+ * fallback, a CSS function argument.
  * Less's own custom-property leaf. It differs from the shared CSS one only by
  * leaving escapes to the Less custom-property content leaves below. The `+`
  * (not `*`) keeps the reserved bare `--` out, matching css-variables-1 §2 and
@@ -511,11 +565,17 @@ const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
  * that precedes `!` (the value keeps no trailing space), and requires `[;}]` after
  * the marker so a non-final `!important` stays ordinary value text. Only the outer
  * leaf carries this: inside a balanced group the marker is never the declaration's.
- * The `i` flag is inert for the rest of the pattern — its remaining classes are
- * punctuation or already span both cases.
+ * A whitespace run is taken whole, and only when a value character follows it,
+ * so the run also stops before the whitespace that ends the value (`;`, `}`, the
+ * end of input) and the value keeps no trailing space there either (css-syntax-3
+ * §5.5.6, ledger F12). The `i` flag is inert for the rest of the pattern — its
+ * remaining classes are punctuation or already span both cases.
  */
-const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"`\/\\]))+|\/(?!\*)/i);
+const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|[ \t\n\r\f]+(?=[^ \t\n\r\f;}])|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"`\/\\ \t\n\r\f]))+|\/(?!\*)/i);
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"`\/\\])+|\/(?!\*)/i);
+
+/* The bare `@name` the two leaves above stop before, read whole as text. */
+const lessCustomAtName = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
 export const cssSyntax = rules(_g => ({
   Identifier: keywordValue,
   AttributeOperator: attributeOperator,
@@ -541,10 +601,13 @@ export const cssSyntax = rules(_g => ({
   SupportsAtKeyword: supportsAtKeyword,
   StartingStyleAtKeyword: startingStyleAtKeyword,
   PageAtKeyword: pageAtKeyword,
+  PagePseudoRun: pagePseudoRun,
   MarginAtKeyword: marginAtKeyword,
   QueryNot: queryNot,
   QueryOnly: queryOnly,
   QueryAndOr: queryAndOr,
+  QueryGluedConnective: queryGluedConnective,
+  LogicalNot: logicalNot,
   LogicalAnd: logicalAnd,
   LogicalOr: logicalOr,
   QueryComparisonOperator: queryComparisonOperator,
@@ -612,6 +675,7 @@ export const lessSyntax = rules(_g => ({
   CustomPropertyToken: lessCustomProperty,
   CustomValueOuterContent: lessCustomOuterContent,
   CustomValueInnerContent: lessCustomInnerContent,
+  CustomValueAtName: lessCustomAtName,
   CustomValueSingleQuoted: customSingleQuoted,
   CustomValueDoubleQuoted: customDoubleQuoted
 }));

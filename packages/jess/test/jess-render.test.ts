@@ -30,6 +30,25 @@ describe('Jess parser plugin render-through', () => {
     expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n}\n');
   });
 
+  /*
+   * Ruling J2 (ledger N15): a selected arm's declarations are inline
+   * declarations at the `$if`. A condition that reads only scoped bindings
+   * selects the same arm wherever it is read, so a scoped read before the `$if`
+   * sees the arm, as the Less `if()` it converts from does.
+   *
+   * NOT RULED: a condition that reads a live binding (or a property accessor)
+   * cannot be decided before execution reaches it, so today a scoped read
+   * before such a `$if` does not see its arm. The second expectation pins that
+   * current behaviour until the owner rules on it.
+   */
+  it('lets a scoped read before a $if see the arm its scoped condition selects', async () => {
+    const render = (source: string) => new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' });
+    await expect(render('$v: A;\n.x { a: $^v; }\n$if (true) { $v: B; }\n.y { a: $^v; }\n'))
+      .resolves.toBe('.x {\n  a: B;\n}\n.y {\n  a: B;\n}\n');
+    await expect(render('$on: 1;\n$v: A;\n.x { a: $^v; }\n$if ($on == 1) { $v: B; }\n.y { a: $^v; }\n'))
+      .resolves.toBe('.x {\n  a: A;\n}\n.y {\n  a: B;\n}\n');
+  });
+
   it('preserves repeated output from the core $apply operation', async () => {
     const css = await new Compiler().renderString(
       '.paint { color: red; } .entry { $apply .paint; $apply .paint; }',
@@ -37,6 +56,20 @@ describe('Jess parser plugin render-through', () => {
     );
 
     expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n  color: red;\n}\n');
+  });
+
+  /*
+   * An applied body places the ruleset's own nested rules at the apply site, so an
+   * extend reaches them there, written at the composed apply-site selector (never the
+   * extended header of the ruleset's own copy).
+   */
+  it('extends the rules an $apply places where they land', async () => {
+    const css = await new Compiler({ output: { collapseNesting: 'native' } }).renderString(
+      '.u { .c { a: 1; } } .x { $apply .u; } .y { $extend .c; }',
+      { filePath: 'entry.jess', extension: '.jess' }
+    );
+
+    expect(css).toBe('.u :is(.c, .y) {\n  a: 1;\n}\n.x :is(.c, .y) {\n  a: 1;\n}\n');
   });
 
   it('merges every matching plain ruleset without entering parameterized mixin dispatch', async () => {
@@ -218,10 +251,11 @@ describe('Jess parser plugin render-through', () => {
       }
     });
 
-    it('preserves `&` verbatim in the default nested output until a boundary collapses', async () => {
+    it('preserves a parent-reference `&` verbatim in the default nested output until a boundary collapses', async () => {
       /*
-       * `.jess` output is nested by DEFAULT. `&` only resolves where a boundary
-       * is collapsed, so the authored form survives to the emitted CSS.
+       * `.jess` output is nested by DEFAULT. A `&` that references its parent only
+       * resolves where a boundary is collapsed, so the authored form survives to the
+       * emitted CSS.
        */
       expect(await nested('.a { &:hover { color: red; } }'))
         .toBe('.a {\n  &:hover {\n    color: red;\n  }\n}\n');
@@ -229,16 +263,20 @@ describe('Jess parser plugin render-through', () => {
         .toBe('.a,\n#b {\n  & + & {\n    color: red;\n  }\n}\n');
       expect(await nested('.a { :not(&) { color: red; } }'))
         .toBe('.a {\n  :not(&) {\n    color: red;\n  }\n}\n');
+
+      /*
+       * A `&` that builds a name is not CSS nesting, which would read `&__el` as `&` then
+       * the type selector `__el`: the rule is written flattened, the name built (ledger
+       * J13). The `&(X)` spelling normalizes to the fused form it is sugar for.
+       */
       expect(await nested('.block { &__el { color: red; } }'))
-        .toBe('.block {\n  &__el {\n    color: red;\n  }\n}\n');
-
-      // The `&(X)` spelling normalizes to the fused form it is sugar for.
+        .toBe('.block__el {\n  color: red;\n}\n');
       expect(await nested('.button { &(-1) { color: red; } }'))
-        .toBe('.button {\n  &-1 {\n    color: red;\n  }\n}\n');
+        .toBe('.button-1 {\n  color: red;\n}\n');
 
-      // A `${…}` template still evaluates; only the parent reference is deferred.
+      // A `${…}` template glued after the `&` builds a name too.
       expect(await nested('$t: primary; .a { &-${t} { color: red; } }'))
-        .toBe('.a {\n  &-primary {\n    color: red;\n  }\n}\n');
+        .toBe('.a-primary {\n  color: red;\n}\n');
     });
 
     it('hoists `&` per collapsed boundary rather than per document', async () => {

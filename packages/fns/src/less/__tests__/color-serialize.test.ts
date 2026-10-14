@@ -8,22 +8,14 @@
  *      (hue & saturation collapse to `0`, lightness stays authored).
  */
 import { describe, it, expect } from 'vitest';
-import { makeColorRgb, makeDimension, makeList, HEX } from '@jesscss/core';
-import type { Color, Dimension } from '@jesscss/core';
+import { call as evaluate, node } from '../../__tests__/harness.js';
+import { makeColorRgb, makeDimension, HEX } from '@jesscss/core';
+import type { Color, Dimension, Fn, ValueGroup } from '@jesscss/core';
 import { fade as fadeFn } from '../fade.js';
 import { fadeout as fadeoutFn } from '../fadeout.js';
 import { hsl } from '../hsl.js';
 
-const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
-const call = (fn: (args: ReturnType<typeof makeList>, context: typeof ctx) => unknown, ...args: Parameters<typeof makeList>[0]) =>
-  colorResult(fn(makeList(args, ','), ctx));
-
-function colorResult(value: unknown): Color {
-  if (value === null || typeof value !== 'object' || !('type' in value) || value.type !== 'Color') {
-    throw new TypeError('Expected a Color result.');
-  }
-  return value;
-}
+const call = (fn: Fn, ...args: ValueGroup[]): Color => node(evaluate(fn, ...args), 'Color');
 
 const hexColor = (rgb: [number, number, number], alpha: number, src: string): Color =>
   makeColorRgb(rgb, alpha, HEX, { src });

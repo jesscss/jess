@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { invoke } from '../../__tests__/harness.js';
 import { makeDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { pow } from '../pow.js';
@@ -37,7 +38,7 @@ describe('Less pow canonical cutover', () => {
 
     for (const [base, exponent] of vectors) {
       const expected = legacyPowOracle(base, exponent);
-      const actual = pow(makeDimension(base.number, base.unit), makeDimension(exponent.number, exponent.unit));
+      const actual = invoke(pow, makeDimension(base.number, base.unit), makeDimension(exponent.number, exponent.unit));
 
       expect(actual).toMatchObject({
         type: 'Dimension',

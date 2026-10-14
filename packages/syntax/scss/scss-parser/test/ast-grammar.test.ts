@@ -338,7 +338,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false } }] });
+    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false, interp: null } }] });
   });
 
   it('constructs static SCSS url imports as typed AtRuleStatement preludes', () => {
@@ -351,6 +351,54 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.unconsumedFrom, source).toBeNull();
       expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url' } }] });
     }
+  });
+
+  /*
+   * Sass's URL rule, as dart-sass applies it (`isPlainImportUrl`): a
+   * protocol-relative or `http://` / `https://` URL is a plain CSS import,
+   * quoted or in `url()`, with or without a media query. The scheme test is
+   * case-sensitive and a target under five characters is never plain, so those
+   * stay partial imports, as does a local `url()` target.
+   */
+  it('classifies a protocol-relative or http(s) URL import as a plain CSS AtRuleStatement', () => {
+    for (const source of [
+      '@import "http://fonts.example/css?family=Roboto";',
+      '@import \'https://fonts.example/x\';',
+      '@import "//cdn.example/theme";',
+      '@import url("https://fonts.example/css?family=Roboto");',
+      '@import url(https://fonts.example/x);',
+      '@import "https://fonts.example/x" screen;'
+    ]) {
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import' }] });
+      expect(isStylesheet(result.value) ? serialize(result.value).css : undefined, source).toBe(`${source}\n`);
+    }
+    for (const source of ['@import url(theme);', '@import \'HTTPS://fonts.example/x\';', '@import "Http://x/y";', '@import "//a";', '@import "httpx://theme";']) {
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'StyleImport', name: '@import' }] });
+    }
+  });
+
+  /* `ImportRule ::= '@import' ImportArgument (',' ImportArgument)*` — each argument is its own import. */
+  it('splits a comma-separated @import into one import per argument', () => {
+    const source = '@import "a.css", "http://x/y", "partial", "b.css" screen;';
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'a.css' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'http://x/y' } },
+        { type: 'StyleImport', name: '@import', target: { type: 'Quoted', value: 'partial' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence' } }
+      ]
+    });
+    const plain = '.a { @import "a.css", "//cdn.example/b"; }';
+    const nested = run(scssGrammar.Stylesheet, plain, { trivia: scssGrammar.whitespace });
+    expect(isStylesheet(nested.value) ? serialize(nested.value).css : undefined).toBe('.a {\n  @import "a.css";\n  @import "//cdn.example/b";\n}\n');
   });
 
   it('constructs the public-CST-valid empty SCSS url import target without a fallback', () => {
@@ -485,11 +533,26 @@ describe('SCSS canonical-AST grammar', () => {
     for (const source of [
       '@import "theme.css" #{$media};',
       '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};',
-      '@import "a.css", "b.css" screen;'
+      '@import "theme.css" screen, #{$media};'
     ]) {
       const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
+    }
+  });
+
+  /*
+   * media-queries-4 §2.1: `[ not | only ]? <media-type> [ and <media-condition-without-or> ]?`,
+   * the condition chaining `and <media-in-parens>`. These are valid CSS that css,
+   * less and jess parse; SCSS read only one connective after a media type.
+   */
+  it('parses a media type followed by a chain of connected conditions', () => {
+    for (const query of [
+      'screen and (min-width: 1px) and (max-width: 2px)',
+      'not all and (monochrome)',
+      'screen and (color) or (hover)'
+    ]) {
+      expect(serialize(parse(`@media ${query} { a { b: c; } }`)).css, query)
+        .toBe(`@media ${query} {\n  a {\n    b: c;\n  }\n}\n`);
     }
   });
 
@@ -498,14 +561,15 @@ describe('SCSS canonical-AST grammar', () => {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
+      const target = { type: 'Quoted', src: '"theme-#{$mode}.css"', value: 'theme-#{$mode}.css', quote: '"', escaped: false, interp: { type: 'Interpolation', parts: [{ lit: 'theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css' }] } };
       expect(result.value).toMatchObject({
         type: 'Stylesheet',
         rules: [{ type: 'AtRuleStatement', name: '@import', prelude: source.includes('url(')
-          ? { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] } }
-          : { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] }
+          ? { type: 'Url', value: target }
+          : target
         }]
       });
     }
@@ -655,16 +719,16 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'theme', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'font', value: { type: 'Quoted', src: '"Inter"', value: 'Inter', quote: '"', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'font', value: { type: 'Quoted', src: '"Inter"', value: 'Inter', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
 
         /*
          * Value keywords deliberately preserve CSS escapes. `$` names above use
          * the SCSS-local unescaped terminal instead.
          */
         { type: 'VariableDeclaration', name: 'escaped', value: { type: 'Keyword', src: 'r\\65d' }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'quoted', value: { type: 'Quoted', src: '"a\\\\b"', value: 'a\\\\b', quote: '"', escaped: false }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'hash', value: { type: 'Quoted', src: '"#foo"', value: '#foo', quote: '"', escaped: false }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'singleHash', value: { type: 'Quoted', src: '\'#foo\'', value: '#foo', quote: '\'', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'quoted', value: { type: 'Quoted', src: '"a\\\\b"', value: 'a\\\\b', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'hash', value: { type: 'Quoted', src: '"#foo"', value: '#foo', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'singleHash', value: { type: 'Quoted', src: '\'#foo\'', value: '#foo', quote: '\'', escaped: false, interp: null }, write: { mode: 'declare' } },
         {
           type: 'VariableDeclaration', name: 'shadow', value: {
             type: 'List', sep: ',', value: [
@@ -674,7 +738,7 @@ describe('SCSS canonical-AST grammar', () => {
           },
           write: { mode: 'declare' }
         },
-        { type: 'VariableDeclaration', name: 'asset', value: { type: 'Url', value: { type: 'Quoted', src: '"font.woff2"', value: 'font.woff2', quote: '"', escaped: false } }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'asset', value: { type: 'Url', value: { type: 'Quoted', src: '"font.woff2"', value: 'font.woff2', quote: '"', escaped: false, interp: null } }, write: { mode: 'declare' } },
         {
           type: 'VariableDeclaration', name: 'gradient', value: {
             type: 'FunctionCall', name: 'linear-gradient', modern: false, args: [
@@ -763,7 +827,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { value: -- theme; }',
       '@media (width: --#{$value}) { .bad { color: red; } }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace, state: { source: malformed } });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), malformed).toBe(false);
     }
   });
@@ -982,7 +1046,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('constructs structural interpolation in quoted strings and ordinary values directly', () => {
     const source = '$tone: blue; .card { content: "tone-#{$tone}"; color: shade-#{$tone}-strong; }';
     expect(parseScssCst(source).errors).toHaveLength(0);
-    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -991,7 +1055,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'tone' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: 'content', value: { type: 'Interpolation', parts: [{ lit: '"tone-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }, { lit: '"' }] } },
+          { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"tone-#{$tone}"', interp: { type: 'Interpolation', parts: [{ lit: 'tone-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }] } } },
           { type: 'Declaration', name: 'color', value: { type: 'Interpolation', parts: [{ lit: 'shade-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }, { lit: '-strong' }] } }
         ] }
       ]
@@ -1535,7 +1599,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [{
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [
           { type: 'Comment', text: '/* descriptor */' },
-          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false }, merge: null, important: false },
+          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false, interp: null }, merge: null, important: false },
           { type: 'Declaration', name: 'inherits', value: { type: 'Keyword', src: 'false' }, merge: null, important: false },
           { type: 'Declaration', name: 'initial-value', value: { type: 'Keyword', src: 'red' }, merge: null, important: false }
         ]
@@ -1671,7 +1735,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: '[data-state="open"i]' },
+        { type: 'SimpleSelector', text: '[data-state="open" i]' },
         { type: 'SimpleSelector', text: '[lang|=en]' }
       ] }] } }]
     });
@@ -1683,7 +1747,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1915,7 +1979,7 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
-  it('constructs static non-selector pseudo arguments as existing SimpleSelector text', () => {
+  it('constructs :lang() and :nth-*() arguments structured, and other static pseudo arguments as SimpleSelector text', () => {
     const source = '.card:lang(en-US):nth-child(-n+2 of .item)::part(icon) { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -1927,8 +1991,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: ':lang(en-US)' },
-        { type: 'SimpleSelector', text: ':nth-child(-n+2 of .item)' },
+        { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
+        { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
         { type: 'SimpleSelector', text: '::part(icon)' }
       ] }] } }]
     });
@@ -1956,18 +2020,48 @@ describe('SCSS canonical-AST grammar', () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
      * surrounding the argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; insignificant space surrounding the argument is
-     * normalized away, matching the canonical CSS grammar and the other dialects.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning, so the An+B emits unspaced (ledger F2), matching the canonical
+     * CSS grammar and the other dialects.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
     ] as const) {
       expect(serialize(parse(source)).css, source).toEqual(expected);
     }
+  });
+
+  /*
+   * Whitespace and comments inside a `:lang()` / `:dir()` / `:nth-*()` paren are
+   * insignificant in CSS, so valid CSS stays valid here although SCSS selector
+   * whitespace is a combinator: the CSS base's arguments own that padding, and
+   * a comment there is trivia, never part of a structured argument. A quoted
+   * range that interpolates keeps the argument a template.
+   */
+  it('accepts the padding CSS allows inside structured pseudo arguments', () => {
+    for (const [source, css] of [
+      ['a:lang( en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en /* c */) { x: y; }', 'a:lang(en)'],
+      ['a:lang(/* c */en) { x: y; }', 'a:lang(en)'],
+      ['a:lang( en , "fr" ) { x: y; }', 'a:lang(en, "fr")'],
+      ['a:dir( ltr ) { x: y; }', 'a:dir(ltr)'],
+      ['a:dir(/* c */ltr) { x: y; }', 'a:dir(ltr)'],
+      ['a:nth-child(2n + 1 /* c */) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child(/* c */ 2n+1) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child(2n+1 of .b /* c */) { x: y; }', 'a:nth-child(2n+1 of .b)'],
+      ['a:nth-of-type( -n+2 /* c */ ) { x: y; }', 'a:nth-of-type(-n+2)'],
+      ['$l: en; a:lang("#{$l}", fr) { x: y; }', 'a:lang("en", fr)']
+    ] as const) {
+      expect(parseScssCst(source).errors, source).toHaveLength(0);
+      expect(serialize(parse(source)).css, source).toBe(`${css} {\n  x: y;\n}\n`);
+    }
+    expect(parse('a:nth-child(/* c */ 2n+1) { x: y; }').rules[0]).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { type: 'PseudoSelector', arg: { type: 'AnPlusB', src: '2n+1' } }] }] }
+    });
   });
 
   it('constructs ordinary SCSS interpolated simple selectors as existing typed SimpleSelector facts', () => {

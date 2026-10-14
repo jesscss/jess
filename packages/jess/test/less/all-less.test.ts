@@ -5,7 +5,19 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin } from '../test-utils.js';
+import {
+  FixtureTimeoutError,
+  getTestCases,
+  lessFixturePackagesPlugin,
+  lessHarnessFunctionsPlugin,
+  lessTestDataRemoteImports,
+  readNumericFunctionArg,
+  readStringFunctionArg,
+  resolveLessTestDataRoot,
+  upstreamHarnessSourceMap,
+  withFixtureTimeout
+} from '../test-utils.js';
+import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -16,7 +28,11 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  *    reported as a skipped test so it shows up in the run, and the stale-skip
  *    gate at the bottom of this file fails if one starts matching its golden.
  * 2. `expectedFailureFixtures` — RUN, and asserted to fail. Fixing the cause
- *    fails the entry, which is how a fix gets noticed.
+ *    fails the entry, which is how a fix gets noticed. An entry may also pin
+ *    how it fails: a diagnostic code (`expectedFailureDiagnosticCodes`). A
+ *    golden known to lag a fix is not an expected failure: it keeps its full
+ *    byte gate against the golden plus the exact edits in `pendingGoldenEdits`
+ *    (`pending-golden-edits.ts`, shared with every test that reads a golden).
  * 3. no `.css` golden next to the `.less` — a helper or partial, never a fixture.
  *
  * There used to be a fourth: an `invalidLess` array in `@jesscss/shared` that
@@ -25,48 +41,15 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  * Do not add another list. If a fixture must not run, give it a reason here.
  */
 
-const readNumericFunctionArg = (value: any): number => {
-  if (typeof value?.value === 'number') {
-    return value.value;
-  }
-  if (typeof value?.value?.number === 'number') {
-    return value.value.number;
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return Number(primitive);
-};
-
-const readStringFunctionArg = (value: any): string => {
-  if (typeof value?.value === 'string') {
-    return value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  if (typeof value?.value?.value === 'string') {
-    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
-};
-
-const lessHarnessFunctionsPlugin = {
-  install(less: any) {
-    less.functions.functionRegistry.addMultiple({
-      add(a: any, b: any) {
-        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
-      },
-      increment(a: any) {
-        return readNumericFunctionArg(a) + 1;
-      },
-      _color(str: any) {
-        if (readStringFunctionArg(str) === 'evil red') {
-          return '#660000';
-        }
-        return undefined;
-      }
-    });
-  }
-};
-
 const testData = resolveLessTestDataRoot();
+
+/*
+ * A fixture's golden is the `.css` beside it, except in the three math-mode
+ * directories: the corpus keeps `tests-config/math-<mode>/<name>.less`'s golden
+ * at `tests-config/math/<mode>/<name>.css`.
+ */
+const goldenFor = (file: string): string =>
+  file.replace(/^tests-config\/math-([^/]+)\//, 'tests-config/math/$1/').replace(/\.less$/, '.css');
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
@@ -98,7 +81,19 @@ const baseCompiler = new Compiler({
        * Pins the third-party packages that fixtures `@import` by bare specifier
        * (tests-config/3rd-party/bootstrap4.less) — see lessFixturePackagesPlugin.
        */
-      lessFixturePackagesPlugin()
+      lessFixturePackagesPlugin(),
+
+      /*
+       * Opt-in remote imports, as a user enables them: `tests-unit/import/import-remote.less`
+       * imports the published test-data from cdn.jsdelivr.net, and that runs the
+       * real path — allow-list claim, locate, the plugin's transport, parse —
+       * with the transport answering from the local checkout. So the fixture
+       * proves remote `(reference)` imports (query included) render like 4.x; it
+       * proves nothing about network I/O. The network boundary (https-only,
+       * redirects, private addresses, size and time caps, Deno `--allow-net`
+       * denial) is proven in @jesscss/plugin-remote-import's own tests.
+       */
+      lessTestDataRemoteImports(testData)
     ]
   }
 });
@@ -151,33 +146,6 @@ afterAll(() => {
   }
 });
 
-const fixtureTimeoutMs = 4500;
-
-class FixtureTimeoutError extends Error {
-  constructor(file: string) {
-    super(`${file} timed out before surfacing a diagnostic or render result.`);
-    this.name = 'FixtureTimeoutError';
-  }
-}
-
-async function withFixtureTimeout<T>(
-  file: string,
-  work: () => Promise<T>,
-  timeoutMs = fixtureTimeoutMs
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new FixtureTimeoutError(file)), timeoutMs);
-  });
-  try {
-    return await Promise.race([work(), timeout]);
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }
-}
-
 type SkippedFixture = {
   file: string;
   reason: string;
@@ -208,41 +176,24 @@ const skippedFixtures: SkippedFixture[] = (
      * work before they can be release gates.
      */
     { file: 'tests-config/debug/linenumbers.less', reason: 'debug output fixture; no expected CSS in upstream fixture' },
-    { file: 'tests-config/filemanagerPlugin/filemanager.less', reason: 'custom Less file manager plugin API needs scope decision' },
+    { file: 'tests-config/filemanagerPlugin/filemanager.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `less.environment`, naming @jesscss/plugin-node-modules (test/less/plugin-diagnostics.test.ts)' },
     { file: 'tests-config/include-path/import-test-e.less', reason: 'helper imported by include-path fixture; no expected CSS' },
     { file: 'tests-config/import-redirect/import-redirect.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/js-type-errors/js-type-error.less', reason: 'expected error fixture, not render-to-CSS fixture' },
-    { file: 'tests-config/math-always/mixins-guards.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-always/no-sm-operations.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/media-math.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/new-division.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/parens.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/css.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/media-math.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/parens.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/no-js-errors/no-js-errors.less', reason: 'expected error fixture, not render-to-CSS fixture' },
-    { file: 'tests-config/postProcessorPlugin/postProcessor.less', reason: 'Less postprocessor plugin API needs scope decision' },
-    { file: 'tests-config/preProcessorPlugin/preProcessor.less', reason: 'Less preprocessor plugin API needs scope decision' },
+    { file: 'tests-config/postProcessorPlugin/postProcessor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `pluginManager.addPostProcessor()`, naming output.compress (test/less/plugin-diagnostics.test.ts)' },
+    { file: 'tests-config/preProcessorPlugin/preProcessor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `pluginManager.addPreProcessor()` (test/less/plugin-diagnostics.test.ts)' },
     { file: 'tests-config/root-registry/file.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/root-registry/root.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/strict-imports/imported.less', reason: 'helper imported by strict-imports fixture; no expected CSS' },
-    { file: 'tests-config/sourcemaps/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/visitorPlugin/visitor.less', reason: 'Less visitor plugin API needs scope decision' },
-    {
-      file: 'tests-unit/import/import-remote.less',
-      reason:
-        'remote URL imports require an explicit network/IO allowlist, which is not part of the alpha harness policy',
-      gateExempt:
-        'matches its golden OFFLINE only because the harness fixture-package plugin maps those cdn.jsdelivr.net URLs onto the local corpus. That is not evidence that remote imports work — jess#219 decides the network policy, and Phase C of the release plan gates on it.'
-    },
+    { file: 'tests-config/sourcemaps/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'no expected CSS; empty output gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'no expected CSS; empty output gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'helper imported by sourcemaps-variable-selector/basic.less; no expected CSS' },
+    { file: 'tests-config/visitorPlugin/visitor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `less.visitors` (test/less/plugin-diagnostics.test.ts)' },
 
     /*
      * CARRIED OVER from the former `invalidLess` list in `@jesscss/shared`,
@@ -252,24 +203,13 @@ const skippedFixtures: SkippedFixture[] = (
      */
     /*
      * Nested fixtures, visible since the lane started discovering one level
-     * deeper. Both features are deferred, and these four are the only nested
-     * fixtures with goldens that do not pass.
+     * deeper. The nested source-map fixture is gated in sourcemaps.test.ts
+     * except for its annotation (below); the nested dumpLineNumbers fixtures are
+     * expected failures that assert their deprecation warning.
      */
     {
-      file: 'tests-config/debug/all/linenumbers-all.less',
-      reason: 'dumpLineNumbers is declared in the config surface (core/src/types/config.ts) but nothing consumes it — the golden expects `/* line N, {path} */` annotations (same feature as the tests-config/debug/linenumbers.less skip)'
-    },
-    {
-      file: 'tests-config/debug/comments/linenumbers-comments.less',
-      reason: 'dumpLineNumbers is not implemented — the golden expects `/* line N, {path} */` annotations'
-    },
-    {
-      file: 'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
-      reason: 'dumpLineNumbers is not implemented — the golden expects @media-encoded line annotations'
-    },
-    {
       file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
-      reason: 'source-map output suite needs dedicated output artifact checks (same reason as the other sourcemaps fixtures)'
+      reason: 'GOLDEN CORRECTION PROPOSED (less.js fork branch lane/v5-sourcemap-comprehensive-golden, not yet merged): the golden annotation names tests-config/sourcemaps-comprehensive/comprehensive.css.map, but the fixture\'s `sourceMap: true` config yields comprehensive.css.map; the CSS before the annotation and the map are gated in sourcemaps.test.ts'
     },
     {
       file: 'tests-unit/permissive-parse/permissive-parse.less',
@@ -285,11 +225,11 @@ const skippedFixtures: SkippedFixture[] = (
     },
     {
       file: 'tests-unit/functions/legacy/functions.less',
-      reason: 'non-Less `$list` parameter syntax is deliberately unsupported'
+      reason: 'INTENDED DIVERGENCE (owner 2026-10-09): `~( … )` escapes a value list, and the `;`-separated form the fixture passes (`.mixin($list-1, ~(7; 8; 9))`) is not supported — "the parens are supposed to be around a valueList"; `$list-1` is the property accessor and works'
     },
     {
       file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-      reason: 'every case in the upstream fixture is commented out, so it renders to nothing while its golden is a stray newline. The cases are commented out because `/deep/` and `/shadow/` do not parse in jess — RULED (G37): slashed combinators are not selectors (Selectors 4 §14 lists neither) and v5 rejects them deliberately, so the fixture belongs in tests-error with its cases restored, or deleted — jess#247'
+      reason: 'DELETED on the less.js fork (see corpusFilesDeletedOnTheFork): every case is commented out, and a slashed combinator is not a selector, with no dedicated support or recognition (G37) — the cases fail like any other invalid selector. Until the corpus carries the deletion the fixture renders nothing against a stray-newline golden'
     },
     {
       file: 'tests-unit/javascript/javascript.less',
@@ -302,14 +242,6 @@ const skippedFixtures: SkippedFixture[] = (
     {
       file: 'tests-config/no-js-errors/no-js-errors.less',
       reason: 'inline backtick JavaScript is intentionally unsupported in v5'
-    },
-    {
-      file: 'tests-config/math-parens-division/new-division.less',
-      reason: 'the deprecated `./` dot-slash division operator was removed in v5; it is now a parse error'
-    },
-    {
-      file: 'tests-config/math-always/no-sm-operations.less',
-      reason: 'no reason was recorded when this entry was added; not re-measured'
     }
   ] as Array<string | SkippedFixture>
 ).map((entry): SkippedFixture => {
@@ -324,6 +256,13 @@ const skippedFixtureReasons = new Map(
 );
 
 const expectedFailureFixtures = new Map<string, string>([
+
+  /*
+   * A golden edit no ruling decides yet is not applied (pending-golden-edits.ts), so
+   * these fail until the owner decides.
+   */
+  ['tests-config/namespacing/namespacing-8.less', 'fixture source moves to `--@{key}: @{value};` in the fork (owner 2026-10-09); remove when the fork lands'],
+  ['tests-unit/functions/functions.less', 'the golden writes `length-1: 1;`; jess reads `$list-1`, the value `~(1, 2, 3)`, as the three-item list (`length-1: 3;`), a proposal awaiting the owner (ledger V26, OPEN)'],
 
   /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of
@@ -357,28 +296,12 @@ const expectedFailureFixtures = new Map<string, string>([
    * `continueRender`); and
    * (2) the stale 4.x golden π (`3.141592653589793`) was updated to jess's v5
    * 10-digit output quantization (`3.1415926536`, DESIGN-DECISIONS.md V4). The
-   * owner authorized landing this `import.less` fix (2026-09-06); the placement
-   * itself is the OPEN N11 spec argument, not an owner placement ruling.
+   * owner authorized landing this `import.less` fix (2026-09-06) and ratified
+   * the N11 placement as implemented (2026-10-04).
    */
   [
     'tests-unit/urls/urls.less',
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
-  ],
-  [
-    'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-include-source/sourcemaps-include-source.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-url/sourcemaps-url.less',
-    'source-map annotation and artifact output need a dedicated harness'
   ],
 
   /*
@@ -394,7 +317,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin-module/plugin-module.less',
-    'the clean-css fixture uses a legacy CommonJS @plugin graph with require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime does not support'
+    'INTENDED DIVERGENCE (A12): `@plugin "clean-css"` resolves to the clean-css library itself (jess has no Less 4.x `less-plugin-` name-prefix lookup); its relative requires load in the Deno runtime, but it then needs the Node built-in `http`, so the load is refused. As `less-plugin-clean-css` its only act would be `pluginManager.addPostProcessor()`, the A12 non-goal whose native replacement is output.compress; the golden `a{background:0 0}` is clean-css\'s own minification'
   ],
 
   /*
@@ -411,11 +334,23 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/functions/legacy/functions.less',
-    'this legacy fixture\'s non-Less $list parameter/reference syntax is not supported'
+    'INTENDED DIVERGENCE (owner 2026-10-09): `~( … )` escapes a value list; the fixture\'s `;`-separated `~(7; 8; 9)` is not supported ("the parens are supposed to be around a valueList"), while its `$list-1` property accessor works'
   ],
   [
     'tests-unit/plugin-preeval/plugin-preeval.less',
-    'the legacy tree visitor ABI is not supported (isPreEvalVisitor, manager.addVisitor, visitors.Visitor); this is not an @plugin extension-resolution gap'
+    'INTENDED DIVERGENCE (A12): the legacy tree-visitor ABI is a v5 non-goal; loading plugin-preeval.js is refused at its `less.visitors` read with a plugin/unsupported-feature diagnostic naming the missing visitor API (test/less/plugin-diagnostics.test.ts)'
+  ],
+  [
+    'tests-config/debug/all/linenumbers-all.less',
+    'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation/dump-line-numbers-option warning and otherwise ignored, so the golden\'s `/* line N, {path} */` comments and debug media queries are never emitted'
+  ],
+  [
+    'tests-config/debug/comments/linenumbers-comments.less',
+    'same dumpLineNumbers ruling as tests-config/debug/all/linenumbers-all.less'
+  ],
+  [
+    'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
+    'same dumpLineNumbers ruling as tests-config/debug/all/linenumbers-all.less'
   ],
   [
     'tests-unit/plugin/plugin.less',
@@ -423,7 +358,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. Separate OPEN O8 owner decisions remain for canonical nested selector-list wrapping and leading whitespace from an escaped quoted selector at the header boundary; the maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`. Owner reconciliation is required for those output-policy rows and the fixture typo'
+    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it. Flattened, `.fruit-cap-` is a class of its own and the `&` a plain reference to each captured parent (owner 2026-10-09: "how do you know it\'s a prefix? that\'s why we can\'t do that"), so the golden\'s `.fruit-cap-apple, …` branches are not the flattened output either; Less `each()` is the explicit rule-multiplication form. Escaped text prints as written (owner 2026-10-09; the `.bar2` and quoted `@{c}@{d}` headers are owner-accepted golden edits). Two more differences await the owner and are not applied as golden edits (pending-golden-edits.ts): a `*[…]` capture prints one branch per line in a nested header (O8(a), owner-delegated judgment 2026-10-04), and the golden writes `foo: bar` where the quoted case\'s source writes `foo: baz`'
   ],
   [
     'tests-unit/permissive-parse/permissive-parse.less',
@@ -433,10 +368,9 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * Strict at-rule preludes: a top-level bare `@variable` in a non-value at-rule
    * prelude/name/identifier is a fatal unsupported-syntax diagnostic (4.x only
-   * warned). These upstream 4.x fixtures use the bare form (`@media @smartphone`,
-   * `@media @smartphone`); the parser should recognize the removed form well
-   * enough to report the exact `@{…}` interpolation migration target, and a `@var`
-   * inside `(...)` stays valid. Kept running (asserted to fail) so a change to the
+   * warned). This upstream 4.x fixture uses the bare form; the parser should
+   * recognize the removed form well enough to report the exact `@{…}`
+   * interpolation migration target, and a `@var` inside `(...)` stays valid. Kept running (asserted to fail) so a change to the
    * ruling trips the marker; goldens are the external less.js 4.x oracle, unedited.
    * (layer.less GRADUATED — it uses the `@{layer-name}` interpolation form, not the
    * bare `@var` prelude, so it renders byte-identical to the maintained `.css`.)
@@ -445,10 +379,26 @@ const expectedFailureFixtures = new Map<string, string>([
     'tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less',
     'deprecated bare @var at-rule preludes/names/identifiers are rejected; use @{var} interpolation'
   ],
+
+  /*
+   * media.less used the bare form too; it now interpolates (`@media @{smartphone}`)
+   * and fails on three other lines, untriaged.
+   */
   [
     'tests-unit/media/media.less',
-    'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
-  ]
+    'three lines differ from the golden: the escaped feature value `~"2/1"` is written as authored (`2/1`, golden `2 / 1`), `(min-width: (@some-var + 1))` is evaluated (`61px`, golden `(60px + 1)`), and the `@media` a mixin call places inside `@media (min-width: 768px)` is indented (golden writes it at column 0)'
+  ],
+
+  /*
+   * The math-mode fixtures (see goldenFor). They ran for the first time when
+   * the lane started pairing them with their goldens, and are untriaged:
+   * jess#351 says what each one does.
+   */
+  ['tests-config/math-always/no-sm-operations.less', 'untriaged (jess#351): the digit-led variable name `@3` is rejected'],
+  ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P46); the rest differs: `.var-args` keeps `(@var * 2) / 2 - 1%` as `calc(18 / 2 - 1%)` for `8%` (and `depth` as `calc(…)`), `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
+  ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): the `;` argument groups render (ledger P46); the rest differs: `.var-args` keeps `(@var * 2) / 2 - 1%` as `calc(18 / 2 - 1%)` for `8%`, `.slash-vs-math` writes `2px / 5px` for `2px/5px`, and `extract()` over `.aa(@y, @x..., and again, @y...)` counts `and again` as one item'],
+  ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
+  ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 
   /*
    * Previously-uncategorized hard failures — render but mismatch Less.
@@ -469,7 +419,7 @@ const expectedFailureFixtures = new Map<string, string>([
    * whose stale 4.x golden was updated: (1) `min()`/`max()` over incompatible
    * units preserve every authored argument (`min(6em, 5, 4ex, 3, 2pt, 1)`) rather
    * than emitting less.js's order-dependent partial reduction, an "implementation
-   * accident, not a semantic" — DESIGN-DECISIONS C20 (OPEN, owner-to-ratify);
+   * accident, not a semantic" — DESIGN-DECISIONS C20 (SETTLED, owner 2026-10-04);
    * `packages/fns/src/less/min-max.ts`. And (2) the numeric output policy is a
    * single owner (`format-number.ts`, shortest decimal within 1e-10 relative, no
    * significant-figure cap) — DESIGN-DECISIONS V4 (SETTLED) with F6 as its
@@ -488,7 +438,15 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * parse error, so these two import fixtures no longer surface a diagnostic —
    * they still differ from the external golden only on render layout (see the
    * expected-failure reasons), not on a parse error. */
-  ['tests-unit/urls/urls.less', 'import/not-found']
+  ['tests-unit/urls/urls.less', 'import/not-found'],
+  ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/unsupported-feature'],
+  ['tests-unit/plugin-module/plugin-module.less', 'plugin/load-failed'],
+  ['tests-config/debug/all/linenumbers-all.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-config/debug/comments/linenumbers-comments.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-config/debug/mediaquery/linenumbers-mediaquery.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-config/math-always/mixins-guards.less', 'parse/syntax-error'],
+  ['tests-config/math-always/no-sm-operations.less', 'parse/unsupported-variable-name'],
+  ['tests-config/math-parens-division/new-division.less', 'parse/syntax-error']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
@@ -500,6 +458,12 @@ const diagnosticCodesFor = (result: RenderResult): string[] => [
 
 // Allow specific fixtures even when they carry a skip reason.
 const forcedIncludes = new Set<string>([]);
+
+/*
+ * Every golden the lane registers a test for, or deliberately skips. The
+ * discovery guard at the bottom of this file checks it against the corpus.
+ */
+const claimedGoldens = new Set<string>(skippedFixtures.map(({ file }) => goldenFor(file)));
 
 describe('Can render Less files to CSS', () => {
   // Run all unit fixtures under tests-unit.
@@ -533,9 +497,10 @@ describe('Can render Less files to CSS', () => {
       const lessPath = path.join(testData, file);
 
       try {
-        const testCases = getTestCases(lessPath);
+        const testCases = getTestCases(lessPath, path.join(testData, goldenFor(file)));
 
         testCases.forEach((testCase, index) => {
+          claimedGoldens.add(path.relative(testData, testCase.expectedFile));
           const testName =
             testCases.length > 1
               ? `${file} [${index + 1}/${testCases.length}]`
@@ -546,7 +511,7 @@ describe('Can render Less files to CSS', () => {
               : '';
           const expectedFailureReason = expectedFailureFixtures.get(file);
           const renderFixture = async () => {
-            const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
+            const expectedCss = applyPendingGoldenEdits(file, readFileSync(testCase.expectedFile, 'utf8'));
 
             /*
              * Merge test case config with base compiler config
@@ -559,6 +524,7 @@ describe('Can render Less files to CSS', () => {
             >;
             const { plugins: testCasePlugins = [], ...restCompileConfig } =
               testCompileConfig;
+            const harnessSourceMap = upstreamHarnessSourceMap(file, testCase.config.language?.less?.sourceMap);
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
@@ -576,7 +542,8 @@ describe('Can render Less files to CSS', () => {
                 ...(collapseNestingTrueFixtures.has(file)
                   ? { collapseNesting: true }
                   : {}),
-                ...(forceCollapseNesting ? { collapseNesting: true } : {})
+                ...(forceCollapseNesting ? { collapseNesting: true } : {}),
+                ...(harnessSourceMap === undefined ? {} : { sourceMap: harnessSourceMap })
               }
             });
 
@@ -641,10 +608,11 @@ describe('Can render Less files to CSS', () => {
               failed,
               `${file} is expected to fail until: ${expectedFailureReason}`
             ).toBe(true);
-          }, 5000); // Short hang sentinel: expected failures must still settle.
+          });
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If getTestCases throws (no files found), create a failing test
+        claimedGoldens.add(goldenFor(file));
         it(`${file}`, () => {
           throw error;
         });
@@ -679,7 +647,7 @@ describe('Skipped Less fixtures are still failing', () => {
       return false;
     }
     try {
-      return getTestCases(path.join(testData, file)).length > 0;
+      return getTestCases(path.join(testData, file), path.join(testData, goldenFor(file))).length > 0;
     } catch {
       return false;
     }
@@ -688,10 +656,12 @@ describe('Skipped Less fixtures are still failing', () => {
   for (const { file, reason } of measurable) {
     it(`${file} still differs from its golden`, async () => {
       const lessPath = path.join(testData, file);
-      const [testCase] = getTestCases(lessPath);
+      const [testCase] = getTestCases(lessPath, path.join(testData, goldenFor(file)));
       let matched = false;
+
+      /* Outside the try: a pending golden edit that no longer applies must fail loudly. */
+      const expectedCss = applyPendingGoldenEdits(file, readFileSync(testCase.expectedFile, 'utf8'));
       try {
-        const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
         const result = await withFixtureTimeout(file, () => new Compiler({
           ...baseCompiler.opts,
           ...testCase.config,
@@ -711,23 +681,139 @@ describe('Skipped Less fixtures are still failing', () => {
         `${file} now matches its golden, so its skip is stale — remove it from `
         + `skippedFixtures and let it gate. Recorded reason: ${reason}`
       ).toBe(false);
-    }, 10000);
+    });
   }
 });
 
+/*
+ * The globs above decide what runs, so a change that drops fixtures from them
+ * (glob depth, styles.config outputs, golden pairing, build state — jess#244)
+ * leaves no failing test behind: the lane just gets smaller. This starts from
+ * the other end, every `.css` in the corpus, and fails on any golden the lane
+ * neither runs nor skips. Two kinds of `.css` are not goldens: a `legacy/` 4.x
+ * output with no `.less` of its own (the oracle for the fixture one level up),
+ * and the files listed here.
+ */
+const corpusCssThatIsNotAGolden = new Map<string, string>([
+  ['tests-config/sourcemaps/imported.css', 'inlined by tests-config/sourcemaps/basic.less'],
+  ['tests-unit/import/import-reference-issues/simple-mixin.css', 'imported by import-reference-issues.less'],
+  ['tests-unit/import/import/import-test-d.css', 'imported by import.less and import-inline.less'],
+  ['tests-unit/import/import/layer-import-2.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/import/import/layer-import-3.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/import/import/layer-import-4.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/import/import/layer-import-5.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/urls/css/background.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
+  ['tests-unit/urls/import/import-test-d.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
+  ['tests-unit/urls/actual.css', 'a stray render of urls.less committed with the corpus; urls.css is the golden'],
+  ['tests-unit/directives-bubbling/directives-bubbling.css', 'byte-identical to tests-unit/at-rules-bubbling/at-rules-bubbling.css: less.js 937d1e44 moved directives-bubbling.less to at-rules-bubbling/ and left this copy behind']
+]);
+
+/*
+ * LOCKSTEP with the less.js fork: branch `lane/v5-5-fixture-deletions` (off the
+ * fork's `alpha`) deletes these corpus files. The corpus is the unpinned sibling
+ * checkout, so this lane must be right on both sides of that change: each path
+ * here may be present (and is handled by the entries above) or absent (and the
+ * stale-entry check below does not report it). Once the fork's `alpha` carries
+ * the deletion, remove these paths together with their entries in
+ * corpusCssThatIsNotAGolden and skippedFixtures, and re-baseline less-parser's
+ * test/oracle-byte-identity.baseline.json, which digests every corpus file.
+ */
+const corpusFilesDeletedOnTheFork = new Set([
+  'tests-unit/directives-bubbling/directives-bubbling.css',
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.css',
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+  'tests-unit/urls/actual.css'
+]);
+
+describe('Less fixture discovery', () => {
+  it.skipIf(fixtureFilter !== undefined)('runs or skips every golden in the corpus', () => {
+    const isLegacyOracle = (css: string): boolean =>
+      /(^|\/)legacy\/[^/]+\.css$/.test(css) && !existsSync(path.join(testData, css.replace(/\.css$/, '.less')));
+    const unclaimed = glob
+      .sync(path.join(testData, 'tests-{unit,config}/**/*.css'))
+      .map(file => path.relative(testData, file))
+      .filter(css => !claimedGoldens.has(css) && !corpusCssThatIsNotAGolden.has(css) && !isLegacyOracle(css))
+      .sort();
+    expect(unclaimed, 'corpus goldens that no Less fixture test claims').toEqual([]);
+    const claimedAnyway = [...corpusCssThatIsNotAGolden.keys()].filter(css => claimedGoldens.has(css));
+    expect(claimedAnyway, 'listed in corpusCssThatIsNotAGolden, but a fixture now claims it: remove the entry').toEqual([]);
+    const gone = [...corpusCssThatIsNotAGolden.keys()]
+      .filter(css => !corpusFilesDeletedOnTheFork.has(css) && !existsSync(path.join(testData, css)));
+    expect(gone, 'listed in corpusCssThatIsNotAGolden, but the corpus no longer has it: remove the entry').toEqual([]);
+  });
+});
+
 describe('Less fixture harness diagnostics', () => {
-  it('surfaces fixture timeouts as harness failures', async () => {
+  const file = 'tests-unit/import/import.less';
+
+  it('fails a fixture that never settles once it passes the wall ceiling', async () => {
     await expect(
       withFixtureTimeout(
-        'tests-unit/import/import.less',
+        file,
         () => new Promise<never>(() => {
-          // Deliberately unsettled to exercise the harness timeout branch.
+          // Deliberately unsettled: nothing settles it, and it burns no CPU.
         }),
-        1
+        { cpuMs: 60_000, wallMs: 50 }
       )
     ).rejects.toMatchObject({
       name: 'FixtureTimeoutError',
-      message: 'tests-unit/import/import.less timed out before surfacing a diagnostic or render result.'
+      message: `${file} timed out before surfacing a diagnostic or render result: it was still unsettled after 50 ms.`
     });
+  });
+
+  it('fails runaway work on its CPU budget, long before the wall ceiling', async () => {
+    let running = true;
+    const runaway = async (): Promise<void> => {
+      while (running) {
+        const slice = performance.now() + 5;
+        while (performance.now() < slice) {
+          // Burn CPU, yielding to the event loop between slices, so the poll cuts it off mid-flight.
+        }
+        await new Promise(resolve => setImmediate(resolve));
+      }
+    };
+    try {
+      await expect(withFixtureTimeout(file, runaway, { cpuMs: 50, wallMs: 60_000 })).rejects.toMatchObject({
+        name: 'FixtureTimeoutError',
+        message: expect.stringMatching(/of CPU, over its 50 ms budget\.$/)
+      });
+    } finally {
+      running = false;
+    }
+  });
+
+  it('fails runaway work that never yields to the event loop once it settles', async () => {
+    /*
+     * A render that only chains microtasks starves the poll, the way Jess's
+     * synchronous eval does, so the budget is only checked when it finishes.
+     */
+    const start = process.cpuUsage();
+    const neverYields = async (): Promise<string> => {
+      for (;;) {
+        const { user, system } = process.cpuUsage(start);
+        if ((user + system) / 1000 > 100) {
+          return 'rendered';
+        }
+        await Promise.resolve();
+      }
+    };
+    await expect(withFixtureTimeout(file, neverYields, { cpuMs: 50, wallMs: 60_000 })).rejects.toMatchObject({
+      name: 'FixtureTimeoutError',
+      message: expect.stringMatching(/of CPU, over its 50 ms budget\.$/)
+    });
+  });
+
+  it('does not charge a fixture for time spent off the CPU', async () => {
+    /*
+     * On a loaded machine a fixture waits for a core; on its CPU clock that is
+     * the same as this sleep. A wall budget of 100 ms would fail it.
+     */
+    const offCpu = () => new Promise<string>(resolve => setTimeout(() => resolve('rendered'), 500));
+    await expect(withFixtureTimeout(file, offCpu, { cpuMs: 100, wallMs: 60_000 })).resolves.toBe('rendered');
+  });
+
+  it('reads a harness function argument whose value is null from its primitive', () => {
+    expect(readNumericFunctionArg({ value: null, valueOf: () => 3 })).toBe(3);
+    expect(readStringFunctionArg({ value: null, valueOf: () => '"red"' })).toBe('red');
   });
 });

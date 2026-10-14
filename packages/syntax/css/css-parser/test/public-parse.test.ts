@@ -154,7 +154,12 @@ describe('public CSS parse()', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
-        selector: { selectors: [simpleComplex(':nth-child(-n+2 of .item)')] }
+        selector: { selectors: [{
+          type: 'PseudoSelector',
+          name: ':nth-child',
+          arg: { type: 'AnPlusB', src: '-n+2' },
+          args: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.item' }] }
+        }] }
       }]
     });
   });
@@ -279,7 +284,11 @@ describe('public CSS parse()', () => {
     expect(containsFunctionCall(document, 'scroll-state')).toBe(false);
   });
 
-  it('lowers CST-permitted static escaped quotes to canonical escaped Quoted values', () => {
+  /*
+   * `~"…"` is a Less escaped string, not CSS (hard rule 1): in CSS the `~` is a
+   * delimiter and the string after it is an ordinary `<string>`.
+   */
+  it('reads a `~` before a string as a delimiter, never as an escaped string', () => {
     const source = '.asset { double: ~"theme"; single: ~\'tone\'; }';
     const cst = parseCssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -288,12 +297,11 @@ describe('public CSS parse()', () => {
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
       rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: 'double', value: { type: 'Quoted', src: '~"theme"', value: 'theme', quote: '"', escaped: true } },
-        { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: '~\'tone\'', value: 'tone', quote: '\'', escaped: true } }
+        { type: 'Declaration', name: 'double', value: [{ type: 'Any', src: '~' }, { type: 'Quoted', src: '"theme"', value: 'theme', quote: '"', escaped: false }] },
+        { type: 'Declaration', name: 'single', value: [{ type: 'Any', src: '~' }, { type: 'Quoted', src: '\'tone\'', value: 'tone', quote: '\'', escaped: false }] }
       ] }]
     });
 
-    // CSS treats `$` as literal text here; only malformed escaped strings reject.
     for (const invalid of ['.asset { value: ~"theme; }', '.asset { value: ~\'tone; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }

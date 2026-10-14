@@ -1,22 +1,24 @@
 import type { Statement, Stylesheet } from './ast/nodes.js';
-import type { ImportOptions } from './import-options.js';
+import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
-import type { Context, ContextOptions, ResolvedOptions } from './context.js';
+import type { Context, ContextOptions, ResolvedOptions, SourceOptions, SourceSettings } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
+import type { ValueEvaluator } from './ast/value-eval.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
   document?: Stylesheet;
 
   /**
-   * Dialect-owned defaults proposed by a successful parser. Context accepts the
-   * entry parser's set once, folds constructor-supplied compile options over it,
-   * and retains that immutable policy for the session. Imported parsers cannot
-   * reconfigure the live Context.
+   * This document's dialect defaults: the parsing plugin's own settings over its
+   * language's implicit defaults. Context resolves the document's policy from
+   * them once, under the settings scoped to the source and the Context's
+   * explicit options (DESIGN-DECISIONS C19), so a document keeps its own
+   * language's defaults whichever document imported it.
    */
   dialectDefaults?: Readonly<Partial<ResolvedOptions>>;
 
@@ -61,6 +63,18 @@ export type SafeParseOptions = {
     allowApplySelectors?: ApplySelectorKind[];
   };
   importOptions?: ImportOptions;
+
+  /**
+   * The settings that cover this source (its folder's `styles.config`, then its
+   * language's settings, then the compile's own), when the host supplies them.
+   * A plugin reads the settings for this document from them in place of
+   * `compilerOptions`, and over its own constructor options, so a setting
+   * reaches only the files it covers.
+   */
+  sourceOptions?: SourceOptions;
+
+  /** The `styles.config` file `sourceOptions` were read from ({@link SourceSettings.configFile}). */
+  sourceConfigFile?: SourceSettings['configFile'];
 };
 
 /**
@@ -155,12 +169,20 @@ export interface PluginInterface {
 
   /**
    * Explicit opt-in for an external import identifier (a URL or
-   * protocol-relative specifier). Context asks this before it enters the normal
-   * resolve → locate → source → parse pipeline. A positive result does not
+   * protocol-relative specifier). Context asks this before an `@import` (an
+   * `(inline)` one included) enters the normal resolve → locate → source → parse
+   * pipeline. A positive result does not
    * fetch: this plugin must still resolve and locate the source through those
-   * ordinary capabilities. Absent means external imports remain CSS terminals.
+   * ordinary capabilities. Unclaimed, an external import stays a CSS terminal.
+   * An import written inside a remote document is rebased onto that document's
+   * URL first, so it is asked here too. Throwing rejects the import as an error.
+   *
+   * `mustLoad` is true when the import can never stay a CSS `@import` —
+   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`. Unclaimed, such
+   * an import is an error; a plugin that will not load it may throw first to
+   * give its own reason.
    */
-  canResolveImport?(specifier: string, currentDir: string, searchPaths: string[]): boolean | Promise<boolean>;
+  canResolveImport?(specifier: string, currentDir: string, searchPaths: string[], mustLoad: boolean): boolean | Promise<boolean>;
 
   /**
    * Pick the first one that exists. Return null to let another plugin handle the path.
@@ -168,7 +190,8 @@ export interface PluginInterface {
   locate?(pathCandidates: string[], currentDir: string): null | string | Promise<string | null>;
 
   /**
-   * Get the source code for the file.
+   * Get the source code for the file. Context asks the plugin whose `locate`
+   * returned the path, falling back to the first plugin with this capability.
    */
   getSource?(absoluteFilePath: string): Promise<string>;
 
@@ -182,6 +205,14 @@ export interface PluginInterface {
    * rendering.
    */
   transformUrl?(request: UrlTransformRequest): string | undefined;
+
+  /**
+   * The URL option {@link transformUrl} would add to `request` that an escaped
+   * `url()` body does not get, since no URL option changes an escaped string
+   * (ledger V3), or `undefined`. Less names `urlArgs`: the author loses the
+   * argument Less 4 added, so it is reported where the `url()` is written.
+   */
+  escapedUrlSkips?(request: UrlTransformRequest): string | undefined;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
@@ -216,6 +247,13 @@ export interface PluginInterface {
    */
   applyModuleConfig?(request: ModuleConfigRequest): readonly ModuleConfigRejection[] | void;
 
+  /**
+   * The value evaluator for the documents this plugin parses: its language's
+   * built-in functions and value semantics. A document is evaluated with its
+   * own plugin's evaluator, whichever document imported it (DESIGN-DECISIONS C19).
+   */
+  readonly valueEvaluator?: ValueEvaluator;
+
   /** Optional compiler hooks used by compatibility plugins. */
   setContext?(context: Context): void;
   setCurrentFilePath?(filePath: string): void;
@@ -229,7 +267,8 @@ export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
 
   /**
-   * Does a basic path resolution. Node resolution is in other plugins.
+   * Does a basic path resolution. Node resolution is in other plugins. A URL is
+   * not a path, so it passes through for the plugin that claims it.
    */
   resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
     const bases = [currentDir, ...searchPaths];
@@ -239,7 +278,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     for (const base of bases) {
       const baseDir = isAbsolute(base) ? base : join(currentDir, base);
       for (const path of filePath) {
-        const abs = resolve(baseDir, path);
+        const abs = EXTERNAL_IMPORT_SPECIFIER.test(path) ? path : resolve(baseDir, path);
         if (abs && !seen.has(abs)) {
           seen.add(abs);
           out.push(abs);
@@ -254,9 +293,12 @@ export abstract class AbstractPlugin implements PluginInterface {
     return readFile(absoluteFilePath, 'utf8');
   }
 
-  /** Gets the first match using from the filesystem that exists */
+  /** Gets the first match from the filesystem that exists. A URL is not a file, so it is left to the plugin that claims it. */
   locate(pathCandidates: string[], currentDir: string): null | string {
     for (const candidate of pathCandidates) {
+      if (EXTERNAL_IMPORT_SPECIFIER.test(candidate)) {
+        continue;
+      }
       const absolutePath = isAbsolute(candidate) ? candidate : join(currentDir, candidate);
       if (existsSync(absolutePath)) {
         return absolutePath;

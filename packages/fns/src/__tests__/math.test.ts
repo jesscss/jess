@@ -2,13 +2,7 @@ import { abs, acos, asin, atan, ceil, cos, floor, sin, sqrt, tan } from '../less
 
 import { makeDimension } from '@jesscss/core';
 import { describe, it, test, expect } from 'vitest';
-
-function invoke(fn: unknown, ...args: unknown[]): unknown {
-  if (typeof fn !== 'function') {
-    throw new TypeError('Expected a callable function.');
-  }
-  return Reflect.apply(fn, undefined, args);
-}
+import { invoke } from './harness.js';
 
 describe('math', () => {
   const dim = makeDimension(2.4, 'px');
@@ -25,11 +19,11 @@ describe('math', () => {
   });
 
   test('asin', () => {
-    expect(asin(makeDimension(0.5, 'px'))).toMatchObject({ number: 0.5235987755982989, unit: 'rad' });
+    expect(invoke(asin, makeDimension(0.5, 'px'))).toMatchObject({ number: 0.5235987755982989, unit: 'rad' });
   });
 
   test('atan', () => {
-    expect(atan(makeDimension(0.5, 'px'))).toMatchObject({ number: 0.4636476090008061, unit: 'rad' });
+    expect(invoke(atan, makeDimension(0.5, 'px'))).toMatchObject({ number: 0.4636476090008061, unit: 'rad' });
   });
 
   test('ceil', () => {
@@ -37,7 +31,7 @@ describe('math', () => {
   });
 
   test('cos', () => {
-    expect(cos(dim)).toMatchObject({ number: -0.7373937155412454, unit: '' });
+    expect(invoke(cos, dim)).toMatchObject({ number: -0.7373937155412454, unit: '' });
   });
 
   test('floor', () => {
@@ -45,14 +39,14 @@ describe('math', () => {
   });
 
   test('sin', () => {
-    expect(sin(dim)).toMatchObject({ number: 0.675463180551151, unit: '' });
+    expect(invoke(sin, dim)).toMatchObject({ number: 0.675463180551151, unit: '' });
   });
 
   test('sqrt', () => {
-    expect(sqrt(dim)).toMatchObject({ number: 1.5491933384829668, unit: 'px' });
+    expect(invoke(sqrt, dim)).toMatchObject({ number: 1.5491933384829668, unit: 'px' });
   });
 
   test('tan', () => {
-    expect(tan(dim)).toMatchObject({ number: -0.9160142896734107, unit: '' });
+    expect(invoke(tan, dim)).toMatchObject({ number: -0.9160142896734107, unit: '' });
   });
 });

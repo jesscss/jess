@@ -30,7 +30,7 @@
  */
 
 import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
-import type { Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
+import type { ExtendInstruction, Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
 const importStartKey = Symbol.for('jess.ast.import-source-start');
 const importEndKey = Symbol.for('jess.ast.import-source-end');
@@ -60,6 +60,16 @@ export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
   readonly name: string;
   readonly prelude: ValueNode | null;
   readonly rules: Statement[];
+
+  /*
+   * A body-form `&:extend()` written directly in the block (ledger X19): the rule
+   * the block lands in extends, inside the block's scope, as if the extend were
+   * written in that rule's body within the block. The render walk applies it where
+   * the block lands, as it does a mixin definition's (X16); a block outside every
+   * rule extends nothing. Undefined when the body has none, but always DECLARED by
+   * the factory, so a block with one shares the hidden class of one without.
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
 }
 
 /**
@@ -99,7 +109,7 @@ export interface UnknownAtRuleBlock extends SpanSlots {
  * `@plugin`, but core owns only the structural Plugin fact and its lexical
  * scope semantics; it owns neither module resolution nor a dialect runtime.
  */
-export interface Plugin {
+export interface Plugin extends SpanSlots {
   readonly type: 'Plugin';
 
   /** Quoted/URL/template target, matching the typed import-target family. */
@@ -112,8 +122,19 @@ export interface Plugin {
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
-  rules: Statement[]
-): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, rules, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
+  rules: Statement[],
+  extendInstructions?: readonly ExtendInstruction[]
+): AtRuleBlock => ({
+  type: 'AtRuleBlock',
+  name,
+  prelude,
+  rules,
+  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
+  _s: NO_SPAN,
+  _e: NO_SPAN,
+  _bs: NO_SPAN,
+  _be: NO_SPAN
+});
 
 export const atRuleStatement = (
   name: string,
@@ -197,4 +218,4 @@ export const unknownAtRuleBlock = (
 export const plugin = (
   target: Quoted | Url | Interpolation,
   options: Interpolation | null = null
-): Plugin => ({ type: 'Plugin', target, options });
+): Plugin => ({ type: 'Plugin', target, options, _s: NO_SPAN, _e: NO_SPAN });

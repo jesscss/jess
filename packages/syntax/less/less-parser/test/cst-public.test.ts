@@ -59,7 +59,7 @@ function expectNoModeLabels(tree: CstNode) {
 }
 
 describe('@jesscss/less-parser/cst', () => {
-  it('parses Less through the public core-free CST entry', () => {
+  it('parses Less through the public CST entry', () => {
     const result = parseLessCst('@color: red; .x { color: @color; }');
 
     expect(result.errors).toHaveLength(0);
@@ -80,7 +80,7 @@ describe('@jesscss/less-parser/cst', () => {
   });
 
   it('uses one semantic group label for nested generic pseudo arguments', () => {
-    const result = parseLessCst('.a:lang(([wide])) { color: red; }');
+    const result = parseLessCst('.a:state(([wide])) { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -199,8 +199,8 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'Quoted')).toBeDefined();
     expect(leafValues(findNode(imp!, 'VariableInterpolation')!)).toEqual(['@{', 'name', '}']);
 
-    /* The media-query postlude goes through the `@media` query grammar (P35). */
-    expect(findNode(imp!, 'MediaQueryPrelude')).toBeDefined();
+    /* The media-query postlude goes through the `@media` query grammar (P35): the CSS base's list. */
+    expect(findNode(imp!, 'QueryPrelude')).toBeDefined();
     expect(leafValues(findNode(imp!, 'ImportTail')!)).toEqual(expect.arrayContaining(['screen', 'and', '600']));
   });
 
@@ -316,10 +316,18 @@ describe('Less quoted and URL interpolation CST facts', () => {
     expect(result.errors).toHaveLength(0);
     const attribute = findNode(result.tree, 'AttributeSelector');
     expect(attribute).toBeDefined();
-    expect(findNode(attribute!, 'AttributeName')).toBeDefined();
-    expect(findNode(attribute!, 'AttributeMatch')).toBeDefined();
+
+    /*
+     * The CSS base's flat frame: namespace, name, operator, value, flag. The
+     * namespace prefix is the CSS base's own terminal, one `svg|` leaf, as in
+     * every dialect — Less no longer restates it as a node of its own.
+     */
+    expect(attribute!.rules.some(child => child._tag === 'leaf' && child.value === 'svg|')).toBe(true);
+    expect(findNode(attribute!, 'AttributeNamespace')).toBeUndefined();
     expect(findNode(attribute!, 'Quoted')).toBeDefined();
     for (const legacyLabel of [
+      'AttributeName',
+      'AttributeMatch',
       'StaticAttribute',
       'StaticAttributeName',
       'StaticAttributeMatch',
@@ -402,6 +410,8 @@ describe('Less direct-AST closure CST contract', () => {
     ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinDefinition'],
     ['nested mixin call', '.a { .m(1); }', 'MixinCall'],
     ['nested extend instruction', '.a { &:extend(.b); }', 'ExtendStatement'],
+    ['mixin-definition extend instruction', '.m() { &:extend(.b); }', 'ExtendStatement'],
+    ['guarded mixin-definition extend instruction', '.m() when (@a = 1) { &:extend(.b); c: d; }', 'ExtendStatement'],
     ['static pseudo selector', '.a:hover, .b::before { color: red; }', 'Ruleset'],
     ['static An+B pseudo selector', '.a:nth-child(odd), .b:nth-last-child(2n + 1) { color: red; }', 'Ruleset'],
     ['static attribute selector', '.a[data-state][role=button][title="Save" i] { color: red; }', 'Ruleset'],
@@ -498,7 +508,7 @@ describe('Less direct-AST closure CST contract', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(findNodes(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
-    expect(findNodes(result.tree, 'Keyword').map(leafValues)).toContainEqual(['screen']);
+    expect(findNodes(result.tree, 'QueryNonOnlyKeyword').map(leafValues)).toContainEqual(['screen']);
 
     /* The sum operator leaf's value is the sign alone, matching the product
      * operator's. Its authored padding is the leaf's span, not its value. */
@@ -538,12 +548,13 @@ describe('Less direct-AST closure CST contract', () => {
 
   it('preserves public CST owners for each structural query feature form', () => {
     const cases: readonly [source: string, grammarType: string][] = [
-      ['@media (tv) { .card { color: red; } }', 'QueryBareFeature'],
-      ['@media (min-width: 1px) { .card { color: red; } }', 'QueryColonFeature'],
-      ['@media (width >= 1px) { .card { color: red; } }', 'QueryComparisonFeature'],
-      ['@media (1px <= width) { .card { color: red; } }', 'QueryRangeFeature'],
-      ['@media ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
-      ['@media (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature'],
+      /* A media group is the css base's `<media-in-parens>`: a feature's contents, or a condition. */
+      ['@media (tv) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media (min-width: 1px) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media (width >= 1px) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media (1px <= width) { .card { color: red; } }', 'QueryFeatureContents'],
+      ['@media ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'MediaCondition'],
+      ['@media (not (height > 670px)) { .card { color: red; } }', 'QueryFeatureContents'],
 
       /* A container group is the css base's `( <container-condition> )`. */
       ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'ContainerQueryCondition'],
@@ -576,11 +587,13 @@ const LESS_DOC_CORPUS: string[] = [
   '@media (min-width: @w) { .a { display: block; } }',
   '// line comment\n.a { color: red; } /* block */',
   '.a { .b { .c { color: red } } }',
-  '@list: 1px, 2px, 3px; .a { margin: @list; }'
+  '@list: 1px, 2px, 3px; .a { margin: @list; }',
+  '.a { color: red; }\n\n  ',
+  '.a { color: red; }\n// c\n'
 ];
 
 describe('@jesscss/less-parser/cst — parseLessDoc structural parity', () => {
-  it('parseLessDoc().tree (absolutized) equals parseLessCst().tree across a corpus', () => {
+  it('parseLessDoc() matches parseLessCst() (tree and leftover input) across a corpus', () => {
     for (const input of LESS_DOC_CORPUS) {
       const oneShot = parseLessCst(input);
       const doc = parseLessDoc(input);
@@ -591,6 +604,9 @@ describe('@jesscss/less-parser/cst — parseLessDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(oneShot.unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseLessCst(`${input}\n`).unconsumedFrom);
     }
   });
 });

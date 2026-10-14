@@ -376,24 +376,33 @@ describe('Jess conditional at-rule value holes', () => {
   /**
    * `<mf-value>` is ONE component value (mediaqueries-4 §4). A multi-part or
    * comma-separated operand is therefore not a feature at all: mediaqueries-5
-   * §3.1 makes it `<general-enclosed>`, which this dialect does not read for
-   * media/container yet, so it rejects it today.
+   * §3.1 makes it `<general-enclosed>`. `@media` reads the CSS base's media
+   * query list, so it reads that as css does: the feature, then the rest of its
+   * component values. `@container` still rejects it, as css does.
    *
-   * DELIBERATE DIVERGENCE from the css copy of this matrix (jess#315): css reads
-   * a media feature's general-enclosed contents as structure, so its copy pins
-   * `@media (foo: bar baz)` and `@media (foo: a, b)` as parsed trees. This
-   * dialect's query grammar converges later; until then these rows differ.
-   *
-   * What is pinned here is the CONTRACT, not the rejection. css used to MATCH
+   * What is pinned for a rejection is the CONTRACT, not the rejection. css used to MATCH
    * this shape and then throw a raw internal `Error` out of its reduction, so a
    * consumer could not tell "your CSS is malformed" from "the parser crashed".
    * Whichever way the general-enclosed gap is closed, a failure must reach the
    * caller as the package's typed parse error — a `SyntaxError` subclass
    * carrying `code: 'parse/syntax-error'` — and never as a bare `Error`.
    */
+  it('non-<mf-value>: reads a media feature with more component values as general-enclosed', () => {
+    const featureOf = (source: string): unknown => {
+      const rule = parse(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    expect(featureOf('@media (foo: bar baz) { a { color: red; } }')).toMatchObject({
+      type: 'Block',
+      value: { type: 'Sequence', parts: [{ type: 'Operation', operator: ':', left: kw('foo'), right: kw('bar') }, kw('baz')] }
+    });
+    expect(featureOf('@media (foo: a, b) { a { color: red; } }')).toMatchObject({
+      type: 'Block',
+      value: { type: 'List', sep: ',', value: [{ type: 'Operation', operator: ':', left: kw('foo'), right: kw('a') }, kw('b')] }
+    });
+  });
+
   for (const [label, source] of [
-    ['a space-separated feature value', '@media (foo: bar baz) { a { color: red; } }'],
-    ['a comma-separated feature value', '@media (foo: a, b) { a { color: red; } }'],
     ['a space-separated @container feature value', '@container (foo: bar baz) { a { color: red; } }']
   ] as Array<[string, string]>) {
     it(`non-<mf-value>: reports ${label} as a typed parse error, never a raw Error`, () => {

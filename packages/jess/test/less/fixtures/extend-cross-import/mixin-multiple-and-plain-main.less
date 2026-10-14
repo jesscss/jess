@@ -1,0 +1,8 @@
+.m() {
+  @import (multiple) "plain-base.less";
+}
+.y {
+  .m();
+}
+@import "plain-base.less";
+.x:extend(.sm) {}

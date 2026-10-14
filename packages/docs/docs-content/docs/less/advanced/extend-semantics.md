@@ -69,7 +69,7 @@ into a single `:is(...)` at that position, rather than left as a comma list.
 `.button:hover, .submit:hover` share every part except the leading compound, so they
 compact to `:is(.button, .submit):hover`.
 
-Two guard rails on this compaction:
+Three guard rails on this compaction:
 
 - **Single-compound rows** only merge when they share a trailing suffix. Two whole
   branches that share *nothing* (`.ext8.ext9` and `.fuu`) stay a plain comma list —
@@ -78,6 +78,13 @@ Two guard rails on this compaction:
   shared parent-composition prefix (a flattened nested rule's hoisted header). A
   top-level rule's own header keeps `.foo .bar, .foo .baz` as a comma list — 5.x
   does not `:is()`-collapse authored complex rows.
+- **Specificity is kept.** Rows join one `:is()` only when the grouped parts have the
+  same specificity and may sit inside `:is()` — the rule every extend `:is()` group
+  follows, in every output mode (see
+  [Grouping keeps each selector's specificity](./extend-is-wrapping.md#grouping-keeps-each-selectors-specificity)).
+  `#submit` in place of `.submit` above gives `.button:hover, #submit:hover`, and
+  `.arrow::before` / `.arrow::after` never share an `:is()`, since a pseudo-element
+  is not allowed inside one.
 
 ## Nested output: re-nesting and its flatten triggers
 
@@ -108,7 +115,7 @@ extender with no shared ancestor is unchanged.
 
 **Flatten triggers.** Re-nesting cannot express an extend match that **crosses the
 `&`** — the join between a parent context and a child-appended compound. When that
-happens the rule (and its descendants) flatten to a top-level block instead. Three
+happens the rule (and its descendants) flatten to a top-level block instead. These
 triggers force a flatten:
 
 - **A nested rule that itself carries `:extend()`.** Its extender contribution
@@ -119,12 +126,33 @@ triggers force a flatten:
   context changed under it. A *uniform* alias that also rewrites the child's own
   compound does **not** cross and stays nested.
 - **A nested rule whose whole composed complex is matched exactly by an extender that
-  does not descend from its parent** (a hoisted whole-complex sibling).
+  does not descend from its parent** (a hoisted whole-complex sibling), unless the rule
+  has nested children (then the extender splits out, see below).
+- **A rule with an at-rule inside it whose own extend reaches the rule's declarations
+  in that at-rule** (see `@media` scoping below). The rule is written as flattened
+  output writes it.
 
 When there is **no** shared prefix to strip and the match does not cross the `&`, the
 whole complex simply flattens. A flatten whose subject still has surviving nested
 children re-nests the corrected subtree under its hoisted header rather than composing
 the children flat.
+
+A flattened rule carries its whole composed selector, so it moves out of every rule it
+was nested in. An at-rule in between (`@media`, `@supports`) moves with it:
+
+```less
+.a { @media screen { .b, .c { e { y: 2; } } } }
+.d:extend(.a .b e) {}
+```
+
+```css
+@media screen {
+  :is(.a .b, .a .c) e,
+  .d {
+    y: 2;
+  }
+}
+```
 
 ## Exact extend into a rule with children
 
@@ -133,6 +161,31 @@ the exact target has surviving nested children, the extender **splits out** to a
 separate sibling rule carrying only the target's *direct* declarations (dropped if
 empty) — it does not fold into the block header and leak into the children. An
 `all`-extender folds into the header and does propagate to children.
+
+In nested output, an extender nested under the target's parent splits out beside the
+target. One with a top-level selector splits out at the top level, inside any
+`@media` the target sits in:
+
+```less
+.a { .b { y: 1; .c { x: 1; } } }
+.q:extend(.a .b) {}
+```
+
+```css
+.a {
+  .b {
+    y: 1;
+    .c {
+      x: 1;
+    }
+  }
+}
+.q {
+  y: 1;
+}
+```
+
+Flattened output has no nested children to protect, so it writes `.a .b, .q { y: 1; }`.
 
 ## Fixpoint: chained and circular extends
 
@@ -161,6 +214,41 @@ media scope; it does not reach the top level or a sibling media. A **top-level**
 reaches everything, including inside nested media. Unlike Less 4.x, 5.x keeps nested
 `@media` blocks nested — it does not merge or flatten them.
 
+That includes an at-rule written inside the rule an extend reaches. When the output is
+flattened, the at-rule is written outside the rule with the rule's selector inside it,
+and that selector carries the extend too:
+
+```less
+.b { &:hover { @media print { color: red; } } }
+.q:extend(.b:hover all) {}
+```
+
+```css
+@media print {
+  .b:hover,
+  .q {
+    color: red;
+  }
+}
+```
+
+The declarations written in that at-rule are the rule's, in the at-rule's scope, so an
+extend written inside the at-rule reaches them too. Nested output writes such a rule
+the way flattened output does:
+
+```less
+.b { @media print { y: 1; .q:extend(.b) {} } }
+```
+
+```css
+@media print {
+  .b,
+  .b .q {
+    y: 1;
+  }
+}
+```
+
 ## `@import (reference)` visibility
 
 `@import (reference)` hides the imported sheet's own rules from output. An extend that
@@ -174,10 +262,10 @@ an `:is(a, b)` group is visible if *either* member is visible.
 
 - **No partial-property extend.** Extend is selector-level only — it shares a rule's
   whole declaration block. It cannot pull in a single property.
-- **No variable-target matching.** An interpolated selector as a match *target*
-  matches nothing (`:extend(@{variable})` finds nothing, and a `@{variable}` rule is
-  never matched *by* an extend). An interpolated selector as the *extender* — i.e.
-  `@{variable}:extend(.target)` — does work.
+- **No variable in the extend target.** `:extend(@{variable})` matches nothing. A
+  rule whose selector is interpolated (`@{variable} { … }`, `.c-@{n} { … }`) IS
+  matched once resolved, and an interpolated selector as the *extender* —
+  `@{variable}:extend(.target)` — works.
 - **No normalization of the target form.** Matching is byte-exact: a leading star
   (`*.class` ≠ `.class`), pseudo-class order (`:hover:visited` ≠ `:visited:hover`),
   and `nth` form (`1n+3` ≠ `n+3`) all matter. The one exception is attribute-selector

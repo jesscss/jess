@@ -5,8 +5,8 @@
  * This deliberately does not use the workspace package manager after packing:
  * every Jess package comes from an npm-style tarball in an empty temporary
  * project. That catches workspace links, missing `files` entries, invalid
- * workspace-protocol rewriting, and package-closure omissions which source
- * tests cannot see.
+ * workspace-protocol rewriting, package-closure omissions, and runtime imports
+ * a manifest does not declare, which source tests cannot see.
  *
  * It is intentionally version-agnostic. The alpha release scripts resolve the
  * final lockstep version later; `pnpm pack` rewrites workspace dependencies in
@@ -20,6 +20,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync
@@ -27,7 +28,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getAlphaReleasePlan } from './release-utils.mjs';
+import { findUndeclaredRuntimeImports, getAlphaReleasePlan } from './release-utils.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const allowlistPath = path.join(rootDir, 'scripts/release/alpha-allowlist.json');
@@ -133,6 +134,37 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
       `${pkg.name}: packed dependencies must carry @jesscss/parser-shared@${expectedVersion}`
     );
   }
+
+  /*
+   * npm and Yarn run a dependency's install hooks in the consumer's tree, where
+   * only the published `files` exist. The consumer install below passes
+   * `--ignore-scripts`, so it cannot see a hook that fails there: a
+   * `postinstall` running an unpublished workspace script broke every npm
+   * install of `@jesscss/scss-parser`. No Jess package needs code to run at
+   * install, so a packed hook is a release defect, not a case to inspect.
+   */
+  for (const hook of ['preinstall', 'install', 'postinstall']) {
+    assert(
+      manifest.scripts?.[hook] === undefined,
+      `${pkg.name}: packed scripts.${hook} runs at consumer install: ${manifest.scripts?.[hook]}`
+    );
+  }
+
+  /*
+   * MIT requires the notice to travel with every copy. Packages without their
+   * own LICENSE get the workspace root's from `pnpm pack`/`pnpm publish`;
+   * check the tarball rather than trusting that implicit copy. No shell: the
+   * path goes to tar as one argument, and Windows tar ends lines with CRLF.
+   */
+  const listing = spawnSync('tar', ['-tzf', tarball], { encoding: 'utf8' });
+  assert(
+    !listing.error && listing.status === 0,
+    `${pkg.name}: cannot list ${tarball}: ${listing.error?.message ?? listing.stderr}`
+  );
+  assert(
+    listing.stdout.split(/\r?\n/u).includes('package/LICENSE'),
+    `${pkg.name}: packed tarball has no LICENSE`
+  );
 }
 
 function packageDirFor(pkgName) {
@@ -173,6 +205,25 @@ function assertConsumerPackagesAreReal(consumerDir, pkgNames) {
       }
     }
   }
+}
+
+/*
+ * npm hoists every tarball to the top of this one flat tree, so a package that
+ * imports a dependency it never declares still loads here, and fails for a
+ * consumer with a strict (pnpm, Yarn PnP) install. Check the declarations
+ * against the shipped files instead.
+ */
+function assertRuntimeImportsDeclared(consumerDir, pkgNames) {
+  const problems = pkgNames.flatMap((name) => {
+    const installed = path.join(consumerDir, 'node_modules', packageDirFor(name));
+    const manifest = JSON.parse(readFileSync(path.join(installed, 'package.json'), 'utf8'));
+    return [...findUndeclaredRuntimeImports(installed, manifest)].map(([dependency, files]) =>
+      `${name} imports ${dependency} (${files.join(', ')}) without declaring it`);
+  });
+  assert(
+    problems.length === 0,
+    `packed packages import dependencies missing from their dependencies, optionalDependencies and peerDependencies:\n- ${problems.join('\n- ')}`
+  );
 }
 
 function writeConsumerChecks(consumerDir, packageNames) {
@@ -241,7 +292,12 @@ assert.ok(!existsSync(path.join(bin, process.platform === 'win32' ? 'lessc.cmd' 
 
 const help = run(jess, ['--help']);
 assert.equal(help.status, 0, help.stderr);
-assert.match(help.stdout, /Usage: jess <input> \\[output\\] \\[-o outdir\\]/u);
+assert.match(help.stdout, /Usage: jess <input> \\[output\\] \\[options\\]/u);
+
+const installed = JSON.parse(readFileSync(path.join(consumer, 'node_modules', 'jess', 'package.json'), 'utf8'));
+const version = run(jess, ['--version']);
+assert.equal(version.status, 0, version.stderr);
+assert.equal(version.stdout, \`\${installed.version}\\n\`);
 
 writeFileSync(path.join(fixture, 'dep.less'), '.dep { color: blue; }\\n');
 writeFileSync(path.join(fixture, 'entry.less'), '@import "./dep.less";\\n.entry { color: red; }\\n');
@@ -357,6 +413,7 @@ function main() {
 
     run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev'], consumerDir);
     assertConsumerPackagesAreReal(consumerDir, plan.publishOrder);
+    assertRuntimeImportsDeclared(consumerDir, plan.publishOrder);
     const checks = writeConsumerChecks(consumerDir, plan.publishOrder);
     run(process.execPath, [checks.imports], consumerDir);
     run(process.execPath, [checks.cli], consumerDir);

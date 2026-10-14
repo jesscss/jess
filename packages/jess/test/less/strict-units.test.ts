@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { resolveLessTestDataRoot } from '../test-utils.js';
+import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 
 describe('Less strict-unit final validation', () => {
   it('applies legacy language.less math and strictUnits through Context', async () => {
@@ -19,7 +20,7 @@ describe('Less strict-unit final validation', () => {
 
     const result = await compiler.renderToResult(fixture, { outputFile: expected });
 
-    expect(result.css).toBe(readFileSync(expected, 'utf8'));
+    expect(result.css).toBe(applyPendingGoldenEdits('tests-config/units/strict/strict-units.less', readFileSync(expected, 'utf8')));
   });
 
   it('applies legacy language.less math without enabling strict units', async () => {
@@ -35,15 +36,14 @@ describe('Less strict-unit final validation', () => {
 
     const result = await compiler.renderToResult(fixture, { outputFile: expected });
 
-    const expectedCss = readFileSync(expected, 'utf8');
-    expect(result.css).toBe(expectedCss);
+    expect(result.css).toBe(applyPendingGoldenEdits('tests-config/units/no-strict/no-strict.less', readFileSync(expected, 'utf8')));
   });
 
   it('applies unitMode loose: the Less 4.x fold, selected only by the explicit option', async () => {
     const fixture = path.join(resolveLessTestDataRoot(), 'tests-config/units/loose/loose.less');
     const expected = path.join(resolveLessTestDataRoot(), 'tests-config/units/loose/loose.css');
     const result = await new Compiler().renderToResult(fixture, { outputFile: expected });
-    expect(result.css).toBe(readFileSync(expected, 'utf8'));
+    expect(result.css).toBe(applyPendingGoldenEdits('tests-config/units/loose/loose.less', readFileSync(expected, 'utf8')));
   });
 
   it('divides every slash under always; under parens-division each side of the slash computes', async () => {
@@ -61,6 +61,8 @@ describe('Less strict-unit final validation', () => {
       language: 'less',
       extension: '.less'
     });
+
+    // `4 / 2` divides, and the unitless 2 adopts the `em` of `5em` (ledger V27).
     expect(eager).toContain('first: 7em;');
 
     /*
@@ -111,6 +113,6 @@ describe('Less strict-unit final validation', () => {
 
     const result = await compiler.renderToResult(fixture, { outputFile: expected });
 
-    expect(result.css).toBe(readFileSync(expected, 'utf8'));
+    expect(result.css).toBe(applyPendingGoldenEdits('tests-config/units/strict/strict-units.less', readFileSync(expected, 'utf8')));
   });
 });

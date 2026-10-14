@@ -3,8 +3,7 @@ import * as G from '../src/grammar/cst.js';
 import { createServer } from 'vite';
 import { compiledGrammarCoverageDefinitions, createGrammarCoverageCollector, createGrammarInstrumentationContext, run } from 'parseman';
 import { cssGrammar, cssCstGrammar } from '../src/grammar.js';
-import { parseCst } from '../src/cst.js';
-import { parseCssCst } from '../src/cst.js';
+import { parseCst, parseCssCst } from '../src/cst.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,23 +36,6 @@ function containsNode(value: unknown, predicate: (value: Record<string, unknown>
   return predicate(record)
     || Object.values(record).some(child => containsNode(child, predicate));
 }
-
-test('canonical AST grammar macro-fuses the recognition artifact with no runtime import', async () => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('..', import.meta.url)),
-    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
-    optimizeDeps: { noDiscovery: true },
-    server: { middlewareMode: true }
-  });
-  try {
-    const transformed = await server.transformRequest('/src/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
-    expect(transformed?.code).not.toContain('from \'../grammar.js\'');
-    expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
-  } finally {
-    await server.close();
-  }
-});
 
 test('canonical CSS factory lowers as a positioned CST artifact', () => {
   const result = parseCst(

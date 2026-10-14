@@ -27,7 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
-import { NO_SPAN, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
+import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -83,14 +83,28 @@ export interface Color {
   readonly src: string;
 }
 
-/** A quoted string literal leaf, e.g. `"x"`, `'y'`. Pre-split fields ride so a
- *  forced literal materializes by reading them, never re-scanning `src`. */
+/**
+ * A quoted string, e.g. `"x"`, `'y'`, and the escaped Less / `.jess` `~"x"`.
+ * Pre-split fields ride so a forced literal materializes by reading them, never
+ * re-scanning `src`.
+ *
+ * A string that interpolates (`"a@{x}"`, `~"@{x}"`, `.jess` `"x$(1 + 1)y"`,
+ * SCSS `"#{$x}"`) is the SAME node as one that does not, carrying the same
+ * `quote` / `escaped` facts (ledger V3, C2): `interp` holds its content
+ * template, without the delimiters, and evaluation splices it. `src` and
+ * `value` stay the authored spelling and the authored content (holes as
+ * written), so a source replay reads what the author wrote; anything that needs
+ * the string's CONTENT evaluates `interp` ({@link isStaticQuoted} tells the two
+ * apart). `interp` is `null` for a string that does not interpolate, and is
+ * always present so the node keeps one shape.
+ */
 export interface Quoted {
   readonly type: 'Quoted';
   readonly src: string;
   readonly value: string;
   readonly quote: string;
   readonly escaped: boolean;
+  readonly interp: Interpolation | null;
 }
 
 /** Arbitrary / opaque value bytes (raw prelude fragment, computed/joined
@@ -105,8 +119,9 @@ export interface Any extends SpanSlots {
  * A CSS `url(…)` value. The wrapper is syntax, while the content remains an
  * ordinary structured value: a quoted literal, an interpolation template, or
  * an opaque unquoted URL token. This avoids a dialect-specific path model.
+ * Its span is where a diagnostic about the URL points.
  */
-export interface Url {
+export interface Url extends SpanSlots {
   readonly type: 'Url';
   readonly value: ValueNode;
 }
@@ -309,6 +324,77 @@ export interface FunctionCall extends SpanSlots, FunctionScopeSlot {
   readonly modern: boolean;
 }
 
+/** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
+const CSS_COLOR_CONSTRUCTORS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+
+/**
+ * Whether `node` is a CSS-shaped color constructor call (ledger F5): an
+ * rgb-family name with three or more argument slots, which a value position
+ * writes out as authored instead of dispatching.
+ *
+ * Less overloads the rgb-family names: one- and two-slot calls are color/
+ * alpha conveniences (`rgba(#fff)`, `rgba(#fff, .5)`), while malformed
+ * one-/two-slot numeric calls must still reach the selected Less callable so
+ * its normal functionMode policy can reject or preserve them. Modern CSS
+ * syntax arrives as one nested slot, so inspect that typed structure as well;
+ * a three-or-more item nested slot is the equivalent CSS channel shape.
+ */
+export function isCssColorCall(node: FunctionCall): boolean {
+  return CSS_COLOR_CONSTRUCTORS.has(node.name.toLowerCase()) && hasColorChannels(node);
+}
+
+/**
+ * The CSS colour functions, each of whose modern syntax ends in an optional
+ * `/ <alpha-value>` (css-color-4 §5–§10): the F5 constructors and `hwb()`,
+ * `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`.
+ */
+const CSS_COLOR_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color']);
+
+/** Three or more channel slots, or one modern slot of three or more items (see {@link isCssColorCall}). */
+function hasColorChannels(node: FunctionCall): boolean {
+  if (node.args.length >= 3) {
+    return true;
+  }
+  const slot = node.args.length === 1 ? node.args[0]!.value : undefined;
+  return Array.isArray(slot) && slot.length >= 3;
+}
+
+/**
+ * Whether `node` is a CSS colour function written in its channel shape
+ * (`color(srgb 1 0 0)`, `hwb(1 2% 3%)`, and every {@link isCssColorCall}): a
+ * CSS value no Less callable computes in that shape, so the `.jess` converter
+ * writes it as a plain CSS call in a property's value (ledger F5).
+ */
+export function isCssColorFunction(node: FunctionCall): boolean {
+  return CSS_COLOR_FUNCTIONS.has(node.name.toLowerCase()) && hasColorChannels(node);
+}
+
+/**
+ * The slash before the alpha in a CSS colour function's modern syntax, when a
+ * math policy lowered it to a division (Less `math: always` reads
+ * `rgb(0 128 255 / 50%)`'s last item as `$(255 / 50%)`), else `null`. That
+ * slash is the function's separator, never division (css-color-4 §5), so it is
+ * written `255 / 50%`. Decided by the call's structure: one modern slot of
+ * three or more items whose last item is a computation of a bare `/`. A paren
+ * group the author wrote around the division (`(255 / 50%)`) is math.
+ */
+export function colorAlphaSlash(node: FunctionCall): Operation | null {
+  if (node.args.length !== 1) {
+    return null;
+  }
+  const slot = node.args[0]!.value;
+  if (!Array.isArray(slot) || slot.length < 3) {
+    return null;
+  }
+  const last = slot[slot.length - 1]!;
+  if (Array.isArray(last) || last.type !== 'Expression' || Array.isArray(last.value) || last.value.type !== 'Operation'
+    || isAuthoredGroupExpression(last)) {
+    return null;
+  }
+  const slash = last.value;
+  return slash.operator === '/' && slash.mathOutsideParens && CSS_COLOR_FUNCTIONS.has(node.name.toLowerCase()) ? slash : null;
+}
+
 /**
  * A delimiter-bearing value, e.g. `(#aaa * 3)`, `[a, b]` or the css-values-5
  * §3.1.1 `{}`-wrapped argument `{a, b}` (`curly`).
@@ -381,7 +467,7 @@ export interface Expression extends SpanSlots, AuthoredCallSlot {
  * the one guard evaluator — a `foo(@a > 0)` arg is byte-identical to the guard
  * `@a > 0`. `src` is the verbatim spelling, emitted when no evaluator is injected.
  */
-export interface Condition {
+export interface Condition extends SpanSlots {
   readonly type: 'Condition';
   readonly guard: GuardNode;
   readonly src: string;
@@ -448,10 +534,22 @@ export interface Interpolation extends SpanSlots {
  * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
  * parameterless block so that shape stays monomorphic. A call binds args→params
  * (positional/named/default) and yields the value of the rules' `result:` entry.
+ *
+ * Its body span (the source inside its braces) is where its comments live: they
+ * are trivia, so a block written out away from its own position — called, or
+ * passed to a function — replays them from that span.
  */
-export interface AnonymousMixin {
+export interface AnonymousMixin extends BodySpanSlots {
   readonly type: 'AnonymousMixin';
   readonly rules: Statement[];
+
+  /*
+   * A body-form `&:extend()` written directly in a detached ruleset (ledger X19):
+   * each call's body lands in a rule, and that rule extends, as a mixin
+   * definition's does (X16). Undefined when the body has none, but always
+   * DECLARED, so a block with one shares the hidden class of one without.
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
   readonly params?: Param[];
 }
 
@@ -648,6 +746,15 @@ export interface CallArg<V extends CallValue = CallValue> {
   /** `[spread]` Less `@args...` — `value` is a list variable to SPLAT into
    *  positional args at the call site before binding. */
   readonly spread: boolean;
+
+  /**
+   * The sigil the keyword was written with — `@` in Less, `$` in Sass and
+   * `.jess` — recorded by the parser, or `undefined` for a positional argument.
+   * `name` is the binding name; this is the rest of the AUTHORED spelling, so a
+   * call written out as-is spells its keywords as written (ledger P23) without
+   * core ever asking which dialect a node came from.
+   */
+  readonly sigil: string | undefined;
 }
 
 /* ---------------------------------------------------------------- selectors */
@@ -696,9 +803,9 @@ export function simpleSelectorIsPlaceholder(simple: SimpleToken): boolean {
  *
  * Placeholder-ness is a property of the BRANCH, not of the rule: dart-sass emits
  * `.a { … }` for `%ph, .a { … }`, keeping the sibling branch. That is why
- * `Ruleset.reference` could not carry this — it is a whole-rule flag, and one
- * additionally confined to an import boundary, whereas any extend anywhere may
- * reach a placeholder.
+ * `(reference)` hiding could not carry this — it hides a whole rule placement, and
+ * one confined to an import boundary, whereas any extend anywhere may reach a
+ * placeholder.
  *
  * The sigil is matched only at a segment BOUNDARY so an authored escape inside
  * an identifier (`.foo\\bar`) is not mistaken for one. Deliberately NOT matched
@@ -734,6 +841,10 @@ export function branchTextIsPlaceholder(text: string): boolean {
  * the token behaves like a plain `SimpleSelector`. `crossable` is true iff the
  * name is a boundary a selector may cross for extend (`:is`/`:matches`); every
  * other name (`:not`/`:where`/`:has`/…) is sealed.
+ *
+ * A pseudo whose argument is not a selector list keeps that argument in `arg`:
+ * an `:nth-*()` pseudo its `An+B` (and its `of S` list, if any, in `args`), a
+ * `:lang()` its language ranges, a `:dir()` its direction.
  */
 export interface PseudoSelector extends SpanSlots {
   readonly type: 'PseudoSelector';
@@ -741,11 +852,30 @@ export interface PseudoSelector extends SpanSlots {
   readonly interp: Interpolation | null;
   readonly name: string;
   readonly args: SelectorList | null;
+  readonly arg: PseudoArgument | null;
   readonly crossable: boolean;
 
   /** Serializer-owned memo of the args-carry-interpolation flag (lazy). */
   _hasInterp?: boolean;
 }
+
+/**
+ * The `An+B` microsyntax of an `:nth-*()` argument (css-syntax-3 §6), held as
+ * the authored form without whitespace. The form is significant (ledger X6:
+ * `:nth-child(odd)` is not `:nth-child(2n+1)` to extend) and is emitted
+ * unspaced (F2). Nothing reads its numeric value, so none is computed.
+ */
+export interface AnPlusB {
+  readonly type: 'AnPlusB';
+  readonly src: string;
+}
+
+/**
+ * A non-selector pseudo argument: an `An+B`, `:lang()`'s comma list of
+ * language ranges (identifiers and strings, Selectors-4 §7.2), or `:dir()`'s
+ * direction identifier.
+ */
+export type PseudoArgument = AnPlusB | List | Keyword;
 
 /** A single token inside a compound — a plain simple or a structured pseudo. */
 export type SimpleToken = SimpleSelector | PseudoSelector;
@@ -817,14 +947,27 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
   return c._hasInterp;
 };
 
-/** True iff a leaf token's retained text or interpolation template carries `&`. */
+/**
+ * Whether a selector token is a parent reference: the parser's `&` token opens the token
+ * it builds (`&`, `&__el`, `&-x`, the literal `&` of `&@{x}`). Any other `&` is a
+ * character of the token — attribute text (`[title="&"]`) or an escaped `\&` in an
+ * identifier (`.a\&b` is the class `a&b`, CSS Syntax 3 §4.3.7) — never a parent
+ * reference: the token decides, not the character (SEMANTIC-INVARIANTS S5).
+ */
+export const textHoldsParentRef = (text: string): boolean => text.charCodeAt(0) === 0x26;
+
+/** True iff a leaf token's retained text or interpolation template carries a parent `&`. */
 const leafHasAmpersand = (sim: SimpleToken): boolean => {
-  if (sim.text?.includes('&') === true) {
+  if (sim.text && textHoldsParentRef(sim.text)) {
     return true;
   }
   if (sim.interp !== null) {
+    const head = sim.interp.parts[0];
+    if (head !== undefined && 'lit' in head && head.lit.charCodeAt(0) === 0x5B /* [ */) {
+      return false;
+    }
     for (const part of sim.interp.parts) {
-      if ('lit' in part && part.lit.includes('&')) {
+      if ('lit' in part && textHoldsParentRef(part.lit)) {
         return true;
       }
     }
@@ -943,12 +1086,39 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
       ? relativeCanonical(branch)
       : selectorTermCanonical(branch);
 
+/** A non-selector pseudo argument's spelling: `An+B` unspaced, a `:lang()` list `, `-joined. */
+export const pseudoArgumentText = (arg: PseudoArgument): string => {
+  if (arg.type !== 'List') {
+    return arg.src;
+  }
+  let text = '';
+  for (const range of arg.value) {
+    const src = isLanguageRange(range) ? range.src : '';
+    text += text === '' ? src : `, ${src}`;
+  }
+  return text;
+};
+
+/** A `:lang()` list member: an identifier or a string range (Selectors-4 §7.2). */
+export const isLanguageRange = (slot: ValueSlot): slot is Keyword | Quoted =>
+  'type' in slot && (slot.type === 'Keyword' || slot.type === 'Quoted');
+
+/**
+ * The ONE spelling of the structured-pseudo argument join, over already-rendered
+ * branches: `:is(a, b)`, `:nth-child(2n of a, b)`. Both the static path
+ * ({@link pseudoCanonical}) and the per-frame resolving path in `serialize.ts`
+ * go through here, so the `, ` glue has a single owner and the two cannot
+ * drift — the failure mode SEMANTIC-INVARIANTS incident S3 is named for.
+ */
+export const pseudoJoin = (p: PseudoSelector, branches: readonly string[]): string =>
+  `${p.name}(${p.arg === null ? '' : `${pseudoArgumentText(p.arg)} of `}${branches.join(', ')})`;
+
 /**
  * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
  * is the SINGLE core serialization site for the pseudo-arg join: branches join
  * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
- * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
- * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
+ * grammar NEVER computes this — it only supplies `args` / `arg` (structure) and
+ * trivia. The degrade-to-opaque case falls back to the retained `text`.
  *
  * STATIC ONLY: an interpolated member has `text: null` and contributes `''` here,
  * so this join is correct only when {@link pseudoHasInterp} is false. Every EMIT
@@ -957,20 +1127,12 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
  * where an unresolvable interpolation contributing nothing is the existing,
  * symmetric behaviour of every other interpolated token.
  */
-/**
- * The ONE spelling of the structured-pseudo argument join, over already-rendered
- * branches. Both the static path ({@link pseudoCanonical}) and the per-frame
- * resolving path in `serialize.ts` go through here, so the `, ` glue has a
- * single owner and the two cannot drift — the failure mode SEMANTIC-INVARIANTS
- * incident S3 is named for.
- */
-export const pseudoJoin = (name: string, branches: readonly string[]): string =>
-  `${name}(${branches.join(', ')})`;
-
-export const pseudoCanonical = (p: PseudoSelector): string =>
-  p.args !== null
-    ? pseudoJoin(p.name, p.args.selectors.map(selectorBranchCanonical))
-    : p.text ?? '';
+export const pseudoCanonical = (p: PseudoSelector): string => {
+  if (p.args !== null) {
+    return pseudoJoin(p, p.args.selectors.map(selectorBranchCanonical));
+  }
+  return p.arg !== null ? `${p.name}(${pseudoArgumentText(p.arg)})` : p.text ?? '';
+};
 
 /** The canonical contributed text of one simple token: a structured pseudo emits
  *  its inline `:is(a, b)` form, a plain simple emits its literal (`''` when the
@@ -1189,16 +1351,6 @@ export interface Ruleset extends SpanSlots, BodySpanSlots {
    * common unguarded rule (the serializer's zero-cost gate holds).
    */
   readonly guard?: GuardNode;
-
-  /**
-   * [import:reference] This rule came from an `@import (reference)` file, so it is
-   * HIDDEN: it emits nothing on its OWN (the serializer drops a rule whose visible
-   * branches are empty), but it stays in the tree — indexed for mixin dispatch and
-   * available for `:extend` to fold a VISIBLE extender branch into. When an extend
-   * pulls it into visibility, only the visible extender branch survives (see the
-   * extend engine's per-branch `hidden` provenance + the serializer's drop filter).
-   */
-  readonly reference?: boolean;
 }
 
 /**
@@ -1233,6 +1385,17 @@ export interface MixinDefinition extends SpanSlots, BodySpanSlots {
    * identical ruleset-mixin output, so the serializer must tell them apart.
    */
   readonly ruleMixin?: boolean;
+
+  /*
+   * A body-form `&:extend()` written directly in the definition's body (ledger X16):
+   * the rule each call's body lands in extends, as if the extend were written in that
+   * rule's own body. Undefined when the body has none, but always DECLARED, right after
+   * `rules`, by every constructor, so a definition with one shares the hidden class of
+   * one without (V8 invariant 1). A ruleset called as a mixin carries its own
+   * `extendInstructions` here; its inline ones (with a `subject`) bind to its own
+   * selector and do not travel with the call.
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
 }
 
 /**
@@ -1293,11 +1456,17 @@ export type ForBinding =
   | { readonly kind: 'bracket'; readonly names: readonly [string, string] }
   | { readonly kind: 'tuple'; readonly names: readonly [string, string, ...string[]] };
 
-export interface For extends AuthoredCallSlot {
+export interface For extends AuthoredCallSlot, BodySpanSlots {
   readonly type: 'For';
   readonly iterable: ValueSlot | MixinCall;
   readonly rules: Statement[];
   readonly binding: ForBinding;
+
+  /**
+   * The body-form `&:extend()`s of a Less `each()` callback: each iteration's body
+   * extends the rule it lands in, as a detached ruleset's does (ledger X19).
+   */
+  readonly extendInstructions: ExtendInstruction[] | undefined;
 }
 
 /** One ordered arm of a Jess `$if` chain. A null guard is the final `$else`. */
@@ -1421,7 +1590,7 @@ export interface ModuleImportSpecifier {
 }
 
 /** A compile-time JavaScript/TypeScript module dependency; plugins resolve it. */
-export interface ModuleImport {
+export interface ModuleImport extends SpanSlots {
   readonly type: 'ModuleImport';
   readonly path: Quoted;
   readonly mode: 'use' | 'from';
@@ -1478,20 +1647,24 @@ export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
  *  beyond its own identity, so it never allocates. */
 export const NULL_NODE: Null = { type: 'Null', src: 'null' };
 export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
-export const url = (value: ValueNode): Url => ({ type: 'Url', value });
+export const url = (value: ValueNode): Url => ({ type: 'Url', value, _s: NO_SPAN, _e: NO_SPAN });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
   ({ type: 'SelectorCapture', branches, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
-export const quoted = (src: string, value: string, quote: string, escaped: boolean): Quoted =>
-  ({ type: 'Quoted', src, value, quote, escaped });
+export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
+  ({ type: 'Quoted', src, value, quote, escaped, interp });
+
+/** A string whose content is its authored `value` — one that does not interpolate. */
+export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;
 export const dimension = (number: number, unit = '', src = `${number}${unit}`): Dimension =>
   ({ type: 'Dimension', number, unit, src });
 
 /** A value literal that emits its `src` verbatim when inert (all five literal
- *  types). Narrows a `ValueNode` to the leaf union. */
+ *  types). Narrows a `ValueNode` to the leaf union. A string that interpolates is
+ *  not a literal: its content is read from the frame it is evaluated in. */
 export const isLiteralNode = (n: ValueNode): n is Keyword | Color | Dimension | Quoted | Any =>
   n.type === 'Keyword' || n.type === 'Color' || n.type === 'Dimension'
-  || n.type === 'Quoted' || n.type === 'Any';
+  || (n.type === 'Quoted' && n.interp === null) || n.type === 'Any';
 
 /** A literal whose VALUE TYPE the parser knows (every literal except opaque `Any`).
  *  Such a literal binds BY REFERENCE across a mixin boundary (its type survives). */
@@ -1514,40 +1687,6 @@ export const list = (
 
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null, _s: NO_SPAN, _e: NO_SPAN });
 
-/** An `<ident-token>` code point — the continue set, which is all that matters at a join. */
-const identCode = (code: number): boolean =>
-  code === 0x2d /* - */ || code === 0x5f /* _ */ || code === 0x5c /* \ */
-  || (code >= 0x30 && code <= 0x39)
-  || (code >= 0x41 && code <= 0x5a)
-  || (code >= 0x61 && code <= 0x7a)
-  || code > 0x7f;
-
-/**
- * `[`, name, operator, value, flag, `]` joined into one attribute selector.
- *
- * The parts carry no authored whitespace, so two adjacent `<ident-token>`s
- * would FUSE: `[data-x=y i]` emitting as `[data-x=yi]` is still valid CSS and
- * still parses, so nothing rejects it — but selectors-4 §6.3 makes the unquoted
- * value and the case-sensitivity flag two separate `<ident-token>`s, and the
- * fused spelling matches a DISJOINT set of elements. One space is emitted at
- * exactly the boundaries where omitting it would fuse and at no other, so a
- * quoted value (`"y"i`) and every delimiter-adjacent boundary keep their bytes.
- */
-export const attributeSelector = (parts: readonly string[]): SimpleSelector => {
-  let text = '';
-  for (const part of parts) {
-    if (
-      text.length !== 0 && part.length !== 0
-      && identCode(text.charCodeAt(text.length - 1))
-      && identCode(part.charCodeAt(0))
-    ) {
-      text += ' ';
-    }
-    text += part;
-  }
-  return simpleSelector(text);
-};
-
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
 export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp, _s: NO_SPAN, _e: NO_SPAN });
 
@@ -1568,23 +1707,49 @@ export const pseudoSelector = (
   name: string,
   args: SelectorList | null,
   text: string | null = null,
-  interp: Interpolation | null = null
-): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
+  interp: Interpolation | null = null,
+  arg: PseudoArgument | null = null
+): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null || arg !== null ? null : text, interp, name, args, arg, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
+
+/**
+ * An `An+B` from the text of a recognized `<an+b>` (css-syntax-3 §6.1): the
+ * recognizer owns the shape. Whitespace (which the microsyntax permits around
+ * the sign) is not part of the form (F2).
+ */
+export const anPlusB = (text: string): AnPlusB => ({ type: 'AnPlusB', src: text.replace(/[ \t\n\r\f]+/g, '') });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
-export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
-  params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
+export const anonymousMixin = (
+  rules: Statement[],
+  params?: Param[],
+  extendInstructions?: readonly ExtendInstruction[]
+): AnonymousMixin => {
+  const extend = extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined;
+  return params === undefined
+    ? { type: 'AnonymousMixin', rules, extendInstructions: extend, _bs: NO_SPAN, _be: NO_SPAN }
+    : { type: 'AnonymousMixin', rules, extendInstructions: extend, params, _bs: NO_SPAN, _be: NO_SPAN };
+};
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
  * data collections are constructed by their dedicated collection grammars. */
-export const classifyValueBlock = (rules: Statement[]): AnonymousMixin => {
-  return anonymousMixin(rules);
+export const classifyValueBlock = (rules: Statement[], extendInstructions?: readonly ExtendInstruction[]): AnonymousMixin => {
+  return anonymousMixin(rules, undefined, extendInstructions);
 };
 export const forNode = (
   iterable: ValueSlot | MixinCall,
   rules: Statement[],
   binding: ForBinding,
-  asCall: FunctionCall | null = null
-): For => ({ type: 'For', iterable, rules, binding, _asCall: asCall });
+  asCall: FunctionCall | null = null,
+  extendInstructions?: readonly ExtendInstruction[]
+): For => ({
+  type: 'For',
+  iterable,
+  rules,
+  binding,
+  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
+  _asCall: asCall,
+  _bs: NO_SPAN,
+  _be: NO_SPAN
+});
 export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]], asCall: FunctionCall | null = null): If =>
   ({ type: 'If', branches, _asCall: asCall });
 export const whileNode = (guard: GuardNode, rules: Statement[]): While => ({ type: 'While', guard, rules });
@@ -1748,8 +1913,8 @@ export const operation = (
  * single hidden class — a caller that "omits" a name passes `undefined`, it does
  * not omit the property.
  */
-export const callArg = <V extends CallValue>(value: V, name?: string, spread = false): CallArg<V> =>
-  ({ value, name, spread });
+export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
+  ({ value, name, spread, sigil });
 
 /** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
  *  slot (node OR nested array) is positional; an already-built `CallArg` passes
@@ -1792,7 +1957,7 @@ export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ typ
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>
   ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall });
-export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
+export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
 export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
   ({ type: 'IfValue', branches, _asCall: asCall });
 export const variableDeclaration = (
@@ -1805,8 +1970,20 @@ export const mixinDef = (
   name: string,
   params: Param[],
   rules: Statement[],
-  guard?: GuardNode // [guards]
-): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
+  guard?: GuardNode, // [guards]
+  extendInstructions?: readonly ExtendInstruction[]
+): MixinDefinition => ({
+  type: 'MixinDefinition',
+  name,
+  params,
+  rules,
+  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
+  ...(guard !== undefined ? { guard } : {}),
+  _s: NO_SPAN,
+  _e: NO_SPAN,
+  _bs: NO_SPAN,
+  _be: NO_SPAN
+});
 
 /** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */
@@ -1862,30 +2039,22 @@ export const rule = (
  * of it, because the extension is authored plainly and only the stem substitutes.
  */
 export const importTargetSpelling = (target: Quoted | Url | Interpolation): string => {
-  if (target.type === 'Quoted') {
-    return target.value;
-  }
   const inner = target.type === 'Url' ? target.value : target;
   if (inner.type === 'Quoted') {
-    return inner.value;
+    return inner.interp === null ? inner.value : templateLiteralText(inner.interp);
   }
   if (inner.type === 'Any') {
     return inner.src;
   }
-  if (inner.type !== 'Interpolation') {
-    return '';
-  }
+  return inner.type === 'Interpolation' ? templateLiteralText(inner) : '';
+};
+
+/** A template's literal text, every hole read as empty. */
+const templateLiteralText = (interp: Interpolation): string => {
   let bytes = '';
-  for (const part of inner.parts) {
+  for (const part of interp.parts) {
     if ('lit' in part) {
       bytes += part.lit;
-    }
-  }
-  const quote = bytes[0];
-  if (quote === '"' || quote === '\'') {
-    bytes = bytes.slice(1);
-    if (bytes.endsWith(quote)) {
-      bytes = bytes.slice(0, -1);
     }
   }
   return bytes;
@@ -1915,7 +2084,8 @@ export const importOptionWords = (options: List | null): string[] => {
  * one is declined and printed. Only the authored `.css` extension is a fact the
  * parser can read.
  */
-const CSS_TARGET = /\.css(?:[?#].*)?$/iu;
+/* ASCII-only patterns: `i` without `u`, so no Unicode case folding (`ſ` is not `s`). */
+const CSS_TARGET = /\.css(?:[?#].*)?$/i;
 
 /**
  * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by
@@ -1929,12 +2099,15 @@ const CSS_TARGET = /\.css(?:[?#].*)?$/iu;
  * `(optional)` is deliberately NOT terminal: it selects what happens when the
  * load FAILS, so an optional import must still be attempted and resolve normally
  * when the file exists.
+ *
+ * A caller that already derived the target's spelling passes it as `spelling`.
  */
 export const importIsCompileTime = (
   name: string,
   target: Quoted | Url | Interpolation,
   options: List | null = null,
-  alias: ValueNode | null = null
+  alias: ValueNode | null = null,
+  spelling?: string
 ): boolean => {
   const words = importOptionWords(options);
   if (words.includes('inline')) {
@@ -1946,8 +2119,21 @@ export const importIsCompileTime = (
   if (words.includes('less') || name.toLowerCase() === '@-import') {
     return true;
   }
-  return !CSS_TARGET.test(importTargetSpelling(target));
+  return !CSS_TARGET.test(spelling ?? importTargetSpelling(target));
 };
+
+/**
+ * Sass's own URL rule for an `@import` target, exactly as dart-sass applies it
+ * (`isPlainImportUrl`, `lib/src/parse/stylesheet.dart`): a protocol-relative
+ * `//host/x` or an `http://` / `https://` URL is plain CSS. The tests are
+ * case-sensitive — `HTTP://x` is a partial import there — and a target shorter
+ * than five characters is never plain. Less has no such rule (a scheme target
+ * is a plugin's answer at load time, above), so only the SCSS grammar asks; it
+ * sits beside `importIsCompileTime`, the one import-target classification.
+ */
+export const sassImportUrlIsPlainCss = (spelling: string): boolean =>
+  spelling.length >= 5
+  && (spelling.startsWith('//') || spelling.startsWith('http://') || spelling.startsWith('https://'));
 
 export const styleImport = (
   name: string,
@@ -1972,5 +2158,5 @@ export const moduleImport = (
   namespace: string | null = null,
   imports: readonly ModuleImportSpecifier[] = [],
   defaultImport: string | null = null
-): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports });
+): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports, _s: NO_SPAN, _e: NO_SPAN });
 export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules, _s: NO_SPAN, _e: NO_SPAN, _trivia: undefined });

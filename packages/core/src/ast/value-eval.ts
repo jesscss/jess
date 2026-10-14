@@ -21,7 +21,7 @@
  * value nodes with semantic payload fields. Adjacent value terms are the raw
  * recursive array shape, not a space-separator List.
  *
- * Sync by default: `operate`/`compare`/`typeCheck`/`materialize` are synchronous;
+ * Sync by default: `operate`/`compare`/`typeCheck` are synchronous;
  * only `call` returns `MaybePromise` (a genuinely async built-in — `data-uri`, or
  * an async color-format fn — forces the enclosing declaration's emit onto the
  * async branch, scoped to that leaf).
@@ -76,6 +76,14 @@ export interface Dimension {
    * computes; they differ only in what an unexpressible RESULT is allowed to look
    * like — `loose` fabricates a unit from `backupUnit`, `preserve` says the
    * expression back, `strict` refuses at the consuming boundary.
+   *
+   * The same spelling is carried, in every unit mode, by a `calc()` whose
+   * argument is written as a paren group: it stays a `calc()`, whose result the
+   * property clamps (P35). Around one value nothing computes the group keeps its
+   * parens (owner 2026-10-06: `calc((10px))` is `10px` spelled `(10px)`); around
+   * a calculation that resolves they are dropped (owner 2026-10-07:
+   * `calc((min(-5px, 1px)))` is `-5px` spelled `-5px`). A typed consumer still
+   * reads the magnitude.
    */
   readonly preserved?: string;
 
@@ -86,6 +94,8 @@ export interface Dimension {
 /** A color result. `format`/`modernSyntax`/`src` preserve output spelling. */
 export interface Color {
   readonly type: 'Color';
+
+  /** RAW (unrounded, unclamped) channels; derived from `hsl` when that is present. */
   readonly rgb: readonly [number, number, number];
   readonly alpha: number;
 
@@ -142,6 +152,9 @@ export interface Keyword {
   readonly type: 'Keyword';
   readonly text: string;
   readonly bytes: string;
+
+  /** The paren groups written around it where it is text ({@link Any.groups}); `0` otherwise. */
+  readonly groups: number;
 }
 
 /**
@@ -152,6 +165,26 @@ export interface Keyword {
 export interface Any {
   readonly type: 'Any';
   readonly bytes: string;
+
+  /**
+   * PROVENANCE, not a second value: the quote an escaped string (`~"…"`,
+   * `~'…'`, `e()`) was written with, `''` for any other opaque text. Nothing in
+   * the value domain computes with it; it is what lets a legacy plugin receive
+   * the escaped `tree.Quoted` Less 4.x hands it, and what keeps a URL rewrite
+   * out of an escaped `url()` body. Non-optional and factory-defaulted, so
+   * every `Any` realizes one hidden class.
+   */
+  readonly escapedQuote: string;
+
+  /**
+   * How many paren groups the author wrote around this text (ledger J16): text
+   * is never a resolved calculation, so the groups are printed where it is
+   * written — a value, an operand of math — and not where it is spliced into a
+   * selector, a property or a string, or read by a callable, which take
+   * `bytes`, the text alone. Factory-defaulted to `0`, so every value keeps
+   * one hidden class.
+   */
+  readonly groups: number;
 }
 
 /**
@@ -311,8 +344,16 @@ export const isElided = (v: ValueGroup): boolean =>
  * Join a group's members with `glue`, DROPPING each elided member along with the
  * separator it would have carried. Written as a loop rather than
  * `filter().map().join()` so the common (no-`null`) path allocates nothing.
+ * `authored` holds the run written before each member, replayed by
+ * {@link itemBoundary} (a call written out as-is, ledger F11).
  */
-export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: ValueGroup) => string): string => {
+export const joinGroup = (
+  v: readonly ValueGroup[],
+  glue: string,
+  emit: (item: ValueGroup) => string,
+  authored?: readonly (string | undefined)[],
+  compress = false
+): string => {
   let out = '';
   let empty = true;
   for (let i = 0; i < v.length; i++) {
@@ -321,29 +362,40 @@ export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: V
       continue;
     }
     const bytes = emit(item);
-    out = empty ? bytes : out + glueBefore(glue, bytes) + bytes;
+    out = empty ? bytes : out + itemBoundary(authored?.[i - 1], glue, compress, bytes) + bytes;
     empty = false;
   }
   return out;
 };
 
-/**
- * The glue before an item. A `;` group the author left empty
- * (`if(media(print): 1px;)`) keeps its delimiter but not the space that would
- * only precede a value.
- */
-export const glueBefore = (glue: string, bytes: string): string =>
-  bytes === '' && glue === '; ' ? ';' : glue;
-
 export const emitValue = (v: EvalValue): string =>
-  typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.bytes;
+  typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.type === 'Any' && v.groups !== 0 ? writtenText(v) : v.bytes;
 
-/** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
-export const sepGlue = (sep: ListSeparator): string => {
+/**
+ * Text as it is written: in the paren groups the author wrote around it
+ * ({@link Any.groups}). Owner 2026-10-09: "everywhere that is text should print
+ * AS WRITTEN".
+ */
+export const writtenText = (v: Any | Keyword, bytes = v.bytes): string =>
+  v.groups === 0 ? bytes : `${'('.repeat(v.groups)}${bytes}${')'.repeat(v.groups)}`;
+
+/**
+ * A value as an interpolation splices it or a callable reads it: text without
+ * the groups written around it ({@link Any.groups}), anything else as
+ * {@link emitValue} writes it.
+ */
+export const readText = (v: EvalValue): string =>
+  typeof v !== 'string' && !isValueGroupArray(v) && (v.type === 'Any' || v.type === 'Keyword') ? v.bytes : emitValue(v);
+
+/**
+ * The glue joining a list's items for its separator (`,`→`, `, `/`→` / `).
+ * Compressed output tightens the comma (`,`); `/` stays spaced in both.
+ */
+export const sepGlue = (sep: ListSeparator, compress = false): string => {
   switch (sep) {
-    case ',': return ', ';
+    case ',': return compress ? ',' : ', ';
     case '/': return ' / ';
-    case ';': return '; ';
+    case ';': return compress ? ';' : '; ';
   }
 };
 
@@ -359,6 +411,86 @@ export const delimiterOpen = (delimiter: Block['delimiter']): string =>
 export const delimiterClose = (delimiter: Block['delimiter']): string =>
   delimiter === 'paren' ? ')' : delimiter === 'square' ? ']' : ' }';
 
+/**
+ * The bytes between two items of a list or call: the canonical `glue`, except
+ * that pretty output replays an authored run carrying a line break (with its
+ * indentation) or a block comment ({@link replayedRun}). Compressed output
+ * always takes the glue. A `;` group the author left empty
+ * (`if(media(print): 1px;)`) keeps its delimiter but not the space that would
+ * only precede a value, so `next` (the following item's bytes) is consulted
+ * when the caller has it. Between the members of a space-separated group, a run
+ * with no whitespace in it (a glued `/`, SCSS `local(Foo/Bar)`) is the value's
+ * own spelling, not layout, so it is written as authored in every mode, as
+ * {@link authoredSpace} writes it in a declaration.
+ */
+export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean, next?: string): string =>
+  authored !== undefined && glue === ' ' && !/\s/u.test(authored)
+    ? authored
+    : !compress && authored !== undefined && runReplays(authored) ? replayedRun(authored, glue) : next === '' && glue === '; ' ? ';' : glue;
+
+/** Whether pretty output replays an authored run between two items: it carries a line break or a block comment. */
+export const runReplays = (authored: string): boolean => /[\r\n]|\/\*/u.test(authored);
+
+/**
+ * The authored run between two members of a space-separated group, as CSS
+ * output replays it ({@link replayedRun}); one space when nothing was recorded.
+ */
+export const authoredSpace = (authored: string | undefined): string =>
+  authored === undefined ? ' ' : replayedRun(authored, ' ');
+
+/**
+ * An authored run as CSS output replays it: its block comments and line breaks
+ * stay, with the indentation after a line break (owner 2026-09-06), and any other
+ * run of spaces and tabs is one space (owner 2026-10-13: "they're never
+ * meaningful unless in a custom property, so they can be collapsed"; a
+ * custom-property value is text and never reaches here). A `//` line comment
+ * (Less, SCSS and .jess source only) is dropped with the blanks before it, and a
+ * Less `;` argument separator is spelled as the list's own `,`. A block comment
+ * is copied whole, so a `//`, `;` or blank inside it is text. A run with none of
+ * these is returned as it is.
+ */
+function replayedRun(run: string, glue: string): string {
+  if (!run.includes('//') && !run.includes(';') && !run.includes('\t') && !run.includes('  ')) {
+    return run;
+  }
+  const comma = glue.trim() === ',';
+  let out = '';
+  let inComment = false;
+  let lineStart = false;
+  for (let index = 0; index < run.length; index++) {
+    const char = run[index]!;
+    if (!inComment && (char === ' ' || char === '\t')) {
+      if (lineStart) {
+        out += char;
+      } else if (!out.endsWith(' ')) {
+        out += ' ';
+      }
+      continue;
+    }
+    lineStart = !inComment && (char === '\n' || char === '\r');
+    if (inComment) {
+      out += char;
+      if (char === '*' && run[index + 1] === '/') {
+        out += '/';
+        index++;
+        inComment = false;
+      }
+    } else if (char === '/' && run[index + 1] === '*') {
+      out += '/*';
+      index++;
+      inComment = true;
+    } else if (char === '/' && run[index + 1] === '/') {
+      out = out.replace(/[ \t]+$/u, '');
+      while (index + 1 < run.length && run[index + 1] !== '\n' && run[index + 1] !== '\r') {
+        index++;
+      }
+    } else {
+      out += char === ';' && comma ? ',' : char;
+    }
+  }
+  return out;
+}
+
 /** Whether a value is an internal bare-byte literal leaf. */
 export const isLiteral = (v: EvalValue): v is string => typeof v === 'string';
 
@@ -373,10 +505,9 @@ export const literal = (bytes: string): string => bytes;
 /**
  * The configured mode value evaluation honors, injected at the seam. `unitMode`
  * (the canonical {@link UnitMode}) governs the unit-clash → `calc()` fallback.
- * `inCalc` is set while folding the argument of a `calc(…)`: inside calc only
- * safe-unit dimension math computes (`10px * 2` → `20px`), while a cross-unit
- * `+`/`-` (`100% - 30px`) is PRESERVED as a `calc(…)` sub-expression instead of
- * collapsing on raw magnitudes.
+ * No mode says where an operation is READ: one written inside a math function is
+ * kept as written by its own `inMathFunction` fact and never operates, and every
+ * other operation answers `unitMode` the same wherever its value lands.
  */
 export interface EvalModes {
   readonly unitMode: UnitMode;
@@ -386,8 +517,6 @@ export interface EvalModes {
 
   /** Registered-function failure policy supplied by the active compile Context. */
   readonly functionMode?: FunctionMode;
-
-  readonly inCalc?: boolean;
 
   /**
    * [R16] Legacy Less dynamic caller-read. Carried here so a context-free
@@ -410,16 +539,6 @@ export const DEFAULT_MODES: EvalModes = {
 };
 
 /**
- * An operand pair whose units cannot reconcile, raised under `unitMode: 'strict'`.
- *
- * Lives in the value domain rather than in `value-operate.ts` because BOTH
- * arithmetic and comparison raise it: `1px + 3em` and `2px > 1em` are the same
- * defect, and `serialize.ts` re-raises either with its source location by
- * matching this one class. `value-guards.ts` declares a hard module boundary
- * that admits the value domain, so a shared home here is what lets comparison
- * throw without importing the arithmetic module.
- */
-/**
  * A computed division whose divisor is zero. Deliberately NOT a `TypeError`: the
  * `preserve` rung catches `TypeError`s to spell an unexpressible result as
  * `calc(…)`, and a division by zero has no result to spell (DESIGN-DECISIONS
@@ -432,11 +551,40 @@ export class DivisionByZeroError extends Error {
   }
 }
 
+/**
+ * An operand pair whose units cannot reconcile, raised under `unitMode: 'strict'`.
+ *
+ * Lives in the value domain rather than in `value-operate.ts` because BOTH
+ * arithmetic and comparison raise it: `1px + 3em` and `2px > 1em` are the same
+ * defect, and `serialize.ts` re-raises either with its source location by
+ * matching this one class. `value-guards.ts` declares a hard module boundary
+ * that admits the value domain, so a shared home here is what lets comparison
+ * throw without importing the arithmetic module.
+ */
 export class UnitArithmeticError extends TypeError {
   constructor(message: string) {
     super(message);
     this.name = 'UnitArithmeticError';
   }
+}
+
+/**
+ * A dimension's unit as a diagnostic names it: the whole multiset (`em*px`,
+ * `px/em`), less.js `Unit.toString`. `unit` is the CSS display spelling and
+ * collapses a compound to one member, which would name the wrong unit in an
+ * error about exactly that compound.
+ */
+export function unitName(d: Dimension): string {
+  let name = (d.numerator ?? (d.unit ? [d.unit] : [])).join('*');
+  for (const unit of d.denominator ?? []) {
+    name += `/${unit}`;
+  }
+  return name;
+}
+
+/** `+`/`-` or a comparison over two dimensions whose units do not reconcile. */
+export function incompatibleUnits(a: Dimension, b: Dimension): UnitArithmeticError {
+  return new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${unitName(a)}' and '${unitName(b)}'.`);
 }
 
 /**
@@ -595,16 +743,39 @@ export interface PluginHost {
   ): MaybePromise<ValueGroup | undefined>;
 }
 
-export interface ValueEvaluator {
-  /**
-   * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interpolation` result,
-   * or an opaque fragment) into a typed value by sniffing its bytes. A PARSED typed
-   * literal never reaches here — the serializer builds its value from the node's own
-   * fields (`evalTyped`). Only OPERATED literals are materialized at all; the inert
-   * majority emit their verbatim bytes and never touch this seam.
-   */
-  materialize(bytes: string): Value;
+/**
+ * An argument as the parser recorded it — the `name`/`sigil`/`value` of a
+ * `CallArg`, which satisfies this shape structurally. `name` is `undefined` for
+ * a positional argument. `value` is the authored argument, read only as the key
+ * its recorded layout is stored under.
+ */
+export interface ArgumentKeyword {
+  readonly name: string | undefined;
+  readonly sigil: string | undefined;
+  readonly value: object;
+}
 
+/**
+ * A call's arguments in AUTHORED order, each paired with its keyword at the same
+ * index: `keywords` is the call's own argument list, so building one allocates
+ * nothing per argument.
+ */
+export interface WrittenArguments {
+  readonly args: ValueGroup;
+  readonly keywords: readonly ArgumentKeyword[];
+}
+
+/**
+ * The ONE spelling of an argument in a call written out as-is (ledger P23): the
+ * keyword exactly as authored, then the argument's bytes. Under compress the
+ * keyword's colon tightens as every other separator does.
+ */
+export const writtenArgument = (keyword: ArgumentKeyword, bytes: string, compress: boolean | undefined): string =>
+  keyword.name === undefined
+    ? bytes
+    : `${keyword.sigil ?? ''}${keyword.name}${compress === true ? ':' : ': '}${bytes}`;
+
+export interface ValueEvaluator {
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
 
@@ -633,6 +804,24 @@ export interface ValueEvaluator {
 
     /** Whether the registry's built-ins are in scope; default `true`. */
     ambient?: boolean,
+
+    /**
+     * The arguments as written, for a call that names any of them. A call that
+     * is written out as-is — an unknown name, or a function that could not
+     * produce a value — is written from these, so `darken(@color: red)` keeps
+     * its keyword. Omitted for a positional call, whose `args` are already as
+     * written. Only read on that write-out; a call that produces a value never
+     * touches it.
+     */
+    written?: WrittenArguments,
+
+    /**
+     * The call's own authored arguments. A call written out as-is keeps the
+     * comments and line breaks the parser recorded between and inside them
+     * (ledger F11), so `radial-gradient(#333 /*c*&#47;, #111)` keeps its
+     * comment; they are looked up only on that write-out, in pretty output.
+     */
+    authored?: readonly ArgumentKeyword[],
   ): MaybePromise<ValueGroup>;
 
   /**
@@ -648,6 +837,13 @@ export interface ValueEvaluator {
    */
   paramNames(name: string, scopedFn?: Fn, ambient?: boolean): readonly (string | undefined)[] | undefined;
 
+  /**
+   * Whether the registry defines a built-in named `name`. A call with no scoped
+   * function and no built-in is written out as-is, so its arguments are values,
+   * not inputs to a callable (ledger F11).
+   */
+  has(name: string): boolean;
+
   /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
 
@@ -657,4 +853,15 @@ export interface ValueEvaluator {
 
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
   typeCheck(name: string, args: ValueGroup, modes: EvalModes): boolean;
+
+  /**
+   * Whether a `calc()` this dialect writes is a Sass calculation (dart-sass),
+   * as in `.scss`: one that resolves to one number is that number
+   * (`calc(percentage(0.5))` is `50%`). Its unquoted strings are text (ledger
+   * J16), so a paren group around one keeps its parens where it is written
+   * into math (`calc(2 * (unquote("1px + 2px")))`, `(unquote("1px + 2px")) * 2`
+   * is `calc((1px + 2px) * 2)`). Elsewhere a `calc()` is written out as a
+   * `calc()` (ledger V32). Absent means `false`.
+   */
+  readonly sassCalculations?: boolean;
 }

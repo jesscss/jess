@@ -10,6 +10,9 @@
  * See docs/less/advanced/compressed-output.md for the settled spec.
  */
 import { describe, expect, it } from 'vitest';
+import { defineFunction, makeDimension } from '@jesscss/core';
+import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { Compiler } from '../src/index.js';
 
 /** Render `src` with `output.compress: true` and return the CSS string. */
@@ -122,6 +125,133 @@ describe('output.compress — value folds (must fold)', () => {
   it('emits `!important` with no leading space', async () => {
     expect(await min('a { color: red !important }')).toBe('a{color:red!important}');
   });
+
+  it('folds every dimension in a multi-part value, whatever its position', async () => {
+    expect(await min('a { margin: 0.50px 10.00% }')).toBe('a{margin:.5px 10%}');
+    expect(await min('a { transition: opacity 0.30s, color 1.0s }')).toBe('a{transition:opacity .3s,color 1s}');
+    expect(await min('@m: 0.50px 1.0px; a { margin: @m }')).toBe('a{margin:.5px 1px}');
+    expect(await min('a { transform: translate(0.5px, 1.0px) }')).toBe('a{transform:translate(.5px,1px)}');
+  });
+
+  it('writes an authored line break or comment between value parts as one space', async () => {
+    expect(await min('a { margin: 1px\n    2px }')).toBe('a{margin:1px 2px}');
+    expect(await min('a { margin: 1px /* gap */ 2px }')).toBe('a{margin:1px 2px}');
+    expect(await min('a { transform: translate(\n    1px,\n    2px\n  ) }')).toBe('a{transform:translate(1px,2px)}');
+    expect(await min('a { color: rgba(\n    0,\n    0,\n    0,\n    0.5\n  ) }')).toBe('a{color:rgba(0,0,0,.5)}');
+  });
+
+  it('writes a computed function-form color compactly, in the same form', async () => {
+    expect(await min('a { color: fade(#ff0000, 50%) }')).toBe('a{color:rgba(255,0,0,.5)}');
+    expect(await min('a { color: spin(hsla(10, 50%, 50%, 0.5), 10) }')).toBe('a{color:hsla(20,50%,50%,.5)}');
+  });
+
+  it('folds a list handed whole to an unknown function, item by item', async () => {
+    expect(await min('@l: 0.50px, 1.0px; a { b: foo(@l) }')).toBe('a{b:foo(.5px,1px)}');
+  });
+
+  it('folds a value the same whether it reaches the declaration directly or through a mixin', async () => {
+    const direct = await min('a { b: rgba(255, 0, 0, 0.5) }');
+    expect(direct).toBe('a{b:rgba(255,0,0,.5)}');
+    expect(await min('.m(@a) { b: @a } a { .m(rgba(255, 0, 0, 0.5)) }')).toBe(direct);
+    expect(await min('@c: rgba(255, 0, 0, 0.5); .m(@a) { b: @a } a { .m(@c) }')).toBe(direct);
+    expect(await min('.m(@a: rgba(255, 0, 0, 0.5)) { b: @a } a { .m() }')).toBe(direct);
+    expect(await min('.m(@a) { b: @a } a { .m(fade(#ff0000, 50%)) }')).toBe(direct);
+    expect(await min('.m(@a) { b: @a } a { .m(unit(0.5, px)) }')).toBe('a{b:.5px}');
+    expect(await min('@d: 0.50px; .m(@a) { b: @a } a { .m(@d) }')).toBe('a{b:.5px}');
+    expect(await min('@l: white 0.50px; .m(@a, @b) { b: @a @b } a { .m(@l...) }')).toBe('a{b:white .5px}');
+    expect(await min('@l: 0.50px / 2px; .m(@a, @b, @c) { b: @a @b @c } a { .m(@l...) }')).toBe('a{b:.5px / 2px}');
+    expect(await min('@w: white; .a(@x) { .b(@x 1px) } .b(@y) { b: @y } a { .a(@w) }')).toBe('a{b:white 1px}');
+    expect(await min('@d: #ffffff 0.50px; .a(@x) { .b(@x 1px) } .b(@y) { b: @y } a { .a(@d) }')).toBe('a{b:#fff .5px 1px}');
+  });
+
+  /* A list an argument carries is iterated by its items, each folded. */
+  it('folds the items each() takes from a mixin argument', async () => {
+    expect(await min('@v: 0.50px 1px; .m(@a) { each(@a, { w+_: @value; }); } a { .m(@v); }')).toBe('a{w:.5px 1px}');
+    expect(await min(
+      '@t: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;'
+      + ' .tr(@transition...) { each(@transition, #(@v) { transition+: @v; }); }'
+      + ' a { .tr(transform 0.15s ease-in-out, @t); }'
+    )).toBe('a{transition:transform .15s ease-in-out, background-color .15s ease-in-out,border-color .15s ease-in-out}');
+  });
+
+  /*
+   * each() takes a mixin argument apart by the value's items, in both output
+   * modes, exactly as it takes the same value passed directly: the escaped
+   * `a,b` is one item, never re-split at its comma.
+   */
+  it('iterates the items of a mixin argument as the same value passed directly, in both modes', async () => {
+    const viaMixin = '@l: ~"a,b" #FFFFFF; .e(@v) { each(@v, { w+: @value; }); } a { .e(@l); }';
+    const direct = '@l: ~"a,b" #FFFFFF; a { each(@l, { w+: @value; }); }';
+    expect(await min(viaMixin)).toBe('a{w:a,b, #fff}');
+    expect(await min(viaMixin)).toBe(await min(direct));
+    expect(await pretty(viaMixin)).toBe('a {\n  w: a,b, #FFFFFF;\n}\n');
+    expect(await pretty(viaMixin)).toBe(await pretty(direct));
+    expect(await min('@l: ~"a,b" 0.50px; .e(@v) { each(@v, { w+: @value; }); } a { .e(@l); }')).toBe('a{w:a,b, .5px}');
+  });
+
+  /*
+   * An argument is evaluated once whatever the output setting: a function in it
+   * runs once, so its splice and its declaration agree.
+   */
+  it('evaluates a mixin argument once', async () => {
+    const render = async (source: string, compress: boolean): Promise<string> => {
+      let calls = 0;
+      const tick = defineFunction('tick', { params: [], body: () => makeDimension(++calls, 'px') });
+      const css = await new Compiler({
+        output: { compress, collapseNesting: true },
+        compile: { plugins: [lessPlugin(), lessCompatPlugin({ functions: [tick] })] }
+      }).renderString(source, { extension: '.less', suppressWarnings: true });
+      return `${css.replace(/\s+/g, '').replace(/;}/g, '}')} calls=${calls}`;
+    };
+    for (const source of [
+      '.m(@a) { .s-@{a} { x: @a } } .m((tick() + 0));',
+      '.m(@a: (tick() + 0)) { .s-@{a} { x: @a } } .m();',
+      '.m(@a...) { .s-@{a} { x: @a } } .m((tick() + 0), 2px);',
+      '.n(@b) { .t-@{b} { y: @b } } .m(@a) { .n(@a); } .m((tick() + 0));',
+      '.m() { @r: (tick() + 0) 1; } a { .m(); x: @r; y: "@{r}"; }'
+    ]) {
+      const once = await render(source, true);
+      expect(once, source).toMatch(/calls=1$/u);
+      expect(once, source).toBe(await render(source, false));
+    }
+  });
+
+  /* A guard pattern compares the argument as written, as it does uncompressed. */
+  it('selects the same mixin as uncompressed output does', async () => {
+    const source = '.m(#ffffff) { b: hit } .m(@a) when (default()) { b: miss } @c: #fff; a { .m(@c) }';
+    expect(await min(source)).toBe('a{b:miss}');
+    expect(await pretty(source)).toBe('a {\n  b: miss;\n}\n');
+  });
+});
+
+describe('output.compress — interpolated text is never rewritten', () => {
+  /*
+   * Spliced bytes become part of a larger token, so folding them would change
+   * which element a selector matches or what a string says.
+   */
+  it('keeps an interpolated color as written in a selector, string, escape, and property name', async () => {
+    expect(await min('@d: #ffffff; .s-@{d} { b: @d }')).toBe('.s-#ffffff{b:#fff}');
+    expect(await min('@d: #ffffff; a { content: "@{d}" }')).toBe('a{content:"#ffffff"}');
+    expect(await min('@d: #ffffff; a { b: ~"@{d}-x" }')).toBe('a{b:#ffffff-x}');
+    expect(await min('@d: #ffffff; a { @{d}-x: 1 }')).toBe('a{#ffffff-x:1}');
+    expect(await min('@c: rgba(255, 0, 0, 0.5); a { content: "@{c}" }')).toBe('a{content:"rgba(255, 0, 0, 0.5)"}');
+  });
+
+  /* A mixin parameter binds the value as written; only its declaration folds. */
+  it('keeps a mixin parameter as written wherever it is spliced', async () => {
+    expect(await min('@c: #ffffff; .m(@a) { .s-@{a} { x: @a } } .m(@c);')).toBe('.s-#ffffff{x:#fff}');
+    expect(await min('@d: 0.50px 1.0em; .m(@a) { x: @a; .s-@{a} { z: 1 } } a { .m(@d) }'))
+      .toBe('a{x:.5px 1em;.s-0.50px 1.0em{z:1}}');
+    expect(await min('.m(@a; @b: @a) { x: @b; .s-@{b} { z: 1 } } @d: 0.50px; a { .m(@d) }'))
+      .toBe('a{x:.5px;.s-0.50px{z:1}}');
+    expect(await min('.a(@x) { .b(@x) } .b(@y) { x: @y; .s-@{y} { z: 1 } } @c: #ffffff; a { .a(@c) }'))
+      .toBe('a{x:#fff;.s-#ffffff{z:1}}');
+    expect(await min('@l: white, 0.50px; .m(@a, @b) { y: @b; .s-@{b} { z: 1 } } a { .m(@l...) }'))
+      .toBe('a{y:.5px;.s-0.50px{z:1}}');
+    expect(await min('.m(@rest...) { x: @rest; y: "@{rest}" } @d: 0.50px; a { .m(@d, #ffffff) }'))
+      .toBe('a{x:.5px #fff;y:"0.50px #ffffff"}');
+    expect(await min('@c: #ffffff; .m(@a) { x: e(%("%s", @a)) } a { .m(@c) }')).toBe('a{x:#ffffff}');
+  });
 });
 
 describe('output.compress — structural', () => {
@@ -147,6 +277,15 @@ describe('output.compress — structural', () => {
       .toBe('@media(min-width:40em){a{color:red}}');
     expect(await min('@supports (display: grid) { a { color: red } }'))
       .toBe('@supports(display:grid){a{color:red}}');
+  });
+
+  it('drops a comment or line break between at-rule query parts', async () => {
+    expect(await min('@media screen, /* c */ print { a { b: c } }')).toBe('@media screen,print{a{b:c}}');
+    expect(await min('@media screen and\n  (min-width: 10px) { a { b: c } }')).toBe('@media screen and (min-width:10px){a{b:c}}');
+  });
+
+  it('tightens the comma list of an at-rule statement prelude', async () => {
+    expect(await min('@layer a, /* c */ b;')).toBe('@layer a,b;');
   });
 
   it('drops an empty rule entirely', async () => {

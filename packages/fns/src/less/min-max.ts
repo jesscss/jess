@@ -1,5 +1,5 @@
 import type { Dimension, ValueGroup, Value } from '@jesscss/core';
-import { groupItems, isValueGroupArray, unify } from '@jesscss/core';
+import { groupItems, isValueGroupArray, makeDimension, unify } from '@jesscss/core';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
@@ -22,10 +22,15 @@ const isSlashList = (value: ValueGroup): boolean =>
  * Verified against lessc 4.8.0 and dart-sass 1.101.0. Both are kept; see
  * `sass/math/compare.ts` for the other half.
  *
- * The reference-unit rule is what `min(2px, 1)` → `1` and `min(6em, 5)` → `5`
- * depend on, so "Less does not coerce unitless" is wrong — it coerces, just
- * into the unit rather than out of it. The WINNING ARGUMENT is returned as
- * authored (`max(1px, 2px, 3)` → `3`, not `3px`).
+ * The reference-unit rule is what `min(2px, 1)` → `1px` and `min(6em, 5)` →
+ * `5em` depend on, so "Less does not coerce unitless" is wrong — it coerces,
+ * just into the unit rather than out of it. A unitless winner ADOPTS the
+ * reference unit, as a unitless operand of `+`/`-` does (`max(1px, 2px, 3)` →
+ * `3px`, `max(4, 3px)` → `4px`; ledger C20 and V27, orchestrator judgment under
+ * owner delegation 2026-10-06), so the result is the length it was compared
+ * as and never a bare number where a length was asked for. A winner with a
+ * unit is returned as authored (`max(1px, 1in)` → `1in`). Less 4.x returns the
+ * unitless argument (`4`).
  *
  * Incompatible units FAIL. Nothing here suppresses that: the engine preserves
  * the call verbatim in bare position under the default `functionMode:
@@ -86,5 +91,5 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
       bestMagnitude = candidateMagnitude;
     }
   }
-  return best;
+  return reference !== undefined && isUnitlessDimension(best) ? makeDimension(best.number, reference.unit) : best;
 }

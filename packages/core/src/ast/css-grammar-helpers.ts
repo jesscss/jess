@@ -18,6 +18,7 @@
  * the CSS base inherits them through the base rather than redeclaring them.
  */
 import {
+  anPlusB,
   any,
   branch,
   block,
@@ -25,16 +26,21 @@ import {
   interpolation,
   keyword,
   funcCall,
+  interpolatedSimpleSelector,
   list,
   operation,
+  pseudoSelector,
   selectorBranchCanonical,
+  simpleSelector,
   spaced,
   selectorTermOf,
   selist
 } from './nodes.js';
-import { generalEnclosedSourceOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
+import { walkAuthoredValue } from './traversal.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
+  AnPlusB,
   AnonymousMixin,
   CompoundSelector,
   Block,
@@ -71,7 +77,8 @@ import type { Token } from './grammar-helpers.js';
 import type { GuardNode } from './guard.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
-type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
+type FieldCapture = { readonly value: unknown; readonly span?: { readonly start: number; readonly end: number } };
+type ReducerFields = Record<string, FieldCapture | ReadonlyArray<FieldCapture>>;
 
 export function tokenText(child: unknown): string {
   if (typeof child === 'string') {
@@ -250,11 +257,11 @@ export function semicolonGroupedCall(children: readonly unknown[]): FunctionCall
   const { segments, separators, commas, branches } = splitArguments(children, 1, children.length - 1);
   if (segments.length === 1) {
     const args = segments[0]!;
-    const branchList = withFirstBranchCondition(args);
+    const branchList = args.length === 2 ? withFirstBranchCondition(args[0]!, args[1]!) : undefined;
     if (branchList !== undefined) {
       return funcCall(name, [branchList]);
     }
-    return funcCall(name, withLayoutWhenComplete([...args], commas[0]!, Math.max(0, args.length - 1)));
+    return funcCall(name, withLayoutWhenComplete(args, commas[0]!, Math.max(0, args.length - 1)));
   }
   const groups = semicolonGroups(segments, commas, branches);
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
@@ -312,16 +319,12 @@ function isOpenBranch(value: ValueSlot | undefined): value is Branch {
 
 /**
  * Give a branch list its first condition. A call body left-factored on its
- * first argument reduces to `[condition, rest]`, where `rest` is a
- * {@link branchRest} result; this returns the one branch-list argument, or
- * `undefined` when the arguments are not that shape. A parsed condition is never
+ * first argument reduces to the two arguments `condition, rest`, where `rest`
+ * is a {@link branchRest} result; this returns the one branch-list argument,
+ * or `undefined` when they are not that shape. A parsed condition is never
  * empty, so an empty one only ever marks the branch awaiting it.
  */
-export function withFirstBranchCondition(args: readonly ValueSlot[]): ValueSlot | undefined {
-  const [condition, rest] = args;
-  if (args.length !== 2 || condition === undefined || rest === undefined) {
-    return undefined;
-  }
+export function withFirstBranchCondition(condition: ValueSlot, rest: ValueSlot): ValueSlot | undefined {
   if (isOpenBranch(rest)) {
     return branch(condition, rest.value);
   }
@@ -498,24 +501,209 @@ export function sourceText(child: unknown): string {
  */
 const CSS_NODE_TRIVIA_STRIDE = 4;
 
-export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
-  const gapBefore = new Set<number>();
-  for (let index = 2; index < triviaLog.length; index += CSS_NODE_TRIVIA_STRIDE) {
-    gapBefore.add(triviaLog[index] ?? 0);
+/**
+ * The children with a `' '` wherever trivia separated two of them (or led or
+ * trailed them). The gap stands for whatever whitespace or comment was there:
+ * one space, never the trivia's own bytes, which stay in the trivia index.
+ */
+export function withTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): readonly unknown[] {
+  if (triviaLog.length === 0) {
+    return children;
   }
-
-  let text = '';
-  for (let index = 0; index < children.length; index++) {
-    if (gapBefore.has(index)) {
-      text += ' ';
+  const gapped: unknown[] = [];
+  let entry = 2;
+  for (let index = 0; index <= children.length; index++) {
+    entry = skipGapAt(triviaLog, entry, index);
+    if (entry < 0) {
+      gapped.push(' ');
+      entry = -entry;
     }
-    text += sourceText(children[index]);
+    if (index < children.length) {
+      gapped.push(children[index]);
+    }
   }
-  if (gapBefore.has(children.length)) {
-    text += ' ';
+  return gapped;
+}
+
+/**
+ * The trivia log's insertion indices only grow, so the gaps are read with one
+ * cursor: past every entry at `index`, negated when there was one.
+ */
+function skipGapAt(triviaLog: readonly number[], entry: number, index: number): number {
+  if (entry >= triviaLog.length || triviaLog[entry] !== index) {
+    return entry;
+  }
+  let next = entry;
+  while (next < triviaLog.length && triviaLog[next] === index) {
+    next += CSS_NODE_TRIVIA_STRIDE;
+  }
+  return -next;
+}
+
+/** {@link withTriviaGaps} as the joined source text, without the gapped array. */
+function textWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+  let text = '';
+  let entry = 2;
+  for (let index = 0; index <= children.length; index++) {
+    entry = skipGapAt(triviaLog, entry, index);
+    if (entry < 0) {
+      text += ' ';
+      entry = -entry;
+    }
+    if (index < children.length) {
+      text += sourceText(children[index]);
+    }
+  }
+  return text;
+}
+
+export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+  return semanticGapText(textWithTriviaGaps(children, triviaLog));
+}
+
+/** Whether the source holds a block comment's opener at `at`. */
+const isBlockCommentAt = (source: string, at: number): boolean =>
+  source.charCodeAt(at) === 0x2f && source.charCodeAt(at + 1) === 0x2a;
+
+/**
+ * The authored trivia a node's log records before raw child `insertIndex`, as the
+ * layout of a list keeps it: each block comment with the whitespace either side of
+ * it; with no block comment, the whitespace only where it breaks a line; otherwise
+ * nothing. An entry is classified by its own bytes (`/*` opens a block comment), so
+ * any dialect's trivia scope reads the same.
+ */
+export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number): string {
+  return triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, 0, insertIndex), insertIndex);
+}
+
+/** The first log entry from `from` whose insert index is at least `insertIndex`: the indices never decrease. */
+function triviaEntryAt(triviaLog: readonly number[], from: number, insertIndex: number): number {
+  let entry = from;
+  while (entry < triviaLog.length && triviaLog[entry + 2]! < insertIndex) {
+    entry += CSS_NODE_TRIVIA_STRIDE;
+  }
+  return entry;
+}
+
+/** {@link triviaTextAt} for the run of entries that starts at `first`. */
+function triviaRunText(triviaLog: readonly number[], source: string, first: number, insertIndex: number): string {
+  let end = first;
+  let hasBlockComment = false;
+  let hasLineBreak = false;
+  for (; end < triviaLog.length && triviaLog[end + 2] === insertIndex; end += CSS_NODE_TRIVIA_STRIDE) {
+    if (isBlockCommentAt(source, triviaLog[end]!)) {
+      hasBlockComment = true;
+    } else if (!hasLineBreak) {
+      for (let at = triviaLog[end]!, stop = triviaLog[end + 1]!; at < stop; at++) {
+        const code = source.charCodeAt(at);
+        if (code === 0x0a || code === 0x0d) {
+          hasLineBreak = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!hasBlockComment && !hasLineBreak) {
+    return '';
+  }
+  let text = '';
+  for (let entry = first; entry < end; entry += CSS_NODE_TRIVIA_STRIDE) {
+    const start = triviaLog[entry]!;
+    if (!hasBlockComment || isBlockCommentAt(source, start)
+      || (!source.startsWith('//', start)
+        && ((entry > first && isBlockCommentAt(source, triviaLog[entry - CSS_NODE_TRIVIA_STRIDE]!))
+          || (entry + CSS_NODE_TRIVIA_STRIDE < end && isBlockCommentAt(source, triviaLog[entry + CSS_NODE_TRIVIA_STRIDE]!))))) {
+      text += source.slice(start, triviaLog[entry + 1]);
+    }
+  }
+  return text;
+}
+
+/**
+ * A comma list whose layout keeps the comments written either side of each comma
+ * (`screen /* a *\/, /* b *\/ print`). Its separator field captures the `,` and the
+ * whitespace after it; ambient trivia took the comments, so they are read from the
+ * node's trivia log: the run that ends where a separator starts and the run that
+ * starts where it ends. Placing them by source offset needs no raw children, so a
+ * reducer that leaves `rawChildren` unread does not pay for that capture tier.
+ * A list whose separators cannot all be placed keeps the plain `, ` glue.
+ */
+export function commaListWithComments<T extends ValueSlot>(
+  children: readonly unknown[],
+  fields: ReducerFields | undefined,
+  triviaLog: readonly number[],
+  state: unknown,
+  pick: (child: unknown) => child is T
+): T | List {
+  const values = children.filter(pick);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const result = list(values, ',');
+  const capture = fields?.separator;
+  const captures = capture === undefined ? [] : Array.isArray(capture) ? capture : [capture];
+  const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string'
+    ? state.source
+    : undefined;
+  if (source === undefined || captures.length !== values.length - 1) {
+    return result;
+  }
+  const layout: string[] = [];
+
+  /* Log entries are in source order, so one cursor reads every separator's trivia. */
+  let from = 0;
+  for (const { value, span } of captures) {
+    if (span === undefined) {
+      return result;
+    }
+    let entry = from;
+    while (entry < triviaLog.length && triviaLog[entry]! < span.start) {
+      entry += CSS_NODE_TRIVIA_STRIDE;
+    }
+    const last = entry - CSS_NODE_TRIVIA_STRIDE;
+    const before = last >= from && triviaLog[last + 1] === span.start
+      ? triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, from, triviaLog[last + 2]!), triviaLog[last + 2]!)
+      : '';
+    const after = entry < triviaLog.length && triviaLog[entry] === span.end
+      ? triviaRunText(triviaLog, source, entry, triviaLog[entry + 2]!)
+      : '';
+    layout.push(before + authoredText(value) + after);
+    from = entry;
+  }
+  return withValueLayout(result, layout);
+}
+
+/**
+ * An attribute selector keeps its authored whitespace (ledger O7): the tokens
+ * as written, and one space wherever the author put whitespace or a comment
+ * between two of them — `[ href = "x" i ]`, `[href="x" i]` and `[href="x"i]`
+ * each keep their own spelling. The tokenizer already separates an unquoted
+ * value from its flag only where trivia does, so no space is ever invented.
+ */
+export function attributeSelectorFrom(children: readonly unknown[], triviaLog: readonly number[]): SimpleSelector {
+  if (!children.some(child => selectorTemplate(child) !== null)) {
+    return simpleSelector(textWithTriviaGaps(children, triviaLog));
   }
 
-  return semanticGapText(text);
+  // A dialect's interpolating slot (SCSS `#{…}`): the rest stays literal text.
+  return interpolatedSimpleSelector(interpolationFromTemplateChildren(
+    withTriviaGaps(children, triviaLog).map(part => selectorTemplate(part) ?? { value: sourceText(part) }),
+    'CSS'
+  ));
+}
+
+/**
+ * The template a selector child splices: an interpolation, or an interpolating
+ * string (SCSS `[a="#{$x}"]`, Less `:lang("@{l}")`), whose quotes are selector
+ * syntax and so splice around its content.
+ */
+function selectorTemplate(child: unknown): Interpolation | null {
+  if (isInterpolation(child)) {
+    return child;
+  }
+  return isQuoted(child) && child.interp !== null
+    ? interpolation([{ lit: child.quote }, ...child.interp.parts, { lit: child.quote }])
+    : null;
 }
 
 export function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {
@@ -541,11 +729,121 @@ export function isSimpleToken(value: unknown): value is SimpleToken {
 
 /*
  * Selector-function pseudos whose argument is retained as a structured
- * `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
- * never on colon count — `::slotted()` takes selector args but is absent here,
- * so it stays opaque text. `crossable` (a narrower set) is decided in core.
+ * `SelectorList` (P0): the logical combinations and the shadow-tree
+ * `:host()` / `:host-context()` / `::slotted()`. Gated on the pseudo NAME
+ * (lowercased, colon-stripped), never on colon count. `crossable` (a narrower
+ * set) is decided in core, so the shadow-tree pseudos stay sealed to extend.
  */
-export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches', 'host', 'host-context', 'slotted']);
+
+/**
+ * A reduced `:nth-*()` argument: its `An+B` and, on the child-indexed pseudos,
+ * the `of S` selector list (Selectors-4 §6.6.2).
+ */
+export interface NthArgument {
+  readonly nth: AnPlusB;
+  readonly of: SelectorList | null;
+}
+
+/** An `:nth-*()` argument from its `An+B` and its `of S` list. */
+export function nthArgument(nth: AnPlusB, of: SelectorList | null = null): NthArgument {
+  return { nth, of };
+}
+
+/** The `<an+b>` fact a grammar recognized (css-syntax-3 §6.1). */
+export function anPlusBFrom(child: unknown): AnPlusB {
+  return anPlusB(tokenText(child));
+}
+
+export function isAnPlusB(value: unknown): value is AnPlusB {
+  return isNodeType(
+    value,
+    'AnPlusB'
+  );
+}
+
+export function isNthArgument(value: unknown): value is NthArgument {
+  return typeof value === 'object' && value !== null && 'nth' in value && 'of' in value;
+}
+
+/**
+ * The structured pseudo a functional pseudo's reduced argument makes, or
+ * `null` when the argument has no structure of its own (an opaque or
+ * malformed one, which the caller keeps as text): an `:nth-*()` `An+B`, a
+ * `:lang()` range list, a `:dir()` direction, or a selector-function pseudo's
+ * selector list. A `:lang()` range that interpolates leaves the argument a
+ * template, so the pseudo is an interpolated selector like any other whose
+ * bytes do not exist until evaluation.
+ */
+export function structuredPseudoFrom(head: string, name: string, arg: unknown): SimpleToken | null {
+  if (isNthArgument(arg)) {
+    return pseudoSelector(head, arg.of, null, null, arg.nth);
+  }
+  if (isList(arg) || isKeyword(arg)) {
+    return pseudoSelector(head, null, null, null, arg);
+  }
+  if (isInterpolation(arg)) {
+    return interpolatedSimpleSelector(interpolationFromTemplateChildren([{ value: `${head}(` }, arg, { value: ')' }], 'CSS'));
+  }
+  if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(name.toLowerCase())) {
+    return pseudoSelector(head, arg);
+  }
+  return null;
+}
+
+/**
+ * The structured pseudo of a dialect's glued `:name(` opener and its reduced
+ * argument, for a pseudo whose argument grammar admits only structured shapes.
+ */
+export function requireStructuredPseudo(opener: string, arg: unknown): SimpleToken {
+  const head = opener.slice(0, -1);
+  const pseudo = structuredPseudoFrom(head, head.slice(head.startsWith('::') ? 2 : 1), arg);
+  if (pseudo === null) {
+    throw new TypeError('A structured pseudo lost its argument.');
+  }
+  return pseudo;
+}
+
+/**
+ * A `:lang()` argument (Selectors-4 §7.2) from its `range` fields: identifiers
+ * and strings in a comma `List`. A dialect string that interpolates makes the
+ * whole argument a template, its ranges `, `-joined.
+ */
+export function languageRangeList(fields: ReducerFields | undefined): List | Interpolation {
+  const capture = fields?.range;
+  const captures = capture === undefined ? [] : Array.isArray(capture) ? capture : [capture];
+  const ranges: Array<Keyword | Quoted | Interpolation> = [];
+  let interpolated = false;
+  for (const { value } of captures) {
+    const template = selectorTemplate(value);
+    if (template !== null) {
+      interpolated = true;
+      ranges.push(template);
+    } else {
+      ranges.push(isQuoted(value) ? value : keyword(tokenText(value)));
+    }
+  }
+  if (!interpolated) {
+    return list(ranges, ',');
+  }
+  const template: unknown[] = [];
+  for (const range of ranges) {
+    if (template.length > 0) {
+      template.push({ value: ', ' });
+    }
+    template.push(range.type === 'Interpolation' ? range : { value: range.src });
+  }
+  return interpolationFromTemplateChildren(template, 'CSS');
+}
+
+/** A `:dir()` argument (Selectors-4 §7.1): its `direction` field as a `Keyword`. */
+export function directionKeyword(fields: ReducerFields | undefined): Keyword {
+  const capture = fields?.direction;
+  if (capture === undefined || !('value' in capture)) {
+    throw new TypeError('A :dir() argument lost its direction.');
+  }
+  return keyword(tokenText(capture.value));
+}
 
 export function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(
@@ -737,7 +1035,7 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
   if (isValue(head)) {
     /* A lone value is no `<mf-plain>`/`<mf-range>`: the feature is general-enclosed. */
     if (children.length === 1) {
-      return withAuthoredGeneralEnclosed(head, span, state);
+      return withAuthoredGeneralEnclosed(withGluedKeywordSpan(head, span), span, state);
     }
 
     /* A value-first range is exactly `value op name [op value]`; anything else read is general-enclosed. */
@@ -787,22 +1085,29 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
  * — records its source bytes, so the emitter prints it as written.
  */
 export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
-  /* The usual group, `(` one query `)`: `generalEnclosedArgument` reads it back as that query, so build it directly. */
-  const middle = children[1];
-  if (
-    children.length === 3 && isValue(middle) && !isCommaList(middle)
-    && isToken(children[0]) && children[0].value === '(' && isToken(children[2]) && children[2].value === ')'
-  ) {
-    const group = block(middle);
-    return generalEnclosedSourceOf(middle) === undefined || middle.type === 'Block' ? group : withAuthoredGeneralEnclosed(group, span, state);
+  rejectBareVariableOutsideValue(children, state);
+  let count = 0;
+  let only: unknown;
+  for (const child of children) {
+    if (!isTerminalText(child) || (tokenText(child) !== '(' && tokenText(child) !== ')')) {
+      count++;
+      only = child;
+    }
   }
-  const contents = children.filter(child => !isTerminalText(child) || (tokenText(child) !== '(' && tokenText(child) !== ')'));
-  const group = block(generalEnclosedArgument(children) ?? []);
-  const only = contents[0];
 
-  /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
-  const isQuery = contents.length === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
-  return isQuery ? group : withAuthoredGeneralEnclosed(group, span, state);
+  /*
+   * Only the group whose own contents are general-enclosed; a group around a
+   * marked group is a condition. One whose contents are the dialect's
+   * interpolation (SCSS `(#{$q})`) is a template, substituted then printed.
+   */
+  if (count === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block')) {
+    /*
+     * One query is its own contents — `generalEnclosedArgument` would hand the
+     * same node back — except a comma list, whose items it reads one by one.
+     */
+    return block(isCommaList(only) ? generalEnclosedArgument(children) ?? [] : only);
+  }
+  return generalEnclosedGroup(block(generalEnclosedArgument(children) ?? []), span, state);
 }
 
 /*
@@ -824,10 +1129,11 @@ const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector'
  * function. A template carrying the dialect's interpolation, which P16
  * evaluates, is marked a template instead: substituted, then printed as written.
  */
-export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
-  if (value.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(value.name.toLowerCase())) {
-    return value;
+export function generalEnclosedGroup<T extends ValueNode>(group: T, span: AstSourceSpan, state: unknown): T {
+  if (group.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(group.name.toLowerCase())) {
+    return group;
   }
+  const value = withGluedKeywordSpan(group, span);
   const payload = value.type === 'FunctionCall' ? value.args[0]?.value : value.type === 'Block' ? value.value : undefined;
   if (isInterpolation(payload) && payload.parts.some(part => 'ref' in part)) {
     return withGeneralEnclosedTemplate(value);
@@ -841,12 +1147,99 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
  * without it is a grammar wiring defect, so it throws rather than falling back
  * to normalized, evaluated output.
  */
-function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
-  if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
-    throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
+function withAuthoredGeneralEnclosed<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
+  /*
+   * Contents that read a binding — the dialect's interpolation (SCSS `(#{$q})`,
+   * Less `(foo: @{x} baz)`) or a variable reference (SCSS `(foo: $bar baz)`) —
+   * have no authored bytes to print: the binding is evaluated (P16), so the
+   * value stays structured and the emitter substitutes it, as dart-sass and
+   * lessc 4.9.1 write `(foo: 1px baz)`.
+   */
+  if (readsBinding(value)) {
+    return value;
   }
-  return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
+  return withGeneralEnclosedSource(value, authoredSource(span, state, 'A general-enclosed query group'));
 }
+
+/**
+ * The bytes of the parse input a reducer's span covers, read from the parse
+ * state. A run without the input in its state is a grammar wiring defect, so
+ * this throws rather than inventing a spelling.
+ */
+export function authoredSource(span: AstSourceSpan, state: unknown, what: string): string {
+  if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
+    throw new TypeError(`${what} needs the parse input in its parse state to keep its authored spelling.`);
+  }
+  return state.source.slice(span.start, span.end);
+}
+
+/**
+ * Whether general-enclosed contents read a binding — the dialect's
+ * interpolation, which P16 evaluates whatever its hole holds, or a variable or
+ * property reference — anywhere the authored value walker reaches (math,
+ * negation, `if()`, function arguments, groups).
+ */
+function readsBinding(value: ValueNode): boolean {
+  let reads = false;
+  walkAuthoredValue(value, {
+    enterNode(node) {
+      if (node.type === 'Lookup' || node.type === 'Reference' || (node.type === 'Interpolation' && node.parts.some(part => 'ref' in part))) {
+        reads = true;
+      }
+      return reads ? 'skip-children' : undefined;
+    }
+  });
+  return reads;
+}
+
+/** The parse-state member a dialect sets when its bare variable is a value only (Less, ledger P7). */
+export interface BareVariableRejection {
+  readonly rejectBareVariable: (start: number, end: number, name: string) => never;
+}
+
+function rejectsBareVariable(state: unknown): state is BareVariableRejection {
+  return typeof state === 'object' && state !== null && 'rejectBareVariable' in state && typeof state.rejectBareVariable === 'function';
+}
+
+/*
+ * Ledger P7: where a dialect's bare variable is a value only (its parse state
+ * carries `rejectBareVariable`), a query group admits one only as a
+ * declaration value — after a feature's `name:`, together with everything the
+ * group holds after it — or as a range's bound. Anywhere else in the group
+ * (`(@x)`, `(@x baz)`, `(foo @x)`, `(foo(@x))`) it is a prelude position, where
+ * only the dialect's interpolation substitutes. A nested group was checked
+ * when it was built, so the walk does not enter one; an interpolation or a
+ * string is the dialect's own substitution.
+ */
+function rejectBareVariableOutsideValue(children: readonly unknown[], state: unknown): void {
+  if (!rejectsBareVariable(state)) {
+    return;
+  }
+  const contents = children.find(isValue);
+  if (contents?.type === 'Operation' && contents.operator === ':') {
+    return;
+  }
+  for (const child of children) {
+    if (!isValue(child)) {
+      continue;
+    }
+    walkAuthoredValue(child, {
+      enterNode(node) {
+        if (node.type === 'Block' || node.type === 'Interpolation' || node.type === 'Quoted'
+          || (node.type === 'Operation' && QUERY_VALUE_OPERATORS.has(node.operator))) {
+          return 'skip-children';
+        }
+        if (node.type === 'Lookup' && node.kind === 'var') {
+          state.rejectBareVariable(sourceStartOf(node), sourceEndOf(node), node.raw.slice(1));
+        }
+        return undefined;
+      }
+    });
+  }
+}
+
+/* The operators whose operands are a feature's values: `name: value` and the range comparisons. */
+const QUERY_VALUE_OPERATORS: ReadonlySet<string> = new Set([':', '<', '>', '<=', '>=', '=']);
 
 /*
  * `<general-enclosed>` read as a query's contents (media-queries-4 §3.1): what
@@ -1180,6 +1573,13 @@ export function isReference(value: unknown): value is Reference {
   );
 }
 
+export function isList(value: unknown): value is List {
+  return isNodeType(
+    value,
+    'List'
+  );
+}
+
 export function isQuoted(value: unknown): value is Quoted {
   return isNodeType(
     value,
@@ -1287,7 +1687,7 @@ export function isValueSlotOf(value: unknown, isOperand: (value: unknown) => val
 
 /** A guard tree whose operands `isOperand` accepts. */
 export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => value is ValueNode): value is GuardNode {
-  if (typeof value !== 'object' || value === null || !('g' in value)) {
+  if (typeof value !== 'object' || value === null || !('g' in value) || !('parens' in value) || typeof value.parens !== 'number') {
     return false;
   }
   switch (value.g) {
@@ -1298,19 +1698,24 @@ export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => val
     case 'cmp':
     case 'match':
       return 'op' in value && typeof value.op === 'string'
+        && 'implied' in value && typeof value.implied === 'boolean'
         && 'left' in value && isOperand(value.left)
         && 'right' in value && isOperand(value.right);
     case 'call':
       return 'name' in value && typeof value.name === 'string'
         && 'args' in value && Array.isArray(value.args) && value.args.every(isOperand);
     case 'not':
-      return 'inner' in value && isGuardNodeOf(
+      return 'word' in value && typeof value.word === 'string'
+        && 'gluedAt' in value && typeof value.gluedAt === 'number'
+        && 'inner' in value && isGuardNodeOf(
         value.inner,
         isOperand
       );
     case 'and':
     case 'or':
-      return 'left' in value && isGuardNodeOf(
+      return 'word' in value && typeof value.word === 'string'
+        && 'gluedAt' in value && typeof value.gluedAt === 'number'
+        && 'left' in value && isGuardNodeOf(
         value.left,
         isOperand
       )

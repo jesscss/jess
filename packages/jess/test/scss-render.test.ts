@@ -30,6 +30,51 @@ describe('scss plugin render-through', () => {
     expect(css).toContain('font-weight: bold');
   });
 
+  /*
+   * A media query group whose contents are an interpolation is substituted
+   * (P16), not printed as its authored `#{…}` bytes, as dart-sass does.
+   */
+  it('substitutes an interpolation that is a media query group', async () => {
+    const compiler = new Compiler();
+    await expect(compiler.renderString('@media (#{"(a) and (b)"}) { x { y: z; } }', { extension: '.scss' }))
+      .resolves.toBe('@media ((a) and (b)) {\n  x {\n    y: z;\n  }\n}\n');
+    await expect(compiler.renderString('$q: "not (a)"; @media (#{$q}) { x { y: z; } }', { extension: '.scss' }))
+      .resolves.toBe('@media (not (a)) {\n  x {\n    y: z;\n  }\n}\n');
+
+    // A string that interpolates is one `Quoted`, substituted the same way.
+    await expect(compiler.renderString('$q: x; @media (a "#{$q}") { x { y: z; } }', { extension: '.scss' }))
+      .resolves.toBe('@media (a "x") {\n  x {\n    y: z;\n  }\n}\n');
+  });
+
+  /*
+   * Arithmetic in a media feature is a SassScript value, computed as dart-sass
+   * computes it; `-$x` is never written as the `-1 * $x` it is lowered to. A
+   * `/` there is a `<ratio>` (media-queries-4 §2.4), not division.
+   */
+  it.each([
+    ['$x: 10px; @media (min-width: -$x)', '@media (min-width: -10px)'],
+    ['$x: 10px; @media (min-width: $x * 2)', '@media (min-width: 20px)'],
+    ['$x: 10px; @media (min-width: $x + 1px) and (max-width: $x - 1px)', '@media (min-width: 11px) and (max-width: 9px)'],
+    ['$x: 10px; @media (width < $x * 2)', '@media (width < 20px)'],
+    ['@media (min-width: 1px + 1px)', '@media (min-width: 2px)'],
+    ['$x: 10px; @media (foo: -$x baz)', '@media (foo: -10px baz)'],
+    ['$x: 10px; @media (foo: $x * 2 baz)', '@media (foo: 20px baz)'],
+    ['@media (aspect-ratio: 16/9)', '@media (aspect-ratio: 16 / 9)']
+  ])('computes arithmetic in a media feature: %s', async (source, prelude) => {
+    const css = String(await new Compiler().renderString(`${source} { x { y: z; } }`, { extension: '.scss' }));
+    expect(css.slice(0, css.indexOf(' {'))).toBe(prelude);
+  });
+
+  /*
+   * A glued `/` between words in a function argument is part of the value, as in a
+   * declaration (`b: c/d`): a call written out as-is keeps it (dart-sass writes
+   * `local(Foo/Bar/Baz)`); it used to become a space.
+   */
+  it('keeps a glued slash between words in a written-out call', async () => {
+    const css = await new Compiler().renderString('@font-face { src: local(Foo/Bar/Baz); } a { b: foo(c/d) e/f; }', { extension: '.scss' });
+    expect(css).toBe('@font-face {\n  src: local(Foo/Bar/Baz);\n}\na {\n  b: foo(c/d) e/f;\n}\n');
+  });
+
   it('honors an explicitly configured scss plugin', async () => {
     const compiler = new Compiler({
       compile: { plugins: [scssPlugin()] }
@@ -63,6 +108,24 @@ describe('scss plugin render-through', () => {
     expect(css).not.toContain('color: red');
     expect(css).not.toContain('@if');
     expect(css).not.toContain('@else');
+  });
+
+  /**
+   * `math.round` and the global `round($number, $step)` share the core rounding kernel
+   * with Less `round()`: an exact tie breaks away from zero. Expected bytes are
+   * dart-sass 1.101.7 output for the same input.
+   *
+   * TODO(provided-modules-source): `math.round` (a–c) reaches `@jesscss/fns` through
+   * the plugin's own `require` (its `sass:math` provided module, `ProvidedModules` in
+   * core), so it runs the BUILT lib even under vitest; only the global `round()` (d, e)
+   * runs source. Retire when provided modules load through an import vite can alias.
+   */
+  it('rounds an exact tie away from zero, as dart-sass does', async () => {
+    const compiler = new Compiler();
+    const src = '@use "sass:math";\n'
+      + '.t { a: math.round(-0.5); b: math.round(-2.5); c: math.round(2.5); d: round(-2.5, 1); e: round(2.5, -1); }';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toBe('.t {\n  a: -1;\n  b: -3;\n  c: 3;\n  d: -3;\n  e: 3;\n}\n');
   });
 
   /**
@@ -108,5 +171,15 @@ describe('scss plugin render-through', () => {
     const src = '.x { y: foo(z, (a: 1, b: 2)); }';
     const css = await compiler.renderString(src, { extension: '.scss' });
     expect(css).toContain('y: foo(z, { a: 1; b: 2 })');
+  });
+
+  /*
+   * An attribute selector keeps its authored whitespace (ledger O7); `@extend`
+   * still matches it against the same selector spelled without it.
+   */
+  it('extends an attribute selector across authored whitespace', async () => {
+    const compiler = new Compiler();
+    const css = await compiler.renderString('[ b ] { c: d; }\n.x { @extend [b]; }', { extension: '.scss' });
+    expect(css).toBe('[ b ],\n.x {\n  c: d;\n}\n');
   });
 });

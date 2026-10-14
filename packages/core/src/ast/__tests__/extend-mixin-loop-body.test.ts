@@ -53,10 +53,65 @@ describe('extend from mixin-call and loop bodies', () => {
     );
   });
 
+  // Each call of a detached ruleset is its own placement, as each mixin call is.
+  it('places the rules of each detached-ruleset call apart', () => {
+    expect(render('@dr: { .p { a: 1 } }; .a { @dr(); } .b { @dr(); } .x:extend(.a .p) {}'))
+      .toBe('.a .p,\n.x {\n  a: 1;\n}\n.b .p {\n  a: 1;\n}\n');
+  });
+
   it('composes the caller ancestor context of a mixin called inside a rule', () => {
     const src = '.grid-column { width: 1px; }\n'
       + '#make() { .col-x { &:extend(.grid-column); } }\n'
       + '.parent { #make(); }\n';
     expect(render(src)).toBe('.grid-column,\n.parent .col-x {\n  width: 1px;\n}\n');
+  });
+});
+
+/*
+ * Ledger X7 (amended by the owner 2026-10-05): a rule with an interpolated selector is
+ * an extend target once resolved, at the root and in mixin and loop bodies alike, part
+ * by part like any other rule (lessc 4.9.1 behaves the same). An interpolation glued
+ * onto a class name continues that name (`.c-@{n}` is the one class `.c-1`).
+ */
+describe('interpolated rules are extend targets once resolved', () => {
+  it('at the root, the glued name included', () => {
+    expect(render('@n: 1; .c-@{n} { a: 1; } .x:extend(.c-1) {}')).toBe('.c-1,\n.x {\n  a: 1;\n}\n');
+    expect(render('@n: 1; .k.c-@{n} { a: 1; } .x:extend(.c-1 all) {}')).toBe('.k:is(.c-1, .x) {\n  a: 1;\n}\n');
+  });
+
+  // A value that opens with a selector delimiter starts a simple of its own.
+  it('at the root, a resolved value opening a simple of its own stays apart', () => {
+    expect(render('@v: ~".b"; .a@{v} { c: d; } .x:extend(.b all) {}')).toBe('.a:is(.b, .x) {\n  c: d;\n}\n');
+    expect(render('@v: ~".b"; .a@{v} { c: d; } .x:extend(.a.b) {}')).toBe('.a.b,\n.x {\n  c: d;\n}\n');
+    expect(render('@v: ~":hover"; #a@{v} { c: d; } .x:extend(#a all) {}')).toBe('#a:hover,\n.x:hover {\n  c: d;\n}\n');
+    expect(render('@v: ~"[x]"; .a@{v} { c: d; } .y:extend(.a all) {}')).toBe(':is(.a, .y)[x] {\n  c: d;\n}\n');
+  });
+
+  it('in a mixin body, part by part', () => {
+    expect(render('.m(@n) { .k.c-@{n} { a: 1; } } .m(1); .x:extend(.c-1 all) {}'))
+      .toBe('.k:is(.c-1, .x) {\n  a: 1;\n}\n');
+    expect(render('.m(@n) { .w { .c-@{n} { a: 1; } } } .m(1); .x:extend(.c-1 all) {}'))
+      .toBe('.w :is(.c-1, .x) {\n  a: 1;\n}\n');
+    expect(render('@v: foo; .m() { .@{v} { a: 1; } } .m(); .x:extend(.foo) {}'))
+      .toBe('.foo,\n.x {\n  a: 1;\n}\n');
+  });
+
+  /*
+   * An extender a mixin, loop, interpolation or `&` concatenation composes groups like
+   * any other where its token is one simple selector; one that holds several simples
+   * keeps its own specificity outside the group (ledger X3 guard).
+   */
+  it('groups a composed extender by the selector token it composes', () => {
+    expect(render('.base.k { m: 1 } .btn { &-primary:extend(.base all) {} }'))
+      .toBe(':is(.base, .btn-primary).k {\n  m: 1;\n}\n');
+    expect(render('.base.k { m: 1 } each(range(2), { .col-@{value} { &:extend(.base all); } });'))
+      .toBe(':is(.base, .col-1, .col-2).k {\n  m: 1;\n}\n');
+    expect(render('@v: ~"x.y"; .base.k { m: 1 } .@{v} { &:extend(.base all); }'))
+      .toBe('.base.k,\n.x.y.k {\n  m: 1;\n}\n');
+  });
+
+  it('in a loop body, per iteration', () => {
+    expect(render('each(range(2), { .k.c-@{value} { a: @value; } }); .x:extend(.c-2 all) {}'))
+      .toBe('.k.c-1 {\n  a: 1;\n}\n.k:is(.c-2, .x) {\n  a: 2;\n}\n');
   });
 });

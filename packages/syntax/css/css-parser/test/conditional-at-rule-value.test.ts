@@ -364,9 +364,8 @@ describe('CSS conditional at-rule value holes', () => {
    * feature, then the rest of its component values. `@container` still
    * rejects it, as the other dialects do for both.
    *
-   * DELIBERATE DIVERGENCE from the Less, SCSS and .jess copies of this matrix
-   * (jess#315): they still reject the `@media` rows; they converge on css's
-   * query rules in stabilisation order.
+   * Less, SCSS and .jess read the same media query list, so their copies of
+   * this matrix pin the same trees.
    *
    * What is pinned for a rejection is the CONTRACT. css used to MATCH this
    * shape and then throw a raw internal `Error` out of its reduction, so a

@@ -1,10 +1,8 @@
 /**
  * The awaitable evaluation lane, exercised through a NATIVE async `Fn`.
  *
- * Deliberately not through `@plugin`: legacy plugin calls are served on a
- * blocking channel so their results never reach the engine as promises, which
- * means a `@plugin`-based test passes without the async lane being involved at
- * all. A config-injected `Fn` with real latency is the honest probe.
+ * A config-injected `Fn` with real latency is the probe: it is genuinely async
+ * without depending on the `@plugin` sandbox (whose calls take this same lane).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
@@ -13,7 +11,7 @@ import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { defineFunction, makeDimension, makeKeyword } from '@jesscss/core';
+import { defineFunction, makeAny, makeDimension, makeKeyword } from '@jesscss/core';
 
 /** Resolves after a real tick, so the value genuinely arrives as a promise. */
 const slowKeyword = defineFunction('aslow', {
@@ -133,6 +131,30 @@ describe('awaitable values in at-rule preludes', () => {
     expect(result.errors).toEqual([]);
     expect(result.css).not.toContain('@media');
     expect(result.css).toContain('.keep');
+  }, 20000);
+
+  /*
+   * A statement call is evaluated where it stands, so a block holding only an
+   * awaited one that writes nothing is elided like any empty block (ledger O6),
+   * in both emitters.
+   */
+  it('drops a block whose only statement call settles to nothing', async () => {
+    const aempty = defineFunction('aempty', {
+      params: [],
+      body: async () => {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        return makeAny('');
+      }
+    });
+    for (const collapseNesting of [true, false]) {
+      const compiler = new Compiler({
+        compile: { plugins: [lessPlugin(), lessCompatPlugin({ functions: [aempty] })] },
+        output: { collapseNesting }
+      });
+      const css = (source: string) => compiler.renderString(source, { filePath: '/virtual/async-empty.less', extension: '.less' });
+      await expect(css('a { aempty(); } b { c: 1 }')).resolves.toBe('b {\n  c: 1;\n}\n');
+      await expect(css('a { @media print { aempty(); } c: 1 }')).resolves.toBe('a {\n  c: 1;\n}\n');
+    }
   }, 20000);
 
   it('keeps declaration order when preludes resolve out of order', async () => {

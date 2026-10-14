@@ -10,10 +10,10 @@
  *    report a reject at all. An instrument that reports "accepted" for
  *    everything would otherwise show a clean sweep and be indistinguishable from
  *    four perfect grammars.
- *  - a DIVERGENCE control — `svg|circle`, which less accepts and css rejects —
- *    proving the runner resolves four SEPARATE grammars and not one grammar four
- *    times. A harness that accidentally bound the same runner to all four keys
- *    would agree with itself perfectly and report zero findings.
+ *  - a DIVERGENCE control — a Less mixin call, which less accepts and css
+ *    rejects — proving the runner resolves four SEPARATE grammars and not one
+ *    grammar four times. A harness that accidentally bound the same runner to
+ *    all four keys would agree with itself perfectly and report zero findings.
  *
  * Both controls are asserted, so this file goes red if the instrument stops
  * being able to see. The findings themselves are printed.
@@ -75,20 +75,15 @@ describe('over-narrow probe: instrument sensitivity', () => {
   });
 
   /*
-   * `|a` and not `svg|circle`, deliberately. The obvious divergence control is
-   * `svg|circle`, and it does not work: css ACCEPTS it — through
-   * `combinator = keywords(['||', '>', '+', '~', '|'])`
-   * (`packages/syntax/css/css-parser/src/grammar.ts:998`), which reads the
-   * namespace bar as a combinator and builds two compound segments. That is a
-   * WRONG NODE, not an accept, and it is exactly why an acceptance-only
-   * instrument needs `over-narrow-node-probe.test.ts` beside it. `|a` has no
-   * left operand for the combinator reading, so css genuinely rejects it and it
-   * is a usable control.
+   * A dialect construct, not a spec probe: a spec-valid input css rejects is a
+   * defect that gets fixed, and then the control stops controlling. `|a` was
+   * this control until css learned the namespace prefix (selectors-4 §6.1). A
+   * root mixin call is Less syntax that CSS never has.
    */
   it('resolves four separate grammars, not one grammar four times', () => {
-    const row = find('sel-03');
-    expect(row.verdicts.less).toBe(true);
-    expect(row.verdicts.css).toBe(false);
+    const source = '.m();';
+    expect(parseVerdict('less', source).parses).toBe(true);
+    expect(parseVerdict('css', source).parses).toBe(false);
   });
 
   it('reports an accept for plain CSS in every dialect', () => {
