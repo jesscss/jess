@@ -207,3 +207,25 @@ describe('a generic at-rule header is not read as a page selector', () => {
     });
   }
 });
+
+/*
+ * Owner 2026-10-13: "B: CSS any case, Less lowercase". In a CSS condition
+ * `and`, `or`, `not` and `only` are ASCII case-insensitive, as every CSS
+ * keyword is, and are written as authored in every dialect.
+ */
+describe('a CSS condition keyword is read in any case and written as authored', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@media SCREEN AND (color)',
+      '@media ONLY screen And (color)',
+      '@media NOT all AND (color)',
+      '@media (a) OR (b)',
+      '@supports NOT (display: grid)',
+      '@supports (a: b) OR (c: d)',
+      '@container (a) AND (b)',
+      '@container NOT (width > 1px)'
+    ])(`${dialect}: %s`, async (source) => {
+      expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});

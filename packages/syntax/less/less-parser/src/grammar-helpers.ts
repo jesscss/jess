@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessAmbiguousNotError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
+import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -301,9 +301,11 @@ function lessTerminalText(value: unknown): string | null {
 }
 
 /**
- * A terminal spelling the lowercase keyword `word` in any ASCII case: `and`,
- * `or` and `not` are keywords wherever a Less condition is written, and a CSS
- * keyword is ASCII case-insensitive (CSS Values 4 §6.1).
+ * A terminal spelling the lowercase keyword `word` in any ASCII case. The
+ * grammar reads `and`, `or` and `not` in any case so a Less condition written
+ * in another case still parses: it is reported where it is written
+ * ({@link reportConditionKeywordCase}; owner 2026-10-13: "B: CSS any case, Less
+ * lowercase"), and a value paren group writes it as authored.
  */
 function isLessKeyword(value: unknown, word: string): boolean {
   const text = lessTerminalText(value);
@@ -2272,6 +2274,9 @@ function mixinGuardTermFrom(
   state: unknown
 ): MixinGuard | LessGuardOperand {
   const negated = isLessKeyword(children[0], 'not');
+  if (negated) {
+    reportConditionKeywordCase(rawChildren[0], state);
+  }
   let index = negated ? 1 : 0;
   let left: ValueNode | LessMathRun;
   let term: MixinGuard | LessGuardOperand | undefined;
@@ -2334,10 +2339,11 @@ function requireMathOperand(value: unknown): ValueNode | LessMathRun {
  * Fold an `and` / `or` chain. A lone term passes through unconverted, so a
  * bare operand reaches an enclosing group still able to be read as a value.
  */
-function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
+function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], rawChildren: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
   let result: MixinGuard | LessGuardOperand | undefined;
   let word: string = kind;
-  for (const child of children) {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
     if (isMixinGuard(child) || isLessGuardOperand(child)) {
       result = result === undefined
         ? child
@@ -2345,6 +2351,7 @@ function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state
     } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
       /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
       word = requireTerminalText(child);
+      reportConditionKeywordCase(rawChildren[index], state);
     }
   }
   if (result === undefined) {
@@ -2446,6 +2453,9 @@ function functionConditionTermFrom(
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
+  if (negated) {
+    reportConditionKeywordCase(rawChildren[0], state);
+  }
   let index = negated ? 1 : 0;
   let left = functionConditionOperandFact(children[index], state);
   const groupLed = left.grouped;
@@ -2496,6 +2506,30 @@ function reportAmbiguousNot(operator: unknown, state: unknown): void {
   }
   const start = operator.span.start + text.length - text.trimStart().length;
   const error = new LessAmbiguousNotError(start, start + text.trim().length);
+  const sink = diagnosticsOf(state);
+  if (sink === null) {
+    throw error;
+  }
+  sink.push(error);
+}
+
+/**
+ * A Less condition keyword (`and`, `or`, `not`) the author wrote in another
+ * case: an error diagnostic at the keyword, read as the keyword (owner
+ * 2026-10-13: "B: CSS any case, Less lowercase"; P45). The token may carry the
+ * whitespace around it; the report covers the keyword.
+ */
+function reportConditionKeywordCase(keyword: unknown, state: unknown): void {
+  const text = lessTerminalText(keyword);
+  if (!isSpannedToken(keyword) || text === null) {
+    return;
+  }
+  const word = text.trim();
+  if (word === word.toLowerCase() || word === ',') {
+    return;
+  }
+  const start = keyword.span.start + text.length - text.trimStart().length;
+  const error = new LessConditionKeywordCaseError(start, start + word.length, word);
   const sink = diagnosticsOf(state);
   if (sink === null) {
     throw error;
@@ -2654,19 +2688,21 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
  * glued it (`and(2)`): a value paren group's {@link LessParenLogical}, or a
  * function condition's keyword token.
  */
-function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
+function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[], rawChildren: readonly unknown[] = [], state?: unknown): FunctionConditionFact {
   let first: FunctionConditionFact | undefined;
   let guard: MixinGuard | undefined;
   let src = '';
   let hasComparison = false;
   let word: string = kind;
   let gluedAt = NO_SPAN;
-  for (const child of children) {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
     if (!isFunctionConditionFact(child)) {
       const text = isLessParenLogical(child) ? child.word : lessTerminalText(child)?.trim();
       if (text !== undefined && text !== null) {
         word = text;
         gluedAt = isLessParenLogical(child) ? child.gluedAt : NO_SPAN;
+        reportConditionKeywordCase(rawChildren[index], state);
       }
       continue;
     }
@@ -3052,6 +3088,7 @@ export {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
+  reportConditionKeywordCase,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,

@@ -296,10 +296,33 @@ export class LessAmbiguousNotError extends SyntaxError {
 }
 
 /**
+ * A Less condition keyword in another case than lowercase (`AND`, `Not`): a
+ * mixin guard, `if()` and `boolean()` read lowercase `and`, `or` and `not`
+ * (owner 2026-10-13: "B: CSS any case, Less lowercase"). Located at the
+ * keyword; the parse reads it as the keyword and carries on.
+ */
+export class LessConditionKeywordCaseError extends SyntaxError {
+  readonly code = 'parse/condition-keyword-case' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'A Less condition reads lowercase `and`, `or` and `not`; a CSS condition (`@media`, `@supports`, `@container`) reads them in any case.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, keyword: string) {
+    const lower = keyword.toLowerCase();
+    super(`Write \`${lower}\` in lowercase: a Less condition reads lowercase \`and\`, \`or\` and \`not\`.`);
+    this.name = 'LessConditionKeywordCaseError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Write \`${lower}\`.`;
+  }
+}
+
+/**
  * A problem the grammar recovered from: a located error diagnostic the parse
  * carries on past (ledger P45).
  */
-export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError;
+export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

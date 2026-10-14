@@ -3742,6 +3742,35 @@ describe('a `not` before a bare compared operand', () => {
 });
 
 /*
+ * Owner 2026-10-13: "B: CSS any case, Less lowercase". A Less condition — a
+ * mixin guard, an `if()` or `boolean()` condition — reads lowercase `and`,
+ * `or` and `not`; another case is an error diagnostic at the keyword, and the
+ * parse carries on reading it as the keyword (P45).
+ */
+describe('a Less condition keyword is lowercase', () => {
+  it.each([
+    ['.m(@a) when (@a) AND (@b) { x: y }', 'AND'],
+    ['.m(@a) when NOT (@a) { x: y }', 'NOT'],
+    ['.m(@a) when (@a) Or (@b) { x: y }', 'Or'],
+    ['.m(@a) when (@a), (@b) AND (@c) { x: y }', 'AND'],
+    ['a { b: if((1 = 1) OR (2 = 2), 1, 2); }', 'OR'],
+    ['a { b: if(NOT (1 = 1), 1, 2); }', 'NOT'],
+    ['a { b: boolean((1 = 1) And (2 = 2)); }', 'And']
+  ])('%s reports %s', (source, keyword) => {
+    const result = safeParse('entry.less', source);
+    expect(result.document?.rules).toHaveLength(1);
+    expect(result.errors.map(error => [error.code, error.column])).toEqual([['parse/condition-keyword-case', source.indexOf(keyword) + 1]]);
+    expect(result.errors[0]?.message).toBe(`Write \`${keyword.toLowerCase()}\` in lowercase: a Less condition reads lowercase \`and\`, \`or\` and \`not\`.`);
+  });
+
+  it('accepts lowercase keywords without a diagnostic', () => {
+    for (const source of ['.m(@a) when (@a) and (@b), not (@c) or (@d) { x: y }', 'a { b: if(not (1 = 1) and (2 = 2) or (3 = 3), 1, 2); }']) {
+      expect(safeParse('entry.less', source).errors, source).toEqual([]);
+    }
+  });
+});
+
+/*
  * A keyword ends at the css-syntax-3 §4.3.11 ident-continue boundary, which
  * includes every non-ASCII ident character. An ASCII-only boundary recognized
  * the keyword and then failed on the remainder, turning valid CSS into a Less

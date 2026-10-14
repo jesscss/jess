@@ -49,6 +49,7 @@ import {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
+  reportConditionKeywordCase,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,
@@ -1745,12 +1746,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const FunctionConditionAnd = node(
     'FunctionConditionAnd',
     sequence(g.FunctionConditionTerm, many(sequence(functionConditionAnd, g.FunctionConditionTerm))),
-    children => foldFunctionCondition('and', children)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldFunctionCondition('and', children, rawChildren, state)
   );
   const FunctionConditionOr = node(
     'FunctionConditionOr',
     sequence(g.FunctionConditionAnd, many(sequence(functionConditionOr, g.FunctionConditionAnd))),
-    children => foldFunctionCondition('or', children)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldFunctionCondition('or', children, rawChildren, state)
   );
   const FunctionCondition = node(
     'FunctionCondition',
@@ -3240,12 +3241,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MixinGuardAnd = node(
     'MixinGuardAnd',
     sequence(g.MixinGuardTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTerm))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('and', children, state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldMixinGuards('and', children, rawChildren, state)
   );
   const MixinGuardOr = node(
     'MixinGuardOr',
     sequence(g.MixinGuardAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardAnd))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('or', children, state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldMixinGuards('or', children, rawChildren, state)
   );
   const unparenthesizedMixinGuard = node(
     'UnparenthesizedMixinGuard',
@@ -3277,22 +3278,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       unparenthesizedMixinGuard,
       sequence(lessCaseWord('not'), g.MixinGuardTerm)
     ),
-    (children, _fields, _span, _rawChildren, _triviaLog, state): MixinGuard => {
+    (children, _fields, _span, rawChildren, _triviaLog, state): MixinGuard => {
       const term = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
       const guard = children.some(child => isLessTerminalText(child, '(')) ? inParens(term) : term;
-      const not = children.find(child => isLessKeyword(child, 'not'));
-      return not === undefined ? guard : { g: 'not', inner: guard, word: requireTerminalText(not), gluedAt: NO_SPAN, parens: 0 };
+      const at = children.findIndex(child => isLessKeyword(child, 'not'));
+      if (at < 0) {
+        return guard;
+      }
+      reportConditionKeywordCase(rawChildren[at], state);
+      return { g: 'not', inner: guard, word: requireTerminalText(children[at]), gluedAt: NO_SPAN, parens: 0 };
     }
   );
   const MixinGuardTopAnd = node(
     'MixinGuardTopAnd',
     sequence(g.MixinGuardTopTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTopTerm))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, state), state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, rawChildren, state), state)
   );
   const MixinGuardTopOr = node(
     'MixinGuardTopOr',
     sequence(g.MixinGuardTopAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardTopAnd))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, state), state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, rawChildren, state), state)
   );
   const MixinGuard = node(
     'MixinGuard',
