@@ -174,7 +174,7 @@ describe('owner rulings (Less 5)', () => {
       .resolves.toBe('.tiny-scope {\n  color: blue;\n}\n');
   });
 
-  it('C17 (owner 2026-10-04): a built-in call with too many arguments is written as authored', async () => {
+  it('C17 (owner-delegated judgment 2026-10-04 (owner: "just use your judgement - whatever\'s most correct / most like CSS, and/or best UX")): a built-in call with too many arguments is written as authored', async () => {
     await expect(render('.a { b: percentage(0.5, 1); c: cos(1, 2, 3); }'))
       .resolves.toBe('.a {\n  b: percentage(0.5, 1);\n  c: cos(1, 2, 3);\n}\n');
   });
@@ -197,7 +197,7 @@ describe('owner rulings (Less 5)', () => {
       .resolves.toBe('.a :is(.c, .d),\n.a #e {\n  color: red;\n}\n');
   });
 
-  it('O9 (owner 2026-10-04): a root & before content drops; a lone root & is kept', async () => {
+  it('O9 (owner-delegated judgment 2026-10-04 (owner: "just use your judgement - whatever\'s most correct / most like CSS, and/or best UX")): a root & before content drops; a lone root & is kept', async () => {
     await expect(render('& .x { a: b; }')).resolves.toBe('.x {\n  a: b;\n}\n');
     await expect(render('& { a: b; }')).resolves.toBe('& {\n  a: b;\n}\n');
   });
