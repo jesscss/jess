@@ -22,6 +22,7 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
@@ -1967,34 +1968,32 @@ function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink:
 }
 
 /**
- * One item of a comma-list argument; `leadsNamed` when it is that argument's
- * `@name: value`. A spread or rest, or a later `@name:`, has no place in a list
- * value: it is reported, and the list keeps what it names — the variable, the
- * spread value, the named value — and drops a bare `...`.
+ * One item of a comma-list argument, as the list value keeps it. The `;` rule
+ * ({@link mixinListProblems}) has already reported a spread or rest, or a later
+ * `@name:`, in the run; the list keeps what such an item names — the variable,
+ * the spread value, the named value — and drops a bare `...`.
  */
-function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean, sink: LessRecoveredError[] | null): ValueSlot | undefined {
+function mixinCommaListItem(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): ValueSlot | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
-    reportMixinArgument(capture, 'rest', sink);
     return undefined;
   }
   if (item.kind === 'positional') {
-    if (item.spread) {
-      reportMixinArgument(capture, 'rest', sink);
-    }
     return mixinListValueAt(item.value, capture, sink);
   }
-  if (item.rest) {
-    reportMixinArgument(capture, 'rest', sink);
+  if (item.rest || item.default === undefined) {
     return item.reference;
-  }
-  if (item.default === undefined) {
-    return item.reference;
-  }
-  if (!leadsNamed) {
-    reportMixinArgument(capture, 'named', sink);
   }
   return mixinListValueAt(item.default, capture, sink);
+}
+
+/** The shape the `;` rule reads off an item ({@link MixinListItemShape}). */
+function mixinListItemShape(capture: MixinInteriorCapture): MixinListItemShape {
+  const item = capture.value;
+  if (item.kind === 'anonymous-rest' || (item.kind === 'positional' ? item.spread : item.rest)) {
+    return 'rest';
+  }
+  return item.kind === 'binding' && item.default !== undefined ? 'named' : 'plain';
 }
 
 /**
@@ -2003,9 +2002,9 @@ function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean, 
  * or after the `;`, belongs to a comma-list value; without one, `,` separates
  * arguments. A group of two or more items is ONE argument whose value is the node
  * `~( … )` builds (`EscapedParen`), the normalized form: `.m(@a: b, c; d)` holds
- * exactly what `.m(@a: ~(b, c), d)` does. An item the list cannot give meaning
- * to is reported at its own item, in source order, and the list keeps what it
- * can ({@link mixinCommaListItem}).
+ * exactly what `.m(@a: ~(b, c), d)` does. The items the `;` makes invalid are
+ * the shared rule's ({@link mixinListProblems}), reported at each item, and the
+ * list keeps what it can ({@link mixinCommaListItem}).
  */
 function reassembleMixinInterior<T>(
   interior: MixinInteriorFact,
@@ -2025,6 +2024,9 @@ function reassembleMixinInterior<T>(
     }
     return out;
   }
+  for (const { index, problem } of mixinListProblems(items.map(mixinListItemShape), separators, true)) {
+    reportMixinArgument(items[index]!, problem, sink);
+  }
   let first = 0;
   for (let last = 0; last < items.length; last++) {
     if (separators[last] === ',') {
@@ -2037,7 +2039,7 @@ function reassembleMixinInterior<T>(
       const name = head.kind === 'binding' && !head.rest && head.default !== undefined ? head.reference.name : undefined;
       const values: ValueSlot[] = [];
       for (let index = first; index <= last; index++) {
-        const value = mixinCommaListItem(items[index]!, index === first && name !== undefined, sink);
+        const value = mixinCommaListItem(items[index]!, sink);
         if (value !== undefined) {
           values.push(value);
         }
