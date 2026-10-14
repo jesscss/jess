@@ -34,7 +34,7 @@ import {
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { lessGrammar } from './grammar/ast.js';
-import { LessParseError } from './parse-error.js';
+import { LessParseError, type LessMixinArgumentError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
 
 /** The rule map both compiled Less AST variants expose. */
@@ -180,11 +180,37 @@ function lineOptions(input: string, span: Span): {
   };
 }
 
+/**
+ * The document, and the problems the grammar recovered from (ledger P46): each
+ * a located error diagnostic the parse carried on past (P45, owner
+ * 2026-10-09), in source order, one per item.
+ */
+interface LessParsed {
+  readonly document: Stylesheet;
+  readonly recovered: readonly LessMixinArgumentError[];
+}
+
+/**
+ * `parse()`: the document, or the first problem in source order. The pipeline
+ * reads {@link safeParseWith}, which keeps the document and reports them all.
+ */
 export function parseWith(
   grammar: LessAstGrammar,
   input: string,
   options: LessParseOptions = {}
 ): Stylesheet {
+  const { document, recovered } = parseRecovering(grammar, input, options);
+  if (recovered[0] !== undefined) {
+    throw recovered[0];
+  }
+  return document;
+}
+
+function parseRecovering(
+  grammar: LessAstGrammar,
+  input: string,
+  options: LessParseOptions
+): LessParsed {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -193,10 +219,11 @@ export function parseWith(
     );
   }
   const functions: FunctionScope = { ambient: options.moduleMode !== 'modern' };
+  const diagnostics: LessMixinArgumentError[] = [];
   const state: LessParseState = {
     source: input,
     mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE,
-    functions,
+    document: { functions, diagnostics },
     rejectBareVariable
   };
   const result = run(entry, input, {
@@ -263,10 +290,25 @@ export function parseWith(
     result.value,
     result.rootTrivia === undefined ? undefined : triviaMap
   );
-  return withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    triviaMap
-  );
+  return {
+    document: withTriviaMap(
+      withSourceSpan(result.value, result.span),
+      triviaMap
+    ),
+    recovered: inSourceOrder(diagnostics)
+  };
+}
+
+/** One report per item, ordered by where it is written. */
+function inSourceOrder(diagnostics: readonly LessMixinArgumentError[]): readonly LessMixinArgumentError[] {
+  if (diagnostics.length < 2) {
+    return diagnostics;
+  }
+  const byItem = new Map<string, LessMixinArgumentError>();
+  for (const error of diagnostics) {
+    byItem.set(`${error.offset}:${error.endOffset}:${error.message}`, error);
+  }
+  return [...byItem.values()].sort((a, b) => a.offset - b.offset);
 }
 
 /**
@@ -281,7 +323,12 @@ export function safeParseWith(
   options: LessParseOptions = {}
 ): ISafeParseResult {
   try {
-    return { document: parseWith(grammar, input, options), errors: [], warnings: [] };
+    const { document, recovered } = parseRecovering(grammar, input, options);
+    return {
+      document,
+      errors: recovered.map(error => parserDiagnostic({ dialect: 'Less', error, filePath, source: input })),
+      warnings: []
+    };
   } catch (error) {
     return {
       errors: [

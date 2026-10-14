@@ -71,3 +71,34 @@ describe('a `;` list error is reported at the argument (P46)', () => {
     });
   });
 });
+
+/*
+ * P45 (owner 2026-10-09): well-formed input never stops the pipeline. An item a
+ * `;` list makes invalid is an error diagnostic at that item, and the rest of
+ * the sheet still parses and evaluates.
+ */
+describe('a `;` list error does not stop the sheet (P45)', () => {
+  it.each([
+    ['.m(@a, @rest...; @c) { x: y; }', '@rest...'],
+    ['.m(@a: 1, @b: 2; @c) { x: y; }', '@b: 2'],
+    ['.m(@a, ...; @b) { x: y; }', '...'],
+    ['.t() { x: y; } .k { .t(...); }', '...']
+  ])('%s reports %s and writes the rest', async (source, at) => {
+    const result = await render(`${source}\n.other { a: b; }`);
+    expect(result.errors.map(error => [error.code, source.slice(error.column - 1, error.column - 1 + at.length)])).toEqual([
+      ['parse/invalid-mixin-argument', at]
+    ]);
+    expect(String(result.css)).toContain('.other {\n  a: b;\n}\n');
+  });
+});
+
+/* A positional argument spreads its value, in a statement call and in a value-position call alike. */
+describe('a mixin call spreads a positional value', () => {
+  it.each([
+    ['.m(@a) { b: @a; } .x { .m(foo...); }', '.x {\n  b: foo;\n}\n'],
+    ['.m(@a) { b: @a; } @r: .m(foo...); .x { @r(); }', '.x {\n  b: foo;\n}\n'],
+    ['.m(@a; @b) { a: @a; b: @b; } @l: 1, 2; .x { .m(@l...); }', '.x {\n  a: 1;\n  b: 2;\n}\n']
+  ])('%s', async (source, expected) => {
+    await expect(css(source)).resolves.toBe(expected);
+  });
+});

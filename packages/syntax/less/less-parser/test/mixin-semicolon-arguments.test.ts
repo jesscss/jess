@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { valueLayoutOf } from '../../../../core/src/ast/provenance.js';
-import { LessMixinArgumentError, parse } from '@jesscss/less-parser';
+import { LessMixinArgumentError, parse, safeParse } from '@jesscss/less-parser';
 import { bare } from '../../../../../test/provenance-free.js';
 
 /**
@@ -106,5 +106,31 @@ describe('Less mixin list errors point at the argument', () => {
 
   it('accepts in a comma list what only a `;` list rejects', () => {
     expect(() => parse('.x { .t(@a: x, @b: y); .t(a, @x...); }')).not.toThrow();
+  });
+});
+
+/*
+ * P45 (owner 2026-10-09): the pipeline's `safeParse` keeps the document and
+ * reports every invalid item at its own span, in source order.
+ */
+describe('Less mixin list errors are diagnostics the document survives', () => {
+  it.each([
+    ['.m(@a, @rest...; @c) { x: y } .z { a: b }', ['@rest...']],
+    ['.m(@a: 1, @b: 2; @c) { x: y } .z { a: b }', ['@b: 2']],
+    ['.x { .t(@a: x, @b: y; z, @w...); } .z { a: b }', ['@b: y', '@w...']],
+    ['.x { .t(...); } .z { a: b }', ['...']],
+    ['.m(foo...) { x: y } .z { a: b }', ['foo...']]
+  ])('%s', (source, at) => {
+    const result = safeParse('entry.less', source);
+    expect(result.document?.rules).toHaveLength(2);
+    expect(result.errors.map(error => [error.code, source.slice(error.column - 1, error.column - 1 + at[result.errors.indexOf(error)]!.length)])).toEqual(
+      at.map(text => ['parse/invalid-mixin-argument', text])
+    );
+  });
+
+  it('spreads a positional value in a value-position call', () => {
+    expect(bare(parse('@r: .m(foo...);'))).toMatchObject({
+      rules: [{ value: { args: [{ value: { src: 'foo' }, spread: true }] } }]
+    });
   });
 });

@@ -111,6 +111,10 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 - 2026-10-09 — OPEN, escalated to the owner (evaluator): a guard orders two `~( … )` lists by their bytes, so `.generic(a, b, c; a, b, d)` now matches `when (@a < @b)`, as `.generic(~(a, b, c), ~(a, b, d))` and two lists bound to variables already did; `tests-unit/mixins-guards/mixins-guards.less` is an expected failure until that is decided.
 
+- 2026-10-09 — agent judgment 2026-10-09, awaiting owner (how a `;`-list problem is reported, per P45): every `parse/invalid-mixin-argument` problem — a later `@name:` or a spread/rest inside a comma run, a bare `...` in a call, a mixin call where a value is needed, and a spread pattern parameter (`.m(foo...) {}`, new) — is an error diagnostic at its item, and the parse carries on. The pipeline's `safeParse` returns the document with every problem, in source order, and `Context` reports them and keeps evaluating when the parser returned a document (it still breaks on a parse error that came without one); `parse()` still raises the first. Recovery keeps what the item names: a later `@b: 2` gives its value `2` to the list, `@x...` gives `@x`, a spread value gives the value, a bare `...` and a mixin call are dropped, a spread pattern is the plain pattern. These are the lane's choices, not owner rulings.
+
+- 2026-10-09 — implementation note (agent, 2026-10-09): a positional mixin argument spreads its value again (`.m(foo...)`, `@r: .m(foo...)`, `.m(@list...)`), in a statement call and a value-position call alike, so consequence (c) above no longer holds: the value-position spread that parsed before P46 parses again, and the statement call, which never parsed it, now does too.
+
 ## A11
 
 - 2026-10-09 — implementation note, moved from the row: Less no longer writes `@page Test:first` (golden `media.css`) or `@page :left:blank` with a space before each pseudo-page — a glued run is one header atom — and `.jess` no longer rewrites `@page wide :left` to `wide:left`: its header is the authored bytes of its span.

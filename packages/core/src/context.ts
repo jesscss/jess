@@ -1766,8 +1766,13 @@ export class Context {
       this.warn(warning);
     }
 
-    // Check if we have errors and should break
-    if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
+    /*
+     * Break on a parse error the parser could not recover from. One it parsed
+     * past comes with its document: it is reported, and the rest of the sheet
+     * still evaluates (P45, owner 2026-10-09: "should be _diagnostic_ errors
+     * but probably shouldn't stop parsing and evaluation").
+     */
+    if (parseResult.errors.length > 0 && parseResult.document === undefined && this.opts.breakOnError !== false) {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
       throw makeJessErrorFromDiagnostic(firstError);
@@ -1949,7 +1954,9 @@ export class Context {
     for (const warning of result.warnings) {
       this.warn(warning);
     }
-    if (result.errors.length > 0 && this.opts.breakOnError !== false) {
+
+    /* As in `getTree`: a parse error that came with its document is reported, and evaluation continues (P45). */
+    if (result.errors.length > 0 && result.document === undefined && this.opts.breakOnError !== false) {
       throw makeJessErrorFromDiagnostic(result.errors[0]!);
     }
     const document = result.document;

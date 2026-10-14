@@ -226,7 +226,7 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
  * `rest` exist only because the list holds a `;` (ledger P46): every `,` then
  * belongs to a comma-list value, which a name or a spread cannot be part of.
  */
-export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value';
+export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value' | 'spreadPattern';
 
 const MIXIN_ARGUMENT_PROBLEMS: Record<LessMixinArgumentProblem, { message: string; reason: string; fix: string }> = {
   named: {
@@ -248,6 +248,11 @@ const MIXIN_ARGUMENT_PROBLEMS: Record<LessMixinArgumentProblem, { message: strin
     message: 'A mixin call is not a value here.',
     reason: 'A parameter default, a pattern parameter and an item of a comma-list argument must be values.',
     fix: 'Replace the mixin call with a value, or pass it as an argument of its own.'
+  },
+  spreadPattern: {
+    message: 'A pattern parameter cannot be spread.',
+    reason: 'In a mixin definition "..." follows a parameter name (@rest...) or stands alone. A value pattern matches one argument.',
+    fix: 'Name a rest parameter, for example @rest..., or remove the "...".'
   }
 };
 

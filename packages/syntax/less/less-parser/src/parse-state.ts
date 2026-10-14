@@ -8,7 +8,25 @@
  */
 import type { MathMode } from '@jesscss/core';
 import type { BareVariableRejection, FunctionScope } from '@jesscss/core/ast';
-import { LessBareVariableInterpolationError } from './parse-error.js';
+import { LessBareVariableInterpolationError, type LessMixinArgumentError } from './parse-error.js';
+
+/** What the reducers of one Less parse share and write ({@link LessParseState.document}). */
+export interface LessDocumentFacts {
+  /**
+   * The document's built-in function scope (ledger P36): created by `parseWith`
+   * from `moduleMode`, closed by the `@use`/`@compose` reducers, and attached to
+   * every call node, so a close reaches the calls built before the directive.
+   */
+  readonly functions: FunctionScope;
+
+  /**
+   * The mixin-list problems the grammar recovered from (ledger P46): a
+   * well-formed item a `;` list cannot give meaning to is a located error
+   * diagnostic and the parse carries on (P45, owner 2026-10-09). A run without
+   * it (the raw grammar) raises the problem instead.
+   */
+  readonly diagnostics: LessMixinArgumentError[];
+}
 
 export interface LessParseState extends Partial<BareVariableRejection> {
   /**
@@ -32,13 +50,13 @@ export interface LessParseState extends Partial<BareVariableRejection> {
   readonly mathMode: MathMode;
 
   /**
-   * The document's built-in function scope (ledger P36): created by `parseWith`
-   * from `moduleMode`, closed by the `@use`/`@compose` reducers, and attached to
-   * every call node. The one state member a reducer writes — a shared object,
-   * because parseman hands each reducer a shallow copy of the state, and only a
-   * reference carries a write back to the calls built before the directive.
+   * What reducers write for the whole document, one shared object, because
+   * parseman hands each state-reading reducer a shallow copy of the state and
+   * only a reference carries a write back. One member, not two: the copy is
+   * made per reducer call, and a fifth state member outgrows the copy's
+   * in-object slots, which measured +2% on every Less parse.
    */
-  readonly functions?: FunctionScope;
+  readonly document?: LessDocumentFacts;
 }
 
 /**
@@ -99,7 +117,13 @@ export function requireLessParseState(state: unknown): LessParseState {
  */
 export function functionScopeOf(state: unknown): FunctionScope | null {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
-  return (state as LessParseState | undefined)?.functions ?? null;
+  return (state as LessParseState | undefined)?.document?.functions ?? null;
+}
+
+/** The recovered-problem sink `parseWith` gave this run, or `null` (a raw `run()`). */
+export function diagnosticsOf(state: unknown): LessMixinArgumentError[] | null {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.document?.diagnostics ?? null;
 }
 
 /** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */

@@ -2887,10 +2887,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     literal('...'),
     () => ({ kind: 'anonymous-rest' })
   );
+  /* A positional item may spread its value (`.m(foo...)`, `@r: .m(@list...)`). */
   const MixinInteriorPositional = node(
     'MixinArgument',
-    g.CallArgumentValue,
-    children => ({ kind: 'positional', value: requireMixinCallArgumentValue(children[0]) })
+    sequence(g.CallArgumentValue, optional(literal('...'))),
+    children => ({
+      kind: 'positional',
+      value: requireMixinCallArgumentValue(children[0]),
+      spread: children.some(child => isLessTerminalText(child, '...'))
+    })
   );
   const mixinInteriorItem = choice(
     MixinInteriorBinding,
