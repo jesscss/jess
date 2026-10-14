@@ -67,6 +67,8 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 ## O8
 
+- 2026-10-09 — implementation note, moved from the row: **Implemented (2026-10-05, `lane/v5-4-serialize-eval`):** (b) the whitespace an escaped quoted selector opens or closes with is dropped, for a single branch (`resolveSelectorBranch`) and for a quoted group (`refGroupInterp`), in a header and inside a collapsed `:is()`; (a) in a nested header a quoted multi-branch group prints one branch per line, and root headers keep the group on one line. The `parse-interpolation` golden update is pending (escalated). Since the owner's 2026-10-09 amendment, (a) and (b) apply to structured lists only (see the derivation below); the capture's one-branch-per-line golden edit awaits the owner and is not applied (`pending-golden-edits.ts`).
+
 - 2026-10-09 — implementation note, moved from the row: Implementation: `serialize.ts` `refGroupInterp` (only a `*[…]` capture is a group).
 
 - 2026-10-09 — golden bookkeeping, moved from the row: The parse-interpolation edits the owner accepted 2026-10-09 are registered in `pending-golden-edits.ts`.
