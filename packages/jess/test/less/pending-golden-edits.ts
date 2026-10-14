@@ -1,10 +1,24 @@
 /*
- * A golden known to lag a fix, with the exact edit the owner has been asked to make.
- * The fixture keeps its full byte gate against the edited golden. Each `from` must
- * occur exactly once in the golden, so the entry fails — and must be removed — once
- * the owner applies the edit. Every test that reads a Less fixture's golden
- * (`all-less.test.ts`, `extend-exact-oracle.test.ts`, `strict-units.test.ts`,
- * `operations-placement.test.ts`) applies these same edits.
+ * A golden known to lag a fix, with the exact edit the owner has been asked to make,
+ * each citing the ruling that decides it. The fixture keeps its full byte gate against
+ * the edited golden. Each `from` must occur exactly once in the golden, so the entry
+ * fails — and must be removed — once the owner applies the edit. Every test that reads
+ * a Less fixture's golden (`all-less.test.ts`, `extend-exact-oracle.test.ts`,
+ * `strict-units.test.ts`, `operations-placement.test.ts`) applies these same edits.
+ *
+ * An edit no ruling decides yet is NOT applied: the harness would assert it as if the
+ * owner had accepted it. Such an edit is listed here, in a comment, and its fixture is
+ * an expected failure in `all-less.test.ts` until the owner decides. Awaiting the owner:
+ *
+ * - `tests-unit/parse-interpolation/parse-interpolation.less`: a `*[…]` capture's
+ *   header branches one per line, `  .d:is(.a, .b, .c)&:hover, baz-cap {` →
+ *   `  .d:is(.a, .b, .c)&:hover,\n  baz-cap {` (O8(a), an owner-delegated judgment of
+ *   2026-10-04); and the quoted case's `foo: bar` → `foo: baz`, which the source
+ *   writes (a golden typo).
+ * - `tests-unit/functions/functions.less`: `  length-1: 1;` → `  length-1: 3;`, a
+ *   `$name` accessor reading `~(1, 2, 3)` as the three-item list (ledger V26, OPEN).
+ * - `tests-config/namespacing/namespacing-8.less`: its source moves to
+ *   `--@{key}: @{value};` in the less.js fork (owner 2026-10-09, golden unchanged).
  */
 const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>([
   [
@@ -198,7 +212,7 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       '.first-level .second-level.active,\n.first-level .second-level.active2 {'
     ],
 
-    // OWNER-ACCEPTED 2026-10-09 (prefix-glued & is a parent reference: .qux& ≡ .qux:is(parent))
+    /* OWNER-ACCEPTED 2026-10-09: "should be the equivalent of .qux:is(.foo bar, .foo .baz), yes?" — "so yes ok to update". */
     /*
      * `.qux&` under `.foo .bar, .foo .baz` and `.tst&:hover` inside `:not()` under
      * `.only-nested .level2` reference the parent: each parent of several compounds
@@ -222,20 +236,7 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
 
     // OWNER-ACCEPTED 2026-10-09
     /* `@{c-quoted}@{d-quoted}`: two escaped texts glued as written. */
-    [':is(.a, .b):is(.c, .d) {\n  + .e-quoted {', '.a, .b.c, .d {\n  + .e-quoted {'],
-
-    /*
-     * PENDING OWNER REVIEW: a `*[…]` capture is a structured list, one branch per
-     * line in a nested header (ledger O8(a), owner 2026-10-04); the golden predates
-     * the ruling.
-     */
-    ['  .d:is(.a, .b, .c)&:hover, baz-cap {', '  .d:is(.a, .b, .c)&:hover,\n  baz-cap {'],
-
-    /*
-     * PENDING OWNER REVIEW: the golden says `foo: bar` where the quoted case's
-     * source says `foo: baz` (a fixture typo awaiting the owner's reconciliation).
-     */
-    ['  + .e-quoted {\n    foo: bar;', '  + .e-quoted {\n    foo: baz;']
+    [':is(.a, .b):is(.c, .d) {\n  + .e-quoted {', '.a, .b.c, .d {\n  + .e-quoted {']
   ]],
   ['tests-unit/extend-selector/extend-selector.less', [
     // `.foo`, `.ext3`, `.ext4` (0,1,0); `.ext1 .ext2` (0,2,0).
@@ -250,24 +251,6 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       ':is(.foo, .ext1 .ext2, .ext3, .ext4) :is(.bar, .ext3, .ext4),\n:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {',
       ':is(.foo, .ext3, .ext4) :is(.bar, .ext3, .ext4),\n.ext1 .ext2 :is(.bar, .ext3, .ext4),\n:is(.foo, .ext3, .ext4) .baz,\n.ext1 .ext2 .baz {'
     ]
-  ]],
-
-  /*
-   * A `$name` property accessor reads the declaration's parsed value, as a
-   * variable does, instead of re-reading its joined bytes (owner ruling
-   * 2026-10-06, ledger V3 and C2: parser-typed text is never re-read). `list-1:
-   * ~(1, 2, 3)` is the three-item list `length(@v)` of the same value already
-   * answers 3 for, so `length($list-1)` is 3; the golden's 1 was the joined
-   * bytes read back as one keyword. `~(…)` is v5 syntax with no 4.x oracle: this
-   * edit is a proposal awaiting the owner's sign-off.
-   */
-  ['tests-unit/functions/functions.less', [
-    ['  length-1: 1;\n', '  length-1: 3;\n']
-  ]],
-
-  // TEMPORARY until the fork source uses @{value} (owner 2026-10-09: sources move to v5 spelling, golden keeps real values) — remove when the fork edit lands
-  ['tests-config/namespacing/namespacing-8.less', [
-    [':root {\n  --background-color: black;\n  --color: #fff;\n}', ':root {\n  --background-color: @value;\n  --color: @value;\n}']
   ]],
 
   /*

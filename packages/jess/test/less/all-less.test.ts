@@ -258,6 +258,13 @@ const skippedFixtureReasons = new Map(
 const expectedFailureFixtures = new Map<string, string>([
 
   /*
+   * A golden edit no ruling decides yet is not applied (pending-golden-edits.ts), so
+   * these fail until the owner decides.
+   */
+  ['tests-config/namespacing/namespacing-8.less', 'fixture source moves to `--@{key}: @{value};` in the fork (owner 2026-10-09); remove when the fork lands'],
+  ['tests-unit/functions/functions.less', 'the golden writes `length-1: 1;`; jess reads `$list-1`, the value `~(1, 2, 3)`, as the three-item list (`length-1: 3;`), a proposal awaiting the owner (ledger V26, OPEN)'],
+
+  /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of
    * this list — the D3 single-render-pass change (removing the separate
    * Compiler-level eval pre-pass so render() is the sole eval driver) eliminated
@@ -351,7 +358,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it. Flattened, `.fruit-cap-` is a class of its own and the `&` a plain reference to each captured parent (owner 2026-10-09: "how do you know it\'s a prefix? that\'s why we can\'t do that"), so the golden\'s `.fruit-cap-apple, …` branches are not the flattened output either; Less `each()` is the explicit rule-multiplication form. Everything else matches the golden with its pending edits (pending-golden-edits.ts), which the stale-skip gate applies: escaped text prints as written (owner 2026-10-09; the `.bar2` and quoted `@{c}@{d}` headers are owner-accepted), a `*[…]` capture prints one branch per line in a nested header (O8(a)), and the quoted case\'s `foo: baz` golden typo awaits owner reconciliation'
+    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it. Flattened, `.fruit-cap-` is a class of its own and the `&` a plain reference to each captured parent (owner 2026-10-09: "how do you know it\'s a prefix? that\'s why we can\'t do that"), so the golden\'s `.fruit-cap-apple, …` branches are not the flattened output either; Less `each()` is the explicit rule-multiplication form. Escaped text prints as written (owner 2026-10-09; the `.bar2` and quoted `@{c}@{d}` headers are owner-accepted golden edits). Two more differences await the owner and are not applied as golden edits (pending-golden-edits.ts): a `*[…]` capture prints one branch per line in a nested header (O8(a), owner-delegated judgment 2026-10-04), and the golden writes `foo: bar` where the quoted case\'s source writes `foo: baz`'
   ],
   [
     'tests-unit/permissive-parse/permissive-parse.less',
