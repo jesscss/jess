@@ -1077,7 +1077,8 @@ export type JessLanguageServiceEngine = {
   /** Test/diagnostic hook (not LSP): incremental CST tree + edit-path counters. */
   _debugState(uri: string): { cstTree: CssCstNode | null; editApplied: number; fullRebuild: number };
 
-  getCompletions(uri: string, position: Position): CompletionList;
+  /** `triggerCharacter` is the LSP completion context's, when a typed character opened the list. */
+  getCompletions(uri: string, position: Position, triggerCharacter?: string): CompletionList;
   getHover(uri: string, position: Position): Hover | null;
   findDefinition(uri: string, position: Position): Location | null;
   findReferences(uri: string, position: Position): Location[];
@@ -1908,7 +1909,7 @@ export function createEngine(): JessLanguageServiceEngine {
       };
     },
 
-    getCompletions(uri, position) {
+    getCompletions(uri, position, triggerCharacter) {
       /*
        * CST-grounded for the syntactic paths (declared variables/mixins): reads
        * the tolerant CST (no AST reparse) so completion survives half-typed input.
@@ -1926,6 +1927,19 @@ export function createEngine(): JessLanguageServiceEngine {
       const cstTree = tracked.cstDoc?.tree;
       const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
       const lineBeforeCursor = text.slice(lineStart, offset);
+
+      /*
+       * Less `@{…}` and Jess `${…}` / `$[…]`. `{` and `[` are trigger characters
+       * only for these openers; typed anywhere else they get no list, which
+       * would otherwise open on every block and attribute selector.
+       */
+      const inInterpolation =
+        (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBeforeCursor))
+        || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBeforeCursor));
+      const openerTriggered = triggerCharacter === '{' || triggerCharacter === '[';
+      if (openerTriggered && !inInterpolation) {
+        return { isIncomplete: false, items: [] };
+      }
 
       const suggestions = suggestWithJess(text, tracked.lang, offset).map(s => String(s.nextTokenType).toLowerCase());
       const wantsAt = currentWord.startsWith('@') || suggestions.some(t => t.includes('at'));
@@ -2019,27 +2033,23 @@ export function createEngine(): JessLanguageServiceEngine {
        * names. (SCSS `#{$x}` already flows through the `$`-prefixed variable
        * path below.) Jess spells interpolation `${…}` in name, selector, and
        * string positions and keeps `$[…]` as the value-position lookup, so
-       * both openers are completion contexts.
+       * both openers are completion contexts. A list opened by typing `{` or `[`
+       * holds only these names, even when there are none.
        */
-      {
-        const inInterp =
-          (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBeforeCursor))
-          || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBeforeCursor));
-        if (inInterp && cstTree) {
-          for (const name of cstVariableNames(cstTree, document)) {
-            if (prefix && !name.toLowerCase().startsWith(prefix)) {
-              continue;
-            }
-            push(
-              name,
-              CompletionItemKind.Variable,
-              undefined,
-              languageCompletionInfo(name, `${languageLabel(tracked.lang)} variable`, tracked.lang, 'A variable available inside this interpolation.')
-            );
+      if (inInterpolation && cstTree) {
+        for (const name of cstVariableNames(cstTree, document)) {
+          if (prefix && !name.toLowerCase().startsWith(prefix)) {
+            continue;
           }
-          if (items.length > 0) {
-            return { isIncomplete: false, items };
-          }
+          push(
+            name,
+            CompletionItemKind.Variable,
+            undefined,
+            languageCompletionInfo(name, `${languageLabel(tracked.lang)} variable`, tracked.lang, 'A variable available inside this interpolation.')
+          );
+        }
+        if (items.length > 0 || openerTriggered) {
+          return { isIncomplete: false, items };
         }
       }
 

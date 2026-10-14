@@ -37,11 +37,12 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         /*
          * Sigils/openers that begin a completion context: variables (@ $ -),
          * selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
-         * placeholder (\\), value/function/var()/url() ((), path segments (/).
-         * Not `{`, `;`, `[` or space: after those the list would open on every
-         * new block or declaration, and Enter would accept an entry from it.
+         * placeholder (\\), value/function/var()/url() ((), path segments (/),
+         * and the interpolation openers less `@{` and jess `${` / `$[` — the
+         * engine answers `{` and `[` only there. Not `;` or space: the list would
+         * open on every new declaration, and Enter would accept an entry from it.
          */
-        triggerCharacters: ['@', '-', '$', ':', '.', '#', '%', '\\', '(', '/']
+        triggerCharacters: ['@', '-', '$', ':', '{', '.', '#', '%', '\\', '(', '/', '[']
       },
       hoverProvider: true,
       definitionProvider: true,
@@ -109,7 +110,7 @@ documents.onDidClose((e: TextDocumentChangeEvent<TextDocument>) => {
 });
 
 connection.onCompletion((params: CompletionParams) => {
-  return engine.getCompletions(params.textDocument.uri, params.position);
+  return engine.getCompletions(params.textDocument.uri, params.position, params.context?.triggerCharacter);
 });
 
 connection.onHover((params: HoverParams) => {

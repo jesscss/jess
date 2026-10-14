@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  CompletionRequest,
+  CompletionTriggerKind,
   createProtocolConnection,
   DiagnosticSeverity,
   DidChangeConfigurationNotification,
@@ -106,5 +108,25 @@ describe('LSP server', () => {
 
     // Removing the override restores the default.
     expect(severityOf(await configure({}))).toBe(DiagnosticSeverity.Warning);
+  });
+
+  it('answers a typed `{` or `[` only inside an interpolation', async () => {
+    async function labelsAfterTyping(uri: string, languageId: string, text: string): Promise<string[]> {
+      await openDoc(uri, languageId, text);
+      const lines = text.split('\n');
+      const result = await client.sendRequest(CompletionRequest.type, {
+        textDocument: { uri },
+        position: { line: lines.length - 1, character: lines.at(-1)!.length },
+        context: { triggerKind: CompletionTriggerKind.TriggerCharacter, triggerCharacter: text.at(-1) }
+      });
+      const items = Array.isArray(result) ? result : result?.items ?? [];
+      return items.map(item => item.label);
+    }
+
+    expect(await labelsAfterTyping('file:///interp.less', 'less', '@size: 1;\n.a-@{')).toEqual(['size']);
+    expect(await labelsAfterTyping('file:///interp.jess', 'jess', '$size: 1;\n.a { b: $[')).toEqual(['size']);
+    expect(await labelsAfterTyping('file:///block.css', 'css', '.a {')).toEqual([]);
+    expect(await labelsAfterTyping('file:///attribute.css', 'css', 'a[')).toEqual([]);
+    expect(await labelsAfterTyping('file:///sass-interp.scss', 'scss', '$size: 1;\n.a-#{')).toEqual([]);
   });
 });
