@@ -241,25 +241,28 @@ async function runCompile(args) {
   const outPath = path.resolve(values.out ?? path.dirname(outFile), path.basename(outFile));
   refuseUnsafeOutput(outPath, input, inFile, outArg);
 
-  const [{ Compiler }, { JessError }] = await Promise.all([
+  const [{ Compiler }, { JessError, toDiagnostic }, { outputDiagnostics }] = await Promise.all([
     import('../lib/index.js'),
-    import('@jesscss/core')
+    import('@jesscss/core'),
+    import('@jesscss/compiler/diagnostics')
   ]);
   const options = await remoteImportOptions(values['allow-remote-imports']);
   const startTime = Date.now();
 
+  const colors = useColor(values.color, process.stderr);
   let css;
   try {
-    css = await new Compiler(options).render(path.resolve(inFile), {
-      colors: useColor(values.color, process.stderr)
-    });
+    css = await new Compiler(options).render(path.resolve(inFile), { colors });
   } catch (err) {
     /*
-     * render() has already printed the stylesheet's diagnostics, the thrown one
-     * included. Anything else (a styles config or plugin that failed to load)
-     * reaches only this handler.
+     * render() has printed the warnings and any other errors it collected, but
+     * never the error it throws: that one is the caller's to report, once. A
+     * stylesheet diagnostic is printed as a frame of the authored source;
+     * anything else (a styles config or plugin that failed to load) as one line.
      */
-    if (!(err instanceof JessError)) {
+    if (err instanceof JessError) {
+      outputDiagnostics([toDiagnostic(err)], [], { colors });
+    } else {
       console.error(`jess: ${err instanceof Error ? err.message : String(err)}`);
     }
     process.exit(EXIT_FAILURE);

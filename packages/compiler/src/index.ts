@@ -13,7 +13,6 @@ import {
   toDiagnostic,
   evalErrorFrameFrom,
   WARN,
-  logger,
   Deprecation,
   type WarningsConfigInput,
   type ErrorsConfigInput,
@@ -1382,16 +1381,7 @@ export class Compiler {
       const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       const preparedImports = await this.prepareStaticImportsForStylesheet(document, context, profile);
 
-      if (context.errors.length > 0 || context.warningCount > 0) {
-        outputDiagnostics(context.errors, context.warnings, {
-          suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false,
-          warnings: options?.warnings,
-          errors: options?.errors,
-          colors: options?.colors
-        });
-      }
+      this.reportCollected(context, options);
 
       finalizeRenderProfile(profile, {
         method: 'compile',
@@ -1401,18 +1391,7 @@ export class Compiler {
       });
       return { document, context, preparedImports };
     } catch (err: unknown) {
-      if (context.errors.length > 0 || context.warningCount > 0) {
-        outputDiagnostics(context.errors, context.warnings, {
-          suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false,
-          warnings: options?.warnings,
-          errors: options?.errors,
-          colors: options?.colors
-        });
-      } else {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, options, err);
       finalizeRenderProfile(profile, {
         method: 'compile',
         filePath,
@@ -1426,24 +1405,24 @@ export class Compiler {
   }
 
   /**
-   * Emits whatever the render collected. A SUCCESSFUL render can still have
+   * Prints the diagnostics a call collected. A SUCCESSFUL render can still have
    * recorded real problems (a plugin function that threw, an unresolved
    * function); dropping those on the floor is how a broken plugin stays
-   * invisible, so they are always surfaced here.
+   * invisible, so they are always printed here.
    *
-   * A FAILED render also passes the error it is about to throw. A diagnostic
-   * thrown without being recorded (an undefined variable, a missing import) is
-   * emitted with the rest; one that was also recorded (a parse error) is
-   * emitted once. Any other exception is left to the caller, who receives it:
-   * emitting it here as well is how a CLI ends up printing it twice.
+   * A FAILED call passes the error it is about to throw, and that error is not
+   * printed here, even when it was also recorded (a parse error is both
+   * recorded and thrown). A library call never prints what it throws: the
+   * caller receives the error and reports it, so printing it here too is how
+   * a caller such as a bundler plugin ends up showing it twice.
    */
   private reportCollected(context: Context, options?: Partial<ConfigOptions>, thrown?: unknown): void {
     let errors = context.errors;
     let warnings = context.warningCount === 0 ? [] : context.warnings;
     if (thrown instanceof JessError) {
-      errors = [...errors];
-      warnings = [...warnings];
-      appendThrownJessDiagnostic(errors, warnings, thrown);
+      const site = toDiagnostic(thrown, { includeLines: false });
+      errors = errors.filter(error => !sameDiagnosticSite(error, site));
+      warnings = warnings.filter(warning => !sameDiagnosticSite(warning, site));
     }
     if (errors.length === 0 && warnings.length === 0) {
       return;

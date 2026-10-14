@@ -5,25 +5,68 @@ import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
-import { JessError } from '@jesscss/core';
+import { JessError, toDiagnostic } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 describe('Diagnostic Output', () => {
-  it('should output errors using CodeDebug', async () => {
-    const compiler = new Compiler();
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
+  /*
+   * A library call never prints what it throws: the caller receives the error
+   * and reports it, once. A parse error is both recorded and thrown, and an
+   * undefined variable is only thrown; neither is printed by the call.
+   */
+  it.each([
+    ['compile', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['render', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['renderString', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['render', 'an undefined variable', '.a {\n  color: @missing;\n}\n', 'resolve/name-not-found'],
+    ['renderString', 'an undefined variable', '.a {\n  color: @missing;\n}\n', 'resolve/name-not-found']
+  ] as const)('%s throws %s without printing it', async (method, _name, source, code) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-thrown-'));
     try {
-      await compiler.compile('test/fixtures/invalid.less');
-    } catch (e) {
-      // Expected to throw
+      const file = path.join(directory, 'entry.less');
+      fs.writeFileSync(file, source);
+      const compiler = new Compiler();
+      let thrown: unknown;
+      const printed = await captureAsync(async () => {
+        try {
+          if (method === 'compile') {
+            await compiler.compile(file);
+          } else if (method === 'render') {
+            await compiler.render(file);
+          } else {
+            await compiler.renderString(source, { filePath: file, extension: '.less' });
+          }
+        } catch (error) {
+          thrown = error;
+        }
+      });
+
+      expect(thrown).toBeInstanceOf(JessError);
+      expect((thrown as JessError).code).toBe(code);
+      expect(printed.err).toBe('');
+      expect(printed.out).toBe('');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
     }
+  });
 
-    // Check that stderr was written to (diagnostics should have been output)
-    expect(stderrSpy).toHaveBeenCalled();
+  it('still prints the warnings a failed render collected', async () => {
+    let thrown: unknown;
+    const printed = await captureAsync(async () => {
+      try {
+        await new Compiler().renderString('.b { width: 1px + 3em; }\n.a { color: @missing; }\n', {
+          filePath: '/proj/src/styles.less',
+          extension: '.less'
+        });
+      } catch (error) {
+        thrown = error;
+      }
+    });
 
-    stderrSpy.mockRestore();
+    expect((thrown as JessError).code).toBe('resolve/name-not-found');
+    expect(printed.err).toContain('eval/unexpressible-unit');
+    expect(printed.err).not.toContain('resolve/name-not-found');
   });
 
   it('should format diagnostics correctly', () => {
@@ -534,9 +577,9 @@ describe('Diagnostic display tiers', () => {
     });
   });
 
-  it('renderString reports a collected parser diagnostic without a plain duplicate error', async () => {
+  it('a caller formats the parser diagnostic renderString throws as one frame', async () => {
     let thrown: unknown;
-    const { err: stderr } = await captureAsync(async () => {
+    const printed = await captureAsync(async () => {
       try {
         await new Compiler().renderString('@charset "@{encoding}";', {
           filePath: '/proj/src/styles.less',
@@ -548,6 +591,10 @@ describe('Diagnostic display tiers', () => {
     });
 
     expect(thrown).toBeInstanceOf(JessError);
+    expect(printed.err).toBe('');
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([toDiagnostic(thrown as JessError)], [], { colors: true })
+    );
     expect(stderr.match(/parse\/dynamic-charset/g)).toHaveLength(1);
     expect(stderr).toContain('Interpolation is not valid in @charset.');
     expect(stderr).not.toContain('LessDynamicCharsetError:');
