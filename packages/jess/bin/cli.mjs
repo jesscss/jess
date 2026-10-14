@@ -202,7 +202,8 @@ function planOutput(outPath, input, inFile, outArg) {
   if (link !== undefined) {
     let target;
     try {
-      target = realpathSync(outPath);
+      // .native: Node 20's JS realpath of /dev/stdout poisons its path cache, and later package imports fail.
+      target = realpathSync.native(outPath);
     } catch {
       // A target with no canonical path (a descriptor such as /dev/stdout) is not a stylesheet.
     }
