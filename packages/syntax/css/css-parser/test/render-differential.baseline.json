@@ -1,21 +1,21 @@
 {
   "format": "css-render-differential/1",
   "corpus": {
-    "total": 119,
+    "total": 121,
     "buckets": {
       "bootstrap": 4,
-      "fixture": 13,
+      "fixture": 15,
       "repo": 102
     },
     "bootstrapVersion": "5.3.8"
   },
   "counts": {
-    "ok": 64,
-    "reject": 55,
+    "ok": 65,
+    "reject": 56,
     "emitError": 0
   },
-  "emittedBytes": 607121,
-  "aggregate": "df5cc0d14097cc939995e644a03e967cf887286ff29a6fa8b502336d35e4d9cc",
+  "emittedBytes": 609242,
+  "aggregate": "80c49a424b2a92e58426cbffc4a681e8af2184022db427d7e647ced713e4e62b",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -118,6 +118,18 @@
       "status": "ok",
       "bytes": 498,
       "fingerprint": "5b0451458a945d5a"
+    },
+    "fixture/query-general-enclosed-gaps.css": {
+      "bucket": "fixture",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "fixture/query-general-enclosed.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 2121,
+      "fingerprint": "dd844b9e77be3eb5"
     },
     "repo/packages/editor/vscode/test-fixtures/unformatted.css": {
       "bucket": "repo",

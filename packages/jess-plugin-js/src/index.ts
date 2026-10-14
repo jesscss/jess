@@ -336,6 +336,9 @@ export class JsPlugin extends AbstractPlugin {
   private brokerServer: net.Server | undefined;
   private brokerSocketPath: string | undefined;
   private worker: ChildProcessWithoutNullStreams | undefined;
+
+  /** The worker's own script, which it reads again to start its plugin thread. */
+  private workerScriptPath: string | undefined;
   private workerBuffer = '';
   private nextRequestId = 1;
   private pending = new Map<number, {
@@ -531,7 +534,13 @@ export class JsPlugin extends AbstractPlugin {
     if (!normalized) {
       return false;
     }
-    return this.isReadableRealPath(canonicalPath(path.resolve(normalized)));
+    const requestedPath = canonicalPath(path.resolve(normalized));
+
+    /* The worker reads its own script again to start its plugin thread. */
+    if (requestedPath === this.workerScriptPath) {
+      return true;
+    }
+    return this.isReadableRealPath(requestedPath);
   }
 
   private isNetAllowed(value: string | null): boolean {
@@ -629,6 +638,7 @@ export class JsPlugin extends AbstractPlugin {
     const workerScriptPath = fs.existsSync(compiledWorkerPath)
       ? compiledWorkerPath
       : sourceWorkerPath;
+    this.workerScriptPath = canonicalPath(workerScriptPath);
     const runtimeApi = this.opts.runtimeApi ?? 'module';
     const child = spawn(
       denoCommand,
@@ -716,6 +726,14 @@ export class JsPlugin extends AbstractPlugin {
         child.stdout.off('data', onData);
         child.stderr.off('data', onStderr);
         reject(err);
+      });
+
+      // A worker that dies before it is ready fails startup at once, with its stderr.
+      child.once('close', () => {
+        clearTimeout(timer);
+        reject(new Error(stderrText.trim()
+          ? `Deno worker exited during startup.\n${stderrText.trim()}`
+          : 'Deno worker exited during startup.'));
       });
     });
   }

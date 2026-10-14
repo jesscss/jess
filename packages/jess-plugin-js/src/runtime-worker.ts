@@ -7,7 +7,13 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const moduleCache = new Map();
 const lessPluginRuntimeCache = new Map();
-const runtimeApi = Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
+
+/*
+ * This module runs twice: as the process's main thread, which only relays
+ * (`relay`), and as the worker thread that runs plugin code (`serve`).
+ */
+const isRuntimeThread = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+const runtimeApi = isRuntimeThread ? self.name : Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
 
 /**
  * The Less 4 `Node` base. `find` is the member bootstrap-era plugins reach for
@@ -759,7 +765,7 @@ const unsendableResult = (value) => {
 };
 
 const send = (payload) => {
-  Deno.stdout.writeSync(encoder.encode(`${JSON.stringify(payload)}\n`));
+  self.postMessage(`${JSON.stringify(payload)}\n`);
 };
 
 const loadModule = async (modulePath) => {
@@ -1238,17 +1244,30 @@ const handleRequest = async (req) => {
   send(await computeResponse(req));
 };
 
-async function main() {
-  send({ type: 'ready' });
-
+/**
+ * The worker thread: stdin arrives from the main thread in chunks, and each
+ * request line is answered in order, one at a time.
+ */
+function serve() {
+  /*
+   * On a worker thread `Deno.exit()` (which `process.exit()` calls) and
+   * `close()` would end only the thread and leave every later request
+   * unanswered. A plugin that exits ends the process instead, as it did on the
+   * main thread, so the host sees the exit at once.
+   */
+  const exitThread = Deno.exit;
+  Deno.exit = (code) => {
+    self.postMessage({ exit: code ?? 0 });
+    exitThread(code);
+  };
+  self.close = () => Deno.exit(0);
   let buffer = '';
-  for await (const chunk of Deno.stdin.readable) {
-    buffer += decoder.decode(chunk, { stream: true });
-    let idx = buffer.indexOf('\n');
-    while (idx >= 0) {
+  let previous = Promise.resolve();
+  self.onmessage = (event) => {
+    buffer += decoder.decode(event.data, { stream: true });
+    for (let idx = buffer.indexOf('\n'); idx >= 0; idx = buffer.indexOf('\n')) {
       const line = buffer.slice(0, idx).trim();
       buffer = buffer.slice(idx + 1);
-      idx = buffer.indexOf('\n');
       if (!line) {
         continue;
       }
@@ -1258,9 +1277,36 @@ async function main() {
       } catch {
         continue;
       }
-      await handleRequest(req);
+      previous = previous.then(() => handleRequest(req));
     }
-  }
+  };
+  send({ type: 'ready' });
 }
 
-void main();
+/**
+ * The main thread runs no plugin code, so it is never stuck in one: it relays
+ * stdin to the worker thread and replies to stdout, and exits when stdin
+ * closes. Stdin closes whenever the host goes away, even a host that is killed
+ * before its cleanup runs, so neither a plugin call that never returns nor a
+ * timer or signal listener a plugin leaves behind keeps an orphan running.
+ */
+async function relay() {
+  const runtime = new Worker(import.meta.url, { type: 'module', name: runtimeApi });
+  runtime.onmessage = ({ data }) => {
+    if (typeof data === 'string') {
+      Deno.stdout.writeSync(encoder.encode(data));
+    } else {
+      Deno.exit(data.exit);
+    }
+  };
+  for await (const chunk of Deno.stdin.readable) {
+    runtime.postMessage(chunk);
+  }
+  Deno.exit(0);
+}
+
+if (isRuntimeThread) {
+  serve();
+} else {
+  void relay();
+}

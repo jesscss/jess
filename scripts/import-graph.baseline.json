@@ -3,9 +3,9 @@
     "modules": [
       "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/diagnostics2.js",
+      "packages/core/lib/guard.js",
       "packages/core/lib/index.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/value-units.js",
       "packages/core/lib/value2.js"
     ],
     "externals": [
@@ -19,16 +19,19 @@
       "chalk",
       "lodash-es"
     ],
-    "bytes": 1549787
+    "bytes": 1577048
   },
   "@jesscss/core/ast": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js"
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js"
     ],
-    "externals": [],
-    "bytes": 48707
+    "externals": [
+      "big.js"
+    ],
+    "bytes": 100459
   },
   "@jesscss/core/diagnostics": {
     "modules": [
@@ -36,22 +39,23 @@
       "packages/core/lib/diagnostics2.js"
     ],
     "externals": [],
-    "bytes": 31099
+    "bytes": 32532
   },
   "@jesscss/core/value": {
     "modules": [
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/value-units.js",
       "packages/core/lib/value.js",
       "packages/core/lib/value2.js"
     ],
     "externals": [],
-    "bytes": 32030
+    "bytes": 32303
   },
   "@jesscss/css-parser": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/parse-with.js",
@@ -60,15 +64,17 @@
       "packages/syntax/css/css-parser/lib/index.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 3669354
+    "bytes": 3758090
   },
   "@jesscss/css-parser/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
@@ -77,9 +83,10 @@
       "packages/syntax/css/css-parser/lib/grammar/cst.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1826945
+    "bytes": 1884294
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
@@ -89,13 +96,14 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 938310
+    "bytes": 938736
   },
   "@jesscss/css-parser/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
@@ -104,71 +112,81 @@
       "packages/syntax/css/css-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1827076
+    "bytes": 1884461
   },
   "@jesscss/css-parser/grammar/ast": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/ast.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2871908
+    "bytes": 2960644
   },
   "@jesscss/css-parser/grammar/ast/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/ast/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1027124
+    "bytes": 1084083
   },
   "@jesscss/css-parser/grammar/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/cst.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1027334
+    "bytes": 1084257
   },
   "@jesscss/css-parser/grammar/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1027270
+    "bytes": 1084229
   },
   "@jesscss/css-parser/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/parse-with.js",
@@ -177,15 +195,17 @@
       "packages/syntax/css/css-parser/lib/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1824395
+    "bytes": 1881354
   },
   "@jesscss/jess-parser": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -196,15 +216,17 @@
       "packages/syntax/jess/jess-parser/lib/index.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2450006
+    "bytes": 2514059
   },
   "@jesscss/jess-parser/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -216,15 +238,17 @@
       "packages/syntax/jess/jess-parser/lib/grammar/cst.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2451059
+    "bytes": 2515538
   },
   "@jesscss/jess-parser/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -236,15 +260,17 @@
       "packages/syntax/jess/jess-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2460168
+    "bytes": 2524649
   },
   "@jesscss/jess-parser/grammar/ast": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -252,15 +278,17 @@
       "packages/syntax/jess/jess-parser/lib/grammar/ast.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1650604
+    "bytes": 1714657
   },
   "@jesscss/jess-parser/grammar/ast/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -268,15 +296,17 @@
       "packages/syntax/jess/jess-parser/lib/grammar/ast/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1659456
+    "bytes": 1723511
   },
   "@jesscss/jess-parser/grammar/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -284,15 +314,17 @@
       "packages/syntax/jess/jess-parser/lib/grammar/cst.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1650896
+    "bytes": 1714949
   },
   "@jesscss/jess-parser/grammar/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -300,15 +332,17 @@
       "packages/syntax/jess/jess-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1659748
+    "bytes": 1723803
   },
   "@jesscss/jess-parser/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -319,17 +353,19 @@
       "packages/syntax/jess/jess-parser/lib/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2458682
+    "bytes": 2522737
   },
   "@jesscss/less-parser": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
       "packages/core/lib/diagnostics.js",
       "packages/core/lib/diagnostics2.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -340,55 +376,63 @@
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2718241
+    "bytes": 2798707
   },
   "@jesscss/less-parser/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
+      "packages/syntax/less/less-parser/lib/chunks/mixin-list.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/cst.js",
       "packages/syntax/less/less-parser/lib/grammar/cst.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2688005
+    "bytes": 2767292
   },
   "@jesscss/less-parser/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
+      "packages/syntax/less/less-parser/lib/chunks/mixin-list.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/cst/positions.js",
       "packages/syntax/less/less-parser/lib/grammar/cst/positions.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2691522
+    "bytes": 2771598
   },
   "@jesscss/less-parser/grammar/ast": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -396,15 +440,17 @@
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1887435
+    "bytes": 1965313
   },
   "@jesscss/less-parser/grammar/ast/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -412,15 +458,17 @@
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1890775
+    "bytes": 1969440
   },
   "@jesscss/less-parser/grammar/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -428,15 +476,17 @@
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1887822
+    "bytes": 1965697
   },
   "@jesscss/less-parser/grammar/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -444,17 +494,19 @@
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1891082
+    "bytes": 1969744
   },
   "@jesscss/less-parser/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
       "packages/core/lib/diagnostics.js",
       "packages/core/lib/diagnostics2.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -465,15 +517,17 @@
       "packages/syntax/less/less-parser/lib/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2721280
+    "bytes": 2802533
   },
   "@jesscss/scss-parser": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -484,15 +538,17 @@
       "packages/syntax/scss/scss-parser/lib/index.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2387043
+    "bytes": 2450317
   },
   "@jesscss/scss-parser/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -504,15 +560,17 @@
       "packages/syntax/scss/scss-parser/lib/grammar/cst.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2390243
+    "bytes": 2453943
   },
   "@jesscss/scss-parser/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -524,15 +582,17 @@
       "packages/syntax/scss/scss-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2397417
+    "bytes": 2461115
   },
   "@jesscss/scss-parser/grammar/ast": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -540,15 +600,17 @@
       "packages/syntax/scss/scss-parser/lib/grammar/ast.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1589834
+    "bytes": 1653108
   },
   "@jesscss/scss-parser/grammar/ast/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -556,15 +618,17 @@
       "packages/syntax/scss/scss-parser/lib/grammar/ast/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1596751
+    "bytes": 1660023
   },
   "@jesscss/scss-parser/grammar/cst": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -572,15 +636,17 @@
       "packages/syntax/scss/scss-parser/lib/grammar/cst.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1590080
+    "bytes": 1653354
   },
   "@jesscss/scss-parser/grammar/cst/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -588,15 +654,17 @@
       "packages/syntax/scss/scss-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 1596997
+    "bytes": 1660269
   },
   "@jesscss/scss-parser/positions": {
     "modules": [
+      "packages/awaitable-pipe/lib/index.js",
       "packages/core/lib/ast.js",
-      "packages/core/lib/math-functions.js",
-      "packages/core/lib/value-eval.js",
+      "packages/core/lib/guard.js",
+      "packages/core/lib/value-units.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -607,8 +675,9 @@
       "packages/syntax/scss/scss-parser/lib/positions.js"
     ],
     "externals": [
+      "big.js",
       "parseman"
     ],
-    "bytes": 2393784
+    "bytes": 2457056
   }
 }
