@@ -14,10 +14,11 @@
  *      written; for `jess lint`, an error was found or the warnings exceeded
  *      --max-warnings
  *   2  invalid command line: an unknown option, a missing or extra argument,
- *      or an output path that would overwrite the input or another stylesheet
+ *      or a refused output path (see planOutput)
  */
-import { realpathSync, statSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { chmod, rename, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { getSystemErrorMap, parseArgs } from 'node:util';
@@ -26,8 +27,12 @@ import { formatStyledLintResult, lintFiles } from '@jesscss/lint';
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
 
-/** Stylesheet sources jess reads. CSS is never written to a file with one of these extensions. */
-const STYLESHEET_SOURCE_EXTENSIONS = new Set(['.less', '.scss', '.sass', '.jess']);
+/**
+ * A stylesheet source name: one that ends in .less, .scss, .sass or .jess, in
+ * any case, including a bare `.less`, and with the trailing dots and spaces
+ * Windows drops from a file name. CSS is never written to such a name.
+ */
+const STYLESHEET_SOURCE = /(\.(?:less|scss|sass|jess))[. ]*$/iu;
 
 const MANY_FILES_HINT = `To compile several files, run jess once per file, for example:
   for f in src/*.less; do jess "$f" -o dist; done`;
@@ -36,8 +41,15 @@ const COMPILE_USAGE = `Usage: jess <input> [output] [options]
        jess lint [files...] [options]
 
 Compile one .less, .scss, or .jess file to CSS. The CSS is written to
-[output], or else next to the input with a .css extension. jess refuses to
-write over its input or over any .less, .scss, .sass, or .jess file.
+[output], or else next to the input with a .css extension.
+
+An existing output file is replaced, not written into: the CSS goes to a new
+file that is renamed over it. A symlink there is replaced rather than
+followed, and other names of a hard-linked file keep their contents. A
+terminal, pipe or device (such as /dev/stdout) is written directly.
+
+jess refuses an output that is the input file under any name, that is named
+like a stylesheet (.less, .scss, .sass, .jess), or that is a symlink to one.
 
 Options:
   -o, --out <dir>                 Write the CSS into <dir>, which must exist.
@@ -55,7 +67,7 @@ Diagnostics are written to stderr.
 Exit status:
   0  the CSS was written
   1  the stylesheet failed to compile, or a file could not be read or written
-  2  invalid command line, or an output path that would overwrite a stylesheet
+  2  invalid command line, or a refused output path
 
 ${MANY_FILES_HINT}
 
@@ -119,47 +131,107 @@ function systemReason(err) {
   return getSystemErrorMap().get(err?.errno)?.[1] ?? (err instanceof Error ? err.message : String(err));
 }
 
-/** `file` relative to the working directory, as the user would type it. */
+/** `file` relative to the working directory when it is inside it, else as an absolute path. */
 function display(file) {
-  return path.relative(process.cwd(), file) || file;
+  const relative = path.relative(process.cwd(), file);
+  return relative === '' || relative.startsWith('..') || path.isAbsolute(relative) ? file : relative;
 }
 
-function isStylesheetSource(file) {
-  return STYLESHEET_SOURCE_EXTENSIONS.has(path.extname(file).toLowerCase());
+/** The stylesheet source extension `file`'s name ends in, as written, or undefined. */
+function stylesheetExtension(file) {
+  return STYLESHEET_SOURCE.exec(path.basename(file))?.[1];
 }
 
 /**
- * Exits (status 2) when writing CSS to `outPath` would destroy a stylesheet.
+ * Decides how the CSS reaches `outPath`, or exits (status 2) when the output
+ * could cost a stylesheet.
  *
- * The input is compared on disk, by device and inode, never by path string: a
- * case variant on a case-insensitive file system (`a.css` / `A.CSS`), a symlink
- * and a hard link all name the input as surely as its own path does. An output
- * that has, or links to a file that has, a stylesheet source extension is
- * refused too: `jess a.less b.less` is a request to compile two files, not to
- * replace b.less with CSS.
+ * Refused: a name that is a stylesheet source (`jess a.less b.less` asks to
+ * compile two files, not to replace b.less); a symlink, dangling or not, whose
+ * target is such a name; and the input itself under another name, compared on
+ * disk by device and inode, never by path string (a case variant on a
+ * case-insensitive file system, a hard link).
+ *
+ * Otherwise the output is replaced (`{ replace: true }`): a regular file,
+ * a symlink, or a path with nothing there yet. A terminal, pipe or other
+ * device, and any path under /dev (`/dev/stdout` names a regular file when
+ * stdout is redirected to one), is not a directory entry to replace and is
+ * written in place (`{ replace: false }`).
  */
-function refuseUnsafeOutput(outPath, input, inFile, outArg) {
-  let existing;
-  try {
-    existing = statSync(outPath, { bigint: true });
-  } catch {
-    // Nothing there yet; a write failure is reported when the write happens.
-  }
-  if (existing !== undefined && existing.dev === input.dev && existing.ino === input.ino) {
-    fail(`refusing to write CSS over the input file ${inFile}`, EXIT_USAGE);
+function planOutput(outPath, input, inFile, outArg) {
+  const extension = stylesheetExtension(outPath);
+  if (extension !== undefined) {
+    const hint = outArg !== undefined && stylesheetExtension(outArg) !== undefined
+      ? `\nThe second argument names the output file. ${MANY_FILES_HINT}`
+      : '';
+    fail(`refusing to write CSS to ${display(outPath)}: ${extension} is a stylesheet source extension${hint}`, EXIT_USAGE);
   }
 
-  const hint = outArg !== undefined && isStylesheetSource(outArg)
-    ? `\nThe second argument names the output file. ${MANY_FILES_HINT}`
-    : '';
-  if (isStylesheetSource(outPath)) {
-    fail(`refusing to write CSS to ${display(outPath)}: ${path.extname(outPath)} is a stylesheet source extension${hint}`, EXIT_USAGE);
+  let entry;
+  try {
+    entry = lstatSync(outPath);
+  } catch {
+    return { replace: true }; // Nothing there yet.
   }
-  if (existing !== undefined) {
-    const target = realpathSync(outPath);
-    if (isStylesheetSource(target)) {
+  const link = entry.isSymbolicLink() ? readlinkSync(outPath) : undefined;
+  if (link !== undefined && stylesheetExtension(link) !== undefined) {
+    fail(`refusing to write CSS to ${display(outPath)}: it is a symlink to the stylesheet ${link}`, EXIT_USAGE);
+  }
+
+  let file;
+  try {
+    file = statSync(outPath, { bigint: true });
+  } catch {
+    return { replace: true }; // A dangling symlink: replacing it creates no file behind it.
+  }
+  if (file.dev === input.dev && file.ino === input.ino) {
+    fail(`refusing to write CSS over the input file ${inFile}`, EXIT_USAGE);
+  }
+  if (file.isDirectory()) {
+    fail(`${display(outPath)} is a directory; to write the CSS into it, use -o ${display(outPath)}`, EXIT_USAGE);
+  }
+  if (link !== undefined) {
+    let target;
+    try {
+      target = realpathSync(outPath);
+    } catch {
+      // A target with no canonical path (a descriptor such as /dev/stdout) is not a stylesheet.
+    }
+    if (target !== undefined && stylesheetExtension(target) !== undefined) {
       fail(`refusing to write CSS to ${display(outPath)}: it links to the stylesheet ${display(target)}`, EXIT_USAGE);
     }
+  }
+
+  // ponytail: /dev is the POSIX device namespace; descriptor aliases elsewhere (/proc/self/fd/N) are replaced like files.
+  if (!file.isFile() || path.resolve(outPath).startsWith('/dev/')) {
+    return { replace: false };
+  }
+  return { replace: true, mode: link === undefined ? Number(file.mode & 0o7777n) : undefined };
+}
+
+/**
+ * Writes `css` to `outPath` as `plan` says. Replacing writes a new file beside
+ * the output and renames it into place, so no existing file is written into: a
+ * reader never sees half the CSS, and a failed write leaves the old output as
+ * it was. A replaced regular file keeps its permission bits; its owner and
+ * extended attributes are those of a new file.
+ */
+async function writeOutput(outPath, css, plan) {
+  if (!plan.replace) {
+    await writeFile(outPath, css);
+    return;
+  }
+  const temp = path.join(path.dirname(outPath), `.${path.basename(outPath)}.${process.pid}-${randomBytes(4).toString('hex')}.tmp`);
+  try {
+    // 'wx' creates the file and fails if anything, a symlink included, is already there.
+    await writeFile(temp, css, { flag: 'wx' });
+    if (plan.mode !== undefined) {
+      await chmod(temp, plan.mode);
+    }
+    await rename(temp, outPath);
+  } catch (err) {
+    await rm(temp, { force: true });
+    throw err;
   }
 }
 
@@ -239,7 +311,7 @@ async function runCompile(args) {
 
   const outFile = outArg ?? inFile.replace(/\.[^./\\]*$/, '') + '.css';
   const outPath = path.resolve(values.out ?? path.dirname(outFile), path.basename(outFile));
-  refuseUnsafeOutput(outPath, input, inFile, outArg);
+  const plan = planOutput(outPath, input, inFile, outArg);
 
   const [{ Compiler }, { JessError, toDiagnostic }, { outputDiagnostics }] = await Promise.all([
     import('../lib/index.js'),
@@ -269,7 +341,7 @@ async function runCompile(args) {
   }
 
   try {
-    await writeFile(outPath, css);
+    await writeOutput(outPath, css, plan);
   } catch (err) {
     fail(`cannot write ${display(outPath)}: ${systemReason(err)}`, EXIT_FAILURE);
   }

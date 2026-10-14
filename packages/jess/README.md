@@ -53,10 +53,18 @@ Jess follows the common CLI pattern where the default command compiles a file an
 output; use `jess lint` when you want diagnostics without writing CSS.
 
 `jess <input> [output]` compiles one `.less`, `.scss`, or `.jess` file.
-It never writes CSS over its input, whatever the spelling (a case variant, a
-symlink, or a hard link), and never over a `.less`, `.scss`, `.sass`, or
-`.jess` file: `jess a.less b.less` is refused rather than replacing `b.less`, and
-a third argument is an error. Diagnostics go to stderr. Color and terminal
+
+- An existing output file is replaced, not written into: the CSS goes to a new
+  file that is renamed over it. A symlink there is replaced rather than
+  followed, and other names of a hard-linked file keep their contents. A
+  terminal, pipe or device (such as `/dev/stdout`) is written directly.
+- jess refuses an output that is the input file under any name (compared on
+  disk, so a hard link or a case variant counts), that is named like a
+  stylesheet (`.less`, `.scss`, `.sass`, `.jess`), or that is a symlink to one.
+  `jess a.less b.less` is refused rather than replacing `b.less`, and a third
+  argument is an error.
+
+Diagnostics go to stderr. Color and terminal
 hyperlinks are on only when stderr is a terminal and `NO_COLOR` is unset;
 `--color` and `--no-color` override that. `jess --version` prints the version.
 
@@ -64,7 +72,7 @@ hyperlinks are on only when stderr is a terminal and `NO_COLOR` is unset;
 | --- | --- |
 | 0 | The CSS was written (`jess lint`: no errors, and no more warnings than `--max-warnings`). |
 | 1 | The stylesheet failed to compile, or a file could not be read or written (`jess lint`: an error was found, or the warnings exceeded `--max-warnings`). |
-| 2 | Invalid command line: an unknown option, a missing or extra argument, or an output path that would overwrite a stylesheet. |
+| 2 | Invalid command line: an unknown option, a missing or extra argument, or a refused output path (one of the cases above, or a directory). |
 
 By default, Jess preserves nesting instead of flattening it. If you want
 flattened selector output, set `output: { collapseNesting: true }` in a

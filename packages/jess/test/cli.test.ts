@@ -325,46 +325,130 @@ describe('jess CLI', () => {
     expect(fs.readdirSync(directory).sort()).toEqual(['a.less', 'b.less', 'c.less']);
   }));
 
+  /*
+   * The input is compared on disk, by device and inode: a hard link is the
+   * input under another name, whatever that name is.
+   */
   it('refuses to write over the input by its own path or through a hard link', async () => inTempDir(async (directory) => {
-    const input = path.join(directory, 'entry.css');
+    const input = path.join(directory, 'entry.less');
     fs.writeFileSync(input, '.entry { color: red; }');
     fs.linkSync(input, path.join(directory, 'linked.css'));
 
-    for (const args of [[input], [input, input], [input, path.join(directory, 'linked.css')]]) {
-      const result = await run(args);
-      expect(result.code).toBe(2);
-      expect(result.stderr).toBe(`jess: refusing to write CSS over the input file ${input}\n`);
-    }
+    const same = await run([input, input]);
+    expect(same.code).toBe(2);
+    expect(same.stderr).toContain(`jess: refusing to write CSS to ${input}: .less is a stylesheet source extension\n`);
+
+    const linked = await run([input, path.join(directory, 'linked.css')]);
+    expect(linked.code).toBe(2);
+    expect(linked.stderr).toBe(`jess: refusing to write CSS over the input file ${input}\n`);
     expect(fs.readFileSync(input, 'utf8')).toBe('.entry { color: red; }');
   }));
 
   it('refuses to write over the input through a case variant of its name', async ({ skip }) => inTempDir(async (directory) => {
     fs.writeFileSync(path.join(directory, 'Mixed.less'), '.m { color: red; }');
-    fs.writeFileSync(path.join(directory, 'Entry.css'), '.e { color: red; }');
-    if (!fs.existsSync(path.join(directory, 'ENTRY.CSS'))) {
+    if (!fs.existsSync(path.join(directory, 'MIXED.LESS'))) {
       skip('the temp directory is on a case-sensitive file system');
     }
 
-    const css = await run(['Entry.css', 'ENTRY.CSS'], { cwd: directory });
-    expect(css.code).toBe(2);
-    expect(css.stderr).toBe('jess: refusing to write CSS over the input file Entry.css\n');
-    expect(fs.readFileSync(path.join(directory, 'Entry.css'), 'utf8')).toBe('.e { color: red; }');
-
-    const less = await run(['Mixed.less', 'mixed.LESS'], { cwd: directory });
-    expect(less.code).toBe(2);
-    expect(less.stderr).toBe('jess: refusing to write CSS over the input file Mixed.less\n');
+    const result = await run(['Mixed.less', 'mixed.LESS'], { cwd: directory });
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('jess: refusing to write CSS to mixed.LESS: .LESS is a stylesheet source extension\n');
     expect(fs.readFileSync(path.join(directory, 'Mixed.less'), 'utf8')).toBe('.m { color: red; }');
+    expect(fs.readdirSync(directory)).toEqual(['Mixed.less']);
   }));
 
-  it.skipIf(process.platform === 'win32')('refuses an output that is a symlink to a stylesheet', async () => inTempDir(async (directory) => {
+  /*
+   * A symlink is refused when it names a stylesheet, directly or through a
+   * chain, and even when nothing is there yet: replacing the link would
+   * create no file behind it, but the user meant the stylesheet.
+   */
+  it.skipIf(process.platform === 'win32').each([
+    ['a stylesheet', 'b.less', 'jess: refusing to write CSS to out.css: it is a symlink to the stylesheet b.less\n'],
+    ['a missing stylesheet', 'missing.less', 'jess: refusing to write CSS to out.css: it is a symlink to the stylesheet missing.less\n'],
+    ['a stylesheet through another link', 'middle.css', 'jess: refusing to write CSS to out.css: it links to the stylesheet']
+  ])('refuses an output that is a symlink to %s', async (_name, target, message) => inTempDir(async (directory) => {
     fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
     fs.writeFileSync(path.join(directory, 'b.less'), '.b { color: blue; }');
-    fs.symlinkSync('b.less', path.join(directory, 'out.css'));
+    fs.symlinkSync('b.less', path.join(directory, 'middle.css'));
+    fs.symlinkSync(target, path.join(directory, 'out.css'));
 
     const result = await run(['a.less', 'out.css'], { cwd: directory });
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain('refusing to write CSS to out.css: it links to the stylesheet');
+    expect(result.stderr).toContain(message);
     expect(fs.readFileSync(path.join(directory, 'b.less'), 'utf8')).toBe('.b { color: blue; }');
+    expect(fs.existsSync(path.join(directory, 'missing.less'))).toBe(false);
+  }));
+
+  it('refuses an output named only a stylesheet extension', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+
+    for (const name of ['.less', 'b.LESS.', 'b.scss ']) {
+      const result = await run(['a.less', name], { cwd: directory });
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(`jess: refusing to write CSS to ${name}: `);
+    }
+    expect(fs.readdirSync(directory)).toEqual(['a.less']);
+  }));
+
+  /*
+   * The CSS goes to a new file renamed over the output, so an existing output
+   * is replaced, never written into: other names of a hard-linked file keep
+   * their contents, and a symlink is replaced instead of followed.
+   */
+  it('replaces a hard-linked output without changing its other names', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.writeFileSync(path.join(directory, 'b.less'), '.b { color: blue; }');
+    fs.linkSync(path.join(directory, 'b.less'), path.join(directory, 'linked.css'));
+
+    const result = await run(['a.less', 'linked.css'], { cwd: directory });
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(directory, 'linked.css'), 'utf8')).toContain('color: red');
+    expect(fs.readFileSync(path.join(directory, 'b.less'), 'utf8')).toBe('.b { color: blue; }');
+    expect(fs.readdirSync(directory).sort()).toEqual(['a.less', 'b.less', 'linked.css']);
+  }));
+
+  it.skipIf(process.platform === 'win32')('replaces a symlinked output instead of writing through it', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.writeFileSync(path.join(directory, 'target.css'), 'kept');
+    fs.symlinkSync('target.css', path.join(directory, 'out.css'));
+    fs.symlinkSync('nowhere.css', path.join(directory, 'dangling.css'));
+
+    for (const output of ['out.css', 'dangling.css']) {
+      const result = await run(['a.less', output], { cwd: directory });
+      expect(result.code).toBe(0);
+      expect(fs.lstatSync(path.join(directory, output)).isSymbolicLink()).toBe(false);
+      expect(fs.readFileSync(path.join(directory, output), 'utf8')).toContain('color: red');
+    }
+    expect(fs.readFileSync(path.join(directory, 'target.css'), 'utf8')).toBe('kept');
+    expect(fs.existsSync(path.join(directory, 'nowhere.css'))).toBe(false);
+  }));
+
+  it.skipIf(process.platform === 'win32')('keeps the permission bits of a replaced output', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.writeFileSync(path.join(directory, 'out.css'), 'old');
+    fs.chmodSync(path.join(directory, 'out.css'), 0o640);
+
+    const result = await run(['a.less', 'out.css'], { cwd: directory });
+    expect(result.code).toBe(0);
+    expect(fs.statSync(path.join(directory, 'out.css')).mode & 0o777).toBe(0o640);
+    expect(fs.readdirSync(directory).sort()).toEqual(['a.less', 'out.css']);
+  }));
+
+  it.skipIf(process.platform === 'win32')('writes /dev/stdout in place', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+
+    const result = await run(['a.less', '/dev/stdout'], { cwd: directory });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^\.a \{\n {2}color: red;\n\}\n/u);
+  }));
+
+  it('refuses a directory as the output file', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.mkdirSync(path.join(directory, 'dist'));
+
+    const result = await run(['a.less', 'dist'], { cwd: directory });
+    expect(result.code).toBe(2);
+    expect(result.stderr).toBe('jess: dist is a directory; to write the CSS into it, use -o dist\n');
   }));
 
   it('reports an input it cannot read in one line', async () => inTempDir(async (directory) => {
