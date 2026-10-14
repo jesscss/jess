@@ -199,11 +199,18 @@ describe('public direct-AST extend contracts', () => {
     expect(await render(source, false)).toBe(expected);
   });
 
-  it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {
-    await expect(render([
-      '@list-quoted: ~\'apple, satsuma, banana, pear\';',
-      '@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }'
-    ].join('\n'))).rejects.toMatchObject({ code: 'selector/comma-list-interpolation' });
+  /*
+   * Escaped text is written as written (owner 2026-10-09: "everywhere that is text should
+   * print AS WRITTEN"; "in Less, we promise ~\"\" as a 'dump whatever you want as-is'"),
+   * its commas included, and well-formed input never stops the pipeline (P45): a `&`
+   * glued after a selector references the text where it stands.
+   */
+  it('writes an escaped comma-list parent as written where a glued `&` references it', async () => {
+    const quoted = '@list-quoted: ~\'apple, satsuma, banana, pear\';\n@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }';
+    expect(await render(quoted)).toBe('.fruit-quoted-apple, satsuma, banana, pear {\n  content: "Quoted";\n}\n');
+    expect(await render('@g: ~".a, .b"; @{g} { .x& { c: 1; } &:hover { c: 2; } .c { c: 3; } }'))
+      .toBe('.x.a, .b {\n  c: 1;\n}\n.a, .b:hover {\n  c: 2;\n}\n.a, .b .c {\n  c: 3;\n}\n');
+    expect(await render('@g: ~".a, .b"; @{g}, .z { .x& { c: 1; } }')).toBe('.x.a, .b,\n.x.z {\n  c: 1;\n}\n');
   });
 
   /*

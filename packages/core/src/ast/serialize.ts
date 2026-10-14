@@ -9359,11 +9359,13 @@ function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx):
 /* ---------------------------------------------------- selector composition */
 
 /**
- * [nesting] LEGACY cartesian `&` expansion, retained ONLY for the exotic
- * quoted-selector-interpolation parent that carried a top-level comma into a single
- * parent branch (`composeOne`/`composeHeader` route the normal multi-parent case
- * through `resolveComplexAmp`, which is position-aware and spec-faithful). Each `&`
- * is its own odometer digit with the LEFTMOST `&` most-significant.
+ * [nesting] Text `&` substitution: a single parent, and the escaped-text parent that
+ * carries a top-level comma, which is written as written wherever a `&` stands (owner
+ * 2026-10-09: "everywhere that is text should print AS WRITTEN"; `.x&` under
+ * `~".a, .b"` → `.x.a, .b`). `composeOne`/`composeHeader` route the normal
+ * multi-parent case through `resolveSelectorBranchAmp`, which is position-aware. Over
+ * several parents each `&` is its own odometer digit with the LEFTMOST `&`
+ * most-significant.
  */
 function joinAmpersand(canon: string, parents: string[]): string[] {
   const segs = canon.split('&');
@@ -10190,16 +10192,7 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
     && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
-  return mapMaybe(resolveSelectorBranch(child, frame, e), (text) => {
-    if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
-      throw ERR.commaListInterpolation({
-        node: child,
-        ...callSiteLocation(child, e),
-        meta: { selector: text }
-      });
-    }
-    return joinAmpersand(text, parents);
-  });
+  return mapMaybe(resolveSelectorBranch(child, frame, e), text => joinAmpersand(text, parents));
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
@@ -10352,16 +10345,7 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
       return mapMaybe(resolveSelectorBranch(c, frame, e), canon => [isPrefix + canon]);
     }
     if (parents.some(hasTopLevelComma)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), (canon) => {
-        if (!canon.startsWith('&')) {
-          throw ERR.commaListInterpolation({
-            node: c,
-            ...callSiteLocation(c, e),
-            meta: { selector: canon }
-          });
-        }
-        return joinAmpersand(canon, parents);
-      });
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => joinAmpersand(canon, parents));
     }
     return resolveSelectorBranchAmp(c, parents, frame, e);
   });

@@ -27,7 +27,15 @@ const acceptedDivergences = new Map<string, string>([
    * never referenced, so its failing `darken()` never runs. Referenced, it
    * rejects (function-mode.test.ts).
    */
-  ['tests-error/eval/color-func-invalid-color-2.less', 'lazy variables (R1): the failing call sits in an unreferenced variable']
+  ['tests-error/eval/color-func-invalid-color-2.less', 'lazy variables (R1): the failing call sits in an unreferenced variable'],
+
+  /*
+   * Escaped text is written as written (owner 2026-10-09: "everywhere that is text
+   * should print AS WRITTEN"), and well-formed input never stops the pipeline (P45):
+   * `.fruit-quoted-&` under `~'apple, satsuma, banana, pear'` is
+   * `.fruit-quoted-apple, satsuma, banana, pear`.
+   */
+  ['tests-error/eval/ampersand-merge-template-invalid.less', 'escaped text is written as written (owner 2026-10-09) and never stops the pipeline (P45)']
 ]);
 
 const rootCallFunctionFixtures = new Set([
