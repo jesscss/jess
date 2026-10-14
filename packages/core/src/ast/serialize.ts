@@ -24002,7 +24002,7 @@ function dropBlockPart(block: OpenBlock, e: Emit): void {
     e.positions.length = block.markPos;
   }
   if (block.split !== null) {
-    e.splitBlocks!.splice(e.splitBlocks!.lastIndexOf(block.split), 1);
+    e.splitBlocks!.splice(e.splitBlocks!.indexOf(block.split), 1);
   }
 }
 
