@@ -90,8 +90,7 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "!lib/**/*.d.ts.map"
+    "lib"
   ],
   "sideEffects": false,
   "scripts": {
