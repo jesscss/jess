@@ -299,3 +299,23 @@ describe('a written condition is dialect-invariant valid CSS', () => {
     expect(await jess.renderString(source, { extension: '.jess' })).toBe(expected);
   });
 });
+
+/*
+ * `not` before a bare operand a comparison follows (`not 1 > 2`) does not say
+ * what it negates: an error diagnostic at the comparison, and the sheet still
+ * evaluates (P45, owner 2026-10-09), reading it as `not (1 > 2)`. A condition
+ * written into a value is written as authored.
+ */
+describe('a `not` before a bare compared operand is a diagnostic', () => {
+  it('reports it at the comparison and writes the rest', async () => {
+    const result = await compiler.renderToResult(
+      { source: '@x: (not 1px > 2px);\n.a { b: @x; c: boolean(not 1 > 2); d: e; }', filePath: 'entry.less', extension: '.less' },
+      { quiet: true }
+    );
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([
+      ['parse/ambiguous-not', 1, 14],
+      ['parse/ambiguous-not', 2, 30]
+    ]);
+    expect(String(result.css)).toBe('.a {\n  b: (not 1px > 2px);\n  c: true;\n  d: e;\n}\n');
+  });
+});

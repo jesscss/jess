@@ -34,7 +34,7 @@ import {
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { lessGrammar } from './grammar/ast.js';
-import { LessParseError, type LessMixinArgumentError } from './parse-error.js';
+import { LessParseError, type LessRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
 
 /** The rule map both compiled Less AST variants expose. */
@@ -187,7 +187,7 @@ function lineOptions(input: string, span: Span): {
  */
 interface LessParsed {
   readonly document: Stylesheet;
-  readonly recovered: readonly LessMixinArgumentError[];
+  readonly recovered: readonly LessRecoveredError[];
 }
 
 /**
@@ -219,7 +219,7 @@ function parseRecovering(
     );
   }
   const functions: FunctionScope = { ambient: options.moduleMode !== 'modern' };
-  const diagnostics: LessMixinArgumentError[] = [];
+  const diagnostics: LessRecoveredError[] = [];
   const state: LessParseState = {
     source: input,
     mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE,
@@ -300,11 +300,11 @@ function parseRecovering(
 }
 
 /** One report per item, ordered by where it is written. */
-function inSourceOrder(diagnostics: readonly LessMixinArgumentError[]): readonly LessMixinArgumentError[] {
+function inSourceOrder(diagnostics: readonly LessRecoveredError[]): readonly LessRecoveredError[] {
   if (diagnostics.length < 2) {
     return diagnostics;
   }
-  const byItem = new Map<string, LessMixinArgumentError>();
+  const byItem = new Map<string, LessRecoveredError>();
   for (const error of diagnostics) {
     byItem.set(`${error.offset}:${error.endOffset}:${error.message}`, error);
   }

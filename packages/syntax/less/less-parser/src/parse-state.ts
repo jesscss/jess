@@ -8,7 +8,7 @@
  */
 import type { MathMode } from '@jesscss/core';
 import type { BareVariableRejection, FunctionScope } from '@jesscss/core/ast';
-import { LessBareVariableInterpolationError, type LessMixinArgumentError } from './parse-error.js';
+import { LessBareVariableInterpolationError, type LessRecoveredError } from './parse-error.js';
 
 /** What the reducers of one Less parse share and write ({@link LessParseState.document}). */
 export interface LessDocumentFacts {
@@ -20,12 +20,12 @@ export interface LessDocumentFacts {
   readonly functions: FunctionScope;
 
   /**
-   * The mixin-list problems the grammar recovered from (ledger P46): a
-   * well-formed item a `;` list cannot give meaning to is a located error
-   * diagnostic and the parse carries on (P45, owner 2026-10-09). A run without
-   * it (the raw grammar) raises the problem instead.
+   * The problems the grammar recovered from: a well-formed shape the dialect
+   * cannot give meaning to — a `;`-list item (ledger P46), an ambiguous `not` —
+   * is a located error diagnostic and the parse carries on (P45, owner
+   * 2026-10-09). A run without it (the raw grammar) raises the problem instead.
    */
-  readonly diagnostics: LessMixinArgumentError[];
+  readonly diagnostics: LessRecoveredError[];
 }
 
 export interface LessParseState extends Partial<BareVariableRejection> {
@@ -121,7 +121,7 @@ export function functionScopeOf(state: unknown): FunctionScope | null {
 }
 
 /** The recovered-problem sink `parseWith` gave this run, or `null` (a raw `run()`). */
-export function diagnosticsOf(state: unknown): LessMixinArgumentError[] | null {
+export function diagnosticsOf(state: unknown): LessRecoveredError[] | null {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
   return (state as LessParseState | undefined)?.document?.diagnostics ?? null;
 }

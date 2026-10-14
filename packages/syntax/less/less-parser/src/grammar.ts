@@ -1728,15 +1728,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const functionConditionGroupLed = sequence(g.FunctionConditionParen, noTrivia(mathRunTail));
   const functionConditionCompared = optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)));
   /*
-   * `not` negates a group, which a comparison may follow (`not (1) > 2`), or a
-   * bare operand, which none may: `not 1 > 2` does not say what `not` negates,
-   * so it stops at the operator and fails there, as any unexpected token does.
+   * `not`?, an operand, an optional comparison. `not` negates a group, which a
+   * comparison may follow (`not (1) > 2`), or a bare operand, which none may:
+   * `not 1 > 2` does not say what `not` negates. It is well-formed, so the
+   * reducer reports it at the comparison and reads it as `not (1 > 2)` (P45).
    */
   const FunctionConditionTerm = node(
     'FunctionConditionTerm',
-    choice(
-      sequence(functionConditionNot, choice(sequence(functionConditionGroupLed, functionConditionCompared), g.FunctionConditionOperand)),
-      sequence(choice(functionConditionGroupLed, g.FunctionConditionOperand), functionConditionCompared)
+    sequence(
+      optional(functionConditionNot),
+      choice(functionConditionGroupLed, g.FunctionConditionOperand),
+      functionConditionCompared
     ),
     (children, _fields, _span, rawChildren, _triviaLog, state) => functionConditionTermFrom(children, rawChildren, state)
   );
@@ -2146,8 +2148,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * hold that group; written out, it keeps its parens and its variables
    * substitute). A term is the `FunctionConditionTerm` shape over a math
    * operand: `not`?, an operand, an optional comparison — which, after `not`,
-   * only an operand led by a group takes (`(not (1px) > 2px)`; `(not 1px > 2px)`
-   * fails at its `>`).
+   * says what `not` negates only after a group (`(not (1px) > 2px)`;
+   * `(not 1px > 2px)` is reported at its `>`).
    *
    * Each term owns the gap after its operands, read once, so the operator and
    * the `and` / `or` after it are matched where they start. `and` and `or` are
@@ -2156,12 +2158,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * and its tree is unchanged.
    */
   const parenConditionCompared = optional(sequence(mixinGuardOperator, optional(whitespace), g.MathSum, optional(whitespace)));
-  const parenConditionTerm = choice(
-    sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace), choice(
-      sequence(peek(literal('(')), g.MathSum, optional(whitespace), parenConditionCompared),
-      sequence(g.MathSum, optional(whitespace))
-    )),
-    sequence(g.MathSum, optional(whitespace), parenConditionCompared)
+  const parenConditionTerm = sequence(
+    optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
+    g.MathSum,
+    optional(whitespace),
+    parenConditionCompared
   );
   const parenConditionAnd = node(
     'ParenConditionAnd',

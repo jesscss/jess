@@ -10,12 +10,14 @@ import {
 } from '../../../../core/src/ast/provenance.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import {
+  LessAmbiguousNotError,
   LessBareVariableInterpolationError,
   LessImportPostludeError,
   LessParseError,
   LessSourceImportSyntaxError,
   LessUnsupportedVariableNameError,
-  parse
+  parse,
+  safeParse
 } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
 
@@ -3711,28 +3713,25 @@ describe('final declaration without a trailing semicolon', () => {
 
 /*
  * `not` negates a group, which a comparison may follow, or a bare operand,
- * which none may: `not 1 > 2` does not say what `not` negates. The grammar
- * states it, so the input fails as a positioned parse error where the
- * comparison starts, never as an error thrown while building the tree.
+ * which none may: `not 1 > 2` does not say what `not` negates. It is still
+ * well-formed, so it is an error diagnostic at the comparison and the parse
+ * carries on (P45, owner 2026-10-09), reading it as `not (1 > 2)`, the reading
+ * `not (1) > 2` already gets.
  */
 describe('a `not` before a bare compared operand', () => {
-  const thrownBy = (source: string): unknown => {
-    try {
-      parse(source);
-    } catch (error) {
-      return error;
-    }
-    return undefined;
-  };
+  const CASES = [
+    ['a { b: boolean(not 1 > 2); }', '>'],
+    ['a { b: if(not 1 > 2, y, n); }', '>'],
+    ['@x: (not 1px > 2px);', '>'],
+    ['@x: (1 and not 2 >= 1);', '>=']
+  ] as const;
 
-  it('is a parse error at the comparison', () => {
-    for (const [source, column] of [['a { b: boolean(not 1 > 2); }', 22], ['a { b: if(not 1 > 2, y, n); }', 17]] as const) {
-      const thrown = thrownBy(source);
-      expect(thrown, source).toBeInstanceOf(LessParseError);
-      expect(thrown, source).toMatchObject({ line: 1, column });
-    }
-    expect(thrownBy('@x: (not 1px > 2px);')).toBeInstanceOf(LessParseError);
-    expect(thrownBy('@x: (1 and not 2 > 1);')).toBeInstanceOf(LessParseError);
+  it.each(CASES)('%s is reported at its comparison and the document survives', (source, operator) => {
+    const at = source.indexOf(operator);
+    const result = safeParse('entry.less', source);
+    expect(result.document?.rules).toHaveLength(1);
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([['parse/ambiguous-not', 1, at + 1]]);
+    expect(() => parse(source)).toThrow(LessAmbiguousNotError);
   });
 
   it('accepts a group or an uncompared operand after it', () => {

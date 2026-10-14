@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem } from './parse-error.js';
+import { LessAmbiguousNotError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -64,7 +64,7 @@ type MixinInteriorFact = {
    *  folded into a list value keeps the spelling `~( … )` would have recorded. */
   readonly separatorLayout: readonly string[] | undefined;
   /** Where a problem the list recovers from is reported: the run's sink, or `null` for a raw grammar run (ledger P46, P45). */
-  readonly diagnostics: LessMixinArgumentError[] | null;
+  readonly diagnostics: LessRecoveredError[] | null;
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -1947,7 +1947,7 @@ function mixinArgumentsFromChildren(children: readonly unknown[]): MixinCallArgu
  * under `parseWith` it is an error diagnostic and the caller recovers; a raw
  * grammar run, which has no sink, raises it.
  */
-function reportMixinArgument(capture: MixinInteriorCapture, problem: LessMixinArgumentProblem, sink: LessMixinArgumentError[] | null): void {
+function reportMixinArgument(capture: MixinInteriorCapture, problem: LessMixinArgumentProblem, sink: LessRecoveredError[] | null): void {
   const error = new LessMixinArgumentError(capture.span.start, capture.span.end, problem);
   if (sink === null) {
     throw error;
@@ -1956,7 +1956,7 @@ function reportMixinArgument(capture: MixinInteriorCapture, problem: LessMixinAr
 }
 
 /** A value where a mixin list needs one: a parameter default, a pattern, a comma-list item. Anything else is reported and dropped. */
-function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink: LessMixinArgumentError[] | null): ValueSlot | undefined {
+function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): ValueSlot | undefined {
   if (!isLessValueSlotValue(value)) {
     reportMixinArgument(capture, 'value', sink);
     return undefined;
@@ -1970,7 +1970,7 @@ function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink:
  * value: it is reported, and the list keeps what it names — the variable, the
  * spread value, the named value — and drops a bare `...`.
  */
-function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean, sink: LessMixinArgumentError[] | null): ValueSlot | undefined {
+function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean, sink: LessRecoveredError[] | null): ValueSlot | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
     reportMixinArgument(capture, 'rest', sink);
@@ -2007,7 +2007,7 @@ function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean, 
  */
 function reassembleMixinInterior<T>(
   interior: MixinInteriorFact,
-  single: (capture: MixinInteriorCapture, sink: LessMixinArgumentError[] | null) => T | undefined,
+  single: (capture: MixinInteriorCapture, sink: LessRecoveredError[] | null) => T | undefined,
   commaList: (name: string | undefined, value: Block) => T
 ): T[] {
   const { items, separators, diagnostics: sink } = interior;
@@ -2056,7 +2056,7 @@ function reassembleMixinInterior<T>(
   return out;
 }
 
-function mixinParamFromInterior(capture: MixinInteriorCapture, sink: LessMixinArgumentError[] | null): Param | undefined {
+function mixinParamFromInterior(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): Param | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
     return { rest: true };
@@ -2084,7 +2084,7 @@ function mixinParamsFromInterior(interior: MixinInteriorFact): Param[] {
   return reassembleMixinInterior(interior, mixinParamFromInterior, mixinCommaListParam);
 }
 
-function mixinCallArgumentFromInterior(capture: MixinInteriorCapture, sink: LessMixinArgumentError[] | null): MixinCallArgument | undefined {
+function mixinCallArgumentFromInterior(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): MixinCallArgument | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
     reportMixinArgument(capture, 'anonymousRest', sink);
@@ -2463,6 +2463,11 @@ function functionConditionTermFrom(
     index = operand.next;
   }
   const operator = guardOperatorText(children[index]);
+
+  /* The value paren group passes no raw children: it reads its own operands, and reports there. */
+  if (negated && !groupLed && operator !== null && rawChildren.length > 0) {
+    reportAmbiguousNot(rawChildren[index], state);
+  }
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
@@ -2478,6 +2483,26 @@ function functionConditionTermFrom(
     : { guard, src, grouped: false, hasComparison: true };
 }
 
+/**
+ * `not` before a bare operand a comparison follows (`not 1 > 2`) does not say
+ * what it negates: an error diagnostic at the comparison operator, read as
+ * `not (1 > 2)` as `not (1) > 2` is (P45, owner 2026-10-09). The operator
+ * token carries the whitespace around it; the report starts at the operator.
+ */
+function reportAmbiguousNot(operator: unknown, state: unknown): void {
+  const text = lessTerminalText(operator);
+  if (!isSpannedToken(operator) || text === null) {
+    throw new TypeError('Less condition lost its comparison operator provenance.');
+  }
+  const start = operator.span.start + text.length - text.trimStart().length;
+  const error = new LessAmbiguousNotError(start, start + text.trim().length);
+  const sink = diagnosticsOf(state);
+  if (sink === null) {
+    throw error;
+  }
+  sink.push(error);
+}
+
 function isFunctionConditionNot(value: unknown): boolean {
   return isLessKeyword(value, 'not');
 }
@@ -2490,10 +2515,14 @@ function isFunctionConditionNot(value: unknown): boolean {
  * authored and warns there (ledger N17). Otherwise {@link NO_SPAN}.
  */
 function gluedKeywordAt(keyword: SourceSpan, operand: unknown): number {
+  const lead = groupLeading(operand);
+  return lead !== null && sourceStartOf(lead) === keyword.end ? keyword.start : NO_SPAN;
+}
+
+/** The paren group a math operand starts with (`(1)`, `(1) + 2`), or `null`. */
+function groupLeading(operand: unknown): Block | null {
   const lead = isLessMathRun(operand) ? operand.operands[0] : operand;
-  return isValueNode(lead) && lead.type === 'Block' && lead.delimiter === 'paren' && lead.escaped !== true && sourceStartOf(lead) === keyword.end
-    ? keyword.start
-    : NO_SPAN;
+  return isValueNode(lead) && lead.type === 'Block' && lead.delimiter === 'paren' && lead.escaped !== true ? lead : null;
 }
 
 /** One `MathSum` reduction among other children. */
@@ -2547,11 +2576,14 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
   const not = lead.length === 0 ? undefined : rawChildren[children.indexOf(lead[0])];
   const notGluedAt = isSpannedToken(not) ? gluedKeywordAt(not.span, left) : NO_SPAN;
   if (right !== undefined) {
-    const operator = children.find(child => !isMathOperand(child) && guardOperatorText(child) !== null);
+    const at = children.findIndex(child => !isMathOperand(child) && guardOperatorText(child) !== null);
+    if (lead.length > 0 && groupLeading(left) === null) {
+      reportAmbiguousNot(rawChildren[at], state);
+    }
     return functionConditionTermFrom([
       ...lead,
       functionConditionOperandFrom([left], state),
-      operator,
+      children[at],
       functionConditionOperandFrom([right], state)
     ], [], state, notGluedAt);
   }
