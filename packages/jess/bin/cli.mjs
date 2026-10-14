@@ -6,7 +6,8 @@
  *   jess lint [files...] [options]    lint stylesheets
  *
  * Streams: compiled CSS goes to a file. Diagnostics and errors go to stderr.
- * stdout carries the one-line "Compiled ..." report, and `jess lint`'s report.
+ * stdout carries the one-line "Compiled ..." report (none when the CSS itself
+ * goes to stdout), and `jess lint`'s report.
  * The CLI sets process.exitCode and returns instead of calling process.exit(),
  * which could cut off output still being written to a pipe.
  *
@@ -19,7 +20,7 @@
  *      or a refused output path (see planOutput)
  */
 import { randomBytes } from 'node:crypto';
-import { lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { fstatSync, lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import { open, rename, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
@@ -164,6 +165,8 @@ function stylesheetExtension(file) {
  * stdout is redirected to one), is not a directory entry to replace and is
  * written in place (`{ replace: false }`).
  */
+const STDOUT_PATHS = new Set(['/dev/stdout', '/dev/fd/1', '/proc/self/fd/1']);
+
 function planOutput(outPath, input, inFile, outArg) {
   const extension = stylesheetExtension(outPath);
   if (extension !== undefined) {
@@ -210,7 +213,11 @@ function planOutput(outPath, input, inFile, outArg) {
 
   // ponytail: /dev is the POSIX device namespace; descriptor aliases elsewhere (/proc/self/fd/N) are replaced like files.
   if (!file.isFile() || path.resolve(outPath).startsWith('/dev/')) {
-    return { replace: false };
+    /* Linux cannot open /proc/self/fd/1 when stdout is a socket (ENXIO), so write our own stdout through its
+       descriptor. It is known by name, or by identity (macOS reports a pipe's identity differently through /dev/stdout). */
+    const stdout = fstatSync(1, { bigint: true });
+    const isStdout = STDOUT_PATHS.has(path.resolve(outPath)) || (file.dev === stdout.dev && file.ino === stdout.ino);
+    return { replace: false, stdout: isStdout };
   }
   return { replace: true, mode: link === undefined ? Number(file.mode & 0o777n) : undefined };
 }
@@ -223,6 +230,10 @@ function planOutput(outPath, input, inFile, outArg) {
  * extended attributes are those of a new file.
  */
 async function writeOutput(outPath, css, plan) {
+  if (plan.stdout) {
+    await new Promise((resolve, reject) => process.stdout.write(css, err => (err ? reject(err) : resolve())));
+    return;
+  }
   if (!plan.replace) {
     await writeFile(outPath, css);
     return;
@@ -370,6 +381,9 @@ async function runCompile(args) {
     await writeOutput(outPath, css, plan);
   } catch (err) {
     fail(`cannot write ${display(outPath)}: ${systemReason(err)}`, EXIT_FAILURE);
+  }
+  if (plan.stdout) {
+    return; // stdout holds the CSS; a report there would corrupt it.
   }
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`Compiled ${inFile} → ${outPath} (${elapsed}s)`);

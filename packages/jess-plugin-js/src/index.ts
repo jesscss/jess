@@ -217,7 +217,6 @@ const normalizePermissionPath = (value: string | null): string | null => {
   return value;
 };
 
-
 const isJsonValue = (value: unknown) => {
   try {
     JSON.stringify(value);

@@ -455,7 +455,7 @@ describe('jess CLI', () => {
 
     const result = await run(['a.less', '/dev/stdout'], { cwd: directory });
     expect(result.code).toBe(0);
-    expect(result.stdout).toMatch(/^\.a \{\n {2}color: red;\n\}\n/u);
+    expect(result.stdout).toBe('.a {\n  color: red;\n}\n');
   }));
 
   it('refuses a directory as the output file', async () => inTempDir(async (directory) => {
