@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, anonymousMixin, authoredSource, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { NO_SPAN, any, anonymousMixin, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
 import type { Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -370,6 +370,7 @@ type SharedSyntax = {
   QueryAndOr: Combinator<string>;
   QueryNot: Combinator<string>;
   QueryGluedConnective: Combinator<string>;
+  PagePseudoRun: Combinator<string>;
   LogicalNot: Combinator<string>;
   LogicalAnd: Combinator<string>;
   LogicalOr: Combinator<string>;
@@ -3668,27 +3669,42 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * and abandons at the `.`.
    */
   /*
-   * A `@page` header is an optional page name followed by one or more
-   * `<pseudo-page>`s — `:first`, `:left`, `:right`, `:blank` (css-page-3 §3).
-   * They are header atoms, not selector syntax, so the whole header reduces to
-   * one `Any` of its authored bytes — `@page wide:left` emits `wide:left`,
-   * byte-identical to the css/scss base (whose `@page` prelude is raw text).
-   * No whitespace is allowed between the productions of a `<page-selector>`
-   * (css-page-3 §3), so `wide :left` matches no page and is written as authored
-   * too, never respaced either way. `PagePseudo` mirrors the Less base's atom
-   * name and drives recognition; the header requires at least one pseudo so a
-   * bare page name (`@page wide`) still falls through to the query clause, and
-   * a generic query prelude keeps abandoning a stray top-level `:`.
+   * A `@page` header: `<page-selector>`s holding at least one `<pseudo-page>`
+   * — `:first`, `:left`, `:right`, `:blank` (css-page-3 §3). No whitespace is
+   * allowed between the productions of a `<page-selector>`, so a page name and
+   * the pseudo-pages glued to it are one token, written as the token spells it
+   * (`wide:left`, `:left:blank`); a pseudo-page written apart is its own
+   * selector and keeps its space (`wide :left` matches no page, and is written
+   * as authored). The pseudo-page run is the shared `PagePseudoRun` terminal
+   * the Less header reads. A bare page name (`@page wide`) is no header here:
+   * it falls through to the query clause, as a generic header does.
+   *
+   * The header is also every generic at-rule's first clause, and a word whose
+   * colon the author spaced from what follows (`@foo bar: baz;`) is no
+   * pseudo-page but must still parse (ledger P45): it is the same glued item,
+   * as the token spells it, so it is written as authored.
    */
-  const PagePseudo = node<ValueNode>(
-    'PagePseudo',
-    sequence(literal(':'), g.Identifier),
-    children => any(`:${requireToken(children[1]).value}`)
+  const PageSelector = node<ValueNode>(
+    'PageSelector',
+    token(noTrivia(sequence(
+      optional(g.Identifier),
+      choice(
+        g.PagePseudoRun,
+        sequence(literal(':'), rawWhitespace, g.Identifier)
+      )
+    ))),
+    children => any(requireToken(children[0]).value)
   );
   const pageHeader = node<ValueNode>(
     'PageHeader',
-    sequence(optional(g.Keyword), oneOrMore(PagePseudo)),
-    (_children, _fields, span, _rawChildren, _triviaLog, state) => any(authoredSource(span, state, 'A @page header'))
+    choice(
+      sequence(PageSelector, many(PageSelector)),
+      sequence(g.Keyword, oneOrMore(PageSelector))
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
   );
   const atRulePreludeClause = choice(g.DottedAtRuleKeyword, pageHeader, g.AtRulePreludeClause);
   const AtRulePrelude = node<ValueNode | null>(

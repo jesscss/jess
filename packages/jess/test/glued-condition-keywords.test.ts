@@ -181,9 +181,29 @@ describe('a @page selector is written as authored', () => {
       '@page :first',
       '@page wide',
       '@page Test :first',
-      '@page wide :left:blank'
+      '@page wide :left:blank',
+      '@page wide :left',
+      '@page wide:left, narrow :right'
     ])(`${dialect}: %s`, async (source) => {
       expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});
+
+/*
+ * A `<pseudo-page>` is `:` glued to an identifier (css-page-3 §3); a `:` the
+ * author spaced from what follows is no pseudo-page, so a generic at-rule's
+ * header keeps the authored bytes css writes for it.
+ */
+describe('a generic at-rule header is not read as a page selector', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@foo bar: baz;',
+      '@foo bar :baz;',
+      '@foo bar:baz;'
+    ])(`${dialect}: %s`, async (source) => {
+      const { css, warnings } = await render(dialect, source);
+      expect({ css, warnings }).toEqual({ css: `${source}\n`, warnings: [] });
     });
   }
 });

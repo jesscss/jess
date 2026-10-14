@@ -210,7 +210,6 @@ type LessRules = {
   InterpolatedProperty: Combinator<Interpolation>;
   Keyword: Combinator<ValueNode>;
   EscapeValue: Combinator<Any>;
-  PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot | LessCallArg>;
   FunctionScalarArgument: Combinator<ValueNode>;
@@ -459,6 +458,7 @@ type SharedSyntax = {
   QueryOnly: Combinator<unknown>;
   QueryAndOr: Combinator<unknown>;
   QueryGluedConnective: Combinator<unknown>;
+  PagePseudoRun: Combinator<unknown>;
   QueryComparisonOperator: Combinator<unknown>;
   QueryFunctionName: Combinator<unknown>;
   QueryFunctionOpen: Combinator<unknown>;
@@ -1692,13 +1692,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'PercentEscape',
     g.PercentEscapeToken,
     children => any(requireToken(children[0]).value)
-  );
-  // `@page` pseudo-pages are header atoms, not selector syntax in a value
-  // position. Preserve their one-token spelling without widening generic values.
-  const PagePseudo = node(
-    'PagePseudo',
-    sequence(literal(':'), g.ValueIdentifier),
-    children => any(`:${requireToken(children[1]).value}`)
   );
   // Unknown at-rule functions are intentionally permissive.  This legacy Less
   // argument spelling is one opaque grammar fact—not two quoted strings around
@@ -4174,29 +4167,39 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
   );
-  const atRulePreludeIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
   /*
-   * A header keyword, with any `<pseudo-page>`s glued to it: `@page Test:first`
-   * is one `<page-selector>`, and no whitespace is allowed between its
-   * productions (css-page-3 §3), so the glued run is one header atom written as
-   * authored, never `Test :first`. A pseudo-page written apart stays its own
-   * atom (`PagePseudo`).
+   * A header identifier, read once with what is glued to it: a `(` (a function)
+   * or a run of `<pseudo-page>`s. `@page Test:first` is one `<page-selector>`,
+   * and no whitespace is allowed between its productions (css-page-3 §3), so
+   * the glue is the token's own spelling, written as authored.
    */
+  const atRulePreludeIdentOrFunction = token(noTrivia(sequence(
+    staticIdentifier,
+    optional(choice(literal('('), g.PagePseudoRun))
+  )));
   const AtRulePreludeKeyword = node(
     'Keyword',
-    noTrivia(sequence(
-      routed(),
-      many(g.PagePseudo)
-    )),
-    children => children.length === 1
-      ? keyword(requireToken(children[0]).value)
-      : any(requireToken(children[0]).value + children.slice(1).filter(isAny).map(pseudo => pseudo.src).join(''))
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
+
+  /* A `<page-selector>` with its pseudo-pages (`Test:first`, `:left:blank`): one header atom, as the token spells it. */
+  const RoutedPageSelector = node(
+    'PageSelector',
+    routed(),
+    children => any(requireToken(children[0]).value)
+  );
+  const PageSelector = node(
+    'PageSelector',
+    token(g.PagePseudoRun),
+    children => any(requireToken(children[0]).value)
   );
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
     caseOf('url(', RoutedPlainUrl),
     caseOf('calc(', g.CalcFunction),
     when(endsWith('('), g.GenericFunction),
+    when(matches(/:/), RoutedPageSelector),
     otherwise(AtRulePreludeKeyword)
   );
   // The typed subset of a generic at-rule header. Interpolation and
@@ -4211,16 +4214,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
       g.Color,
       g.Dimension,
-      // Glued pseudo-pages are one header atom, as after a page name (`AtRulePreludeKeyword`).
-      noTrivia(oneOrMore(g.PagePseudo)),
+      PageSelector,
       g.Paren,
       g.DottedAtRuleKeyword,
       atRulePreludeCustomProperty,
       AtRulePreludeIdentOrFunction
     ),
-    children => children.length === 1
-      ? requireValueNode(children[0])
-      : any(children.filter(isAny).map(pseudo => pseudo.src).join(''))
+    children => requireValueNode(children[0])
   );
   const AtRulePreludeValueTerm = node(
     'AtRulePreludeValueTerm',
@@ -5519,7 +5519,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedProperty,
     Keyword,
     EscapeValue,
-    PagePseudo,
     DoubledQuoteArgument,
     FunctionArgument,
     FunctionScalarArgument,

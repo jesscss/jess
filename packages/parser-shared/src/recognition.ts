@@ -5,7 +5,7 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { choice, keywords, literal, noTrivia, not, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
+import { choice, keywords, literal, noTrivia, not, oneOrMore, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = cssIdentifier;
@@ -202,6 +202,17 @@ const queryGluedConnective = noTrivia(sequence(
   ),
   literal('(')
 ));
+
+/*
+ * A run of `<pseudo-page>`s (css-page-3 §3): `:` glued to an identifier, one or
+ * more, with no whitespace between the productions of a `<page-selector>`, so a
+ * page selector's glue is the token's own spelling (`:left:blank`; after a page
+ * name, `Test:first`). A `:` spaced from what follows is no pseudo-page.
+ */
+const pagePseudoRun = noTrivia(oneOrMore(sequence(
+  literal(':'),
+  cssIdentifier
+)));
 
 /*
  * `not`, `and` and `or` apart, for a dialect ladder that folds each at its own
@@ -583,6 +594,7 @@ export const cssSyntax = rules(_g => ({
   SupportsAtKeyword: supportsAtKeyword,
   StartingStyleAtKeyword: startingStyleAtKeyword,
   PageAtKeyword: pageAtKeyword,
+  PagePseudoRun: pagePseudoRun,
   MarginAtKeyword: marginAtKeyword,
   QueryNot: queryNot,
   QueryOnly: queryOnly,
