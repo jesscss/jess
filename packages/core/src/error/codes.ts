@@ -27,6 +27,8 @@ export type JessErrorCode =
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
+  | 'parse/ambiguous-not'
+  | 'parse/condition-keyword-case'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'compose/not-top-level'
@@ -208,6 +210,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Invalid mixin argument',
       reason: 'This item cannot be an argument or parameter of a mixin in this position.',
       fix: 'Rewrite the argument as a value, or separate it with ";".'
+    }
+  ],
+  [
+    'parse/condition-keyword-case',
+    {
+      summary: 'Less condition keyword not lowercase',
+      reason: 'A Less condition (a mixin guard, if() or boolean()) reads lowercase and, or and not; a CSS condition reads them in any case.',
+      fix: 'Write the keyword in lowercase.'
+    }
+  ],
+  [
+    'parse/ambiguous-not',
+    {
+      summary: '`not` before a compared operand',
+      reason: '`not` negates the condition or group right after it, so a comparison after a bare operand leaves open what it negates.',
+      fix: 'Group what `not` negates, for example: not (1 > 2).'
     }
   ],
 

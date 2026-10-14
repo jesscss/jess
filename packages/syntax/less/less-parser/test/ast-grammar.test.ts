@@ -2310,7 +2310,8 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('constructs static body and inline extends with exact/all multi-target semantics', () => {
+  /* Owner 2026-10-09, verbatim. */
+  it('"`all` only applies to target right before, `!all` is supposed to apply to the entire seletor list"', () => {
     const source =
       '.target { color: navy; } .rules { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }';
     const result = run(lessGrammar.Document, source, {
@@ -2326,7 +2327,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'Ruleset',
           extendInstructions: [
-            { target: { type: 'SelectorList' }, partial: false },
+            { target: { type: 'SelectorList' }, partial: true },
             { target: { type: 'SelectorList' }, partial: true }
           ]
         },
@@ -2353,6 +2354,23 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+  });
+
+  it('makes every target of an inline :extend(…) partial for `!all` and only the one before `all`', () => {
+    const extensions = (source: string) => {
+      const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+      expect(result.ok).toBe(true);
+      const ruleset = stylesheet(result.value).rules[0];
+      if (ruleset?.type !== 'Ruleset') {
+        throw new Error('expected a ruleset');
+      }
+      return (ruleset.extendInstructions ?? []).map(instruction => instruction.partial);
+    };
+    expect(extensions('.c:extend(.x, .y !all) { r: 3 }')).toEqual([true, true]);
+    expect(extensions('.c:extend(.x, .y !ALL) { r: 3 }')).toEqual([true, true]);
+    expect(extensions('.c:extend(.x all, .y) { r: 3 }')).toEqual([true, false]);
+    expect(extensions('.c:extend(.x, .y all) { r: 3 }')).toEqual([false, true]);
+    expect(extensions('.c { &:extend(.x, .y !all, .z); }')).toEqual([true, true, true]);
   });
 
   it('gives a body extend on a comma list no subject, so every branch extends', () => {

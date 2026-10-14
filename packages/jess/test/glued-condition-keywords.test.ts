@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { serialize } from '@jesscss/core';
+import { parse as parseCss } from '@jesscss/css-parser';
 import { Compiler } from '../src/index.js';
 
 /**
@@ -35,6 +37,8 @@ const GLUED: ReadonlyArray<readonly [prelude: string, column: number]> = [
   ['@media not(color)', 8],
   ['@media (not(hover))', 9],
   ['@media only screen AND(color)', 20],
+  ['@media ((a: b) and(c: d))', 16],
+  ['@media ((a) or(b))', 13],
   ['@container (min-width: 1px) and(max-width: 2px)', 29],
   ['@container card (min-width: 1px) or(orientation: portrait)', 34],
   ['@container not(width > 1px)', 12],
@@ -88,6 +92,62 @@ describe('the spaced keyword and other condition functions', () => {
   }
 });
 
+/*
+ * A condition written into a declaration value is CSS: nothing evaluates it, so
+ * a glued keyword in it is written as authored, as css writes it, and Less,
+ * which reads the group as a condition, warns where the keyword is written
+ * (owner 2026-10-09: "output them as authored BUT give a warning for and( / or(
+ * / not("; ledger N17).
+ */
+describe('a glued and( / or( / not( in a written value condition', () => {
+  /* The value, how css writes it, and the 1-based column of each glued keyword in `.k { x: <value>; }`. */
+  const WRITTEN: ReadonlyArray<readonly [value: string, css: string, columns: readonly number[]]> = [
+    ['(1 or(2))', '(1 or(2))', [12]],
+    ['(not(1))', '(not(1))', [10]],
+    ['((1) and(2))', '((1) and(2))', [14]],
+    ['(not(1 = 1))', '(not(1 = 1))', [10]],
+    ['(NOT(1 = 1))', '(NOT(1 = 1))', [10]],
+    ['((1 = 1)and(2 = 2))', '((1 = 1) and(2 = 2))', [17]],
+    ['((1 = 1) or(2 = 2) and(3 = 3))', '((1 = 1) or(2 = 2) and(3 = 3))', [18, 28]]
+  ];
+
+  it.each(WRITTEN)('less: writes %s as css does and warns at each glued keyword', async (value, css, columns) => {
+    const source = `.k { x: ${value}; }`;
+    const plain = (await serialize(parseCss(source))).css;
+    expect(plain).toBe(`.k {\n  x: ${css};\n}\n`);
+    const { css: less, warnings } = await render('less', source);
+    expect(less).toBe(plain);
+    expect(warnings.map(warning => [warning.code, warning.line, warning.column])).toEqual(
+      columns.map(column => ['css/glued-condition-keyword', 1, column])
+    );
+  });
+
+  it('less: warns where a condition a variable holds is written', async () => {
+    expect(await render('less', '@c: (1 or(2));\n.k { x: @c; }')).toEqual({
+      css: '.k {\n  x: (1 or(2));\n}\n',
+      warnings: [expect.objectContaining({ code: 'css/glued-condition-keyword', line: 1, column: 8 })]
+    });
+  });
+
+  it('less: the spaced keyword is written as authored without a warning', async () => {
+    expect(await render('less', '.k { a: (1 or (2)); b: (not (1)); c: ((1) and (2)); }')).toEqual({
+      css: '.k {\n  a: (1 or (2));\n  b: (not (1));\n  c: ((1) and (2));\n}\n',
+      warnings: []
+    });
+  });
+
+  /*
+   * P45 (owner 2026-10-09): valid CSS parses in every dialect. Not yet: the
+   * SCSS and Jess value grammars reject a CSS `=` delimiter in a function
+   * argument (`x: foo(1 = 1)` stops the same way), so `not(1 = 1)` stops there.
+   */
+  for (const dialect of ['scss', 'jess'] as const) {
+    it.fails(`${dialect}: parses (not(1 = 1)) and writes it as css does`, async () => {
+      expect((await render(dialect, '.k { x: (not(1 = 1)); }')).css).toBe('.k {\n  x: (not(1 = 1));\n}\n');
+    });
+  }
+});
+
 describe('compiler-evaluated conditions keep reading and( / not( as the keyword', () => {
   it.each([
     ['less', '@a: true; @b: true; .m() when (@a) and(@b) { x: y } .z { .m(); }', '.z {\n  x: y;\n}\n'],
@@ -121,7 +181,49 @@ describe('a @page selector is written as authored', () => {
       '@page :first',
       '@page wide',
       '@page Test :first',
-      '@page wide :left:blank'
+      '@page wide :left:blank',
+      '@page wide :left',
+      '@page wide:left, narrow :right'
+    ])(`${dialect}: %s`, async (source) => {
+      expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
+    });
+  }
+});
+
+/*
+ * A `<pseudo-page>` is `:` glued to an identifier (css-page-3 §3); a `:` the
+ * author spaced from what follows is no pseudo-page, so a generic at-rule's
+ * header keeps the authored bytes css writes for it.
+ */
+describe('a generic at-rule header is not read as a page selector', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@foo bar: baz;',
+      '@foo bar :baz;',
+      '@foo bar:baz;'
+    ])(`${dialect}: %s`, async (source) => {
+      const { css, warnings } = await render(dialect, source);
+      expect({ css, warnings }).toEqual({ css: `${source}\n`, warnings: [] });
+    });
+  }
+});
+
+/*
+ * Owner 2026-10-13: "B: CSS any case, Less lowercase". In a CSS condition
+ * `and`, `or`, `not` and `only` are ASCII case-insensitive, as every CSS
+ * keyword is, and are written as authored in every dialect.
+ */
+describe('a CSS condition keyword is read in any case and written as authored', () => {
+  for (const dialect of DIALECTS) {
+    it.each([
+      '@media SCREEN AND (color)',
+      '@media ONLY screen And (color)',
+      '@media NOT all AND (color)',
+      '@media (a) OR (b)',
+      '@supports NOT (display: grid)',
+      '@supports (a: b) OR (c: d)',
+      '@container (a) AND (b)',
+      '@container NOT (width > 1px)'
     ])(`${dialect}: %s`, async (source) => {
       expect(await prelude(dialect, source)).toEqual({ prelude: source, warnings: [] });
     });

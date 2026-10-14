@@ -49,6 +49,7 @@ import {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
+  reportConditionKeywordCase,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,
@@ -68,6 +69,7 @@ import {
   isComplexTailFact,
   isLessDeclaration,
   isExtendTargetFact,
+  isExtendTargetListFact,
   isFunctionCall,
   isFunctionConditionFact,
   isInterp,
@@ -161,7 +163,7 @@ import type {
   BodyExtendFact,
   CustomValuePart,
   EnclosedNameFact,
-  ExtendTargetFact,
+  ExtendTargetListFact,
   FunctionConditionFact,
   InterpolationAccessorFact,
   InterpolationFact,
@@ -209,7 +211,6 @@ type LessRules = {
   InterpolatedProperty: Combinator<Interpolation>;
   Keyword: Combinator<ValueNode>;
   EscapeValue: Combinator<Any>;
-  PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot | LessCallArg>;
   FunctionScalarArgument: Combinator<ValueNode>;
@@ -249,10 +250,7 @@ type LessRules = {
   CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
-  VarFallbackGroup: Combinator<readonly CustomValuePart[]>;
   CustomAtKeywordText: Combinator<string>;
-  VarFallbackInnerPart: Combinator<CustomValuePart>;
-  VarFallbackPart: Combinator<CustomValuePart>;
   VarFallback: Combinator<ValueNode>;
   VarFunction: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
@@ -346,7 +344,7 @@ type LessRules = {
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
-  ExtendTarget: Combinator<ExtendTargetFact>;
+  ExtendTarget: Combinator<ExtendTargetListFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
@@ -398,6 +396,8 @@ type SharedSyntax = {
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: a media type, keyword or function term — MediaTypeTerm's last arm.
   QueryIdentOrFunctionTerm: Combinator<ValueNode>;
+  // Inherited from the CSS base: an and/or connective, or a peeked glued and( / or( operand.
+  QueryConnective: Combinator<unknown>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
   ContainerQueryInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: a nested group, a feature, or the ContainerStyleQuery leaf Less binds.
@@ -461,6 +461,7 @@ type SharedSyntax = {
   QueryOnly: Combinator<unknown>;
   QueryAndOr: Combinator<unknown>;
   QueryGluedConnective: Combinator<unknown>;
+  PagePseudoRun: Combinator<unknown>;
   QueryComparisonOperator: Combinator<unknown>;
   QueryFunctionName: Combinator<unknown>;
   QueryFunctionOpen: Combinator<unknown>;
@@ -1695,13 +1696,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.PercentEscapeToken,
     children => any(requireToken(children[0]).value)
   );
-  // `@page` pseudo-pages are header atoms, not selector syntax in a value
-  // position. Preserve their one-token spelling without widening generic values.
-  const PagePseudo = node(
-    'PagePseudo',
-    sequence(literal(':'), g.ValueIdentifier),
-    children => any(`:${requireToken(children[1]).value}`)
-  );
   // Unknown at-rule functions are intentionally permissive.  This legacy Less
   // argument spelling is one opaque grammar fact—not two quoted strings around
   // a value—and remains available to any unknown function name.
@@ -1737,27 +1731,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const functionConditionGroupLed = sequence(g.FunctionConditionParen, noTrivia(mathRunTail));
   const functionConditionCompared = optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)));
   /*
-   * `not` negates a group, which a comparison may follow (`not (1) > 2`), or a
-   * bare operand, which none may: `not 1 > 2` does not say what `not` negates,
-   * so it stops at the operator and fails there, as any unexpected token does.
+   * `not`?, an operand, an optional comparison. `not` negates a group, which a
+   * comparison may follow (`not (1) > 2`), or a bare operand, which none may:
+   * `not 1 > 2` does not say what `not` negates. It is well-formed, so the
+   * reducer reports it at the comparison and reads it as `not (1 > 2)` (P45).
    */
   const FunctionConditionTerm = node(
     'FunctionConditionTerm',
-    choice(
-      sequence(functionConditionNot, choice(sequence(functionConditionGroupLed, functionConditionCompared), g.FunctionConditionOperand)),
-      sequence(choice(functionConditionGroupLed, g.FunctionConditionOperand), functionConditionCompared)
+    sequence(
+      optional(functionConditionNot),
+      choice(functionConditionGroupLed, g.FunctionConditionOperand),
+      functionConditionCompared
     ),
     (children, _fields, _span, rawChildren, _triviaLog, state) => functionConditionTermFrom(children, rawChildren, state)
   );
   const FunctionConditionAnd = node(
     'FunctionConditionAnd',
     sequence(g.FunctionConditionTerm, many(sequence(functionConditionAnd, g.FunctionConditionTerm))),
-    children => foldFunctionCondition('and', children)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldFunctionCondition('and', children, rawChildren, state)
   );
   const FunctionConditionOr = node(
     'FunctionConditionOr',
     sequence(g.FunctionConditionAnd, many(sequence(functionConditionOr, g.FunctionConditionAnd))),
-    children => foldFunctionCondition('or', children)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldFunctionCondition('or', children, rawChildren, state)
   );
   const FunctionCondition = node(
     'FunctionCondition',
@@ -2155,8 +2151,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * hold that group; written out, it keeps its parens and its variables
    * substitute). A term is the `FunctionConditionTerm` shape over a math
    * operand: `not`?, an operand, an optional comparison — which, after `not`,
-   * only an operand led by a group takes (`(not (1px) > 2px)`; `(not 1px > 2px)`
-   * fails at its `>`).
+   * says what `not` negates only after a group (`(not (1px) > 2px)`;
+   * `(not 1px > 2px)` is reported at its `>`).
    *
    * Each term owns the gap after its operands, read once, so the operator and
    * the `and` / `or` after it are matched where they start. `and` and `or` are
@@ -2165,22 +2161,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * and its tree is unchanged.
    */
   const parenConditionCompared = optional(sequence(mixinGuardOperator, optional(whitespace), g.MathSum, optional(whitespace)));
-  const parenConditionTerm = choice(
-    sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace), choice(
-      sequence(peek(literal('(')), g.MathSum, optional(whitespace), parenConditionCompared),
-      sequence(g.MathSum, optional(whitespace))
-    )),
-    sequence(g.MathSum, optional(whitespace), parenConditionCompared)
+  const parenConditionTerm = sequence(
+    optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
+    g.MathSum,
+    optional(whitespace),
+    parenConditionCompared
   );
   const parenConditionAnd = node(
     'ParenConditionAnd',
     lessCaseWord('and'),
-    children => parenLogicalFrom('and', children)
+    (children, _fields, span) => parenLogicalFrom('and', children, span)
   );
   const parenConditionOr = node(
     'ParenConditionOr',
     lessCaseWord('or'),
-    children => parenLogicalFrom('or', children)
+    (children, _fields, span) => parenLogicalFrom('or', children, span)
   );
   const Paren = node(
     'Block',
@@ -2194,7 +2189,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm)),
       literal(')')
     )),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => lessParenFrom(children, span, state)
+    (children, _fields, span, rawChildren, _triviaLog, state) => lessParenFrom(children, rawChildren, span, state)
   );
   // CSS grid line names are a bracketed value piece, not a map accessor or an
   // opaque post-parse string. Keep the delimited grammar fact as one existing
@@ -2567,6 +2562,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => customPartsFromChildren(children)
   );
+  /* A typed at-keyword (`@media`) in a `var()` fallback: text, never a variable. */
+  const CustomAtKeywordText = node(
+    'CustomAtKeywordText',
+    g.CustomValueAtKeyword,
+    children => requireToken(children[0]).value
+  );
+
+  /*
+   * A bare `@name` in the custom-value token stream. In a custom-property value
+   * it is text, written as authored (ledger P2). In an ordinary declaration's
+   * `var()` fallback — the one context that reads the same parts under
+   * `less-var-fallback` (`VarFallback`) — a Less variable is read there as in
+   * any argument, and a typed at-keyword (`@media`) stays text (ledger P2,
+   * owner 2026-10-09: "it's a CSS function"). One family, one gated arm.
+   */
+  const customAtName: Combinator<CustomValuePart> = choice(
+    {
+      gate: state => state === 'less-var-fallback',
+      combinator: choice(g.CustomAtKeywordText, g.VariableReference)
+    },
+    g.CustomValueAtName
+  );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     BacktickJavaScript,
@@ -2574,7 +2591,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
     g.CustomGroup,
-    g.CustomValueAtName
+    customAtName
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
@@ -2583,14 +2600,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
     g.CustomGroup,
-    g.CustomValueAtName
+    customAtName
   );
-  /*
-   * The value runs under comment-only trivia, so a comment written before its
-   * first part is inside its span. One written after its last part
-   * (`--x: red /* c *\/;`) is the comment run its span ends at; the writer
-   * keeps both in place (ledger F12).
-   */
   const CustomValue = node(
     'CustomValue',
     parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
@@ -2605,13 +2616,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // same one the at-rule prelude custom-property branch produces for the
   // identical token in an at-rule header.
   /*
-   * Overrides the CSS base's `var()` fallback slot, and only that slot. In an
-   * ordinary declaration `var()` is a CSS function, so its fallback is an
-   * argument, and a Less variable is read there as in any argument (ledger P2,
-   * owner 2026-10-09). The fallback is otherwise the custom-property token
-   * stream: `@{}` interpolation resolves and nothing computes. A typed
-   * at-keyword (`@media`) stays text. Inside a custom-property value the whole
-   * value, a `var()` included, is `CustomValue` text.
+   * Overrides the CSS base's `var()` fallback slot, and only that slot. The
+   * fallback is the custom-property token stream (`CustomPart`), read under
+   * the `less-var-fallback` context, where a Less variable is read as in any
+   * argument (`customAtName`); its end is trimmed at the `)`.
    *
    * BLOCKED from overriding only the slot: routing `var(` to the inherited css
    * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
@@ -2620,46 +2628,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * The gap after the comma is the custom-property value's own gap, so a `//`
    * that opens the fallback is value text (see CustomDeclaration).
    */
-  const VarFallbackGroup = node(
-    'VarFallbackGroup',
-    parser(
-      { trivia: customValueCommentTrivia },
-      choice(
-        sequence(literal('('), many(g.VarFallbackInnerPart), literal(')')),
-        sequence(literal('['), many(g.VarFallbackInnerPart), literal(']')),
-        sequence(literal('{'), many(g.VarFallbackInnerPart), literal('}'))
-      )
-    ),
-    children => customPartsFromChildren(children)
-  );
-  const CustomAtKeywordText = node(
-    'CustomAtKeywordText',
-    g.CustomValueAtKeyword,
-    children => requireToken(children[0]).value
-  );
-  const VarFallbackInnerPart: Combinator<CustomValuePart> = choice(
-    g.Interpolation,
-    BacktickJavaScript,
-    g.CustomValueInnerContent,
-    g.CustomValueSingleQuoted,
-    g.CustomValueDoubleQuoted,
-    g.VarFallbackGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
-  );
-  const VarFallbackPart: Combinator<CustomValuePart> = choice(
-    g.Interpolation,
-    BacktickJavaScript,
-    g.CustomValueOuterContent,
-    g.CustomValueSingleQuoted,
-    g.CustomValueDoubleQuoted,
-    g.VarFallbackGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
-  );
   const VarFallback = node(
     'VarFallback',
-    parser({ trivia: customValueCommentTrivia }, many(g.VarFallbackPart)),
+    parser({ trivia: customValueCommentTrivia }, withCtx('less-var-fallback', many(g.CustomPart))),
     (children, _fields, span, _rawChildren, triviaLog) => trimCustomValueEnd(withSourceSpan(
       customValueFromParts(customPartsFromChildren(children), triviaLog),
       span
@@ -2886,10 +2857,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     literal('...'),
     () => ({ kind: 'anonymous-rest' })
   );
+  /* A positional item may spread its value (`.m(foo...)`, `@r: .m(@list...)`). */
   const MixinInteriorPositional = node(
     'MixinArgument',
-    g.CallArgumentValue,
-    children => ({ kind: 'positional', value: requireMixinCallArgumentValue(children[0]) })
+    sequence(g.CallArgumentValue, optional(literal('...'))),
+    children => ({
+      kind: 'positional',
+      value: requireMixinCallArgumentValue(children[0]),
+      spread: children.some(child => isLessTerminalText(child, '...'))
+    })
   );
   const mixinInteriorItem = choice(
     MixinInteriorBinding,
@@ -3267,12 +3243,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MixinGuardAnd = node(
     'MixinGuardAnd',
     sequence(g.MixinGuardTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTerm))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('and', children, state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldMixinGuards('and', children, rawChildren, state)
   );
   const MixinGuardOr = node(
     'MixinGuardOr',
     sequence(g.MixinGuardAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardAnd))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('or', children, state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => foldMixinGuards('or', children, rawChildren, state)
   );
   const unparenthesizedMixinGuard = node(
     'UnparenthesizedMixinGuard',
@@ -3304,22 +3280,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       unparenthesizedMixinGuard,
       sequence(lessCaseWord('not'), g.MixinGuardTerm)
     ),
-    (children, _fields, _span, _rawChildren, _triviaLog, state): MixinGuard => {
+    (children, _fields, _span, rawChildren, _triviaLog, state): MixinGuard => {
       const term = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
       const guard = children.some(child => isLessTerminalText(child, '(')) ? inParens(term) : term;
-      const not = children.find(child => isLessKeyword(child, 'not'));
-      return not === undefined ? guard : { g: 'not', inner: guard, word: requireTerminalText(not), parens: 0 };
+      const at = children.findIndex(child => isLessKeyword(child, 'not'));
+      if (at < 0) {
+        return guard;
+      }
+      reportConditionKeywordCase(rawChildren[at], state);
+      return { g: 'not', inner: guard, word: requireTerminalText(children[at]), gluedAt: NO_SPAN, parens: 0 };
     }
   );
   const MixinGuardTopAnd = node(
     'MixinGuardTopAnd',
     sequence(g.MixinGuardTopTerm, many(sequence(lessCaseWord('and'), g.MixinGuardTopTerm))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, state), state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, rawChildren, state), state)
   );
   const MixinGuardTopOr = node(
     'MixinGuardTopOr',
     sequence(g.MixinGuardTopAnd, many(sequence(choice(lessCaseWord('or'), literal(',')), g.MixinGuardTopAnd))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, state), state)
+    (children, _fields, _span, rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, rawChildren, state), state)
   );
   const MixinGuard = node(
     'MixinGuard',
@@ -4030,10 +4010,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.ContainerQueryAtom
         ))
       )
@@ -4195,29 +4172,39 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
   );
-  const atRulePreludeIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
   /*
-   * A header keyword, with any `<pseudo-page>`s glued to it: `@page Test:first`
-   * is one `<page-selector>`, and no whitespace is allowed between its
-   * productions (css-page-3 §3), so the glued run is one header atom written as
-   * authored, never `Test :first`. A pseudo-page written apart stays its own
-   * atom (`PagePseudo`).
+   * A header identifier, read once with what is glued to it: a `(` (a function)
+   * or a run of `<pseudo-page>`s. `@page Test:first` is one `<page-selector>`,
+   * and no whitespace is allowed between its productions (css-page-3 §3), so
+   * the glue is the token's own spelling, written as authored.
    */
+  const atRulePreludeIdentOrFunction = token(noTrivia(sequence(
+    staticIdentifier,
+    optional(choice(literal('('), g.PagePseudoRun))
+  )));
   const AtRulePreludeKeyword = node(
     'Keyword',
-    noTrivia(sequence(
-      routed(),
-      many(g.PagePseudo)
-    )),
-    children => children.length === 1
-      ? keyword(requireToken(children[0]).value)
-      : any(requireToken(children[0]).value + children.slice(1).filter(isAny).map(pseudo => pseudo.src).join(''))
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
+
+  /* A `<page-selector>` with its pseudo-pages (`Test:first`, `:left:blank`): one header atom, as the token spells it. */
+  const RoutedPageSelector = node(
+    'PageSelector',
+    routed(),
+    children => any(requireToken(children[0]).value)
+  );
+  const PageSelector = node(
+    'PageSelector',
+    token(g.PagePseudoRun),
+    children => any(requireToken(children[0]).value)
   );
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
     caseOf('url(', RoutedPlainUrl),
     caseOf('calc(', g.CalcFunction),
     when(endsWith('('), g.GenericFunction),
+    when(matches(/:/), RoutedPageSelector),
     otherwise(AtRulePreludeKeyword)
   );
   // The typed subset of a generic at-rule header. Interpolation and
@@ -4232,16 +4219,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
       g.Color,
       g.Dimension,
-      // Glued pseudo-pages are one header atom, as after a page name (`AtRulePreludeKeyword`).
-      noTrivia(oneOrMore(g.PagePseudo)),
+      PageSelector,
       g.Paren,
       g.DottedAtRuleKeyword,
       atRulePreludeCustomProperty,
       AtRulePreludeIdentOrFunction
     ),
-    children => children.length === 1
-      ? requireValueNode(children[0])
-      : any(children.filter(isAny).map(pseudo => pseudo.src).join(''))
+    children => requireValueNode(children[0])
   );
   const AtRulePreludeValueTerm = node(
     'AtRulePreludeValueTerm',
@@ -5195,9 +5179,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
       target: selist(children.find(isLessSelectorBranch)!),
-      partial: children.some(child => isLessTerminalText(child, 'all') || isLessTerminalText(child, '!all'))
+      partial: children.some(child => isLessKeyword(child, 'all') || isLessKeyword(child, '!all')),
+      wholeList: children.some(child => isLessKeyword(child, '!all'))
     })
   );
+
+  /*
+   * Owner 2026-10-09, verbatim: "`all` only applies to target right before,
+   * `!all` is supposed to apply to the entire seletor list". So `!all` on any
+   * target makes every target of this `:extend(…)` a partial match, and `all`
+   * only its own.
+   */
   const ExtendPseudo = node(
     'ExtendPseudo',
     sequence(
@@ -5208,7 +5200,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ),
       literal(')')
     ),
-    children => children.filter(isExtendTargetFact)
+    (children) => {
+      const targets = children.filter(isExtendTargetListFact);
+      const wholeList = targets.some(target => target.wholeList);
+      return targets.map(target => ({ target: target.target, partial: wholeList || target.partial }));
+    }
   );
   const selectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
   // A body-form `&:extend(...)` applies to the WHOLE carrying rule selector, so
@@ -5528,7 +5524,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedProperty,
     Keyword,
     EscapeValue,
-    PagePseudo,
     DoubledQuoteArgument,
     FunctionArgument,
     FunctionScalarArgument,
@@ -5568,10 +5563,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomInnerPart,
     CustomGroup,
     CustomValue,
-    VarFallbackGroup,
     CustomAtKeywordText,
-    VarFallbackInnerPart,
-    VarFallbackPart,
     VarFallback,
     VarFunction,
     CustomPropertyValue,

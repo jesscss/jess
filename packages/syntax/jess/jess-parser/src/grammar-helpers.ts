@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap } from 'parseman';
-import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
+import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -724,14 +724,14 @@ function reduceGuardCompare(children: readonly unknown[]): GuardNode {
 function reduceGuardAnd(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'and', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
+    result = { g: 'and', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
   }
   return result;
 }
 function reduceGuardOr(children: readonly unknown[]): GuardNode {
   let result = requireGuardNode(children[0]);
   for (let index = 2; index < children.length; index += 2) {
-    result = { g: 'or', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
+    result = { g: 'or', left: result, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
   }
   return result;
 }

@@ -5,7 +5,7 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { choice, keywords, literal, noTrivia, not, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
+import { choice, keywords, literal, noTrivia, not, oneOrMore, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = cssIdentifier;
@@ -68,6 +68,14 @@ const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
  * @see https://drafts.csswg.org/css-syntax-3/#consume-name
  */
 const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+
+/*
+ * `IDENT_BOUNDARY` plus `(`: a word that ends where its identifier ends and is
+ * not glued to `(`. An identifier immediately followed by `(` is one
+ * `<function-token>` (css-syntax-3 §4.3.4), so the condition words below
+ * never match a glued `not(` / `and(` / `or(`.
+ */
+const IDENT_FUNCTION_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(';
 
 /*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
@@ -171,12 +179,11 @@ const marginAtKeyword = keywords(
  * `not(` / `and(` / `or(` is a `<general-enclosed>` function
  * (media-queries-4 §3, css-conditional-3 §6), which never matches
  * (media-queries-4 §3.2); it is read as one and written as authored, never
- * respelled `not (`. The boundary is `IDENT_BOUNDARY` plus `(`, spelled out at
- * each site (the macro constraint).
+ * respelled `not (`.
  */
 const queryNot = word(
   'not',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(',
+  IDENT_FUNCTION_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryOnly = word(
@@ -186,7 +193,7 @@ const queryOnly = word(
 );
 const queryAndOr = keywords(
   ['and', 'or'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(' }
+  { caseInsensitive: true, boundary: IDENT_FUNCTION_BOUNDARY }
 );
 
 /*
@@ -202,6 +209,17 @@ const queryGluedConnective = noTrivia(sequence(
   ),
   literal('(')
 ));
+
+/*
+ * A run of `<pseudo-page>`s (css-page-3 §3): `:` glued to an identifier, one or
+ * more, with no whitespace between the productions of a `<page-selector>`, so a
+ * page selector's glue is the token's own spelling (`:left:blank`; after a page
+ * name, `Test:first`). A `:` spaced from what follows is no pseudo-page.
+ */
+const pagePseudoRun = noTrivia(oneOrMore(sequence(
+  literal(':'),
+  cssIdentifier
+)));
 
 /*
  * `not`, `and` and `or` apart, for a dialect ladder that folds each at its own
@@ -583,6 +601,7 @@ export const cssSyntax = rules(_g => ({
   SupportsAtKeyword: supportsAtKeyword,
   StartingStyleAtKeyword: startingStyleAtKeyword,
   PageAtKeyword: pageAtKeyword,
+  PagePseudoRun: pagePseudoRun,
   MarginAtKeyword: marginAtKeyword,
   QueryNot: queryNot,
   QueryOnly: queryOnly,

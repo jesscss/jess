@@ -55,13 +55,17 @@ import { isTruthy } from './value-truth.js';
  *  - `word` — the `and` / `or` / `not` keyword as the author spelled it
  *    (`AND`; a keyword is ASCII case-insensitive, CSS Values 4 §6.1), or the
  *    keyword itself where a dialect lowers another spelling to it (Sass `!=`).
+ *  - `gluedAt` — where that keyword starts when the author glued it to the
+ *    group after it (`or(2)`, which CSS reads as one function token, CSS
+ *    Syntax 3 §4.3.4), else `-1`: written so, it is written without a gap and
+ *    warned about there (ledger N17).
  */
 export type GuardNode =
   | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
   | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
-  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly parens: number }
-  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly parens: number }
-  | { readonly g: 'not'; readonly inner: GuardNode; readonly word: string; readonly parens: number }
+  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly gluedAt: number; readonly parens: number }
+  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly gluedAt: number; readonly parens: number }
+  | { readonly g: 'not'; readonly inner: GuardNode; readonly word: string; readonly gluedAt: number; readonly parens: number }
   | { readonly g: 'truth'; readonly value: ValueSlot; readonly parens: number }
   | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[]; readonly parens: number }
   | { readonly g: 'default'; readonly parens: number };

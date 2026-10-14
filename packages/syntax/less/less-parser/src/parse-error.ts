@@ -226,7 +226,7 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
  * `rest` exist only because the list holds a `;` (ledger P46): every `,` then
  * belongs to a comma-list value, which a name or a spread cannot be part of.
  */
-export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value';
+export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value' | 'spreadPattern';
 
 const MIXIN_ARGUMENT_PROBLEMS: Record<LessMixinArgumentProblem, { message: string; reason: string; fix: string }> = {
   named: {
@@ -248,6 +248,11 @@ const MIXIN_ARGUMENT_PROBLEMS: Record<LessMixinArgumentProblem, { message: strin
     message: 'A mixin call is not a value here.',
     reason: 'A parameter default, a pattern parameter and an item of a comma-list argument must be values.',
     fix: 'Replace the mixin call with a value, or pass it as an argument of its own.'
+  },
+  spreadPattern: {
+    message: 'A pattern parameter cannot be spread.',
+    reason: 'In a mixin definition "..." follows a parameter name (@rest...) or stands alone. A value pattern matches one argument.',
+    fix: 'Name a rest parameter, for example @rest..., or remove the "...".'
   }
 };
 
@@ -269,6 +274,55 @@ export class LessMixinArgumentError extends SyntaxError {
     this.fix = text.fix;
   }
 }
+
+/**
+ * `not` before a bare operand a comparison follows (`not 1 > 2`): it does not
+ * say whether `not` negates the operand or the comparison. Located at the
+ * comparison operator.
+ */
+export class LessAmbiguousNotError extends SyntaxError {
+  readonly code = 'parse/ambiguous-not' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = '`not` negates the condition or the group written right after it. After a bare operand, a comparison leaves open whether `not` negates the operand or the comparison; it is read as negating the comparison.';
+  readonly fix = 'Group what `not` negates, for example: not (1 > 2).';
+
+  constructor(offset: number, endOffset: number) {
+    super('`not` before a compared operand does not say what it negates.');
+    this.name = 'LessAmbiguousNotError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/**
+ * A Less condition keyword in another case than lowercase (`AND`, `Not`): a
+ * mixin guard, `if()` and `boolean()` read lowercase `and`, `or` and `not`
+ * (owner 2026-10-13: "B: CSS any case, Less lowercase"). Located at the
+ * keyword; the parse reads it as the keyword and carries on.
+ */
+export class LessConditionKeywordCaseError extends SyntaxError {
+  readonly code = 'parse/condition-keyword-case' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'A Less condition reads lowercase `and`, `or` and `not`; a CSS condition (`@media`, `@supports`, `@container`) reads them in any case.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, keyword: string) {
+    const lower = keyword.toLowerCase();
+    super(`Write \`${lower}\` in lowercase: a Less condition reads lowercase \`and\`, \`or\` and \`not\`.`);
+    this.name = 'LessConditionKeywordCaseError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Write \`${lower}\`.`;
+  }
+}
+
+/**
+ * A problem the grammar recovered from: a located error diagnostic the parse
+ * carries on past (ledger P45).
+ */
+export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

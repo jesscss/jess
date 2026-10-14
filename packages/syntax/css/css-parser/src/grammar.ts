@@ -282,6 +282,8 @@ type GrammarRuleName =
   | 'AtRulePreludeQuoted'
   | 'AtRulePreludeText'
   | 'MediaInParens'
+  | 'GluedConnectiveFunction'
+  | 'QueryConnective'
   | 'MediaCondition'
   | 'MediaFeatureContents'
   | 'queryUrlBound'
@@ -3724,21 +3726,49 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * What joins two condition operands: the `and` / `or` connective, an
+   * `<ident-token>`, or — peeked, so the operand reads it — a glued `and(` /
+   * `or(`, which is no connective but one more `<general-enclosed>` operand
+   * (css-syntax-3 §4.3.4). One slot for every condition chain that takes the
+   * glued operand through its own operand rule.
+   */
+  const QueryConnective = choice(
+    g.QueryAndOr,
+    peek(g.QueryGluedConnective)
+  );
+
+  /*
+   * A glued `and(` / `or(` after a condition operand is a `<function-token>`
+   * (css-syntax-3 §4.3.4), so it is no connective but one more
+   * `<media-in-parens>`: a `<general-enclosed>` function (media-queries-4 §3).
+   * The glued keyword is the function's opener, read once and owned by the
+   * media function it routes to, as a media type function's opener is.
+   */
+  const GluedConnectiveFunction = dispatch(
+    token(g.QueryGluedConnective),
+    otherwise(g.RoutedQueryFunction)
+  );
+
+  /*
    * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
    * operand after `and`/`or` is optional, so the word is never given back: a
    * missing or non-parenthesized operand ends the condition, and what follows
    * is the enclosing group's `<general-enclosed>` rest. The connective is an
-   * `<ident-token>` (`QueryAndOr`): a glued `and(` / `or(` is a
-   * `<function-token>` (CSS Syntax §4.3.4), so it is a `<general-enclosed>`
-   * term, never `and` followed by a group (media-queries-4 §2.1, §3).
+   * `<ident-token>` (`QueryAndOr`); a glued `and(` / `or(` is a
+   * `<general-enclosed>` operand (`GluedConnectiveFunction`), never `and`
+   * followed by a group (media-queries-4 §2.1, §3), so `((a) and(b))` is a
+   * condition whose glued call is written as authored, with its warning.
    */
   const MediaCondition = node(
     'MediaCondition',
     sequence(
       g.MediaInParens,
-      many(sequence(
-        g.QueryAndOr,
-        optional(g.MediaInParens)
+      many(choice(
+        sequence(
+          g.QueryAndOr,
+          optional(g.MediaInParens)
+        ),
+        g.GluedConnectiveFunction
       ))
     ),
     children => queryConditionChain(children)
@@ -3870,10 +3900,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        choice(
-          g.QueryAndOr,
-          peek(g.QueryGluedConnective)
-        ),
+        g.QueryConnective,
         g.MediaTerm
       ))
     ),
@@ -3982,10 +4009,7 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.ContainerQueryAtom
         ))
       )
@@ -4199,10 +4223,7 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.SupportsInParens,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.SupportsInParens
         ))
       )
@@ -5127,6 +5148,8 @@ const cssFactory = (g: GrammarSelf) => {
     DeclarationListAtRule,
     ConditionalGroupAtRule,
     MediaInParens,
+    GluedConnectiveFunction,
+    QueryConnective,
     MediaCondition,
     MediaFeatureContents,
     MediaGeneralValue: g.ValueSequence,

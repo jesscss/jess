@@ -16,7 +16,9 @@ import { parseWith, safeParseWith, type LessParseOptions } from './parse-with.js
 export type { LessParseOptions } from './parse-with.js';
 
 export {
+  LessAmbiguousNotError,
   LessBareVariableInterpolationError,
+  LessConditionKeywordCaseError,
   LessDynamicCharsetError,
   LessImportPostludeError,
   LessInlineJavaScriptError,

@@ -1671,6 +1671,7 @@ export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => val
         && 'args' in value && Array.isArray(value.args) && value.args.every(isOperand);
     case 'not':
       return 'word' in value && typeof value.word === 'string'
+        && 'gluedAt' in value && typeof value.gluedAt === 'number'
         && 'inner' in value && isGuardNodeOf(
         value.inner,
         isOperand
@@ -1678,6 +1679,7 @@ export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => val
     case 'and':
     case 'or':
       return 'word' in value && typeof value.word === 'string'
+        && 'gluedAt' in value && typeof value.gluedAt === 'number'
         && 'left' in value && isGuardNodeOf(
         value.left,
         isOperand

@@ -20,7 +20,7 @@ import {
   type ValueGroup
 } from '@jesscss/core';
 import { parseJessCst as parseJessDiagnosticCst, parseJessDoc as parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst/positions';
-import { parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc } from '@jesscss/less-parser/cst/positions';
+import { LessMixinArgumentError, mixinListProblems, parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc, type MixinListItemShape } from '@jesscss/less-parser/cst/positions';
 import { parseScssCst as parseScssDiagnosticCst, parseScssDoc as parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst/positions';
 import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
 import type {
@@ -724,52 +724,33 @@ function hasLeafChild(node: CssCstNode, value: string): boolean {
 }
 
 /**
- * The items of a Less mixin list that its `;` makes invalid (ledger P46). A list
- * holding a `;` folds every `,` into a comma-list value: a `@name:` may only lead
- * such a value, and a spread or rest cannot be part of one. Read from the list's
- * own item nodes and separator leaves, in source order.
+ * The items of a Less mixin list that its `;` makes invalid (ledger P46), asked
+ * of the grammar's own rule (`mixinListProblems`) with the list's item nodes and
+ * separator leaves, in source order.
  */
 function lessMixinListProblems(list: CssCstNode): { readonly item: CssCstNode; readonly problem: 'named' | 'rest' }[] {
-  if (!hasLeafChild(list, ';')) {
-    return [];
-  }
-  const problems: { item: CssCstNode; problem: 'named' | 'rest' }[] = [];
-  let group: CssCstNode[] = [];
-  const closeGroup = () => {
-    if (group.length > 1) {
-      group.forEach((item, index) => {
-        if (item.grammarType === 'MixinRestParam' || (item.grammarType === 'MixinBinding' && hasLeafChild(item, '...'))) {
-          problems.push({ item, problem: 'rest' });
-        } else if (index > 0 && item.grammarType === 'MixinBinding' && hasLeafChild(item, ':')) {
-          problems.push({ item, problem: 'named' });
-        }
-      });
-    }
-    group = [];
-  };
+  const items: CssCstNode[] = [];
+  const separators: string[] = [];
+  let semicolons = false;
   for (const child of cstChildrenOf(list)) {
     if (isCstNode(child) && LESS_MIXIN_LIST_ITEM_TYPES.has(child.grammarType)) {
-      group.push(child);
-    } else if (child._tag === 'leaf' && child.value === ';') {
-      closeGroup();
+      items.push(child);
+    } else if (child._tag === 'leaf' && (child.value === ',' || child.value === ';')) {
+      separators[items.length - 1] = child.value;
+      semicolons ||= child.value === ';';
     }
   }
-  closeGroup();
-  return problems;
+  return mixinListProblems(items.map(lessMixinListItemShape), separators, semicolons)
+    .map(({ index, problem }) => ({ item: items[index]!, problem }));
 }
 
-const LESS_MIXIN_LIST_PROBLEMS = {
-  named: {
-    message: 'A named argument must start its ;-separated argument.',
-    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A name can only begin an argument.',
-    fix: 'Put a ";" before the named argument.'
-  },
-  rest: {
-    message: 'A spread or rest argument cannot be part of a comma list.',
-    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A spread or rest is not a value.',
-    fix: 'Separate it from the comma list with ";".'
+/** The shape the `;` rule reads off a mixin list item node. */
+function lessMixinListItemShape(item: CssCstNode): MixinListItemShape {
+  if (item.grammarType === 'MixinRestParam' || hasLeafChild(item, '...')) {
+    return 'rest';
   }
-} as const;
+  return item.grammarType === 'MixinBinding' && hasLeafChild(item, ':') ? 'named' : 'plain';
+}
 
 function forwardPreludeOf(node: CssCstNode, src: string): string | null {
   let afterPath = false;
@@ -4602,10 +4583,20 @@ function forEachExtendTarget(
   language: JessLanguage,
   fn: (target: CssCstNode, exact: boolean) => void
 ): void {
-  if (node.grammarType === 'ExtendTarget') {
-    const target = firstChildNodeMatching(node, EXTEND_TARGET_TYPES);
-    if (target !== undefined) {
-      fn(target, !isLessPartialExtendTarget(source.slice(absoluteStart(node), absoluteEnd(node))));
+  if (node.grammarType === 'ExtendPseudo') {
+    /*
+     * Owner 2026-10-09, verbatim: "`all` only applies to target right before,
+     * `!all` is supposed to apply to the entire seletor list" — so a `!all` on
+     * any target makes every target of this list partial, as the Less grammar's
+     * `ExtendPseudo` reads it.
+     */
+    const targets = cstChildrenOf(node).filter((child): child is CssCstNode => isCstNode(child) && child.grammarType === 'ExtendTarget');
+    const wholeList = targets.some(target => cstChildrenOf(target).some(child => child._tag === 'leaf' && child.value.toLowerCase() === '!all'));
+    for (const extendTarget of targets) {
+      const target = firstChildNodeMatching(extendTarget, EXTEND_TARGET_TYPES);
+      if (target !== undefined) {
+        fn(target, !wholeList && !isLessPartialExtendTarget(source.slice(absoluteStart(extendTarget), absoluteEnd(extendTarget))));
+      }
     }
     return;
   }
@@ -5583,7 +5574,7 @@ export function cstLintDiagnostics(
      */
     if (language === 'less' && LESS_MIXIN_LIST_TYPES.has(gt)) {
       for (const { item, problem } of lessMixinListProblems(node)) {
-        const text = LESS_MIXIN_LIST_PROBLEMS[problem];
+        const text = new LessMixinArgumentError(0, 0, problem);
         pushDiagnostic('parse/invalid-mixin-argument', 'error', text.message, item.span, {
           phase: 'parse',
           reason: text.reason,

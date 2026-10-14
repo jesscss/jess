@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -1339,7 +1339,7 @@ const scssFactory = (g: ScssInputRules) => {
         parens: 0
       };
       return callArg(expression(condition(
-        operator === '!=' ? { g: 'not', inner: comparison, word: 'not', parens: 0 } : comparison,
+        operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
         `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
       )));
     }
@@ -2787,7 +2787,7 @@ const scssFactory = (g: ScssInputRules) => {
         implied: false,
         parens: 0
       };
-      return operator === '!=' ? { g: 'not', inner: comparison, word: 'not', parens: 0 } : comparison;
+      return operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison;
     }
   );
   const IfAtom = node<GuardNode>(
@@ -2835,7 +2835,7 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS @if term lost its guard.');
       }
       const not = children.find(child => isToken(child) && child.value.toLowerCase() === 'not');
-      return not === undefined ? atom : { g: 'not', inner: atom, word: requireToken(not).value, parens: 0 };
+      return not === undefined ? atom : { g: 'not', inner: atom, word: requireToken(not).value, gluedAt: NO_SPAN, parens: 0 };
     }
   );
   const IfAnd = node<GuardNode>(
@@ -2850,7 +2850,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
+        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
       }
       return guard;
     }
@@ -2867,7 +2867,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, parens: 0 };
+        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]), word: requireToken(children[index - 1]).value, gluedAt: NO_SPAN, parens: 0 };
       }
       return guard;
     }

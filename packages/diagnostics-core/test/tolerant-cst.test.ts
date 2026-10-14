@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { safeParse } from '@jesscss/less-parser';
 import { collectTolerantDiagnostics, LINT_CODES } from '../src/index.js';
 
 describe('collectTolerantDiagnostics', () => {
@@ -1806,6 +1807,19 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  /* Owner 2026-10-09, verbatim: "`all` only applies to target right before, `!all` is supposed to apply to the entire seletor list". */
+  it('reads every target of a `!all` extend list as partial, and `all` as its own target only', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.hit {}\n.a:extend(.maybe, .hit !all) {}\n.b { &:extend(.gone, .hit !ALL); }\n.c:extend(.missing, .hit all) {}',
+      language: 'less'
+    });
+    expect(less.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deadExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target ".missing" does not match any same-file selector', 4, 11]
+    ]);
+  });
+
   it('reports exact static extend targets that do not match same-file selectors', () => {
     const less = collectTolerantDiagnostics({
       source: '.hit {}\n.a:extend(.hit) {}\n.b:extend(.missing) {}\n.c:extend(.maybe all) {}',
@@ -2468,5 +2482,23 @@ describe('collectTolerantDiagnostics', () => {
       ['A spread or rest argument cannot be part of a comma list.', '@d...'],
       ['A spread or rest argument cannot be part of a comma list.', '...']
     ]);
+  });
+
+  /* One rule, two readers: the tolerant CST reports what the parser reports (ledger P46). */
+  it('reports the `;`-list problems the Less parser reports', () => {
+    for (const source of [
+      '.x { .t(a, foo...; b); }',
+      '.m(@a, @rest...; @c) { x: y }',
+      '.m(@a: 1, @b: 2; @c) { x: y }',
+      '.x { .t(@a: x, @b: y; z, @w...); }'
+    ]) {
+      const tolerant = collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
+        .filter(diagnostic => diagnostic.code === 'parse/invalid-mixin-argument')
+        .map(diagnostic => [diagnostic.message, source.slice(diagnostic.start, diagnostic.end)]);
+      const parsed = safeParse('entry.less', source).errors
+        .map(error => [error.message, source.slice(error.column - 1, error.endColumn === undefined ? undefined : error.endColumn - 1)]);
+      expect(tolerant, source).toEqual(parsed);
+      expect(tolerant.length, source).toBeGreaterThan(0);
+    }
   });
 });

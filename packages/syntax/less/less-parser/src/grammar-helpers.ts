@@ -22,8 +22,9 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessMixinArgumentError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
+import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
+import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -52,7 +53,7 @@ type CallValue = ValueSlot | MixinCall;
 type MixinInteriorItem =
   | { readonly kind: 'binding'; readonly reference: VarRef; readonly default?: CallValue; readonly rest: boolean }
   | { readonly kind: 'anonymous-rest' }
-  | { readonly kind: 'positional'; readonly value: CallValue };
+  | { readonly kind: 'positional'; readonly value: CallValue; readonly spread: boolean };
 type MixinInteriorCapture = FieldCapture<MixinInteriorItem>;
 type MixinInteriorFact = {
   readonly items: readonly MixinInteriorCapture[];
@@ -63,9 +64,13 @@ type MixinInteriorFact = {
   /** Each separator with its authored trivia, kept only when `semicolons`: a comma
    *  folded into a list value keeps the spelling `~( … )` would have recorded. */
   readonly separatorLayout: readonly string[] | undefined;
+  /** Where a problem the list recovers from is reported: the run's sink, or `null` for a raw grammar run (ledger P46, P45). */
+  readonly diagnostics: LessRecoveredError[] | null;
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
+/** One target as its `:extend(…)` list reads it: `wholeList` when it carries `!all`, which makes the whole list partial. */
+type ExtendTargetListFact = ExtendTargetFact & { readonly wholeList: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = {
@@ -297,9 +302,11 @@ function lessTerminalText(value: unknown): string | null {
 }
 
 /**
- * A terminal spelling the lowercase keyword `word` in any ASCII case: `and`,
- * `or` and `not` are keywords wherever a Less condition is written, and a CSS
- * keyword is ASCII case-insensitive (CSS Values 4 §6.1).
+ * A terminal spelling the lowercase keyword `word` in any ASCII case. The
+ * grammar reads `and`, `or` and `not` in any case so a Less condition written
+ * in another case still parses: it is reported where it is written
+ * ({@link reportConditionKeywordCase}; owner 2026-10-13: "B: CSS any case, Less
+ * lowercase"), and a value paren group writes it as authored.
  */
 function isLessKeyword(value: unknown, word: string): boolean {
   const text = lessTerminalText(value);
@@ -660,7 +667,8 @@ function mixinInteriorFromFields(
     items,
     separators,
     semicolons,
-    separatorLayout: semicolons ? mixinListSeparatorLayout(separators, rawChildren, triviaLog, state) : undefined
+    separatorLayout: semicolons ? mixinListSeparatorLayout(separators, rawChildren, triviaLog, state) : undefined,
+    diagnostics: diagnosticsOf(state)
   };
 }
 
@@ -1397,14 +1405,14 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, parens: 0 }),
+      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value), word: call.name, gluedAt: NO_SPAN, parens: 0 }),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
       return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
-      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, parens: 0 }) : call;
+      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first), word: call.name, gluedAt: NO_SPAN, parens: 0 }) : call;
     case 'and':
       return boundaryCondition(fold('and'));
     case 'or':
@@ -1793,6 +1801,10 @@ function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
     && 'partial' in value && typeof value.partial === 'boolean';
 }
 
+function isExtendTargetListFact(value: unknown): value is ExtendTargetListFact {
+  return isExtendTargetFact(value) && 'wholeList' in value && typeof value.wholeList === 'boolean';
+}
+
 function isBodyExtendFact(value: unknown): value is BodyExtendFact {
   return typeof value === 'object' && value !== null
     && 'bodyExtensions' in value && Array.isArray(value.bodyExtensions)
@@ -1932,30 +1944,56 @@ function mixinArgumentsFromChildren(children: readonly unknown[]): MixinCallArgu
     : isMixinCallArgument(child) ? [child] : []);
 }
 
-/** A value where a mixin list needs one: a parameter default, a pattern, a comma-list item. */
-function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture): ValueSlot {
+/**
+ * Report a mixin-list item the list cannot give meaning to (ledger P46) at the
+ * item. Well-formed input never stops the pipeline (P45, owner 2026-10-09), so
+ * under `parseWith` it is an error diagnostic and the caller recovers; a raw
+ * grammar run, which has no sink, raises it.
+ */
+function reportMixinArgument(capture: MixinInteriorCapture, problem: LessMixinArgumentProblem, sink: LessRecoveredError[] | null): void {
+  const error = new LessMixinArgumentError(capture.span.start, capture.span.end, problem);
+  if (sink === null) {
+    throw error;
+  }
+  sink.push(error);
+}
+
+/** A value where a mixin list needs one: a parameter default, a pattern, a comma-list item. Anything else is reported and dropped. */
+function mixinListValueAt(value: CallValue, capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): ValueSlot | undefined {
   if (!isLessValueSlotValue(value)) {
-    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'value');
+    reportMixinArgument(capture, 'value', sink);
+    return undefined;
   }
   return value;
 }
 
-/** One item of a comma-list argument; `leadsNamed` when it is that argument's `@name: value`. */
-function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean): ValueSlot {
+/**
+ * One item of a comma-list argument, as the list value keeps it. The `;` rule
+ * ({@link mixinListProblems}) has already reported a spread or rest, or a later
+ * `@name:`, in the run; the list keeps what such an item names — the variable,
+ * the spread value, the named value — and drops a bare `...`.
+ */
+function mixinCommaListItem(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): ValueSlot | undefined {
   const item = capture.value;
-  if (item.kind === 'anonymous-rest' || (item.kind === 'binding' && item.rest)) {
-    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'rest');
+  if (item.kind === 'anonymous-rest') {
+    return undefined;
   }
   if (item.kind === 'positional') {
-    return mixinListValueAt(item.value, capture);
+    return mixinListValueAt(item.value, capture, sink);
   }
-  if (item.default === undefined) {
+  if (item.rest || item.default === undefined) {
     return item.reference;
   }
-  if (!leadsNamed) {
-    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'named');
+  return mixinListValueAt(item.default, capture, sink);
+}
+
+/** The shape the `;` rule reads off an item ({@link MixinListItemShape}). */
+function mixinListItemShape(capture: MixinInteriorCapture): MixinListItemShape {
+  const item = capture.value;
+  if (item.kind === 'anonymous-rest' || (item.kind === 'positional' ? item.spread : item.rest)) {
+    return 'rest';
   }
-  return mixinListValueAt(item.default, capture);
+  return item.kind === 'binding' && item.default !== undefined ? 'named' : 'plain';
 }
 
 /**
@@ -1964,35 +2002,52 @@ function mixinCommaListItem(capture: MixinInteriorCapture, leadsNamed: boolean):
  * or after the `;`, belongs to a comma-list value; without one, `,` separates
  * arguments. A group of two or more items is ONE argument whose value is the node
  * `~( … )` builds (`EscapedParen`), the normalized form: `.m(@a: b, c; d)` holds
- * exactly what `.m(@a: ~(b, c), d)` does. Errors raise in source order, so the
- * first one is reported, at its own item.
+ * exactly what `.m(@a: ~(b, c), d)` does. The items the `;` makes invalid are
+ * the shared rule's ({@link mixinListProblems}), reported at each item, and the
+ * list keeps what it can ({@link mixinCommaListItem}).
  */
 function reassembleMixinInterior<T>(
   interior: MixinInteriorFact,
-  single: (capture: MixinInteriorCapture) => T,
+  single: (capture: MixinInteriorCapture, sink: LessRecoveredError[] | null) => T | undefined,
   commaList: (name: string | undefined, value: Block) => T
 ): T[] {
-  const { items, separators } = interior;
-  if (!interior.semicolons) {
-    return items.map(single);
-  }
+  const { items, separators, diagnostics: sink } = interior;
   const out: T[] = [];
+  const push = (value: T | undefined): void => {
+    if (value !== undefined) {
+      out.push(value);
+    }
+  };
+  if (!interior.semicolons) {
+    for (const item of items) {
+      push(single(item, sink));
+    }
+    return out;
+  }
+  for (const { index, problem } of mixinListProblems(items.map(mixinListItemShape), separators, true)) {
+    reportMixinArgument(items[index]!, problem, sink);
+  }
   let first = 0;
   for (let last = 0; last < items.length; last++) {
     if (separators[last] === ',') {
       continue;
     }
     if (last === first) {
-      out.push(single(items[first]!));
+      push(single(items[first]!, sink));
     } else {
       const head = items[first]!.value;
       const name = head.kind === 'binding' && !head.rest && head.default !== undefined ? head.reference.name : undefined;
       const values: ValueSlot[] = [];
       for (let index = first; index <= last; index++) {
-        values.push(mixinCommaListItem(items[index]!, index === first && name !== undefined));
+        const value = mixinCommaListItem(items[index]!, sink);
+        if (value !== undefined) {
+          values.push(value);
+        }
       }
       const value = list(values, ',');
-      if (interior.separatorLayout !== undefined) {
+
+      /* The authored separators belong to the items as written; a dropped item leaves them unaligned. */
+      if (interior.separatorLayout !== undefined && values.length === last - first + 1) {
         withValueLayout(value, interior.separatorLayout.slice(first, last));
       }
       out.push(commaList(name, withSourceSpan(
@@ -2005,7 +2060,7 @@ function reassembleMixinInterior<T>(
   return out;
 }
 
-function mixinParamFromInterior(capture: MixinInteriorCapture): Param {
+function mixinParamFromInterior(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): Param | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
     return { rest: true };
@@ -2014,11 +2069,16 @@ function mixinParamFromInterior(capture: MixinInteriorCapture): Param {
     if (item.rest) {
       return { name: item.reference.name, rest: true };
     }
-    return item.default === undefined
+    const defaultValue = item.default === undefined ? undefined : mixinListValueAt(item.default, capture, sink);
+    return defaultValue === undefined
       ? { name: item.reference.name }
-      : { name: item.reference.name, default: mixinListValueAt(item.default, capture) };
+      : { name: item.reference.name, default: defaultValue };
   }
-  return { pattern: mixinListValueAt(item.value, capture) };
+  if (item.spread) {
+    reportMixinArgument(capture, 'spreadPattern', sink);
+  }
+  const pattern = mixinListValueAt(item.value, capture, sink);
+  return pattern === undefined ? undefined : { pattern };
 }
 
 const mixinCommaListParam = (name: string | undefined, value: Block): Param =>
@@ -2028,10 +2088,11 @@ function mixinParamsFromInterior(interior: MixinInteriorFact): Param[] {
   return reassembleMixinInterior(interior, mixinParamFromInterior, mixinCommaListParam);
 }
 
-function mixinCallArgumentFromInterior(capture: MixinInteriorCapture): MixinCallArgument {
+function mixinCallArgumentFromInterior(capture: MixinInteriorCapture, sink: LessRecoveredError[] | null): MixinCallArgument | undefined {
   const item = capture.value;
   if (item.kind === 'anonymous-rest') {
-    throw new LessMixinArgumentError(capture.span.start, capture.span.end, 'anonymousRest');
+    reportMixinArgument(capture, 'anonymousRest', sink);
+    return undefined;
   }
   if (item.kind === 'binding') {
     if (item.rest) {
@@ -2041,7 +2102,7 @@ function mixinCallArgumentFromInterior(capture: MixinInteriorCapture): MixinCall
       ? callArg(item.reference)
       : callArg(item.default, item.reference.name, false, '@');
   }
-  return callArg(item.value);
+  return callArg(item.value, undefined, item.spread);
 }
 
 const mixinCommaListArgument = (name: string | undefined, value: Block): MixinCallArgument =>
@@ -2215,6 +2276,9 @@ function mixinGuardTermFrom(
   state: unknown
 ): MixinGuard | LessGuardOperand {
   const negated = isLessKeyword(children[0], 'not');
+  if (negated) {
+    reportConditionKeywordCase(rawChildren[0], state);
+  }
   let index = negated ? 1 : 0;
   let left: ValueNode | LessMathRun;
   let term: MixinGuard | LessGuardOperand | undefined;
@@ -2231,7 +2295,7 @@ function mixinGuardTermFrom(
       term = isLessGuardOperand(inner)
         ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: inParens(requireGuardTerm(inner, state)) }
         : inParens(requireGuardTerm(inner, state));
-      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
+      return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
     }
     const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
     left = operand.run;
@@ -2262,7 +2326,7 @@ function mixinGuardTermFrom(
       parens: 0
     };
   }
-  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), parens: 0 } : term;
+  return negated ? { g: 'not', inner: requireGuardTerm(term, state), word: requireTerminalText(children[0]), gluedAt: NO_SPAN, parens: 0 } : term;
 }
 
 /** One `MathSum` reduction: an operand, or an unfolded run. */
@@ -2277,17 +2341,19 @@ function requireMathOperand(value: unknown): ValueNode | LessMathRun {
  * Fold an `and` / `or` chain. A lone term passes through unconverted, so a
  * bare operand reaches an enclosing group still able to be read as a value.
  */
-function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
+function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], rawChildren: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
   let result: MixinGuard | LessGuardOperand | undefined;
   let word: string = kind;
-  for (const child of children) {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
     if (isMixinGuard(child) || isLessGuardOperand(child)) {
       result = result === undefined
         ? child
-        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, parens: 0 };
+        : { g: kind, left: requireGuardTerm(result, state), right: requireGuardTerm(child, state), word, gluedAt: NO_SPAN, parens: 0 };
     } else if (isLessKeyword(child, kind) || isLessTerminalText(child, ',')) {
       /* The keyword as the author spelled it (`AND`), or the `,` a guard writes `or` as. */
       word = requireTerminalText(child);
+      reportConditionKeywordCase(rawChildren[index], state);
     }
   }
   if (result === undefined) {
@@ -2384,10 +2450,14 @@ function functionConditionOperandFact(value: unknown, state: unknown): FunctionC
 function functionConditionTermFrom(
   children: readonly unknown[],
   rawChildren: readonly unknown[],
-  state: unknown
+  state: unknown,
+  notGluedAt = NO_SPAN
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
+  if (negated) {
+    reportConditionKeywordCase(rawChildren[0], state);
+  }
   let index = negated ? 1 : 0;
   let left = functionConditionOperandFact(children[index], state);
   const groupLed = left.grouped;
@@ -2405,10 +2475,15 @@ function functionConditionTermFrom(
     index = operand.next;
   }
   const operator = guardOperatorText(children[index]);
+
+  /* The value paren group passes no raw children: it reads its own operands, and reports there. */
+  if (negated && !groupLed && operator !== null && rawChildren.length > 0) {
+    reportAmbiguousNot(rawChildren[index], state);
+  }
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return { guard: { g: 'not', inner: left.guard, word: notWord, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
+      return { guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
     }
     return { ...left, grouped };
   }
@@ -2416,12 +2491,74 @@ function functionConditionTermFrom(
   const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state), implied: false, parens: 0 };
   const src = `${left.src} ${operator} ${right.src}`;
   return negated
-    ? { guard: { g: 'not', inner: guard, word: notWord, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
+    ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
+}
+
+/**
+ * `not` before a bare operand a comparison follows (`not 1 > 2`) does not say
+ * what it negates: an error diagnostic at the comparison operator, read as
+ * `not (1 > 2)` as `not (1) > 2` is (P45, owner 2026-10-09). The operator
+ * token carries the whitespace around it; the report starts at the operator.
+ */
+function reportAmbiguousNot(operator: unknown, state: unknown): void {
+  const text = lessTerminalText(operator);
+  if (!isSpannedToken(operator) || text === null) {
+    throw new TypeError('Less condition lost its comparison operator provenance.');
+  }
+  const start = operator.span.start + text.length - text.trimStart().length;
+  const error = new LessAmbiguousNotError(start, start + text.trim().length);
+  const sink = diagnosticsOf(state);
+  if (sink === null) {
+    throw error;
+  }
+  sink.push(error);
+}
+
+/**
+ * A Less condition keyword (`and`, `or`, `not`) the author wrote in another
+ * case: an error diagnostic at the keyword, read as the keyword (owner
+ * 2026-10-13: "B: CSS any case, Less lowercase"; P45). The token may carry the
+ * whitespace around it; the report covers the keyword.
+ */
+function reportConditionKeywordCase(keyword: unknown, state: unknown): void {
+  const text = lessTerminalText(keyword);
+  if (!isSpannedToken(keyword) || text === null) {
+    return;
+  }
+  const word = text.trim();
+  if (word === word.toLowerCase() || word === ',') {
+    return;
+  }
+  const start = keyword.span.start + text.length - text.trimStart().length;
+  const error = new LessConditionKeywordCaseError(start, start + word.length, word);
+  const sink = diagnosticsOf(state);
+  if (sink === null) {
+    throw error;
+  }
+  sink.push(error);
 }
 
 function isFunctionConditionNot(value: unknown): boolean {
   return isLessKeyword(value, 'not');
+}
+
+/**
+ * Where a condition keyword starts when the author glued it to the group after
+ * it (`or(2)`, `not(1 = 1)`): that group, or the group leading the operand's
+ * math run, opens exactly where the keyword's token ends. CSS reads the pair as
+ * one function token (CSS Syntax 3 §4.3.4), so a written condition keeps it as
+ * authored and warns there (ledger N17). Otherwise {@link NO_SPAN}.
+ */
+function gluedKeywordAt(keyword: SourceSpan, operand: unknown): number {
+  const lead = groupLeading(operand);
+  return lead !== null && sourceStartOf(lead) === keyword.end ? keyword.start : NO_SPAN;
+}
+
+/** The paren group a math operand starts with (`(1)`, `(1) + 2`), or `null`. */
+function groupLeading(operand: unknown): Block | null {
+  const lead = isLessMathRun(operand) ? operand.operands[0] : operand;
+  return isValueNode(lead) && lead.type === 'Block' && lead.delimiter === 'paren' && lead.escaped !== true ? lead : null;
 }
 
 /** One `MathSum` reduction among other children. */
@@ -2439,6 +2576,8 @@ interface LessParenLogical {
   readonly kind: 'less-paren-logical';
   readonly logical: 'and' | 'or';
   readonly word: string;
+  readonly span: SourceSpan;
+  readonly gluedAt: number;
 }
 
 function isLessParenLogical(value: unknown): value is LessParenLogical {
@@ -2446,8 +2585,19 @@ function isLessParenLogical(value: unknown): value is LessParenLogical {
 }
 
 /** `ParenConditionAnd` / `ParenConditionOr`'s reduction: which keyword, and its spelling. */
-function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[]): LessParenLogical {
-  return { kind: 'less-paren-logical', logical, word: requireTerminalText(children[0]) };
+function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[], span: SourceSpan): LessParenLogical {
+  return { kind: 'less-paren-logical', logical, word: requireTerminalText(children[0]), span, gluedAt: NO_SPAN };
+}
+
+/** The keyword at `index`, glued (`and(2)`) when the operand after it opens where it ends ({@link gluedKeywordAt}). */
+function parenLogicalAt(children: readonly unknown[], index: number, logical: LessParenLogical): LessParenLogical {
+  for (let next = index + 1; next < children.length; next += 1) {
+    if (isMathOperand(children[next])) {
+      const gluedAt = gluedKeywordAt(logical.span, children[next]);
+      return gluedAt === NO_SPAN ? logical : { ...logical, gluedAt };
+    }
+  }
+  return logical;
 }
 
 /**
@@ -2456,17 +2606,22 @@ function parenLogicalFrom(logical: 'and' | 'or', children: readonly unknown[]): 
  * is itself a group around a condition (`((a > b) and (c > d))`) is that
  * condition, grouped, as `FunctionConditionParen` reads `(a > b)`.
  */
-function parenConditionTermFrom(children: readonly unknown[], state: unknown): FunctionConditionFact {
+function parenConditionTermFrom(children: readonly unknown[], rawChildren: readonly unknown[], state: unknown): FunctionConditionFact {
   const lead = children.filter(isParenNot);
   const [left, right] = children.filter(isMathOperand);
+  const not = lead.length === 0 ? undefined : rawChildren[children.indexOf(lead[0])];
+  const notGluedAt = isSpannedToken(not) ? gluedKeywordAt(not.span, left) : NO_SPAN;
   if (right !== undefined) {
-    const operator = children.find(child => !isMathOperand(child) && guardOperatorText(child) !== null);
+    const at = children.findIndex(child => !isMathOperand(child) && guardOperatorText(child) !== null);
+    if (lead.length > 0 && groupLeading(left) === null) {
+      reportAmbiguousNot(rawChildren[at], state);
+    }
     return functionConditionTermFrom([
       ...lead,
       functionConditionOperandFrom([left], state),
-      operator,
+      children[at],
       functionConditionOperandFrom([right], state)
-    ], [], state);
+    ], [], state, notGluedAt);
   }
   const value = lessMathInValue(left!, state);
   const inner = value.type === 'Block' && value.delimiter === 'paren' && isValueNode(value.value) && value.value.type === 'Condition'
@@ -2475,7 +2630,7 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
   return functionConditionTermFrom([
     ...lead,
     inner === null ? value : { guard: inParens(inner.guard), src: functionConditionSource(value), grouped: true, hasComparison: true }
-  ], [], state);
+  ], [], state, notGluedAt);
 }
 
 /**
@@ -2486,7 +2641,7 @@ function parenConditionTermFrom(children: readonly unknown[], state: unknown): F
  * `(a > b)` replays the same condition source whichever production reads it,
  * and a condition written into a value keeps the group's parens.
  */
-function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
+function lessParenFrom(children: readonly unknown[], rawChildren: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
   /* One walk, allocating nothing: one operand and no `not` or keyword is a math group. */
   let operand: ValueNode | LessMathRun | undefined;
   let conditional = false;
@@ -2504,21 +2659,26 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
   const ors: unknown[] = [];
   let ands: unknown[] = [];
   let term: unknown[] = [];
-  for (const child of children) {
+  let termRaw: unknown[] = [];
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
     if (!isLessParenLogical(child)) {
       term.push(child);
+      termRaw.push(rawChildren[index]);
       continue;
     }
-    ands.push(parenConditionTermFrom(term, state));
+    ands.push(parenConditionTermFrom(term, termRaw, state));
     term = [];
+    termRaw = [];
+    const logical = parenLogicalAt(children, index, child);
     if (child.logical === 'or') {
-      ors.push(foldFunctionCondition('and', ands), child);
+      ors.push(foldFunctionCondition('and', ands), logical);
       ands = [];
     } else {
-      ands.push(child);
+      ands.push(logical);
     }
   }
-  ands.push(parenConditionTermFrom(term, state));
+  ands.push(parenConditionTermFrom(term, termRaw, state));
   ors.push(foldFunctionCondition('and', ands));
   const fact = foldFunctionCondition('or', ors);
   return withSourceSpan(block(condition(fact.guard, fact.src)), span);
@@ -2526,20 +2686,25 @@ function lessParenFrom(children: readonly unknown[], span: SourceSpan, state: un
 
 /**
  * Fold an `and` / `or` chain of condition facts, each joined by the keyword
- * before it, kept as the author spelled it (`AND`): a value paren group's
- * {@link LessParenLogical}, or a function condition's keyword token.
+ * before it, kept as the author spelled it (`AND`) and glued as the author
+ * glued it (`and(2)`): a value paren group's {@link LessParenLogical}, or a
+ * function condition's keyword token.
  */
-function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
+function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[], rawChildren: readonly unknown[] = [], state?: unknown): FunctionConditionFact {
   let first: FunctionConditionFact | undefined;
   let guard: MixinGuard | undefined;
   let src = '';
   let hasComparison = false;
   let word: string = kind;
-  for (const child of children) {
+  let gluedAt = NO_SPAN;
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
     if (!isFunctionConditionFact(child)) {
       const text = isLessParenLogical(child) ? child.word : lessTerminalText(child)?.trim();
       if (text !== undefined && text !== null) {
         word = text;
+        gluedAt = isLessParenLogical(child) ? child.gluedAt : NO_SPAN;
+        reportConditionKeywordCase(rawChildren[index], state);
       }
       continue;
     }
@@ -2550,7 +2715,7 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
       hasComparison = child.hasComparison;
       continue;
     }
-    guard = { g: kind, left: guard, right: child.guard, word, parens: 0 };
+    guard = { g: kind, left: guard, right: child.guard, word, gluedAt, parens: 0 };
     src += ` ${word} ${child.src}`;
     hasComparison ||= child.hasComparison;
   }
@@ -2925,6 +3090,7 @@ export {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
+  reportConditionKeywordCase,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,
@@ -2958,6 +3124,7 @@ export {
   isLessDeclaration,
   isExtendInstruction,
   isExtendTargetFact,
+  isExtendTargetListFact,
   isFor,
   isFunctionCall,
   isFunctionConditionFact,
@@ -3085,6 +3252,7 @@ export type {
   CustomValuePart,
   EnclosedNameFact,
   ExtendTargetFact,
+  ExtendTargetListFact,
   FunctionConditionFact,
   IndirectRef,
   InterpolationAccessorFact,
