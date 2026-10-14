@@ -5,25 +5,68 @@ import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
-import { JessError } from '@jesscss/core';
+import { JessError, toDiagnostic } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 describe('Diagnostic Output', () => {
-  it('should output errors using CodeDebug', async () => {
-    const compiler = new Compiler();
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
+  /*
+   * A library call never prints what it throws: the caller receives the error
+   * and reports it, once. A parse error is both recorded and thrown, and an
+   * undefined variable is only thrown; neither is printed by the call.
+   */
+  it.each([
+    ['compile', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['render', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['renderString', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['render', 'an undefined variable', '.a {\n  color: @missing;\n}\n', 'resolve/name-not-found'],
+    ['renderString', 'an undefined variable', '.a {\n  color: @missing;\n}\n', 'resolve/name-not-found']
+  ] as const)('%s throws %s without printing it', async (method, _name, source, code) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-thrown-'));
     try {
-      await compiler.compile('test/fixtures/invalid.less');
-    } catch (e) {
-      // Expected to throw
+      const file = path.join(directory, 'entry.less');
+      fs.writeFileSync(file, source);
+      const compiler = new Compiler();
+      let thrown: unknown;
+      const printed = await captureAsync(async () => {
+        try {
+          if (method === 'compile') {
+            await compiler.compile(file);
+          } else if (method === 'render') {
+            await compiler.render(file);
+          } else {
+            await compiler.renderString(source, { filePath: file, extension: '.less' });
+          }
+        } catch (error) {
+          thrown = error;
+        }
+      });
+
+      expect(thrown).toBeInstanceOf(JessError);
+      expect((thrown as JessError).code).toBe(code);
+      expect(printed.err).toBe('');
+      expect(printed.out).toBe('');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
     }
+  });
 
-    // Check that stderr was written to (diagnostics should have been output)
-    expect(stderrSpy).toHaveBeenCalled();
+  it('still prints the warnings a failed render collected', async () => {
+    let thrown: unknown;
+    const printed = await captureAsync(async () => {
+      try {
+        await new Compiler().renderString('.b { width: 1px + 3em; }\n.a { color: @missing; }\n', {
+          filePath: '/proj/src/styles.less',
+          extension: '.less'
+        });
+      } catch (error) {
+        thrown = error;
+      }
+    });
 
-    stderrSpy.mockRestore();
+    expect((thrown as JessError).code).toBe('resolve/name-not-found');
+    expect(printed.err).toContain('eval/unexpressible-unit');
+    expect(printed.err).not.toContain('resolve/name-not-found');
   });
 
   it('should format diagnostics correctly', () => {
@@ -324,7 +367,7 @@ describe('Public parser diagnostic provenance', () => {
     const filePath = '/proj/charset.less';
     const captured = await captureAsync(() => new Compiler().renderToResult(
       { source, filePath, extension: '.less' },
-      { breakOnError: false }
+      { breakOnError: false, colors: true }
     ));
 
     expect(captured.value.errors).toHaveLength(1);
@@ -504,22 +547,25 @@ function err(
 
 describe('Diagnostic display tiers', () => {
   it('defaults: a warning renders as a single line with an OSC-8 link, no frame', () => {
-    const { out } = capture(() =>
+    const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'used foo', { sourceLine: 'WARN_SRC' })], {
-        breakOnError: false
+        breakOnError: false,
+        colors: true
       })
     );
-    expect(out).toContain(OSC8);
-    expect(out).toContain('eval/deprecated');
-    expect(out).toContain('used foo');
-    expect(out).not.toContain('WARN_SRC'); // no code frame
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain(OSC8);
+    expect(stderr).toContain('eval/deprecated');
+    expect(stderr).toContain('used foo');
+    expect(stderr).not.toContain('WARN_SRC'); // no code frame
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(out).toBe(''); // stdout stays free for CSS
   });
 
   it('defaults: an error renders as a code frame', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
-        breakOnError: false
+        breakOnError: false,
+        colors: true
       })
     );
     expect(stderr.match(/parse\/syntax-error/g)).toHaveLength(1);
@@ -533,9 +579,9 @@ describe('Diagnostic display tiers', () => {
     });
   });
 
-  it('renderString reports a collected parser diagnostic without a plain duplicate error', async () => {
+  it('a caller formats the parser diagnostic renderString throws as one frame', async () => {
     let thrown: unknown;
-    const { err: stderr } = await captureAsync(async () => {
+    const printed = await captureAsync(async () => {
       try {
         await new Compiler().renderString('@charset "@{encoding}";', {
           filePath: '/proj/src/styles.less',
@@ -547,6 +593,10 @@ describe('Diagnostic display tiers', () => {
     });
 
     expect(thrown).toBeInstanceOf(JessError);
+    expect(printed.err).toBe('');
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([toDiagnostic(thrown as JessError)], [], { colors: true })
+    );
     expect(stderr.match(/parse\/dynamic-charset/g)).toHaveLength(1);
     expect(stderr).toContain('Interpolation is not valid in @charset.');
     expect(stderr).not.toContain('LessDynamicCharsetError:');
@@ -578,30 +628,60 @@ describe('Diagnostic display tiers', () => {
     expect(stderr).toMatch(/╰─/u);
   });
 
+  /*
+   * Without a `colors` option, color and hyperlinks follow the stream the
+   * diagnostics are written to: on for a terminal, off for a pipe or file, and
+   * off while NO_COLOR is set.
+   */
+  it.each([
+    [false, undefined, false],
+    [true, undefined, true],
+    [true, '1', false]
+  ])('colors default: stderr a terminal %s, NO_COLOR %s -> colored %s', (isTTY, noColor, colored) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    Object.defineProperty(process.stderr, 'isTTY', { value: isTTY, configurable: true });
+    vi.stubEnv('NO_COLOR', noColor);
+    try {
+      const { err: stderr } = capture(() =>
+        outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'TTY_SRC' })], [], { breakOnError: false })
+      );
+      expect(stderr).toContain('TTY_SRC');
+      expect(ANSI_SGR.test(stderr) || stderr.includes(OSC8)).toBe(colored);
+    } finally {
+      vi.unstubAllEnvs();
+      if (descriptor === undefined) {
+        Reflect.deleteProperty(process.stderr, 'isTTY');
+      } else {
+        Object.defineProperty(process.stderr, 'isTTY', descriptor);
+      }
+    }
+  });
+
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {
     const warnings = [
       warn('extend/not-found', 'a missing', { filePath: '/proj/a.less' }),
       warn('extend/not-found', 'b missing', { filePath: '/proj/b.less' })
     ];
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], warnings, { breakOnError: false, warnings: 'summary' })
     );
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
-    expect(out).toContain('extend/not-found');
-    expect(out).toContain('2×');
-    expect(out).toContain('a.less');
-    expect(out).toContain('b.less');
-    expect(out).not.toContain(OSC8);
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain('extend/not-found');
+    expect(stderr).toContain('2×');
+    expect(stderr).toContain('a.less');
+    expect(stderr).toContain('b.less');
+    expect(stderr).not.toContain(OSC8);
   });
 
   it('warnings: { display: \'frame\' } frames warnings', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'W_FRAME_SRC' })], {
         breakOnError: false,
-        warnings: { display: 'frame' }
+        warnings: { display: 'frame' },
+        colors: true
       })
     );
-    expectLinecraftFrame(out, {
+    expectLinecraftFrame(stderr, {
       code: 'eval/deprecated',
       phase: 'eval',
       filePath: '/proj/src/styles.less',
@@ -615,7 +695,8 @@ describe('Diagnostic display tiers', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
         breakOnError: false,
-        errors: 'line'
+        errors: 'line',
+        colors: true
       })
     );
     expect(stderr).toContain(OSC8);
@@ -624,7 +705,7 @@ describe('Diagnostic display tiers', () => {
   });
 
   it('category override promotes a chosen code to frame even as a warning', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics(
         [],
         [warn('selector/comma-list-interpolation', 'list in selector', { sourceLine: 'OVERRIDE_SRC' })],
@@ -633,7 +714,7 @@ describe('Diagnostic display tiers', () => {
     );
 
     // Default warning tier is line, but this code is pinned to frame.
-    expect(out).toContain('OVERRIDE_SRC');
+    expect(stderr).toContain('OVERRIDE_SRC');
   });
 
   it('first-vs-repeat: first frame-tier site frames, later sites drop to line', () => {
@@ -641,12 +722,12 @@ describe('Diagnostic display tiers', () => {
       warn('eval/deprecated', 'first', { line: 3, sourceLine: 'FIRST_SRC' }),
       warn('eval/deprecated', 'second', { line: 9, sourceLine: 'SECOND_SRC' })
     ];
-    const { out } = capture(() =>
-      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' } })
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' }, colors: true })
     );
-    expect(out).toContain('FIRST_SRC'); // first site framed
-    expect(out).not.toContain('SECOND_SRC'); // second site demoted to line
-    expect(out).toContain(OSC8); // ...which carries a link
+    expect(stderr).toContain('FIRST_SRC'); // first site framed
+    expect(stderr).not.toContain('SECOND_SRC'); // second site demoted to line
+    expect(stderr).toContain(OSC8); // ...which carries a link
   });
 
   it('no-location diagnostic renders a one-liner with no link and no frame', () => {
@@ -659,32 +740,33 @@ describe('Diagnostic display tiers', () => {
       line: 0,
       column: 0
     };
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [noLoc], { breakOnError: false })
     );
-    expect(out).toContain('extend/not-found');
-    expect(out).toContain('199 warnings suppressed');
-    expect(out).not.toContain(OSC8);
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain('extend/not-found');
+    expect(stderr).toContain('199 warnings suppressed');
+    expect(stderr).not.toContain(OSC8);
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
   });
 
   it('verbose promotes: a default-line warning becomes a frame', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'VERBOSE_SRC' })], {
         breakOnError: false,
         verbose: true
       })
     );
-    expect(out).toContain('VERBOSE_SRC');
+    expect(stderr).toContain('VERBOSE_SRC');
   });
 
   it('back-compat: suppressWarnings silences warning output', () => {
-    const { out } = capture(() =>
+    const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x')], {
         breakOnError: false,
         suppressWarnings: true
       })
     );
+    expect(stderr).toBe('');
     expect(out).toBe('');
   });
 });

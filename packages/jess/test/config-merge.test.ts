@@ -255,14 +255,14 @@ describe('Config Merging', () => {
 
     /* So the formatter prints it as a bare one-liner, naming no file or line. */
     const printed: string[] = [];
-    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
       printed.push(String(chunk));
       return true;
     });
     try {
       outputDiagnostics([], deprecations, { colors: false });
     } finally {
-      stdout.mockRestore();
+      stderr.mockRestore();
     }
     expect(printed.join('')).toContain('deprecation/disable-plugin-rule-option');
     expect(printed.join('')).not.toContain('test.less');

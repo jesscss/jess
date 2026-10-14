@@ -13,7 +13,6 @@ import {
   toDiagnostic,
   evalErrorFrameFrom,
   WARN,
-  logger,
   Deprecation,
   type WarningsConfigInput,
   type ErrorsConfigInput,
@@ -49,7 +48,10 @@ export type ConfigOptions = StylesConfig & {
   /** Show detailed reason and fix in diagnostics. Default: false */
   verbose?: boolean;
 
-  /** Emit ANSI color and terminal hyperlinks in diagnostics. Default: true */
+  /**
+   * Emit ANSI color and terminal hyperlinks in diagnostics. Default: only when
+   * stderr is a terminal and NO_COLOR is unset.
+   */
   colors?: boolean;
 
   /** Deprecation warnings of these types will cause an error to be thrown */
@@ -1397,16 +1399,7 @@ export class Compiler {
       const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       const preparedImports = await this.prepareStaticImportsForStylesheet(document, context, profile);
 
-      if (context.errors.length > 0 || context.warningCount > 0) {
-        outputDiagnostics(context.errors, context.warnings, {
-          suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false,
-          warnings: options?.warnings,
-          errors: options?.errors,
-          colors: options?.colors
-        });
-      }
+      this.reportCollected(context, options);
 
       finalizeRenderProfile(profile, {
         method: 'compile',
@@ -1416,18 +1409,7 @@ export class Compiler {
       });
       return { document, context, preparedImports };
     } catch (err: unknown) {
-      if (context.errors.length > 0 || context.warningCount > 0) {
-        outputDiagnostics(context.errors, context.warnings, {
-          suppressWarnings: options?.suppressWarnings ?? false,
-          breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false,
-          warnings: options?.warnings,
-          errors: options?.errors,
-          colors: options?.colors
-        });
-      } else {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, options, err);
       finalizeRenderProfile(profile, {
         method: 'compile',
         filePath,
@@ -1441,16 +1423,29 @@ export class Compiler {
   }
 
   /**
-   * Emits whatever the render collected. A SUCCESSFUL render can still have
+   * Prints the diagnostics a call collected. A SUCCESSFUL render can still have
    * recorded real problems (a plugin function that threw, an unresolved
    * function); dropping those on the floor is how a broken plugin stays
-   * invisible, so they are always surfaced here.
+   * invisible, so they are always printed here.
+   *
+   * A FAILED call passes the error it is about to throw, and that error is not
+   * printed here, even when it was also recorded (a parse error is both
+   * recorded and thrown). A library call never prints what it throws: the
+   * caller receives the error and reports it, so printing it here too is how
+   * a caller such as a bundler plugin ends up showing it twice.
    */
-  private reportCollected(context: Context, options?: Partial<ConfigOptions>): void {
-    if (context.errors.length === 0 && context.warningCount === 0) {
+  private reportCollected(context: Context, options?: Partial<ConfigOptions>, thrown?: unknown): void {
+    let errors = context.errors;
+    let warnings = context.warningCount === 0 ? [] : context.warnings;
+    if (thrown instanceof JessError) {
+      const site = toDiagnostic(thrown, { includeLines: false });
+      errors = errors.filter(error => !sameDiagnosticSite(error, site));
+      warnings = warnings.filter(warning => !sameDiagnosticSite(warning, site));
+    }
+    if (errors.length === 0 && warnings.length === 0) {
       return;
     }
-    outputDiagnostics(context.errors, context.warnings, {
+    outputDiagnostics(errors, warnings, {
       suppressWarnings: options?.suppressWarnings ?? false,
       breakOnError: options?.breakOnError ?? true,
       verbose: options?.verbose ?? false,
@@ -1481,10 +1476,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
-      this.reportCollected(context, options);
-      if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, options, err);
       finalizeRenderProfile(profile, {
         method: 'render',
         filePath,
@@ -1525,10 +1517,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
-      this.reportCollected(context, renderOptions);
-      if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(String(err));
-      }
+      this.reportCollected(context, renderOptions, err);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
