@@ -56,7 +56,9 @@ describe('jess CLI', () => {
     const result = await run(['--help']);
     expect(result.code).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('Usage: jess <input> [output]');
+
+    // The packed-consumer release check (scripts/release/verify-alpha-packed-consumer.mjs) matches this line too.
+    expect(result.stdout).toMatch(/Usage: jess <input> \[output\] \[options\]/u);
     for (const documented of ['-o, --out <dir>', '--allow-remote-imports <hosts>', '--color, --no-color', '--version', 'Exit status:']) {
       expect(result.stdout).toContain(documented);
     }

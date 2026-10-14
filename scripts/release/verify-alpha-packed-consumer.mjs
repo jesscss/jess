@@ -242,7 +242,12 @@ assert.ok(!existsSync(path.join(bin, process.platform === 'win32' ? 'lessc.cmd' 
 
 const help = run(jess, ['--help']);
 assert.equal(help.status, 0, help.stderr);
-assert.match(help.stdout, /Usage: jess <input> \\[output\\] \\[-o outdir\\]/u);
+assert.match(help.stdout, /Usage: jess <input> \\[output\\] \\[options\\]/u);
+
+const installed = JSON.parse(readFileSync(path.join(consumer, 'node_modules', 'jess', 'package.json'), 'utf8'));
+const version = run(jess, ['--version']);
+assert.equal(version.status, 0, version.stderr);
+assert.equal(version.stdout, \`\${installed.version}\\n\`);
 
 writeFileSync(path.join(fixture, 'dep.less'), '.dep { color: blue; }\\n');
 writeFileSync(path.join(fixture, 'entry.less'), '@import "./dep.less";\\n.entry { color: red; }\\n');
