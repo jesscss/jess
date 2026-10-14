@@ -16,12 +16,17 @@ and runs the module in a Deno subprocess behind a permission broker.
 
 **Inside the Deno sandbox a script can:**
 
-- **read** files, but only inside your optional `jsReadRoot` or a `node_modules`
+- **read** files, but only inside your optional `jsReadRoot`, a `node_modules`
   directory on `jsReadRoot`'s own ancestor chain (where your package manager
-  installs dependencies and pnpm keeps its store) — not a `node_modules`
-  anywhere else on the machine. Paths are canonicalized (realpath) before the
-  check, so a symlink or `..` cannot reach outside, and with no `jsReadRoot` set
-  every read is denied;
+  installs dependencies and pnpm keeps its store), or the root of a package your
+  stylesheet names (`@plugin "x"`, or `@use` of a JS module). Such a plugin is
+  found by normal package resolution, which can place it outside those
+  directories; the package it resolved into — the nearest directory with a
+  `package.json` above its realpath, inside a `node_modules` — becomes readable,
+  and only that package: never a sibling package or the rest of that
+  `node_modules`, and never any `node_modules` elsewhere on the machine. Paths
+  are canonicalized (realpath) before the check, so a symlink or `..` cannot
+  reach outside, and with no `jsReadRoot` set every read is denied;
 - **net** — nothing, unless you opt in with `allowHttp` (optionally narrowed to
   `allowNetHosts`).
 
@@ -34,8 +39,9 @@ so a script that loops forever or hangs cannot keep burning a CPU in the
 background.
 
 What a sandboxed script still sees: its own source and the values you pass it,
-plus whatever it can read from the allowed read roots (your project tree and
-installed packages) — treat those as readable by any script you import.
+plus whatever it can read from the allowed read roots (your project tree, its
+installed packages and every package a stylesheet named) — treat those as
+readable by any script you import.
 
 Values cross the boundary through a small typed bridge (dimensions, colors,
 quoted strings, lists, detached rules, …).

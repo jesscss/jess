@@ -184,6 +184,25 @@ const canonicalPath = (p: string): string => {
   }
 };
 
+/**
+ * The root of the installed package a resolved module's `realPath` lies in: the
+ * nearest directory above it that is a package directory of a `node_modules`
+ * (`node_modules/<name>` or `node_modules/@scope/<name>`) and holds a
+ * `package.json`. Undefined for a module in no installed package, which grants
+ * nothing.
+ */
+const namedPackageRoot = (realPath: string): string | undefined => {
+  for (let dir = path.dirname(realPath); path.dirname(dir) !== dir; dir = path.dirname(dir)) {
+    const parent = path.dirname(dir);
+    const inNodeModules = path.basename(parent) === 'node_modules'
+      || (path.basename(parent).startsWith('@') && path.basename(path.dirname(parent)) === 'node_modules');
+    if (inNodeModules) {
+      return fs.existsSync(path.join(dir, 'package.json')) ? dir : undefined;
+    }
+  }
+  return undefined;
+};
+
 const normalizePermissionPath = (value: string | null): string | null => {
   if (!value) {
     return null;
@@ -353,6 +372,9 @@ export class JsPlugin extends AbstractPlugin {
   /** Memoized ancestor-chain `node_modules` read roots (see installedPackageRoots). */
   private packageRootsCache: string[] | undefined;
 
+  /** The roots of the packages a stylesheet named and resolution placed outside those roots (see namedPackageRoot). */
+  private namedPackageRoots: string[] = [];
+
   /**
    * Consecutive unexpected worker deaths since the last successful reply. One
    * crash self-heals (the next call restarts a clean worker); a worker that
@@ -516,17 +538,20 @@ export class JsPlugin extends AbstractPlugin {
 
   /**
    * Whether an already-canonicalized `realPath` is a readable location: inside
-   * `jsReadRoot`, or inside one of the ancestor-chain `node_modules` directories.
+   * `jsReadRoot`, inside one of the ancestor-chain `node_modules` directories, or
+   * inside the root of a package a stylesheet named ({@link namedPackageRoot}).
    * A bare `/node_modules/` substring anywhere on the machine is NOT enough — the
-   * matched directory must be anchored to `jsReadRoot`, so a sandboxed script
-   * cannot read files under an unrelated `node_modules` elsewhere on disk.
+   * matched directory must be anchored to `jsReadRoot` or be that named package,
+   * so a sandboxed script cannot read files under an unrelated `node_modules`
+   * elsewhere on disk.
    */
   private isReadableRealPath(realPath: string): boolean {
     const jsReadRoot = this.opts.jsReadRoot ? canonicalPath(path.resolve(this.opts.jsReadRoot)) : undefined;
     if (jsReadRoot && isPathInside(realPath, jsReadRoot)) {
       return true;
     }
-    return this.installedPackageRoots().some(root => isPathInside(realPath, root));
+    return this.installedPackageRoots().some(root => isPathInside(realPath, root))
+      || this.namedPackageRoots.some(root => isPathInside(realPath, root));
   }
 
   private isReadAllowed(value: string | null): boolean {
@@ -899,7 +924,21 @@ export class JsPlugin extends AbstractPlugin {
      * node_modules (pnpm store / hoisting live there) — never any node_modules
      * elsewhere on the machine.
      */
-    if (this.isReadableRealPath(canonicalPath(path.resolve(absoluteFilePath)))) {
+    const realPath = canonicalPath(path.resolve(absoluteFilePath));
+    if (this.isReadableRealPath(realPath)) {
+      return;
+    }
+
+    /*
+     * A plugin the stylesheet names (`@plugin "x"`, `@use` of a JS module) is
+     * found by package resolution, which may land outside those roots: a corpus
+     * checked out beside the project, its plugin installed in the project's
+     * node_modules. The author asked for that package, so its root becomes
+     * readable — that package only, never the node_modules around it.
+     */
+    const packageRoot = namedPackageRoot(realPath);
+    if (packageRoot !== undefined) {
+      this.namedPackageRoots.push(packageRoot);
       return;
     }
     throw new Error(`Script path "${path.resolve(absoluteFilePath)}" is outside jsReadRoot "${jsReadRoot}"`);

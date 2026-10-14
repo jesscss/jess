@@ -30,7 +30,10 @@ The sandbox read root is the project root: the directory of the
 `styles.config.*` above the entry Less file, or the entry file's own directory
 when there is none. A source with no file path (`less.render()` without
 `filename`) has the current working directory as its root. A plugin script
-outside that root is refused, and so is any file read outside it. Set
+outside that root is refused, and so is any file read outside it, with one
+exception: an installed package the stylesheet names (`@plugin "name"`), which
+package resolution found in a `node_modules` outside the root. The directory of
+that package is readable too, and nothing else around it. Set
 `compile.jsReadRoot` in a `styles.config.*` to an absolute path to choose
 another root. Environment and process access are denied, and network access is
 disabled unless plugin-js policy explicitly allows it.
