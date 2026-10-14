@@ -143,30 +143,12 @@ process.stdout.write(JSON.stringify({ calls, parsed }));`;
   return JSON.parse(child.stdout) as { calls: number; parsed: Record<string, unknown> };
 }
 
-/*
- * PINNED DEFECT, interpreter engine of the composed dialects (Less, SCSS, Jess):
- * parseman 0.51's runtime `compose()` rebuilds every composed piece from
- * serialized source with `eval`/`new Function` (jess#325), so their interpreter
- * grammars throw `EvalError` where code generation is disallowed. CSS composes
- * nothing at runtime, and the compiled grammars — what Node and browser bundles
- * load — are clean. Remove with the parseman release whose `compose()` links.
- */
-export const COMPOSED_CODEGEN_PINS: ReadonlyMap<Engine, string> = new Map([
-  ['interpreter', 'runtime compose() evaluates serialized source (jess#325)']
-]);
-
 /**
  * Every variant of `engine` loads and parses `source` without turning a string
- * into code, so a page whose policy omits `'unsafe-eval'` can use it. A PINNED
- * engine asserts the current, wrong behaviour instead, and fails once it is fixed.
+ * into code, so a page whose policy omits `'unsafe-eval'` can use it.
  */
-export function assertNoRuntimeCodegen(libDir: string, engine: Engine, source: string, pinned?: string): void {
+export function assertNoRuntimeCodegen(libDir: string, engine: Engine, source: string): void {
   const { calls, parsed } = runtimeCodegen(libDir, engine, source);
-  const clean = calls === 0 && VARIANTS.every(variant => parsed[variant] === true);
-  if (pinned !== undefined) {
-    expect(clean, `${engine}: PINNED (${pinned}) no longer generates code — remove the pin`).toBe(false);
-    return;
-  }
   expect(parsed).toEqual(Object.fromEntries(VARIANTS.map(variant => [variant, true])));
   expect(calls, `${engine}: Function/eval calls`).toBe(0);
 }

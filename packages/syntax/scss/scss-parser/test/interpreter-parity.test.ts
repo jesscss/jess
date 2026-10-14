@@ -6,7 +6,6 @@ import {
   assertEnginesAgree,
   assertNoRuntimeCodegen,
   AST_VARIANTS,
-  COMPOSED_CODEGEN_PINS,
   CSS_FIXTURES,
   CST_VARIANTS,
   cstOutcome,
@@ -31,7 +30,7 @@ describe('SCSS grammar: macro-compiled and interpreter bundles agree', () => {
   });
 
   it.each(ENGINES)('the %s grammar generates no code at runtime', (engine) => {
-    assertNoRuntimeCodegen(LIB, engine, '.a { b: c; }', COMPOSED_CODEGEN_PINS.get(engine));
+    assertNoRuntimeCodegen(LIB, engine, '.a { b: c; }');
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {
