@@ -318,6 +318,18 @@ describe('JessLanguageServiceEngine', () => {
       expect(diagnostics.length).toBeGreaterThan(0);
     });
 
+    it('does not report trailing whitespace or comments as unexpected input', () => {
+      for (const lang of ['css', 'less', 'scss', 'jess']) {
+        const engine = createEngine();
+        const doc = createDocument(lang, '.a { color: red; }\n/* end */\n');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(engine.getDiagnostics(doc.uri).map(d => d.code), lang).not.toContain('parse/parser');
+
+        engine.change(doc.uri, 2, `${doc.getText()}\n  `);
+        expect(engine.getDiagnostics(doc.uri).map(d => d.code), `${lang} after an edit`).not.toContain('parse/parser');
+      }
+    });
+
     it('underlines removed Less backtick values without losing the remaining document', () => {
       const engine = createEngine();
       const input = '.legacy { value: `1 + 1`; }\n.after { color: red; }';

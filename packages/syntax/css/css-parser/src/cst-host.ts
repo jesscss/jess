@@ -1,4 +1,4 @@
-import { run, parseDoc, cstBuildHost as parsemanCstBuildHost, type BuildHost, type ParseDoc, type ParseError, type Registry, type RootTriviaCapture, type Runnable, type Span } from 'parseman';
+import { run, parseDoc, cstBuildHost as parsemanCstBuildHost, type BuildHost, type Combinator, type ParseDoc, type ParseError, type Registry, type RootTriviaCapture, type Runnable, type Span } from 'parseman';
 import { commentTriviaLabels } from './trivia-labels.js';
 
 export { commentTriviaLabels } from './trivia-labels.js';
@@ -517,6 +517,8 @@ export function parseCst(
  * identity. Every splice is still grammar-verified and falls back to a full,
  * correct reparse when reuse can't be proven — so the result always matches a
  * from-scratch parse.
+ *
+ * `unconsumedFrom` also matches `parseCst`: trailing trivia is not leftover input.
  */
 export function parseDocCst(
   grammar: Record<string, unknown>,
@@ -530,9 +532,27 @@ export function parseDocCst(
     input,
     {
       build: cssCstBuildHost,
-      structuralReuse: true
+      structuralReuse: true,
+      trivia: grammarTriviaOf(rule(grammar, startRule))
     }
   );
+}
+
+/*
+ * The trivia `parseDoc` skips after the root rule before it reports leftover
+ * input: the root rule's own `grammarTrivia`, the same source `run()` (and so
+ * `parseCst`) reads. `parseDoc` takes that default only from an interpreted
+ * root, and these grammars are compiled, so without it a document whose root
+ * span stops at its last token (scss, jess) reported its trailing whitespace
+ * and comments as leftover input.
+ */
+function grammarTriviaOf(root: Runnable): Combinator<unknown> | undefined {
+  const meta: unknown = '_meta' in root ? root._meta : undefined;
+  if (typeof meta !== 'object' || meta === null || !('grammarTrivia' in meta)) {
+    return undefined;
+  }
+  const trivia = meta.grammarTrivia;
+  return isRunnable(trivia) && typeof trivia !== 'function' ? trivia : undefined;
 }
 
 export type { ParseDoc } from 'parseman';

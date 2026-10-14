@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseJessCst } from '../src/cst.js';
+import { parseJessCst, parseJessDoc } from '../src/cst.js';
 
 type CstNode = ReturnType<typeof parseJessCst>['tree'];
 
@@ -292,5 +292,22 @@ describe('@jesscss/jess-parser/cst', () => {
     const result = parseJessCst('.widget-${side { color: red; }');
 
     expect(result.errors.length + Number(result.unconsumedFrom !== null)).toBeGreaterThan(0);
+  });
+});
+
+describe('@jesscss/jess-parser/cst — parseJessDoc leftover input', () => {
+  it('matches parseJessCst() before and after an edit', () => {
+    for (const input of [
+      '$c: red; .x { color: $c; }',
+      '.a { color: red; }\n\n  ',
+      '.a { color: red; }\n/* c */\n',
+      '.a { color: red; }\n// c\n',
+      '.a { color: red; }\n}'
+    ]) {
+      const doc = parseJessDoc(input);
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(parseJessCst(input).unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseJessCst(`${input}\n`).unconsumedFrom);
+    }
   });
 });

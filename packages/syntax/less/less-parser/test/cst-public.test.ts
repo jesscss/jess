@@ -587,11 +587,13 @@ const LESS_DOC_CORPUS: string[] = [
   '@media (min-width: @w) { .a { display: block; } }',
   '// line comment\n.a { color: red; } /* block */',
   '.a { .b { .c { color: red } } }',
-  '@list: 1px, 2px, 3px; .a { margin: @list; }'
+  '@list: 1px, 2px, 3px; .a { margin: @list; }',
+  '.a { color: red; }\n\n  ',
+  '.a { color: red; }\n// c\n'
 ];
 
 describe('@jesscss/less-parser/cst — parseLessDoc structural parity', () => {
-  it('parseLessDoc().tree (absolutized) equals parseLessCst().tree across a corpus', () => {
+  it('parseLessDoc() matches parseLessCst() (tree and leftover input) across a corpus', () => {
     for (const input of LESS_DOC_CORPUS) {
       const oneShot = parseLessCst(input);
       const doc = parseLessDoc(input);
@@ -602,6 +604,9 @@ describe('@jesscss/less-parser/cst — parseLessDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(oneShot.unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseLessCst(`${input}\n`).unconsumedFrom);
     }
   });
 });
