@@ -434,6 +434,22 @@ describe('jess CLI', () => {
     expect(fs.readdirSync(directory).sort()).toEqual(['a.less', 'out.css']);
   }));
 
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('leaves the old output and no temp file when the write fails', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
+    fs.mkdirSync(path.join(directory, 'locked'));
+    fs.writeFileSync(path.join(directory, 'locked', 'out.css'), 'old');
+    fs.chmodSync(path.join(directory, 'locked'), 0o555);
+    try {
+      const result = await run(['a.less', path.join('locked', 'out.css')], { cwd: directory });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toBe(`jess: cannot write ${path.join('locked', 'out.css')}: permission denied\n`);
+      expect(fs.readdirSync(path.join(directory, 'locked'))).toEqual(['out.css']);
+      expect(fs.readFileSync(path.join(directory, 'locked', 'out.css'), 'utf8')).toBe('old');
+    } finally {
+      fs.chmodSync(path.join(directory, 'locked'), 0o755);
+    }
+  }));
+
   it.skipIf(process.platform === 'win32')('writes /dev/stdout in place', async () => inTempDir(async (directory) => {
     fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
 

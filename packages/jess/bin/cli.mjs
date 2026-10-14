@@ -20,7 +20,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
-import { chmod, rename, rm, writeFile } from 'node:fs/promises';
+import { open, rename, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { getSystemErrorMap, parseArgs } from 'node:util';
@@ -212,7 +212,7 @@ function planOutput(outPath, input, inFile, outArg) {
   if (!file.isFile() || path.resolve(outPath).startsWith('/dev/')) {
     return { replace: false };
   }
-  return { replace: true, mode: link === undefined ? Number(file.mode & 0o7777n) : undefined };
+  return { replace: true, mode: link === undefined ? Number(file.mode & 0o777n) : undefined };
 }
 
 /**
@@ -228,11 +228,17 @@ async function writeOutput(outPath, css, plan) {
     return;
   }
   const temp = path.join(path.dirname(outPath), `.${path.basename(outPath)}.${process.pid}-${randomBytes(4).toString('hex')}.tmp`);
+
+  // 'wx' creates the file, or fails without touching anything already there, a symlink included.
+  const handle = await open(temp, 'wx');
   try {
-    // 'wx' creates the file and fails if anything, a symlink included, is already there.
-    await writeFile(temp, css, { flag: 'wx' });
-    if (plan.mode !== undefined) {
-      await chmod(temp, plan.mode);
+    try {
+      await handle.writeFile(css);
+      if (plan.mode !== undefined) {
+        await handle.chmod(plan.mode);
+      }
+    } finally {
+      await handle.close();
     }
     await rename(temp, outPath);
   } catch (err) {
