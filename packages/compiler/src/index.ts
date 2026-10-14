@@ -48,7 +48,10 @@ export type ConfigOptions = StylesConfig & {
   /** Show detailed reason and fix in diagnostics. Default: false */
   verbose?: boolean;
 
-  /** Emit ANSI color and terminal hyperlinks in diagnostics. Default: true */
+  /**
+   * Emit ANSI color and terminal hyperlinks in diagnostics. Default: only when
+   * stderr is a terminal and NO_COLOR is unset.
+   */
   colors?: boolean;
 
   /** Deprecation warnings of these types will cause an error to be thrown */

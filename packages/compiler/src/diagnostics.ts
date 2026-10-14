@@ -22,6 +22,15 @@ function oscLink(uri: string, label: string): string {
 type AnyDiagnostic = ErrorDiagnostic | WarningDiagnostic;
 
 /**
+ * Whether output to `stream` carries ANSI color and OSC-8 hyperlinks when the
+ * caller does not choose: only on a terminal, and never while NO_COLOR is set
+ * to a non-empty value (https://no-color.org). A pipe or file gets plain text.
+ */
+export function colorsByDefault(stream: { isTTY?: boolean }): boolean {
+  return stream.isTTY === true && !process.env.NO_COLOR;
+}
+
+/**
  * A diagnostic with no usable location falls out of the display ladder and is
  * rendered as a bare message one-liner (`block`), regardless of the configured
  * tier.
@@ -64,12 +73,12 @@ export function outputDiagnostics(
     /** Display config for errors (scalar tier or object). Default tier `frame`. */
     errors?: ErrorsConfigInput;
 
-    /** Emit ANSI color and terminal hyperlinks. Default: true. */
+    /** Emit ANSI color and terminal hyperlinks. Default: {@link colorsByDefault} for stderr. */
     colors?: boolean;
   } = {}
 ): void {
   const { suppressWarnings = false, breakOnError = true, verbose = false } = options;
-  const colors = options.colors ?? true;
+  const colors = options.colors ?? colorsByDefault(process.stderr);
 
   const warnCfg = resolveWarningsConfig({ warnings: options.warnings, verbose });
   const errCfg = resolveErrorsConfig(options.errors);

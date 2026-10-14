@@ -367,7 +367,7 @@ describe('Public parser diagnostic provenance', () => {
     const filePath = '/proj/charset.less';
     const captured = await captureAsync(() => new Compiler().renderToResult(
       { source, filePath, extension: '.less' },
-      { breakOnError: false }
+      { breakOnError: false, colors: true }
     ));
 
     expect(captured.value.errors).toHaveLength(1);
@@ -549,7 +549,8 @@ describe('Diagnostic display tiers', () => {
   it('defaults: a warning renders as a single line with an OSC-8 link, no frame', () => {
     const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'used foo', { sourceLine: 'WARN_SRC' })], {
-        breakOnError: false
+        breakOnError: false,
+        colors: true
       })
     );
     expect(stderr).toContain(OSC8);
@@ -563,7 +564,8 @@ describe('Diagnostic display tiers', () => {
   it('defaults: an error renders as a code frame', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
-        breakOnError: false
+        breakOnError: false,
+        colors: true
       })
     );
     expect(stderr.match(/parse\/syntax-error/g)).toHaveLength(1);
@@ -626,6 +628,35 @@ describe('Diagnostic display tiers', () => {
     expect(stderr).toMatch(/╰─/u);
   });
 
+  /*
+   * Without a `colors` option, color and hyperlinks follow the stream the
+   * diagnostics are written to: on for a terminal, off for a pipe or file, and
+   * off while NO_COLOR is set.
+   */
+  it.each([
+    [false, undefined, false],
+    [true, undefined, true],
+    [true, '1', false]
+  ])('colors default: stderr a terminal %s, NO_COLOR %s -> colored %s', (isTTY, noColor, colored) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    Object.defineProperty(process.stderr, 'isTTY', { value: isTTY, configurable: true });
+    vi.stubEnv('NO_COLOR', noColor);
+    try {
+      const { err: stderr } = capture(() =>
+        outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'TTY_SRC' })], [], { breakOnError: false })
+      );
+      expect(stderr).toContain('TTY_SRC');
+      expect(ANSI_SGR.test(stderr) || stderr.includes(OSC8)).toBe(colored);
+    } finally {
+      vi.unstubAllEnvs();
+      if (descriptor === undefined) {
+        Reflect.deleteProperty(process.stderr, 'isTTY');
+      } else {
+        Object.defineProperty(process.stderr, 'isTTY', descriptor);
+      }
+    }
+  });
+
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {
     const warnings = [
       warn('extend/not-found', 'a missing', { filePath: '/proj/a.less' }),
@@ -646,7 +677,8 @@ describe('Diagnostic display tiers', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'W_FRAME_SRC' })], {
         breakOnError: false,
-        warnings: { display: 'frame' }
+        warnings: { display: 'frame' },
+        colors: true
       })
     );
     expectLinecraftFrame(stderr, {
@@ -663,7 +695,8 @@ describe('Diagnostic display tiers', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
         breakOnError: false,
-        errors: 'line'
+        errors: 'line',
+        colors: true
       })
     );
     expect(stderr).toContain(OSC8);
@@ -690,7 +723,7 @@ describe('Diagnostic display tiers', () => {
       warn('eval/deprecated', 'second', { line: 9, sourceLine: 'SECOND_SRC' })
     ];
     const { err: stderr } = capture(() =>
-      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' } })
+      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' }, colors: true })
     );
     expect(stderr).toContain('FIRST_SRC'); // first site framed
     expect(stderr).not.toContain('SECOND_SRC'); // second site demoted to line
