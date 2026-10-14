@@ -18,6 +18,11 @@
  * consumer never resolves an unpublished version from the registry.
  * Third-party dependencies install from the registry, as they do for a real
  * consumer.
+ *
+ * Each entry of `CONFIGS` is a consumer setup the declarations must compile
+ * under, with the oldest TypeScript it supports. It runs on that floor and on
+ * the workspace's own compiler, so the floors the README documents are tested
+ * rather than assumed.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -77,6 +82,28 @@ function publicSpecifiers(manifest) {
     .map(subpath => subpath === '.' ? manifest.name : `${manifest.name}/${subpath.slice(2)}`);
 }
 
+/*
+ * The TypeScript floors. `NoInfer` in core's declarations needs 5.4. A
+ * CommonJS consumer needs 5.8: the packages ship ECMAScript-module
+ * declarations for both conditions, and only from 5.8 does `nodenext` let a
+ * CommonJS file `require` an ECMAScript module (TS1479 before).
+ */
+const ESM_FLOOR = '5.4.5';
+const CJS_FLOOR = '5.8.3';
+
+const NODENEXT = { module: 'nodenext', moduleResolution: 'nodenext' };
+const CONFIGS = [
+  { name: 'ESM, nodenext', floor: ESM_FLOOR, entry: 'consumer.ts', options: NODENEXT },
+  {
+    name: 'ESM, nodenext, exactOptionalPropertyTypes + noUncheckedIndexedAccess',
+    floor: ESM_FLOOR,
+    entry: 'consumer.ts',
+    options: { ...NODENEXT, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true }
+  },
+  { name: 'bundler', floor: ESM_FLOOR, entry: 'consumer.ts', options: { module: 'esnext', moduleResolution: 'bundler' } },
+  { name: 'CommonJS (.cts), nodenext', floor: CJS_FLOOR, entry: 'consumer.cts', options: NODENEXT }
+];
+
 const PREPARED_IMPORTS_ASSERTIONS = `
 import type { PreparedImports } from '@jesscss/core';
 
@@ -105,7 +132,8 @@ function main() {
     mkdirSync(packDir);
     mkdirSync(consumerDir);
 
-    const dependencies = {};
+    const floors = [...new Set(CONFIGS.map(config => config.floor))];
+    const dependencies = Object.fromEntries(floors.map(version => [`typescript-${version}`, `npm:typescript@${version}`]));
     for (const pkg of workspaceClosure(workspace, TARGETS)) {
       const packed = runOrThrow('pnpm', ['pack', '--json', '--pack-destination', packDir], pkg.dir);
       dependencies[pkg.name] = `file:${JSON.parse(packed.stdout).filename}`;
@@ -119,49 +147,66 @@ function main() {
     runOrThrow('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--prefer-offline'], consumerDir);
 
     const specifiers = targets.flatMap(target => publicSpecifiers(target.manifest));
-    writeFileSync(path.join(consumerDir, 'consumer.ts'), [
+    const imports = [
       ...specifiers.map((specifier, index) => `import * as entry${index} from '${specifier}';`),
-      `export { ${specifiers.map((_, index) => `entry${index}`).join(', ')} };`,
-      PREPARED_IMPORTS_ASSERTIONS
-    ].join('\n'));
-    writeFileSync(path.join(consumerDir, 'tsconfig.json'), `${JSON.stringify({
-      compilerOptions: {
-        strict: true,
-        noEmit: true,
-        skipLibCheck: false,
-        module: 'nodenext',
-        moduleResolution: 'nodenext',
-        target: 'es2022',
-
-        /*
-         * No ambient @types: a transitive dependency that installs @types/node
-         * must not hide a Node global leaking into a target's declarations.
-         */
-        types: []
-      },
-      include: [
-        'consumer.ts',
-        ...targets.flatMap(target => target.manifest.files.map(entry => `node_modules/${target.name}/${entry}/**/*.d.ts`))
-      ],
-
-      /* The default exclude is node_modules, which would drop the shipped files. */
-      exclude: []
-    }, null, 2)}\n`);
+      `export { ${specifiers.map((_, index) => `entry${index}`).join(', ')} };`
+    ];
+    writeFileSync(path.join(consumerDir, 'consumer.ts'), [...imports, PREPARED_IMPORTS_ASSERTIONS].join('\n'));
+    writeFileSync(path.join(consumerDir, 'consumer.cts'), `${imports.join('\n')}\n`);
+    const shippedDeclarations = targets.flatMap(target =>
+      target.manifest.files.map(entry => `node_modules/${target.name}/${entry}/**/*.d.ts`));
 
     /*
-     * The workspace-pinned compiler, run from the consumer so that no module
-     * resolution or type root walks back into the workspace.
+     * The workspace-pinned compiler and the installed floors, each run from the
+     * consumer so that no module resolution or type root walks back into the
+     * workspace.
      */
-    const tsc = path.join(root, 'node_modules/typescript/bin/tsc');
-    const result = run(process.execPath, [tsc, '-p', 'tsconfig.json', '--pretty', 'false'], consumerDir);
-    process.stdout.write(result.stdout);
-    process.stderr.write(result.stderr);
-    if (result.status !== 0) {
-      console.error(`\nPublic type consumer verification failed (${TARGETS.join(', ')}).`);
-      process.exitCode = result.status ?? 1;
+    const workspaceTsc = path.join(root, 'node_modules/typescript/bin/tsc');
+    const failures = [];
+    for (const [index, config] of CONFIGS.entries()) {
+      const tsconfig = `tsconfig.${index}.json`;
+      writeFileSync(path.join(consumerDir, tsconfig), `${JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          skipLibCheck: false,
+          target: 'es2022',
+
+          /*
+           * No ambient @types: a transitive dependency that installs @types/node
+           * must not hide a Node global leaking into a target's declarations.
+           */
+          types: [],
+          ...config.options
+        },
+        include: [config.entry, ...shippedDeclarations],
+
+        /* The default exclude is node_modules, which would drop the shipped files. */
+        exclude: []
+      }, null, 2)}\n`);
+
+      const floorTsc = path.join(consumerDir, `node_modules/typescript-${config.floor}/bin/tsc`);
+      for (const tsc of [floorTsc, workspaceTsc]) {
+        const version = run(process.execPath, [tsc, '--version'], consumerDir).stdout.trim();
+        const result = run(process.execPath, [tsc, '-p', tsconfig, '--pretty', 'false'], consumerDir);
+        const label = `${config.name} — ${version}`;
+        if (result.status === 0) {
+          console.log(`ok    ${label}`);
+          continue;
+        }
+        failures.push(label);
+        console.log(`FAIL  ${label}`);
+        process.stdout.write(result.stdout);
+        process.stderr.write(result.stderr);
+      }
+    }
+
+    if (failures.length > 0) {
+      console.error(`\nPublic type consumer verification failed for ${TARGETS.join(', ')}:\n- ${failures.join('\n- ')}`);
+      process.exitCode = 1;
       return;
     }
-    console.log(`Public type consumer verification passed: ${specifiers.length} entry points of ${TARGETS.join(', ')}.`);
+    console.log(`\nPublic type consumer verification passed: ${specifiers.length} entry points of ${TARGETS.join(', ')}.`);
   } finally {
     if (keep) {
       console.log(`Kept consumer fixture: ${temp}`);

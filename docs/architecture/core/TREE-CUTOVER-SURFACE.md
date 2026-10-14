@@ -361,7 +361,7 @@ worktree, so no result here comes from the main checkout's sources.
 | `warn` | `(warning: WarningDiagnostic \| JessError, options?: { code?: string }) => void` | no |
 | `transformUrl` | `(value: string, quoted: boolean) => string` | no |
 | `loadImport` | `(importPath: string, importOptions?: ImportOptions) => Promise<{ node: Stylesheet \| null; triedPaths: string[]; resolvedPath: string } \| undefined>` | no |
-| `readBinary` | `(importPath: string) => Promise<Buffer>` | no |
+| `readBinary` | `(importPath: string) => Promise<Uint8Array>` | no |
 | `withDocument` | `<T>(document: Stylesheet, run: () => T \| Promise<T>) => T \| Promise<T>` | no |
 | `rememberDocumentBody` | `(document: Stylesheet, body: object) => void` | no |
 | `currentSourceOwner` | `() => object \| null` | no |

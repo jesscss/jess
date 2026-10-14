@@ -9097,11 +9097,7 @@ function pluginCallFailure(
   if (error instanceof JessError) {
     throw error.attributeTo(callSiteLocation(node, e));
   }
-  const reason = error instanceof JessError
-    ? error.message
-    : error instanceof Error
-      ? error.message
-      : String(error);
+  const reason = error instanceof Error ? error.message : String(error);
   const stack = error instanceof Error && typeof error.stack === 'string' ? error.stack : undefined;
 
   /*
@@ -9124,12 +9120,7 @@ function pluginCallFailure(
       ...(stack === undefined ? {} : { note: stack }),
       meta: { name: node.name, reason }
     });
-    const collected = toDiagnostic(diagnostic);
-    if (diagnostic.severity === 'error') {
-      e.context.errors.push(collected);
-    } else {
-      e.context.warn(collected);
-    }
+    e.context.errors.push(toDiagnostic(diagnostic));
     return preserveCall(node, frame, e);
   }
   e.context?.warnAtNode('plugin/function-threw', 'plugin', node, {

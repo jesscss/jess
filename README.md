@@ -116,6 +116,11 @@ Jess supports the current Node LTS line and the prior three LTS lines. The
 current derived floor is Node 18; it advances only when that rolling window
 advances.
 
+The published type declarations need TypeScript 5.4 or newer. A CommonJS
+project that loads Jess packages with `require` under `module: nodenext` needs
+TypeScript 5.8 or newer, the first release that lets CommonJS code import the
+packages' ECMAScript-module declarations.
+
 ## CLI
 
 ```sh

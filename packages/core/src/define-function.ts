@@ -7,22 +7,18 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 import { JessError } from './jess-error.js';
+import type { ClassOf, InstanceOf } from './tree/node-base.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 
-/*
- * Local restatements of the type-fest helpers this module used, so core's
- * published declarations import only packages core depends on.
+/**
+ * `T` without its index signatures: type-fest's `OmitIndexSignature`, restated
+ * so core's published declarations import only packages core depends on.
  */
-
-/** Any class, abstract or concrete. */
-type AnyClass = abstract new (...args: never[]) => unknown;
-
-/** `T` without its index signatures (type-fest's `OmitIndexSignature`). */
 type OmitIndexSignature<T> = {
   [K in keyof T as {} extends Record<K, unknown> ? never : K]: T[K];
 };
 
-export type ArgType = PrimitiveType | AnyClass;
+export type ArgType = PrimitiveType | ClassOf;
 export type Lazy<T> = () => MaybePromise<T>;
 
 /**
@@ -115,8 +111,8 @@ type GetArgType<T extends ArgType> =
           ? null
           : T extends 'undefined'
             ? undefined
-            : T extends AnyClass
-              ? InstanceType<T>
+            : T extends ClassOf
+              ? InstanceOf<T>
               : never;
 
 // Helper type to get the inferred type from a parameter definition, accounting for lazy

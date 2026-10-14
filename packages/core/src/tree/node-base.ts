@@ -163,23 +163,26 @@ function sourceRootOf(node: Node): Rules | undefined {
 }
 
 /**
- * A class, abstract or concrete, whose instances are `T`. Declared here rather
- * than imported from type-fest so core's published declarations import only
- * packages core depends on.
+ * Any class, abstract or concrete, whose instances are `T`. Declared in core
+ * rather than imported from type-fest so core's published declarations import
+ * only packages core depends on.
  *
  * The argument list is `never`: every constructor accepts it, so every class
  * whose instances are `T` matches whatever its own constructor takes.
  */
-type AbstractClass<T> = (abstract new (...args: never) => T) & { prototype: Pick<T, keyof T> };
+export type ClassOf<T = unknown> = abstract new (...args: never) => T;
 
 /*
- * The instance and argument types of an `AbstractClass`. lib's `InstanceType`
- * and `ConstructorParameters` cannot be used: they match a constructor that
+ * The instance and argument types of a `ClassOf`. lib's `InstanceType` and
+ * `ConstructorParameters` cannot be used: they match a constructor that
  * accepts `any` arguments, which a `never`-argument constructor does not, so
- * they degrade to `any` / `never` for the constraint inside `defineType`.
+ * on a generic `ClassOf` they degrade to `any` / `never`.
  */
-type InstanceOf<C> = C extends abstract new (...args: never) => infer I ? I : never;
+export type InstanceOf<C> = C extends ClassOf<infer I> ? I : never;
 type ArgumentsOf<C> = C extends abstract new (...args: infer A) => unknown ? A : never;
+
+/** A class whose prototype `defineType` stamps with the node type. */
+type AbstractClass<T> = ClassOf<T> & { prototype: Pick<T, keyof T> };
 
 export const defineType = <
   V = never,
