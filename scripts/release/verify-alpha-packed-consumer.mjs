@@ -134,11 +134,16 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
   /*
    * MIT requires the notice to travel with every copy. Packages without their
    * own LICENSE get the workspace root's from `pnpm pack`/`pnpm publish`;
-   * check the tarball rather than trusting that implicit copy.
+   * check the tarball rather than trusting that implicit copy. No shell: the
+   * path goes to tar as one argument, and Windows tar ends lines with CRLF.
    */
-  const listing = spawnSync('tar', ['-tzf', tarball], { encoding: 'utf8', shell: process.platform === 'win32' });
+  const listing = spawnSync('tar', ['-tzf', tarball], { encoding: 'utf8' });
   assert(
-    listing.status === 0 && listing.stdout.split('\n').includes('package/LICENSE'),
+    !listing.error && listing.status === 0,
+    `${pkg.name}: cannot list ${tarball}: ${listing.error?.message ?? listing.stderr}`
+  );
+  assert(
+    listing.stdout.split(/\r?\n/u).includes('package/LICENSE'),
     `${pkg.name}: packed tarball has no LICENSE`
   );
 }
