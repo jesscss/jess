@@ -160,7 +160,7 @@ export {
   withAuthoredSeparators,
   withTriviaGaps
 } from './ast/css-grammar-helpers.js';
-export type { GuardNode } from './ast/guard.js';
-export { inParens } from './ast/guard.js';
+export type { GuardNode } from './ast/guard-node.js';
+export { inParens } from './ast/guard-node.js';
 export type { CallArg } from './ast/mixin-dispatch.js';
 export type { BareVariableRejection, NthArgument } from './ast/css-grammar-helpers.js';
