@@ -15,7 +15,7 @@
     "emitError": 0
   },
   "emittedBytes": 607124,
-  "aggregate": "c0a99b4953d30e7dccd30075923e31cbddcbefb757f67c439b0bfad5174f0f50",
+  "aggregate": "25cf8987791c413ae43be8e2846bb7bd8da37975c88b72eca1ff9704f45a388d",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -189,7 +189,7 @@
       "bucket": "repo",
       "status": "ok",
       "bytes": 670,
-      "fingerprint": "2f9c712e4506e453"
+      "fingerprint": "1c68833d35d993e0"
     },
     "repo/packages/jess/test/files/simple.css": {
       "bucket": "repo",
