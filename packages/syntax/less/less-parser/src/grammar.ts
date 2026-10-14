@@ -250,10 +250,7 @@ type LessRules = {
   CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
-  VarFallbackGroup: Combinator<readonly CustomValuePart[]>;
   CustomAtKeywordText: Combinator<string>;
-  VarFallbackInnerPart: Combinator<CustomValuePart>;
-  VarFallbackPart: Combinator<CustomValuePart>;
   VarFallback: Combinator<ValueNode>;
   VarFunction: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
@@ -2568,6 +2565,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => customPartsFromChildren(children)
   );
+  /* A typed at-keyword (`@media`) in a `var()` fallback: text, never a variable. */
+  const CustomAtKeywordText = node(
+    'CustomAtKeywordText',
+    g.CustomValueAtKeyword,
+    children => requireToken(children[0]).value
+  );
+
+  /*
+   * A bare `@name` in the custom-value token stream. In a custom-property value
+   * it is text, written as authored (ledger P2). In an ordinary declaration's
+   * `var()` fallback — the one context that reads the same parts under
+   * `less-var-fallback` (`VarFallback`) — a Less variable is read there as in
+   * any argument, and a typed at-keyword (`@media`) stays text (ledger P2,
+   * owner 2026-10-09: "it's a CSS function"). One family, one gated arm.
+   */
+  const customAtName: Combinator<CustomValuePart> = choice(
+    {
+      gate: state => state === 'less-var-fallback',
+      combinator: choice(g.CustomAtKeywordText, g.VariableReference)
+    },
+    g.CustomValueAtName
+  );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     BacktickJavaScript,
@@ -2575,7 +2594,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
     g.CustomGroup,
-    g.CustomValueAtName
+    customAtName
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
@@ -2584,14 +2603,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
     g.CustomGroup,
-    g.CustomValueAtName
+    customAtName
   );
-  /*
-   * The value runs under comment-only trivia, so a comment written before its
-   * first part is inside its span. One written after its last part
-   * (`--x: red /* c *\/;`) is the comment run its span ends at; the writer
-   * keeps both in place (ledger F12).
-   */
   const CustomValue = node(
     'CustomValue',
     parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
@@ -2606,13 +2619,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // same one the at-rule prelude custom-property branch produces for the
   // identical token in an at-rule header.
   /*
-   * Overrides the CSS base's `var()` fallback slot, and only that slot. In an
-   * ordinary declaration `var()` is a CSS function, so its fallback is an
-   * argument, and a Less variable is read there as in any argument (ledger P2,
-   * owner 2026-10-09). The fallback is otherwise the custom-property token
-   * stream: `@{}` interpolation resolves and nothing computes. A typed
-   * at-keyword (`@media`) stays text. Inside a custom-property value the whole
-   * value, a `var()` included, is `CustomValue` text.
+   * Overrides the CSS base's `var()` fallback slot, and only that slot. The
+   * fallback is the custom-property token stream (`CustomPart`), read under
+   * the `less-var-fallback` context, where a Less variable is read as in any
+   * argument (`customAtName`); its end is trimmed at the `)`.
    *
    * BLOCKED from overriding only the slot: routing `var(` to the inherited css
    * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
@@ -2621,46 +2631,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * The gap after the comma is the custom-property value's own gap, so a `//`
    * that opens the fallback is value text (see CustomDeclaration).
    */
-  const VarFallbackGroup = node(
-    'VarFallbackGroup',
-    parser(
-      { trivia: customValueCommentTrivia },
-      choice(
-        sequence(literal('('), many(g.VarFallbackInnerPart), literal(')')),
-        sequence(literal('['), many(g.VarFallbackInnerPart), literal(']')),
-        sequence(literal('{'), many(g.VarFallbackInnerPart), literal('}'))
-      )
-    ),
-    children => customPartsFromChildren(children)
-  );
-  const CustomAtKeywordText = node(
-    'CustomAtKeywordText',
-    g.CustomValueAtKeyword,
-    children => requireToken(children[0]).value
-  );
-  const VarFallbackInnerPart: Combinator<CustomValuePart> = choice(
-    g.Interpolation,
-    BacktickJavaScript,
-    g.CustomValueInnerContent,
-    g.CustomValueSingleQuoted,
-    g.CustomValueDoubleQuoted,
-    g.VarFallbackGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
-  );
-  const VarFallbackPart: Combinator<CustomValuePart> = choice(
-    g.Interpolation,
-    BacktickJavaScript,
-    g.CustomValueOuterContent,
-    g.CustomValueSingleQuoted,
-    g.CustomValueDoubleQuoted,
-    g.VarFallbackGroup,
-    g.CustomAtKeywordText,
-    g.VariableReference
-  );
   const VarFallback = node(
     'VarFallback',
-    parser({ trivia: customValueCommentTrivia }, many(g.VarFallbackPart)),
+    parser({ trivia: customValueCommentTrivia }, withCtx('less-var-fallback', many(g.CustomPart))),
     (children, _fields, span, _rawChildren, triviaLog) => trimCustomValueEnd(withSourceSpan(
       customValueFromParts(customPartsFromChildren(children), triviaLog),
       span
@@ -5586,10 +5559,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomInnerPart,
     CustomGroup,
     CustomValue,
-    VarFallbackGroup,
     CustomAtKeywordText,
-    VarFallbackInnerPart,
-    VarFallbackPart,
     VarFallback,
     VarFunction,
     CustomPropertyValue,
