@@ -86,3 +86,22 @@ describe('a name a & builds', () => {
       .resolves.toEqual(same('.t,\n.a__el,\n.b__el {\n  m: 1;\n}\n'));
   });
 });
+
+/*
+ * A `&` is the parser's parent-reference token, which opens its token (`&`, `&__el`).
+ * An escaped `\&` is a character of an identifier (CSS Syntax 3 §4.3.7), so `.a\&b` is the
+ * class `a&b`: no parent reference, no name built, in every dialect (SEMANTIC-INVARIANTS 4).
+ */
+describe('an escaped \\& in a name', () => {
+  for (const extension of ['.less', '.scss', '.jess']) {
+    it(`is a character of the name, not a parent reference (${extension})`, async () => {
+      await expect(everyMode('.p { .a\\&b { c: d; } }', extension))
+        .resolves.toEqual({ nested: '.p {\n  .a\\&b {\n    c: d;\n  }\n}\n', native: '.p .a\\&b {\n  c: d;\n}\n', compact: '.p .a\\&b {\n  c: d;\n}\n' });
+    });
+  }
+
+  it('is kept beside a parent reference in the same selector', async () => {
+    await expect(render('.p { .a\\&b & { c: d; } &-x\\&y { e: f; } }', 'native'))
+      .resolves.toBe('.a\\&b .p {\n  c: d;\n}\n.p-x\\&y {\n  e: f;\n}\n');
+  });
+});

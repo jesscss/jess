@@ -27,7 +27,7 @@ import {
   textSimple
 } from './ir.js';
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
-import { pseudoJoin, textHoldsParentRef } from '../nodes.js';
+import { pseudoHasAmpersand, pseudoJoin, textHoldsParentRef } from '../nodes.js';
 import type { PseudoSelector, SimpleToken } from '../nodes.js';
 import { irEndsWithPseudoElement, isUserActionPseudoClass, tokenPseudoElement } from '../is-grouping.js';
 import { leadsWithElement, placeComplex } from './conflict.js';
@@ -63,16 +63,24 @@ function joinedSimple(text: string, ampToken: string, tail: Simple | undefined):
   return textSimple(text, undefined, src);
 }
 
-/** A text token holding a parent reference (its kind decides, `../nodes.ts`). */
+/**
+ * A text token holding a parent reference: the parser's `&` token (`../nodes.ts`
+ * `textHoldsParentRef`), or a pseudo whose selector argument holds one, read from its
+ * structure (`:not(.c &)`).
+ */
 function holdsAmp(s: Simple): boolean {
-  return s.t === 'text' && textHoldsParentRef(s.text);
+  if (s.t !== 'text') {
+    return false;
+  }
+  const pseudo = pseudoWithArgs(s);
+  return pseudo === null ? textHoldsParentRef(s.text) : pseudoHasAmpersand(pseudo);
 }
 
 export function branchHasAmp(b: Branch): boolean {
   for (const seg of b.segments) {
     for (const s of seg.compound.value) {
       if (s.t === 'text') {
-        if (textHoldsParentRef(s.text)) {
+        if (holdsAmp(s)) {
           return true;
         }
       } else if (s.branches.some(branchHasAmp)) {
@@ -172,7 +180,9 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       continue;
     }
     if (parentMultiSeg && compoundHasAmp(seg.compound.value)) {
-      if (!place || !placeFusedAmp(seg, head, parent, outSegs, outBnd)) {
+      if (place) {
+        placeFusedAmp(seg, head, parent, outSegs, outBnd);
+      } else {
         spliceFusedAmp(seg, parent, outSegs, outBnd);
       }
       continue;
@@ -214,7 +224,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       const parentValue = parent.segments[0]!.compound.value;
       value.push(s.text === '&'
         ? textSimple(parentStr, undefined, parent.segments[0]!.compound)
-        : joinedSimple(s.text.split('&').join(parentStr), s.text, parentValue.length === 1 ? parentValue[0] : undefined));
+        : joinedSimple(parentStr + s.text.slice(1), s.text, parentValue.length === 1 ? parentValue[0] : undefined));
       if (ref === -1) {
         ref = at;
         refEnd = value.length;
@@ -348,21 +358,17 @@ function trailingUserAction(value: readonly Simple[], at: number): number {
  * (`.c .q&` → `.c .q:is(.b .p)`), as is the first where the parent's last compound and the
  * simples before the `&` both hold an element selector (`div&` under `.b span`). A `&-x`
  * stands for the parent with `-x` continuing its last simple ({@link namedParent}). A pseudo
- * whose argument holds a `&` composes that argument ({@link withParent}). False, writing
- * nothing, for a token holding a `&` after other text (`.q&` read as one token), which keeps
- * {@link spliceFusedAmp}. A segment holding the child's own simples is own-local
- * (`bnd = 0`); a parent compound written alone keeps the parent's origin + 1.
+ * whose argument holds a `&` composes that argument ({@link withParent}). A segment holding
+ * the child's own simples is own-local (`bnd = 0`); a parent compound written alone keeps
+ * the parent's origin + 1.
  */
-function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs: SelectorPart[], outBnd: number[]): boolean {
+function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs: SelectorPart[], outBnd: number[]): void {
   const value = seg.compound.value;
   let at = -1;
   for (let p = 0; p < value.length; p++) {
     const s = value[p]!;
     if (s.t !== 'text' || !textHoldsParentRef(s.text) || pseudoWithArgs(s) !== null) {
       continue;
-    }
-    if (s.text.charCodeAt(0) !== 0x26 /* & */ || s.text.indexOf('&', 1) !== -1) {
-      return false;
     }
     if (head && at === -1) {
       at = p;
@@ -377,7 +383,7 @@ function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs
   if (named === null || ps === undefined || (lead && leadsWithElement(simpleText(ps[last]!.compound.value[0]!), 0))) {
     outSegs.push({ combinator: seg.combinator, compound: { value: withParentUnits(value, parent) } });
     outBnd.push(0);
-    return true;
+    return;
   }
   const others: Simple[] = [];
   for (let p = 0; p < trailing; p++) {
@@ -400,7 +406,6 @@ function placeFusedAmp(seg: SelectorPart, head: boolean, parent: Branch, outSegs
   }
   outSegs.push(placed[last]!);
   outBnd.push(others.length > 0 || named !== parent ? 0 : bndAt(parent, last) + 1);
-  return true;
 }
 
 /**
@@ -511,10 +516,10 @@ function namedParent(parent: Branch, s: Simple): Branch {
 
 /**
  * A `&` fused into `seg`'s compound under a parent of several compounds that ends with a
- * pseudo-element (or a token holding a `&` after other text), spliced as the serializer
- * writes that parent's text in place (ledger X5; the parent cannot sit in `:is()`, O17):
- * the simples before the `&` join the parent's first compound, the parent's inner
- * compounds follow, and the simples after it join the parent's last compound. A suffix
+ * pseudo-element it cannot keep last ({@link pseudoElementSplits}), spliced as the
+ * serializer writes that parent's text in place (ledger X5; the parent cannot sit in
+ * `:is()`, O17): the simples before the `&` join the parent's first compound, the parent's
+ * inner compounds follow, and the simples after it join the parent's last compound. A suffix
  * glued to the `&` token (`&-foo`) continues the parent's last simple
  * ({@link joinedSimple}). A segment holding any of the child's own simples is own-local
  * (`bnd = 0`); a parent compound spliced alone keeps the parent's origin + 1.
@@ -526,36 +531,31 @@ function spliceFusedAmp(seg: SelectorPart, parent: Branch, outSegs: SelectorPart
   let value: Simple[] = [];
   let own = false;
   for (const s of seg.compound.value) {
-    if (!holdsAmp(s)) {
-      value.push(cloneSimple(s));
+    if (!holdsAmp(s) || pseudoWithArgs(s) !== null) {
+      value.push(withParent(s, parent));
       own = true;
       continue;
     }
+
+    /* The token opens with its `&` ({@link holdsAmp}); what follows it is `suffix`. */
     const text = simpleText(s);
-    const parts = text.split('&');
-    if (parts[0]!.length > 0) {
-      value.push(textSimple(parts[0]!));
-      own = true;
+    for (const p of ps[0]!.compound.value) {
+      value.push(cloneSimple(p));
     }
-    for (let i = 1; i < parts.length; i++) {
-      for (const p of ps[0]!.compound.value) {
-        value.push(cloneSimple(p));
-      }
-      outSegs.push({ combinator, compound: { value } });
-      outBnd.push(own ? 0 : bndAt(parent, 0) + 1);
-      for (let k = 1; k < last; k++) {
-        outSegs.push(cloneSeg(ps[k]!));
-        outBnd.push(bndAt(parent, k) + 1);
-      }
-      combinator = ps[last]!.combinator;
-      value = ps[last]!.compound.value.map(cloneSimple);
-      own = false;
-      const suffix = parts[i]!;
-      if (suffix.length > 0) {
-        const tail = value[value.length - 1]!;
-        value[value.length - 1] = joinedSimple(simpleText(tail) + suffix, text, tail);
-        own = true;
-      }
+    outSegs.push({ combinator, compound: { value } });
+    outBnd.push(own ? 0 : bndAt(parent, 0) + 1);
+    for (let k = 1; k < last; k++) {
+      outSegs.push(cloneSeg(ps[k]!));
+      outBnd.push(bndAt(parent, k) + 1);
+    }
+    combinator = ps[last]!.combinator;
+    value = ps[last]!.compound.value.map(cloneSimple);
+    own = false;
+    const suffix = text.slice(1);
+    if (suffix.length > 0) {
+      const tail = value[value.length - 1]!;
+      value[value.length - 1] = joinedSimple(simpleText(tail) + suffix, text, tail);
+      own = true;
     }
   }
   outSegs.push({ combinator, compound: { value } });
@@ -789,7 +789,7 @@ function stripRootAmp(b: Branch): Branch | null {
         value.push(cloneSimple(s));
         continue;
       }
-      const text = textHoldsParentRef(s.text) ? s.text.split('&').join('') : s.text;
+      const text = textHoldsParentRef(s.text) ? s.text.slice(1) : s.text;
       if (text.length > 0) {
         value.push(text === s.text ? cloneSimple(s) : textSimple(text));
       }

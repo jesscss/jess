@@ -9845,7 +9845,7 @@ function resolveTokenAmp(
     }
     return parents.map((p, i) => {
       const kind = kinds === null ? PARENT_AS_WRITTEN : kinds[i]!;
-      const written = text.split('&').join(p);
+      const written = p + text.slice(1);
       return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && glued) ? parentUnit(p, written, kind) : written;
     });
   });
@@ -10153,20 +10153,24 @@ function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Fr
 }
 
 /**
- * Whether an attribute token of `c` holds a `&`: attribute text, never a parent
- * reference ({@link textHoldsParentRef}), which the one-parent text splice would
- * replace, so such a branch takes the token-by-token walk. Allocates nothing.
+ * Whether a token of `c` holds a `&` that is a character of it, not a parent reference
+ * ({@link textHoldsParentRef}): attribute text (`[title="&"]`) or an escaped `\&`
+ * (`.a\&b`). The one-parent text splice would replace it, so such a branch takes the
+ * token-by-token walk. Allocates nothing.
  */
-function branchHasAttributeAmp(c: SelectorBranch): boolean {
+function branchHasTextAmp(c: SelectorBranch): boolean {
   if (c.type === 'ComplexSelector' || c.type === 'RelativeSelector' || c.type === 'CompoundSelector') {
     for (const part of c.value) {
-      if (typeof part !== 'string' && branchHasAttributeAmp(part)) {
+      if (typeof part !== 'string' && branchHasTextAmp(part)) {
         return true;
       }
     }
     return false;
   }
-  return c.type === 'SimpleSelector' && c.text?.charCodeAt(0) === 0x5B /* [ */ && c.text.includes('&');
+  if (c.type === 'PseudoSelector' && c.args !== null) {
+    return c.args.selectors.some(branchHasTextAmp);
+  }
+  return c.type === 'SimpleSelector' && c.text !== null && c.text.indexOf('&', 1) !== -1;
 }
 
 /** Compose ONE child complex over ALL `parents`. A MULTI-parent `&`-bearing child
@@ -10188,7 +10192,7 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
     return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
       parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
   }
-  if ((parents.length >= 2 || branchHasAttributeAmp(child) || ((ampNeedsPlacement(child) || (flags !== undefined && endsAfterPseudoElement(child))) && parentKind(parents[0]!, flags === undefined ? PSEUDO_NONE : flags[0]!) !== PARENT_AS_WRITTEN))
+  if ((parents.length >= 2 || branchHasTextAmp(child) || ((ampNeedsPlacement(child) || (flags !== undefined && endsAfterPseudoElement(child))) && parentKind(parents[0]!, flags === undefined ? PSEUDO_NONE : flags[0]!) !== PARENT_AS_WRITTEN))
     && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
@@ -12787,7 +12791,7 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: EvalCt
       const sim = tokens[i]!;
       if (text !== undefined && textHoldsParentRef(text) && !(sim.type === 'PseudoSelector'
         ? pseudoHasAmpersand(sim)
-        : sim.interp?.parts.some(part => 'lit' in part && part.lit.includes('&')) === true)) {
+        : sim.interp?.parts.some(part => 'lit' in part && textHoldsParentRef(part.lit)) === true)) {
         return null;
       }
     }
@@ -15903,7 +15907,7 @@ function branchBuildsName(c: SelectorBranch): boolean {
       const interp = sim.interp?.parts;
       for (let p = 0; interp !== undefined && p < interp.length; p++) {
         const lit = interp[p]!;
-        if ('lit' in lit && lit.lit.charCodeAt(0) !== 0x5B /* [ */ && gluesName(lit.lit, p + 1 < interp.length, next)) {
+        if ('lit' in lit && textHoldsParentRef(lit.lit) && gluesName(lit.lit, p + 1 < interp.length, next)) {
           return true;
         }
       }
@@ -15913,16 +15917,12 @@ function branchBuildsName(c: SelectorBranch): boolean {
 }
 
 /**
- * Whether a `&` in `text` has a name glued after it: a name code point, or, at the end
- * of `text`, an interpolation (`more`) or the next token's name ({@link continuesName}).
+ * Whether the `&` that opens `text` ({@link textHoldsParentRef}) has a name glued after
+ * it: a name code point, or, at the end of `text`, an interpolation (`more`) or the
+ * next token's name ({@link continuesName}).
  */
 function gluesName(text: string, more: boolean, next: SimpleToken | undefined): boolean {
-  for (let at = text.indexOf('&'); at !== -1; at = text.indexOf('&', at + 1)) {
-    if (at + 1 < text.length ? isNameCode(text.charCodeAt(at + 1)) : more || continuesName(next)) {
-      return true;
-    }
-  }
-  return false;
+  return text.length > 1 ? isNameCode(text.charCodeAt(1)) : more || continuesName(next);
 }
 
 /**

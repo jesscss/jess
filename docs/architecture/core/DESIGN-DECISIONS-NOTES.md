@@ -51,6 +51,8 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 
 - 2026-10-09 — derivation (agent, 2026-10-09) from *"how do you know it's a prefix? that's why we can't do that"* (owner 2026-10-09): In `.fruit-cap-&` over an ident-led parent, `.fruit-cap-` is a complete class and the `&` is a parent reference, as in `.active&`. Only a suffix glued after a `&` builds a name.
 
+- 2026-10-09 — implementation note (agent, 2026-10-09): a parent reference is the parser's `&` token, which opens the token it builds (`&`, `&__el`, the literal `&` of `&@{x}`; `nodes.ts` `textHoldsParentRef`). Any other `&` in a token is a character of it — attribute text or an escaped `\&` (`.a\&b` is the class `a&b`, CSS Syntax 3 §4.3.7) — so it builds no name and is never substituted; before, the name-building rise-out read any `&` in a token's text, and `.p { .a\&b {} }` was written `.a\.pb` in nested output in every dialect (Chrome 152: that matches `class="a.pb"`, not `class="a&b"`). Pinned in `packages/jess/test/less/ampersand-name-build.test.ts`.
+
 ## J16
 
 - 2026-10-09 — implementation note, moved from the row: The text value carries the group in its `groups` field (`value-eval.ts` `Any.groups`; `emitValue`/`writtenText` write it, `readText` reads without it).
