@@ -254,11 +254,14 @@ const SCSS_DOC_CORPUS: string[] = [
   '@media (min-width: $w) { .a { display: block; } }',
   '// line comment\n.a { color: red; } /* block */',
   '.a { .b { .c { color: red } } }',
-  '@if true { .a { color: red; } } @else { .b { color: blue; } }'
+  '@if true { .a { color: red; } } @else { .b { color: blue; } }',
+  '.a { color: red; }\n\n  ',
+  '.a { color: red; }\n/* c */\n',
+  '.a { color: red; }\n// c\n'
 ];
 
 describe('@jesscss/scss-parser/cst — parseScssDoc structural parity', () => {
-  it('parseScssDoc().tree (absolutized) equals parseScssCst().tree across a corpus', () => {
+  it('parseScssDoc() matches parseScssCst() (tree and leftover input) across a corpus', () => {
     for (const input of SCSS_DOC_CORPUS) {
       const oneShot = parseScssCst(input);
       const doc = parseScssDoc(input);
@@ -269,6 +272,9 @@ describe('@jesscss/scss-parser/cst — parseScssDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(oneShot.unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseScssCst(`${input}\n`).unconsumedFrom);
     }
   });
 });

@@ -112,8 +112,8 @@ MS lint rules with default levels (`src/services/lintRules.ts`):
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Document format | ✓ `format()` with rich options (JS-Beautify based) | ✓ `formatDocument` via core printer (`toTrimmedString`), conservative, whole-document only | Shallower; no range format, few options | P2 |
-| Range / on-type format | partial | ✗ | Missing | P2 |
+| Document format | ✓ `format()` with rich options (JS-Beautify based) | ✗ Not provided | Needs a printer that reads the parse tree | P2 |
+| Range / on-type format | partial | ✗ Not provided | Same | P2 |
 
 ### Structure
 
@@ -157,7 +157,7 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    context, with argument snippets for `:nth-*`. Pure data + a selector-context
    check (reuse the brace-depth scanner already in `getCompletions`).
 4. ✅ **DONE (SCSS `@include` + Less `.foo()` calls).** **SCSS/Less mixin completions.** The declared-mixin inventory already exists
-   (`cstDeclaredSymbols().mixins`, used for did-you-mean). Surface it as
+   (`cstDeclaredSymbols().mixins`). Surface it as
    completions in `@include ` (scss) / `.` call context (less) — symmetric to the
    existing `cstVariableNames` path.
 5. ✅ **DONE.** **`!important`** after a value — trivial keyword completion; near-zero cost.
@@ -215,11 +215,9 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 15. ✅ **DONE.** SCSS placeholder `%name` completions; interpolation-context
     completions (Less `@{…}`, Jess `$[…]`; SCSS `#{$x}` already flowed through).
 16. ✅ **DONE.** `var()` custom-property completions mined across the document + imports.
-17. ✅ **DONE.** Region-comment folding (`/* #region */`), range formatting (formats
-    the top-level rules the selection intersects), and `setDataProviders`-style
+17. ✅ **DONE.** Region-comment folding (`/* #region */`) and `setDataProviders`-style
     custom-data extensibility (custom properties, at-rules, and pseudos →
     completion, hover, and shared CSS diagnostics).
-    *Remaining niche:* richer format options (indent size, etc.).
 18. ✅ **DONE.** TypeScript-style completion details/docs for metadata-backed CSS
     property, property-value, pseudo selector, and at-rule completions, plus
     synthetic CSS/value/dialect completions that Microsoft also surfaces as

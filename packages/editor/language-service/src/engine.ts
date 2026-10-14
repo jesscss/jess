@@ -42,8 +42,6 @@ import {
   MarkupKind,
   Position,
   Range,
-  CodeAction,
-  CodeActionContext,
   DocumentLink,
   WorkspaceEdit,
   SelectionRange,
@@ -419,7 +417,7 @@ function escapeRegExp(s: string): string {
  * the `primary` matches but inside `@primary-alt` / `@primaryX` it does not. This
  * is how a node-level span (a reference `@primary`, or a whole declaration
  * `@primary: red;`, or a mixin block `.button() { … }`) is narrowed to just the
- * name token — rename edits and did-you-mean fixes only touch the identifier and
+ * name token — rename edits only touch the identifier and
  * leave the sigil / combinator / punctuation in place.
  */
 function findIdentInSpan(text: string, start: number, end: number, ident: string): { start: number; end: number } | null {
@@ -1079,7 +1077,8 @@ export type JessLanguageServiceEngine = {
   /** Test/diagnostic hook (not LSP): incremental CST tree + edit-path counters. */
   _debugState(uri: string): { cstTree: CssCstNode | null; editApplied: number; fullRebuild: number };
 
-  getCompletions(uri: string, position: Position): CompletionList;
+  /** `triggerCharacter` is the LSP completion context's, when a typed character opened the list. */
+  getCompletions(uri: string, position: Position, triggerCharacter?: string): CompletionList;
   getHover(uri: string, position: Position): Hover | null;
   findDefinition(uri: string, position: Position): Location | null;
   findReferences(uri: string, position: Position): Location[];
@@ -1090,9 +1089,6 @@ export type JessLanguageServiceEngine = {
   getDiagnostics(uri: string): Diagnostic[];
   getFoldingRanges(uri: string): FoldingRange[];
   getSelectionRanges(uri: string, positions: Position[]): SelectionRange[];
-  getCodeActions(uri: string, range: Range, context: CodeActionContext): CodeAction[];
-  formatDocument(uri: string): TextEdit[];
-  formatRange(uri: string, range: Range): TextEdit[];
   setDataProviders(data: CustomCssData[]): void;
   getDocumentLinks(uri: string): DocumentLink[];
   getSemanticTokens(uri: string): SemanticTokens;
@@ -1113,62 +1109,6 @@ function asStringName(value: unknown): string {
     }
   }
   return String(value ?? '');
-}
-
-/** Small CST/source formatter for editor requests. It deliberately formats only
- * structural punctuation; semantic rendering belongs to the compiler. */
-function formatStyleSource(source: string): string {
-  let out = '';
-  let indent = 0;
-  let pendingSpace = false;
-  const write = (text: string) => {
-    out += text;
-  };
-  const newline = () => {
-    out = out.replace(/[ \t]+$/, '');
-    if (!out.endsWith('\n')) {
-      write('\n');
-    }
-    write('  '.repeat(indent));
-  };
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i]!;
-    if (/\s/.test(ch)) {
-      pendingSpace = true;
-      continue;
-    }
-    if (ch === '{') {
-      out = out.replace(/[ \t]*$/, '');
-      write(' {');
-      indent++;
-      newline();
-      pendingSpace = false;
-    } else if (ch === '}') {
-      indent = Math.max(0, indent - 1);
-      out = out.replace(/[ \t\n]*$/, '');
-      if (out.length > 0 && !out.endsWith('{') && !out.endsWith('}') && !out.endsWith(';')) {
-        write(';');
-      }
-      write('\n' + '  '.repeat(indent) + '}');
-      pendingSpace = false;
-    } else if (ch === ';') {
-      out = out.replace(/[ \t]*$/, '');
-      write(';');
-      newline();
-      pendingSpace = false;
-    } else if (ch === ':') {
-      out = out.replace(/[ \t]*$/, '');
-      write(': ');
-      pendingSpace = false;
-    } else {
-      if (pendingSpace && out.length > 0 && !out.endsWith('\n') && !out.endsWith(' ') && !out.endsWith('(')) {
-        write(' ');
-      }
-      write(ch);
-      pendingSpace = false;
-    }
-  }
-  return out.trimEnd();
 }
 
 export function createEngine(): JessLanguageServiceEngine {
@@ -1282,7 +1222,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
   // Cached imported documents (loaded from disk)
   const importedDocs = new Map<string, TrackedDoc>();
-  let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
+  const defaultDiagnosticSeverities: Readonly<Record<string, DiagnosticSeverity>> = {
 
     /*
      * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the
@@ -1346,6 +1286,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
 
   };
+  let semanticDiagnosticSeverities = defaultDiagnosticSeverities;
   type SpecificityTuple = readonly [number, number, number];
   type SemanticDiagnosticOptions = {
     readonly notation?: string;
@@ -1428,11 +1369,11 @@ export function createEngine(): JessLanguageServiceEngine {
     return options;
   }
 
-  function readValidProperties(value: unknown): Set<string> | null {
-    if (!Array.isArray(value)) {
-      return null;
-    }
+  function readValidProperties(value: unknown): Set<string> {
     const names = new Set<string>();
+    if (!Array.isArray(value)) {
+      return names;
+    }
     for (const item of value) {
       if (typeof item !== 'string') {
         continue;
@@ -1851,8 +1792,9 @@ export function createEngine(): JessLanguageServiceEngine {
   return {
     configure(config) {
       /*
-       * Expected shape (from client settings):
-       * { diagnostics?: { severity?: Record<string, string>, options?: Record<string, object> } }
+       * `config` is the whole settings object, so each call replaces the previous
+       * one and anything it leaves out returns to its default:
+       * { diagnostics?: { severity?: Record<string, string>, options?: Record<string, object>, validProperties?: string[] } }
        * Example: { diagnostics: { severity: { "lint/unknown-property": "error" } } }
        */
       const diagnosticsObj = (config && typeof config === 'object' && 'diagnostics' in config)
@@ -1861,47 +1803,42 @@ export function createEngine(): JessLanguageServiceEngine {
       const severity = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'severity' in diagnosticsObj)
         ? diagnosticsObj.severity
         : undefined;
+      const severities: Record<string, DiagnosticSeverity> = { ...defaultDiagnosticSeverities };
       if (severity && typeof severity === 'object') {
-        const next: Record<string, DiagnosticSeverity> = { ...semanticDiagnosticSeverities };
         for (const [k, v] of Object.entries(severity)) {
           const key = diagnosticCodeForRuleName(k) ?? k;
           const parsed = parseSeverity(v);
           if (parsed === null) {
             /*
-             * off/ignore or invalid: delete so the rule is disabled (a missing
-             * key yields no severity at lookup-time, so the rule emits nothing).
+             * `off`/`ignore` remove the code, and a code with no severity emits
+             * nothing. Any other unrecognised value keeps the default.
              */
             if (v === 'off' || v === 'ignore') {
-              delete next[key];
+              delete severities[key];
             }
             continue;
           }
-          next[key] = parsed;
+          severities[key] = parsed;
         }
-        semanticDiagnosticSeverities = next;
       }
+      semanticDiagnosticSeverities = severities;
       const options = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'options' in diagnosticsObj)
         ? diagnosticsObj.options
         : undefined;
+      const nextOptions: Record<string, SemanticDiagnosticOptions> = {};
       if (options && typeof options === 'object') {
-        const next: Record<string, SemanticDiagnosticOptions> = { ...semanticDiagnosticOptions };
         for (const [k, v] of Object.entries(options)) {
           const parsed = readDiagnosticOptions(v);
-          if (parsed === undefined) {
-            delete next[k];
-          } else {
-            next[k] = parsed;
+          if (parsed !== undefined) {
+            nextOptions[k] = parsed;
           }
         }
-        semanticDiagnosticOptions = next;
       }
+      semanticDiagnosticOptions = nextOptions;
       const validProperties = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'validProperties' in diagnosticsObj)
         ? diagnosticsObj.validProperties
         : undefined;
-      const parsedValidProperties = readValidProperties(validProperties);
-      if (parsedValidProperties !== null) {
-        configuredValidProperties = parsedValidProperties;
-      }
+      configuredValidProperties = readValidProperties(validProperties);
     },
 
     open(uri, languageId, version, text) {
@@ -1920,6 +1857,11 @@ export function createEngine(): JessLanguageServiceEngine {
        */
       const tracked = get(uri);
       const oldText = tracked.document.getText();
+
+      // The manager also reports a document's text right after opening it.
+      if (text === oldText) {
+        return;
+      }
       const { from, to, replacement } = diffRange(oldText, text);
       applyContiguousEdit(tracked, from, to, replacement, text, version);
       updateImportGraph(uri, tracked);
@@ -1967,7 +1909,7 @@ export function createEngine(): JessLanguageServiceEngine {
       };
     },
 
-    getCompletions(uri, position) {
+    getCompletions(uri, position, triggerCharacter) {
       /*
        * CST-grounded for the syntactic paths (declared variables/mixins): reads
        * the tolerant CST (no AST reparse) so completion survives half-typed input.
@@ -1985,6 +1927,19 @@ export function createEngine(): JessLanguageServiceEngine {
       const cstTree = tracked.cstDoc?.tree;
       const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
       const lineBeforeCursor = text.slice(lineStart, offset);
+
+      /*
+       * Less `@{…}` and Jess `${…}` / `$[…]`. `{` and `[` are trigger characters
+       * only for these openers; typed anywhere else they get no list, which
+       * would otherwise open on every block and attribute selector.
+       */
+      const inInterpolation =
+        (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBeforeCursor))
+        || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBeforeCursor));
+      const openerTriggered = triggerCharacter === '{' || triggerCharacter === '[';
+      if (openerTriggered && !inInterpolation) {
+        return { isIncomplete: false, items: [] };
+      }
 
       const suggestions = suggestWithJess(text, tracked.lang, offset).map(s => String(s.nextTokenType).toLowerCase());
       const wantsAt = currentWord.startsWith('@') || suggestions.some(t => t.includes('at'));
@@ -2078,27 +2033,23 @@ export function createEngine(): JessLanguageServiceEngine {
        * names. (SCSS `#{$x}` already flows through the `$`-prefixed variable
        * path below.) Jess spells interpolation `${…}` in name, selector, and
        * string positions and keeps `$[…]` as the value-position lookup, so
-       * both openers are completion contexts.
+       * both openers are completion contexts. A list opened by typing `{` or `[`
+       * holds only these names, even when there are none.
        */
-      {
-        const inInterp =
-          (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBeforeCursor))
-          || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBeforeCursor));
-        if (inInterp && cstTree) {
-          for (const name of cstVariableNames(cstTree, document)) {
-            if (prefix && !name.toLowerCase().startsWith(prefix)) {
-              continue;
-            }
-            push(
-              name,
-              CompletionItemKind.Variable,
-              undefined,
-              languageCompletionInfo(name, `${languageLabel(tracked.lang)} variable`, tracked.lang, 'A variable available inside this interpolation.')
-            );
+      if (inInterpolation && cstTree) {
+        for (const name of cstVariableNames(cstTree, document)) {
+          if (prefix && !name.toLowerCase().startsWith(prefix)) {
+            continue;
           }
-          if (items.length > 0) {
-            return { isIncomplete: false, items };
-          }
+          push(
+            name,
+            CompletionItemKind.Variable,
+            undefined,
+            languageCompletionInfo(name, `${languageLabel(tracked.lang)} variable`, tracked.lang, 'A variable available inside this interpolation.')
+          );
+        }
+        if (items.length > 0 || openerTriggered) {
+          return { isIncomplete: false, items };
         }
       }
 
@@ -2135,7 +2086,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       /*
        * 2) SCSS mixin completions after `@include ` — reuses the CST declared-mixin
-       * inventory (same one the did-you-mean quick fix uses).
+       * inventory.
        */
       if (tracked.lang === 'scss' && /@include\s+[-_a-zA-Z0-9]*$/.test(lineBeforeCursor)) {
         const mixins = cstTree == null
@@ -2776,56 +2727,6 @@ export function createEngine(): JessLanguageServiceEngine {
       return cstSelectionRanges(tree, tracked.document, positions);
     },
 
-    getCodeActions(uri, _range, context) {
-      void uri;
-      void context;
-      return [];
-    },
-
-    formatDocument(uri) {
-      const tracked = get(uri);
-      const doc = tracked.document;
-      if (!tracked.cstDoc?.tree) {
-        return [];
-      }
-      let formatted = formatStyleSource(doc.getText());
-      if (!formatted.endsWith('\n')) {
-        formatted += '\n';
-      }
-      if (formatted === doc.getText() || formatted === doc.getText() + '\n') {
-        return [];
-      }
-      return [TextEdit.replace({
-        start: Position.create(0, 0),
-        end: doc.positionAt(doc.getText().length)
-      }, formatted)];
-    },
-
-    formatRange(uri, range) {
-      const tracked = get(uri);
-      const tree = tracked.cstDoc?.tree;
-      if (!tree) {
-        return [];
-      }
-      const doc = tracked.document;
-      const start = doc.offsetAt(range.start);
-      const end = doc.offsetAt(range.end);
-      const topLevelRules = buildCstIndex(tree).nodes.filter(({ node, start: nodeStart, end: nodeEnd }) =>
-        node.grammarType === 'Ruleset' && nodeStart < end && nodeEnd > start);
-      if (topLevelRules.length === 0) {
-        return [];
-      }
-      const from = Math.min(...topLevelRules.map(rule => rule.start));
-      const to = Math.max(...topLevelRules.map(rule => rule.end));
-      const formatted = topLevelRules
-        .map(rule => formatStyleSource(doc.getText().slice(rule.start, rule.end)))
-        .join('\n');
-      if (doc.getText().slice(from, to) === formatted) {
-        return [];
-      }
-      return [TextEdit.replace(toRange(doc, from, to), formatted)];
-    },
-
     setDataProviders(data) {
       customData = Array.isArray(data) ? data : [];
       rebuildCustomDataMaps();
@@ -2836,10 +2737,10 @@ export function createEngine(): JessLanguageServiceEngine {
       const doc = tracked.document;
       const text = doc.getText();
       const links: DocumentLink[] = [];
-      const tryResolveFileTarget = (rawTarget: string): string => {
+      const tryResolveFileTarget = (rawTarget: string): string | null => {
         const t = rawTarget.trim();
         if (!t) {
-          return t;
+          return null;
         }
         if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(t) || t.startsWith('file:')) {
           return t;
@@ -2855,9 +2756,9 @@ export function createEngine(): JessLanguageServiceEngine {
           basePath = null;
         }
 
-        // If we can't resolve, still return raw.
+        // A relative target in an unsaved buffer has nothing to resolve against.
         if (!basePath) {
-          return t;
+          return null;
         }
 
         // Strip query/hash for filesystem checks, but preserve for final URL.
@@ -2884,7 +2785,8 @@ export function createEngine(): JessLanguageServiceEngine {
         return String(pathToFileURL(finalPath));
       };
 
-      const pushLink = (startOffset: number, endOffset: number, target: string) => {
+      const pushLink = (startOffset: number, endOffset: number, rawTarget: string) => {
+        const target = tryResolveFileTarget(rawTarget);
         if (!target) {
           return;
         }
@@ -2895,7 +2797,7 @@ export function createEngine(): JessLanguageServiceEngine {
         }
         links.push({
           range: { start, end } as Range,
-          target: tryResolveFileTarget(target)
+          target
         });
       };
 

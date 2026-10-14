@@ -373,11 +373,13 @@ const CSS_DOC_CORPUS: string[] = [
   ':root { --x: 10px; } a { width: var(--x); }',
   '/* leading */\na { /* inner */ color: red; } /* trailing */',
   'a/**/{ color: red; }',
-  '@import "x.css";\n@font-face { font-family: F; src: url(f.woff2); }'
+  '@import "x.css";\n@font-face { font-family: F; src: url(f.woff2); }',
+  'a { color: red; }\n\n  ',
+  'a { color: red; }\n/* c */\n'
 ];
 
 describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
-  it('parseCssDoc().tree (absolutized) equals parseCssCst().tree across a corpus', () => {
+  it('parseCssDoc() matches parseCssCst() (tree and leftover input) across a corpus', () => {
     for (const input of CSS_DOC_CORPUS) {
       const oneShot = parseCssCst(input);
       const doc = parseCssDoc(input);
@@ -388,6 +390,9 @@ describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(oneShot.unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseCssCst(`${input}\n`).unconsumedFrom);
       expectNoModeLabels(oneShot.tree);
       expectNoModeLabels(abs);
     }

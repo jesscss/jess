@@ -3,8 +3,8 @@
  *
  * Pure functions that drive purely-syntactic language features off the tolerant,
  * incremental CST rather than the eval AST: semantic-token classification,
- * variable-name completion, and the declared-symbol inventory behind "did you
- * mean" code actions. Historically these ran on the eval AST (`buildJessIndex` +
+ * variable-name completion, and the declared-symbol inventory behind mixin
+ * completion. Historically these ran on the eval AST (`buildJessIndex` +
  * `node.type`), which dies on invalid input; the CST survives half-typed
  * documents, so these features keep working mid-edit.
  *
@@ -30,19 +30,17 @@ import { buildCstIndex, cstChildrenOf, cstHasTag } from './cst-analysis.js';
 
 export type JessLangLike = 'css' | 'less' | 'scss' | 'jess';
 
-// Keep in sync with the server semantic-token legend (and engine.ts).
+/*
+ * The server's semantic-token legend: a token's type is its index here. Only
+ * types `cstSemanticTokens` emits belong in it, and it emits no modifiers.
+ */
 export const SEMANTIC_TOKEN_TYPES = [
   'comment',
   'string',
-  'keyword',
-  'enumMember',
   'number',
   'operator',
   'function',
   'variable',
-  'property',
-  'type',
-  'class',
   'namespace'
 ] as const;
 
@@ -173,8 +171,8 @@ function classSelectorNameOf(slice: string): string | null {
 
 /**
  * Every declared variable and mixin (bare identifiers) in one document's CST.
- * Powers the "did you mean" quick-fix candidate pools without reparsing to the
- * eval AST, so the suggestions survive an otherwise-invalid document.
+ * Powers mixin completion without reparsing to the eval AST, so the suggestions
+ * survive an otherwise-invalid document.
  */
 export function cstDeclaredSymbols(root: CssCstNode, doc: TextDocument): { vars: Set<string>; mixins: Set<string> } {
   const index = buildCstIndex(root);
