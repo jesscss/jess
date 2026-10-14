@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+import { isPathInside, trustedFnsRealPath } from './trust.js';
 
 /**
  * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
@@ -80,6 +81,14 @@ export interface JsPluginOptions extends JavaScriptSandboxConfig {
    * `@plugin` loading can opt into the Less-compatible global shape.
    */
   runtimeApi?: 'module' | 'less';
+
+  /**
+   * Milliseconds a single worker request may run before it is abandoned and
+   * the worker is killed (see {@link REQUEST_TIMEOUT_MS}). Mainly a test seam
+   * for proving a runaway script is terminated without waiting the full
+   * default.
+   */
+  requestTimeoutMs?: number;
 }
 
 const SCRIPT_EXTENSIONS = new Set([
@@ -125,6 +134,14 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
 /**
+ * Consecutive unexpected worker deaths (with no successful reply between) after
+ * which the plugin stops auto-restarting and latches to `failed`. Bounds a
+ * worker that crashes on every start (a broken binary, a poisoned module that
+ * kills on load) instead of spin-restarting it forever.
+ */
+const MAX_WORKER_DEATHS = 3;
+
+/**
  * Environment variables that inject a Node.js debugger/inspector bootloader
  * into child processes (VS Code / Cursor "Auto Attach", `node --inspect`, etc.).
  *
@@ -157,11 +174,6 @@ export const sanitizeSpawnEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.P
   return clean;
 };
 
-const isPathInside = (candidatePath: string, rootPath: string): boolean => {
-  const rel = path.relative(rootPath, candidatePath);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-};
-
 const canonicalPath = (p: string): string => {
   try {
     return fs.realpathSync.native(p);
@@ -184,77 +196,6 @@ const normalizePermissionPath = (value: string | null): string | null => {
   return value;
 };
 
-const TRUSTED_PACKAGE_NAME = '@jesscss/fns';
-
-/**
- * Directory → whether its nearest `package.json` names the trusted package.
- * ponytail: process-lifetime cache; a manifest renamed mid-process is not re-read.
- */
-const trustedPackageDirs = new Map<string, boolean>();
-
-const isMissingFileError = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && 'code' in error
-  && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
-
-/**
- * Whether `dir` lies in the trusted package: its nearest `package.json` names
- * `@jesscss/fns`. Trust follows the package's NAME, never a path spelling, so a
- * user's own `…/packages/fns/` or `…/@jesscss/fns/` directory is not trusted
- * unless it really is that package. A `package.json` that exists but cannot be
- * read or parsed ends the walk untrusted; no `package.json` at all is untrusted.
- */
-const isInTrustedPackage = (dir: string): boolean => {
-  const visited: string[] = [];
-  let current = dir;
-  let trusted = false;
-  for (;;) {
-    const cached = trustedPackageDirs.get(current);
-    if (cached !== undefined) {
-      trusted = cached;
-      break;
-    }
-    visited.push(current);
-    let manifest: string | undefined;
-    try {
-      manifest = fs.readFileSync(path.join(current, 'package.json'), 'utf8');
-    } catch (error) {
-      if (!isMissingFileError(error)) {
-        break;
-      }
-    }
-    if (manifest !== undefined) {
-      try {
-        const parsed: unknown = JSON.parse(manifest);
-        trusted = typeof parsed === 'object'
-          && parsed !== null
-          && 'name' in parsed
-          && parsed.name === TRUSTED_PACKAGE_NAME;
-      } catch {
-        // Unparseable manifest: not trusted.
-      }
-      break;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  for (const visitedDir of visited) {
-    trustedPackageDirs.set(visitedDir, trusted);
-  }
-  return trusted;
-};
-
-const isFnsPath = (importPath: string): boolean => {
-  const normalized = importPath.replace(/\\/g, '/');
-  if (normalized === TRUSTED_PACKAGE_NAME || normalized.startsWith(`${TRUSTED_PACKAGE_NAME}/`)) {
-    return true;
-  }
-  return isInTrustedPackage(path.dirname(path.resolve(importPath)));
-};
 
 const isJsonValue = (value: unknown) => {
   try {
@@ -404,6 +345,16 @@ export class JsPlugin extends AbstractPlugin {
   private idleTimer: NodeJS.Timeout | undefined;
   private denoCommand: string | undefined;
 
+  /** Memoized ancestor-chain `node_modules` read roots (see installedPackageRoots). */
+  private packageRootsCache: string[] | undefined;
+
+  /**
+   * Consecutive unexpected worker deaths since the last successful reply. One
+   * crash self-heals (the next call restarts a clean worker); a worker that
+   * dies on every start latches the plugin to `failed` instead of spin-restarting.
+   */
+  private consecutiveWorkerDeaths = 0;
+
   /**
    * Variable names each legacy plugin function has been observed to read,
    * keyed by module+options+function. Prefetching them turns the steady-state
@@ -531,17 +482,54 @@ export class JsPlugin extends AbstractPlugin {
     return `/tmp/jd-${process.pid}-${Date.now()}-${rand}.sock`;
   }
 
+  /**
+   * The `node_modules` directories on `jsReadRoot`'s ancestor chain, each
+   * canonicalized. An installed dependency a sandboxed script legitimately reads
+   * resolves here — the project's own `node_modules`, and any higher one a
+   * package manager hoisted to or placed its store in (pnpm's `.pnpm` store
+   * lives under `<project>/node_modules`). Computed once; empty when no
+   * `jsReadRoot` is set, which denies every out-of-root read.
+   */
+  private installedPackageRoots(): string[] {
+    if (this.packageRootsCache !== undefined) {
+      return this.packageRootsCache;
+    }
+    const roots: string[] = [];
+    if (this.opts.jsReadRoot) {
+      let dir = canonicalPath(path.resolve(this.opts.jsReadRoot));
+      for (;;) {
+        roots.push(canonicalPath(path.join(dir, 'node_modules')));
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+          break;
+        }
+        dir = parent;
+      }
+    }
+    return (this.packageRootsCache = roots);
+  }
+
+  /**
+   * Whether an already-canonicalized `realPath` is a readable location: inside
+   * `jsReadRoot`, or inside one of the ancestor-chain `node_modules` directories.
+   * A bare `/node_modules/` substring anywhere on the machine is NOT enough — the
+   * matched directory must be anchored to `jsReadRoot`, so a sandboxed script
+   * cannot read files under an unrelated `node_modules` elsewhere on disk.
+   */
+  private isReadableRealPath(realPath: string): boolean {
+    const jsReadRoot = this.opts.jsReadRoot ? canonicalPath(path.resolve(this.opts.jsReadRoot)) : undefined;
+    if (jsReadRoot && isPathInside(realPath, jsReadRoot)) {
+      return true;
+    }
+    return this.installedPackageRoots().some(root => isPathInside(realPath, root));
+  }
+
   private isReadAllowed(value: string | null): boolean {
     const normalized = normalizePermissionPath(value);
     if (!normalized) {
       return false;
     }
-    const requestedPath = canonicalPath(path.resolve(normalized));
-    const jsReadRoot = this.opts.jsReadRoot ? canonicalPath(path.resolve(this.opts.jsReadRoot)) : undefined;
-    if (jsReadRoot && isPathInside(requestedPath, jsReadRoot)) {
-      return true;
-    }
-    return requestedPath.includes(`${path.sep}node_modules${path.sep}`);
+    return this.isReadableRealPath(canonicalPath(path.resolve(normalized)));
   }
 
   private isNetAllowed(value: string | null): boolean {
@@ -667,9 +655,22 @@ export class JsPlugin extends AbstractPlugin {
       }
       const err = new Error('Deno worker exited unexpectedly.');
       this.rejectAllPending(err);
-      if (this.runtimeState.status !== 'failed') {
-        this.runtimeState = { status: 'failed', error: err };
+      if (this.runtimeState.status === 'disposed') {
+        return;
       }
+
+      /*
+       * An unexpected exit (a script calling `Deno.exit()`, an OOM, a panic)
+       * must not brick the plugin: reset to `idle` so the next call starts a
+       * clean worker, exactly as the request-timeout path does. A worker that
+       * dies on every start would otherwise spin-restart forever, so after
+       * MAX_WORKER_DEATHS consecutive deaths with no successful reply in between
+       * we latch to `failed`. The counter resets on the next delivered reply.
+       */
+      this.consecutiveWorkerDeaths++;
+      this.runtimeState = this.consecutiveWorkerDeaths > MAX_WORKER_DEATHS
+        ? { status: 'failed', error: err }
+        : { status: 'idle' };
     });
     return new Promise<void>((resolve, reject) => {
       let stderrText = '';
@@ -722,7 +723,7 @@ export class JsPlugin extends AbstractPlugin {
     const socketPath = await this.startBroker();
     try {
       await this.startWorker(socketPath);
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.shutdown();
       throw err instanceof Error ? err : new Error(String(err));
     }
@@ -754,6 +755,9 @@ export class JsPlugin extends AbstractPlugin {
       }
       this.pending.delete(parsed.id);
       clearTimeout(pending.timeout);
+
+      // A delivered reply proves the worker is healthy, so clear the death streak.
+      this.consecutiveWorkerDeaths = 0;
       pending.resolve(parsed);
       if (this.pending.size === 0) {
         this.scheduleIdleShutdown();
@@ -790,14 +794,48 @@ export class JsPlugin extends AbstractPlugin {
     const payload: RpcRequest = { ...request, id };
     return await new Promise<RpcResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (!pending) {
+          return;
+        }
         this.pending.delete(id);
-        reject(new Error('Timed out waiting for Deno worker response.'));
-      }, REQUEST_TIMEOUT_MS);
+        pending.reject(new Error('Timed out waiting for Deno worker response.'));
+
+        /*
+         * A timeout means the worker is still running the request — a script
+         * that loops forever or hangs on a never-resolving await. Abandoning the
+         * promise would leave that work burning a CPU in the background. Tear the
+         * worker down (SIGKILL, so a script that traps SIGTERM cannot keep
+         * running) and let the next call spin up a fresh one.
+         */
+        this.abortRuntime(new Error('Deno worker killed after a request timed out.'));
+      }, this.opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
   }
 
+  /**
+   * Kill the worker and reset to idle after an abnormal event (a request
+   * timeout). Remaining in-flight calls are rejected with `reason`; a later
+   * call restarts a clean worker. SIGKILL because a sandboxed script may trap
+   * SIGTERM, and a synchronous runaway loop never services a signal handler.
+   */
+  private abortRuntime(reason: Error) {
+    this.shutdown();
+    this.rejectAllPending(reason);
+    if (this.runtimeState.status !== 'disposed') {
+      this.runtimeState = { status: 'idle' };
+    }
+  }
+
+  /**
+   * Tear the worker down. Always SIGKILL: the worker is a sandbox with no state
+   * worth flushing, and a sandboxed script can register a `SIGTERM` handler
+   * (`Deno.addSignalListener` needs no permission) to trap a graceful signal and
+   * keep background work — e.g. a spinning Web Worker — running. SIGKILL cannot
+   * be trapped, so idle and dispose teardown stop the process unconditionally.
+   */
   private shutdown() {
     this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
@@ -805,7 +843,7 @@ export class JsPlugin extends AbstractPlugin {
       this.worker.stdin.destroy();
       this.worker.stdout.destroy();
       this.worker.stderr.destroy();
-      this.worker.kill();
+      this.worker.kill('SIGKILL');
     }
     this.worker = undefined;
     if (this.brokerServer) {
@@ -831,20 +869,20 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   private assertAllowedPath(absoluteFilePath: string) {
-    const resolvedPath = path.resolve(absoluteFilePath);
     const jsReadRoot = this.opts.jsReadRoot ? path.resolve(this.opts.jsReadRoot) : undefined;
     if (!jsReadRoot) {
       return;
     }
-    if (isPathInside(resolvedPath, jsReadRoot)) {
-      return;
-    }
 
-    // pnpm layouts may resolve package files outside project root.
-    if (resolvedPath.includes(`${path.sep}node_modules${path.sep}`)) {
+    /*
+     * Anchored like isReadAllowed: inside jsReadRoot, or an ancestor-chain
+     * node_modules (pnpm store / hoisting live there) — never any node_modules
+     * elsewhere on the machine.
+     */
+    if (this.isReadableRealPath(canonicalPath(path.resolve(absoluteFilePath)))) {
       return;
     }
-    throw new Error(`Script path "${resolvedPath}" is outside jsReadRoot "${jsReadRoot}"`);
+    throw new Error(`Script path "${path.resolve(absoluteFilePath)}" is outside jsReadRoot "${jsReadRoot}"`);
   }
 
   async import(absoluteFilePath: string): Promise<Record<string, any>> {
@@ -852,7 +890,8 @@ export class JsPlugin extends AbstractPlugin {
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}"`);
     }
-    if (!isFnsPath(absoluteFilePath)) {
+    const fnsRealPath = trustedFnsRealPath(absoluteFilePath);
+    if (fnsRealPath === undefined) {
       this.assertAllowedPath(absoluteFilePath);
       await this.ensureRuntime();
       const modulePath = path.resolve(absoluteFilePath);
@@ -882,7 +921,20 @@ export class JsPlugin extends AbstractPlugin {
       }
       return moduleObject;
     }
-    const modulePath = pathToFileURL(path.resolve(absoluteFilePath)).href;
+
+    /*
+     * Trust boundary: everything above runs in the Deno sandbox. We reach here
+     * ONLY for a file whose realpath is inside the `@jesscss/fns` package this
+     * plugin itself resolved (`trustedFnsRealPath`), because that code is ours
+     * and must call compiler internals a sandboxed worker cannot reach. Any
+     * script a user imports — including one that names or symlinks itself
+     * `@jesscss/fns` — resolves to `undefined` and is sandboxed above.
+     *
+     * We import the CANONICAL realpath we just checked, not the lexical input,
+     * so the file loaded is the exact file whose trust we verified — a symlink
+     * component swapped after the check cannot redirect the load to other code.
+     */
+    const modulePath = pathToFileURL(fnsRealPath).href;
     const module = await import(modulePath);
     const safeModule: Record<string, any> = {};
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dynamic import returns any; entries are validated below
