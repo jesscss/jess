@@ -70,6 +70,14 @@ const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
 const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
 
 /*
+ * `IDENT_BOUNDARY` plus `(`: a word that ends where its identifier ends and is
+ * not glued to `(`. An identifier immediately followed by `(` is one
+ * `<function-token>` (css-syntax-3 §4.3.4), so the condition words below
+ * never match a glued `not(` / `and(` / `or(`.
+ */
+const IDENT_FUNCTION_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(';
+
+/*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
  * grammars own the surrounding `!` and AST reduction.
  */
@@ -171,12 +179,11 @@ const marginAtKeyword = keywords(
  * `not(` / `and(` / `or(` is a `<general-enclosed>` function
  * (media-queries-4 §3, css-conditional-3 §6), which never matches
  * (media-queries-4 §3.2); it is read as one and written as authored, never
- * respelled `not (`. The boundary is `IDENT_BOUNDARY` plus `(`, spelled out at
- * each site (the macro constraint).
+ * respelled `not (`.
  */
 const queryNot = word(
   'not',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(',
+  IDENT_FUNCTION_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryOnly = word(
@@ -186,7 +193,7 @@ const queryOnly = word(
 );
 const queryAndOr = keywords(
   ['and', 'or'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\(' }
+  { caseInsensitive: true, boundary: IDENT_FUNCTION_BOUNDARY }
 );
 
 /*

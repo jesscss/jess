@@ -370,6 +370,7 @@ type SharedSyntax = {
   QueryAndOr: Combinator<string>;
   QueryNot: Combinator<string>;
   QueryGluedConnective: Combinator<string>;
+  QueryConnective: Combinator<unknown>;
   PagePseudoRun: Combinator<string>;
   LogicalNot: Combinator<string>;
   LogicalAnd: Combinator<string>;
@@ -3841,10 +3842,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.ContainerQueryAtom
         ))
       )

@@ -396,6 +396,8 @@ type SharedSyntax = {
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: a media type, keyword or function term — MediaTypeTerm's last arm.
   QueryIdentOrFunctionTerm: Combinator<ValueNode>;
+  // Inherited from the CSS base: an and/or connective, or a peeked glued and( / or( operand.
+  QueryConnective: Combinator<unknown>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
   ContainerQueryInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: a nested group, a feature, or the ContainerStyleQuery leaf Less binds.
@@ -4008,10 +4010,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.ContainerQueryAtom
         ))
       )

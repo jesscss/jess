@@ -283,6 +283,7 @@ type GrammarRuleName =
   | 'AtRulePreludeText'
   | 'MediaInParens'
   | 'GluedConnectiveFunction'
+  | 'QueryConnective'
   | 'MediaCondition'
   | 'MediaFeatureContents'
   | 'queryUrlBound'
@@ -3725,6 +3726,18 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * What joins two condition operands: the `and` / `or` connective, an
+   * `<ident-token>`, or — peeked, so the operand reads it — a glued `and(` /
+   * `or(`, which is no connective but one more `<general-enclosed>` operand
+   * (css-syntax-3 §4.3.4). One slot for every condition chain that takes the
+   * glued operand through its own operand rule.
+   */
+  const QueryConnective = choice(
+    g.QueryAndOr,
+    peek(g.QueryGluedConnective)
+  );
+
+  /*
    * A glued `and(` / `or(` after a condition operand is a `<function-token>`
    * (css-syntax-3 §4.3.4), so it is no connective but one more
    * `<media-in-parens>`: a `<general-enclosed>` function (media-queries-4 §3).
@@ -3887,10 +3900,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        choice(
-          g.QueryAndOr,
-          peek(g.QueryGluedConnective)
-        ),
+        g.QueryConnective,
         g.MediaTerm
       ))
     ),
@@ -3999,10 +4009,7 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.ContainerQueryAtom
         ))
       )
@@ -4216,10 +4223,7 @@ const cssFactory = (g: GrammarSelf) => {
       sequence(
         g.SupportsInParens,
         many(sequence(
-          choice(
-            g.QueryAndOr,
-            peek(g.QueryGluedConnective)
-          ),
+          g.QueryConnective,
           g.SupportsInParens
         ))
       )
@@ -5145,6 +5149,7 @@ const cssFactory = (g: GrammarSelf) => {
     ConditionalGroupAtRule,
     MediaInParens,
     GluedConnectiveFunction,
+    QueryConnective,
     MediaCondition,
     MediaFeatureContents,
     MediaGeneralValue: g.ValueSequence,
