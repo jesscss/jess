@@ -13,7 +13,7 @@
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
-  "description": "Jess CSS base parser",
+  "description": "CSS parser for Jess, and the base the Less, SCSS and Jess parsers compose onto",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
@@ -107,6 +107,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
     "ci": "pnpm build && pnpm test",
@@ -132,16 +133,9 @@
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
-  "peerDependenciesMeta": {
-    "@jesscss/core": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/shared": "workspace:*",
-    "postcss": "8.5.23",
-    "tsx": "~4.21.0"
+    "postcss": "8.5.23"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

@@ -57,6 +57,7 @@
   "scripts": {
     "ci": "pnpm run -r ci && pnpm run verify:core-public-types && pnpm run lint",
     "prepare": "husky install",
+    "postinstall": "node packages/syntax/scss/scss-parser/scripts/materialize-sass-spec-cache.cjs",
     "precommit:staged": "node scripts/precommit-staged-lint.mjs",
     "precommit:lint": "node scripts/precommit-staged-lint.mjs",
     "verify:pr": "node scripts/verify-pr.mjs",

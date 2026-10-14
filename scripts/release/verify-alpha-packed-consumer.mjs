@@ -115,6 +115,37 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
       );
     }
   }
+
+  /*
+   * npm and Yarn run a dependency's install hooks in the consumer's tree, where
+   * only the published `files` exist. The consumer install below passes
+   * `--ignore-scripts`, so it cannot see a hook that fails there: a
+   * `postinstall` running an unpublished workspace script broke every npm
+   * install of `@jesscss/scss-parser`. No Jess package needs code to run at
+   * install, so a packed hook is a release defect, not a case to inspect.
+   */
+  for (const hook of ['preinstall', 'install', 'postinstall']) {
+    assert(
+      manifest.scripts?.[hook] === undefined,
+      `${pkg.name}: packed scripts.${hook} runs at consumer install: ${manifest.scripts?.[hook]}`
+    );
+  }
+
+  /*
+   * MIT requires the notice to travel with every copy. Packages without their
+   * own LICENSE get the workspace root's from `pnpm pack`/`pnpm publish`;
+   * check the tarball rather than trusting that implicit copy. No shell: the
+   * path goes to tar as one argument, and Windows tar ends lines with CRLF.
+   */
+  const listing = spawnSync('tar', ['-tzf', tarball], { encoding: 'utf8' });
+  assert(
+    !listing.error && listing.status === 0,
+    `${pkg.name}: cannot list ${tarball}: ${listing.error?.message ?? listing.stderr}`
+  );
+  assert(
+    listing.stdout.split(/\r?\n/u).includes('package/LICENSE'),
+    `${pkg.name}: packed tarball has no LICENSE`
+  );
 }
 
 function packageDirFor(pkgName) {

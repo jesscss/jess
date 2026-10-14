@@ -56,7 +56,7 @@ function leafText(node: CstNode | CstNode['children'][number]): string {
 }
 
 describe('@jesscss/scss-parser/cst', () => {
-  it('parses SCSS through the public core-free CST entry', () => {
+  it('parses SCSS through the public CST entry', () => {
     const result = parseScssCst('$color: red; .x { color: $color; }');
 
     expect(result.errors).toHaveLength(0);

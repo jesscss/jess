@@ -76,7 +76,9 @@ so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
 disallowed and counts every call to `Function` and `eval`.
 
 The CST and grammar entries expose Parseman types and grammar values. Parseman
-ships as a bundled dependency, so it installs with the package automatically.
+is a regular dependency, so it installs with the package. `@jesscss/core` is a
+peer dependency of every parse entry, `./cst` included, because the compiled
+grammar tables carry core's AST reductions; install it alongside the parser.
 
 The former `./jess` Chevrotain/functional-builder surface is deleted. CSS has
 no legacy tree parser or construction host. Its public parser constructs the
