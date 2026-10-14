@@ -1,4 +1,3 @@
-import { type IRecognitionException, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from '../context.js';
 import { type JessErrorCode, type Phase, type Severity, resolveTemplate } from './codes.js';
 import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from './code-frame.js';
@@ -61,10 +60,6 @@ export type JessErrorInit = {
 
   /** Optional one-liner for extra context */
   note?: string;
-
-  /** Raw parser/lexer error data */
-  errors?: ReadonlyArray<IRecognitionException | JessError>;
-  lexerErrors?: ILexingResult['errors'];
 };
 
 /**
@@ -95,9 +90,6 @@ export class JessError {
   reason = '';
   fix = '';
   note?: string;
-
-  errors?: ReadonlyArray<IRecognitionException | JessError>;
-  lexerErrors?: ILexingResult['errors'];
 
   constructor(init: JessErrorInit) {
     // Resolve context from ctx/node first, else from explicit fields.
@@ -131,9 +123,6 @@ export class JessError {
     this.reason = init.reason ?? t.reason;
     this.fix = init.fix ?? t.fix;
     this.note = init.note ?? (fileObj === authored ? undefined : INJECTED_TEXT_NOTE);
-
-    this.errors = init.errors;
-    this.lexerErrors = init.lexerErrors;
   }
 
   /**

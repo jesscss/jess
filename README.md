@@ -116,6 +116,11 @@ Jess supports the three most recent Node LTS lines: Node `^20.19.0 || >=22.12.0`
 (the `engines` range in `package.json`). The range advances with that rolling
 window.
 
+The published type declarations need TypeScript 5.4 or newer. A CommonJS
+project that loads Jess packages with `require` under `module: nodenext` needs
+TypeScript 5.8 or newer, the first release that lets CommonJS code import the
+packages' ECMAScript-module declarations.
+
 ## CLI
 
 ```sh

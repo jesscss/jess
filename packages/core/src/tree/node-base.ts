@@ -3,7 +3,6 @@ import {
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';
 import { type Operator } from '../util/calculate.js';
-import type { AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
   getPrintOptions,
@@ -163,10 +162,32 @@ function sourceRootOf(node: Node): Rules | undefined {
   return undefined;
 }
 
+/**
+ * Any class, abstract or concrete, whose instances are `T`. Declared in core
+ * rather than imported from type-fest so core's published declarations import
+ * only packages core depends on.
+ *
+ * The argument list is `never`: every constructor accepts it, so every class
+ * whose instances are `T` matches whatever its own constructor takes.
+ */
+export type ClassOf<T = unknown> = abstract new (...args: never) => T;
+
+/*
+ * The instance and argument types of a `ClassOf`. lib's `InstanceType` and
+ * `ConstructorParameters` cannot be used: they match a constructor that
+ * accepts `any` arguments, which a `never`-argument constructor does not, so
+ * on a generic `ClassOf` they degrade to `any` / `never`.
+ */
+export type InstanceOf<C> = C extends ClassOf<infer I> ? I : never;
+type ArgumentsOf<C> = C extends abstract new (...args: infer A) => unknown ? A : never;
+
+/** A class whose prototype `defineType` stamps with the node type. */
+type AbstractClass<T> = ClassOf<T> & { prototype: Pick<T, keyof T> };
+
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
-  P extends ConstructorParameters<T> = ConstructorParameters<T>
+  P extends ArgumentsOf<T> = ArgumentsOf<T>
 >(
   Clazz: T,
   type: string,
@@ -201,18 +222,16 @@ export const defineType = <
   // The abstract-class constraint is a compile-time nicety; every class passed
   // here is concrete, so construct it directly instead of through Reflect.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const Concrete = Clazz as unknown as new (...args: Args) => InstanceType<T>;
-  return (...args: Args): InstanceType<T> => {
+  const Concrete = Clazz as unknown as new (...args: Args) => InstanceOf<T>;
+  return (...args: Args): InstanceOf<T> => {
     const node = new Concrete(...args);
 
     // Invariant 7: the factory parents one level; the raw constructor did not.
-    return args.length > 0 ? (node.parentChildren() as InstanceType<T>) : node;
+    return args.length > 0 ? (node.parentChildren() as InstanceOf<T>) : node;
   };
 };
 
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
-
-export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;

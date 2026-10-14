@@ -1,6 +1,5 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Node, type NodeLocation, type NodeOptions, type NodeValue, defineType, F_AMPERSAND } from './node.js';
-import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary } from '../util/bitset.js';
@@ -8,6 +7,12 @@ import type { RenderBuffer } from './util/render-buffer.js';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
 const { isArray } = Array;
+
+/**
+ * `Then` when `T` is `any`, otherwise `Else`: type-fest's `IfAny`, restated so
+ * core's published declarations import only packages core depends on.
+ */
+type IfAny<T, Then, Else> = 0 extends 1 & NoInfer<T> ? Then : Else;
 
 function isSelector(value: unknown): value is Selector {
   return value instanceof Selector;

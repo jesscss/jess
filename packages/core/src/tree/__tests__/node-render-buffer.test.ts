@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
+import type { Trivia } from '../../types/index.js';
 import {
   Any,
   type AnyRole,
@@ -284,7 +284,7 @@ describe('renderNodeToBuffer', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const frameHeaders = ['@media screen'];
-    const emittedTrivia = new Set<IToken[]>();
+    const emittedTrivia = new Set<Trivia>();
     const node = any('stateful-output');
     const options = {
       context,

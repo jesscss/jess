@@ -1,14 +1,110 @@
 #!/usr/bin/env node
-
+/**
+ * Type-check the published declarations of `TARGETS` exactly as a consumer
+ * does: from the packed tarballs, in an empty project outside the workspace,
+ * with `skipLibCheck` off and no ambient `@types`. The consumer imports every
+ * `exports` entry point, and the program also includes every shipped `.d.ts`,
+ * so a declaration no entry point reaches today cannot hide a broken import.
+ *
+ * Every one of those conditions is load-bearing. Inside the workspace, a
+ * declaration that imports a package the target does not depend on (a
+ * devDependency, a root-only tool, `@types/node` globals) still resolves
+ * through the workspace's own `node_modules`, and `skipLibCheck` hides every
+ * error inside `.d.ts` files. The previous version of this check had both
+ * blind spots and passed while every consumer of core saw "Cannot find
+ * module 'chevrotain'".
+ *
+ * The targets' workspace dependencies are packed alongside them, so the
+ * consumer never resolves an unpublished version from the registry.
+ * Third-party dependencies install from the registry, as they do for a real
+ * consumer.
+ *
+ * Each entry of `CONFIGS` is a consumer setup the declarations must compile
+ * under, with the oldest TypeScript it supports. It runs on that floor and on
+ * the workspace's own compiler, so the floors the README documents are tested
+ * rather than assumed.
+ */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getRuntimeWorkspaceDeps, listWorkspacePackages } from './release/release-utils.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const temp = mkdtempSync(path.join(root, 'packages/jess/.tmp-core-public-types-'));
-const consumer = path.join(temp, 'consumer.ts');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const TARGETS = ['@jesscss/core', '@jesscss/fns', '@jesscss/plugin-js'];
+const keep = process.argv.includes('--keep');
 
-writeFileSync(consumer, `
+function run(command, args, cwd) {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    shell: process.platform === 'win32'
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  return result;
+}
+
+function runOrThrow(command, args, cwd) {
+  const result = run(command, args, cwd);
+  if (result.status !== 0) {
+    throw new Error(`${[command, ...args].join(' ')} failed:\n${result.stdout}${result.stderr}`);
+  }
+  return result;
+}
+
+/** The targets and every workspace package they depend on at runtime. */
+function workspaceClosure(workspace, names) {
+  const closure = new Map();
+  const pending = [...names];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (closure.has(next)) {
+      continue;
+    }
+    const pkg = workspace.get(next);
+    if (!pkg) {
+      throw new Error(`${next} is not a workspace package.`);
+    }
+    closure.set(next, pkg);
+    pending.push(...getRuntimeWorkspaceDeps(pkg.manifest));
+  }
+  return [...closure.values()];
+}
+
+/** Every importable subpath of the package's `exports` map, as specifiers. */
+function publicSpecifiers(manifest) {
+  return Object.keys(manifest.exports)
+    .filter(subpath => !subpath.endsWith('.json'))
+    .map(subpath => subpath === '.' ? manifest.name : `${manifest.name}/${subpath.slice(2)}`);
+}
+
+/*
+ * The TypeScript floors. `NoInfer` in core's declarations needs 5.4. A
+ * CommonJS consumer needs 5.8: the packages ship ECMAScript-module
+ * declarations for both conditions, and only from 5.8 does `nodenext` let a
+ * CommonJS file `require` an ECMAScript module (TS1479 before).
+ */
+const ESM_FLOOR = '5.4.5';
+const CJS_FLOOR = '5.8.3';
+
+const NODENEXT = { module: 'nodenext', moduleResolution: 'nodenext' };
+const CONFIGS = [
+  { name: 'ESM, nodenext', floor: ESM_FLOOR, entry: 'consumer.ts', options: NODENEXT },
+  {
+    name: 'ESM, nodenext, exactOptionalPropertyTypes + noUncheckedIndexedAccess',
+    floor: ESM_FLOOR,
+    entry: 'consumer.ts',
+    options: { ...NODENEXT, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true }
+  },
+  { name: 'bundler', floor: ESM_FLOOR, entry: 'consumer.ts', options: { module: 'esnext', moduleResolution: 'bundler' } },
+  { name: 'CommonJS (.cts), nodenext', floor: CJS_FLOOR, entry: 'consumer.cts', options: NODENEXT }
+];
+
+const PREPARED_IMPORTS_ASSERTIONS = `
 import type { PreparedImports } from '@jesscss/core';
 
 declare const prepared: PreparedImports;
@@ -24,33 +120,100 @@ prepared.get;
 
 // @ts-expect-error PreparedImports is not publicly callable.
 prepared();
-`);
+`;
 
-try {
-  const result = spawnSync('pnpm', [
-    '-w', 'exec', 'tsc',
-    '--ignoreConfig',
-    '--noEmit',
-    '--strict',
-    '--skipLibCheck',
-    '--module', 'NodeNext',
-    '--moduleResolution', 'NodeNext',
-    '--target', 'ES2022',
-    consumer
-  ], {
-    cwd: root,
-    encoding: 'utf8'
-  });
-  process.stdout.write(result.stdout ?? '');
-  process.stderr.write(result.stderr ?? '');
-  if (result.error) {
-    throw result.error;
+function main() {
+  const workspace = listWorkspacePackages(root);
+  const targets = TARGETS.map(name => workspace.get(name));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'jess-public-types-'));
+  const packDir = path.join(temp, 'packs');
+  const consumerDir = path.join(temp, 'consumer');
+  try {
+    mkdirSync(packDir);
+    mkdirSync(consumerDir);
+
+    const floors = [...new Set(CONFIGS.map(config => config.floor))];
+    const dependencies = Object.fromEntries(floors.map(version => [`typescript-${version}`, `npm:typescript@${version}`]));
+    for (const pkg of workspaceClosure(workspace, TARGETS)) {
+      const packed = runOrThrow('pnpm', ['pack', '--json', '--pack-destination', packDir], pkg.dir);
+      dependencies[pkg.name] = `file:${JSON.parse(packed.stdout).filename}`;
+    }
+    writeFileSync(path.join(consumerDir, 'package.json'), `${JSON.stringify({
+      name: 'jess-public-types-consumer',
+      private: true,
+      type: 'module',
+      dependencies
+    }, null, 2)}\n`);
+    runOrThrow('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--prefer-offline'], consumerDir);
+
+    const specifiers = targets.flatMap(target => publicSpecifiers(target.manifest));
+    const imports = [
+      ...specifiers.map((specifier, index) => `import * as entry${index} from '${specifier}';`),
+      `export { ${specifiers.map((_, index) => `entry${index}`).join(', ')} };`
+    ];
+    writeFileSync(path.join(consumerDir, 'consumer.ts'), [...imports, PREPARED_IMPORTS_ASSERTIONS].join('\n'));
+    writeFileSync(path.join(consumerDir, 'consumer.cts'), `${imports.join('\n')}\n`);
+    const shippedDeclarations = targets.flatMap(target =>
+      target.manifest.files.map(entry => `node_modules/${target.name}/${entry}/**/*.d.ts`));
+
+    /*
+     * The workspace-pinned compiler and the installed floors, each run from the
+     * consumer so that no module resolution or type root walks back into the
+     * workspace.
+     */
+    const workspaceTsc = path.join(root, 'node_modules/typescript/bin/tsc');
+    const failures = [];
+    for (const [index, config] of CONFIGS.entries()) {
+      const tsconfig = `tsconfig.${index}.json`;
+      writeFileSync(path.join(consumerDir, tsconfig), `${JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          skipLibCheck: false,
+          target: 'es2022',
+
+          /*
+           * No ambient @types: a transitive dependency that installs @types/node
+           * must not hide a Node global leaking into a target's declarations.
+           */
+          types: [],
+          ...config.options
+        },
+        include: [config.entry, ...shippedDeclarations],
+
+        /* The default exclude is node_modules, which would drop the shipped files. */
+        exclude: []
+      }, null, 2)}\n`);
+
+      const floorTsc = path.join(consumerDir, `node_modules/typescript-${config.floor}/bin/tsc`);
+      for (const tsc of [floorTsc, workspaceTsc]) {
+        const version = run(process.execPath, [tsc, '--version'], consumerDir).stdout.trim();
+        const result = run(process.execPath, [tsc, '-p', tsconfig, '--pretty', 'false'], consumerDir);
+        const label = `${config.name} — ${version}`;
+        if (result.status === 0) {
+          console.log(`ok    ${label}`);
+          continue;
+        }
+        failures.push(label);
+        console.log(`FAIL  ${label}`);
+        process.stdout.write(result.stdout);
+        process.stderr.write(result.stderr);
+      }
+    }
+
+    if (failures.length > 0) {
+      console.error(`\nPublic type consumer verification failed for ${TARGETS.join(', ')}:\n- ${failures.join('\n- ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`\nPublic type consumer verification passed: ${specifiers.length} entry points of ${TARGETS.join(', ')}.`);
+  } finally {
+    if (keep) {
+      console.log(`Kept consumer fixture: ${temp}`);
+    } else {
+      rmSync(temp, { recursive: true, force: true });
+    }
   }
-  if (result.status !== 0) {
-    process.exitCode = result.status ?? 1;
-  } else {
-    console.log('Core public type consumer verification passed.');
-  }
-} finally {
-  rmSync(temp, { recursive: true, force: true });
 }
+
+main();
