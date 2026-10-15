@@ -846,8 +846,45 @@ interface PublishedRulesetPlacement {
   readonly frame: Frame;
 }
 
+/**
+ * One body's render-local scope. Every frame is built by {@link makeFrame}, which
+ * sets every field below in this order, so all frames share one hidden class.
+ * The fields here are the ones a frame commonly uses. The rest are cold, so they
+ * live in {@link FrameActivation}, which stays `null` until the frame first writes
+ * one: a write goes through {@link activationOf}, a read is
+ * `frame.activation?.field`, so reading allocates nothing.
+ */
 export interface Frame {
   parent: Frame | null;
+
+  /*
+   * secondary scope consulted after the `parent` chain is exhausted (the
+   * detached-ruleset definition closure — caller-first, definition-fallback).
+   */
+  fallback: Frame | null | undefined;
+
+  /*
+   * [R16] This frame's `fallback` is the ambient CALL SITE (a mixin body,
+   * detached ruleset, value-lambda, or dispatch overlay — not a detached-closure
+   * member scope). Plain VARIABLE reads treat it as invisible unless
+   * `allowCallerScope` is on; `parentExcludes`, path/namespace lookups, and
+   * mixin-visibility publishing traverse `fallback` regardless, so recursion,
+   * member access, and caller-published mixins keep working.
+   */
+  callerFallback: boolean | undefined;
+
+  // the statements this frame was built from (for lazy rulesets / decl-map).
+  statements: Statement[] | null | undefined;
+
+  /** Opaque Context source identity that authored this activation's body. */
+  sourceOwner: object | null | undefined;
+
+  /**
+   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame, and a
+   * bare-`&` rule's: the frame whose import-once scope its imports count in
+   * ({@link importScopeOf}), since its output lands in the scope it runs in.
+   */
+  importScope: Frame | undefined;
 
   /**
    * Identity of one executed `$for`/`each()` iteration or mixin call when this frame
@@ -856,7 +893,7 @@ export interface Frame {
    * `Ruleset` AST: the same rule body may execute repeatedly with distinct bindings
    * and selectors and therefore needs distinct extend-plan facts.
    */
-  extendPlacement?: object;
+  extendPlacement: object | undefined;
 
   /**
    * [extend/splice] Set on a mixin-call body frame. A ruleset called as a mixin
@@ -867,23 +904,7 @@ export interface Frame {
    * extend must not leak onto the splice. Emit uses `headerComposed` for a static
    * extend-target rule reached through such a placement (see `flattenWithHeader`).
    */
-  mixinSplice?: boolean;
-
-  /**
-   * Set on a mixin call's, detached-ruleset call's or loop iteration's body frame, and a
-   * bare-`&` rule's: the frame whose import-once scope its imports count in
-   * ({@link importScopeOf}), since its output lands in the scope it runs in.
-   */
-  importScope?: Frame;
-
-  /**
-   * The ruleset or at-rule block whose body this frame is, and an at-rule's written
-   * prelude: what {@link importContextKey} reads for the output context its imports land
-   * in. `importContext` caches that key; the walk's root frame is `''`.
-   */
-  outputOf?: Ruleset | AtRuleBlock;
-  outputPrelude?: string;
-  importContext?: string;
+  mixinSplice: boolean | undefined;
 
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDefinition[]> | null;
@@ -897,25 +918,61 @@ export interface Frame {
   /** Per-activation scoped writes (`:=` and activated scoped conditionals). */
   reassign: Map<string, VariableDeclaration> | null;
 
-  /** Branches selected by this activation; absent until a Jess `$if` executes. */
-  selectedIfBodies?: Map<If, Statement[]>;
+  /*
+   * [plugin/P1] nearest frame at-or-above this one that owns any local function
+   * registrations. This is only an accelerator for candidate frames: lookup is
+   * still nearest-frame-with-the-requested-entry, so a frame with unrelated
+   * functions does not stop a requested name from falling through to an outer
+   * scoped function or, after scoped lookup misses, the built-in registry.
+   * `fns` stays local, so scoped functions never share storage with
+   * variables/declarations and ordinary empty frames allocate no function map.
+   */
+  fnScope: Frame | null | undefined;
+
+  /** Version of the render-local scoped-function graph that populated `fnScope`. */
+  fnScopeVersion: number | undefined;
 
   /**
-   * The direct `if()`/`$if` statements {@link preselectControlFlow} decided for
-   * this activation, each with its arm or `null` for none. Execution reuses a
-   * decision instead of evaluating the condition again. Absent until the frame's
-   * control flow is first selected.
+   * The ruleset or at-rule block whose body this frame is, and an at-rule's written
+   * prelude: what {@link importContextKey} reads for the output context its imports land
+   * in. `importContext` caches that key; the walk's root frame is `''`.
    */
-  preselectedIfs?: ReadonlyMap<If, Statement[] | null>;
+  outputOf: Ruleset | AtRuleBlock | undefined;
+
+  outputPrelude: string | undefined;
+
+  importContext: string | undefined;
+
+  /** Evaluated declaration visibility for Less `$property` accessors. */
+  propertyTimeline: PropertyDeclarationFact[] | null | undefined;
 
   /**
-   * Source-ordered direct + selected-branch declaration index for this
-   * activation. `undefined` until the frame's control flow is first selected
-   * ({@link preselectControlFlow}), and again after an imported fact joins the
-   * frame, until the next scoped read rebuilds it ({@link selectControlFlow}).
+   * Render-local placement frames for rules evaluated in this lexical frame.
+   * A nested import executes in the Ruleset's child frame; namespace descent must
+   * therefore retain that frame's imported prefix instead of reconstructing a
+   * scope from authored `Ruleset.rules` alone. This belongs to the render frame,
+   * never to the immutable AST Ruleset.
    */
-  selectedDeclIndex?: DeclIndex | null;
+  rulePlacements: Map<Ruleset, Frame> | undefined;
 
+  /*
+   * [dedup] source-ordered dispatch candidates keyed by name: parametric MixinDefs
+   * AND paren-less ruleset-mixins INTERLEAVED in authored order (unlike `mixins`,
+   * which groups all parametric defs). Lazily built once from `statements` and
+   * cached; published (unlocked) defs are merged in at lookup from `mixins`.
+   */
+  orderedMixins: OrderedMixinIndex | null | undefined;
+
+  /** The frame's cold fields; `null` until it first writes one ({@link activationOf}). */
+  activation: FrameActivation | null;
+}
+
+/**
+ * The cold fields of one {@link Frame}: facts its activation collects as the body
+ * runs, facts an `@import` or a call publishes into it, and lookup indexes most
+ * frames never build. Built only by {@link activationOf}.
+ */
+export interface FrameActivation {
   /*
    * [scope-leak] variables UNLOCKED into this frame by a mixin call in its body
    * (`leakBodyVars`). v5 "outer-binding-wins": the mixin-injected variable is NOT
@@ -927,38 +984,78 @@ export interface Frame {
    * This drops the 4.x mixin-injected-variable hoist (which put the leak in `vars`
    * and let it shadow the outer binding → `#989`). See DESIGN-DECISIONS R2.
    */
-  leaked?: Map<string, Binding[]> | null;
+  leaked: Map<string, Binding[]> | null | undefined;
+
+  /**
+   * Source-ordered direct ruleset placements unlocked by executed explicit
+   * mixins. They are visible only to later lookup in this caller frame.
+   */
+  publishedRules: PublishedRulesetPlacement[] | null | undefined;
 
   /*
-   * secondary scope consulted after the `parent` chain is exhausted (the
-   * detached-ruleset definition closure — caller-first, definition-fallback).
+   * [closure/publish] a mixin def UNLOCKED into this frame by a body expansion
+   * (`publishMixins`) carries its CLOSURE — the callee frame it was authored in,
+   * where its params/locals are bound. A later call to that def resolves its free
+   * variables + guard in this home, not the frame it was published into
+   * (`.lock-mixin(1)` publishes `.inner-locked-mixin` whose `when (@a = 1)` reads
+   * the `@a` bound during that expansion). Absent an entry a def's home is the
+   * frame it is found in (the ordinary lexical case).
    */
-  fallback?: Frame | null;
+  mixinHomes: Map<MixinDefinition, Frame> | null | undefined;
+
+  /** Per-activation lexical owners for values carried by parameter declarations. */
+  bindingValueFrames: Map<Binding, Frame> | undefined;
+
+  /** Typed URL-bearing values for eager byte snapshots owned by this activation. */
+  mixinUrlBindings: Map<Binding, ValueGroup> | undefined;
+
+  /** Non-URL structural values for function/plugin snapshots owned by this activation. */
+  mixinValueBindings: Map<Binding, ValueGroup> | undefined;
+
+  /** Value-block (anonymous-mixin / collection) closure facts for this activation;
+   * never stored on AST nodes. */
+  detachedBindings: Map<ValueBlock, DetachedBinding> | undefined;
 
   /*
-   * [R16] This frame's `fallback` is the ambient CALL SITE (a mixin body,
-   * detached ruleset, value-lambda, or dispatch overlay — not a detached-closure
-   * member scope). Plain VARIABLE reads treat it as invisible unless
-   * `allowCallerScope` is on; `parentExcludes`, path/namespace lookups, and
-   * mixin-visibility publishing traverse `fallback` regardless, so recursion,
-   * member access, and caller-published mixins keep working.
+   * [plugin/P1] functions registered by a `@plugin` (or, later, `@use`) directive
+   * textually inside THIS frame's block, keyed lower-case like the global registry.
+   * `null`/absent on EVERY frame unless this exact block loaded a scoped function
+   * Resolution
+   * walks `fns` up the `parent` chain (nearest-first), so a scoped fn is visible in
+   * its subtree and shadows a same-name built-in; the chain IS the `parent` chain —
+   * no parallel scope structure.
    */
-  callerFallback?: boolean;
+  fns: Map<string, Fn> | null | undefined;
 
-  /*
-   * rulesets visible at this level, keyed by their own-local selector
-   * string (namespace path descent). Lazily built only when a namespaced call or
-   * map/namespace accessor needs it, and dropped by the next import publication —
-   * so this is memoized PER PUBLICATION EPOCH, not once per frame, and publication
-   * interleaves with emission. That is why its builder must stay linear.
+  /** Functions imported by `@-use` / `@-from`, keyed by their explicit
+   * reference path. They are deliberately separate from `fns`: importing a
+   * module must never change the meaning of a CSS-shaped `name(...)` call. */
+  moduleFns: Map<string, Fn> | undefined;
+
+  /** Branches selected by this activation; absent until a Jess `$if` executes. */
+  selectedIfBodies: Map<If, Statement[]> | undefined;
+
+  /**
+   * The direct `if()`/`$if` statements {@link preselectControlFlow} decided for
+   * this activation, each with its arm or `null` for none. Execution reuses a
+   * decision instead of evaluating the condition again. Absent until the frame's
+   * control flow is first selected.
    */
-  rulesets?: Map<string, Ruleset[]> | null;
+  preselectedIfs: ReadonlyMap<If, Statement[] | null> | undefined;
+
+  /**
+   * Source-ordered direct + selected-branch declaration index for this
+   * activation. `undefined` until the frame's control flow is first selected
+   * ({@link preselectControlFlow}), and again after an imported fact joins the
+   * frame, until the next scoped read rebuilds it ({@link selectControlFlow}).
+   */
+  selectedDeclIndex: DeclIndex | null | undefined;
 
   /**
    * Root rulesets published from the static import graph, kept SITE-ASCENDING by
    * {@link insertRankedFact} so the source-fold merge can two-cursor them.
    */
-  importedRules?: Ruleset[] | null;
+  importedRules: Ruleset[] | null | undefined;
 
   /**
    * [import-fold] The source-fold SITE of `importedRules[i]` — the statement index
@@ -968,7 +1065,7 @@ export interface Frame {
    * whole comparison, see {@link compareSourceRankToIndex}), so the one reader on a
    * lookup path compares integers and touches nothing else.
    */
-  importedRuleSites?: number[] | null;
+  importedRuleSites: number[] | null | undefined;
 
   /**
    * Imported callable statements, kept SITE-ASCENDING by
@@ -978,11 +1075,11 @@ export interface Frame {
    * definitions as well as rulesets, and two-cursors this list against
    * {@link statements} with no merged array to cache or invalidate.
    */
-  importedCallables?: Array<MixinDefinition | Ruleset> | null;
+  importedCallables: Array<MixinDefinition | Ruleset> | null | undefined;
 
   /** [import-fold] Source-fold site of `importedCallables[i]`; see
    *  {@link importedRuleSites}. */
-  importedCallableSites?: number[] | null;
+  importedCallableSites: number[] | null | undefined;
 
   /**
    * [import-fold] {@link SourceRank} of each published import DECLARATION — the
@@ -996,43 +1093,7 @@ export interface Frame {
    * there or when a control-block selection rebuilds the index — no lookup path
    * reaches it.
    */
-  factRanks?: Map<VariableDeclaration, SourceRank>;
-
-  /**
-   * [import-fold] Authored position of each top-level statement, built ONCE and
-   * only on the paths that must resolve a position from the statement itself
-   * rather than from a loop cursor: a published declaration colliding with an
-   * existing stack entry, an import that reaches publication without its index in
-   * hand, and a control-block body spliced into the declaration stacks. Integer
-   * values — never a tuple per statement.
-   */
-  statementIndex?: Map<Statement, number>;
-
-  /**
-   * Source-ordered direct ruleset placements unlocked by executed explicit
-   * mixins. They are visible only to later lookup in this caller frame.
-   */
-  publishedRules?: PublishedRulesetPlacement[] | null;
-
-  /**
-   * Render-local placement frames for rules evaluated in this lexical frame.
-   * A nested import executes in the Ruleset's child frame; namespace descent must
-   * therefore retain that frame's imported prefix instead of reconstructing a
-   * scope from authored `Ruleset.rules` alone. This belongs to the render frame,
-   * never to the immutable AST Ruleset.
-   */
-  rulePlacements?: Map<Ruleset, Frame>;
-
-  /*
-   * [dedup] source-ordered dispatch candidates keyed by name: parametric MixinDefs
-   * AND paren-less ruleset-mixins INTERLEAVED in authored order (unlike `mixins`,
-   * which groups all parametric defs). Lazily built once from `statements` and
-   * cached; published (unlocked) defs are merged in at lookup from `mixins`.
-   */
-  orderedMixins?: OrderedMixinIndex | null;
-
-  /** Lexical rank/path facts; indexing does not publish any selected-arm definition. */
-  mixinDefinitionMeta?: Map<MixinDefinition, MixinDefinitionMeta>;
+  factRanks: Map<VariableDeclaration, SourceRank> | undefined;
 
   /**
    * Rank-bearing definitions PUBLISHED into this frame rather than authored
@@ -1042,24 +1103,29 @@ export interface Frame {
    * BY RANK, so a published definition dispatches at its source position instead
    * of after every authored one.
    */
-  publishedMixinEvents?: Map<string, OrderedMixinCandidate[]>;
+  publishedMixinEvents: Map<string, OrderedMixinCandidate[]> | undefined;
+
+  /** Lexical rank/path facts; indexing does not publish any selected-arm definition. */
+  mixinDefinitionMeta: Map<MixinDefinition, MixinDefinitionMeta> | undefined;
 
   /*
-   * [closure/publish] a mixin def UNLOCKED into this frame by a body expansion
-   * (`publishMixins`) carries its CLOSURE — the callee frame it was authored in,
-   * where its params/locals are bound. A later call to that def resolves its free
-   * variables + guard in this home, not the frame it was published into
-   * (`.lock-mixin(1)` publishes `.inner-locked-mixin` whose `when (@a = 1)` reads
-   * the `@a` bound during that expansion). Absent an entry a def's home is the
-   * frame it is found in (the ordinary lexical case).
+   * rulesets visible at this level, keyed by their own-local selector
+   * string (namespace path descent). Lazily built only when a namespaced call or
+   * map/namespace accessor needs it, and dropped by the next import publication —
+   * so this is memoized PER PUBLICATION EPOCH, not once per frame, and publication
+   * interleaves with emission. That is why its builder must stay linear.
    */
-  mixinHomes?: Map<MixinDefinition, Frame> | null;
+  rulesets: Map<string, Ruleset[]> | null | undefined;
 
-  // the statements this frame was built from (for lazy rulesets / decl-map).
-  statements?: Statement[] | null;
-
-  /** Evaluated declaration visibility for Less `$property` accessors. */
-  propertyTimeline?: PropertyDeclarationFact[] | null;
+  /**
+   * [import-fold] Authored position of each top-level statement, built ONCE and
+   * only on the paths that must resolve a position from the statement itself
+   * rather than from a loop cursor: a published declaration colliding with an
+   * existing stack entry, an import that reaches publication without its index in
+   * hand, and a control-block body spliced into the declaration stacks. Integer
+   * values — never a tuple per statement.
+   */
+  statementIndex: Map<Statement, number> | undefined;
 
   /*
    * [lookup-memo] Render-scoped memo of member-lookup `DeclMap`s built for a PURE
@@ -1074,53 +1140,83 @@ export interface Frame {
    * alias cycle is being resolved (`e.excluded` non-empty). See
    * `docs/design/MIXIN-SCOPING-AND-LOOKUP-MEMO.md` §4.
    */
-  declMapMemo?: Map<object, DeclMap> | null;
+  declMapMemo: Map<object, DeclMap> | null | undefined;
+}
 
-  /*
-   * [plugin/P1] functions registered by a `@plugin` (or, later, `@use`) directive
-   * textually inside THIS frame's block, keyed lower-case like the global registry.
-   * `null`/absent on EVERY frame unless this exact block loaded a scoped function
-   * Resolution
-   * walks `fns` up the `parent` chain (nearest-first), so a scoped fn is visible in
-   * its subtree and shadows a same-name built-in; the chain IS the `parent` chain —
-   * no parallel scope structure.
-   */
-  fns?: Map<string, Fn> | null;
+/**
+ * Builds a frame. Every frame comes from here, so every frame has the same
+ * fields in the same order. A caller sets any other field on the result; that
+ * is a store to a field the frame already has, not a new shape.
+ */
+export function makeFrame(
+  parent: Frame | null,
+  statements: Statement[] | null | undefined,
+  mixins: Map<string, MixinDefinition[]> | null,
+  declIndex: DeclIndex | null,
+  cells: Map<string, BindingCell> | null
+): Frame {
+  return {
+    parent,
+    fallback: undefined,
+    callerFallback: undefined,
+    statements,
+    sourceOwner: undefined,
+    importScope: undefined,
+    extendPlacement: undefined,
+    mixinSplice: undefined,
+    mixins,
+    declIndex,
+    cells,
+    reassign: null,
+    fnScope: undefined,
+    fnScopeVersion: undefined,
+    outputOf: undefined,
+    outputPrelude: undefined,
+    importContext: undefined,
+    propertyTimeline: undefined,
+    rulePlacements: undefined,
+    orderedMixins: undefined,
+    activation: null
+  };
+}
 
-  /** Functions imported by `@-use` / `@-from`, keyed by their explicit
-   * reference path. They are deliberately separate from `fns`: importing a
-   * module must never change the meaning of a CSS-shaped `name(...)` call. */
-  moduleFns?: Map<string, Fn>;
+/** The frame's {@link FrameActivation}, built on first use. */
+export function activationOf(frame: Frame): FrameActivation {
+  return frame.activation ??= {
+    leaked: undefined,
+    publishedRules: undefined,
+    mixinHomes: undefined,
+    bindingValueFrames: undefined,
+    mixinUrlBindings: undefined,
+    mixinValueBindings: undefined,
+    detachedBindings: undefined,
+    fns: undefined,
+    moduleFns: undefined,
+    selectedIfBodies: undefined,
+    preselectedIfs: undefined,
+    selectedDeclIndex: undefined,
+    importedRules: undefined,
+    importedRuleSites: undefined,
+    importedCallables: undefined,
+    importedCallableSites: undefined,
+    factRanks: undefined,
+    publishedMixinEvents: undefined,
+    mixinDefinitionMeta: undefined,
+    rulesets: undefined,
+    statementIndex: undefined,
+    declMapMemo: undefined
+  };
+}
 
-  /*
-   * [plugin/P1] nearest frame at-or-above this one that owns any local function
-   * registrations. This is only an accelerator for candidate frames: lookup is
-   * still nearest-frame-with-the-requested-entry, so a frame with unrelated
-   * functions does not stop a requested name from falling through to an outer
-   * scoped function or, after scoped lookup misses, the built-in registry.
-   * `fns` stays local, so scoped functions never share storage with
-   * variables/declarations and ordinary empty frames allocate no function map.
-   */
-  fnScope?: Frame | null;
-
-  /** Version of the render-local scoped-function graph that populated `fnScope`. */
-  fnScopeVersion?: number;
-
-  /** Value-block (anonymous-mixin / collection) closure facts for this activation;
-   * never stored on AST nodes. */
-  detachedBindings?: Map<ValueBlock, DetachedBinding>;
-
-  /** Per-activation lexical owners for values carried by parameter declarations. */
-  bindingValueFrames?: Map<Binding, Frame>;
-
-  /** Typed URL-bearing values for eager byte snapshots owned by this activation. */
-  mixinUrlBindings?: Map<Binding, ValueGroup>;
-
-  /** Non-URL structural values for function/plugin snapshots owned by this activation. */
-  mixinValueBindings?: Map<Binding, ValueGroup>;
-
-  /** Opaque Context source identity that authored this activation's body. */
-  sourceOwner?: object | null;
+/**
+ * The typed value a mixin argument's byte snapshot kept beside it: `'value'` for
+ * its evaluated value, `'url'` for a URL-bearing one. The activation that bound
+ * the argument holds it; until an activation takes it, the render does.
+ */
+function snapshotOf(node: Binding, frame: Frame | null | undefined, e: EvalCtx, kind: 'value' | 'url'): ValueGroup | undefined {
+  return kind === 'value'
+    ? frame?.activation?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node)
+    : frame?.activation?.mixinUrlBindings?.get(node) ?? e.mixinUrlBindings?.get(node);
 }
 
 function sourceOwnerForBody(rules: object, frame: Frame, e: EvalCtx): object | null {
@@ -1264,7 +1360,7 @@ function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceO
   if (!isValueBlockBinding(value)) {
     return;
   }
-  (frame.detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
+  (activationOf(frame).detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
 }
 
 function isValueBlockBinding(value: Binding): value is ValueBlock {
@@ -1277,7 +1373,7 @@ function detachedBinding(frame: Frame | null, value: Binding): DetachedBinding |
   }
   let fallback: Frame | null | undefined;
   for (let current = frame; current; current = current.parent) {
-    const hit = current.detachedBindings?.get(value);
+    const hit = current.activation?.detachedBindings?.get(value);
     if (hit) {
       return hit;
     }
@@ -1294,7 +1390,7 @@ function addScopedFns(frame: Frame, fns: readonly Fn[], e: EvalCtx): void {
     return;
   }
   e.fnScopeVersion = (e.fnScopeVersion ?? 0) + 1;
-  const map = frame.fns ??= new Map();
+  const map = activationOf(frame).fns ??= new Map();
   const names = e.scopedFunctionNames ??= new Set();
   for (const fn of fns) {
     const name = fn.name.toLowerCase();
@@ -1406,7 +1502,7 @@ function moduleAstValue(value: unknown, name: string, seen: Set<object> | null =
 }
 
 function addModuleFunction(frame: Frame, fn: Fn, e: EvalCtx): void {
-  (frame.moduleFns ??= new Map()).set(fn.name.toLowerCase(), fn);
+  (activationOf(frame).moduleFns ??= new Map()).set(fn.name.toLowerCase(), fn);
   if (e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.scss') === true) {
     addScopedFns(frame, [fn], e);
     (e.moduleFns ??= new Set()).add(fn);
@@ -1415,7 +1511,7 @@ function addModuleFunction(frame: Frame, fn: Fn, e: EvalCtx): void {
 
 function lookupModuleFunction(frame: Frame | null, lowerName: string): Fn | undefined {
   for (let current = frame; current; current = current.parent) {
-    const fn = current.moduleFns?.get(lowerName);
+    const fn = current.activation?.moduleFns?.get(lowerName);
     if (fn !== undefined) {
       return fn;
     }
@@ -1651,7 +1747,7 @@ function nearestFnScope(frame: Frame | null, state?: FnScopeCacheState): Frame |
     return frame.fnScope ?? null;
   }
   for (let current: Frame | null = frame; current; current = current.parent) {
-    if (current.fns?.size) {
+    if (current.activation?.fns?.size) {
       frame.fnScope = current;
       frame.fnScopeVersion = version;
       return current;
@@ -1674,7 +1770,7 @@ function nearestFnScope(frame: Frame | null, state?: FnScopeCacheState): Frame |
  */
 export function lookupScopedFn(frame: Frame | null, lowerName: string, state?: FnScopeCacheState): Fn | undefined {
   for (let f = nearestFnScope(frame, state); f; f = nearestFnScope(f.parent, state)) {
-    const hit = f.fns!.get(lowerName);
+    const hit = f.activation!.fns!.get(lowerName);
     if (hit) {
       return hit;
     }
@@ -1771,7 +1867,7 @@ function collectSelectedDeclIndex(frame: Frame, selected: ReadonlyMap<If, Statem
    * before the block being placed, so it stops the backward walk.
    */
   const positionOf = (declaration: VariableDeclaration): number => {
-    const rank = frame.factRanks?.get(declaration);
+    const rank = frame.activation?.factRanks?.get(declaration);
     return rank === undefined ? frameStatementIndex(frame).get(declaration) ?? -1 : factSite(rank);
   };
   const place = (declaration: VariableDeclaration, at: number): void => {
@@ -1915,7 +2011,7 @@ function collectRulesets(statements: readonly Statement[]): Map<string, Ruleset[
  * existed). `published` is kept site-ascending by {@link insertRankedFact} and
  * `statements` is index-ordered, so two cursors merge them in
  * O(published + statements) INTEGER comparisons — no sort, no comparator closure,
- * and no Map on the path. Its only caller memoizes it in {@link Frame.rulesets},
+ * and no Map on the path. Its only caller memoizes it in {@link FrameActivation.rulesets},
  * which the next publication drops: it runs once per publication EPOCH, not once,
  * so linear is the requirement, not a nicety.
  */
@@ -1943,13 +2039,14 @@ function factsInSourceOrder(
 }
 
 function frameRulesets(frame: Frame): Map<string, Ruleset[]> | null {
-  if (frame.rulesets !== undefined) {
-    return frame.rulesets;
+  const memo = frame.activation?.rulesets;
+  if (memo !== undefined) {
+    return memo;
   }
   const built = collectRulesets(
-    factsInSourceOrder(frame.importedRules, frame.importedRuleSites, frame.statements ?? [])
+    factsInSourceOrder(frame.activation?.importedRules, frame.activation?.importedRuleSites, frame.statements ?? [])
   );
-  frame.rulesets = built;
+  activationOf(frame).rulesets = built;
   return built;
 }
 
@@ -2146,8 +2243,9 @@ function orderedMixinsForStatements(
  * reported rather than guessed at.
  */
 function frameOrderedMixins(f: Frame, e: EvalCtx): OrderedMixinIndex | null {
-  if (f.orderedMixins !== undefined) {
-    return f.orderedMixins;
+  const memo = f.orderedMixins;
+  if (memo !== undefined) {
+    return memo;
   }
   const st = f.statements;
   if (!st) {
@@ -2203,8 +2301,9 @@ function compareSourceRanks(a: SourceRank, b: SourceRank): number {
 }
 
 function frameMixinDefinitionMeta(frame: Frame): Map<MixinDefinition, MixinDefinitionMeta> {
-  if (frame.mixinDefinitionMeta) {
-    return frame.mixinDefinitionMeta;
+  const existing = frame.activation?.mixinDefinitionMeta;
+  if (existing) {
+    return existing;
   }
   const meta = new Map<MixinDefinition, MixinDefinitionMeta>();
   const visit = (rules: Statement[], rank: SourceRank, selectedPath: readonly SelectedMixinPath[]): void => {
@@ -2223,7 +2322,7 @@ function frameMixinDefinitionMeta(frame: Frame): Map<MixinDefinition, MixinDefin
   if (frame.statements) {
     visit(frame.statements, [], []);
   }
-  frame.mixinDefinitionMeta = meta;
+  activationOf(frame).mixinDefinitionMeta = meta;
   return meta;
 }
 
@@ -2233,11 +2332,11 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDefinitio
   if (!meta || meta.selectedPath.length === 0) {
     return;
   }
-  const selected = frame.selectedIfBodies;
+  const selected = frame.activation?.selectedIfBodies;
   if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.rules)) {
     return;
   }
-  if (frame.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
+  if (frame.activation?.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
     return;
   }
   publishRankedMixinEvent(frame, definition, meta.rank);
@@ -2245,7 +2344,7 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDefinitio
 
 /** File one published definition in this frame's rank-ordered event list. */
 function publishRankedMixinEvent(frame: Frame, definition: MixinDefinition, rank: SourceRank): void {
-  const events = frame.publishedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
+  const events = activationOf(frame).publishedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
   const candidate = { definition, rank };
   const list = events.get(definition.name);
   if (!list) {
@@ -2265,7 +2364,7 @@ function publishRankedMixinEvent(frame: Frame, definition: MixinDefinition, rank
  * every ordered merge steps a cursor and never comes here.
  */
 function frameStatementIndex(frame: Frame): Map<Statement, number> {
-  const existing = frame.statementIndex;
+  const existing = frame.activation?.statementIndex;
   if (existing) {
     return existing;
   }
@@ -2276,7 +2375,7 @@ function frameStatementIndex(frame: Frame): Map<Statement, number> {
       positions.set(statements[index]!, index);
     }
   }
-  return (frame.statementIndex = positions);
+  return (activationOf(frame).statementIndex = positions);
 }
 
 /**
@@ -2355,9 +2454,10 @@ function publishImportedMixinDefinition(
     mixins.set(definition.name, [definition]);
   }
   if (recordCallable) {
+    const facts = activationOf(frame);
     insertRankedFact(
-      frame.importedCallables ??= [],
-      frame.importedCallableSites ??= [],
+      facts.importedCallables ??= [],
+      facts.importedCallableSites ??= [],
       definition,
       factSite(rank)
     );
@@ -2368,7 +2468,7 @@ function publishImportedMixinDefinition(
    * list and then appends only the `mixins` entries it has not already placed,
    * so this is a POSITION for the same definition, never a second candidate.
    */
-  if (rank !== null && !frame.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
+  if (rank !== null && !frame.activation?.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
     publishRankedMixinEvent(frame, definition, rank);
   }
 }
@@ -2377,7 +2477,7 @@ function publishImportedMixinDefinition(
  * index. `rank` splices it at its `@import`'s source position, so a later local
  * declaration of the same name still wins the backward scoped read.
  *
- * KNOWN LIMIT, `(multiple)` only: {@link Frame.factRanks} is keyed by the
+ * KNOWN LIMIT, `(multiple)` only: {@link FrameActivation.factRanks} is keyed by the
  * declaration NODE, so importing one document `(multiple)` times into the same
  * frame leaves every occurrence remembered at the LAST site. Each occurrence is
  * still spliced at its own correct position when it is published, and occurrences
@@ -2396,7 +2496,7 @@ function publishImportedVariableDeclaration(
 
   /* A stack's first entry needs a rank only to be placed against a `$if`/`$while` body. */
   if (rank !== null && (declarations !== undefined || index.controlFlow)) {
-    (frame.factRanks ??= new Map()).set(declaration, rank);
+    (activationOf(frame).factRanks ??= new Map()).set(declaration, rank);
   }
   if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
@@ -2412,7 +2512,7 @@ function publishImportedVariableDeclaration(
     let at = declarations.length;
     while (at > 0) {
       const previous = declarations[at - 1]!;
-      const publishedRank = frame.factRanks?.get(previous);
+      const publishedRank = frame.activation?.factRanks?.get(previous);
       if (publishedRank !== undefined) {
         if (compareSourceRanks(rank, publishedRank) >= 0) {
           break;
@@ -2435,8 +2535,9 @@ function publishImportedVariableDeclaration(
    * published fact: an `@import` publishes a whole document. Only a frame with
    * a direct `$if`/`if()`/`$while` ever has a selection.
    */
-  if (frame.selectedDeclIndex !== undefined) {
-    frame.selectedDeclIndex = undefined;
+  const activation = frame.activation;
+  if (activation?.selectedDeclIndex !== undefined) {
+    activation.selectedDeclIndex = undefined;
   }
 }
 
@@ -2446,8 +2547,9 @@ function publishImportedVariableDeclaration(
  * per occurrence. */
 function publishImportedRuleset(frame: Frame, rule: Ruleset, rank: SourceRank | null = null): void {
   const site = factSite(rank);
-  insertRankedFact(frame.importedRules ??= [], frame.importedRuleSites ??= [], rule, site);
-  insertRankedFact(frame.importedCallables ??= [], frame.importedCallableSites ??= [], rule, site);
+  const facts = activationOf(frame);
+  insertRankedFact(facts.importedRules ??= [], facts.importedRuleSites ??= [], rule, site);
+  insertRankedFact(facts.importedCallables ??= [], facts.importedCallableSites ??= [], rule, site);
 
   /*
    * It may have been materialized before this import; rebuild lazily with the
@@ -2455,7 +2557,9 @@ function publishImportedRuleset(frame: Frame, rule: Ruleset, rank: SourceRank | 
    * Namespace descent needs no such invalidation: it two-cursors the published
    * list live.
    */
-  frame.rulesets = undefined;
+  if (frame.activation !== null) {
+    frame.activation.rulesets = undefined;
+  }
 }
 
 type PrepublishedImportFacts = Statement | Set<Statement> | null;
@@ -2587,7 +2691,7 @@ function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefini
     return mapDefs?.slice() ?? [];
   }
   const base = frameOrderedMixins(f, e)?.byName.get(name) ?? [];
-  const events = f.publishedMixinEvents?.get(name) ?? [];
+  const events = f.activation?.publishedMixinEvents?.get(name) ?? [];
   const out: MixinDefinition[] = [];
   let baseIndex = 0;
   let eventIndex = 0;
@@ -2643,7 +2747,7 @@ function lookupCandidates(
       if (homes) {
         for (const d of hit) {
           if (!homes.has(d)) {
-            homes.set(d, f.mixinHomes?.get(d) ?? f);
+            homes.set(d, f.activation?.mixinHomes?.get(d) ?? f);
           }
         }
       }
@@ -3053,12 +3157,7 @@ function findPathInScope(
            */
           discardSelectedBoundSources(selection.boundSourceKeys, e);
         }
-        const child: Frame = {
-          parent: scope,
-          mixins: collectMixins(s.rules),
-          declIndex: collectDeclIndex(s.rules), cells: null, reassign: null,
-          statements: s.rules
-        };
+        const child = makeFrame(scope, s.rules, collectMixins(s.rules), collectDeclIndex(s.rules), null);
         findPathInScope(child, remaining.slice(nEl.length), homes, out, e);
       }
     } else if (s.type === 'Ruleset') {
@@ -3105,13 +3204,8 @@ function findPathInScope(
           const activePlacement = placement ?? scope.rulePlacements?.get(s);
           const body = activePlacement
             ? null
-            : [...(scope.rulePlacements?.get(s)?.importedRules ?? []), ...s.rules];
-          const child: Frame = activePlacement ?? {
-            parent: scope,
-            mixins: collectMixins(body!),
-            declIndex: collectDeclIndex(body!), cells: null, reassign: null,
-            statements: body!
-          };
+            : [...(scope.rulePlacements?.get(s)?.activation?.importedRules ?? []), ...s.rules];
+          const child = activePlacement ?? makeFrame(scope, body!, collectMixins(body!), collectDeclIndex(body!), null);
           findPathInScope(child, remaining.slice(el.length), homes, out, e);
         }
         break; // one selector of a rule matches the prefix at most once
@@ -3134,8 +3228,9 @@ function findPathInScope(
    * would re-merge once per publication epoch while this pays the same linear walk
    * it already owed for visiting the facts.
    */
-  const published = scope.importedCallables ?? scope.importedRules;
-  const sites = scope.importedCallables ? scope.importedCallableSites : scope.importedRuleSites;
+  const activation = scope.activation;
+  const published = activation?.importedCallables ?? activation?.importedRules;
+  const sites = activation?.importedCallables ? activation.importedCallableSites : activation?.importedRuleSites;
   if (!published?.length || !sites) {
     for (const s of st ?? []) {
       visit(s);
@@ -3161,7 +3256,7 @@ function findPathInScope(
    * be placed more than once with different live values, so `Map<Ruleset, Frame>`
    * alone is not a truthful representation here.
    */
-  for (const published of scope.publishedRules ?? []) {
+  for (const published of scope.activation?.publishedRules ?? []) {
     visit(published.rule, published.frame);
   }
 }
@@ -3294,7 +3389,7 @@ function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boo
 function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): BindingHit | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const stack = f.leaked?.get(name);
+    const stack = f.activation?.leaked?.get(name);
     if (stack) {
       for (let i = stack.length - 1; i >= 0; i--) {
         const value = stack[i]!;
@@ -3316,7 +3411,7 @@ function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): Bi
 function hasExcludedLeakedBinding(frame: Frame | null, name: string, e: EvalCtx): boolean {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const stack = f.leaked?.get(name);
+    const stack = f.activation?.leaked?.get(name);
     if (stack?.some(value => e.excluded.has(value))) {
       return true;
     }
@@ -3332,12 +3427,12 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): Bi
   for (let f = frame; f; f = f.parent) {
     const replacement = f.reassign?.get(name);
     if (replacement && (!e?.excluded.has(replacement.value))) {
-      return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f, evaluated: null };
+      return { value: replacement.value, frame: f.activation?.bindingValueFrames?.get(replacement.value) ?? f, evaluated: null };
     }
-    if (f.selectedDeclIndex === undefined && f.declIndex?.controlFlow === true) {
+    if (f.activation?.selectedDeclIndex === undefined && f.declIndex?.controlFlow === true) {
       selectControlFlow(f, e);
     }
-    const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
+    const stack = (f.activation?.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
       for (let i = stack.length - 1; i >= 0; i--) {
         const declaration = stack[i]!;
@@ -3369,7 +3464,7 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): Bi
           }
           return {
             value: declaration.value,
-            frame: f.bindingValueFrames?.get(declaration.value) ?? f,
+            frame: f.activation?.bindingValueFrames?.get(declaration.value) ?? f,
             evaluated: null
           };
         }
@@ -3392,7 +3487,7 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx)
     if (replacement && e.excluded.has(replacement.value)) {
       return true;
     }
-    const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
+    const stack = (f.activation?.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
       for (let i = stack.length - 1; i >= 0; i--) {
         const declaration = stack[i]!;
@@ -4869,9 +4964,7 @@ function evalTyped(
        * eager-byte semantics.
        */
       if (projectMixinValues) {
-        const carried = frame?.mixinValueBindings?.get(node)
-          ?? e.mixinValueBindings?.get(node)
-          ?? e.compressedBindings?.get(node);
+        const carried = snapshotOf(node, frame, e, 'value') ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
@@ -4879,8 +4972,7 @@ function evalTyped(
       {
         const snapshot = e.snapshotValues?.get(node);
         return (snapshot !== undefined && !isStructuredGroup(snapshot) ? snapshot : undefined)
-          ?? frame?.mixinUrlBindings?.get(node)
-          ?? e.mixinUrlBindings?.get(node)
+          ?? snapshotOf(node, frame, e, 'url')
           ?? materializeNode(node, e);
       }
     case 'Quoted':
@@ -5650,7 +5742,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * written.
        */
       if (e.compress === true) {
-        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node) ?? e.compressedBindings?.get(node);
+        const carried = snapshotOf(node, frame, e, 'value') ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
@@ -6662,13 +6754,7 @@ function memberLookup(activation: Frame, name: string): VariableLookup {
 
 function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null): DeclMap {
   const valueEntries = new CollectionOverlay<DeclEntry>();
-  const valueFrame: Frame = {
-    parent,
-    mixins: null,
-    declIndex: collectDeclIndex([]),
-    cells: null,
-    reassign: null
-  };
+  const valueFrame = makeFrame(parent, undefined, null, collectDeclIndex([]), null);
   for (const entry of value.entries) {
     const name = isValueGroupArray(entry.key)
       ? ''
@@ -6725,13 +6811,13 @@ function memoPureDeclMap(base: object, frame: Frame | null, e: EvalCtx, build: (
   if (!DECLMAP_MEMO_ENABLED || !frame) {
     return build();
   }
-  const hit = frame.declMapMemo?.get(base);
+  const hit = frame.activation?.declMapMemo?.get(base);
   if (hit) {
     return hit;
   }
   const built = build();
   if (built !== null && e.excluded.size === 0) {
-    (frame.declMapMemo ??= new Map()).set(base, built);
+    (activationOf(frame).declMapMemo ??= new Map()).set(base, built);
   }
   return built;
 }
@@ -6790,13 +6876,9 @@ function resolveBaseDeclMap(
     return memoPureDeclMap(base, frame, e, () => {
       const sel = base.src;
       for (let f = frame; f; f = f.parent) {
-        const rules = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(sel) : undefined;
+        const rules = f.activation?.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(sel) : undefined;
         if (rules?.length) {
-          const bodyFrame: Frame = {
-            parent: f,
-            mixins: null,
-            declIndex: collectDeclIndex(rules.flatMap(r => r.rules)), cells: null, reassign: null
-          };
+          const bodyFrame = makeFrame(f, undefined, null, collectDeclIndex(rules.flatMap(r => r.rules)), null);
           return evalToDeclMap(rules.flatMap(r => r.rules), bodyFrame, e);
         }
       }
@@ -6826,11 +6908,7 @@ function resolveBaseDeclMap(
       return memoPureDeclMap(rs.rules, module, e, () => evalToDeclMap(rs.rules, module, e, module));
     }
     return memoPureDeclMap(base, frame, e, () => {
-      const bodyFrame: Frame = {
-        parent: rs.frame,
-        mixins: collectMixins(rs.rules),
-        declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
-      };
+      const bodyFrame = makeFrame(rs.frame, undefined, collectMixins(rs.rules), collectDeclIndex(rs.rules), null);
       return evalToDeclMap(rs.rules, bodyFrame, e);
     });
   }
@@ -6960,7 +7038,7 @@ function invokeValueLambda(
   const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
-    const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    const overlay = makeFrame(defFrame, undefined, null, collectDeclIndex([], boundSoFar), cellsForParams(boundSoFar));
     const b = eagerSnapshot(v, overlay, e);
     if (isThenable(b)) {
       observeRejectedThenable(b);
@@ -7013,16 +7091,12 @@ function invokeValueLambda(
       meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
     });
   }
-  const activation: Frame = {
-    parent: defFrame,
-    mixins: collectMixins(lambda.rules),
-    declIndex: collectDeclIndex(lambda.rules, bindings),
-    cells: cellsForParams(bindings),
-    reassign: null,
-    statements: lambda.rules,
-    sourceOwner: defFrame ? definitionOwner(lambda.rules, defFrame, e) : null,
-    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame, callerFallback: true } : {})
-  };
+  const activation = makeFrame(defFrame, lambda.rules, collectMixins(lambda.rules), collectDeclIndex(lambda.rules, bindings), cellsForParams(bindings));
+  activation.sourceOwner = defFrame ? definitionOwner(lambda.rules, defFrame, e) : null;
+  if (callerFrame && callerFrame !== defFrame) {
+    activation.fallback = callerFrame;
+    activation.callerFallback = true;
+  }
   return { value: result, frame: activation };
 }
 
@@ -7793,8 +7867,7 @@ function classifyMixinValuePart(source: CallValue, frame: Frame, e: EvalCtx): Mi
     return MIXIN_VALUE_NONE;
   }
   if (!isValueSlotArray(source)
-    && (frame.mixinValueBindings?.has(source) === true || e.mixinValueBindings?.has(source) === true
-      || frame.mixinUrlBindings?.has(source) === true || e.mixinUrlBindings?.has(source) === true)) {
+    && (snapshotOf(source, frame, e, 'value') ?? snapshotOf(source, frame, e, 'url')) !== undefined) {
     return MIXIN_VALUE_AUTHORED;
   }
   if (!isValueSlotArray(source) && source.type === 'Url') {
@@ -8475,10 +8548,7 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
       if (hit.evaluated !== null) {
         return hit.evaluated;
       }
-      const carried = hit.frame.mixinValueBindings?.get(hit.value)
-        ?? e.mixinValueBindings?.get(hit.value)
-        ?? hit.frame.mixinUrlBindings?.get(hit.value)
-        ?? e.mixinUrlBindings?.get(hit.value);
+      const carried = snapshotOf(hit.value, hit.frame, e, 'value') ?? snapshotOf(hit.value, hit.frame, e, 'url');
       if (carried !== undefined) {
         return carried;
       }
@@ -8967,11 +9037,7 @@ function writtenBlockBody(
   trivia: Emit
 ): MaybePromise<string> {
   const rules = owner.rules;
-  const bodyFrame: Frame = {
-    parent,
-    mixins: collectMixins(rules),
-    declIndex: collectDeclIndex(rules), cells: null, reassign: null
-  };
+  const bodyFrame = makeFrame(parent, undefined, collectMixins(rules), collectDeclIndex(rules), null);
   const compress = e.compress === true;
   type Part = { readonly separator: string; readonly value: MaybePromise<string>; readonly sink: { elided: boolean } };
   type Entry = { readonly name: MaybePromise<string>; readonly mergeKey: string | null; readonly parts: Part[]; important: boolean };
@@ -13009,12 +13075,7 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           }
         }
       }
-      const childFrame: Frame = {
-        parent: frame,
-        mixins: collectMixins(st.rules),
-        declIndex: collectDeclIndex(st.rules), cells: null, reassign: null,
-        statements: st.rules
-      };
+      const childFrame = makeFrame(frame, st.rules, collectMixins(st.rules), collectDeclIndex(st.rules), null);
       resolveSelectorInterpForExtend(st.rules, childFrame, e);
     } else if (st.type === 'AtRuleBlock') {
       /*
@@ -13739,12 +13800,7 @@ function planImportedFacts(
      * second placement or render reads is untouched ({@link EvalCtx.resolvedSelectors}).
      */
     if (bodyHasInterpRule(rules)) {
-      resolveSelectorInterpForExtend(rules, {
-        parent: importer,
-        mixins: collectMixins(rules),
-        declIndex: collectDeclIndex(rules), cells: null, reassign: null,
-        statements: rules
-      }, e);
+      resolveSelectorInterpForExtend(rules, makeFrame(importer, rules, collectMixins(rules), collectDeclIndex(rules), null), e);
     }
     planImportedStaticExtend(rules, e, overlay, [], scope, null, reference, boundary, null, placement);
   };
@@ -13924,7 +13980,7 @@ function planImportedFacts(
           }
         }
       }
-      const childFrame: Frame = { parent: isCompose ? null : scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
+      const childFrame = makeFrame(isCompose ? null : scope, loaded.document.rules, collectMixins(loaded.document.rules), collectDeclIndex(loaded.document.rules), null);
 
       /*
        * A composed module's extends reach only the module and what it loads; a
@@ -14248,34 +14304,10 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannedModuleImports: modules,
     preparedImportsOwnedByCaller: false
   });
-  const rootFrame: Frame = {
-    parent: null,
-    mixins: collectMixins(root.rules),
-    declIndex: collectDeclIndex(root.rules),
-    cells: null,
-    reassign: null,
-    statements: root.rules,
-    fns: rootFns,
-    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
-    importContext: ''
-  };
-  if (rootFns) {
-    rootFrame.fnScope = rootFrame;
-    rootFrame.fnScopeVersion = e.fnScopeVersion;
-  }
-  const plannerRootFrame: Frame = {
-    parent: null,
-    mixins: collectMixins(root.rules),
-    declIndex: collectDeclIndex(root.rules),
-    cells: null,
-    reassign: null,
-    statements: root.rules,
-    fns: rootFns
-  };
-  if (rootFns) {
-    plannerRootFrame.fnScope = plannerRootFrame;
-    plannerRootFrame.fnScopeVersion = e.fnScopeVersion;
-  }
+  const rootFrame = makeRootFrame(root, rootFns, e);
+  rootFrame.sourceOwner = e.context?.currentSourceOwner?.() ?? null;
+  rootFrame.importContext = '';
+  const plannerRootFrame = makeRootFrame(root, rootFns, e);
   const prepare = activateBodyDependencies(root.rules, rootFrame, e, false);
   const plan = (): MaybePromise<PreparedImports> => {
     if (!importDocument) {
@@ -14285,6 +14317,21 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     return mapMaybe(planned, () => makePreparedImports(documents, modules));
   };
   return mapMaybe(prepare, plan);
+}
+
+/**
+ * A fresh root frame for `root`, with its own indexes (publication mutates them,
+ * so a render's root and planner frames never share one) and the render's
+ * root-global scoped functions, when it has any.
+ */
+function makeRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emit): Frame {
+  const frame = makeFrame(null, root.rules, collectMixins(root.rules), collectDeclIndex(root.rules), null);
+  if (rootFns) {
+    activationOf(frame).fns = rootFns;
+    frame.fnScope = frame;
+    frame.fnScopeVersion = e.fnScopeVersion;
+  }
+  return frame;
 }
 
 export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
@@ -14305,19 +14352,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pendingPlannedModuleImports: preparedModulePlan?.size,
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined
   });
-  const rootFrame: Frame = {
-    parent: null,
-    mixins: collectMixins(root.rules),
-    declIndex: collectDeclIndex(root.rules), cells: null, reassign: null,
-    statements: root.rules,
-    fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
-    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
-    importContext: ''
-  };
-  if (rootFns) {
-    rootFrame.fnScope = rootFrame;
-    rootFrame.fnScopeVersion = e.fnScopeVersion;
-  }
+  const rootFrame = makeRootFrame(root, rootFns, e);
+  rootFrame.sourceOwner = e.context?.currentSourceOwner?.() ?? null;
+  rootFrame.importContext = '';
   const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
@@ -14475,17 +14512,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
    * publication edge passed to `planImportedFacts`; imported bodies and CSS do
    * not execute until their authored lexical splice.
    */
-  const plannerRootFrame: Frame = {
-    parent: null,
-    mixins: collectMixins(root.rules),
-    declIndex: collectDeclIndex(root.rules), cells: null, reassign: null,
-    statements: root.rules,
-    fns: rootFns
-  };
-  if (rootFns) {
-    plannerRootFrame.fnScope = plannerRootFrame;
-    plannerRootFrame.fnScopeVersion = e.fnScopeVersion;
-  }
+  const plannerRootFrame = makeRootFrame(root, rootFns, e);
   const prepare = activateBodyDependencies(root.rules, rootFrame, e);
   const plan = (): SerializeReturn => {
     const mode = options?.importDocument
@@ -14954,7 +14981,7 @@ function runWhile(
    * condition runs: a `$while` has no arm to select, so selecting the frame's
    * control flow registers its one body ({@link collectSelectedDeclIndex}).
    */
-  if (frame.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
+  if (frame.activation?.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
     selectControlFlow(frame, e);
   }
   const step = (start: number): MaybePromise<void> => {
@@ -14985,8 +15012,9 @@ function runWhile(
  * read sees the frame's plain index.
  */
 function selectControlFlow(frame: Frame, e: EvalCtx | undefined): void {
-  if (frame.preselectedIfs !== undefined) {
-    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  const activation = frame.activation;
+  if (activation?.preselectedIfs !== undefined) {
+    activation.selectedDeclIndex = collectSelectedDeclIndex(frame, activation.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
   } else if (e !== undefined) {
     preselectControlFlow(frame, e);
   }
@@ -15024,8 +15052,9 @@ const armDeclares = (body: readonly Statement[]): boolean =>
  */
 function preselectControlFlow(frame: Frame, e: EvalCtx): void {
   const decided = new Map<If, Statement[] | null>();
-  frame.preselectedIfs = decided;
-  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  const activation = activationOf(frame);
+  activation.preselectedIfs = decided;
+  activation.selectedDeclIndex = collectSelectedDeclIndex(frame, activation.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
   const statements = frame.statements;
   if (!statements) {
     return;
@@ -15061,9 +15090,9 @@ function preselectControlFlow(frame: Frame, e: EvalCtx): void {
     }
     decided.set(statement, body);
     if (body !== null) {
-      (frame.selectedIfBodies ??= new Map()).set(statement, body);
+      (activation.selectedIfBodies ??= new Map()).set(statement, body);
       if (armDeclares(body)) {
-        frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies);
+        activation.selectedDeclIndex = collectSelectedDeclIndex(frame, activation.selectedIfBodies);
       }
     }
   }
@@ -15080,10 +15109,10 @@ function selectIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   if (unlowered !== null) {
     return [unlowered];
   }
-  if (frame.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
+  if (frame.activation?.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
     selectControlFlow(frame, e);
   }
-  const decided = frame.preselectedIfs?.get(node);
+  const decided = frame.activation?.preselectedIfs?.get(node);
   if (decided !== undefined) {
     return decided;
   }
@@ -15091,11 +15120,12 @@ function selectIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   if (!body) {
     return null;
   }
-  const selected = frame.selectedIfBodies ??= new Map();
+  const activation = activationOf(frame);
+  const selected = activation.selectedIfBodies ??= new Map();
   if (selected.get(node) !== body) {
     selected.set(node, body);
-    if (frame.selectedDeclIndex !== undefined) {
-      frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
+    if (activation.selectedDeclIndex !== undefined) {
+      activation.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
     }
   }
   return body;
@@ -16070,14 +16100,9 @@ function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
   if (priorPlacement?.parent === frame) {
     childFrame = priorPlacement;
   } else {
-    childFrame = {
-      parent: frame,
-      mixins: collectMixins(rule.rules),
-      declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-      statements: rule.rules,
-      sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
-      outputOf: rule
-    };
+    childFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
+    childFrame.sourceOwner = sourceOwnerForBody(rule.rules, frame, e);
+    childFrame.outputOf = rule;
 
     /*
      * A rule whose selector is a bare `&` (`& { … }`, `& when (…) { … }`) writes into its
@@ -16955,13 +16980,8 @@ function walkBody(
               }
 
               /* Its body is this block's, so its imports count in this block's import-once scope. */
-              const selfFrame: Frame = {
-                parent: frame,
-                mixins: collectMixins(rule.rules),
-                declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-                statements: rule.rules,
-                importScope: importScopeOf(frame)
-              };
+              const selfFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
+              selfFrame.importScope = importScopeOf(frame);
               return walkBody(
                 rule.rules,
                 rComposedSelf,
@@ -17680,18 +17700,13 @@ function expandReferenceAncestorFor(
           destructured,
           evaluatedItem
         );
-        const loopFrame: Frame = {
-          parent: frame,
-          mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings, cells),
-          cells,
-          reassign: null,
-          statements: node.rules,
-          sourceOwner: frame.sourceOwner ?? null,
-          extendPlacement: e.dynamicExtend === null ? undefined : {},
-          importScope: importScopeOf(frame),
-          bindingValueFrames
-        };
+        const loopFrame = makeFrame(frame, node.rules, collectMixins(node.rules), collectDeclIndex(node.rules, bindings, cells), cells);
+        loopFrame.sourceOwner = frame.sourceOwner ?? null;
+        loopFrame.extendPlacement = e.dynamicExtend === null ? undefined : {};
+        loopFrame.importScope = importScopeOf(frame);
+        if (bindingValueFrames !== undefined) {
+          activationOf(loopFrame).bindingValueFrames = bindingValueFrames;
+        }
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
         }
@@ -17888,26 +17903,17 @@ function expandCall(
            * to the namespace), so it takes no caller fallback.
            */
           const homeFrame = homes.get(def) ?? frame;
-          const callFrame: Frame = {
-            parent: homeFrame,
-            mixins: collectMixins(def.rules),
-            declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings, undefined, frame), reassign: null,
-            statements: def.rules,
-            sourceOwner: definitionOwner(def.rules, homeFrame, e),
-            mixinUrlBindings: undefined,
-            mixinValueBindings: undefined,
-            mixinSplice: true,
+          const callFrame = makeFrame(homeFrame, def.rules, collectMixins(def.rules), collectDeclIndex(def.rules, bindings), cellsForParams(bindings, undefined, frame));
+          callFrame.sourceOwner = definitionOwner(def.rules, homeFrame, e);
+          callFrame.mixinSplice = true;
 
-            /*
-             * [extend/dynamic] Each call places its body's rules apart (see
-             * Frame.extendPlacement). Every field is declared, so every call frame
-             * keeps one shape.
-             */
-            extendPlacement: e.dynamicExtend === null ? undefined : {},
-            importScope: importScopeOf(frame),
-            fallback: namespaced || homeFrame === frame ? undefined : frame,
-            callerFallback: namespaced || homeFrame === frame ? undefined : true
-          };
+          /* [extend/dynamic] Each call places its body's rules apart (see Frame.extendPlacement). */
+          callFrame.extendPlacement = e.dynamicExtend === null ? undefined : {};
+          callFrame.importScope = importScopeOf(frame);
+          if (!namespaced && homeFrame !== frame) {
+            callFrame.fallback = frame;
+            callFrame.callerFallback = true;
+          }
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
           if (e.dynamicExtend !== null && def.extendInstructions !== undefined) {
@@ -18125,23 +18131,21 @@ function expandApply(
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < selected.length; index++) {
       const { rule, home } = selected[index]!;
-      const applyFrame: Frame = {
-        parent: home,
-        mixins: collectMixins(rule.rules),
-        declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-        statements: rule.rules,
-        sourceOwner: definitionOwner(rule.rules, home, e),
+      const applyFrame = makeFrame(home, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
+      applyFrame.sourceOwner = definitionOwner(rule.rules, home, e);
 
-        /*
-         * [extend/dynamic] Like a ruleset called as a mixin, an applied body splices the
-         * ruleset's own nested rules: each application is its own placement, written at
-         * the composed apply-site selector (Frame.mixinSplice, Frame.extendPlacement).
-         */
-        mixinSplice: true,
-        extendPlacement: e.dynamicExtend === null ? undefined : {},
-        importScope: importScopeOf(frame),
-        ...(home === frame ? {} : { fallback: frame, callerFallback: true })
-      };
+      /*
+       * [extend/dynamic] Like a ruleset called as a mixin, an applied body splices the
+       * ruleset's own nested rules: each application is its own placement, written at
+       * the composed apply-site selector (Frame.mixinSplice, Frame.extendPlacement).
+       */
+      applyFrame.mixinSplice = true;
+      applyFrame.extendPlacement = e.dynamicExtend === null ? undefined : {};
+      applyFrame.importScope = importScopeOf(frame);
+      if (home !== frame) {
+        applyFrame.fallback = frame;
+        applyFrame.callerFallback = true;
+      }
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         activateBodyDependencies(rule.rules, applyFrame, e),
         () => sharedLeaves === undefined
@@ -18210,12 +18214,12 @@ function takeMixinValueBindings(
   for (const key of keys) {
     const url = e.mixinUrlBindings?.get(key);
     if (url !== undefined) {
-      (frame.mixinUrlBindings ??= new Map()).set(key, url);
+      (activationOf(frame).mixinUrlBindings ??= new Map()).set(key, url);
       e.mixinUrlBindings!.delete(key);
     }
     const value = e.mixinValueBindings?.get(key);
     if (value !== undefined) {
-      (frame.mixinValueBindings ??= new Map()).set(key, value);
+      (activationOf(frame).mixinValueBindings ??= new Map()).set(key, value);
       e.mixinValueBindings!.delete(key);
     }
   }
@@ -18338,7 +18342,7 @@ function leakBodyVars(callerFrame: Frame, rules: Statement[], callFrame: Frame, 
       }
       snap = b;
     }
-    const map = (callerFrame.leaked ??= new Map());
+    const map = (activationOf(callerFrame).leaked ??= new Map());
     const stack = map.get(s.name);
     if (stack) {
       stack.push(snap);
@@ -18356,12 +18360,12 @@ function publishMixins(frame: Frame, extra: Map<string, MixinDefinition[]> | nul
 
   /*
    * [closure/publish] record each unlocked def's closure home so a later call
-   * resolves its free vars/guard there (see `Frame.mixinHomes`). Only when a home
+   * resolves its free vars/guard there (see `FrameActivation.mixinHomes`). Only when a home
    * frame is supplied AND it differs from the destination (a def published into
    * its own frame keeps the ordinary lexical home).
    */
   if (home && home !== frame) {
-    const map = (frame.mixinHomes ??= new Map());
+    const map = (activationOf(frame).mixinHomes ??= new Map());
     for (const defs of extra.values()) {
       for (const d of defs) {
         if (!map.has(d)) {
@@ -18414,18 +18418,13 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
      */
     let placement = callFrame.rulePlacements?.get(statement);
     if (placement?.parent !== callFrame) {
-      placement = {
-        parent: callFrame,
-        mixins: collectMixins(statement.rules),
-        declIndex: collectDeclIndex(statement.rules), cells: null, reassign: null,
-        statements: statement.rules,
+      placement = makeFrame(callFrame, statement.rules, collectMixins(statement.rules), collectDeclIndex(statement.rules), null);
 
-        /* The rule sits in the called body, so it is that body's document's source. */
-        sourceOwner: callFrame.sourceOwner
-      };
+      /* The rule sits in the called body, so it is that body's document's source. */
+      placement.sourceOwner = callFrame.sourceOwner;
       (callFrame.rulePlacements ??= new Map()).set(statement, placement);
     }
-    (frame.publishedRules ??= []).push({ rule: statement, frame: placement });
+    (activationOf(frame).publishedRules ??= []).push({ rule: statement, frame: placement });
   }
 }
 
@@ -18527,21 +18526,16 @@ function referenceCallFrame(
   const def = definitionFrame ?? frame;
   const body = valueBlockBody(dr);
   const own = collectMixins(body);
-  const callFrame: Frame = {
-    parent: def, // definition scope has priority
-    mixins: own,
 
-    // A `using (…)` content block seeds its params here (`@content(args)`).
-    declIndex: collectDeclIndex(body, bindings), cells: cellsForParams(bindings), reassign: null,
-    fallback: frame, // caller scope is the fallback
-    callerFallback: true, // [R16] but invisible to plain variable reads by default
-    statements: body,
-    sourceOwner,
+  /* The definition scope has priority. A `using (…)` content block seeds its params here (`@content(args)`). */
+  const callFrame = makeFrame(def, body, own, collectDeclIndex(body, bindings), cellsForParams(bindings));
+  callFrame.fallback = frame; // caller scope is the fallback
+  callFrame.callerFallback = true; // [R16] but invisible to plain variable reads by default
+  callFrame.sourceOwner = sourceOwner;
 
-    /* [extend/dynamic] each call places its body's rules apart (Frame.extendPlacement) */
-    extendPlacement,
-    importScope: importScopeOf(frame)
-  };
+  /* [extend/dynamic] each call places its body's rules apart (Frame.extendPlacement) */
+  callFrame.extendPlacement = extendPlacement;
+  callFrame.importScope = importScopeOf(frame);
   publishMixins(frame, own); // unlocking: caller sees the ruleset's mixins
   return { dr, callFrame };
 }
@@ -18733,7 +18727,7 @@ function bindContentArgs(
   const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
-    const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    const overlay = makeFrame(defFrame, undefined, null, collectDeclIndex([], boundSoFar), cellsForParams(boundSoFar));
     return eagerSnapshot(v, overlay, e);
   };
   const prepared = substituteClosureVarArgs(call, callerFrame, e, false);
@@ -18983,13 +18977,8 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
       }
       return items;
     }
-    const mapFrame: Frame = {
-      parent: map.frame,
-      mixins: collectMixins(map.rules),
-      declIndex: collectDeclIndex(map.rules), cells: null, reassign: null,
-      statements: map.rules,
-      sourceOwner: map.detached?.sourceOwner ?? map.frame?.sourceOwner ?? null
-    };
+    const mapFrame = makeFrame(map.frame, map.rules, collectMixins(map.rules), collectDeclIndex(map.rules), null);
+    mapFrame.sourceOwner = map.detached?.sourceOwner ?? map.frame?.sourceOwner ?? null;
     recordMapPropertyTimeline(map.rules, mapFrame);
     const items: ForItem[] = [];
     for (const s of map.rules) {
@@ -19039,8 +19028,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
      */
     const carried = base.type !== 'Any'
       ? undefined
-      : baseFrame?.mixinValueBindings?.get(base) ?? e.mixinValueBindings?.get(base) ?? baseFrame?.mixinUrlBindings?.get(base)
-        ?? e.mixinUrlBindings?.get(base) ?? e.compressedBindings?.get(base);
+      : snapshotOf(base, baseFrame, e, 'value') ?? snapshotOf(base, baseFrame, e, 'url') ?? e.compressedBindings?.get(base);
     if (carried !== undefined) {
       return { evaluatedItems: groupItems(carried) };
     }
@@ -19259,16 +19247,13 @@ function expandFor(
           destructured,
           evaluatedItem
         );
-        const loopFrame: Frame = {
-          parent: frame,
-          mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings, cells), cells, reassign: null,
-          statements: node.rules,
-          sourceOwner: frame.sourceOwner ?? null,
-          extendPlacement: e.dynamicExtend === null ? undefined : {},
-          importScope: importScopeOf(frame),
-          bindingValueFrames
-        };
+        const loopFrame = makeFrame(frame, node.rules, collectMixins(node.rules), collectDeclIndex(node.rules, bindings, cells), cells);
+        loopFrame.sourceOwner = frame.sourceOwner ?? null;
+        loopFrame.extendPlacement = e.dynamicExtend === null ? undefined : {};
+        loopFrame.importScope = importScopeOf(frame);
+        if (bindingValueFrames !== undefined) {
+          activationOf(loopFrame).bindingValueFrames = bindingValueFrames;
+        }
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
         }
@@ -19352,9 +19337,9 @@ function dispatch(
     isDefault: () => boolean
   ): GuardEvalDeps => {
     const home = homes?.get(def);
-    const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame, callerFallback: true }
-      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null };
+    const overlay = makeFrame(home && home !== frame ? home : frame, undefined, null, collectDeclIndex([], bindings), cellsForParams(bindings));
+    overlay.fallback = overlay.parent === frame ? undefined : frame;
+    overlay.callerFallback = overlay.parent === frame ? undefined : true;
 
     /*
      * [default-fn] thread the dispatch decision into the operand-resolution ctx so a
@@ -19381,9 +19366,9 @@ function dispatch(
   let defaultValueKeys: Map<Map<string, CallValue>, Binding[]> | null = null;
   const resolveDefault: DefaultResolver = (v, boundSoFar, def) => {
     const home = homes?.get(def);
-    const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame, callerFallback: true }
-      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    const overlay = makeFrame(home && home !== frame ? home : frame, undefined, null, collectDeclIndex([], boundSoFar), cellsForParams(boundSoFar));
+    overlay.fallback = overlay.parent === frame ? undefined : frame;
+    overlay.callerFallback = overlay.parent === frame ? undefined : true;
     let lookup: Lookup | undefined;
     let lookupName: string | undefined;
     if (!isValueSlotArray(v) && v.type === 'Lookup'
@@ -21345,14 +21330,18 @@ function sameModuleConfig(a: StyleImportConfig, b: StyleImportConfig): boolean {
 }
 
 /**
- * Build the isolated scope a configured `@compose`d module evaluates under, and
- * overlay its configuration (spec R6 Part E). This is the MIXIN-CALL/loop-body
+ * Build the isolated scope a `@compose`d module evaluates under, and overlay its
+ * configuration when it has one (spec R6 Part E). This is the MIXIN-CALL/loop-body
  * model: the module's built AST is the reusable definition, and this frame is the
  * overlay the ordinary body emitter walks ONCE — the module is NOT re-spliced into
  * the importer's scope. The frame is its OWN root (`parent: null`) so the importer's
- * locals stay invisible (isolation); configuration OVERWRITES the module's
- * outer-scope binding so every reference — and every derived variable — sees the
- * configured value.
+ * locals stay invisible (isolation), and its body's nested `@compose`/`@import`
+ * publish into THIS frame and never leak up to the importer — `@compose` is
+ * non-transitive, unlike the transitively-leaky `@import`. The importer reaches the
+ * module's own members only through the namespace binding built by
+ * {@link publishComposedModule}. Configuration OVERWRITES the module's outer-scope
+ * binding so every reference — and every derived variable — sees the configured
+ * value.
  *
  * Config is SEEDED into the overlay frame BEFORE the module body evaluates, into
  * BOTH binding stores so it wins in every dialect:
@@ -21369,21 +21358,24 @@ function sameModuleConfig(a: StyleImportConfig, b: StyleImportConfig): boolean {
  * importer frame (cell `valueFrame` / `bindingValueFrames`): once, when execution
  * reaches the edge that configured the module ({@link snapshotModuleConfig}).
  */
-function configuredModuleFrame(
+function moduleFrame(
   statements: Statement[],
-  config: NonNullable<StyleImport['config']>,
+  config: StyleImport['config'] | null,
   importerFrame: Frame
 ): Frame {
-  const frame = unconfiguredModuleFrame(statements);
-  seedModuleConfig(frame, config.bindings, importerFrame);
+  const frame = makeFrame(null, statements, collectMixins(statements), collectDeclIndex(statements), null);
+  frame.sourceOwner = null;
+  if (config !== null) {
+    seedModuleConfig(frame, config.bindings, importerFrame);
+  }
   return frame;
 }
 
-/** Seed configuration bindings into both of a module frame's binding stores ({@link configuredModuleFrame}). */
+/** Seed configuration bindings into both of a module frame's binding stores ({@link moduleFrame}). */
 function seedModuleConfig(frame: Frame, bindings: readonly VariableDeclaration[], importerFrame: Frame): void {
   const reassign = frame.reassign ??= new Map();
   const cells = frame.cells ??= new Map();
-  const bindingValueFrames = frame.bindingValueFrames ??= new Map();
+  const bindingValueFrames = activationOf(frame).bindingValueFrames ??= new Map();
   for (const binding of bindings) {
     reassign.set(binding.name, binding);
     cells.set(binding.name, {
@@ -21420,25 +21412,6 @@ function snapshotModuleConfig(activation: ComposeActivation, e: EvalCtx): MaybeP
       ? binding
       : variableDeclaration(binding.name, resolved[index]!, binding.write)), importerFrame);
   });
-}
-
-/**
- * An UNCONFIGURED `@compose` module also evaluates in its own isolated overlay
- * frame (`parent: null`), so its body's nested `@compose`/`@import` publish into
- * THIS frame and never leak up to the importer — `@compose` is non-transitive,
- * unlike the transitively-leaky `@import`. The importer reaches the module's own
- * members only through the namespace binding built by {@link publishComposedModule}.
- */
-function unconfiguredModuleFrame(statements: Statement[]): Frame {
-  return {
-    parent: null,
-    mixins: collectMixins(statements),
-    declIndex: collectDeclIndex(statements),
-    cells: null,
-    reassign: null,
-    statements,
-    sourceOwner: null
-  };
 }
 
 /**
@@ -21536,7 +21509,7 @@ function publishComposedModule(
       const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
       const member = variableDeclaration(child.name, read, { mode: 'declare' });
       publishImportedVariableDeclaration(importerFrame, member, importedFactRank(rank, index));
-      (importerFrame.bindingValueFrames ??= new Map()).set(read, bodyFrame);
+      (activationOf(importerFrame).bindingValueFrames ??= new Map()).set(read, bodyFrame);
     });
     for (let index = 0; index < children.length; index++) {
       const child = children[index]!;
@@ -21700,7 +21673,7 @@ function activateComposeEdge(
     if (config !== null) {
       validateModuleConfig(node, specifier, config, children, e);
     }
-    frame = config !== null ? configuredModuleFrame(children, config, importerFrame) : unconfiguredModuleFrame(children);
+    frame = moduleFrame(children, config, importerFrame);
     configures = config !== null;
     if (emitOnceKey !== undefined) {
       (e.moduleActivations ??= new Map()).set(emitOnceKey, frame);
@@ -22957,14 +22930,9 @@ function expandAtRuleBlock(
       }
       return;
     }
-    const bodyFrame: Frame = {
-      parent: frame,
-      mixins: collectMixins(node.rules),
-      declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
-      statements: node.rules,
-      outputOf: node,
-      outputPrelude: prelude
-    };
+    const bodyFrame = makeFrame(frame, node.rules, collectMixins(node.rules), collectDeclIndex(node.rules), null);
+    bodyFrame.outputOf = node;
+    bodyFrame.outputPrelude = prelude;
     const write = (): MaybePromise<void> => nestedSource === undefined
       ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
       : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude, nestedHoist);
@@ -24251,12 +24219,7 @@ function transparentShells(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<T
       if (call?.type !== 'MixinCall') {
         return reject();
       }
-      const shellFrame: Frame = {
-        parent: frame,
-        mixins: collectMixins(child.rules),
-        declIndex: collectDeclIndex(child.rules), cells: null, reassign: null,
-        statements: child.rules
-      };
+      const shellFrame = makeFrame(frame, child.rules, collectMixins(child.rules), collectDeclIndex(child.rules), null);
       const homes = new Map<MixinDefinition, Frame>();
       const at = i;
       const take = (selected: Selection[]): MaybePromise<TransparentShell[] | null> => {
@@ -24308,15 +24271,8 @@ function emitTransparentShells(
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < shells.length; index++) {
       const shell = shells[index]!;
-      const callFrame: Frame = {
-        parent: shell.home,
-        mixins: collectMixins(shell.def.rules),
-        declIndex: collectDeclIndex(shell.def.rules, shell.bindings), cells: cellsForParams(shell.bindings, undefined, frame), reassign: null,
-        statements: shell.def.rules,
-        sourceOwner: definitionOwner(shell.def.rules, shell.home, e),
-        mixinUrlBindings: undefined,
-        mixinValueBindings: undefined
-      };
+      const callFrame = makeFrame(shell.home, shell.def.rules, collectMixins(shell.def.rules), collectDeclIndex(shell.def.rules, shell.bindings), cellsForParams(shell.bindings, undefined, frame));
+      callFrame.sourceOwner = definitionOwner(shell.def.rules, shell.home, e);
       takeMixinValueBindings(shell.boundSourceKeys, e, callFrame);
       captureArgDefFrames(shell.bindings, frame, callFrame);
       const source: NestedHeaderSource = { parent: parentSource, selector: shell.rule.selector, frame };
@@ -24379,11 +24335,7 @@ function writeNestedRule(
      * which carries its composed header via its own plan) at THIS level, dropping
      * this rule's wrapper.
      */
-    const childFrame: Frame = {
-      parent: frame,
-      mixins: collectMixins(rule.rules),
-      declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null
-    };
+    const childFrame = makeFrame(frame, undefined, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
     return mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
       () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, undefined, false, rule)

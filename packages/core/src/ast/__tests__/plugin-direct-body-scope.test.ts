@@ -4,7 +4,7 @@ import { buildEvaluator } from '../evaluator.js';
 import { defineFunction } from '../value-dispatch.js';
 import { decl, anonymousMixin, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
 import { atRuleBlock, plugin } from '../at-rule.js';
-import { lookupScopedFn, makeFnScope, serialize, type Frame } from '../serialize.js';
+import { activationOf, lookupScopedFn, makeFnScope, makeFrame, serialize, type Frame } from '../serialize.js';
 import type { PluginHost } from '../value-eval.js';
 import { makeKeyword } from '../value-factory.js';
 
@@ -19,13 +19,7 @@ const asyncFn = (name: string, value: string) => defineFunction(name, {
   body: () => Promise.resolve(makeKeyword(value))
 });
 const target = (specifier: string) => plugin(quoted(`'${specifier}'`, specifier, '\'', false));
-const frame = (parent: Frame | null): Frame => ({
-  parent,
-  mixins: null,
-  declIndex: null,
-  cells: null,
-  reassign: null
-});
+const frame = (parent: Frame | null): Frame => makeFrame(parent, undefined, null, null, null);
 
 describe('typed Plugin lexical body preparation', () => {
   it('caches the nearest registered function frame without allocating empty local maps', () => {
@@ -35,25 +29,25 @@ describe('typed Plugin lexical body preparation', () => {
     const rootFn = fn('probe', 'root');
     const state = { fnScopeVersion: 0 };
 
-    root.fns = new Map([[rootFn.name, rootFn]]);
+    activationOf(root).fns = new Map([[rootFn.name, rootFn]]);
     root.fnScope = root;
     root.fnScopeVersion = state.fnScopeVersion;
 
     const scope = makeFnScope(leaf, state);
     expect(scope.lookup('PROBE')).toBe(rootFn);
     expect(leaf.fnScope).toBe(root);
-    expect(leaf.fns).toBeUndefined();
-    expect(middle.fns).toBeUndefined();
+    expect(leaf.activation?.fns).toBeUndefined();
+    expect(middle.activation?.fns).toBeUndefined();
 
     const localFn = fn('probe', 'middle');
-    middle.fns = new Map([[localFn.name, localFn]]);
+    activationOf(middle).fns = new Map([[localFn.name, localFn]]);
     middle.fnScope = middle;
     state.fnScopeVersion++;
     middle.fnScopeVersion = state.fnScopeVersion;
 
     expect(scope.lookup('probe')).toBe(localFn);
     expect(leaf.fnScope).toBe(middle);
-    expect(leaf.fns).toBeUndefined();
+    expect(leaf.activation?.fns).toBeUndefined();
   });
 
   it('does not let an unrelated local scoped function block the requested outer entry', () => {
@@ -64,8 +58,8 @@ describe('typed Plugin lexical body preparation', () => {
     const unrelatedFn = fn('other', 'middle');
     const state = { fnScopeVersion: 0 };
 
-    root.fns = new Map([[rootFn.name, rootFn]]);
-    middle.fns = new Map([[unrelatedFn.name, unrelatedFn]]);
+    activationOf(root).fns = new Map([[rootFn.name, rootFn]]);
+    activationOf(middle).fns = new Map([[unrelatedFn.name, unrelatedFn]]);
     root.fnScope = root;
     middle.fnScope = middle;
     root.fnScopeVersion = state.fnScopeVersion;

@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24720
+    "lines": 24672
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -80,13 +80,13 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#findPathInScope": {
-    "lines": 155
+    "lines": 146
   },
   "packages/core/src/ast/serialize.ts#activateVariableDeclaration": {
     "lines": 103
   },
   "packages/core/src/ast/serialize.ts#evalTyped": {
-    "lines": 324
+    "lines": 321
   },
   "packages/core/src/ast/serialize.ts#evalValue": {
     "lines": 510
@@ -95,7 +95,7 @@
     "lines": 108
   },
   "packages/core/src/ast/serialize.ts#resolveBaseDeclMap": {
-    "lines": 112
+    "lines": 104
   },
   "packages/core/src/ast/serialize.ts#resolveReferenceResult": {
     "lines": 397
@@ -119,7 +119,7 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#writtenBlockBody": {
-    "lines": 165
+    "lines": 161
   },
   "packages/core/src/ast/serialize.ts#orderKeywordArgs": {
     "params": 6
@@ -155,7 +155,7 @@
     "params": 10
   },
   "packages/core/src/ast/serialize.ts#planImportedFacts": {
-    "lines": 505,
+    "lines": 500,
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#planImportedFacts.planImported": {
@@ -169,7 +169,7 @@
     "lines": 195
   },
   "packages/core/src/ast/serialize.ts#serialize": {
-    "lines": 209
+    "lines": 189
   },
   "packages/core/src/ast/serialize.ts#serialize.continueRender": {
     "lines": 150
@@ -203,11 +203,11 @@
     "params": 9
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "lines": 831,
+    "lines": 826,
     "params": 19
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "lines": 679
+    "lines": 674
   },
   "packages/core/src/ast/serialize.ts#nestedBody": {
     "params": 10
@@ -222,14 +222,14 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
-    "lines": 274,
+    "lines": 265,
     "params": 15
   },
   "packages/core/src/ast/serialize.ts#expandCall.runDispatch": {
-    "lines": 190
+    "lines": 181
   },
   "packages/core/src/ast/serialize.ts#expandCall.runDispatch.run": {
-    "lines": 152
+    "lines": 143
   },
   "packages/core/src/ast/serialize.ts#expandApply": {
     "params": 13
@@ -242,10 +242,10 @@
     "params": 14
   },
   "packages/core/src/ast/serialize.ts#forItems": {
-    "lines": 123
+    "lines": 117
   },
   "packages/core/src/ast/serialize.ts#expandFor": {
-    "lines": 137,
+    "lines": 134,
     "params": 14
   },
   "packages/core/src/ast/serialize.ts#dispatch": {
@@ -313,7 +313,7 @@
     "params": 12
   },
   "packages/core/src/ast/serialize.ts#writeNestedRule": {
-    "lines": 267,
+    "lines": 263,
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#writeNestedAtRuleBlock": {
