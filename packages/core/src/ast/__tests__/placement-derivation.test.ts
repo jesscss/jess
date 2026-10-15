@@ -75,6 +75,11 @@ describe('placement derivation', () => {
       .toThrow(expect.objectContaining({ code: 'eval/property-in-root' }));
   });
 
+  it('a mixin body under a bubbled two-branch context composes its `&`-less rules against that context as one unit', () => {
+    expect(less('.a, .b { @media print { .m(); } }\n.m() { .c { d: e; } }', 'native'))
+      .toBe('@media print {\n  :is(.a, .b) .c {\n    d: e;\n  }\n}\n');
+  });
+
   it('a `$apply` in a bubbled at-rule writes its declarations in the context block and composes its rules under it', () => {
     const css = jess('.x { a: 1; .z { b: 2; } }\n.y { @media print { $apply .x; } }', 'native');
     expect(css).toContain('@media print {\n  .y {\n    a: 1;\n  }\n');
