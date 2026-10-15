@@ -13,9 +13,8 @@ import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
-import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
-import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
+import type { ApplySelectorKind, CollapseNesting, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
@@ -239,8 +238,8 @@ export interface ContextOptions {
    */
   breakOnError?: boolean;
 
-  /** Output options — mirrors StylesConfig['output']; overrides any config-file setting. */
-  output?: StylesConfig['output'];
+  /** Output options; overrides any config-file setting. */
+  output?: OutputOptions;
 
   /**
    * Lazily supplies an importer plugin after path resolution proves a module
@@ -469,7 +468,7 @@ export interface TreeContextOptions extends DocumentContextOptions {
   selectorBits?: BitSetLibrary<string>;
 
   /** Plugin-supplied output policy carried on the tree (read via print/emit options). */
-  collapseNesting?: boolean | 'native' | 'compact';
+  collapseNesting?: CollapseNesting;
 
   /** Plugin-supplied allow-list of extend selector kinds. */
   allowExtendSelectors?: ExtendSelectorKind[];

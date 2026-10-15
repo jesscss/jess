@@ -1,4 +1,4 @@
-import type { StylesConfig, FileMatchOptions } from './types.js';
+import type { StylesConfig, FileMatchOptions, UnitMode } from './types.js';
 import picomatch from 'picomatch';
 import path from 'path';
 
@@ -8,7 +8,7 @@ import path from 'path';
  */
 export interface StrictPresetOptions {
   strict?: boolean;
-  unitMode?: 'loose' | 'preserve' | 'strict';
+  unitMode?: UnitMode;
   allowLeakyScope?: boolean;
 
   /** @deprecated Use `unitMode`. */

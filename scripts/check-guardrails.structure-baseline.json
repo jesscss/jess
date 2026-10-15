@@ -347,7 +347,7 @@
     "lines": 119
   },
   "packages/core/src/context.ts": {
-    "lines": 2210
+    "lines": 2209
   },
   "packages/core/src/context.ts#Context.appendWarning": {
     "params": 14

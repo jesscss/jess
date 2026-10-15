@@ -26,7 +26,8 @@
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { Position } from 'vscode-languageserver-types';
-import { buildCstIndex, cstChildrenOf, cstHasTag } from './cst-analysis.js';
+import { buildCstIndex } from '@jesscss/diagnostics-core';
+import { cstChildrenOf, cstHasTag } from './cst-analysis.js';
 
 export type JessLangLike = 'css' | 'less' | 'scss' | 'jess';
 

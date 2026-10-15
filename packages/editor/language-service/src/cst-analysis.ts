@@ -9,28 +9,14 @@
  * features; the eval AST should be reached for only by genuinely-evaluated ones.
  *
  * SPAN MODEL: parser CST nodes and leaves carry absolute source spans. The
- * index validates and memoizes those offsets once so feature code can stay
- * positional and avoid per-feature tree walks.
+ * index (`buildCstIndex`, owned by `@jesscss/diagnostics-core`) validates and
+ * memoizes those offsets once per tree, so feature code can stay positional and
+ * avoid per-feature tree walks.
  */
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
+import { buildCstIndex, type CstIndex, type CstIndexEntry } from '@jesscss/diagnostics-core';
 import { SymbolKind, FoldingRangeKind, Position, type DocumentSymbol, type FoldingRange, type Range, type SelectionRange } from 'vscode-languageserver-types';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-
-export type CstIndexEntry = { node: CssCstNode; start: number; end: number };
-
-/** Position → smallest-covering CST node, with absolute spans. Mirrors the AST
- * `buildJessIndex`, but over the tolerant CST. */
-export type CstIndex = {
-  nodes: CstIndexEntry[];
-
-  /** Absolute [start,end) of a node. */
-  spanOf(node: CssCstNode): { start: number; end: number } | undefined;
-  findNodeAtOffset(offset: number): CssCstNode | null;
-};
-
-function isCstNode(c: CssCstChild): c is CssCstNode {
-  return c._tag === 'node';
-}
 
 export function cstHasTag(node: CssCstNode, tag: string): boolean {
   return node.tags?.includes(tag) === true;
@@ -38,61 +24,6 @@ export function cstHasTag(node: CssCstNode, tag: string): boolean {
 
 export function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
   return node.rules;
-}
-
-/*
- * M4: memoize the index by tree identity. `cstDoc.edit()` yields a NEW tree per
- * edit, so a keyed cache auto-invalidates on change while every feature run
- * within one document version reuses a single build — no per-call rebuild, no
- * stale index. (True subtree-incremental patching is a deferred micro-opt; the
- * full walk is O(nodes) and cheap.)
- */
-const INDEX_CACHE = new WeakMap<CssCstNode, CstIndex>();
-
-/** Depth-first collect of absolute offsets, sorted by position. Memoized by
- * tree identity (see M4 note). */
-export function buildCstIndex(root: CssCstNode): CstIndex {
-  const cached = INDEX_CACHE.get(root);
-  if (cached) {
-    return cached;
-  }
-  const out: CstIndexEntry[] = [];
-  const abs = new Map<CssCstNode, [number, number]>();
-  const walk = (node: CssCstNode) => {
-    const s = Number(node.span.start);
-    const e = Number(node.span.end);
-    abs.set(node, [s, e]);
-    if (Number.isFinite(s) && Number.isFinite(e) && e >= s) {
-      out.push({ node, start: s, end: e });
-    }
-    for (const child of cstChildrenOf(node)) {
-      if (isCstNode(child)) {
-        walk(child);
-      }
-    }
-  };
-  walk(root);
-  out.sort((a, b) => (a.start - b.start) || (a.end - b.end));
-  const index: CstIndex = {
-    nodes: out,
-    spanOf(node) {
-      const a = abs.get(node);
-      return a ? { start: a[0], end: a[1] } : undefined;
-    },
-    findNodeAtOffset(offset) {
-      let best: CstIndexEntry | null = null;
-      for (const entry of out) {
-        if (entry.start <= offset && offset <= entry.end) {
-          if (!best || (entry.end - entry.start) <= (best.end - best.start)) {
-            best = entry;
-          }
-        }
-      }
-      return best?.node ?? null;
-    }
-  };
-  INDEX_CACHE.set(root, index);
-  return index;
 }
 
 /*
