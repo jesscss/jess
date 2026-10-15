@@ -178,7 +178,7 @@ import {
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { defineFunction, FunctionDeclined } from './value-dispatch.js';
-import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
@@ -210,23 +210,6 @@ import type { Trivia, TriviaMap } from '../types/index.js';
 const { rulesetMixin, syntheticCall, withArgs } = serializerNodes;
 
 /* ---------------------------------------------------- MaybePromise glue */
-
-function mapMaybe<T, U>(m: MaybePromise<T>, f: (t: T) => MaybePromise<U>): MaybePromise<U> {
-  return isThenable(m) ? m.then(f) : f(m);
-}
-
-function isResolvedArray<T>(arr: Array<MaybePromise<T>>): arr is T[] {
-  for (let i = 0; i < arr.length; i++) {
-    if (isThenable(arr[i])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
-  return isResolvedArray(arr) ? f(arr) : Promise.all(arr).then(f);
-}
 
 function observeRejectedThenable(value: Promise<unknown>): void {
   void value.then(undefined, () => undefined);
@@ -15237,21 +15220,6 @@ function withDynamicPlacement<T>(
     dyn.pathMemo.length = depth;
     dyn.pathSelectors.length = depth;
   });
-}
-
-/** Run `run`, then `restore` however it settles: returned, resolved, thrown or rejected. */
-function afterSettled<T>(run: () => MaybePromise<T>, restore: () => void): MaybePromise<T> {
-  try {
-    const result = run();
-    if (isThenable(result)) {
-      return result.finally(restore);
-    }
-    restore();
-    return result;
-  } catch (error) {
-    restore();
-    throw error;
-  }
 }
 
 /**

@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24468
+    "lines": 24436
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
