@@ -27,6 +27,7 @@ which is a harness limitation, not a syntax one.)
 | jess vs Less 4.x / PostCSS / dart-sass (**PARSE only**) | `pnpm run perf:gate:report` | jess PARSE time as a ratio vs each reference parser. Parse only — not the priority metric right now; postcss/sass comparators must be installed to resolve. |
 | jess vs an OLD jess commit (parse) | `pnpm run perf:ab:prepare <commit>` then `pnpm run perf:ab:compare --case benchmark.less` | current worktree vs `~/git/worktrees/jess/bench-b` parked on `<commit>`; bias-controlled ratios. |
 | jess parser parse-bench | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
+| **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
 `measure:less:hotpath` is the canonical jess total-render harness. `perf:gate`
 is PARSE-only. There is no committed total-render-vs-lessc harness — that is a
@@ -67,6 +68,16 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 
 ---
 
+## 5. Corpus byte identity — proving a refactor changes no output
+
+- Script: `scripts/compare-less-builds.mjs --corpus` (the same script's default mode is the paired one-fixture timing below). Test of the diff logic: `pnpm run test:compare-builds`.
+- Renders every `.less`/`.scss`/`.sass`/`.jess` file in `packages/jess/test/{less,scss,jess,fixtures,files}`, the `@less/test-data` corpus (`tests-unit`, `tests-config`, which includes `3rd-party/bootstrap4.less`) and `packages/jess/benchmark/benchmark.less`, under `collapseNesting` `false` / `'native'` / `'compact'` × `compress` off / on. Build against build, not against goldens, so `benchmark.less` is included.
+- Each fixture is recorded as the sha256 of its CSS (and source map) plus its error and warning codes; a render that throws is recorded by its error code. Before and after are compared as named sets per mode: added, removed and changed fixtures are listed by name, and any of them exits 1.
+- One checkout: build, then `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json`; make the change, rebuild, then `pnpm run compare:less:builds -- --corpus --baseline .scratch/corpus-baseline.json`. `.scratch/` is git-ignored; baselines are not committed (they depend on the unpinned corpus checkout, whose commit the file records).
+- Two builds: `--corpus --before-root <other checkout> [--after-root <dir>]`. Fixture inputs always come from the checkout running the script, so both builds render the same files.
+- `--filter <regex>` narrows fixtures by name (a baseline is narrowed the same way); `--json` prints the diff. The corpus root is `$LESS_TEST_DATA_ROOT`, else `@less/test-data`, else `../less.js/packages/test-data`.
+- A full run is about 6 s per build on an M-series laptop (359 fixtures × 6 modes).
+
 ## Fixtures (the standard inputs)
 
 - `packages/jess/benchmark/benchmark.less` (104KB) + `benchmark.css` (expected) — the main perf fixture. EXEMPT from byte-identity gates.
@@ -87,7 +98,7 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 
 - `packages/jess/benchmark/css-processors.mjs` — jess vs **Stylis** (CSS core). `pnpm --filter jess benchmark:css-processors`.
 - `packages/jess/benchmark/postcss-preprocessors.mjs` — vs the postcss/benchmark preprocessor workload; needs an upstream `git clone https://github.com/postcss/benchmark` checkout (`--upstream=<path>`).
-- `pnpm run compare:less:builds` — compares two jess less-plugin builds (not vs lessc).
+- `pnpm run compare:less:builds` — paired timing of one fixture across two jess builds (not vs lessc); with `--corpus` it is the byte-identity check in §5.
 
 ---
 

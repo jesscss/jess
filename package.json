@@ -136,6 +136,7 @@
     "perf:baseline:propose": "cross-env PERF_GATE=report node scripts/perf-gate/index.mjs --force-tier=full --rounds=70 --propose",
     "perf:gate:test": "node --test scripts/__tests__/perf-gate.test.mjs",
     "compare:less:builds": "node scripts/compare-less-builds.mjs",
+    "test:compare-builds": "node --test scripts/__tests__/compare-less-builds.test.mjs",
     "prove:less:benchmark:no-deno": "node scripts/prove-less-benchmark-no-deno.mjs",
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
     "verify:render-buffer-frontier": "node scripts/verify-render-buffer-frontier.mjs",
