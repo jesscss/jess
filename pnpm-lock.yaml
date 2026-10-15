@@ -128,8 +128,8 @@ importers:
         specifier: ^8.0.1
         version: 8.0.1
       parseman:
-        specifier: ^0.53.0
-        version: 0.53.0
+        specifier: ^0.54.0
+        version: 0.54.0
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -732,8 +732,8 @@ importers:
   packages/parser-shared:
     dependencies:
       parseman:
-        specifier: ^0.53.0
-        version: 0.53.0
+        specifier: ^0.54.0
+        version: 0.54.0
     devDependencies:
       tsdown:
         specifier: ~0.21.7
@@ -769,8 +769,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.53.0
-        version: 0.53.0
+        specifier: ^0.54.0
+        version: 0.54.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -788,8 +788,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.53.0
-        version: 0.53.0
+        specifier: ^0.54.0
+        version: 0.54.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -862,8 +862,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.53.0
-        version: 0.53.0
+        specifier: ^0.54.0
+        version: 0.54.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -899,8 +899,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.53.0
-        version: 0.53.0
+        specifier: ^0.54.0
+        version: 0.54.0
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -9683,8 +9683,8 @@ packages:
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
 
-  parseman@0.53.0:
-    resolution: {integrity: sha512-1aVYK2xJ4LWvdk2jMljSe6EmRrAkl8hdLhFCqf/sWO3Ry6jcunOKabjs4vZXMKjBvK4FeRXXIgFy9cppUuhX8w==}
+  parseman@0.54.0:
+    resolution: {integrity: sha512-axAkINMNllfz1IRxKhI6qm3GVcBvvTVxnjvIo+kKCmL9PWYeK1XYQO/121uYuEsTvsw1QXpT5wTUyZmu+xTfcQ==}
     engines: {node: ^20.19.0 || >=22.13.0}
     hasBin: true
 
@@ -25016,7 +25016,7 @@ snapshots:
     dependencies:
       entities: 6.0.1
 
-  parseman@0.53.0:
+  parseman@0.54.0:
     dependencies:
       linecraft: 0.2.6
       magic-string: 0.30.21
