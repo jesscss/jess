@@ -4255,17 +4255,16 @@ interface Lane {
   calcDepth: number;
 
   /**
-   * Parenthesized AST value nesting enables Less arithmetic in paren modes.
-   *
-   * A BOOLEAN STACK, read via `.at(-1)`, not a counter. Entering a parenthesis
-   * pushes `true`; entering a CALL pushes `false`, because a call's arguments
-   * are not the caller's math context. A counter cannot express that: increment
-   * and decrement can say "one level deeper", but they cannot say "disabled
-   * here, then restore whatever the caller had, which may have been enabled".
-   * The counter this replaced also had no decrement and no reset at all, so the
-   * two defects were the same shape defect.
+   * Inside a parenthesized value group: Less arithmetic runs there in the paren
+   * math modes. A derived lane is never changed after it is built, so the lane
+   * a group was entered from keeps its own value, and leaving the group restores
+   * it. A call does not reset it: a call's arguments read the caller's value.
+   * The ruling that a call should turn it off for its arguments
+   * (`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md`, `parenFrames`) is not
+   * implemented; on a derived lane it would be `false` on the call's argument
+   * lane, with no stack.
    */
-  parenFrames: readonly boolean[] | undefined;
+  inParens: boolean;
 
   /*
    * [condition-grammar] inside a `$( … )` computation boundary — the `Expression`
@@ -4437,7 +4436,7 @@ interface EvalSession {
 /**
  * The lane for a sub-position of `e`: a copy of `e` with the fields `change`
  * names changed.
- * - `paren`: inside a paren group ({@link Lane.parenFrames}); `parenBoundary` is
+ * - `paren`: inside a paren group ({@link Lane.inParens}); `parenBoundary` is
  *   a `.jess` `$( … )` boundary as well ({@link Lane.exprBoundary}), and
  *   `boundary` is that alone.
  * - `unreached`: a math function's arguments, written there and not reached
@@ -4475,9 +4474,7 @@ function deriveLane(
     excluded: change === 'statement' ? new Set<Binding>() : e.excluded,
     optional: change === 'statement' ? false : e.optional,
     calcDepth: change === 'calc' ? e.calcDepth + 1 : change === 'statement' ? 0 : e.calcDepth,
-    parenFrames: change === 'paren' || change === 'parenBoundary'
-      ? e.parenFrames === undefined ? [true] : [...e.parenFrames, true]
-      : change === 'statement' ? undefined : e.parenFrames,
+    inParens: change === 'paren' || change === 'parenBoundary' || (change !== 'statement' && e.inParens),
     exprBoundary: change === 'parenBoundary' || change === 'boundary' || (change !== 'statement' && e.exprBoundary),
     importantSink: change === 'statement' ? undefined : e.importantSink,
     elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
@@ -6168,7 +6165,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
       const shouldOperate = !node.inMathFunction
         && ((e.calcDepth ?? 0) > 0
           || node.mathOutsideParens
-          || (e.parenFrames?.at(-1) ?? false));
+          || e.inParens);
       if (!shouldOperate) {
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
@@ -10914,7 +10911,7 @@ function scratchEmit(e: Lane): Emit {
     excluded: e.excluded,
     optional: e.optional,
     calcDepth: e.calcDepth,
-    parenFrames: undefined,
+    inParens: false,
     exprBoundary: false,
     importantSink: undefined,
     elideSink: undefined,
@@ -14229,7 +14226,7 @@ function createRenderSession(
     excluded: new Set(), // [resolver] per-declaration cycle guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     calcDepth: 0,
-    parenFrames: undefined,
+    inParens: false,
     exprBoundary: false,
     importantSink: undefined,
     elideSink: undefined,
