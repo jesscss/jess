@@ -14146,58 +14146,56 @@ export type PrepareStaticImportsOptions = Pick<
 >;
 
 /**
- * The eval policy a walk starts with: explicit `modes` for a context-free
- * consumer (they never switch), else the active document's resolved policy,
- * which {@link withPolicy} then follows across document boundaries.
+ * The one constructor of a render session. Every field is initialized here, in
+ * one order, so the sessions of {@link serialize} and {@link prepareStaticImports}
+ * share one hidden class (docs/perf/V8-ARCHITECTURE.md invariant 1). `entry`
+ * holds the fields the two entry paths set differently.
+ *
+ * The starting eval policy (`modes`, `policy`, `allowCallerScope`) is explicit `modes`
+ * for a context-free consumer (never switched; `policy` undefined), else the active
+ * document's resolved policy, which {@link withPolicy} follows across documents.
  */
-function initialPolicy(
-  options: Pick<SerializeOptions, 'context' | 'modes' | 'compress'> | undefined
-): Pick<EvalCtx, 'modes' | 'policy' | 'allowCallerScope'> {
+function createRenderSession(
+  root: Stylesheet,
+  options: PrepareStaticImportsOptions | undefined,
+  importDocument: SerializeOptions['importDocument'],
+  rootFns: ReadonlyMap<string, Fn> | null,
+  entry: Pick<Emit, 'positions' | 'plannedImportDocuments' | 'plannedModuleImports' | 'pendingPlannedModuleImports' | 'preparedImportsOwnedByCaller'>
+): Emit {
   const compress = options?.compress ?? false;
   const policy = options?.modes === undefined ? options?.context?.options : undefined;
-  if (policy !== undefined) {
-    return { modes: modesOf(policy, compress), policy, allowCallerScope: policy.allowCallerScope };
-  }
-  return {
-    modes: { ...(options?.modes ?? DEFAULT_MODES), compress },
-    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false // [R16] legacy caller-read, default hermetic
-  };
-}
-
-export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticImportsOptions): MaybePromise<PreparedImports> {
-  const pluginHost = options?.pluginHost;
-  const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
-  const rootFns = globalScopedFns(pluginHost);
-  const documents = new WeakMap<StyleImport, PlannedImportDocument>();
-  const modules = new Map<ModuleImport, PreparedModule>();
   const e: Emit = {
     chunks: [],
-    positions: null,
-    ev: options?.evaluator ?? options?.context?.evaluator ?? null,
-    ...initialPolicy(options),
+    positions: entry.positions,
+    ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
+    modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
+    policy,
+    allowCallerScope: policy === undefined
+      ? options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false // [R16] legacy caller-read, default hermetic
+      : policy.allowCallerScope,
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
-    excluded: new Set(),
-    propNames: new Set(),
-    pseudoElementLists: new Map(),
-    resolvedSelectors: new Map(),
-    reached: false,
-    optional: options?.optional ?? false,
-    pending: [],
-    drops: [],
-    depth: 0,
-    collapse: options?.collapseNesting !== false,
-    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native',
-    compress: options?.compress ?? false,
-    extends: null,
+    excluded: new Set(), // [resolver] per-declaration cycle guard
+    propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
+    pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
+    resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
+    reached: false, // [paren-group] inside a value a reference reached
+    optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
+    pending: [], // async patches
+    drops: [], // [null] declarations that may still elide on the async lane
+    depth: 0, // [atrule]
+    collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
+    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] unguarded vs specificity-guarded fold
+    compress, // [compress] minified output
+    extends: null, // [extend] computed by serialize() after the selector-interp pre-pass
     dynamicExtend: null,
     importedStaticExtendRules: null,
     importedWalkPlacement: false,
     importPlacements: null,
     importPlacement: undefined,
-    hoistMode: false,
-    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
-    mixinDepth: 0,
+    hoistMode: false, // [extend]
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
+    mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
     importScopes: null,
     importsExpanding: null,
@@ -14213,27 +14211,43 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
     importDocument,
-    plannedImportDocuments: documents,
-    plannedModuleImports: modules,
-    preparedImportsOwnedByCaller: false,
+    plannedImportDocuments: entry.plannedImportDocuments,
+    plannedModuleImports: entry.plannedModuleImports,
+    pendingPlannedModuleImports: entry.pendingPlannedModuleImports,
+    preparedImportsOwnedByCaller: entry.preparedImportsOwnedByCaller,
     prepublishedImportFacts: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
     charset: null,
     pendingLeafBlockComments: null,
     pendingLeafBlockCommentOwner: null,
-    scopedFunctionNames: scopedFunctionNames(rootFns),
-    lambdaFunctionNames: new Set(),
+    scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
+    lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
     fnScopeVersion: 0,
-    pluginHost,
+    pluginHost: options?.pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
-    writtenFrom: undefined,
+    writtenFrom: undefined, // set only on an F5 call's written lane (one shape for every spread)
     snapshotValues: new WeakMap(),
-    io: options?.io
+    io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
+  return e;
+}
+
+export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticImportsOptions): MaybePromise<PreparedImports> {
+  const pluginHost = options?.pluginHost;
+  const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
+  const rootFns = globalScopedFns(pluginHost);
+  const documents = new WeakMap<StyleImport, PlannedImportDocument>();
+  const modules = new Map<ModuleImport, PreparedModule>();
+  const e = createRenderSession(root, options, importDocument, rootFns, {
+    positions: null,
+    plannedImportDocuments: documents,
+    plannedModuleImports: modules,
+    preparedImportsOwnedByCaller: false
+  });
   const rootFrame: Frame = {
     parent: null,
     mixins: collectMixins(root.rules),
@@ -14280,49 +14294,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   const preparedModulePlan = options?.preparedImports === undefined
     ? null
     : preparedModules(options.preparedImports);
-  const e: Emit = {
-    chunks: [],
+  const e = createRenderSession(root, options, importDocument, rootFns, {
     positions: options?.trackPositions ? [] : null,
-    ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
-    ...initialPolicy(options),
-    trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
-    context: options?.context,
-    excluded: new Set(), // [resolver] per-declaration cycle guard
-    propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
-    pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
-    resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
-    reached: false, // [paren-group] inside a value a reference reached
-    optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
-    pending: [], // async patches
-    drops: [], // [null] declarations that may still elide on the async lane
-    depth: 0, // [atrule]
-    collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
-    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] unguarded vs specificity-guarded fold
-    compress: options?.compress ?? false, // [compress] minified output
-    extends: null, // [extend] computed below (after selector-interp pre-pass)
-    dynamicExtend: null,
-    importedStaticExtendRules: null,
-    importedWalkPlacement: false,
-    importPlacements: null,
-    importPlacement: undefined,
-    hoistMode: false, // [extend]
-    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
-    mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
-    loadedImports: null,
-    importScopes: null,
-    importsExpanding: null,
-    splitBlocks: null,
-    openBlocks: null,
-    openCount: 0,
-    extendedContexts: null,
-    moduleActivations: null,
-    composeActivations: null,
-    prepublishedModuleImports: null,
-    moduleConfigs: null,
-    multipleImportDepth: 0,
-    referenceImportDepth: 0,
-    atRuleBodyDepth: 0,
-    importDocument,
     plannedImportDocuments: options?.preparedImports === undefined
       ? (importDocument ? new WeakMap() : null)
       : preparedImportDocuments(options.preparedImports),
@@ -14330,25 +14303,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       ? (options?.context ? new Map() : null)
       : preparedModulePlan,
     pendingPlannedModuleImports: preparedModulePlan?.size,
-    preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
-    prepublishedImportFacts: null,
-    hoistedCssImports: null,
-    emittedBlockTrivia: new EmittedTrivia(),
-    charset: null,
-    pendingLeafBlockComments: null,
-    pendingLeafBlockCommentOwner: null,
-    scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
-    lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
-    fnScopeVersion: 0,
-    pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
-    pluginRawBindings: null,
-    mixinUrlBindings: null,
-    mixinValueBindings: null,
-    compressedBindings: options?.compress === true ? new WeakMap() : undefined,
-    writtenFrom: undefined, // set only on an F5 call's written lane (one shape for every spread)
-    snapshotValues: new WeakMap(),
-    io: options?.io // [io] per-render file-read capability for the IO built-ins
-  };
+    preparedImportsOwnedByCaller: options?.preparedImports !== undefined
+  });
   const rootFrame: Frame = {
     parent: null,
     mixins: collectMixins(root.rules),
