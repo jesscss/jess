@@ -2328,12 +2328,12 @@ function frameMixinDefinitionMeta(frame: Frame): Map<MixinDefinition, MixinDefin
 
 /** Publish one definition only when execution reaches it through an active `$if` arm. */
 function publishSelectedMixinDefinition(frame: Frame, definition: MixinDefinition): void {
-  const meta = frameMixinDefinitionMeta(frame).get(definition);
-  if (!meta || meta.selectedPath.length === 0) {
+  const selected = frame.activation?.selectedIfBodies; // no selected arm: skip building the meta index
+  if (!selected) {
     return;
   }
-  const selected = frame.activation?.selectedIfBodies;
-  if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.rules)) {
+  const meta = frameMixinDefinitionMeta(frame).get(definition);
+  if (!meta || meta.selectedPath.length === 0 || !meta.selectedPath.every(path => selected.get(path.node) === path.rules)) {
     return;
   }
   if (frame.activation?.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
