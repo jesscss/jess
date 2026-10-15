@@ -261,7 +261,6 @@ const expectedFailureFixtures = new Map<string, string>([
    * A golden edit no ruling decides yet is not applied (pending-golden-edits.ts), so
    * these fail until the owner decides.
    */
-  ['tests-config/namespacing/namespacing-8.less', 'fixture source moves to `--@{key}: @{value};` in the fork (owner 2026-10-09); remove when the fork lands'],
   ['tests-unit/functions/functions.less', 'the golden writes `length-1: 1;`; jess reads `$list-1`, the value `~(1, 2, 3)`, as the three-item list (`length-1: 3;`), a proposal awaiting the owner (ledger V26, OPEN)'],
 
   /*
