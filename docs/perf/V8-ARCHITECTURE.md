@@ -54,8 +54,8 @@ one, and none exists (`no-node-keyed-side-map` is a side-table rule, not a
 reshape rule). Enabling it as a blocking gate is an owner decision:
 
 1. `pnpm verify:shape-stability` — confirm green on an untouched checkout.
-2. Decide the debt policy. Three AST types are allowlisted-polymorphic today
-   (`MixinDefinition`, `Ruleset`, `SpacedValue`). Blocking mode pins them; it
+2. Decide the debt policy. One AST type is allowlisted-polymorphic today
+   (`Ruleset`). Blocking mode pins them; it
    does not fix them. Monomorphizing is separate (Phase B).
 3. Add it to `scripts/prepush-dispatch.mjs` under the tier that already covers
    `packages/core/src/ast/**` and `packages/syntax/**`.

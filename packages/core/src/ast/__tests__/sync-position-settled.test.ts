@@ -51,4 +51,19 @@ describe('positions confined to the synchronous lane', () => {
       reason: expect.stringContaining('namespace-path index build')
     });
   });
+
+  /*
+   * A value lambda (`@function`) is called from a value position that cannot wait,
+   * so neither a parameter default nor an argument may suspend. A `@content(args)`
+   * block binds its args the same way, but from a statement position that can.
+   */
+  it('confine a value lambda to the synchronous lane but not a content block', async () => {
+    expect(thrownBy(() => serialize(parseScss('@function f($a: aslow()) { @return $a; }\n.x { c: f(); }'), { evaluator })))
+      .toMatchObject({ code: 'eval/async-in-sync-position', reason: expect.stringContaining('lambda parameter default') });
+    expect(thrownBy(() => serialize(parseScss('@function f($a) { @return $a; }\n.x { c: f(aslow()); }'), { evaluator })))
+      .toMatchObject({ code: 'eval/async-in-sync-position', reason: expect.stringContaining('value-lambda argument binding') });
+    const content = serialize(parseScss('@mixin wrap { @content(1); }\n.x { @include wrap using ($a, $b: aslow()) { c: $a $b; } }'), { evaluator });
+    expect(content).toBeInstanceOf(Promise);
+    expect((await content).css).toBe('.x {\n  c: 1 zed;\n}\n');
+  });
 });
