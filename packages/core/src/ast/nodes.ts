@@ -1376,26 +1376,23 @@ export interface MixinDefinition extends SpanSlots, BodySpanSlots {
   readonly name: string;
   readonly params: Param[];
   readonly rules: Statement[];
-  readonly guard?: GuardNode; // [guards]
-  /*
-   * [dedup] set only on a def SYNTHESIZED from a paren-less ruleset callable as a
-   * zero-arg mixin (`.foo {…}` dispatched via `.foo()`). A real parametric
-   * `MixinDefinition` leaves it undefined. Duplicate-declaration dedup keeps overloaded
-   * PARAMETRIC output verbatim (Less restricts its ambient lookup) but collapses
-   * identical ruleset-mixin output, so the serializer must tell them apart.
-   */
-  readonly ruleMixin?: boolean;
-
   /*
    * A body-form `&:extend()` written directly in the definition's body (ledger X16):
    * the rule each call's body lands in extends, as if the extend were written in that
-   * rule's own body. Undefined when the body has none, but always DECLARED, right after
-   * `rules`, by every constructor, so a definition with one shares the hidden class of
-   * one without (V8 invariant 1). A ruleset called as a mixin carries its own
-   * `extendInstructions` here; its inline ones (with a `subject`) bind to its own
-   * selector and do not travel with the call.
+   * rule's own body. Undefined when the body has none. A ruleset called as a mixin
+   * carries its own `extendInstructions` here; its inline ones (with a `subject`) bind
+   * to its own selector and do not travel with the call.
    */
   readonly extendInstructions: ExtendInstruction[] | undefined;
+  readonly guard: GuardNode | undefined; // [guards]
+  /*
+   * [dedup] `true` only on a def SYNTHESIZED from a paren-less ruleset callable as a
+   * zero-arg mixin (`.foo {…}` dispatched via `.foo()`, {@link rulesetMixin}). A real
+   * parametric `MixinDefinition` leaves it undefined. Duplicate-declaration dedup keeps
+   * overloaded PARAMETRIC output verbatim (Less restricts its ambient lookup) but
+   * collapses identical ruleset-mixin output, so the serializer must tell them apart.
+   */
+  readonly ruleMixin: true | undefined;
 }
 
 /**
@@ -1966,24 +1963,23 @@ export const variableDeclaration = (
   write: VariableWrite
 ): VariableDeclaration =>
   ({ type: 'VariableDeclaration', name, value, write, _s: NO_SPAN, _e: NO_SPAN });
-export const mixinDef = (
-  name: string,
-  params: Param[],
-  rules: Statement[],
-  guard?: GuardNode, // [guards]
-  extendInstructions?: readonly ExtendInstruction[]
-): MixinDefinition => ({
-  type: 'MixinDefinition',
-  name,
-  params,
-  rules,
-  extendInstructions: extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined,
-  ...(guard !== undefined ? { guard } : {}),
-  _s: NO_SPAN,
-  _e: NO_SPAN,
-  _bs: NO_SPAN,
-  _be: NO_SPAN
-});
+
+/** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
+const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>
+  ({ type: 'MixinDefinition', name, params, rules, extendInstructions, guard, ruleMixin: undefined, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
+export const mixinDef = (name: string, params: Param[], rules: Statement[], guard?: GuardNode, extendInstructions?: readonly ExtendInstruction[]): MixinDefinition =>
+  mixinDefinition(name, params, rules, extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, guard);
+
+/** A paren-less ruleset called as a zero-arg mixin under `name`; marker and spans are stores into declared fields. */
+export const rulesetMixin = (rule: Ruleset, name: string): MixinDefinition => {
+  const def: { -readonly [K in keyof MixinDefinition]: MixinDefinition[K] } = mixinDefinition(name, [], rule.rules, rule.extendInstructions, rule.guard);
+  def.ruleMixin = true;
+  def._s = rule._s;
+  def._e = rule._e;
+  def._bs = rule._bs;
+  def._be = rule._be;
+  return def;
+};
 
 /** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */
@@ -2000,6 +1996,10 @@ export const mixinCall = (
   content,
   _s: NO_SPAN, _e: NO_SPAN
 });
+
+/** A call with no name or source of its own, binding `args` to a synthesized definition. */
+export const syntheticCall = (args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN });
+export const withArgs = (call: MixinCall, args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e });
 export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
 
 /** A single simple-string selector branch, e.g. `sel('.test')`. */

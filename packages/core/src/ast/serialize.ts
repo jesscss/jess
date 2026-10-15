@@ -37,6 +37,10 @@ import {
   importOptionWords,
   interpolation,
   mixinCall,
+  mixinDef,
+  rulesetMixin,
+  syntheticCall,
+  withArgs,
   operation,
   keyword,
   list,
@@ -2151,15 +2155,7 @@ function orderedMixinsForStatements(
        * one synthesized candidate per name, interleaved at the rule's source position.
        * [guards] a guarded ruleset called as a zero-arg mixin filters on its guard.
        */
-      const rm: MixinDefinition = {
-        type: 'MixinDefinition', name: key, params: [], rules: rule.rules,
-        extendInstructions: rule.extendInstructions, ruleMixin: true,
-        ...(rule.guard !== undefined ? { guard: rule.guard } : {}),
-
-        /* the synthesized ruleset-mixin stands for the same source as its rule */
-        _s: rule._s, _e: rule._e, _bs: rule._bs, _be: rule._be
-      };
-      add(key, rm, [index]);
+      add(key, rulesetMixin(rule, key), [index]);
     }
   };
 
@@ -3172,15 +3168,7 @@ function findPathInScope(
           continue;
         }
         if (el.length === remaining.length) {
-          const rm: MixinDefinition = {
-            type: 'MixinDefinition',
-            name: selectorBranchHasInterp(c) ? resolveSelectorBranchSync(c, selectorFrame, e) : selectorBranchCanonical(c),
-            params: [], rules: s.rules, extendInstructions: s.extendInstructions, ruleMixin: true,
-            ...(s.guard !== undefined ? { guard: s.guard } : {}),
-
-            /* the synthesized ruleset-mixin stands for the same source as its rule */
-            _s: s._s, _e: s._e, _bs: s._bs, _be: s._be
-          };
+          const rm = rulesetMixin(s, selectorBranchHasInterp(c) ? resolveSelectorBranchSync(c, selectorFrame, e) : selectorBranchCanonical(c));
           out.push(rm);
           homes.set(rm, placement ?? scope);
         } else {
@@ -7026,58 +7014,22 @@ function invokeValueLambda(
   callerFrame: Frame | null,
   e: EvalCtx
 ): { value: ValueSlot; frame: Frame } | null {
-  const syntheticDef: MixinDefinition = {
-    type: 'MixinDefinition', name: '', params: lambda.params ?? [], rules: lambda.rules, extendInstructions: undefined,
-
-    /* a synthetic lambda wrapper carries no source position of its own */
-    _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
-  };
-  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
-  const resolveCaller = makeResolver(callerFrame, e);
-  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
-    const overlay = makeFrame(defFrame, undefined, null, collectDeclIndex([], boundSoFar), cellsForParams(boundSoFar));
-    const b = eagerSnapshot(v, overlay, e);
-    if (isThenable(b)) {
-      observeRejectedThenable(b);
-      throw ERR.asyncInSyncPosition({
-        node: v,
-        ...callSiteLocation(v, e),
-        meta: { where: 'lambda parameter default' }
-      });
-    }
-    return b;
-  };
-
   /*
-   * A lambda is a first-class value: `$twice($inc, 1)` passes `$inc` BY REFERENCE
-   * so the callee can call it, instead of byte-flattening the block to ''. This is
-   * the same substitution a named mixin call already performs on its args.
+   * TODO(maybe-promise-sync-islands): a value lambda is invoked from a
+   * synchronous value position; neither a parameter default nor binding its
+   * arguments can suspend yet.
    */
-  const preparedArgs = callerFrame ? substituteClosureVarArgs(call, callerFrame, e, false) : call;
-  const boundArgs = bindArgs(
-    syntheticDef,
-    preparedArgs,
-    resolveCaller,
-    resolveDefault,
-    eagerSources(callerFrame, e)
+  const call = syntheticCall(args);
+  const bindings = settled(
+    bindSyntheticCall(lambda, call, callerFrame, syntheticDefault(defFrame, e, 'lambda parameter default'), e),
+    'value-lambda argument binding',
+    call,
+    e
   );
-  if (isThenable(boundArgs)) {
-    /*
-     * TODO(maybe-promise-sync-islands): a value lambda is invoked from a
-     * synchronous value position; binding its arguments cannot suspend yet.
-     */
-    observeRejectedThenable(boundArgs);
-    throw ERR.asyncInSyncPosition({
-      node: call,
-      ...callSiteLocation(call, e),
-      meta: { where: 'value-lambda argument binding' }
-    });
-  }
-  const bindings = boundArgs;
   if (bindings === null) {
     throw ERR.arity({
       node: lambda,
-      meta: { callee: 'function', expectedCount: syntheticDef.params.length, gotCount: args.length }
+      meta: { callee: 'function', expectedCount: lambda.params?.length ?? 0, gotCount: args.length }
     });
   }
   const result = lambdaResultValue(lambda.rules);
@@ -18610,7 +18562,7 @@ function expandReferenceCall(
   if (step.args.length === 0) {
     return splice(null);
   }
-  return mapMaybe(bindContentArgs(dr, step.args, frame, definitionFrame, e), (bindings) => {
+  return mapMaybe(bindSyntheticCall(dr, syntheticCall(step.args), frame, syntheticDefault(definitionFrame, e, null), e), (bindings) => {
     if (bindings === null) {
       throw ERR.arity({
         node: dr,
@@ -18621,28 +18573,38 @@ function expandReferenceCall(
   });
 }
 
-/** Bind a `@content(args)` call's args to a content block's `using (…)` params
- *  (see {@link expandReferenceCall}). Same `bindArgs` contract as a value lambda:
- *  args resolve in the caller frame, defaults in the block's definition frame. */
-function bindContentArgs(
+/**
+ * Bind `call`'s args to an executable block's params — a value lambda's `$f(args)`
+ * ({@link invokeValueLambda}) or `@content(args)` into a `using (…)` block
+ * ({@link expandReferenceCall}) — with the same rules as a mixin call
+ * ({@link bindArgs}): args resolve in `callerFrame`, defaults through `resolveDefault`.
+ *
+ * A lambda is a first-class value: `$twice($inc, 1)` passes `$inc` BY REFERENCE
+ * so the callee can call it, instead of byte-flattening the block to ''. This is
+ * the same substitution a named mixin call already performs on its args.
+ */
+function bindSyntheticCall(
   block: ValueBlock,
-  args: CallArg[],
-  callerFrame: Frame,
-  defFrame: Frame | null,
+  call: MixinCall,
+  callerFrame: Frame | null,
+  resolveDefault: DefaultResolver,
   e: EvalCtx
 ): MaybePromise<Map<string, CallValue> | null> {
-  const syntheticDef: MixinDefinition = {
-    type: 'MixinDefinition', name: '', params: block.params ?? [], rules: valueBlockBody(block), extendInstructions: undefined,
-    _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
-  };
-  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
-  const resolveCaller = makeResolver(callerFrame, e);
-  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
+  const prepared = callerFrame ? substituteClosureVarArgs(call, callerFrame, e, false) : call;
+  return bindArgs(mixinDef('', block.params ?? [], valueBlockBody(block)), prepared, makeResolver(callerFrame, e), resolveDefault, eagerSources(callerFrame, e));
+}
+
+/**
+ * A synthesized call's param defaults resolve in the block's definition frame,
+ * seeing the params bound so far. `syncWhere` names the position when a default
+ * may not suspend (a value lambda's); a content block's default may.
+ */
+function syntheticDefault(defFrame: Frame | null, e: EvalCtx, syncWhere: string | null): DefaultResolver {
+  return (v, boundSoFar) => {
     const overlay = makeFrame(defFrame, undefined, null, collectDeclIndex([], boundSoFar), cellsForParams(boundSoFar));
-    return eagerSnapshot(v, overlay, e);
+    const b = eagerSnapshot(v, overlay, e);
+    return syncWhere === null ? b : settled(b, syncWhere, v, e);
   };
-  const prepared = substituteClosureVarArgs(call, callerFrame, e, false);
-  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault, eagerSources(callerFrame, e));
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -19490,7 +19452,7 @@ function dropEmptyVariadicArgs(call: MixinCall, frame: Frame): MixinCall {
   }
   return kept === undefined
     ? call
-    : { type: 'MixinCall', name: call.name, args: kept, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e };
+    : withArgs(call, kept);
 }
 
 function expandSpreadArgs(
@@ -19503,10 +19465,7 @@ function expandSpreadArgs(
     return call;
   }
   const args: CallArg[] = [];
-  const expanded: MixinCall = {
-    type: 'MixinCall', name: call.name, args, path: call.path,
-    important: call.important, content: call.content, _s: call._s, _e: call._e
-  };
+  const expanded = withArgs(call, args);
   let valueState: ValueBearingSpreadCall | undefined;
   const step = (index: number): MaybePromise<ExpandedSpreadArgs> => {
     for (; index < call.args.length; index++) {
@@ -19724,9 +19683,7 @@ function substituteClosureVarArgs(
     }
     return a;
   });
-  const substituted: MixinCall = changed
-    ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e }
-    : call;
+  const substituted = changed ? withArgs(call, args) : call;
   return valueSource === undefined || valueSourceMode === undefined
     ? substituted
     : {
