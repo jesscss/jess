@@ -15,7 +15,7 @@
  * A rule written in a document does not stop that: the next agent can edit the
  * document exactly as the last one edited the spec. So the rule is also a gate.
  *
- * FIVE ASSERTIONS, all mechanical:
+ * SEVEN ASSERTIONS, all mechanical:
  *
  *   1. `docs/OWNER-REQUIREMENTS.md` is byte-frozen against a hash recorded in
  *      this file. Any edit fails the build. Updating the hash is the owner's
@@ -42,6 +42,17 @@
  *      `scripts/check-guardrails.parser-rejections.json`; a new one fails unless
  *      it is marked `NOT-WELL-FORMED:`.
  *
+ *   6. Structure only shrinks: a file over 1,500 lines, or a function over 100
+ *      lines or 5 parameters, is baselined in
+ *      `scripts/check-guardrails.structure-baseline.json` at its size today and
+ *      may only shrink; new code stays under the caps.
+ *
+ *   7. One owner per predicate: open-coded copies of a shared rule (a CSS name
+ *      code point, a quote or comment scanner, a `:is(` join, …) outside the
+ *      module that should own it are inventoried in
+ *      `scripts/check-guardrails.duplicate-predicates.json`; the inventory may
+ *      only shrink.
+ *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
  * the closure rests on. An agent that types `OWNER-RULED:` over its own opinion
@@ -50,14 +61,22 @@
  * Flags:
  *   --list-reference-reasons     print every assertion-3 hit (baselined or not)
  *                                as JSON, with its current file:line, and exit.
+ *   --list-structure             print every assertion-6 offender (baselined or
+ *                                not) in the baseline's JSON format, and exit.
+ *   --list-predicates            print every assertion-7 site (baselined or not)
+ *                                in the inventory's JSON format, and exit.
  *   --prune-baselines            drop entries that no longer occur from the
- *                                assertion-3 and assertion-5 baselines. It never
- *                                adds one.
+ *                                assertion-3, -5 and -7 baselines, and lower each
+ *                                assertion-6 ceiling to its current value. It
+ *                                never adds an entry or raises a ceiling.
+ *   --require-structure          fail, rather than skip, assertion 6 when the
+ *                                TypeScript parser is not installed.
  */
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareRulingsLock, LOCK, LEDGER, RULING_TESTS } from './rulings-lock.mjs';
@@ -656,11 +675,406 @@ if (rejections.stale.length > 0) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Assertion 6 — structure only shrinks.
+ * ------------------------------------------------------------------ */
+
+/*
+ * A file over 1,500 lines, or a function over 100 lines or 5 parameters, is
+ * where unrelated concerns pile up and copies of one rule drift apart. New code
+ * stays under the caps. Every existing offender is baselined at its size today
+ * and may only shrink; a ceiling above the current value fails until it is
+ * lowered (`--prune-baselines`), so the room a refactor frees cannot be spent
+ * again.
+ *
+ * Keys are names, never line numbers: `<file>` and `<file>#<Class.function>`.
+ * A nested function is named through its host (`walkBody.run`); a name repeated
+ * in one scope gets `~2`, `~3`, … in source order. An entry records only the
+ * metrics over the cap. Renaming an offender is a reviewed edit of its key.
+ *
+ * A function is a declaration, method, constructor or accessor with a body, or
+ * an arrow or function expression bound to a name (`const f = () => …`,
+ * `f: function () …`). Its lines run from its first token (its JSDoc is not
+ * counted) to its closing token; a `this` parameter is not counted.
+ *
+ * Scope: tracked TypeScript under every `packages/**\/src/` — the shipped
+ * source of every package — minus tests (`__tests__/`, `*.test.ts`,
+ * `*.spec.ts`), declaration files, the documentation sites (`packages/docs/`,
+ * not shipped), and the four dialect `grammar.ts` files, which are reviewed
+ * `const` by `const` under docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md.
+ * Build output (`lib/`, `dist/`) is git-ignored and never listed.
+ *
+ * Measured with the TypeScript 6 parser, which needs `pnpm install`. Without it
+ * (the no-install CI job) the assertion is reported as skipped; the CI job that
+ * installs runs it with `--require-structure`.
+ */
+const STRUCTURE_BASELINE = 'scripts/check-guardrails.structure-baseline.json';
+const STRUCTURE_SOURCE = /^packages\/(?!docs\/)(?:[^/]+\/)*src\/.+(?<!\.d)\.ts$/;
+const STRUCTURE_SKIP = /(?:^|\/)__tests__\/|\.(?:test|spec)\.ts$|^packages\/syntax\/[^/]+\/[^/]+-parser\/src\/grammar\.ts$/;
+const FILE_CAP = { lines: 1500 };
+const FUNCTION_CAP = { lines: 100, params: 5 };
+const capOf = key => (key.includes('#') ? FUNCTION_CAP : FILE_CAP);
+
+const listStructure = process.argv.includes('--list-structure');
+const requireStructure = process.argv.includes('--require-structure');
+
+let ts = null;
+try {
+  ts = createRequire(import.meta.url)('@typescript/typescript6/lib/typescript.js');
+} catch {
+  /* Not installed: assertion 6 is skipped, or fails under --require-structure. */
+}
+
+function functionName(node) {
+  if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node))
+    && node.body && node.name) {
+    return node.name.getText();
+  }
+  if (ts.isConstructorDeclaration(node) && node.body) {
+    return 'constructor';
+  }
+  if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node))
+    && (ts.isVariableDeclaration(node.parent) || ts.isPropertyAssignment(node.parent) || ts.isPropertyDeclaration(node.parent))
+    && ts.isIdentifier(node.parent.name)) {
+    return node.parent.name.text;
+  }
+  return null;
+}
+
+/* Every metric of `rel`: the file's lines and each named function's lines and parameters. */
+function measureStructure(rel, text, into) {
+  into.set(rel, { lines: text.split('\n').length - (text.endsWith('\n') ? 1 : 0) });
+  const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true);
+  const lineOf = pos => sf.getLineAndCharacterOfPosition(pos).line;
+  const seen = new Map();
+  const visit = (node, scope) => {
+    const name = functionName(node);
+    if (name === null) {
+      const inner = ts.isClassLike(node) && node.name ? [...scope, node.name.text] : scope;
+      ts.forEachChild(node, child => visit(child, inner));
+      return;
+    }
+    const path = [...scope, name].join('.');
+    const nth = (seen.get(path) ?? 0) + 1;
+    seen.set(path, nth);
+    into.set(`${rel}#${nth === 1 ? path : `${path}~${nth}`}`, {
+      lines: lineOf(node.end) - lineOf(node.getStart(sf)) + 1,
+      params: node.parameters.filter(p => !(ts.isIdentifier(p.name) && p.name.text === 'this')).length
+    });
+    ts.forEachChild(node, child => visit(child, [...scope, name]));
+  };
+  visit(sf, []);
+  return into;
+}
+
+/* The over-cap metrics of a measurement, in the baseline's format. */
+function overCaps(measured) {
+  const out = {};
+  for (const [key, value] of measured) {
+    const over = Object.fromEntries(Object.entries(capOf(key)).filter(([m, cap]) => value[m] > cap).map(([m]) => [m, value[m]]));
+    if (Object.keys(over).length > 0) {
+      out[key] = over;
+    }
+  }
+  return out;
+}
+
+/*
+ * `grown`: a metric over both its cap and its ceiling (a new offender has no
+ * ceiling). `slack`: a ceiling above both the cap and the current value — the
+ * entry shrank, went under the cap, or no longer exists.
+ */
+function compareStructure(measured, baseline) {
+  const grown = [];
+  const slack = [];
+  for (const [key, value] of measured) {
+    for (const [metric, cap] of Object.entries(capOf(key))) {
+      const ceiling = baseline[key]?.[metric];
+      if (value[metric] > Math.max(cap, ceiling ?? 0)) {
+        grown.push({ key, metric, value: value[metric], ceiling: ceiling ?? cap, fresh: ceiling === undefined });
+      }
+    }
+  }
+  for (const [key, ceilings] of Object.entries(baseline)) {
+    for (const [metric, ceiling] of Object.entries(ceilings)) {
+      const value = measured.get(key)?.[metric];
+      if (ceiling > Math.max(capOf(key)[metric], value ?? 0)) {
+        slack.push({ key, metric, value: value ?? null, ceiling });
+      }
+    }
+  }
+  return { grown, slack };
+}
+
+/* Lower every ceiling to its current value; drop what is gone or under the cap. Never raises or adds. */
+function pruneStructure(measured, baseline) {
+  const out = {};
+  for (const [key, ceilings] of Object.entries(baseline)) {
+    const kept = {};
+    for (const [metric, ceiling] of Object.entries(ceilings)) {
+      const value = measured.get(key)?.[metric];
+      if (value !== undefined && value > capOf(key)[metric]) {
+        kept[metric] = Math.min(ceiling, value);
+      }
+    }
+    if (Object.keys(kept).length > 0) {
+      out[key] = kept;
+    }
+  }
+  return out;
+}
+
+/*
+ * Negative control, run every time before the result is trusted: a temp copy
+ * of a real source file with a planted 101-line, 6-parameter function must fail
+ * both function caps, and a baselined offender one line longer must fail.
+ */
+function structureSelfTest(sample, baseline) {
+  const body = Array.from({ length: 99 }, (_, i) => `  probe(${i});`).join('\n');
+  const planted = `${readFileSync(join(root, sample), 'utf8')}\nfunction plantedStructureProbe(a, b, c, d, e, f) {\n${body}\n}\n`;
+  const measured = measureStructure(sample, planted, new Map());
+  const caught = compareStructure(measured, baseline).grown
+    .filter(g => g.key === `${sample}#plantedStructureProbe`).map(g => g.metric).sort();
+  const [offender, ceilings] = Object.entries(baseline).find(([, c]) => c.lines !== undefined) ?? [];
+  const grownOffender = offender === undefined
+    || compareStructure(new Map([[offender, { lines: ceilings.lines + 1, params: ceilings.params ?? 0 }]]), { [offender]: ceilings })
+      .grown.some(g => g.key === offender && g.metric === 'lines');
+  return caught.join() === 'lines,params' && grownOffender;
+}
+
+const structure = { skipped: !ts, files: 0, functions: 0 };
+if (ts) {
+  const measured = new Map();
+  const files = gitFiles.filter(f => STRUCTURE_SOURCE.test(f) && !STRUCTURE_SKIP.test(f) && existsSync(join(root, f)));
+  for (const rel of files) {
+    measureStructure(rel, readFileSync(join(root, rel), 'utf8'), measured);
+  }
+  const baselinePath = join(root, STRUCTURE_BASELINE);
+  const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : {};
+  if (listStructure) {
+    console.log(JSON.stringify(overCaps(measured), null, 2));
+  }
+  if (!structureSelfTest(files[0], baseline)) {
+    failures.push('Assertion 6 self-test failed: a planted oversized function was not caught. The structure scan is blind; fix it before trusting its result.');
+  }
+  let { grown, slack } = compareStructure(measured, baseline);
+  let kept = baseline;
+  if (pruneBaselines && slack.length > 0) {
+    kept = pruneStructure(measured, baseline);
+    writeFileSync(baselinePath, `${JSON.stringify(kept, null, 2)}\n`);
+    console.log(`Lowered ${slack.length} ceiling${slack.length === 1 ? '' : 's'} in ${STRUCTURE_BASELINE}.`);
+    slack = [];
+  }
+  const keys = Object.keys(kept);
+  structure.files = keys.filter(k => !k.includes('#')).length;
+  structure.functions = keys.length - structure.files;
+  if (grown.length > 0) {
+    failures.push(
+      [
+        `${grown.length} structure limit(s) exceeded.`,
+        '',
+        `  New code stays under ${FILE_CAP.lines} lines per file, ${FUNCTION_CAP.lines} lines and ${FUNCTION_CAP.params} parameters per`,
+        `  function. An offender in ${STRUCTURE_BASELINE} may only shrink.`,
+        '  Split the file or function, or pass a record instead of more parameters. A renamed',
+        '  offender is a reviewed edit of its baseline key, never a raised ceiling.',
+        '',
+        ...grown.map(g => `    ${g.key}  ${g.metric} ${g.value} > ${g.fresh ? 'cap' : 'ceiling'} ${g.ceiling}`)
+      ].join('\n')
+    );
+  }
+  if (slack.length > 0) {
+    failures.push(
+      [
+        `${slack.length} structure ceiling(s) above the current value.`,
+        '',
+        `  Good — lower ${slack.length === 1 ? 'it' : 'them'} in ${STRUCTURE_BASELINE} so the freed room cannot be`,
+        '  spent again: `node scripts/check-guardrails.mjs --prune-baselines`.',
+        '  (A renamed offender shows up here and above as new: rename its key instead.)',
+        '',
+        ...slack.map(s => `    ${s.key}  ${s.metric} ceiling ${s.ceiling}, now ${s.value ?? 'gone'}`)
+      ].join('\n')
+    );
+  }
+} else if (requireStructure) {
+  failures.push('Assertion 6 needs the TypeScript parser (`@typescript/typescript6`): run `pnpm install` first.');
+}
+
+/* ------------------------------------------------------------------ *
+ * Assertion 7 — one owner per predicate.
+ * ------------------------------------------------------------------ */
+
+/*
+ * A rule written out again at a second site drifts from the first: one copy of
+ * the CSS name-code-point test accepts `\`, another does not; one string
+ * scanner honours escapes, another does not. Each shape below is a rule that
+ * belongs to ONE module (`owner`; null where the fact should come from the
+ * parser and no copy is wanted). Every open-coded copy elsewhere is inventoried
+ * in `scripts/check-guardrails.duplicate-predicates.json` by its text, never its
+ * line number, and the inventory may only shrink. An owner module may not exist
+ * yet; until it does, nothing is exempt.
+ *
+ * Scope: `packages/core/src/ast/` (tests excluded), the live evaluation and
+ * output engine where the owner modules go. The other packages that test the
+ * same characters (the diagnostics-core and language-service lexers) have their
+ * own tokenizers and no dependency they could share these owners through, and
+ * `packages/core/src/tree/` is being deleted.
+ *
+ * Patterns run over one code line at a time; comment lines are skipped.
+ */
+const PREDICATE_BASELINE = 'scripts/check-guardrails.duplicate-predicates.json';
+const PREDICATE_SOURCE = /^packages\/core\/src\/ast\/(?!(?:.*\/)?__tests__\/).+(?<!\.d|\.test|\.spec)\.ts$/;
+const CSS_SYNTAX = 'packages/core/src/ast/css-syntax.ts';
+const PREDICATES = [
+  {
+    rule: 'name-code-point', // CSS Syntax 3 §4.2: `_` as a name code point, or `[\w-]` over name text
+    owner: CSS_SYNTAX,
+    re: /=== (?:0x5[Ff]|95)\b|\[\\w-\]|\[-\\w\]/,
+    example: 'return c === 0x5F || c >= 0x80; // plantedPredicateProbe'
+  },
+  {
+    rule: 'quote-scan', // a `"` and a `'` test on one line: a hand-rolled string scanner
+    owner: CSS_SYNTAX,
+    re: /^(?=.*=== (?:'"'|0x22\b|34\b))(?=.*=== (?:'\\''|"'"|0x27\b|39\b|SINGLE_QUOTE\b))/,
+    example: 'if (c === \'"\' || c === \'\\\'\') { plantedPredicateProbe(); }'
+  },
+  {
+    rule: 'comment-scan',
+    owner: CSS_SYNTAX,
+    re: /\.indexOf\('\*\/'/,
+    example: 'const close = plantedPredicateProbe.indexOf(\'*/\', i + 2);'
+  },
+  {
+    rule: 'custom-property-bytes', // the parser knows a custom property; bytes are not re-read
+    owner: null,
+    re: /\.startsWith\('--'\)/,
+    example: 'if (plantedPredicateProbe.startsWith(\'--\')) {'
+  },
+  {
+    rule: 'dialect-sniff', // the dialect is the document's, not a guess from a plugin's extensions
+    owner: null,
+    re: /supportedExtensions\??\.includes\(['"]/,
+    example: 'const less = plantedPredicateProbe.supportedExtensions?.includes(\'.less\');'
+  },
+  {
+    rule: 'is-text', // `:is(…)` text joined by hand
+    owner: 'packages/core/src/ast/selector-text.ts',
+    re: /`:is\(\$\{|' ?:is\('/,
+    example: 'return `:is(${plantedPredicateProbe.join(\', \')})`;'
+  },
+  {
+    rule: 'context-spread', // a whole evaluation context copied to change one field
+    owner: null,
+    re: /\{ \.\.\.e[,} ]/,
+    example: 'const inner = { ...e, plantedPredicateProbe: true };'
+  },
+  {
+    rule: 'frame-literal',
+    owner: 'packages/core/src/ast/serialize/core/frame.ts',
+    re: /: Frame = \{/,
+    example: 'const plantedPredicateProbe: Frame = {'
+  },
+  {
+    rule: 'emit-literal',
+    owner: 'packages/core/src/ast/serialize/core/session.ts',
+    re: /: Emit = \{/,
+    example: 'const plantedPredicateProbe: Emit = {'
+  },
+  {
+    rule: 'mixin-definition-literal',
+    owner: 'packages/core/src/ast/nodes.ts',
+    re: /\btype: 'MixinDefinition',/,
+    example: 'const plantedPredicateProbe = { type: \'MixinDefinition\', name: \'\' };'
+  },
+  {
+    rule: 'import-option-split', // import options re-split from a joined string
+    owner: null,
+    re: /\bimportHasOption\(/,
+    example: 'if (importHasOption(plantedPredicateProbe, \'reference\')) {'
+  }
+];
+const COMMENT_LINE = /^\s*(?:\*|\/\/|\/\*)/;
+
+function scanPredicates(rel, text) {
+  const hits = [];
+  const rules = PREDICATES.filter(p => p.owner !== rel);
+  for (const line of text.split('\n')) {
+    if (COMMENT_LINE.test(line)) {
+      continue;
+    }
+    for (const { rule, re } of rules) {
+      if (re.test(line)) {
+        hits.push({ file: rel, rule, sentence: `${rule}: ${normalizeSentence(line)}` });
+      }
+    }
+  }
+  return hits;
+}
+
+const predicateFiles = gitFiles.filter(f => PREDICATE_SOURCE.test(f) && existsSync(join(root, f)));
+const predicateHits = predicateFiles.flatMap(rel => scanPredicates(rel, readFileSync(join(root, rel), 'utf8')));
+const listPredicates = process.argv.includes('--list-predicates');
+if (listPredicates) {
+  const inventory = {};
+  for (const h of predicateHits) {
+    (inventory[h.file] ??= []).push(h.sentence);
+  }
+  console.log(JSON.stringify(inventory, null, 2));
+}
+
+/*
+ * Negative control: each rule's example, planted in a temp copy of a real
+ * source file, is caught as that rule, and is not caught in its owner module.
+ */
+const predicateSample = predicateFiles.find(f => !PREDICATES.some(p => p.owner === f));
+const blindRules = predicateSample === undefined
+  ? ['(no source file in scope)']
+  : PREDICATES.filter(({ rule, owner, example }) => {
+      const copy = `${readFileSync(join(root, predicateSample), 'utf8')}\n${example}\n`;
+      const caught = scanPredicates(predicateSample, copy).some(h => h.rule === rule && h.sentence.includes('plantedPredicateProbe'));
+      const exempt = owner === null || !scanPredicates(owner, example).some(h => h.rule === rule);
+      return !caught || !exempt;
+    }).map(p => p.rule);
+if (blindRules.length > 0) {
+  failures.push(`Assertion 7 self-test failed for ${blindRules.join(', ')}: a planted copy was not caught (or its owner was not exempt). Fix the pattern before trusting the inventory.`);
+}
+
+const predicates = ratchet(predicateHits, PREDICATE_BASELINE);
+
+if (predicates.fresh.length > 0) {
+  failures.push(
+    [
+      `${predicates.fresh.length} new open-coded copy(ies) of a rule that has one owner.`,
+      '',
+      '  Call the owner module instead of writing the rule again (the owner of each rule is',
+      `  named in scripts/check-guardrails.mjs, assertion 7). Where no owner exists yet, the fact`,
+      '  belongs to the parser or the node: read it there. The inventory only shrinks.',
+      '',
+      ...predicates.fresh.map(h => `    ${h.file}\n      ${h.sentence}`)
+    ].join('\n')
+  );
+}
+
+if (predicates.stale.length > 0) {
+  failures.push(
+    [
+      `${predicates.stale.length} inventoried predicate cop${predicates.stale.length === 1 ? 'y no longer occurs' : 'ies no longer occur'}.`,
+      '',
+      `  Good — remove ${predicates.stale.length === 1 ? 'it' : 'them'} from ${PREDICATE_BASELINE} so the inventory only shrinks:`,
+      '  `node scripts/check-guardrails.mjs --prune-baselines`.',
+      '  (A rewritten copy shows up above as new.)',
+      '',
+      ...predicates.stale.map(s => `    ${s.file}\n      ${s.sentence}`)
+    ].join('\n')
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 /* exitCode, not exit(): a piped stdout/stderr is asynchronous on macOS and exit() truncates it. */
 if (listReferenceReasons) {
   console.log(JSON.stringify(referenceHits, null, 1));
+} else if (listStructure || listPredicates) {
+  /* Printed above. */
 } else if (failures.length > 0) {
   console.error('\ncheck:guardrails FAILED\n');
   for (const f of failures) {
@@ -678,6 +1092,10 @@ if (listReferenceReasons) {
     `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
     + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined); `
     + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}; `
-    + `no new parser throw (${rejectionHits.length} baselined).`
+    + `no new parser throw (${rejectionHits.length} baselined); `
+    + (structure.skipped
+      ? 'structure SKIPPED (TypeScript parser not installed; run with --require-structure after `pnpm install`); '
+      : `no structure growth (${structure.files} files and ${structure.functions} functions baselined); `)
+    + `no new predicate copy (${predicateHits.length} baselined).`
   );
 }

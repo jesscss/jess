@@ -124,6 +124,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The structure assertion (6) parses TypeScript, so the no-install runs
+      # above skip it. Here the parser is installed, and a skip would fail.
+      - name: Guardrails — structure only shrinks
+        run: node scripts/check-guardrails.mjs --require-structure
+
       # Clean build every run: delete every workspace lib then rebuild. Incremental
       # builds mask errors (a stale lib once masked a grammar compose failure).
       # GRAPH-PARALLEL: pnpm -r honours the workspace dependency graph, so the
