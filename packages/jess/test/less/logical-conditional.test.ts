@@ -30,6 +30,11 @@ describe('Less logical / conditional functions', () => {
 `);
   });
 
+  it('a paren group around boolean() is the value it computes', async () => {
+    /* The comparison inside `boolean()` computes, so the group around it is consumed. */
+    expect(await render('#group { a: (boolean(1 > 0)); }')).toBe('#group {\n  a: true;\n}\n');
+  });
+
   it('bare `not <operand>` negates, identical to the grouped `not(<operand>)`', async () => {
     /*
      * Regression: an unparenthesized `not false` was eaten by the argument-value
