@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24541
+    "lines": 24468
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -203,7 +203,7 @@
     "params": 9
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "lines": 826,
+    "lines": 802,
     "params": 19
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
@@ -258,17 +258,14 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#flushBlock": {
-    "lines": 149,
+    "lines": 125,
     "params": 7
-  },
-  "packages/core/src/ast/serialize.ts#flushBlock.emit": {
-    "lines": 113
   },
   "packages/core/src/ast/serialize.ts#appendMixedMergeMemberRun": {
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#emitMixedMergeMembers": {
-    "params": 8
+    "params": 7
   },
   "packages/core/src/ast/serialize.ts#putDeclarationValue": {
     "params": 8

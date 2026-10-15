@@ -1971,7 +1971,7 @@ export const mixinDef = (name: string, params: Param[], rules: Statement[], guar
   mixinDefinition(name, params, rules, extendInstructions !== undefined && extendInstructions.length > 0 ? [...extendInstructions] : undefined, guard);
 
 /** A paren-less ruleset called as a zero-arg mixin under `name`; marker and spans are stores into declared fields. */
-export const rulesetMixin = (rule: Ruleset, name: string): MixinDefinition => {
+const rulesetMixin = (rule: Ruleset, name: string): MixinDefinition => {
   const def: { -readonly [K in keyof MixinDefinition]: MixinDefinition[K] } = mixinDefinition(name, [], rule.rules, rule.extendInstructions, rule.guard);
   def.ruleMixin = true;
   def._s = rule._s;
@@ -1997,9 +1997,9 @@ export const mixinCall = (
   _s: NO_SPAN, _e: NO_SPAN
 });
 
-/** A call with no name or source of its own, binding `args` to a synthesized definition. */
-export const syntheticCall = (args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN });
-export const withArgs = (call: MixinCall, args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e });
+/** Serializer-only, so the default export, which the public entry's `export *` skips: `syntheticCall` binds `args` to a synthesized definition with no name or source. */
+const syntheticCall = (args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN });
+export default { rulesetMixin, syntheticCall, withArgs: (call: MixinCall, args: CallArg[]): MixinCall => ({ type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e }) };
 export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
 
 /** A single simple-string selector branch, e.g. `sel('.test')`. */

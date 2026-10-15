@@ -16,6 +16,9 @@ const allowedRootRenderBufferExports = new Set([
 ]);
 const retiredCoreRootExports = ['DocumentContext', 'DocumentContextOptions'];
 
+/* Constructors only the serializer uses: importable inside core, never public. */
+const serializerOnlyAstExports = ['rulesetMixin', 'syntheticCall', 'withArgs'];
+
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
@@ -77,6 +80,19 @@ if (fs.existsSync(coreEsmPath) && fs.existsSync(coreCjsPath)) {
   for (const name of retiredCoreRootExports) {
     if (Object.hasOwn(esm, name) || Object.hasOwn(cjs, name)) {
       failures.push(`@jesscss/core built root export: retired ${name} remains in ESM or CJS output`);
+    }
+  }
+}
+
+const coreAstEsmPath = path.join(rootDir, 'packages/core/lib/ast.js');
+const coreAstCjsPath = path.join(rootDir, 'packages/core/lib/ast.cjs');
+if (fs.existsSync(coreAstEsmPath) && fs.existsSync(coreAstCjsPath)) {
+  const cacheKey = `package-export-check=${fs.statSync(coreAstEsmPath).mtimeMs}`;
+  const esm = await import(`${pathToFileURL(coreAstEsmPath).href}?${cacheKey}`);
+  const cjs = createRequire(import.meta.url)(coreAstCjsPath);
+  for (const name of serializerOnlyAstExports) {
+    if (Object.hasOwn(esm, name) || Object.hasOwn(cjs, name)) {
+      failures.push(`@jesscss/core/ast built export: serializer-only ${name} is public in ESM or CJS output`);
     }
   }
 }
