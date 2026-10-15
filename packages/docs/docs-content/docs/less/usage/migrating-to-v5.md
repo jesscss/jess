@@ -528,6 +528,7 @@ through the explicit module binding:
 - `math: 'always'` (Less 3.x's eager math) still works; `parens-division` is the default.
 - Under `math: 'always'`, the slash before the alpha in a CSS colour function (`rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `color()`) is a separator, never a division: `rgb(0 128 255 / 50%)` stays `rgb(0 128 255 / 50%)`, where Less 4.x divided it (`#008005`). Wrap a division in parens to keep it: `hwb(1 2% (6% / 2))` is `hwb(1 2% 3%)`.
 - The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
+- **Breaking change** under `math: 'parens'` (and `strict`): parentheses around a function call do not reach its arguments. `(foo(1 + 2))` stays `(foo(1 + 2))`, where Less 4.x computed it (`foo(3)`). Put the parentheses inside the call to compute the argument: `(foo((1 + 2)))` is `(foo(3))`. Under `parens-division` (the default) and `always`, nothing changes.
 
 Example:
 

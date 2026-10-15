@@ -4440,6 +4440,12 @@ interface EvalSession {
  * - `paren`: inside a paren group ({@link Lane.parenFrames}); `parenBoundary` is
  *   a `.jess` `$( … )` boundary as well ({@link Lane.exprBoundary}), and
  *   `boundary` is that alone.
+ * - `call`: a call's arguments, which the parens written around the call do not
+ *   reach (owner 2026-10-15, ledger V34): `(foo(1 + 2))` keeps `1 + 2` under
+ *   `parens`/`strict`, while a group written inside the argument opens its own
+ *   frame, so `(foo((1 + 2)))` is `(foo(3))`. Only the top frame is read, so
+ *   when the top frame is not a paren `e` already is that lane and is returned
+ *   as-is: a call outside a group allocates nothing.
  * - `unreached`: a math function's arguments, written there and not reached
  *   ({@link whileReached}).
  * - `calc`: one `calc()` deeper.
@@ -4458,32 +4464,36 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement',
   sink?: { elided: boolean },
   isDefault?: () => boolean
 ): Lane {
-  return {
-    s: e.s,
-    ev: change === 'written' ? null : e.ev,
-    modes: change === 'splice' ? { ...e.modes, compress: false } : e.modes,
-    policy: e.policy,
-    allowCallerScope: e.allowCallerScope,
-    compress: change === 'splice' ? false : e.compress,
-    pluginHost: change === 'noPluginHost' ? undefined : e.pluginHost,
-    writtenFrom: change === 'written' ? e : e.writtenFrom,
-    reached: change === 'unreached' ? false : e.reached,
-    excluded: change === 'statement' ? new Set<Binding>() : e.excluded,
-    optional: change === 'statement' ? false : e.optional,
-    calcDepth: change === 'calc' ? e.calcDepth + 1 : change === 'statement' ? 0 : e.calcDepth,
-    parenFrames: change === 'paren' || change === 'parenBoundary'
-      ? e.parenFrames === undefined ? [true] : [...e.parenFrames, true]
-      : change === 'statement' ? undefined : e.parenFrames,
-    exprBoundary: change === 'parenBoundary' || change === 'boundary' || (change !== 'statement' && e.exprBoundary),
-    importantSink: change === 'statement' ? undefined : e.importantSink,
-    elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
-    mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
-    defaultFn: change === 'guard' ? isDefault : change === 'statement' ? undefined : e.defaultFn
-  };
+  return change === 'call' && e.parenFrames?.at(-1) !== true
+    ? e
+    : {
+        s: e.s,
+        ev: change === 'written' ? null : e.ev,
+        modes: change === 'splice' ? { ...e.modes, compress: false } : e.modes,
+        policy: e.policy,
+        allowCallerScope: e.allowCallerScope,
+        compress: change === 'splice' ? false : e.compress,
+        pluginHost: change === 'noPluginHost' ? undefined : e.pluginHost,
+        writtenFrom: change === 'written' ? e : e.writtenFrom,
+        reached: change === 'unreached' ? false : e.reached,
+        excluded: change === 'statement' ? new Set<Binding>() : e.excluded,
+        optional: change === 'statement' ? false : e.optional,
+        calcDepth: change === 'calc' ? e.calcDepth + 1 : change === 'statement' ? 0 : e.calcDepth,
+        parenFrames: change === 'paren' || change === 'parenBoundary'
+          ? e.parenFrames === undefined ? [true] : [...e.parenFrames, true]
+          : change === 'call'
+            ? e.parenFrames === undefined ? [false] : [...e.parenFrames, false]
+            : change === 'statement' ? undefined : e.parenFrames,
+        exprBoundary: change === 'parenBoundary' || change === 'boundary' || (change !== 'statement' && e.exprBoundary),
+        importantSink: change === 'statement' ? undefined : e.importantSink,
+        elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
+        mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
+        defaultFn: change === 'guard' ? isDefault : change === 'statement' ? undefined : e.defaultFn
+      };
 }
 
 /**
@@ -5226,10 +5236,11 @@ function evalTyped(
       }
 
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
-       * branch value, not on its bytes. An unmatched chain has no value. */
-      return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
+       * branch value, not on its bytes. An unmatched chain has no value. A
+       * lowered Less `if()` is a call, so its arguments are on a call lane. */
+      return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, e, projectMixinValues, argument));
+        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument));
     }
     case 'Range':
       /*
@@ -6219,9 +6230,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
 
       /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
        * bytes, exactly what an absent value emits. */
-      return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
+      return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
         ? literal('')
-        : evalValueSlot(taken, frame, e));
+        : evalValueSlot(taken, frame, ae));
     }
     case 'Interpolation':
       return evalInterp(node, frame, e);
@@ -7586,7 +7597,7 @@ function evalModuleReferenceCall(
   const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
   call._s = sourceStartOf(written);
   call._e = sourceEndOf(written);
-  return dispatchCall(call, frame, e, e.ev, selected.fn, false, true);
+  return dispatchCall(call, frame, deriveLane(e, 'call'), e.ev, selected.fn, false, true);
 }
 
 /**
@@ -7794,8 +7805,9 @@ function guardDeps(frame: Frame | null, e: Lane): {
 }
 
 /**
- * The taken arm of a value-position `$if` chain (§4.5.3b), or `undefined` when
- * every guard is false and no `$else` arm was written.
+ * Hands `use` the taken arm of a value-position `$if` chain (§4.5.3b), or
+ * `undefined` when every guard is false and no `$else` arm was written, with
+ * the lane its guard was decided on, which the arm is evaluated on too.
  *
  * Guards are evaluated left-to-right and SHORT-CIRCUIT: only the selected arm's
  * value is ever evaluated, so the form is branch-lazy by construction rather
@@ -7807,7 +7819,12 @@ function guardDeps(frame: Frame | null, e: Lane): {
  * `.jess` uses its own truth node. Core does not know, and must never learn,
  * which dialect the branch came from.
  */
-function pickIfValue(node: IfValue, frame: Frame | null, e: Lane): MaybePromise<ValueSlot | undefined> {
+function pickIfValue<T>(
+  node: IfValue,
+  frame: Frame | null,
+  e: Lane,
+  use: (taken: ValueSlot | undefined, e: Lane) => MaybePromise<T>
+): MaybePromise<T> {
   const deps = guardDeps(frame, e);
   const step = (index: number): MaybePromise<ValueSlot | undefined> => {
     const branch = node.branches[index];
@@ -7823,7 +7840,7 @@ function pickIfValue(node: IfValue, frame: Frame | null, e: Lane): MaybePromise<
       taken => taken ? branch.value : step(index + 1)
     );
   };
-  return step(0);
+  return mapMaybe(step(0), taken => use(taken, e));
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */
@@ -8773,10 +8790,13 @@ function evalCall(
   /*
    * [paren-group] A math function's arguments are written in it, not reached: a
    * paren group there keeps its parens even in a value a reference reached
-   * ({@link whileReached}), and math there is math written in it.
+   * ({@link whileReached}), and math there is math written in it. The parens
+   * written around any call do not reach its arguments either: they are
+   * evaluated on a `call` lane ({@link deriveLane}, ledger V34). Each lane is
+   * entered once, the call lane first.
    */
-  if (e.reached && isMathFunctionName(node.name)) {
-    return evalCall(node, frame, deriveLane(e, 'unreached'), demanded);
+  if (e.parenFrames?.at(-1) === true || (e.reached && isMathFunctionName(node.name))) {
+    return evalCall(node, frame, deriveLane(e, e.parenFrames?.at(-1) === true ? 'call' : 'unreached'), demanded);
   }
 
   /*
@@ -18112,7 +18132,7 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
  *  `@x: $if (…) { {…} } $else { {…} }; @x();` splices the chosen arm's
  *  declarations. `undefined` when no arm matches. */
 function pickIfBranch(node: IfValue, frame: Frame | null, e: Lane): ValueSlot | undefined {
-  return settled(pickIfValue(node, frame, e), '$if value-arm block resolution', node, e);
+  return settled(pickIfValue(node, frame, e, taken => taken), '$if value-arm block resolution', node, e);
 }
 
 /**

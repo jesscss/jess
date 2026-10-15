@@ -294,6 +294,9 @@ side effect does not rewrite an already-evaluated sibling declaration.
   is a separator, never a division: `rgb(0 128 255 / 50%)` stays as written,
   where Less 4.x divided it. Converted to `.jess`, it stays a separator too.
 - The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
+- Under `math=parens` (and `strict`), parentheses around a function call do not
+  reach its arguments: `(foo(1 + 2))` stays `(foo(1 + 2))`, where Less 4.x computed
+  it (`foo(3)`). Write `(foo((1 + 2)))` to compute the argument.
 
 ```bash
 # old
