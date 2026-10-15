@@ -108,6 +108,12 @@ carry an `owner` field marking in-flight rewrites, so a reader does not mistake
 a listed site for an accepted one. That field is descriptive only and changes
 no comparison outcome.
 
+An accepted site is a **named exception** instead: an `EXCEPTIONS` entry in
+`scripts/verify-hot-path-antipatterns.mjs` with the file, rule, snippet and
+reason. It is matched by content, like an inventory site, so it holds whether
+or not the detector currently reaches the site. An excepted finding never
+enters the comparison or the inventory; `--report` lists it with its reason.
+
 ## What this does NOT catch
 
 Stated plainly, because a gate that overstates its coverage is worse than none.

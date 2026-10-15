@@ -42,10 +42,11 @@
  *      `scripts/check-guardrails.parser-rejections.json`; a new one fails unless
  *      it is marked `NOT-WELL-FORMED:`.
  *
- *   6. Structure only shrinks: a file over 1,500 lines, or a function over 100
- *      lines or 5 parameters, is baselined in
+ *   6. Structure only shrinks: a file over 530 statements, or a function over
+ *      45 statements or 5 parameters, is baselined in
  *      `scripts/check-guardrails.structure-baseline.json` at its size today and
- *      may only shrink; new code stays under the caps.
+ *      may only shrink; new code stays under the caps. Size is counted in
+ *      statements, not lines, so reformatting can neither pass nor fail it.
  *
  *   7. One owner per predicate: open-coded copies of a shared rule (a CSS name
  *      code point, a quote or comment scanner, a `:is(` join, …) outside the
@@ -680,12 +681,28 @@ if (rejections.stale.length > 0) {
  * ------------------------------------------------------------------ */
 
 /*
- * A file over 1,500 lines, or a function over 100 lines or 5 parameters, is
- * where unrelated concerns pile up and copies of one rule drift apart. New code
- * stays under the caps. Every existing offender is baselined at its size today
- * and may only shrink; a ceiling above the current value fails until it is
- * lowered (`--prune-baselines`), so the room a refactor frees cannot be spent
- * again.
+ * A file over 530 statements, or a function over 45 statements or 5
+ * parameters, is where unrelated concerns pile up and copies of one rule drift
+ * apart. New code stays under the caps. Every existing offender is baselined at
+ * its size today and may only shrink; a ceiling above the current value fails
+ * until it is lowered (`--prune-baselines`), so the room a refactor frees cannot
+ * be spent again.
+ *
+ * SIZE IS COUNTED IN STATEMENTS, NOT LINES. A line count rewards cramming code
+ * onto fewer lines and charges for comments and blank lines; a refactor once
+ * joined lines to stay under a file's line ceiling. A statement is any
+ * TypeScript `Statement` node except a `{ }` block or an empty `;`, counted
+ * recursively — nested blocks and nested function bodies included — so joining
+ * or splitting lines never changes it. A file counts all its statements; a
+ * function counts the statements in its body. (A count of all AST nodes would
+ * ignore layout too, but it also grows with every type annotation.)
+ *
+ * The caps restate the old caps of 1,500 lines per file and 100 per function
+ * in statements, calibrated on this codebase when the unit changed: the median
+ * file has 2.8 lines per statement and the median function 2.1, so 1,500 lines
+ * ≈ 530 statements and 100 lines ≈ 47. Ranking agrees: 24 files exceed 530
+ * statements where 23 exceeded 1,500 lines, and 158 functions exceed 45
+ * statements where 159 exceeded 100 lines; the function cap takes the lower 45.
  *
  * Keys are names, never line numbers: `<file>` and `<file>#<Class.function>`.
  * A nested function is named through its host (`walkBody.run`); a name repeated
@@ -694,8 +711,7 @@ if (rejections.stale.length > 0) {
  *
  * A function is a declaration, method, constructor or accessor with a body, or
  * an arrow or function expression bound to a name (`const f = () => …`,
- * `f: function () …`). Its lines run from its first token (its JSDoc is not
- * counted) to its closing token; a `this` parameter is not counted.
+ * `f: function () …`). A `this` parameter is not counted.
  *
  * Scope: tracked TypeScript under every `packages/**\/src/` — the shipped
  * source of every package — minus tests (`__tests__/`, `*.test.ts`,
@@ -711,8 +727,8 @@ if (rejections.stale.length > 0) {
 const STRUCTURE_BASELINE = 'scripts/check-guardrails.structure-baseline.json';
 const STRUCTURE_SOURCE = /^packages\/(?!docs\/)(?:[^/]+\/)*src\/.+(?<!\.d)\.ts$/;
 const STRUCTURE_SKIP = /(?:^|\/)__tests__\/|\.(?:test|spec)\.ts$|^packages\/syntax\/[^/]+\/[^/]+-parser\/src\/grammar\.ts$/;
-const FILE_CAP = { lines: 1500 };
-const FUNCTION_CAP = { lines: 100, params: 5 };
+const FILE_CAP = { statements: 530 };
+const FUNCTION_CAP = { statements: 45, params: 5 };
 const capOf = key => (key.includes('#') ? FUNCTION_CAP : FILE_CAP);
 
 const listStructure = process.argv.includes('--list-structure');
@@ -741,11 +757,23 @@ function functionName(node) {
   return null;
 }
 
-/* Every metric of `rel`: the file's lines and each named function's lines and parameters. */
+/* The statements under `node`, at any depth; `{ }` blocks and empty `;` are not statements of their own. */
+function statementsIn(node) {
+  let count = 0;
+  const visit = (child) => {
+    if (ts.isStatement(child) && !ts.isBlock(child) && child.kind !== ts.SyntaxKind.EmptyStatement) {
+      count++;
+    }
+    ts.forEachChild(child, visit);
+  };
+  ts.forEachChild(node, visit);
+  return count;
+}
+
+/* Every metric of `rel`: the file's statements and each named function's statements and parameters. */
 function measureStructure(rel, text, into) {
-  into.set(rel, { lines: text.split('\n').length - (text.endsWith('\n') ? 1 : 0) });
   const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true);
-  const lineOf = pos => sf.getLineAndCharacterOfPosition(pos).line;
+  into.set(rel, { statements: statementsIn(sf) });
   const seen = new Map();
   const visit = (node, scope) => {
     const name = functionName(node);
@@ -758,7 +786,7 @@ function measureStructure(rel, text, into) {
     const nth = (seen.get(path) ?? 0) + 1;
     seen.set(path, nth);
     into.set(`${rel}#${nth === 1 ? path : `${path}~${nth}`}`, {
-      lines: lineOf(node.end) - lineOf(node.getStart(sf)) + 1,
+      statements: statementsIn(node.body),
       params: node.parameters.filter(p => !(ts.isIdentifier(p.name) && p.name.text === 'this')).length
     });
     ts.forEachChild(node, child => visit(child, [...scope, name]));
@@ -826,20 +854,28 @@ function pruneStructure(measured, baseline) {
 
 /*
  * Negative control, run every time before the result is trusted: a temp copy
- * of a real source file with a planted 101-line, 6-parameter function must fail
- * both function caps, and a baselined offender one line longer must fail.
+ * of a real source file with a planted function of one statement over the cap
+ * and 6 parameters must fail both function caps, laid out one statement per
+ * line, joined onto one line, or split across several lines per statement —
+ * and all three layouts must measure the same. A baselined offender one
+ * statement larger must fail.
  */
 function structureSelfTest(sample, baseline) {
-  const body = Array.from({ length: 99 }, (_, i) => `  probe(${i});`).join('\n');
-  const planted = `${readFileSync(join(root, sample), 'utf8')}\nfunction plantedStructureProbe(a, b, c, d, e, f) {\n${body}\n}\n`;
-  const measured = measureStructure(sample, planted, new Map());
-  const caught = compareStructure(measured, baseline).grown
-    .filter(g => g.key === `${sample}#plantedStructureProbe`).map(g => g.metric).sort();
-  const [offender, ceilings] = Object.entries(baseline).find(([, c]) => c.lines !== undefined) ?? [];
+  const calls = Array.from({ length: FUNCTION_CAP.statements + 1 }, (_, i) => `probe(${i});`);
+  const layouts = [calls.join('\n  '), calls.join(' '), calls.map(c => c.replace('(', '(\n    ').replace(');', '\n  );')).join('\n  ')];
+  const source = readFileSync(join(root, sample), 'utf8');
+  const key = `${sample}#plantedStructureProbe`;
+  const measures = layouts.map(body =>
+    measureStructure(sample, `${source}\nfunction plantedStructureProbe(a, b, c, d, e, f) {\n  ${body}\n}\n`, new Map()));
+  const caught = measures.every(m =>
+    compareStructure(m, baseline).grown.filter(g => g.key === key).map(g => g.metric).sort().join() === 'params,statements');
+  const sameMeasure = measures.every(m =>
+    JSON.stringify([m.get(sample), m.get(key)]) === JSON.stringify([measures[0].get(sample), measures[0].get(key)]));
+  const [offender, ceilings] = Object.entries(baseline).find(([, c]) => c.statements !== undefined) ?? [];
   const grownOffender = offender === undefined
-    || compareStructure(new Map([[offender, { lines: ceilings.lines + 1, params: ceilings.params ?? 0 }]]), { [offender]: ceilings })
-      .grown.some(g => g.key === offender && g.metric === 'lines');
-  return caught.join() === 'lines,params' && grownOffender;
+    || compareStructure(new Map([[offender, { statements: ceilings.statements + 1, params: ceilings.params ?? 0 }]]), { [offender]: ceilings })
+      .grown.some(g => g.key === offender && g.metric === 'statements');
+  return caught && sameMeasure && grownOffender;
 }
 
 const structure = { skipped: !ts, files: 0, functions: 0 };
@@ -855,7 +891,7 @@ if (ts) {
     console.log(JSON.stringify(overCaps(measured), null, 2));
   }
   if (!structureSelfTest(files[0], baseline)) {
-    failures.push('Assertion 6 self-test failed: a planted oversized function was not caught. The structure scan is blind; fix it before trusting its result.');
+    failures.push('Assertion 6 self-test failed: a planted oversized function was not caught, or reformatting it changed its measure. The structure scan is blind; fix it before trusting its result.');
   }
   let { grown, slack } = compareStructure(measured, baseline);
   let kept = baseline;
@@ -873,8 +909,8 @@ if (ts) {
       [
         `${grown.length} structure limit(s) exceeded.`,
         '',
-        `  New code stays under ${FILE_CAP.lines} lines per file, ${FUNCTION_CAP.lines} lines and ${FUNCTION_CAP.params} parameters per`,
-        `  function. An offender in ${STRUCTURE_BASELINE} may only shrink.`,
+        `  New code stays under ${FILE_CAP.statements} statements per file, ${FUNCTION_CAP.statements} statements and ${FUNCTION_CAP.params}`,
+        `  parameters per function. An offender in ${STRUCTURE_BASELINE} may only shrink.`,
         '  Split the file or function, or pass a record instead of more parameters. A renamed',
         '  offender is a reviewed edit of its baseline key, never a raised ceiling.',
         '',
