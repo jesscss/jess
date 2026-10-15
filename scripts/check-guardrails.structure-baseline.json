@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24423
+    "lines": 24145
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -175,10 +175,10 @@
     "lines": 150
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
-    "lines": 348
+    "lines": 347
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements.emit~2": {
-    "lines": 167
+    "lines": 165
   },
   "packages/core/src/ast/serialize.ts#openDynamicPath": {
     "params": 6
@@ -192,62 +192,40 @@
   "packages/core/src/ast/serialize.ts#foldDynamicExtends": {
     "lines": 115
   },
-  "packages/core/src/ast/serialize.ts#expandRule": {
-    "params": 9
-  },
   "packages/core/src/ast/serialize.ts#flattenResolved": {
-    "params": 10
+    "params": 7
   },
   "packages/core/src/ast/serialize.ts#flattenWithHeader": {
-    "lines": 213,
-    "params": 9
-  },
-  "packages/core/src/ast/serialize.ts#makePlacement": {
-    "params": 16
+    "lines": 210,
+    "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "lines": 770
+    "lines": 685
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "lines": 663
+    "lines": 576
   },
   "packages/core/src/ast/serialize.ts#nestedBody": {
-    "params": 10
-  },
-  "packages/core/src/ast/serialize.ts#walkReferenceAncestorBody": {
-    "params": 7
-  },
-  "packages/core/src/ast/serialize.ts#expandReferenceAncestorFor": {
-    "params": 7
-  },
-  "packages/core/src/ast/serialize.ts#expandNestedReferenceAncestorFor": {
-    "params": 6
+    "params": 9
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
-    "lines": 253,
-    "params": 15
+    "lines": 224,
+    "params": 6
   },
   "packages/core/src/ast/serialize.ts#expandCall.runDispatch": {
-    "lines": 169
+    "lines": 148
   },
   "packages/core/src/ast/serialize.ts#expandCall.runDispatch.run": {
-    "lines": 131
-  },
-  "packages/core/src/ast/serialize.ts#expandApply": {
-    "params": 13
+    "lines": 110
   },
   "packages/core/src/ast/serialize.ts#referenceCallFrame": {
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#expandReferenceCall": {
-    "lines": 155,
-    "params": 14
+    "lines": 113
   },
   "packages/core/src/ast/serialize.ts#forItems": {
     "lines": 117
-  },
-  "packages/core/src/ast/serialize.ts#expandFor": {
-    "params": 14
   },
   "packages/core/src/ast/serialize.ts#dispatch": {
     "lines": 199,
@@ -298,10 +276,10 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#emitAtRuleBody": {
-    "lines": 159
+    "lines": 154
   },
   "packages/core/src/ast/serialize.ts#emitBubbleBody": {
-    "lines": 530,
+    "lines": 529,
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#emitBubbleBody.run": {

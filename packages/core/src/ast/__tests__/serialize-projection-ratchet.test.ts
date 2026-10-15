@@ -166,11 +166,14 @@ describe('V19 one-evaluator projection ratchet', () => {
   it('routes the nested write projection through the one evaluator via a pure adapter', () => {
     /*
      * `nestedBody` is a calling-convention adapter with NO statement dispatch of
-     * its own: it forwards straight to `walkBody`. This proves the nested entry
-     * point is not a second dispatcher in disguise.
+     * its own: it copies its arguments into a placement, field by field, and
+     * forwards straight to `walkBody`. This proves the nested entry point is not
+     * a second dispatcher in disguise.
      */
     expect(SOURCE).toContain('function nestedBody(');
-    expect(SOURCE).toMatch(/function nestedBody\([\s\S]*?\n\): MaybePromise<void> \{\n  return walkBody\(/u);
+    expect(SOURCE).toMatch(
+      /function nestedBody\([\s\S]*?\n\): MaybePromise<void> \{\n  const at = makePlacement\([^\n]*\);\n(?: {2}at\.\w+ = [\w.]+;\n)* {2}return walkBody\(statements, frame, at, e\);\n\}/u
+    );
     const nestedBodySource = SOURCE.slice(
       SOURCE.indexOf('function nestedBody('),
       SOURCE.indexOf('function nestedBody(') + 800

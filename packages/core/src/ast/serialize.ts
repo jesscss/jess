@@ -6913,11 +6913,11 @@ function declMapFromMixinCall(
 ): DeclMap {
   const em = scratchEmit(e);
   const collected: Leaf[] = [];
-  const noop = (): void => {};
 
   /*
-   * Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
-   * nested rules (they defer to `trailing`, which is never drained here).
+   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
+   * never drained here. A nested rule is a partition boundary, so the declarations
+   * around it leave `collected` (for its queued block, or `pending`).
    */
   const discard: Partition = {
     encounteredContainer: false,
@@ -6925,7 +6925,7 @@ function declMapFromMixinCall(
     placement: undefined,
     boundary: null,
     pending: [],
-    emitBlock: noop
+    emitBlock: MOOT_FLUSH
   };
   const varFrames: Frame[] = [];
 
@@ -6935,12 +6935,9 @@ function declMapFromMixinCall(
    * awaitable expansion here would silently yield an EMPTY map — a wrong answer,
    * not a missing one.
    */
-  settled(
-    expandCall(call, null, null, frame, collected, noop, discard, em, false, true, varFrames),
-    SYNC_EXPANSION,
-    call,
-    em
-  );
+  const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
+  sink.partition = discard;
+  settled(expandCall(call, frame, sink, em, undefined, varFrames), SYNC_EXPANSION, call, em);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
@@ -8671,27 +8668,6 @@ function reportPluginLog(node: FunctionCall, record: { level: string; message: s
   });
 }
 
-function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null, e: EvalCtx): boolean {
-  for (const arg of args) {
-    if (isValueSlotArray(arg)) {
-      return true;
-    }
-    let binding: Binding = arg;
-    let bindingFrame = frame;
-    if (arg.type === 'Lookup' && arg.kind === 'var') {
-      const hit = resolveVarRef(frame, literalName(arg), arg.scope, e);
-      if (hit) {
-        binding = hit.value;
-        bindingFrame = hit.frame;
-      }
-    }
-    if (resolveValueBlock(binding, bindingFrame, e)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * [lambda-fn] A bare `f(args)` naming a var bound to a callable lambda (the
  * lowered SCSS user `@function`) IS an invoke of that binding, and shadows any
@@ -9068,10 +9044,10 @@ function writtenBlockBody(
          */
         const em = scratchEmit(e);
         const collected: Leaf[] = [];
-        const noop = (): void => {};
-        const nested: Partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: noop };
-        settled(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), SYNC_EXPANSION, rule, em);
-        if (nested.trailing.length > 0 || nested.pending.length > 0) {
+        const sink = makePlacement(null, collected, MOOT_FLUSH, bodyFrame);
+        sink.partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
+        settled(expandCall(rule, bodyFrame, sink, em), SYNC_EXPANSION, rule, em);
+        if (sink.partition.trailing.length > 0 || sink.partition.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
         }
         const keepAll = (comments: readonly string[] | null): void => {
@@ -14569,6 +14545,7 @@ function emitDocumentStatements(
     }
   };
   let pending: Promise<void> | undefined;
+  const documentAt = makePlacement(null, MOOT_LEAVES, MOOT_FLUSH, frame); // where a root rule composes
   const emit = (child: Statement): MaybePromise<void> => {
     switch (child.type) {
       case 'Ruleset':
@@ -14584,7 +14561,7 @@ function emitDocumentStatements(
           || e.dynamicExtend?.revealRules?.has(child) === true
           || e.dynamicExtend?.revealAncestors?.has(child) === true) {
           emitBeforeDocumentStatement(child);
-          const emitted = expandRule(child, null, null, frame, e);
+          const emitted = expandRule(child, frame, documentAt, e);
           markAfterDocumentStatement(child);
           return emitted;
         }
@@ -14612,7 +14589,7 @@ function emitDocumentStatements(
         }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(expandCall(child, null, null, frame, group, flush, null, e), flush);
+        return mapMaybe(expandCall(child, frame, makePlacement(null, group, flush, frame), e), flush);
       }
       case 'Apply': {
         if (e.referenceImportDepth !== 0) {
@@ -14620,7 +14597,7 @@ function emitDocumentStatements(
         }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(expandApply(child, null, null, frame, group, flush, null, e), flush);
+        return mapMaybe(expandApply(child, frame, makePlacement(null, group, flush, frame), e), flush);
       }
       case 'Reference': {
         if (e.referenceImportDepth !== 0) {
@@ -14630,17 +14607,17 @@ function emitDocumentStatements(
         // A final call step can splice a detached ruleset at document level.
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(expandReferenceCall(child, null, null, frame, group, flush, null, e), flush);
+        return mapMaybe(expandReferenceCall(child, frame, makePlacement(null, group, flush, frame), e), flush);
       }
       case 'For': {
         if (e.referenceImportDepth !== 0) {
-          return expandReferenceAncestorFor(child, null, null, frame, e, false, false);
+          return expandReferenceAncestorFor(child, frame, documentAt, e);
         }
 
         // a top-level `each(...)` loop — its body emits at the document level.
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(expandFor(child, null, null, frame, group, flush, null, e), flush);
+        return mapMaybe(expandFor(child, frame, makePlacement(null, group, flush, frame), e), flush);
       }
       case 'If': {
         if (e.referenceImportDepth !== 0) {
@@ -14652,7 +14629,7 @@ function emitDocumentStatements(
         }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(walkBody(body, frame, makePlacement(null, null, group, flush, null, false, false, frame), e), flush);
+        return mapMaybe(walkBody(body, frame, makePlacement(null, group, flush, frame), e), flush);
       }
       case 'While': {
         if (e.referenceImportDepth !== 0) {
@@ -14660,10 +14637,8 @@ function emitDocumentStatements(
         }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(
-          runWhile(child, frame, e, rules => walkBody(rules, frame, makePlacement(null, null, group, flush, null, false, false, frame), e)),
-          flush
-        );
+        const at = makePlacement(null, group, flush, frame);
+        return mapMaybe(runWhile(child, frame, e, rules => walkBody(rules, frame, at, e)), flush);
       }
       case 'Declaration':
       case 'Comment':
@@ -15838,34 +15813,27 @@ function gluesName(text: string, more: boolean, next: SimpleToken | undefined): 
 }
 
 /**
- * Evaluate shared ruleset gates and placement, then call the selected writer.
- * The optional nested arguments are existing writer state; their presence chooses
- * the projection without consulting the output setting during evaluation.
+ * Evaluate shared ruleset gates and placement, then call the writer of the
+ * projection `at` was placed in (`at.nested`), which the serialize boundary chose;
+ * evaluation never consults the output setting. `at` is the placement of the
+ * body the rule stands in.
  */
-function expandRule(
-  rule: Ruleset,
-  parent: string[] | null,
-  ancestor: string | null,
-  frame: Frame,
-  e: Emit,
-  imp = false,
-  expandBubbledSelectorList = false,
-  nestedSource?: NestedHeaderSource | null,
-  nestedHoist?: HoistEntry[]
-): MaybePromise<void> {
+function expandRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
+  const { nested, source, hoist } = at;
+
   /*
    * A rule whose `&` builds a name is written flattened, the name built (`.block { &__el
    * {} }` → `.block__el`), where it stands: nested, CSS would read it as no rule of the
    * block's (ledger J13, O17).
    */
-  if (nestedSource !== undefined && nestedSource !== null && selectorBuildsName(rule.selector)) {
-    return riseOut(rule, frame, e, imp, nestedSource);
+  if (nested && source !== null && selectorBuildsName(rule.selector)) {
+    return riseOut(rule, frame, e, at.important, source);
   }
-  if (nestedSource !== undefined && nestedHoist !== undefined) {
+  if (nested && hoist !== undefined) {
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source: nestedSource, split: null });
+      hoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source, split: null });
       return;
     }
   }
@@ -15875,24 +15843,12 @@ function expandRule(
     if (!passes) {
       return;
     }
-    if (nestedSource !== undefined) {
+    if (nested) {
       return mapMaybe(transparentShells(rule, frame, e), shells => (shells !== null
-        ? emitTransparentShells(
-            shells,
-            { parent: nestedSource, selector: rule.selector, frame },
-            frame,
-            e,
-            imp
-          )
-        : writeNestedRule(
-            rule,
-            frame,
-            e,
-            imp,
-            nestedSource,
-            nestedHoist
-          )));
+        ? emitTransparentShells(shells, { parent: source, selector: rule.selector, frame }, frame, e, at.important)
+        : writeNestedRule(rule, frame, e, at.important, source, hoist)));
     }
+    const parent = at.composed;
 
     /*
      * [extend/dynamic] With recording armed, an interpolated selector is resolved once,
@@ -15904,13 +15860,13 @@ function expandRule(
         const rawComposed =
           parent === null ? rootStrings(selector, frame, e) : compose(parent, selector, frame, e);
         return mapMaybe(rawComposed, rawComposed =>
-          flattenResolved(rule, selector, resolved !== null, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
+          flattenResolved(rule, selector, resolved !== null, frame, at, e, rawComposed));
       });
     }
     const rawComposed =
       parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
     return mapMaybe(rawComposed, rawComposed =>
-      flattenResolved(rule, rule.selector, false, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
+      flattenResolved(rule, rule.selector, false, frame, at, e, rawComposed));
   });
 }
 
@@ -15922,14 +15878,13 @@ function flattenResolved(
   rule: Ruleset,
   selector: SelectorList,
   resolved: boolean,
-  parent: string[] | null,
-  ancestor: string | null,
   frame: Frame,
+  at: Placement,
   e: Emit,
-  imp: boolean,
-  rawComposed: string[],
-  expandBubbledSelectorList: boolean
+  rawComposed: string[]
 ): MaybePromise<void> {
+  const parent = at.composed;
+
   /*
    * [nesting] `rawComposed` is the fully-cartesian parent-list carried into nested
    * `&` composition (each `&` substitutes over every parent branch). The EMITTED
@@ -15975,11 +15930,11 @@ function flattenResolved(
      * raw composed list is already the correct parent context for children.
      */
     childAncestor = wrapIsList(rawComposed);
-  } else if (expandBubbledSelectorList) {
+  } else if (at.expandBubbledSelectorList) {
     headerComposed = rawComposed;
     childAncestor = wrapIsList(rawComposed);
   } else {
-    headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), selector, frame, e);
+    headerComposed = opaqueJoin(at.ancestor ?? wrapIsList(parent), selector, frame, e);
 
     /* The header itself, once resolved, as ONE unit: every branch of it is an
      * ancestor of the children (`.a { .b, .c { e {} } }` → `:is(.a .b, .a .c) e`). */
@@ -15989,9 +15944,7 @@ function flattenResolved(
     const dyn = e.dynamicExtend;
     const ancestorOfChildren = childAncestor ?? wrapIsList(headerComposed);
     if (dyn === null) {
-      return flattenWithHeader(
-        rule, parent, frame, e, imp, childComposed, headerComposed, ancestorOfChildren, expandBubbledSelectorList
-      );
+      return flattenWithHeader(rule, frame, at, e, childComposed, headerComposed, ancestorOfChildren);
     }
 
     /* [extend/dynamic] The rule is open on the recorder's path while its body emits. */
@@ -16000,9 +15953,7 @@ function flattenResolved(
       openDynamicPath(dyn, rule, parent === null, headerComposed, false, resolved ? selector : undefined),
       dyn.scope,
       dyn.boundary,
-      () => flattenWithHeader(
-        rule, parent, frame, e, imp, childComposed, headerComposed, ancestorOfChildren, expandBubbledSelectorList
-      )
+      () => flattenWithHeader(rule, frame, at, e, childComposed, headerComposed, ancestorOfChildren)
     );
   });
 }
@@ -16078,10 +16029,9 @@ function extendedSplitFlags(header: readonly string[], suffixed: ReadonlySet<str
 
 function flattenWithHeader(
   rule: Ruleset,
-  parent: string[] | null,
   frame: Frame,
+  at: Placement,
   e: Emit,
-  imp: boolean,
 
   /*
    * [nesting] the parent context this rule's BODY composes against — `rawComposed`,
@@ -16090,8 +16040,7 @@ function flattenWithHeader(
    */
   childComposed: string[] | null,
   headerComposed: string[],
-  childAncestor: string,
-  expandBubbledSelectorList: boolean
+  childAncestor: string
 ): MaybePromise<void> {
   /*
    * [extend] the rule's HEADER uses its fully-extended composed branches;
@@ -16164,17 +16113,13 @@ function flattenWithHeader(
    * concrete `$for` placements); direct declarations and calls remain hidden.
    */
   if (referenceAncestor) {
+    const hidden = makePlacement(childComposed, MOOT_LEAVES, MOOT_FLUSH, childFrame);
+    hidden.ancestor = childComposed === null ? null : childAncestor;
+    hidden.important = at.important;
+    hidden.expandBubbledSelectorList = at.expandBubbledSelectorList;
     const executeReferenceAncestor = () => mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
-      () => walkReferenceAncestorBody(
-        rule.rules,
-        childComposed,
-        childComposed === null ? null : childAncestor,
-        childFrame,
-        e,
-        imp,
-        expandBubbledSelectorList
-      )
+      () => walkReferenceAncestorBody(rule.rules, childFrame, hidden, e)
     );
     return withSourceOwner(e, childFrame.sourceOwner, executeReferenceAncestor);
   }
@@ -16201,12 +16146,12 @@ function flattenWithHeader(
       const trailingBlockComments = takePendingLeafBlockComments(e, group);
 
       /*
-       * [adjacent-merge] `parent` (the parent expansion this rule was composed
+       * [adjacent-merge] `at.composed` (the parent expansion this rule was composed
        * against) keys sibling merges: two nested rulesets with the same parent ref
-       * and header merge; top-level rules (`parent === null`) never do.
+       * and header merge; top-level rules (`at.composed === null`) never do.
        */
       return mapMaybe(flushBlock(
-        visible, group, e, rule.selector, parent, trailingBlockComments, split
+        visible, group, e, rule.selector, at.composed, trailingBlockComments, split
       ), () => {
         recordDynExtendSlot(e, rule, frame, visible, reserved);
         group.length = 0;
@@ -16226,7 +16171,7 @@ function flattenWithHeader(
   ): MaybePromise<void> => {
     if (leaves.length || trailingBlockComments.length !== 0) {
       return mapMaybe(flushBlock(
-        visible, leaves, e, rule.selector, parent, trailingBlockComments, split
+        visible, leaves, e, rule.selector, at.composed, trailingBlockComments, split
       ), () => {
         recordDynExtendSlot(e, rule, frame, visible, reserved);
       });
@@ -16264,13 +16209,16 @@ function flattenWithHeader(
    */
   const executeBody = (): MaybePromise<void> => {
     const bodyTrivia = bodyTriviaReplay(rule, e);
+    const body = makePlacement(childComposed, group, flush, childFrame);
+    body.ancestor = childComposed === null ? null : childAncestor;
+    body.partition = partition;
+    body.important = at.important;
+    body.expandBubbledSelectorList = at.expandBubbledSelectorList;
+    body.bodyTrivia = bodyTrivia;
     return mapMaybe(
       mapMaybe(
         activateBodyDependencies(rule.rules, childFrame, e),
-        () => walkBody(rule.rules, childFrame, makePlacement(
-          childComposed, childComposed === null ? null : childAncestor, group, flush, partition, imp, false,
-          childFrame, false, expandBubbledSelectorList, bodyTrivia
-        ), e)
+        () => walkBody(rule.rules, childFrame, body, e)
       ),
       () => {
         queueBodyTriviaTail(bodyTrivia, group, partition, e);
@@ -16336,13 +16284,7 @@ function flushPending(p: Partition): void {
 }
 
 /** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
-function addLeaf(
-  group: Leaf[],
-  partition: Partition | null,
-  leaf: Leaf,
-  _forceLeading: boolean,
-  e: Emit
-): void {
+function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, e: Emit): void {
   const pendingBlockComments = e.pendingLeafBlockCommentOwner === group
     ? e.pendingLeafBlockComments
     : null;
@@ -16609,24 +16551,33 @@ interface Partition {
 
 /**
  * Where a walked body writes its output: everything {@link walkBody} needs
- * besides the statements, their scope and the render. Built only by
- * {@link makePlacement}, so every placement has one field set in one order.
+ * besides the statements, their scope and the render. Every placement is built
+ * by {@link makePlacement}, so all of them share one field set in one order. Its
+ * builder then assigns, by name, the fields in which its body differs (a
+ * {@link PlacementDraft}), and hands it to a walk, which only reads it.
  */
 interface Placement {
+  /** [nesting] The selector list the body's rules compose against; null outside any rule. */
   readonly composed: string[] | null;
 
-  /** [nesting] Opaque accumulated ancestor for `&`-less child joins. */
+  /**
+   * [nesting] Opaque accumulated ancestor for `&`-less child joins; null joins
+   * against `composed` itself, as one unit ({@link wrapIsList}).
+   */
   readonly ancestor: string | null;
+
+  /** [partition] The direct leaves of the block the body writes into, and their writer. */
   readonly group: Leaf[];
   readonly flush: () => MaybePromise<void>;
   readonly partition: Partition | null;
 
   /** Call-level `!important` forced onto the body's declarations. */
   readonly important: boolean;
-  readonly forceLeading: boolean;
 
   /** Less `$property` visibility owner. */
   readonly propertyScope: Frame;
+
+  /** The body is a `$apply`'d rule's: its declarations are marked `fromApply`. */
   readonly applyExpansion: boolean;
   readonly expandBubbledSelectorList: boolean;
   readonly bodyTrivia: BodyTriviaReplay | undefined;
@@ -16643,46 +16594,64 @@ interface Placement {
   readonly owner: object | undefined;
 }
 
+/** A {@link Placement} its builder is still filling in. */
+type PlacementDraft = { -readonly [K in keyof Placement]: Placement[K] };
+
 /**
- * The one constructor of {@link Placement}. Its parameters keep the order and
- * defaults of `walkBody`'s former positional signature.
+ * The one constructor of {@link Placement}: a body whose rules compose against
+ * `composed` (null outside any rule), written into `group`, whose leaves `flush`
+ * writes as one block, in the collapsed projection. Every other field starts
+ * neutral; the builder assigns the ones its body changes before handing the
+ * placement to a walk.
  */
 function makePlacement(
   composed: string[] | null,
-  ancestor: string | null,
   group: Leaf[],
   flush: () => MaybePromise<void>,
-  partition: Partition | null,
-  important: boolean,
-  forceLeading: boolean,
-  propertyScope: Frame,
-  applyExpansion = false,
-  expandBubbledSelectorList = false,
-  bodyTrivia?: BodyTriviaReplay,
-  nested = false,
-  hoist?: HoistEntry[],
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer,
-  owner?: object
-): Placement {
+  propertyScope: Frame
+): PlacementDraft {
   return {
     composed,
-    ancestor,
+    ancestor: null,
     group,
     flush,
-    partition,
-    important,
-    forceLeading,
+    partition: null,
+    important: false,
     propertyScope,
-    applyExpansion,
-    expandBubbledSelectorList,
-    bodyTrivia,
-    nested,
-    hoist,
-    source,
-    sharedLeaves,
-    owner
+    applyExpansion: false,
+    expandBubbledSelectorList: false,
+    bodyTrivia: undefined,
+    nested: false,
+    hoist: undefined,
+    source: null,
+    sharedLeaves: undefined,
+    owner: undefined
   };
+}
+
+/**
+ * The placement of a body walked in place of one statement of the body `at`
+ * places: a callable's body (a mixin, a detached ruleset, a `$apply`'d rule, a
+ * loop iteration) or an imported sheet. It writes where `at` writes, under its
+ * own comment replay (`bodyTrivia`). It is not a bubbled selector list, and it
+ * owns neither a hoist queue nor a block of its own: in the nested projection
+ * its leaves join `inline`, the leaf buffer of the walk the statement is in.
+ */
+function splicePlacement(
+  at: Placement,
+  inline: NestedLeafBuffer | undefined,
+  bodyTrivia: BodyTriviaReplay | undefined
+): PlacementDraft {
+  const body = makePlacement(at.composed, at.group, at.flush, at.propertyScope);
+  body.ancestor = at.ancestor;
+  body.partition = at.partition;
+  body.important = at.important;
+  body.applyExpansion = at.applyExpansion;
+  body.bodyTrivia = bodyTrivia;
+  body.nested = at.nested;
+  body.source = at.source;
+  body.sharedLeaves = inline;
+  return body;
 }
 
 /*
@@ -16709,8 +16678,8 @@ const NOOP_TRAILING_TRIVIA = (): void => {};
 
 function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
   const {
-    composed, ancestor, group, flush, partition, important: imp, forceLeading, propertyScope,
-    applyExpansion, expandBubbledSelectorList, nested, hoist, source, sharedLeaves, owner
+    composed, group, flush, partition, important: imp, propertyScope,
+    applyExpansion, nested, hoist, source, sharedLeaves, owner
   } = at;
   let bodyTrivia = at.bodyTrivia;
 
@@ -16731,6 +16700,8 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
     bodyTrivia = bodyTriviaReplay(owner, e);
   }
   let rootTriviaCursor: number | undefined;
+
+  /* [nested] The leaf buffer a callable's body joins ({@link splicePlacement}); undefined when collapsed. */
   let inlineLeaves: NestedLeafBuffer | undefined;
   let flushBuf: () => void = MOOT_FLUSH;
   let emitBeforeRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
@@ -16809,7 +16780,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
     };
   } else {
     placeLeaf = (leaf: Leaf): void => {
-      addLeaf(group, partition, leaf, forceLeading, e);
+      addLeaf(group, partition, leaf, e);
     };
   }
   const run = (start: number): MaybePromise<void> => {
@@ -16879,7 +16850,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
              * nested rule does: nested inside the caller, `&` already is the
              * caller (jess#345).
              */
-            const emitted = expandRule(node, null, null, frame, e, imp, false, source, hoist);
+            const emitted = expandRule(node, frame, at, e);
             if (isThenable(emitted)) {
               return emitted.then(() => {
                 markAfterRootStatement(node);
@@ -16895,9 +16866,6 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * rules at the top level (own-strings), not composed against `[]`.
            */
           const rule = node;
-          const rFrame = frame;
-          const rComposed = composed;
-          const rAncestor = ancestor;
 
           /*
            * [guards/&-merge] A nested rule whose selector composes to EXACTLY the
@@ -16908,19 +16876,18 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * when(c){color} & when(c){height} }`.
            */
           if (composed !== null && isSelfComposed(rule, composed, frame, e)) {
-            const rComposedSelf = composed;
             const emitSelf = (passes: boolean): MaybePromise<void> => {
               if (!passes) {
                 return;
               }
 
-              /* Its body is this block's, so its imports count in this block's import-once scope. */
+              /*
+               * Its body is this block's, written at this body's placement, and its
+               * imports count in this block's import-once scope.
+               */
               const selfFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
               selfFrame.importScope = importScopeOf(frame);
-              return walkBody(rule.rules, selfFrame, makePlacement(
-                rComposedSelf, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion,
-                expandBubbledSelectorList, bodyTrivia
-              ), e);
+              return walkBody(rule.rules, selfFrame, at, e);
             };
             const passes = ruleGuardPasses(rule, frame, e);
             const emitted = mapMaybe(passes, emitSelf);
@@ -16940,153 +16907,65 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
             flushPending(partition);
             partition.encounteredContainer = true;
             skipBodyTrivia(bodyTrivia, rule, e);
-            queueContainer(partition, e, () => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
+            queueContainer(partition, e, () => expandRule(rule, frame, at, e));
           } else {
             skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
             if (isThenable(flushed)) {
-              return flushed.then(() => mapMaybe(
-                expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
-                () => run(index + 1)
-              ));
+              return flushed.then(() => mapMaybe(expandRule(rule, frame, at, e), () => run(index + 1)));
             }
-            const emitted = expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
+            const emitted = expandRule(rule, frame, at, e);
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
           }
           break;
         }
-        case 'MixinCall':
-          if (nested) {
-            const emitted = expandCall(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves!.leaves,
-              inlineLeaves!.flush,
-              null,
-              e,
-              imp,
-              false,
-              undefined,
-              inlineLeaves!.propertyScope,
-              applyExpansion,
-              source,
-              inlineLeaves!
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          } else {
-            const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope, applyExpansion);
-            if (isThenable(expanded)) {
-              return expanded.then(() => run(index + 1));
-            }
+        case 'MixinCall': {
+          const expanded = expandCall(node, frame, at, e, inlineLeaves);
+          if (isThenable(expanded)) {
+            return expanded.then(() => run(index + 1));
           }
           break;
-        case 'Apply':
-          if (nested) {
-            const emitted = expandApply(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves!.leaves,
-              inlineLeaves!.flush,
-              null,
-              e,
-              imp,
-              false,
-              inlineLeaves!.propertyScope,
-              source,
-              inlineLeaves!
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          } else {
-            const expanded = expandApply(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
-            if (isThenable(expanded)) {
-              return expanded.then(() => run(index + 1));
-            }
+        }
+        case 'Apply': {
+          const expanded = expandApply(node, frame, at, e, inlineLeaves);
+          if (isThenable(expanded)) {
+            return expanded.then(() => run(index + 1));
           }
           break;
-        case 'Reference':
-          if (nested) {
-            const emitted = expandReferenceCall(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves!.leaves,
-              inlineLeaves!.flush,
-              null,
-              e,
-              imp,
-              false,
-              inlineLeaves!.propertyScope,
-              applyExpansion,
-              source,
-              inlineLeaves!
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          } else {
-            const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-            if (isThenable(expanded)) {
-              return expanded.then(() => run(index + 1));
-            }
+        }
+        case 'Reference': {
+          const expanded = expandReferenceCall(node, frame, at, e, inlineLeaves);
+          if (isThenable(expanded)) {
+            return expanded.then(() => run(index + 1));
           }
           break;
-        case 'For':
-          if (nested) {
-            const emitted = expandFor(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves!.leaves,
-              inlineLeaves!.flush,
-              null,
-              e,
-              imp,
-              false,
-              inlineLeaves!.propertyScope,
-              applyExpansion,
-              source,
-              inlineLeaves!
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          } else {
-            const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-            if (isThenable(expanded)) {
-              return expanded.then(() => run(index + 1));
-            }
+        }
+        case 'For': {
+          const expanded = expandFor(node, frame, at, e, inlineLeaves);
+          if (isThenable(expanded)) {
+            return expanded.then(() => run(index + 1));
           }
           break;
+        }
         case 'If': {
           if (nested) {
             flushBuf();
             const body = selectIfBody(node, frame, e);
             if (body) {
-              const emitted = nestedBody(body, frame, e, hoist, imp, source, undefined, applyExpansion, undefined, bodyTrivia);
+              const emitted = nestedBody(body, frame, e, hoist, imp, source, applyExpansion, undefined, bodyTrivia);
               if (isThenable(emitted)) {
                 return emitted.then(() => run(index + 1));
               }
             }
             break;
           }
+
+          /* The selected branch is part of this body: it writes at this body's placement. */
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = walkBody(body, frame, makePlacement(
-              composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion,
-              expandBubbledSelectorList, bodyTrivia
-            ), e);
+            const emitted = walkBody(body, frame, at, e);
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -17096,16 +16975,13 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
         case 'While': {
           if (nested) {
             flushBuf();
-            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, undefined, applyExpansion, undefined, bodyTrivia));
+            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, applyExpansion, undefined, bodyTrivia));
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
             break;
           }
-          const emitted = runWhile(node, frame, e, rules => walkBody(rules, frame, makePlacement(
-            composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion,
-            expandBubbledSelectorList, bodyTrivia
-          ), e));
+          const emitted = runWhile(node, frame, e, rules => walkBody(rules, frame, at, e));
           if (isThenable(emitted)) {
             return emitted.then(() => run(index + 1));
           }
@@ -17150,7 +17026,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * leading block, matching the legacy flatten order.
            */
           if (staysNested(node.name)) {
-            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            addLeaf(group, partition, evaluatedLeaf(node, frame), e);
             break;
           }
           const atNode = node;
@@ -17241,7 +17117,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * `@import` at root belongs.
            */
           if (staysNested(node.name) && composed !== null && composed.length > 0) {
-            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            addLeaf(group, partition, evaluatedLeaf(node, frame), e);
             break;
           }
           const atNode = node;
@@ -17302,7 +17178,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            */
           if (composed !== null && partition !== null && e.referenceImportDepth === 0
             && importHasOption(importRequestOptions(node.options), 'inline')) {
-            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            addLeaf(group, partition, evaluatedLeaf(node, frame), e);
             break;
           }
 
@@ -17332,7 +17208,8 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
              * rule's selector (`.wrap { @import "t.less"; }` emits `.wrap .sm`,
              * jess#358), inside a `(reference)` sheet too, where this rule hides them.
              * An import that is itself `(reference)` keeps the reference dispatcher,
-             * which hides the sheet's own declarations as well.
+             * which hides the sheet's own declarations as well. The sheet's
+             * declarations are not marked as a `$apply`'d rule's.
              */
             const emitLoaded = composed === null
               ? undefined
@@ -17343,12 +17220,19 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
                  * under it, hidden unless an extend reveals them; its own declarations
                  * stay hidden in a leaf group nothing writes.
                  */
-                ? (document: Stylesheet, importFrame: Frame) => walkBody(document.rules, importFrame, makePlacement(
-                    composed, ancestor, [], MOOT_FLUSH, null, imp, forceLeading, propertyScope
-                  ), e)
-                : (document: Stylesheet, importFrame: Frame) => walkBody(document.rules, importFrame, makePlacement(
-                    composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope
-                  ), e);
+                ? (document: Stylesheet, importFrame: Frame) => {
+                    const hidden = splicePlacement(at, undefined, undefined);
+                    hidden.group = [];
+                    hidden.flush = MOOT_FLUSH;
+                    hidden.partition = null;
+                    hidden.applyExpansion = false;
+                    return walkBody(document.rules, importFrame, hidden, e);
+                  }
+                : (document: Stylesheet, importFrame: Frame) => {
+                    const sheet = splicePlacement(at, undefined, undefined);
+                    sheet.applyExpansion = false;
+                    return walkBody(document.rules, importFrame, sheet, e);
+                  };
             const flushed = flush();
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
@@ -17361,7 +17245,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
               return imported.then(() => run(index + 1));
             }
           } else if (partition !== null && composed !== null) {
-            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            addLeaf(group, partition, evaluatedLeaf(node, frame), e);
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17480,9 +17364,9 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
 
 /**
  * [V19] Nested write-projection entry to the one body evaluator {@link walkBody}.
- * A pure calling-convention adapter (no statement dispatch of its own): it maps
- * the nested-projection argument shape to `walkBody`'s unified signature so the
- * nested writers and the serialize boundary invoke the single evaluator.
+ * A pure calling-convention adapter (no statement dispatch of its own): it builds
+ * the nested projection's {@link Placement} from its arguments, so the nested
+ * writers and the serialize boundary invoke the single evaluator.
  */
 function nestedBody(
   statements: Statement[],
@@ -17491,15 +17375,19 @@ function nestedBody(
   hoist?: HoistEntry[],
   imp = false, // [important] call-level `!important` forced onto this body's decls
   source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer,
   applyExpansion = false,
   owner?: object,
   bodyTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
-  return walkBody(statements, frame, makePlacement(
-    null, null, MOOT_LEAVES, MOOT_FLUSH, null, imp, false, frame, applyExpansion, false, bodyTrivia, true, hoist,
-    source, sharedLeaves, owner
-  ), e);
+  const at = makePlacement(null, MOOT_LEAVES, MOOT_FLUSH, frame);
+  at.important = imp;
+  at.applyExpansion = applyExpansion;
+  at.bodyTrivia = bodyTrivia;
+  at.nested = true;
+  at.hoist = hoist;
+  at.source = source;
+  at.owner = owner;
+  return walkBody(statements, frame, at, e);
 }
 
 /**
@@ -17512,12 +17400,9 @@ function nestedBody(
  */
 function walkReferenceAncestorBody(
   statements: readonly Statement[],
-  composed: string[] | null,
-  ancestor: string | null,
   frame: Frame,
-  e: Emit,
-  imp: boolean,
-  expandBubbledSelectorList: boolean
+  at: Placement,
+  e: Emit
 ): MaybePromise<void> {
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
@@ -17525,23 +17410,15 @@ function walkReferenceAncestorBody(
       let emitted: MaybePromise<void>;
       switch (node.type) {
         case 'Ruleset':
-          emitted = expandRule(node, composed, ancestor, frame, e, imp, expandBubbledSelectorList);
+          emitted = expandRule(node, frame, at, e);
           break;
         case 'AtRuleBlock':
           emitted = referenceAtRuleShown(node, e)
-            ? endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, composed))
+            ? endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, at.composed))
             : undefined;
           break;
         case 'For':
-          emitted = expandReferenceAncestorFor(
-            node,
-            composed,
-            ancestor,
-            frame,
-            e,
-            imp,
-            expandBubbledSelectorList
-          );
+          emitted = expandReferenceAncestorFor(node, frame, at, e);
           break;
         case 'MixinDefinition':
           publishSelectedMixinDefinition(frame, node);
@@ -17566,50 +17443,19 @@ function walkReferenceAncestorBody(
 }
 
 /** Concrete `$for` placements for the cold reference-ancestor traversal. */
-function expandReferenceAncestorFor(
-  node: For,
-  composed: string[] | null,
-  ancestor: string | null,
-  frame: Frame,
-  e: Emit,
-  imp: boolean,
-  expandBubbledSelectorList: boolean
-): MaybePromise<void> {
+function expandReferenceAncestorFor(node: For, frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
   return forIterations(node, frame, e, loopFrame => mapMaybe(
     activateBodyDependencies(node.rules, loopFrame, e),
-    () => walkReferenceAncestorBody(
-      node.rules,
-      composed,
-      ancestor,
-      loopFrame,
-      e,
-      imp,
-      expandBubbledSelectorList
-    )
+    () => walkReferenceAncestorBody(node.rules, loopFrame, at, e)
   ));
 }
 
 /** Enter one at-rule body level around a structural reference-only loop. */
-function expandNestedReferenceAncestorFor(
-  node: For,
-  composed: string[] | null,
-  ancestor: string | null,
-  frame: Frame,
-  e: Emit,
-  expandBubbledSelectorList: boolean
-): MaybePromise<void> {
+function expandNestedReferenceAncestorFor(node: For, frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
   e.depth++;
   let emitted: MaybePromise<void>;
   try {
-    emitted = expandReferenceAncestorFor(
-      node,
-      composed,
-      ancestor,
-      frame,
-      e,
-      false,
-      expandBubbledSelectorList
-    );
+    emitted = expandReferenceAncestorFor(node, frame, at, e);
   } catch (error) {
     e.depth--;
     throw error;
@@ -17644,24 +17490,16 @@ const MAX_MIXIN_DEPTH = 500;
  * Expand a mixin call: [guards] resolve the overloaded definitions that match
  * (arity + literal pattern + named/default params + guards), then WALK each
  * matching shared def body in place under the current composed selector. No
- * clone, no per-placement node build.
+ * clone, no per-placement node build. `at` places the body the call stands in;
+ * `inline` is that walk's nested leaf buffer ({@link splicePlacement}).
  */
 function expandCall(
   call: MixinCall,
-  composed: string[] | null,
-  ancestor: string | null,
   frame: Frame,
-  group: Leaf[],
-  flush: () => MaybePromise<void>,
-  partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
+  at: Placement,
   e: Emit,
-  imp = false,
-  forceLeading = false, // [partition] inherited leading-hoist context
-  captureFrames?: Frame[], // [namespace-accessor] collect each callee's callFrame
-  propertyScope: Frame = frame, // caller scope receiving spliced declarations
-  applyExpansion = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer
+  inline?: NestedLeafBuffer,
+  captureFrames?: Frame[] // [namespace-accessor] collect each callee's callFrame
 ): MaybePromise<void> {
   /*
    * A namespaced/compound call (`#ns .a .b()`, `.jo.ki()`, `.amp.support()`)
@@ -17727,12 +17565,13 @@ function expandCall(
     }
     const bindingsTrackedAtDispatch = e.pluginHost?.invokeRawFunction !== undefined
       && (e.scopedFunctionNames?.size ?? 0) > 0;
+    const leaves = inline?.leaves ?? at.group;
     const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
-      queueCommentOnlySelectedBodies(selected, e, group);
+      queueCommentOnlySelectedBodies(selected, e, leaves);
       if (selected.length === 0) {
         return;
       }
-      const bodyImp = imp || call.important; // propagate call-level !important
+
       /*
        * [recursion-backstop] Parametric self-recursion (`.loop(@n - 1)`) is terminated
        * by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops and
@@ -17786,14 +17625,6 @@ function expandCall(
           captureFrames?.push(callFrame);
 
           /*
-           * Only an argument-bearing mixin is a transparent parametric wrapper for
-           * this output rule. A zero-parameter `MixinDefinition` splices at its call site;
-           * treating every AST MixinDefinition as force-leading moved `.mixin2()` output
-           * ahead of an intervening nested rule in the Less property-accessor corpus.
-           */
-          const bodyForceLeading = forceLeading || def.params.length !== 0;
-
-          /*
            * [adjacent-merge] each mixin expansion is a DISTINCT parent expansion: give
            * its body a FRESH composed-array identity (same values → byte-identical
            * composition) so nested rulesets from two separate calls of the same body do
@@ -17801,6 +17632,7 @@ function expandCall(
            * `mixins-important`), while two nested siblings within ONE expansion still
            * share it and merge.
            */
+          const composed = at.composed;
           const bodyComposed = composed === null ? null : composed.slice();
           const composedFlags = composed === null || e.pseudoElementLists.size === 0 ? undefined : e.pseudoElementLists.get(composed);
           if (composedFlags !== undefined) {
@@ -17816,31 +17648,17 @@ function expandCall(
                 if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
                   capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
                 }
-                if (sharedLeaves !== undefined) {
-                  return nestedBody(
-                    def.rules,
-                    callFrame,
-                    e,
-                    undefined,
-                    bodyImp,
-                    source,
-                    sharedLeaves,
-                    applyExpansion,
-                    undefined,
-                    bodyTrivia
-                  );
-                }
-                return walkBody(def.rules, callFrame, makePlacement(
-                  bodyComposed, ancestor, group, flush, partition, bodyImp, bodyForceLeading, propertyScope,
-                  applyExpansion, false, bodyTrivia
-                ), e);
+                const body = splicePlacement(at, inline, bodyTrivia);
+                body.composed = bodyComposed;
+                body.important = at.important || call.important; // propagate call-level !important
+                return walkBody(def.rules, callFrame, body, e);
               }
             );
           };
           const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
           if (isThenable(emitted)) {
             return emitted.then(() => {
-              queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
+              queueBodyTriviaTail(bodyTrivia, leaves, inline === undefined ? at.partition : null, e);
               e.emittedBlockTrivia.closeCopy(bodyTrivia);
               leakBodyVars(frame, def.rules, callFrame, e);
               publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
@@ -17850,7 +17668,7 @@ function expandCall(
               return run(index + 1);
             });
           }
-          queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
+          queueBodyTriviaTail(bodyTrivia, leaves, inline === undefined ? at.partition : null, e);
           e.emittedBlockTrivia.closeCopy(bodyTrivia);
 
           /*
@@ -17931,21 +17749,7 @@ function queueCommentOnlySelectedBodies(
  * It selects every plain ruleset with an exact local selector, never enters
  * parametric mixin dispatch, and walks each matching canonical body in place.
  */
-function expandApply(
-  node: Apply,
-  composed: string[] | null,
-  ancestor: string | null,
-  frame: Frame,
-  group: Leaf[],
-  flush: () => MaybePromise<void>,
-  partition: Partition | null,
-  e: Emit,
-  imp = false,
-  forceLeading = false,
-  propertyScope: Frame = frame,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer
-): MaybePromise<void> {
+function expandApply(node: Apply, frame: Frame, at: Placement, e: Emit, inline?: NestedLeafBuffer): MaybePromise<void> {
   const selected: Array<{ rule: Ruleset; home: Frame }> = [];
 
   /*
@@ -17992,22 +17796,11 @@ function expandApply(
         applyFrame.fallback = frame;
         applyFrame.callerFallback = true;
       }
+      const body = splicePlacement(at, inline, undefined);
+      body.applyExpansion = true;
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         activateBodyDependencies(rule.rules, applyFrame, e),
-        () => sharedLeaves === undefined
-          ? walkBody(rule.rules, applyFrame, makePlacement(
-              composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, true
-            ), e)
-          : nestedBody(
-              rule.rules,
-              applyFrame,
-              e,
-              undefined,
-              imp,
-              source,
-              sharedLeaves,
-              true
-            )
+        () => walkBody(rule.rules, applyFrame, body, e)
       ));
       if (isThenable(emitted)) {
         return emitted.then(() => run(index + 1));
@@ -18366,22 +18159,13 @@ function referenceCallFrame(
 }
 
 /** Expand a detached-ruleset call (`@ruleset();`) — splice its body through
- * the overlay frame, in the flattened walk. */
+ * the overlay frame, in the flattened walk. `at` and `inline` as for {@link expandCall}. */
 function expandReferenceCall(
   call: Reference,
-  composed: string[] | null,
-  ancestor: string | null,
   frame: Frame,
-  group: Leaf[],
-  flush: () => MaybePromise<void>,
-  partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
+  at: Placement,
   e: Emit,
-  imp = false,
-  forceLeading = false, // [partition] inherited leading-hoist context
-  propertyScope: Frame = frame,
-  applyExpansion = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer
+  inline?: NestedLeafBuffer
 ): MaybePromise<void> {
   /*
    * `@alias: .something(foo); @alias();` — a variable bound to a MIXIN CALL is
@@ -18408,24 +18192,7 @@ function expandReferenceCall(
     return;
   }
   if (isMixinCallValue(resolved.value)) {
-    const home = resolved.frame ?? frame;
-    return expandCall(
-      resolved.value,
-      composed,
-      ancestor,
-      home,
-      group,
-      flush,
-      partition,
-      e,
-      imp,
-      forceLeading,
-      undefined,
-      propertyScope,
-      applyExpansion,
-      source,
-      sharedLeaves
-    );
+    return expandCall(resolved.value, resolved.frame ?? frame, at, e, inline);
   }
   const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
@@ -18473,29 +18240,13 @@ function expandReferenceCall(
       const bodyTrivia = drBody.length === 0 ? undefined : bodyTriviaReplay(r.dr, e);
       const walked = mapMaybe(
         activateBodyDependencies(drBody, r.callFrame, e),
-        () => sharedLeaves === undefined
-          ? walkBody(drBody, r.callFrame, makePlacement(
-              composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion, false,
-              bodyTrivia
-            ), e)
-          : nestedBody(
-              drBody,
-              r.callFrame,
-              e,
-              undefined,
-              imp,
-              source,
-              sharedLeaves,
-              applyExpansion,
-              undefined,
-              bodyTrivia
-            )
+        () => walkBody(drBody, r.callFrame, splicePlacement(at, inline, bodyTrivia), e)
       );
       if (bodyTrivia === undefined) {
         return walked;
       }
       return mapMaybe(walked, () => {
-        queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
+        queueBodyTriviaTail(bodyTrivia, inline?.leaves ?? at.group, inline === undefined ? at.partition : null, e);
         e.emittedBlockTrivia.closeCopy(bodyTrivia);
       });
     };
@@ -18699,11 +18450,11 @@ function resolveForNode(
  */
 function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePromise<ForItem[]> {
   const collected: Leaf[] = [];
-  const noop = (): void => {};
 
   /*
-   * Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
-   * nested rules (they defer to `trailing`, which is never drained here).
+   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
+   * never drained here. A nested rule is a partition boundary, so the declarations
+   * around it leave `collected` (for its queued block, or `pending`).
    */
   const discard: Partition = {
     encounteredContainer: false,
@@ -18711,7 +18462,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
     placement: undefined,
     boundary: null,
     pending: [],
-    emitBlock: noop
+    emitBlock: MOOT_FLUSH
   };
   const outerPendingBlockCommentOwner = e.pendingLeafBlockCommentOwner;
   const outerPendingBlockComments = e.pendingLeafBlockComments;
@@ -18733,7 +18484,9 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
     return items;
   };
   try {
-    const expanded = expandCall(call, null, null, frame, collected, noop, discard, e, false, true);
+    const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
+    sink.partition = discard;
+    const expanded = expandCall(call, frame, sink, e);
     if (isThenable(expanded)) {
       return expanded.then(finish, (error) => {
         e.pendingLeafBlockCommentOwner = outerPendingBlockCommentOwner;
@@ -18994,28 +18747,11 @@ function bindingValuesForItem<T>(
  * existing shared leaf buffer, so a `+`/`+_` merge accumulates across iterations
  * (`index+: @index` → `1, 2, 3`) without a second loop evaluator.
  */
-function expandFor(
-  node: For,
-  composed: string[] | null,
-  ancestor: string | null,
-  frame: Frame,
-  group: Leaf[],
-  flush: () => MaybePromise<void>,
-  partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
-  e: Emit,
-  imp = false,
-  forceLeading = false, // [partition] inherited leading-hoist context
-  propertyScope: Frame = frame,
-  applyExpansion = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer
-): MaybePromise<void> {
+function expandFor(node: For, frame: Frame, at: Placement, e: Emit, inline?: NestedLeafBuffer): MaybePromise<void> {
   /* [P36] Not lowered where built-ins are not ambient: evaluate the ordinary call statement, once. */
   const unlowered = unloweredCall(node);
   if (unlowered !== null) {
-    return sharedLeaves === undefined
-      ? walkBody([unlowered], frame, makePlacement(composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion), e)
-      : nestedBody([unlowered], frame, e, undefined, imp, source, sharedLeaves, applyExpansion);
+    return walkBody([unlowered], frame, splicePlacement(at, inline, undefined), e);
   }
 
   /*
@@ -19034,26 +18770,10 @@ function expandFor(
     const bodyTrivia = bodySpan === undefined ? undefined : bodyTriviaReplay(node, e, bodySpan);
     const walked = mapMaybe(
       activateBodyDependencies(node.rules, loopFrame, e),
-      () => sharedLeaves === undefined
-        ? walkBody(node.rules, loopFrame, makePlacement(
-            composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion, false,
-            bodyTrivia
-          ), e)
-        : nestedBody(
-            node.rules,
-            loopFrame,
-            e,
-            undefined,
-            imp,
-            source,
-            sharedLeaves,
-            applyExpansion,
-            undefined,
-            bodyTrivia
-          )
+      () => walkBody(node.rules, loopFrame, splicePlacement(at, inline, bodyTrivia), e)
     );
     return mapMaybe(walked, () => {
-      queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
+      queueBodyTriviaTail(bodyTrivia, inline?.leaves ?? at.group, inline === undefined ? at.partition : null, e);
       e.emittedBlockTrivia.closeCopy(bodyTrivia);
     });
   });
@@ -22860,6 +22580,7 @@ function emitAtRuleBody(
       putBlockComment(e, indent, comment);
     }
   };
+  const at = makePlacement(null, group, flushDirect, frame);
 
   /**
    * Emit one nested child one level in. The `depth--` must run when the child is
@@ -22892,15 +22613,15 @@ function emitAtRuleBody(
       case 'Declaration':
       case 'Comment':
         if (e.referenceImportDepth === 0) {
-          addLeaf(group, null, evaluatedLeaf(node, frame), false, e);
+          addLeaf(group, null, evaluatedLeaf(node, frame), e);
         }
         return undefined;
       case 'FunctionCall':
         return e.referenceImportDepth === 0
-          ? placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, false, e))
+          ? placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, e))
           : undefined;
       case 'Ruleset':
-        return nested(node, () => expandRule(node, null, null, frame, e));
+        return nested(node, () => expandRule(node, frame, at, e));
       case 'AtRuleBlock':
         return e.referenceImportDepth === 0 || referenceAtRuleShown(node, e)
           ? nested(node, () => endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e)))
@@ -22927,21 +22648,15 @@ function emitAtRuleBody(
           : undefined;
       case 'MixinCall':
         // Best-effort: expand into the direct-declaration group.
-        return e.referenceImportDepth === 0
-          ? expandCall(node, null, null, frame, group, flushDirect, null, e)
-          : undefined;
+        return e.referenceImportDepth === 0 ? expandCall(node, frame, at, e) : undefined;
       case 'Apply':
-        return e.referenceImportDepth === 0
-          ? expandApply(node, null, null, frame, group, flushDirect, null, e)
-          : undefined;
+        return e.referenceImportDepth === 0 ? expandApply(node, frame, at, e) : undefined;
       case 'Reference':
-        return e.referenceImportDepth === 0
-          ? expandReferenceCall(node, null, null, frame, group, flushDirect, null, e)
-          : undefined;
+        return e.referenceImportDepth === 0 ? expandReferenceCall(node, frame, at, e) : undefined;
       case 'For':
         return e.referenceImportDepth === 0
-          ? expandFor(node, null, null, frame, group, flushDirect, null, e)
-          : expandNestedReferenceAncestorFor(node, null, null, frame, e, false);
+          ? expandFor(node, frame, at, e)
+          : expandNestedReferenceAncestorFor(node, frame, at, e);
       case 'If': {
         if (e.referenceImportDepth !== 0) {
           return undefined;
@@ -23018,9 +22733,6 @@ function emitBubbleBody(
 ): MaybePromise<void> {
   /* The body's comments, replayed as {@link emitAtRuleBody} replays them. */
   const bodyTrivia = owner === undefined ? inlineTrivia : bodyTriviaReplay(owner, e);
-
-  // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
-  const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
 
   /*
    * [nesting] The context's parent units that are rules of their own ({@link SplitBlock}).
@@ -23129,6 +22841,8 @@ function emitBubbleBody(
     e.depth++;
     return flushed;
   };
+  const at = makePlacement(ctx, group, flushAtBase, frame);
+  at.expandBubbledSelectorList = ctx !== null; // [nesting] its rules compose under the context as a list
   const unbumpAfter = (expanded: MaybePromise<void>): MaybePromise<void> => {
     if (isThenable(expanded)) {
       return expanded.then(() => {
@@ -23152,14 +22866,14 @@ function emitBubbleBody(
         case 'Declaration':
         case 'Comment':
           if (e.referenceImportDepth === 0) {
-            addLeaf(group, null, evaluatedLeaf(node, frame), false, e);
+            addLeaf(group, null, evaluatedLeaf(node, frame), e);
           }
           break;
         case 'FunctionCall': {
           if (e.referenceImportDepth !== 0) {
             break;
           }
-          const placed = placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, false, e));
+          const placed = placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, e));
           if (isThenable(placed)) {
             return placed.then(() => run(index + 1));
           }
@@ -23169,7 +22883,7 @@ function emitBubbleBody(
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
-              const emitted = expandRule(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
+              const emitted = expandRule(node, frame, at, e);
               if (isThenable(emitted)) {
                 return emitted.then(() => {
                   e.depth--;
@@ -23185,7 +22899,7 @@ function emitBubbleBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 e.depth++;
-                const emitted = expandRule(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
+                const emitted = expandRule(node, frame, at, e);
                 if (isThenable(emitted)) {
                   return emitted.then(
                     () => {
@@ -23204,7 +22918,7 @@ function emitBubbleBody(
             }
             e.depth++;
             {
-              const emitted = expandRule(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
+              const emitted = expandRule(node, frame, at, e);
               if (isThenable(emitted)) {
                 return emitted.then(
                   () => {
@@ -23434,7 +23148,7 @@ function emitBubbleBody(
           }
           {
             e.depth++;
-            const expanded = unbumpAfter(expandCall(node, ctx, ctxAncestor, frame, group, flushAtBase, null, e));
+            const expanded = unbumpAfter(expandCall(node, frame, at, e));
             if (isThenable(expanded)) {
               return expanded.then(() => run(index + 1));
             }
@@ -23445,7 +23159,7 @@ function emitBubbleBody(
             break;
           }
           {
-            const expanded = expandApply(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+            const expanded = expandApply(node, frame, makePlacement(ctx, group, flushDirect, frame), e);
             if (isThenable(expanded)) {
               return expanded.then(() => run(index + 1));
             }
@@ -23457,7 +23171,7 @@ function emitBubbleBody(
           }
           {
             e.depth++;
-            const expanded = unbumpAfter(expandReferenceCall(node, ctx, ctxAncestor, frame, group, flushAtBase, null, e));
+            const expanded = unbumpAfter(expandReferenceCall(node, frame, at, e));
             if (isThenable(expanded)) {
               return expanded.then(() => run(index + 1));
             }
@@ -23472,14 +23186,14 @@ function emitBubbleBody(
            * its own depth and must NOT be bumped (visible reference at-rule loop).
            */
           if (e.referenceImportDepth !== 0) {
-            const expanded = expandNestedReferenceAncestorFor(node, ctx, ctxAncestor, frame, e, ctx !== null);
+            const expanded = expandNestedReferenceAncestorFor(node, frame, at, e);
             if (isThenable(expanded)) {
               return expanded.then(() => run(index + 1));
             }
             break;
           }
           e.depth++;
-          const expanded = unbumpAfter(expandFor(node, ctx, ctxAncestor, frame, group, flushAtBase, null, e));
+          const expanded = unbumpAfter(expandFor(node, frame, at, e));
           if (isThenable(expanded)) {
             return expanded.then(() => run(index + 1));
           }
@@ -23842,9 +23556,14 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   if (h.split !== null) {
     return flushBlock(h.split.header, h.split.leaves, e);
   }
-  return extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
-    ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
-    : emitHoisted(h.rule, h.frame, e, h.source);
+  if (extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested) {
+    /* Written nested where it lands, under no rule. */
+    const landing = makePlacement(null, MOOT_LEAVES, MOOT_FLUSH, h.frame);
+    landing.important = imp;
+    landing.nested = true;
+    return expandRule(h.rule, h.frame, landing, e);
+  }
+  return emitHoisted(h.rule, h.frame, e, h.source);
 }
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
@@ -24089,7 +23808,7 @@ function writeNestedRule(
     const childFrame = makeFrame(frame, undefined, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
     return mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
-      () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, undefined, false, rule)
+      () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, false, rule)
     );
   }
   if (plan?.flatten && !plan.hoistNested) {
@@ -24322,7 +24041,7 @@ function writeNestedRule(
     };
     const body = (): MaybePromise<void> => mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
-      () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, undefined, false, rule), finish)
+      () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, false, rule), finish)
     );
     return dyn === null ? body() : withDynamicPlacement(dyn, depth, dyn.scope, dyn.boundary, body);
   });
@@ -24338,7 +24057,10 @@ function writeNestedRule(
 function emitHoisted(rule: Ruleset, frame: Frame, e: Emit, source: NestedHeaderSource | null, imp = false): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  const emitted = expandRule(rule, source === null ? null : nestedSourceStrings(source, e), null, frame, e, imp);
+  const parent = source === null ? null : nestedSourceStrings(source, e);
+  const flat = makePlacement(parent, MOOT_LEAVES, MOOT_FLUSH, frame);
+  flat.important = imp;
+  const emitted = expandRule(rule, frame, flat, e);
   if (isThenable(emitted)) {
     return emitted.then(
       () => {
@@ -24380,7 +24102,7 @@ function writeNestedAtRuleBlock(
   };
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(
     activateBodyDependencies(node.rules, bodyFrame, e),
-    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, undefined, false, node), leave)
+    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, false, node), leave)
   ));
 }
 
