@@ -302,7 +302,7 @@ type ResolvedRenderConfig = {
   resolvedOutputFilePath?: string;
   jsPluginConfig: JsPluginConfig;
   printOptions: {
-    collapseNesting?: boolean | 'native' | 'compact';
+    collapseNesting?: OutputOptions['collapseNesting'];
     compress?: boolean;
     sourceMap?: OutputOptions['sourceMap'];
   };
@@ -336,7 +336,7 @@ const preparedSourceOf = (
  * is a deprecated alias for `'native'`. Normalize the config value here.
  */
 const collapseNestingFor = (
-  value: boolean | 'native' | 'compact' | undefined
+  value: OutputOptions['collapseNesting']
 ): false | 'native' | 'compact' => (value === true ? 'native' : (value ?? false));
 
 const createBaseConfig = (): ConfigOptions => ({

@@ -6,6 +6,7 @@ import {
   type ModuleConfigRequest,
   parserDiagnostic,
   type UnitMode,
+  type CollapseNesting,
   ProvidedModules,
   buildEvaluator,
   type ValueEvaluator
@@ -29,7 +30,7 @@ export type ScssPluginOptions = {
    * Whether to collapse nested selectors (flatten nesting during print).
    * This is a Jess output option, not a Sass option.
    */
-  collapseNesting?: boolean;
+  collapseNesting?: CollapseNesting;
 };
 
 type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
