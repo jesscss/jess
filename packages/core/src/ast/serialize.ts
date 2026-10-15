@@ -17638,84 +17638,18 @@ function expandReferenceAncestorFor(
   imp: boolean,
   expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
-  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
-    const run = (start: number): MaybePromise<void> => {
-      const collectionEntries = Array.isArray(items)
-        ? null
-        : items instanceof CollectionOverlay
-          ? items.items
-          : 'evaluatedItems' in items
-            ? null
-            : items.entries;
-      const plainItems = Array.isArray(items) ? items : null;
-      const evaluatedItems = !Array.isArray(items) && 'evaluatedItems' in items
-        ? items.evaluatedItems
-        : null;
-      const length = collectionEntries?.length ?? plainItems?.length ?? evaluatedItems!.length;
-      for (let index = start; index < length; index++) {
-        const collectionEntry = collectionEntries?.[index];
-        const item = collectionEntry === undefined ? plainItems?.[index] ?? null : null;
-        const evaluatedItem = collectionEntry === undefined ? evaluatedItems?.[index] ?? null : null;
-        const bindingIndex = dimension(index + 1);
-        const destructured = node.binding.kind !== 'tuple'
-          ? null
-          : collectionEntry !== undefined
-            ? groupItems(collectionEntry.value)
-            : evaluatedItem !== null
-              ? groupItems(evaluatedItem)
-              : null;
-        const bindings = collectionEntry === undefined && evaluatedItem === null
-          ? bindForEntry(node, item!.value, item!.key, bindingIndex, destructured)
-          : collectionEntry === undefined
-            ? bindForEntry(node, EVALUATED_BINDING, null, bindingIndex, destructured)
-            : bindForEntry(
-                node,
-                EVALUATED_BINDING,
-                EVALUATED_BINDING,
-                bindingIndex,
-                destructured
-              );
-        const bindingValueFrames = item === null
-          ? undefined
-          : bindingValuesForItem(bindings, item, item.valueFrame);
-        const cells = cellsForParams(
-          bindings,
-          bindingValueFrames,
-          undefined,
-          collectionEntry === undefined && evaluatedItem === null ? undefined : node.binding,
-          collectionEntry,
-          destructured,
-          evaluatedItem
-        );
-        const loopFrame = makeFrame(frame, node.rules, collectMixins(node.rules), collectDeclIndex(node.rules, bindings, cells), cells);
-        loopFrame.sourceOwner = frame.sourceOwner ?? null;
-        loopFrame.extendPlacement = e.dynamicExtend === null ? undefined : {};
-        loopFrame.importScope = importScopeOf(frame);
-        if (bindingValueFrames !== undefined) {
-          activationOf(loopFrame).bindingValueFrames = bindingValueFrames;
-        }
-        if (item !== null) {
-          bindForDetached(loopFrame, bindings, item);
-        }
-        const emitted = mapMaybe(
-          activateBodyDependencies(node.rules, loopFrame, e),
-          () => walkReferenceAncestorBody(
-            node.rules,
-            composed,
-            ancestor,
-            loopFrame,
-            e,
-            imp,
-            expandBubbledSelectorList
-          )
-        );
-        if (isThenable(emitted)) {
-          return emitted.then(() => run(index + 1));
-        }
-      }
-    };
-    return run(0);
-  });
+  return forIterations(node, frame, e, loopFrame => mapMaybe(
+    activateBodyDependencies(node.rules, loopFrame, e),
+    () => walkReferenceAncestorBody(
+      node.rules,
+      composed,
+      ancestor,
+      loopFrame,
+      e,
+      imp,
+      expandBubbledSelectorList
+    )
+  ));
 }
 
 /** Enter one at-rule body level around a structural reference-only loop. */
@@ -19181,19 +19115,77 @@ function expandFor(
   if (bodySpan !== undefined) {
     holdTriviaBetween(bodySpan.start, bodySpan.end, e);
   }
+  return forIterations(node, frame, e, (loopFrame) => {
+    if (e.dynamicExtend !== null && node.extendInstructions !== undefined) {
+      recordBodyExtends(e.dynamicExtend, node.extendInstructions, e);
+    }
+    const bodyTrivia = bodySpan === undefined ? undefined : bodyTriviaReplay(node, e, bodySpan);
+    const walked = mapMaybe(
+      activateBodyDependencies(node.rules, loopFrame, e),
+      () => sharedLeaves === undefined
+        ? walkBody(
+            node.rules,
+            composed,
+            ancestor,
+            loopFrame,
+            group,
+            flush,
+            partition,
+            e,
+            imp,
+            forceLeading,
+            propertyScope,
+            applyExpansion,
+            false,
+            bodyTrivia
+          )
+        : nestedBody(
+            node.rules,
+            loopFrame,
+            e,
+            undefined,
+            imp,
+            source,
+            sharedLeaves,
+            applyExpansion,
+            undefined,
+            bodyTrivia
+          )
+    );
+    return mapMaybe(walked, () => {
+      queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
+      e.emittedBlockTrivia.closeCopy(bodyTrivia);
+    });
+  });
+}
+
+/**
+ * The `$for` iteration both loop projections share ({@link expandFor} and the
+ * reference-ancestor {@link expandReferenceAncestorFor}): resolve the iterable
+ * once, then for each item, in order, bind the loop variables into a fresh loop
+ * frame and run `body` in it. When `body` returns a promise, the loop resumes
+ * at the next item once it settles. What each projection does with the frame
+ * (extend recording, comment replay, which body writer) stays with its caller.
+ */
+function forIterations(
+  node: For,
+  frame: Frame,
+  e: Emit,
+  body: (loopFrame: Frame) => MaybePromise<void>
+): MaybePromise<void> {
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
+    const collectionEntries = Array.isArray(items)
+      ? null
+      : items instanceof CollectionOverlay
+        ? items.items
+        : 'evaluatedItems' in items
+          ? null
+          : items.entries;
+    const plainItems = Array.isArray(items) ? items : null;
+    const evaluatedItems = !Array.isArray(items) && 'evaluatedItems' in items
+      ? items.evaluatedItems
+      : null;
     const run = (start: number): MaybePromise<void> => {
-      const collectionEntries = Array.isArray(items)
-        ? null
-        : items instanceof CollectionOverlay
-          ? items.items
-          : 'evaluatedItems' in items
-            ? null
-            : items.entries;
-      const plainItems = Array.isArray(items) ? items : null;
-      const evaluatedItems = !Array.isArray(items) && 'evaluatedItems' in items
-        ? items.evaluatedItems
-        : null;
       const length = collectionEntries?.length ?? plainItems?.length ?? evaluatedItems!.length;
       for (let i = start; i < length; i++) {
         const collectionEntry = collectionEntries?.[i];
@@ -19234,46 +19226,7 @@ function expandFor(
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
         }
-        if (e.dynamicExtend !== null && node.extendInstructions !== undefined) {
-          recordBodyExtends(e.dynamicExtend, node.extendInstructions, e);
-        }
-        const bodyTrivia = bodySpan === undefined ? undefined : bodyTriviaReplay(node, e, bodySpan);
-        const walked = mapMaybe(
-          activateBodyDependencies(node.rules, loopFrame, e),
-          () => sharedLeaves === undefined
-            ? walkBody(
-                node.rules,
-                composed,
-                ancestor,
-                loopFrame,
-                group,
-                flush,
-                partition,
-                e,
-                imp,
-                forceLeading,
-                propertyScope,
-                applyExpansion,
-                false,
-                bodyTrivia
-              )
-            : nestedBody(
-                node.rules,
-                loopFrame,
-                e,
-                undefined,
-                imp,
-                source,
-                sharedLeaves,
-                applyExpansion,
-                undefined,
-                bodyTrivia
-              )
-        );
-        const emitted = mapMaybe(walked, () => {
-          queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
-          e.emittedBlockTrivia.closeCopy(bodyTrivia);
-        });
+        const emitted = body(loopFrame);
         if (isThenable(emitted)) {
           return emitted.then(() => run(i + 1));
         }

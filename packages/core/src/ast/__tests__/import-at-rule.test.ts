@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule.js';
-import type { Interpolation, List, Quoted, StyleImport, Url, ValueNode } from '../nodes.js';
+import type { Interpolation, List, Quoted, Statement, StyleImport, Url, ValueNode } from '../nodes.js';
 import { any, block, collection, collectionEntry, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, pseudoSelector, quoted, reference, rule, sel, selist, simpleSelector, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
@@ -1597,6 +1597,50 @@ describe('StyleImport', () => {
     })).resolves.toEqual({
       css: '.visible {\n  color: blue;\n}\n'
     });
+  });
+
+  /*
+   * A loop nested inside a hidden reference container is reached by walking that
+   * container as a structural ancestor. The sibling `.shown` makes the container an
+   * ancestor of a visible rule; the loop then places `.loop-target` under the
+   * composed parent selector and binds `@value`, while the loop's own declaration
+   * stays hidden. One case per entry into that walk: a ruleset body, an at-rule
+   * body, and an at-rule bubbled out of a ruleset.
+   */
+  it.each([
+    ['a reference ruleset', (body: Statement[]) => [rule('.parent', body)],
+      '.parent .v2 {\n  color: red;\n}\n.parent .visible {\n  color: blue;\n}\n'],
+    ['a reference at-rule', (body: Statement[]) => [atRuleBlock('@media', keyword('print'), body)],
+      '@media print {\n  .v2 {\n    color: red;\n  }\n  .visible {\n    color: blue;\n  }\n}\n'],
+    ['an at-rule inside a reference ruleset', (body: Statement[]) => [rule('.parent', [atRuleBlock('@media', keyword('print'), body)])],
+      '@media print {\n  .parent .v2 {\n    color: red;\n  }\n  .parent .visible {\n    color: blue;\n  }\n}\n']
+  ] as const)('places a loop nested in %s under its composed ancestor', async (_name, wrap, css) => {
+    const imported = stylesheet(wrap([
+      rule('.shown', [decl('color', keyword('red'))]),
+      forNode(
+        spaced([keyword('blue')]),
+        [
+          decl('must-not-loop', keyword('leak')),
+          rule('.loop-target', [decl('color', variableReference('value', 'scoped'))])
+        ],
+        { kind: 'single', name: 'value' }
+      )
+    ]));
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target')), partial: true }]),
+      rule('.v2', [], [{ target: selist(sel('.shown')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({ css });
   });
 
   /*
