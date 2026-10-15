@@ -3141,11 +3141,7 @@ function findPathInScope(
          * authored arguments.
          */
         const namespaceCall = mixinCall(s.name);
-        const selected = settledDispatch(
-          dispatch([s], namespaceCall, scope, e),
-          namespaceCall,
-          e
-        );
+        const selected = settled(dispatch([s], namespaceCall, scope, e), SYNC_DISPATCH, namespaceCall, e);
         if (selected.length === 0) {
           return;
         }
@@ -3192,7 +3188,7 @@ function findPathInScope(
            * Rulesets are namespace containers too, so a false Less `when` guard
            * prevents descent just as it prevents ordinary rule emission.
            */
-          if (!settledGuard(ruleGuardPasses(s, scope, e), 'namespace-path index build', s.selector, e)) {
+          if (!settled(ruleGuardPasses(s, scope, e), 'namespace-path index build', s.selector, e)) {
             continue;
           }
 
@@ -6961,8 +6957,9 @@ function declMapFromMixinCall(
    * awaitable expansion here would silently yield an EMPTY map — a wrong answer,
    * not a missing one.
    */
-  settledExpansion(
+  settled(
     expandCall(call, null, null, frame, collected, noop, discard, em, false, true, varFrames),
+    SYNC_EXPANSION,
     call,
     em
   );
@@ -7381,7 +7378,7 @@ function resolveReferenceResult(
          * its resulting bytes name a member of this map. The map owner can be a
          * root/detached closure while `@name` is an each/mixin-local binding.
          */
-        const name = syncValue(lookupName(step.name, frame ?? valueFrame, e), step.name, e, 'map member name');
+        const name = settled(lookupName(step.name, frame ?? valueFrame, e), 'map member name', step.name, e);
         missingSymbol = `@${name}`;
         matched = map.valueEntries?.get(makeKeyword(name))
           ?? mapForKind(map, 'var').get(name)
@@ -9131,7 +9128,7 @@ function writtenBlockBody(
         const collected: Leaf[] = [];
         const noop = (): void => {};
         const nested: Partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: noop };
-        settledExpansion(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), rule, em);
+        settled(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), SYNC_EXPANSION, rule, em);
         if (nested.trailing.length > 0 || nested.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
         }
@@ -9408,20 +9405,7 @@ function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): Mayb
  * Tracked in docs/architecture/core/HANDOFF.md.
  */
 function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
-  return syncValue(evalBytes(node, frame, e), node, e, 'import request / synchronous byte position');
-}
-
-/** `value` in a position confined to the synchronous lane, where an awaitable one is an error. */
-function syncValue<T>(value: MaybePromise<T>, node: object, e: EvalCtx, where: string): T {
-  if (isThenable(value)) {
-    observeRejectedThenable(value);
-    throw ERR.asyncInSyncPosition({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { where }
-    });
-  }
-  return value;
+  return settled(evalBytes(node, frame, e), 'import request / synchronous byte position', node, e);
 }
 
 /** A string's content — its authored value, or its template spliced in `frame` — for a path request. */
@@ -9431,7 +9415,7 @@ function quotedContentSync(node: Quoted, frame: Frame | null, e: EvalCtx): strin
 
 /** As {@link evalBytesSync}, for the media tail of an import request. */
 function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
-  return syncValue(evalQueryPrelude(node, frame, e), node, e, 'import request media tail');
+  return settled(evalQueryPrelude(node, frame, e), 'import request media tail', node, e);
 }
 
 /* ---------------------------------------------------- selector composition */
@@ -14875,10 +14859,13 @@ function emitDocumentStatements(
 }
 
 /**
- * The three positions still confined to the SYNCHRONOUS lane, each behind an
- * explicit, positioned failure rather than a silent wrong answer.
+ * `value` in a position confined to the SYNCHRONOUS lane, where an awaitable one
+ * is an explicit, positioned failure (`where` names the position) rather than a
+ * silent wrong answer. A synchronous value is returned as is, so the caller stays
+ * synchronous. Every other position's TODO sits beside its `where` string.
  *
- * TODO(maybe-promise-sync-islands): move these onto the MaybePromise lane.
+ * TODO(maybe-promise-sync-islands): move these guard positions onto the
+ * MaybePromise lane.
  *   1. namespace-descent index building (`findPathInScope`) — its result is
  *      memoized on `frame.orderedMixins`, and a memo cannot hold a promise
  *      without every reader becoming awaitable;
@@ -14890,7 +14877,7 @@ function emitDocumentStatements(
  * asynchronously, so this is a real limitation, not merely a legacy-plugin one.
  * Tracked in docs/architecture/core/HANDOFF.md.
  */
-function settledGuard<T>(value: MaybePromise<T>, where: string, node: object, e: EvalCtx): T {
+function settled<T>(value: MaybePromise<T>, where: string, node: object, e: EvalCtx): T {
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({ node, ...callSiteLocation(node, e), meta: { where } });
@@ -14939,7 +14926,7 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
  */
 function selectedIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   for (const branch of node.branches) {
-    if (branch.guard !== null && !settledGuard(withUnitErrors(node, e, () => evalGuard(branch.guard!, guardDeps(frame, e))), '$if arm selection', node, e)) {
+    if (branch.guard !== null && !settled(withUnitErrors(node, e, () => evalGuard(branch.guard!, guardDeps(frame, e))), '$if arm selection', node, e)) {
       continue;
     }
     return branch.rules;
@@ -14986,7 +14973,7 @@ function runWhile(
   }
   const step = (start: number): MaybePromise<void> => {
     for (let i = start; i < MAX_WHILE_ITERATIONS; i++) {
-      if (!settledGuard(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
+      if (!settled(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
         return;
       }
       const emitted = emitBody(node.rules);
@@ -15282,7 +15269,7 @@ function withDynamicPlacement<T>(
   boundary: ExtendBoundary | null,
   run: () => MaybePromise<T>
 ): MaybePromise<T> {
-  return settled(run, () => {
+  return afterSettled(run, () => {
     dyn.scope = scope;
     dyn.boundary = boundary;
     dyn.pathRules.length = depth;
@@ -15294,7 +15281,7 @@ function withDynamicPlacement<T>(
 }
 
 /** Run `run`, then `restore` however it settles: returned, resolved, thrown or rejected. */
-function settled<T>(run: () => MaybePromise<T>, restore: () => void): MaybePromise<T> {
+function afterSettled<T>(run: () => MaybePromise<T>, restore: () => void): MaybePromise<T> {
   try {
     const result = run();
     if (isThenable(result)) {
@@ -15440,7 +15427,7 @@ function withImportPlacement(
   if (dyn !== null) {
     dyn.boundary = boundary;
   }
-  return settled(emit, () => {
+  return afterSettled(emit, () => {
     e.importPlacement = outerPlacement;
     if (dyn !== null) {
       dyn.boundary = outerBoundary;
@@ -16808,11 +16795,11 @@ function walkBody(
               end++;
             }
             const start = index;
-            settledEmission(withSourceOwner(e, sourceOwner, () => {
+            settled(withSourceOwner(e, sourceOwner, () => {
               for (let at = start; at < end; at++) {
                 emitNestedLeafOwned(buf[at]!, e);
               }
-            }), leaf.node, e);
+            }), SYNC_LEAF_FLUSH, leaf.node, e);
             index = end;
             continue;
           }
@@ -18065,12 +18052,12 @@ function queueCommentOnlySelectedBodies(
     }
     const owner = e.context?.sourceOwnerForBody?.(def.rules) ?? null;
     if (owner !== null && owner !== e.context?.documentContext) {
-      settledEmission(withSourceOwner(e, owner, () => {
+      settled(withSourceOwner(e, owner, () => {
         const comments = bodyBlockCommentTexts(def, e);
         if (comments.length !== 0) {
           queueLeafBlockComments(e, group, comments);
         }
-      }), def, e);
+      }), SYNC_LEAF_FLUSH, def, e);
     } else {
       const comments = bodyBlockCommentTexts(def, e);
       if (comments.length !== 0) {
@@ -18190,17 +18177,7 @@ function expandApply(
  *
  * TODO(maybe-promise-sync-islands): fold this onto the awaitable lane.
  */
-function settledDispatch(selected: MaybePromise<Selection[]>, call: MixinCall, e: EvalCtx): Selection[] {
-  if (isThenable(selected)) {
-    observeRejectedThenable(selected);
-    throw ERR.asyncInSyncPosition({
-      node: call,
-      ...callSiteLocation(call, e),
-      meta: { where: 'mixin dispatch in a synchronous index/probe position' }
-    });
-  }
-  return selected;
-}
+const SYNC_DISPATCH = 'mixin dispatch in a synchronous index/probe position';
 
 /** Move selected typed snapshots onto the activation that owns their bindings. */
 function takeMixinValueBindings(
@@ -18432,7 +18409,7 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
  *  `@x: $if (…) { {…} } $else { {…} }; @x();` splices the chosen arm's
  *  declarations. `undefined` when no arm matches. */
 function pickIfBranch(node: IfValue, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
-  return settledGuard(pickIfValue(node, frame, e), '$if value-arm block resolution', node, e);
+  return settled(pickIfValue(node, frame, e), '$if value-arm block resolution', node, e);
 }
 
 /**
@@ -19984,11 +19961,11 @@ function flushBlock(
             end++;
           }
           const start = index;
-          settledEmission(withSourceOwner(e, sourceOwner, () => {
+          settled(withSourceOwner(e, sourceOwner, () => {
             for (let at = start; at < end; at++) {
               emitLeafOwned(kept[at]!, e);
             }
-          }), leaf.node, e);
+          }), SYNC_LEAF_FLUSH, leaf.node, e);
           index = end;
           continue;
         }
@@ -20196,7 +20173,7 @@ function mergeFold(
     && e.context !== undefined
     && sourceOwner !== e.context.documentContext
   ) {
-    settledEmission(withSourceOwner(e, sourceOwner, () => mergeFoldOwned(group, e, idt, emitOne)), first.node, e);
+    settled(withSourceOwner(e, sourceOwner, () => mergeFoldOwned(group, e, idt, emitOne)), SYNC_LEAF_FLUSH, first.node, e);
     return;
   }
   mergeFoldOwned(group, e, idt, emitOne);
@@ -20629,7 +20606,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   ) {
     /* Mixin expansion can outlive its source-scope callback because leaves are
      * grouped for dedup/merge. Re-enter only on that exceptional mismatch. */
-    settledEmission(withSourceOwner(e, sourceOwner, () => emitLeafOwned(leaf, e, atRoot)), leaf.node, e);
+    settled(withSourceOwner(e, sourceOwner, () => emitLeafOwned(leaf, e, atRoot)), SYNC_LEAF_FLUSH, leaf.node, e);
     return;
   }
   emitLeafOwned(leaf, e, atRoot);
@@ -20741,7 +20718,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
      * block level deeper than the containing declarations.
      */
     e.depth++;
-    settledEmission(expandAtRuleBlock(node, frame, e), node, e);
+    settled(expandAtRuleBlock(node, frame, e), SYNC_LEAF_FLUSH, node, e);
     e.depth--;
   } else if (node.type === 'AtRuleStatement') {
     e.depth++;
@@ -20771,7 +20748,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       }
     } else {
       e.depth++;
-      settledEmission(expandStyleImport(node, frame, e, e.importDocument), node, e);
+      settled(expandStyleImport(node, frame, e, e.importDocument), SYNC_LEAF_FLUSH, node, e);
       e.depth--;
     }
   } else if (node.type === 'UnknownAtRuleBlock') {
@@ -20792,16 +20769,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
  * `mergeFold` / `emitLeaf`) on the awaitable lane so a stay-nested at-rule whose
  * body awaits can be buffered correctly.
  */
-function settledEmission(result: MaybePromise<void>, node: Statement, e: EvalCtx): void {
-  if (isThenable(result)) {
-    observeRejectedThenable(result);
-    throw ERR.asyncInSyncPosition({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { where: 'nested at-rule buffered into a synchronous declaration group' }
-    });
-  }
-}
+const SYNC_LEAF_FLUSH = 'nested at-rule buffered into a synchronous declaration group';
 
 /* ------------------------------------------------------------ [atrule] emit */
 
@@ -21882,7 +21850,7 @@ function expandStyleImport(
             ? emitSheet
             : () => {
                 expanding.add(sheetKey);
-                return settled(emitSheet, () => {
+                return afterSettled(emitSheet, () => {
                   expanding.delete(sheetKey);
                 });
               };
@@ -23059,16 +23027,7 @@ function writeCollapsedAtRuleBlock(
  * TODO(maybe-promise-sync-islands): put the remaining synchronous consumer
  * (namespace/map base resolution) on the awaitable lane.
  */
-function settledExpansion(result: MaybePromise<void>, call: MixinCall, e: EvalCtx): void {
-  if (isThenable(result)) {
-    observeRejectedThenable(result);
-    throw ERR.asyncInSyncPosition({
-      node: call,
-      ...callSiteLocation(call, e),
-      meta: { where: 'mixin expansion read by a synchronous namespace/map lookup' }
-    });
-  }
-}
+const SYNC_EXPANSION = 'mixin expansion read by a synchronous namespace/map lookup';
 
 /**
  * Emit an at-rule body. Consecutive declarations/comments group as DIRECT block
@@ -24102,7 +24061,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   ) {
     /* Shared nested-leaf buffers have the same deferred source-owner boundary
      * as collapsed leaf groups; the ordinary identity-equal lane stays direct. */
-    settledEmission(withSourceOwner(e, sourceOwner, () => emitNestedLeafOwned(leaf, e)), leaf.node, e);
+    settled(withSourceOwner(e, sourceOwner, () => emitNestedLeafOwned(leaf, e)), SYNC_LEAF_FLUSH, leaf.node, e);
     return;
   }
   emitNestedLeafOwned(leaf, e);
