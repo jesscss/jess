@@ -8,6 +8,7 @@
  *
  * Run: `pnpm test:hot-path-rules`
  */
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import '../typescript6-shim.mjs';
 
@@ -230,4 +231,23 @@ test('no-json-stringify-on-tree: fires on tree-valued arguments, silent on plain
       }
     ]
   });
+});
+
+// --- named exceptions --------------------------------------------------------
+test('named exception: expandCall\'s fresh composed copy is excepted by content, not by a blind spot', async () => {
+  const { exceptionFor } = await import('../../verify-hot-path-antipatterns.mjs');
+
+  // The rule reaches the excepted shape: an invariant receiver copied in the loop.
+  js.run('no-loop-invariant-accessor', rules['no-loop-invariant-accessor'], {
+    valid: [],
+    invalid: [{
+      code: 'function expandCall(composed, defs) { for (const def of defs) { use(def, composed.slice()); } }',
+      errors: [{ messageId: 'invariant' }]
+    }]
+  });
+
+  // That finding is a named exception with a reason; the same text elsewhere is not.
+  const finding = { file: 'packages/core/src/ast/serialize.ts', rule: 'no-loop-invariant-accessor', snippet: 'composed.slice()' };
+  assert.match(exceptionFor(finding)?.reason ?? '', /fresh array identity/u);
+  assert.equal(exceptionFor({ ...finding, file: 'packages/core/src/ast/emit-jess.ts' }), undefined);
 });
