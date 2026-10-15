@@ -14864,15 +14864,15 @@ function emitDocumentStatements(
  * silent wrong answer. A synchronous value is returned as is, so the caller stays
  * synchronous. Every other position's TODO sits beside its `where` string.
  *
- * TODO(maybe-promise-sync-islands): move these guard positions onto the
- * MaybePromise lane.
+ * TODO(maybe-promise-sync-islands): move these guard positions onto the lane.
  *   1. namespace-descent index building (`findPathInScope`) — its result is
  *      memoized on `frame.orderedMixins`, and a memo cannot hold a promise
  *      without every reader becoming awaitable;
  *   2. `$if` arm selection (`selectedIfBody`) — one of its callers is a
  *      synchronous at-rule body walk;
  *   3. value-position `$if` arm resolution (`pickIfBranch`) — reached from the
- *      synchronous `resolveValueBlock`.
+ *      synchronous `resolveValueBlock`;
+ *   4. the `$while` condition (`runWhile`), tested before each iteration.
  * These ARE reachable by ordinary code: any function call may resolve
  * asynchronously, so this is a real limitation, not merely a legacy-plugin one.
  * Tracked in docs/architecture/core/HANDOFF.md.
