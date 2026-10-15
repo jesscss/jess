@@ -34,8 +34,8 @@ type LessDialectDefaults = Required<Pick<
  * The Less plugin's default option values — the single source of truth for the
  * v5 defaults. The `LessPlugin` constructor fills any unset option from here,
  * and the `lessc` CLI imports the same object so its defaults can never drift
- * from the engine's. Note `collapseNesting: false` — v5 preserves nesting by
- * default (Less 4.x flattened; that is now an explicit opt-in).
+ * from the engine's. Nesting is not among them: `collapseNesting` is the
+ * compiler's `output` option, the same for every source dialect.
  */
 export const lessPluginDefaults = {
   mathMode: 'parens-division' as MathMode,
@@ -44,7 +44,6 @@ export const lessPluginDefaults = {
   allowCallerScope: false,
   bubbleRootAtRules: true,
   processImports: true,
-  collapseNesting: false,
   moduleMode: 'auto' as ModuleMode
 } as const;
 
@@ -225,7 +224,6 @@ export class LessPluginResolver {
       leakyScope: lessOptions.leakyScope,
       allowCallerScope: lessOptions.allowCallerScope,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
-      collapseNesting: lessOptions.collapseNesting,
       rootpath: lessOptions.rootpath,
       rewriteUrls: lessOptions.rewriteUrls,
       relativeUrls: lessOptions.relativeUrls,

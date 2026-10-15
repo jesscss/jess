@@ -788,7 +788,7 @@ export class Compiler {
      */
     const lessSourceMap: unknown = activeOptions.sourceMap;
     const printOptions = {
-      collapseNesting: readOutput('collapseNesting') ?? activeOptions.collapseNesting,
+      collapseNesting: readOutput('collapseNesting'),
       compress: readOutput('compress')
         ?? (typeof activeOptions.compress === 'boolean' ? activeOptions.compress : undefined),
       sourceMap: readOutput('sourceMap') ?? (isSourceMapOption(lessSourceMap) ? lessSourceMap : undefined)

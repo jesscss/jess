@@ -6,8 +6,15 @@ export type ExtendSelectorKind = SelectorPolicyKind;
 export type ApplySelectorKind = SelectorPolicyKind;
 
 /**
- * Whether/how to flatten nested selectors. `true` is a deprecated alias for
- * `'native'`; see `LessOptions.collapseNesting` in `styles-config`.
+ * Whether/how to flatten nested selectors. A serialization option of the
+ * compiler: it applies to all output, whatever the source dialect.
+ * - `false` (default): keep authored nesting, emit no `:is()`.
+ * - `'native'`: flatten with native CSS Nesting specificity and matching —
+ *   parent wrapped in `:is()`; a child selector list folds into `:is(…)` only
+ *   where every folded branch has the same specificity.
+ * - `'compact'`: like `'native'`, but fold every same-combinator descendant
+ *   child run into a single `:is(…)` (group-max specificity).
+ * `true` is a deprecated alias for `'native'`.
  */
 export type CollapseNesting = boolean | 'native' | 'compact';
 

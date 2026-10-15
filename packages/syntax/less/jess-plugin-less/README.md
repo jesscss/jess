@@ -16,17 +16,18 @@ separately for normal CLI use.
   evaluate-and-emit pass.
 - Registers the Less/Sass style-function library so `lighten()`, `percentage()`,
   string and list helpers, etc. are available during evaluation.
-- Owns the current Less-facing output defaults used across the alpha surface.
+- Owns the current Less-facing defaults used across the alpha surface.
 
-## Current output defaults
+## Current defaults
 
 The defaults this plugin applies:
 
-- `collapseNesting: false` — **nesting is preserved by default.** Less 4.x
-  flattened selectors; in v5 that flattening is an explicit opt-in
-  (`--collapse-nesting` on the CLI).
 - `mathMode: 'parens-division'`, `unitMode: 'preserve'`, `leakyScope: true`,
   `bubbleRootAtRules: true`.
+
+Nesting is not a Less option. `collapseNesting` is the compiler's `output`
+option and applies to every source dialect; its default, `false`, keeps
+nesting (`--collapse-nesting` on the `lessc` CLI turns flattening on).
 
 These keep the current Less-facing surface aligned on one set of output
 semantics.
