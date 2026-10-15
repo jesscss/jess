@@ -20,7 +20,7 @@
  *   - ALL matching bodies expand, in definition order.
  */
 
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import { evalGuard, guardUsesDefault, type GuardEvalDeps, type ValueResolver } from './guard.js';
@@ -35,11 +35,6 @@ export interface Selection {
   def: MixinDefinition;
   bindings: Map<string, CallValue> | null;
   boundSourceKeys: readonly CallValue[] | null;
-}
-
-/** Local MaybePromise glue: importing serialize.ts's copy would cycle (it imports this module). */
-function mapMaybe<T, U>(m: MaybePromise<T>, f: (t: T) => MaybePromise<U>): MaybePromise<U> {
-  return isThenable(m) ? m.then(f) : f(m);
 }
 
 /** The two legal default() decision passes select incompatible definitions. */
