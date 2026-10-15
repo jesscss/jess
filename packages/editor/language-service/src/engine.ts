@@ -15,6 +15,7 @@ import selectorParser from 'postcss-selector-parser';
 import { selectorSpecificity, type Specificity } from '@csstools/selector-specificity';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import {
+  buildCstIndex,
   cstLintDiagnostics,
   cssTypeSelectorNames,
   type CssDiagnosticMetadata,
@@ -24,7 +25,7 @@ import {
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import * as colorUtils from './color-utils.js';
-import { buildCstIndex, cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
+import { cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
 import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols, cstClassSelectorNames } from './cst-syntactic.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -973,9 +974,8 @@ function specificityText(specificity: Specificity): string {
 }
 
 function selectorSpecificityHover(root: CssCstNode, source: string, offset: number): string | null {
-  const index = buildCstIndex(root);
   let best: { readonly start: number; readonly end: number } | null = null;
-  for (const entry of index.nodes) {
+  for (const entry of buildCstIndex(root).nodes) {
     if (
       !SPECIFICITY_SELECTOR_TYPES.has(entry.node.grammarType)
       || entry.start > offset

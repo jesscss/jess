@@ -1,28 +1,21 @@
-/**
- * Math processing modes
- */
-export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
+import type {
+  CollapseNesting,
+  FunctionMode,
+  MathMode,
+  ModuleMode,
+  OutputOptions as CoreOutputOptions,
+  SelectorPolicyKind as CoreSelectorPolicyKind,
+  SourceMapOptions,
+  UnitMode
+} from '@jesscss/core';
+
+export type { FunctionMode, MathMode, ModuleMode, UnitMode };
 
 /**
- * Unit conversion modes
+ * The selector kinds a `styles.config` may allow. Core's `'placeholder'` kind
+ * is left out of the config surface until the owner decides whether it belongs.
  */
-export type UnitMode = 'loose' | 'preserve' | 'strict';
-
-/**
- * Function-call resolution modes — compiler input to the shared evaluator.
- * Governs an optional (global) function call that matched a registered function
- * but couldn't be evaluated: `preserve` renders it as-is (+ warning), `error`
- * throws.
- */
-export type FunctionMode = 'preserve' | 'error';
-
-/**
- * Less module modes — whether a `.less` document's built-in functions are
- * ambient or must be imported.
- */
-export type ModuleMode = 'auto' | 'modern';
-
-export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type SelectorPolicyKind = Exclude<CoreSelectorPolicyKind, 'placeholder'>;
 export type ExtendSelectorKind = SelectorPolicyKind;
 export type ApplySelectorKind = SelectorPolicyKind;
 
@@ -251,17 +244,7 @@ export interface LessOptions {
    * Source map options
    * @default undefined
    */
-  sourceMap?: boolean | {
-    sourceMapFullFilename?: string;
-    sourceMapRootpath?: string;
-    sourceMapBasepath?: string;
-    sourceMapURL?: string;
-    sourceMapFileInline?: boolean;
-    outputSourceFiles?: boolean;
-    disableSourcemapAnnotation?: boolean;
-    sourceMapOutputFilename?: string;
-    sourceMapFilename?: string;
-  };
+  sourceMap?: boolean | SourceMapOptions;
 
   /**
    * Verbose output
@@ -341,7 +324,7 @@ export interface LessOptions {
    * `true` is a deprecated alias for `'native'`.
    * @default false
    */
-  collapseNesting?: boolean | 'native' | 'compact';
+  collapseNesting?: CollapseNesting;
 
   /**
    * @deprecated This is legacy Less behavior.
@@ -357,7 +340,7 @@ export interface ScssOptions {
   allowExtendSelectors?: ExtendSelectorKind[];
   allowApplySelectors?: ApplySelectorKind[];
   unitMode?: UnitMode;
-  collapseNesting?: boolean | 'native' | 'compact';
+  collapseNesting?: CollapseNesting;
 
   [key: string]: any;
 }
@@ -405,7 +388,7 @@ export interface InputOptions extends FileMatchOptions {
   /** @deprecated Use `allowLeakyScope`. Alias: used when `allowLeakyScope` is unset. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
-  collapseNesting?: boolean | 'native' | 'compact';
+  collapseNesting?: CollapseNesting;
   bubbleRootAtRules?: boolean;
 
   /** Allow additional language-specific options */
@@ -415,21 +398,7 @@ export interface InputOptions extends FileMatchOptions {
 /**
  * Output file options - can override output settings per output file
  */
-export interface OutputOptions extends FileMatchOptions {
-  collapseNesting?: boolean | 'native' | 'compact';
-  compress?: boolean;
-  sourceMap?: boolean | {
-    sourceMapFullFilename?: string;
-    sourceMapRootpath?: string;
-    sourceMapBasepath?: string;
-    sourceMapURL?: string;
-    sourceMapFileInline?: boolean;
-    outputSourceFiles?: boolean;
-    disableSourcemapAnnotation?: boolean;
-    sourceMapOutputFilename?: string;
-    sourceMapFilename?: string;
-  };
-
+export interface OutputOptions extends FileMatchOptions, CoreOutputOptions {
   /** Allow additional options */
   [key: string]: any;
 }

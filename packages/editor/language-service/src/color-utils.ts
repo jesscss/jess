@@ -1,7 +1,7 @@
 import type { Color as LSPColor, ColorPresentation } from 'vscode-languageserver-types';
 import type { CssCstNode } from '@jesscss/css-parser';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-import { buildCstIndex } from './cst-analysis.js';
+import { buildCstIndex } from '@jesscss/diagnostics-core';
 
 // CSS color keywords map (from CSS Color Module Level 4)
 export const colorKeywords: { [name: string]: string } = {

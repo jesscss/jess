@@ -22,7 +22,8 @@
 import type { CssCstNode } from '@jesscss/css-parser';
 import type { Location, Range } from 'vscode-languageserver-types';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-import { buildCstIndex, cstChildrenOf, type CstIndexEntry } from './cst-analysis.js';
+import { buildCstIndex, type CstIndexEntry } from '@jesscss/diagnostics-core';
+import { cstChildrenOf } from './cst-analysis.js';
 
 const VAR_REF_TYPES = new Set(['Reference', 'VariableReference']);
 const VAR_DECL_TYPES = new Set(['VariableDeclaration']);
