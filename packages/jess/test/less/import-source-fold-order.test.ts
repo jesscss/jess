@@ -287,3 +287,24 @@ describe('@import folds imported facts in at the import\'s lexical position', ()
     ].join('\n'));
   });
 });
+
+/*
+ * An imported document's lookup facts are published once per render
+ * (DESIGN-DECISIONS N10). Import planning and the render publish them into
+ * separate root indexes; were the two to share one, an imported ruleset would
+ * become two candidates and a call to it would expand twice. The importing
+ * document defines a mixin of its own so its root has a mixin index at all.
+ */
+describe('@import publishes an imported ruleset once', () => {
+  it('a plainly imported ruleset called as a mixin expands once', async () => {
+    const css = await render('.m() {}\n@import "lib";\n.y { .r(); }\n', '.r { c: R; }\n');
+
+    expect(css).toBe('.r {\n  c: R;\n}\n.y {\n  c: R;\n}\n');
+  });
+
+  it('a (reference)-imported ruleset called as a mixin expands once', async () => {
+    const css = await render('.m() {}\n@import (reference) "lib";\n.y { .r(); }\n', '.r { c: R; }\n');
+
+    expect(css).toBe('.y {\n  c: R;\n}\n');
+  });
+});
