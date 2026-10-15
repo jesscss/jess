@@ -14151,9 +14151,9 @@ export type PrepareStaticImportsOptions = Pick<
  * share one hidden class (docs/perf/V8-ARCHITECTURE.md invariant 1). `entry`
  * holds the fields the two entry paths set differently.
  *
- * The eval policy a walk starts with: explicit `modes` for a context-free
- * consumer (they never switch), else the active document's resolved policy,
- * which {@link withPolicy} then follows across document boundaries.
+ * The starting eval policy (`modes`, `policy`, `allowCallerScope`) is explicit `modes`
+ * for a context-free consumer (never switched; `policy` undefined), else the active
+ * document's resolved policy, which {@link withPolicy} follows across documents.
  */
 function createRenderSession(
   root: Stylesheet,
