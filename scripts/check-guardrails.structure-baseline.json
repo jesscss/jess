@@ -67,7 +67,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9526
+    "statements": 9525
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -200,13 +200,10 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "statements": 325
+    "statements": 314
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "statements": 269
-  },
-  "packages/core/src/ast/serialize.ts#nestedBody": {
-    "params": 9
+    "statements": 258
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
     "statements": 78,
@@ -292,8 +289,7 @@
     "params": 12
   },
   "packages/core/src/ast/serialize.ts#writeNestedRule": {
-    "statements": 99,
-    "params": 6
+    "statements": 98
   },
   "packages/core/src/ast/serialize.ts#writeNestedAtRuleBlock": {
     "params": 7

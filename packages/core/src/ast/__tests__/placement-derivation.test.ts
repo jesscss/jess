@@ -95,4 +95,29 @@ describe('placement derivation', () => {
   it('nested output: a rule whose `&` builds a name keeps its mixin call\'s `!important`', () => {
     expect(less('.m() { &__e { c: d; } }\n.b { .m() !important; }', false)).toBe('.b__e {\n  c: d !important;\n}\n');
   });
+
+  it('an `$if` branch in a rule replays that rule\'s comments where they stand in the branch', () => {
+    for (const mode of ['native', false] as const) {
+      expect(jess('.a { /* x */ $if (true) { /* c */ b: c; } /* y */ d: e; }', mode))
+        .toBe('.a {\n  /* x */\n  /* c */\n  b: c;\n  /* y */\n  d: e;\n}\n');
+    }
+  });
+
+  it('nested output: a self-collapsing `&&` rule written in place of its parent keeps the parent\'s comments', () => {
+    expect(less('.a { /* k */ && { c: d; } }\n.x:extend(.a all) {}', false)).toContain('/* k */');
+  });
+
+  it('a ruleset-mixin shell\'s body nests under the shell, so its `&` builds a name from it', () => {
+    for (const mode of ['native', false] as const) {
+      expect(less('#foo-foo { &-k { c: c; } }\nmi-test-c { &-1 { #foo-foo(); } }', mode))
+        .toBe('#foo-foo-k {\n  c: c;\n}\nmi-test-c-1-k {\n  c: c;\n}\n');
+    }
+  });
+
+  it('nested output: a ruleset-mixin shell placed by a mixin called with `!important` keeps it', () => {
+    const src = '#foo-foo { > .bar { .baz { c: c; } } }\n.m() { mi-test-c { &-1 { #foo-foo(); } } }\n.y { .m() !important; }';
+    for (const mode of ['native', false] as const) {
+      expect(less(src, mode)).toContain('c: c !important;');
+    }
+  });
 });

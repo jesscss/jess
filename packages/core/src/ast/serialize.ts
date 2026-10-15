@@ -190,7 +190,7 @@ import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
-import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
+import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
@@ -14458,9 +14458,9 @@ function emitDocumentStatements(
       const current = batch;
       batch = [];
       if (pending) {
-        pending = pending.then(() => Promise.resolve(nestedBody(current, frame, e)));
+        pending = pending.then(() => Promise.resolve(walkBody(current, frame, nestedPlacement(null, frame), e)));
       } else {
-        const emitted = nestedBody(current, frame, e);
+        const emitted = walkBody(current, frame, nestedPlacement(null, frame), e);
         if (isThenable(emitted)) {
           pending = Promise.resolve(emitted);
         }
@@ -15819,7 +15819,7 @@ function gluesName(text: string, more: boolean, next: SimpleToken | undefined): 
  * body the rule stands in.
  */
 function expandRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
-  const { nested, source, hoist } = at;
+  const { nested, source } = at;
 
   /*
    * A rule whose `&` builds a name is written flattened, the name built (`.block { &__el
@@ -15829,11 +15829,11 @@ function expandRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit): MaybeP
   if (nested && source !== null && selectorBuildsName(rule.selector)) {
     return riseOut(rule, frame, e, at.important, source);
   }
-  if (nested && hoist !== undefined) {
+  if (nested && at.hoist !== undefined) {
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten && !reachedViaMixinSplice(frame)) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      hoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source, split: null });
+      at.hoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null, source, split: null });
       return;
     }
   }
@@ -15844,9 +15844,35 @@ function expandRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit): MaybeP
       return;
     }
     if (nested) {
-      return mapMaybe(transparentShells(rule, frame, e), shells => (shells !== null
-        ? emitTransparentShells(shells, { parent: source, selector: rule.selector, frame }, frame, e, at.important)
-        : writeNestedRule(rule, frame, e, at.important, source, hoist)));
+      return mapMaybe(transparentShells(rule, frame, e), (shells) => {
+        if (shells !== null) {
+          return emitTransparentShells(shells, { parent: source, selector: rule.selector, frame }, frame, e, at.important);
+        }
+
+        /*
+         * [extend/splice] The static plan is the rule's at its own placement. A ruleset
+         * called as a mixin is spliced under its caller, where it is an ordinary nested
+         * rule with its authored header (jess#345), as the flat writer has it.
+         */
+        const staticPlan = extendProjection(e)?.nestedPlan.get(rule);
+        const plan = staticPlan === undefined || reachedViaMixinSplice(frame) ? undefined : staticPlan;
+        if (plan?.collapseTransparent) {
+          /*
+           * [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
+           * which carries its composed header via its own plan) at THIS level, dropping
+           * this rule's wrapper.
+           */
+          const childFrame = makeFrame(frame, undefined, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
+          const body = nestedPlacement(source, childFrame);
+          body.important = at.important;
+          body.owner = rule;
+          return mapMaybe(
+            activateBodyDependencies(rule.rules, childFrame, e),
+            () => walkBody(rule.rules, childFrame, body, e)
+          );
+        }
+        return writeNestedRule(rule, frame, at, e, plan);
+      });
     }
     const parent = at.composed;
 
@@ -16632,10 +16658,12 @@ function makePlacement(
 /**
  * The placement of a body walked in place of one statement of the body `at`
  * places: a callable's body (a mixin, a detached ruleset, a `$apply`'d rule, a
- * loop iteration) or an imported sheet. It writes where `at` writes, under its
- * own comment replay (`bodyTrivia`). It is not a bubbled selector list, and it
- * owns neither a hoist queue nor a block of its own: in the nested projection
- * its leaves join `inline`, the leaf buffer of the walk the statement is in.
+ * loop iteration), a control-flow branch or an imported sheet. It writes where
+ * `at` writes, under its own comment replay (`bodyTrivia`), and is not a
+ * bubbled selector list. In the nested projection a callable's leaves join
+ * `inline`, the leaf buffer of the walk the statement is in, and none of its
+ * rules rises into that walk's hoist queue; a body given no `inline` writes into
+ * a leaf buffer of its own and hoists into `at`'s queue.
  */
 function splicePlacement(
   at: Placement,
@@ -16649,9 +16677,23 @@ function splicePlacement(
   body.applyExpansion = at.applyExpansion;
   body.bodyTrivia = bodyTrivia;
   body.nested = at.nested;
+  body.hoist = inline === undefined ? at.hoist : undefined;
   body.source = at.source;
   body.sharedLeaves = inline;
   return body;
+}
+
+/**
+ * The placement of a body the nested projection writes into a leaf buffer of
+ * its own: the document's, or a nested rule's or at-rule's. Its rules nest under
+ * the header `source` (null outside any rule), as a collapsed body's compose
+ * against `composed`. Its builder assigns the other fields its body changes.
+ */
+function nestedPlacement(source: NestedHeaderSource | null, propertyScope: Frame): PlacementDraft {
+  const at = makePlacement(null, MOOT_LEAVES, MOOT_FLUSH, propertyScope);
+  at.nested = true;
+  at.source = source;
+  return at;
 }
 
 /*
@@ -16807,34 +16849,20 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * Lookup publication, nested-property expansion, and the monomorphic
            * placement shape are evaluator facts shared by both output projections.
            */
-          if (nested) {
-            if (e.referenceImportDepth > 0) {
-              break;
-            }
-            evaluateLeafStatement(
-              node,
-              frame,
-              sharedLeaves?.propertyScope ?? frame,
-              e,
-              imp,
-              applyExpansion,
-              bodyTrivia,
-              buf,
-              placeLeaf
-            );
-          } else {
-            evaluateLeafStatement(
-              node,
-              frame,
-              propertyScope,
-              e,
-              imp,
-              applyExpansion,
-              bodyTrivia,
-              group,
-              placeLeaf
-            );
+          if (nested && e.referenceImportDepth > 0) {
+            break;
           }
+          evaluateLeafStatement(
+            node,
+            frame,
+            nested ? sharedLeaves?.propertyScope ?? frame : propertyScope,
+            e,
+            imp,
+            applyExpansion,
+            bodyTrivia,
+            nested ? buf : group,
+            placeLeaf
+          );
           break;
         }
         case 'Ruleset': {
@@ -16950,22 +16978,14 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         }
         case 'If': {
-          if (nested) {
-            flushBuf();
-            const body = selectIfBody(node, frame, e);
-            if (body) {
-              const emitted = nestedBody(body, frame, e, hoist, imp, source, applyExpansion, undefined, bodyTrivia);
-              if (isThenable(emitted)) {
-                return emitted.then(() => run(index + 1));
-              }
-            }
-            break;
-          }
-
-          /* The selected branch is part of this body: it writes at this body's placement. */
+          /*
+           * The selected branch is part of this body: it writes where this body writes
+           * (nested, into a leaf buffer of its own: {@link splicePlacement}).
+           */
+          flushBuf();
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = walkBody(body, frame, at, e);
+            const emitted = walkBody(body, frame, nested ? splicePlacement(at, undefined, bodyTrivia) : at, e);
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -16973,15 +16993,8 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         }
         case 'While': {
-          if (nested) {
-            flushBuf();
-            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, applyExpansion, undefined, bodyTrivia));
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-            break;
-          }
-          const emitted = runWhile(node, frame, e, rules => walkBody(rules, frame, at, e));
+          flushBuf();
+          const emitted = runWhile(node, frame, e, rules => walkBody(rules, frame, nested ? splicePlacement(at, undefined, bodyTrivia) : at, e));
           if (isThenable(emitted)) {
             return emitted.then(() => run(index + 1));
           }
@@ -17157,7 +17170,11 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
               e.importDocument,
               e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
                 ? undefined
-                : (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp, source),
+                : (document, importFrame) => {
+                    const sheet = splicePlacement(at, undefined, undefined);
+                    sheet.applyExpansion = false;
+                    return walkBody(document.rules, importFrame, sheet, e);
+                  },
               source !== null
             );
             if (isThenable(imported)) {
@@ -17360,34 +17377,6 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
     }
   };
   return run(0);
-}
-
-/**
- * [V19] Nested write-projection entry to the one body evaluator {@link walkBody}.
- * A pure calling-convention adapter (no statement dispatch of its own): it builds
- * the nested projection's {@link Placement} from its arguments, so the nested
- * writers and the serialize boundary invoke the single evaluator.
- */
-function nestedBody(
-  statements: Statement[],
-  frame: Frame,
-  e: Emit,
-  hoist?: HoistEntry[],
-  imp = false, // [important] call-level `!important` forced onto this body's decls
-  source: NestedHeaderSource | null = null,
-  applyExpansion = false,
-  owner?: object,
-  bodyTrivia?: BodyTriviaReplay
-): MaybePromise<void> {
-  const at = makePlacement(null, MOOT_LEAVES, MOOT_FLUSH, frame);
-  at.important = imp;
-  at.applyExpansion = applyExpansion;
-  at.bodyTrivia = bodyTrivia;
-  at.nested = true;
-  at.hoist = hoist;
-  at.source = source;
-  at.owner = owner;
-  return walkBody(statements, frame, at, e);
 }
 
 /**
@@ -23558,9 +23547,8 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   }
   if (extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested) {
     /* Written nested where it lands, under no rule. */
-    const landing = makePlacement(null, MOOT_LEAVES, MOOT_FLUSH, h.frame);
+    const landing = nestedPlacement(null, h.frame);
     landing.important = imp;
-    landing.nested = true;
     return expandRule(h.rule, h.frame, landing, e);
   }
   return emitHoisted(h.rule, h.frame, e, h.source);
@@ -23767,9 +23755,11 @@ function emitTransparentShells(
           emitBlockClose(e, block.idt);
         }
       };
+      const body = nestedPlacement(source, callFrame);
+      body.important = imp;
       const emitted = mapMaybe(
         activateBodyDependencies(shell.def.rules, callFrame, e),
-        () => nestedBody(shell.def.rules, callFrame, e, undefined, imp, source)
+        () => walkBody(shell.def.rules, callFrame, body, e)
       );
       if (isThenable(emitted)) {
         return emitted.then(() => {
@@ -23783,40 +23773,18 @@ function emitTransparentShells(
   return run(0);
 }
 
-function writeNestedRule(
-  rule: Ruleset,
-  frame: Frame,
-  e: Emit,
-  imp: boolean,
-  source: NestedHeaderSource | null,
-  outerHoist?: HoistEntry[]
-): MaybePromise<void> {
-  /*
-   * [extend/splice] The static plan is the rule's at its own placement. A ruleset
-   * called as a mixin is spliced under its caller, where it is an ordinary nested
-   * rule with its authored header (jess#345), as the flat writer has it.
-   */
+/**
+ * Write `rule` through the authored-nesting projection at `at`, under its extend
+ * `plan` (undefined when the rule has none at this placement).
+ */
+function writeNestedRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit, plan: NestedRulePlan | undefined): MaybePromise<void> {
   const projection = extendProjection(e);
-  const staticPlan = projection?.nestedPlan.get(rule);
-  const plan = staticPlan === undefined || reachedViaMixinSplice(frame) ? undefined : staticPlan;
-  if (plan?.collapseTransparent) {
-    /*
-     * [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
-     * which carries its composed header via its own plan) at THIS level, dropping
-     * this rule's wrapper.
-     */
-    const childFrame = makeFrame(frame, undefined, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
-    return mapMaybe(
-      activateBodyDependencies(rule.rules, childFrame, e),
-      () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, false, rule)
-    );
-  }
   if (plan?.flatten && !plan.hoistNested) {
     /*
      * Fallback (a top-level rule never flattens; a body-nested one is deferred by
      * the nested projection's hoist queue). Emit via the flat path with compaction.
      */
-    return emitHoisted(rule, frame, e, source);
+    return emitHoisted(rule, frame, e, at.source);
   }
 
   /*
@@ -23846,11 +23814,11 @@ function writeNestedRule(
     ? mapMaybe(resolvedSelectorList(rule.selector, frame, e), (copy) => {
         resolved = copy;
         const selector = copy ?? rule.selector;
-        return source === null ? rootStringsNested(selector, frame, e) : ownStrings(selector, frame, e);
+        return at.source === null ? rootStringsNested(selector, frame, e) : ownStrings(selector, frame, e);
       })
     : plan
       ? plan.header
-      : source === null
+      : at.source === null
 
         /*
          * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
@@ -23882,7 +23850,7 @@ function writeNestedRule(
      * the flat writer. No evaluation is re-driven (ledger X12).
      */
     const dyn = e.dynamicExtend;
-    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true, resolved ?? undefined);
+    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, at.source === null, own, true, resolved ?? undefined);
     const recorded = dyn !== null && (!placedStatically(rule, e) || reachedViaMixinSplice(frame));
 
     /*
@@ -23891,12 +23859,12 @@ function writeNestedRule(
      * an extender out of the parent is restructuring, not a header rewrite
      * (EXTEND-SEMANTICS §1a). Its own extends still record.
      */
-    const rewritable = !recorded || source === null
+    const rewritable = !recorded || at.source === null
       || dyn.pathKinds[depth] === PATH_ROOT || dyn.pathKinds[depth] === PATH_ROOT_GUARD;
     if (recorded) {
       recordOpenRule(dyn, rule, frame, e, rewritable);
     }
-    const authoredHeader = e.compress !== true && plan === undefined && source === null
+    const authoredHeader = e.compress !== true && plan === undefined && at.source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
       : null;
     const header = composeSelectorHeader(e, own, idt, authoredHeader);
@@ -23938,7 +23906,7 @@ function writeNestedRule(
     }
     const block = openBlock(e, null, '', idt, rule, frame, own, rewritable, splitBlock, markChunks, markPos, headerChunkIndex);
     const childFrame = activateRuleFrame(rule, frame, e);
-    const childSource: NestedHeaderSource = { parent: source, selector: resolved ?? rule.selector, frame };
+    const childSource: NestedHeaderSource = { parent: at.source, selector: resolved ?? rule.selector, frame };
 
     /*
      * [extend] children that flatten (extend crossed the `&`) bubble out to this
@@ -23946,6 +23914,10 @@ function writeNestedRule(
      * in this body registers before its siblings evaluate, as in `flatten`.
      */
     const hoist: HoistEntry[] = [];
+    const inner = nestedPlacement(childSource, childFrame);
+    inner.important = at.important;
+    inner.hoist = hoist;
+    inner.owner = rule;
     e.depth++;
     const finish = (): MaybePromise<void> => {
       e.depth--;
@@ -24000,7 +23972,7 @@ function writeNestedRule(
        */
       if (rootSplits !== undefined && direct.length > 0) {
         for (const header of rootSplits) {
-          (outerHoist ?? hoist).push({ rule, frame, bubble: HOIST_TO_ROOT, wrappers: null, source, split: { header, leaves: direct } });
+          (at.hoist ?? hoist).push({ rule, frame, bubble: HOIST_TO_ROOT, wrappers: null, source: at.source, split: { header, leaves: direct } });
         }
       }
       const emitSplits = (index: number): MaybePromise<void> => {
@@ -24027,11 +23999,11 @@ function writeNestedRule(
       const runHoist = (index: number): MaybePromise<void> => {
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
-          if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source, split: h.split });
+          if (h.bubble > 1 && at.hoist) {
+            at.hoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers, source: h.source, split: h.split });
             continue;
           }
-          const emitted = emitHoistEntry(h, e, imp);
+          const emitted = emitHoistEntry(h, e, at.important);
           if (isThenable(emitted)) {
             return emitted.then(() => runHoist(hoistIndex + 1));
           }
@@ -24041,7 +24013,7 @@ function writeNestedRule(
     };
     const body = (): MaybePromise<void> => mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
-      () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, false, rule), finish)
+      () => mapMaybe(walkBody(rule.rules, childFrame, inner, e), finish)
     );
     return dyn === null ? body() : withDynamicPlacement(dyn, depth, dyn.scope, dyn.boundary, body);
   });
@@ -24100,9 +24072,12 @@ function writeNestedAtRuleBlock(
       outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers], source: h.source, split: h.split });
     }
   };
+  const body = nestedPlacement(source, bodyFrame);
+  body.hoist = hoist;
+  body.owner = node;
   return nestedAtRuleShell(node, prelude, e, () => mapMaybe(
     activateBodyDependencies(node.rules, bodyFrame, e),
-    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, false, node), leave)
+    () => mapMaybe(walkBody(node.rules, bodyFrame, body, e), leave)
   ));
 }
 

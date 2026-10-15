@@ -108,6 +108,57 @@ function statementDispatchers(sources: ReadonlyArray<{ file: string; text: strin
 }
 
 /*
+ * A placement ADAPTER is a top-level function whose only job is to turn
+ * positional facts into a `Placement` and forward it: its body builds one
+ * (`const at = <factory>(…)`, a factory being a function declared to return a
+ * `Placement` or `PlacementDraft`), assigns fields of it, and returns a call.
+ * Every one adds a stack frame to each level of a recursion it sits on, and its
+ * callers spell the placement positionally. Returns the adapter names.
+ */
+function placementAdapters(sources: ReadonlyArray<{ file: string; text: string }>): string[] {
+  const files = sources.map(({ file, text }) => ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true));
+  const factories = new Set<string>();
+  for (const sf of files) {
+    for (const st of sf.statements) {
+      if (ts.isFunctionDeclaration(st) && st.name && st.type && /^(?:Placement|PlacementDraft)$/u.test(st.type.getText(sf))) {
+        factories.add(st.name.text);
+      }
+    }
+  }
+  const out: string[] = [];
+  for (const sf of files) {
+    for (const st of sf.statements) {
+      if (!ts.isFunctionDeclaration(st) || st.name === undefined) {
+        continue;
+      }
+      const body = st.body?.statements;
+      const first = body?.[0];
+      const last = body?.at(-1);
+      if (body === undefined || first === undefined || last === undefined || !ts.isVariableStatement(first)
+        || !ts.isReturnStatement(last) || last.expression === undefined || !ts.isCallExpression(last.expression)) {
+        continue;
+      }
+      const decl = first.declarationList.declarations[0];
+      const init = decl?.initializer;
+      if (decl === undefined || !ts.isIdentifier(decl.name) || init === undefined || !ts.isCallExpression(init)
+        || !factories.has(init.expression.getText(sf))) {
+        continue;
+      }
+      const draft = decl.name.text;
+      const assignsOnly = body.slice(1, -1).every(inner => ts.isExpressionStatement(inner)
+        && ts.isBinaryExpression(inner.expression)
+        && inner.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isPropertyAccessExpression(inner.expression.left)
+        && inner.expression.left.expression.getText(sf) === draft);
+      if (assignsOnly) {
+        out.push(st.name.text);
+      }
+    }
+  }
+  return out;
+}
+
+/*
  * A module-global `WeakMap` keyed by a value is a side table every reader of
  * that fact pays a hash lookup for, where a field on the value would be one
  * load (docs/perf/V8-ARCHITECTURE.md, invariants 7 and 11). Counted across
@@ -163,22 +214,18 @@ describe('V19 one-evaluator projection ratchet', () => {
       .toEqual([]);
   });
 
-  it('routes the nested write projection through the one evaluator via a pure adapter', () => {
-    /*
-     * `nestedBody` is a calling-convention adapter with NO statement dispatch of
-     * its own: it copies its arguments into a placement, field by field, and
-     * forwards straight to `walkBody`. This proves the nested entry point is not
-     * a second dispatcher in disguise.
-     */
-    expect(SOURCE).toContain('function nestedBody(');
-    expect(SOURCE).toMatch(
-      /function nestedBody\([\s\S]*?\n\): MaybePromise<void> \{\n  const at = makePlacement\([^\n]*\);\n(?: {2}at\.\w+ = [\w.]+;\n)* {2}return walkBody\(statements, frame, at, e\);\n\}/u
-    );
-    const nestedBodySource = SOURCE.slice(
-      SOURCE.indexOf('function nestedBody('),
-      SOURCE.indexOf('function nestedBody(') + 800
-    );
-    expect(nestedBodySource).not.toContain('switch (node.type)');
+  it('leaves no positional placement adapter: every caller builds its placement and walks', () => {
+    expect(placementAdapters(SOURCES)).toEqual([]);
+  });
+
+  it('the placement-adapter detector sees an adapter and ignores a factory', () => {
+    const probe = (text: string): string[] => placementAdapters([{ file: 'probe.ts', text }]);
+    const factory = 'function nestedPlacement(scope: Frame): PlacementDraft { const at = makePlacement(scope); at.nested = true; return at; }\n';
+    expect(probe(`${factory}function nestedBody(rules, frame, e, imp = false) { const at = nestedPlacement(frame); at.important = imp; return walkBody(rules, frame, at, e); }`))
+      .toEqual(['nestedBody']);
+    expect(probe(factory)).toEqual([]);
+    expect(probe(`${factory}function writeBody(rules, frame, e) { const at = nestedPlacement(frame); put(e); return walkBody(rules, frame, at, e); }`))
+      .toEqual([]);
   });
 
   it('names every output-setting read that can select evaluation behavior', () => {
