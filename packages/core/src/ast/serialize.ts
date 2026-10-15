@@ -14652,7 +14652,7 @@ function emitDocumentStatements(
         }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
-        return mapMaybe(walkBody(body, null, null, frame, group, flush, null, e), flush);
+        return mapMaybe(walkBody(body, frame, makePlacement(null, null, group, flush, null, false, false, frame), e), flush);
       }
       case 'While': {
         if (e.referenceImportDepth !== 0) {
@@ -14661,7 +14661,7 @@ function emitDocumentStatements(
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => flushDocumentGroup(group);
         return mapMaybe(
-          runWhile(child, frame, e, rules => walkBody(rules, null, null, frame, group, flush, null, e)),
+          runWhile(child, frame, e, rules => walkBody(rules, frame, makePlacement(null, null, group, flush, null, false, false, frame), e)),
           flush
         );
       }
@@ -16267,22 +16267,10 @@ function flattenWithHeader(
     return mapMaybe(
       mapMaybe(
         activateBodyDependencies(rule.rules, childFrame, e),
-        () => walkBody(
-          rule.rules,
-          childComposed,
-          childComposed === null ? null : childAncestor,
-          childFrame,
-          group,
-          flush,
-          partition,
-          e,
-          imp,
-          false,
-          childFrame,
-          false,
-          expandBubbledSelectorList,
-          bodyTrivia
-        )
+        () => walkBody(rule.rules, childFrame, makePlacement(
+          childComposed, childComposed === null ? null : childAncestor, group, flush, partition, imp, false,
+          childFrame, false, expandBubbledSelectorList, bodyTrivia
+        ), e)
       ),
       () => {
         queueBodyTriviaTail(bodyTrivia, group, partition, e);
@@ -16619,14 +16607,92 @@ interface Partition {
   lastLeadingEmission?: (additionalBlockComments?: string[]) => MaybePromise<void>;
 }
 
+/**
+ * Where a walked body writes its output: everything {@link walkBody} needs
+ * besides the statements, their scope and the render. Built only by
+ * {@link makePlacement}, so every placement has one field set in one order.
+ */
+interface Placement {
+  readonly composed: string[] | null;
+
+  /** [nesting] Opaque accumulated ancestor for `&`-less child joins. */
+  readonly ancestor: string | null;
+  readonly group: Leaf[];
+  readonly flush: () => MaybePromise<void>;
+  readonly partition: Partition | null;
+
+  /** Call-level `!important` forced onto the body's declarations. */
+  readonly important: boolean;
+  readonly forceLeading: boolean;
+
+  /** Less `$property` visibility owner. */
+  readonly propertyScope: Frame;
+  readonly applyExpansion: boolean;
+  readonly expandBubbledSelectorList: boolean;
+  readonly bodyTrivia: BodyTriviaReplay | undefined;
+
+  /*
+   * [V19] Nested write-projection state, used only when the serialize boundary
+   * selected `collapseNesting:false` (`nested === true`). The collapsed fields
+   * above are moot when nested; the nested fields below are moot when collapsed.
+   */
+  readonly nested: boolean;
+  readonly hoist: HoistEntry[] | undefined;
+  readonly source: NestedHeaderSource | null;
+  readonly sharedLeaves: NestedLeafBuffer | undefined;
+  readonly owner: object | undefined;
+}
+
+/**
+ * The one constructor of {@link Placement}. Its parameters keep the order and
+ * defaults of `walkBody`'s former positional signature.
+ */
+function makePlacement(
+  composed: string[] | null,
+  ancestor: string | null,
+  group: Leaf[],
+  flush: () => MaybePromise<void>,
+  partition: Partition | null,
+  important: boolean,
+  forceLeading: boolean,
+  propertyScope: Frame,
+  applyExpansion = false,
+  expandBubbledSelectorList = false,
+  bodyTrivia?: BodyTriviaReplay,
+  nested = false,
+  hoist?: HoistEntry[],
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+  owner?: object
+): Placement {
+  return {
+    composed,
+    ancestor,
+    group,
+    flush,
+    partition,
+    important,
+    forceLeading,
+    propertyScope,
+    applyExpansion,
+    expandBubbledSelectorList,
+    bodyTrivia,
+    nested,
+    hoist,
+    source,
+    sharedLeaves,
+    owner
+  };
+}
+
 /*
  * [V19] The single source-order body evaluator. It dispatches every `Statement`
  * kind exactly once, resolving the lookup-dependent facts (property publication,
  * callable selection, control-flow, imports, trivia ownership) that must never
  * depend on the output setting, then hands each placement to the selected write
  * projection. `collapseNesting` selects the projection ONCE at the serialize
- * boundary and is threaded here as `nested`; no evaluator, lookup, expansion,
- * control-flow, or import path reads the setting again.
+ * boundary and is threaded here as `Placement.nested`; no evaluator, lookup,
+ * expansion, control-flow, or import path reads the setting again.
  *
  * The COLLAPSED projection (`nested === false`) owns selector composition,
  * parent-block partitioning, at-rule bubbling and flattened block layout via the
@@ -16641,34 +16707,13 @@ const MOOT_FLUSH = (): void => {};
 const NOOP_BEFORE_STATEMENT = (_node: Statement): void => {};
 const NOOP_TRAILING_TRIVIA = (): void => {};
 
-function walkBody(
-  statements: Statement[],
-  composed: string[] | null,
-  ancestor: string | null, // [nesting] opaque accumulated ancestor for `&`-less child joins
-  frame: Frame,
-  group: Leaf[],
-  flush: () => MaybePromise<void>,
-  partition: Partition | null,
-  e: Emit,
-  imp = false, // call-level !important override
-  forceLeading = false,
-  propertyScope: Frame = frame, // Less `$property` visibility owner
-  applyExpansion = false,
-  expandBubbledSelectorList = false,
-  bodyTrivia?: BodyTriviaReplay,
+function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
+  const {
+    composed, ancestor, group, flush, partition, important: imp, forceLeading, propertyScope,
+    applyExpansion, expandBubbledSelectorList, nested, hoist, source, sharedLeaves, owner
+  } = at;
+  let bodyTrivia = at.bodyTrivia;
 
-  /*
-   * [V19] Nested write-projection state. Present (with `nested === true`) only when
-   * the serialize boundary selected `collapseNesting:false`. The collapsed
-   * parameters above are moot when nested; the nested parameters below are moot
-   * when collapsed.
-   */
-  nested = false,
-  hoist?: HoistEntry[],
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer,
-  owner?: object
-): MaybePromise<void> {
   /*
    * buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
    * last-occurrence; flush when an interrupting nested rule/at-rule appears. Only
@@ -16872,22 +16917,10 @@ function walkBody(
               /* Its body is this block's, so its imports count in this block's import-once scope. */
               const selfFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
               selfFrame.importScope = importScopeOf(frame);
-              return walkBody(
-                rule.rules,
-                rComposedSelf,
-                ancestor,
-                selfFrame,
-                group,
-                flush,
-                partition,
-                e,
-                imp,
-                forceLeading,
-                propertyScope,
-                applyExpansion,
-                expandBubbledSelectorList,
-                bodyTrivia
-              );
+              return walkBody(rule.rules, selfFrame, makePlacement(
+                rComposedSelf, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion,
+                expandBubbledSelectorList, bodyTrivia
+              ), e);
             };
             const passes = ruleGuardPasses(rule, frame, e);
             const emitted = mapMaybe(passes, emitSelf);
@@ -17050,7 +17083,10 @@ function walkBody(
           }
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList, bodyTrivia);
+            const emitted = walkBody(body, frame, makePlacement(
+              composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion,
+              expandBubbledSelectorList, bodyTrivia
+            ), e);
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -17066,10 +17102,10 @@ function walkBody(
             }
             break;
           }
-          const emitted = runWhile(node, frame, e, rules => walkBody(
-            rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion,
+          const emitted = runWhile(node, frame, e, rules => walkBody(rules, frame, makePlacement(
+            composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion,
             expandBubbledSelectorList, bodyTrivia
-          ));
+          ), e));
           if (isThenable(emitted)) {
             return emitted.then(() => run(index + 1));
           }
@@ -17307,14 +17343,12 @@ function walkBody(
                  * under it, hidden unless an extend reveals them; its own declarations
                  * stay hidden in a leaf group nothing writes.
                  */
-                ? (document: Stylesheet, importFrame: Frame) => walkBody(
-                    document.rules, composed, ancestor, importFrame, [],
-                    MOOT_FLUSH, null, e, imp, forceLeading, propertyScope
-                  )
-                : (document: Stylesheet, importFrame: Frame) => walkBody(
-                    document.rules, composed, ancestor, importFrame, group,
-                    flush, partition, e, imp, forceLeading, propertyScope
-                  );
+                ? (document: Stylesheet, importFrame: Frame) => walkBody(document.rules, importFrame, makePlacement(
+                    composed, ancestor, [], MOOT_FLUSH, null, imp, forceLeading, propertyScope
+                  ), e)
+                : (document: Stylesheet, importFrame: Frame) => walkBody(document.rules, importFrame, makePlacement(
+                    composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope
+                  ), e);
             const flushed = flush();
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
@@ -17462,10 +17496,10 @@ function nestedBody(
   owner?: object,
   bodyTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
-  return walkBody(
-    statements, null, null, frame, MOOT_LEAVES, MOOT_FLUSH, null, e, imp, false, frame,
-    applyExpansion, false, bodyTrivia, true, hoist, source, sharedLeaves, owner
-  );
+  return walkBody(statements, frame, makePlacement(
+    null, null, MOOT_LEAVES, MOOT_FLUSH, null, imp, false, frame, applyExpansion, false, bodyTrivia, true, hoist,
+    source, sharedLeaves, owner
+  ), e);
 }
 
 /**
@@ -17796,22 +17830,10 @@ function expandCall(
                     bodyTrivia
                   );
                 }
-                return walkBody(
-                  def.rules,
-                  bodyComposed,
-                  ancestor,
-                  callFrame,
-                  group,
-                  flush,
-                  partition,
-                  e,
-                  bodyImp,
-                  bodyForceLeading,
-                  propertyScope,
-                  applyExpansion,
-                  false,
-                  bodyTrivia
-                );
+                return walkBody(def.rules, callFrame, makePlacement(
+                  bodyComposed, ancestor, group, flush, partition, bodyImp, bodyForceLeading, propertyScope,
+                  applyExpansion, false, bodyTrivia
+                ), e);
               }
             );
           };
@@ -17973,20 +17995,9 @@ function expandApply(
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         activateBodyDependencies(rule.rules, applyFrame, e),
         () => sharedLeaves === undefined
-          ? walkBody(
-              rule.rules,
-              composed,
-              ancestor,
-              applyFrame,
-              group,
-              flush,
-              partition,
-              e,
-              imp,
-              forceLeading,
-              propertyScope,
-              true
-            )
+          ? walkBody(rule.rules, applyFrame, makePlacement(
+              composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, true
+            ), e)
           : nestedBody(
               rule.rules,
               applyFrame,
@@ -18463,22 +18474,10 @@ function expandReferenceCall(
       const walked = mapMaybe(
         activateBodyDependencies(drBody, r.callFrame, e),
         () => sharedLeaves === undefined
-          ? walkBody(
-              drBody,
-              composed,
-              ancestor,
-              r.callFrame,
-              group,
-              flush,
-              partition,
-              e,
-              imp,
-              forceLeading,
-              propertyScope,
-              applyExpansion,
-              false,
+          ? walkBody(drBody, r.callFrame, makePlacement(
+              composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion, false,
               bodyTrivia
-            )
+            ), e)
           : nestedBody(
               drBody,
               r.callFrame,
@@ -19015,7 +19014,7 @@ function expandFor(
   const unlowered = unloweredCall(node);
   if (unlowered !== null) {
     return sharedLeaves === undefined
-      ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
+      ? walkBody([unlowered], frame, makePlacement(composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion), e)
       : nestedBody([unlowered], frame, e, undefined, imp, source, sharedLeaves, applyExpansion);
   }
 
@@ -19036,22 +19035,10 @@ function expandFor(
     const walked = mapMaybe(
       activateBodyDependencies(node.rules, loopFrame, e),
       () => sharedLeaves === undefined
-        ? walkBody(
-            node.rules,
-            composed,
-            ancestor,
-            loopFrame,
-            group,
-            flush,
-            partition,
-            e,
-            imp,
-            forceLeading,
-            propertyScope,
-            applyExpansion,
-            false,
+        ? walkBody(node.rules, loopFrame, makePlacement(
+            composed, ancestor, group, flush, partition, imp, forceLeading, propertyScope, applyExpansion, false,
             bodyTrivia
-          )
+          ), e)
         : nestedBody(
             node.rules,
             loopFrame,

@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24436
+    "lines": 24423
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -199,15 +199,17 @@
     "params": 10
   },
   "packages/core/src/ast/serialize.ts#flattenWithHeader": {
-    "lines": 225,
+    "lines": 213,
     "params": 9
   },
+  "packages/core/src/ast/serialize.ts#makePlacement": {
+    "params": 16
+  },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "lines": 802,
-    "params": 19
+    "lines": 770
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "lines": 674
+    "lines": 663
   },
   "packages/core/src/ast/serialize.ts#nestedBody": {
     "params": 10
@@ -222,14 +224,14 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
-    "lines": 265,
+    "lines": 253,
     "params": 15
   },
   "packages/core/src/ast/serialize.ts#expandCall.runDispatch": {
-    "lines": 181
+    "lines": 169
   },
   "packages/core/src/ast/serialize.ts#expandCall.runDispatch.run": {
-    "lines": 143
+    "lines": 131
   },
   "packages/core/src/ast/serialize.ts#expandApply": {
     "params": 13
@@ -238,7 +240,7 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#expandReferenceCall": {
-    "lines": 167,
+    "lines": 155,
     "params": 14
   },
   "packages/core/src/ast/serialize.ts#forItems": {
