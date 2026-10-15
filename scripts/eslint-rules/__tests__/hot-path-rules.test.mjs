@@ -101,7 +101,11 @@ test('no-rescan-in-loop: fires on loop-invariant receivers, silent on loop-depen
       'for (const x of items) { if (["a","b"].includes(x)) { go(); } }',
 
       // A non-iteration callback is a call frequency the rule declines to guess.
-      'run(() => names.indexOf(key));'
+      'run(() => names.indexOf(key));',
+
+      // A `for` init and a `for…of` iterable run once per loop entry, not per iteration.
+      'for (let i = xs.indexOf(first) + 1; i < xs.length; i++) { use(xs[i]); }',
+      'for (const x of names.filter(p)) { use(x); }'
     ],
     invalid: [
       {
@@ -110,6 +114,16 @@ test('no-rescan-in-loop: fires on loop-invariant receivers, silent on loop-depen
       },
       {
         code: 'for (let i = 0; i < n; i++) { const hit = runs.find(r => r.start === i); use(hit); }',
+        errors: [{ messageId: 'rescan' }]
+      },
+      {
+        // The `for` update runs every iteration.
+        code: 'for (let i = 0; i < n; i = names.indexOf(i)) { use(i); }',
+        errors: [{ messageId: 'rescan' }]
+      },
+      {
+        // A head runs once for ITS loop, but every iteration of an outer one.
+        code: 'for (const y of ys) { for (const x of names.filter(p)) { use(x, y); } }',
         errors: [{ messageId: 'rescan' }]
       },
       {
@@ -140,7 +154,16 @@ test('no-loop-invariant-accessor: fires on invariant zero-arg accessors, silent 
       'for (const x of items) { use(trivia.runsFor(0)); }',
 
       // Receiver is reassigned inside the loop.
-      'let cursor = head; for (const x of items) { use(cursor.peek()); cursor = cursor.rest; }'
+      'let cursor = head; for (const x of items) { use(cursor.peek()); cursor = cursor.rest; }',
+
+      // The iterable of a `for…of` is read once.
+      'for (const [i, x] of items.entries()) { use(i, x); }',
+
+      // `??=` copies once, the first time it is needed.
+      'let copy = null; for (const x of items) { if (x) { copy ??= base.slice(); } } use(copy);',
+
+      // Bracketing protocol calls.
+      'for (const x of items) { tracker.begin(); use(x); tracker.finish(); }'
     ],
     invalid: [
       {

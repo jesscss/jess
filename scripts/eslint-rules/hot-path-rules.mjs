@@ -88,8 +88,12 @@ const LOOP_STATEMENTS = new Set(['ForStatement', 'ForInStatement', 'ForOfStateme
  * this rule cannot reason about, so it declines rather than guesses.
  */
 function enclosingLoop(node) {
-  for (let current = node.parent; current; current = current.parent) {
+  for (let child = node, current = node.parent; current; child = current, current = current.parent) {
     if (LOOP_STATEMENTS.has(current.type)) {
+      // A `for` init and a `for…of`/`for…in` iterable run once per loop entry, not per iteration.
+      if (child === current.init || child === current.right) {
+        continue;
+      }
       return current;
     }
     if (current.type === 'FunctionExpression' || current.type === 'ArrowFunctionExpression') {
@@ -528,15 +532,17 @@ const noRescanInLoop = {
  * — invariant 10, "source-derived facts are constructed once, then read".
  *
  * PRECISION: restricted to ZERO-argument calls, minus an explicit denylist of
- * zero-arg mutators/iterators (`next`, `pop`, `shift`, …) and non-deterministic
- * builtins (`Date.now`, `Math.random`), which are called in a loop on purpose.
+ * zero-arg mutators/iterators (`next`, `pop`, `shift`, …), bracketing protocol
+ * calls (`begin`/`finish`), and non-deterministic builtins (`Date.now`,
+ * `Math.random`), which are called in a loop on purpose.
  * It still cannot prove the callee is side-effect-free, so it is advisory.
  */
 
 const IMPURE_ZERO_ARG = new Set([
   'next', 'pop', 'shift', 'clear', 'reverse', 'sort', 'flush', 'reset', 'close', 'dispose',
   'now', 'random', 'read', 'write', 'tick', 'advance', 'consume', 'take', 'poll', 'release',
-  'then', 'catch', 'finally', 'return', 'throw', 'push', 'toString', 'valueOf'
+  'then', 'catch', 'finally', 'return', 'throw', 'push', 'toString', 'valueOf',
+  'begin', 'finish'
 ]);
 
 const noLoopInvariantAccessor = {
@@ -564,6 +570,11 @@ const noLoopInvariantAccessor = {
         }
         const method = callee.property.name;
         if (IMPURE_ZERO_ARG.has(method)) {
+          return;
+        }
+
+        // `x ??= y.slice()` is the construct-once fix itself: the right side runs while `x` is unset.
+        if (node.parent.type === 'AssignmentExpression' && node.parent.operator === '??=' && node.parent.right === node) {
           return;
         }
         const loop = enclosingLoop(node);

@@ -275,7 +275,7 @@ This sketch is directional grammar guidance; the actual Parseman productions mus
 | `pnpm run build:release` | U1-U5 | All affected packages compile in dependency order with no stale artifact ambiguity. |
 | `pnpm run check:macro` and `pnpm run verify:compose-integrity` | U2, U4 | Both report zero interpreter fallbacks for the changed grammars. |
 | `pnpm run verify:parser-runtime-boundary:clean` | U2, U4 | No handwritten parser recognition or reparse path is introduced. |
-| `pnpm run verify:hot-path:clean` and `pnpm run verify:shape-stability` | U1, U2, U4 | No new hot-path anti-pattern or polymorphic AST shape is introduced. |
+| `pnpm run verify:hot-path` and `pnpm run verify:shape-stability` | U1, U2, U4 | No new hot-path anti-pattern or polymorphic AST shape is introduced. |
 | Named Jess parser before/after benchmark from `docs/perf/BENCHMARKS.md` | U2 | Resolved parser/Parseman paths and versions are recorded; material regressions are investigated, sub-noise movement is reported as inconclusive. |
 | `pnpm run verify:types`, `pnpm run lint:production`, and `pnpm run lint:tests` | U1-U5 | Type and lint gates are green without new absolute-lint violations. |
 | `pnpm run check:guardrails`, `pnpm run check:record-map`, and docs-content validation | U5 | Owner records remain protected and documentation links/content validate. |

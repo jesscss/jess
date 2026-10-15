@@ -277,6 +277,12 @@ jobs:
       - name: Gate — diagnostic cold path
         run: pnpm run verify:diagnostic-cold-path
 
+      - name: Gate — hot-path antipattern rules (unit tests)
+        run: pnpm run test:hot-path-rules
+
+      - name: Gate — hot-path antipattern inventory (shrink-only)
+        run: pnpm run verify:hot-path
+
       - name: Audit — node creation hotspots
         run: pnpm run audit:node-creation
 
