@@ -1376,12 +1376,12 @@ export interface MixinDefinition extends SpanSlots, BodySpanSlots {
   readonly name: string;
   readonly params: Param[];
   readonly rules: Statement[];
+
   /*
-   * A body-form `&:extend()` written directly in the definition's body (ledger X16):
-   * the rule each call's body lands in extends, as if the extend were written in that
-   * rule's own body. Undefined when the body has none. A ruleset called as a mixin
-   * carries its own `extendInstructions` here; its inline ones (with a `subject`) bind
-   * to its own selector and do not travel with the call.
+   * A body-form `&:extend()` written directly in the definition's body (ledger X16): the rule
+   * each call's body lands in extends, as if written in that rule's own body; undefined when none.
+   * A ruleset called as a mixin carries its own here; its inline ones (with a `subject`) bind to
+   * its own selector and do not travel with the call.
    */
   readonly extendInstructions: ExtendInstruction[] | undefined;
   readonly guard: GuardNode | undefined; // [guards]
