@@ -38,9 +38,6 @@ import {
   interpolation,
   mixinCall,
   mixinDef,
-  rulesetMixin,
-  syntheticCall,
-  withArgs,
   operation,
   keyword,
   list,
@@ -82,6 +79,7 @@ import {
   isCssColorCall,
   colorAlphaSlash
 } from './nodes.js';
+import serializerNodes from './nodes.js';
 import type {
   Any,
   Apply,
@@ -207,6 +205,9 @@ import { JessError, type TreeContextLike } from '../error/jess-error.js';
 import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
+
+/* The serializer-only node constructors: nodes.ts's default export, kept out of the public `@jesscss/core/ast` entry. */
+const { rulesetMixin, syntheticCall, withArgs } = serializerNodes;
 
 /* ---------------------------------------------------- MaybePromise glue */
 
@@ -1279,6 +1280,12 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
     return context.withSourceOwner(owner, scoped);
   }
   return withTrivia(e, trivia, () => context.withSourceOwner(owner, scoped));
+}
+
+/** Whether `owner` is a document other than the active one, so output it authored must re-enter it. */
+function ownerDiffers(owner: object | null | undefined, e: EvalCtx): boolean {
+  const context = e.context;
+  return owner !== null && owner !== undefined && context !== undefined && owner !== context.documentContext;
 }
 
 /** Each resolved policy's `modes`, pretty and compressed, so a document switch allocates once. */
@@ -16733,31 +16740,7 @@ function walkBody(
           mergeMode
         );
       } else {
-        for (let index = 0; index < buf.length;) {
-          const leaf = buf[index]!;
-          const sourceOwner = leaf.frame.sourceOwner;
-          if (
-            sourceOwner !== null
-            && sourceOwner !== undefined
-            && e.context !== undefined
-            && sourceOwner !== e.context.documentContext
-          ) {
-            let end = index + 1;
-            while (end < buf.length && buf[end]!.frame.sourceOwner === sourceOwner) {
-              end++;
-            }
-            const start = index;
-            settled(withSourceOwner(e, sourceOwner, () => {
-              for (let at = start; at < end; at++) {
-                emitNestedLeafOwned(buf[at]!, e);
-              }
-            }), SYNC_LEAF_FLUSH, leaf.node, e);
-            index = end;
-            continue;
-          }
-          emitNestedLeafOwned(leaf, e);
-          index++;
-        }
+        forEachOwnerRun(buf, e, emitNestedLeafOwned, SYNC_LEAF_FLUSH);
       }
       if (trailingBlockComments.length !== 0) {
         const indent = blockIndent(e);
@@ -17937,7 +17920,7 @@ function queueCommentOnlySelectedBodies(
       continue;
     }
     const owner = e.context?.sourceOwnerForBody?.(def.rules) ?? null;
-    if (owner !== null && owner !== e.context?.documentContext) {
+    if (ownerDiffers(owner, e)) {
       settled(withSourceOwner(e, owner, () => {
         const comments = bodyBlockCommentTexts(def, e);
         if (comments.length !== 0) {
@@ -19857,31 +19840,7 @@ function flushBlock(
     if (mergeMode !== MERGE_NONE) {
       mergeFold(kept, e, bodyIndent(e), emitLeaf, mergeMode);
     } else {
-      for (let index = 0; index < kept.length;) {
-        const leaf = kept[index]!;
-        const sourceOwner = leaf.frame.sourceOwner;
-        if (
-          sourceOwner !== null
-          && sourceOwner !== undefined
-          && e.context !== undefined
-          && sourceOwner !== e.context.documentContext
-        ) {
-          let end = index + 1;
-          while (end < kept.length && kept[end]!.frame.sourceOwner === sourceOwner) {
-            end++;
-          }
-          const start = index;
-          settled(withSourceOwner(e, sourceOwner, () => {
-            for (let at = start; at < end; at++) {
-              emitLeafOwned(kept[at]!, e);
-            }
-          }), SYNC_LEAF_FLUSH, leaf.node, e);
-          index = end;
-          continue;
-        }
-        emitLeafOwned(leaf, e);
-        index++;
-      }
+      forEachOwnerRun(kept, e, emitLeafOwned, SYNC_LEAF_FLUSH);
     }
 
     /* The body's comments after its last leaf (queueBodyTriviaTail). */
@@ -20076,13 +20035,7 @@ function mergeFold(
   }
   const first = group[0];
   const sourceOwner = first?.frame.sourceOwner;
-  if (
-    first !== undefined
-    && sourceOwner !== null
-    && sourceOwner !== undefined
-    && e.context !== undefined
-    && sourceOwner !== e.context.documentContext
-  ) {
+  if (first !== undefined && ownerDiffers(sourceOwner, e)) {
     settled(withSourceOwner(e, sourceOwner, () => mergeFoldOwned(group, e, idt, emitOne)), SYNC_LEAF_FLUSH, first.node, e);
     return;
   }
@@ -20155,24 +20108,6 @@ function mergeFoldOwned(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, 
   }
 }
 
-/** Resolve mixed-source merge names while each contiguous run owns Context. */
-function captureMixedMergeNames(
-  group: Leaf[],
-  names: (string | null)[],
-  start: number,
-  end: number,
-  e: Emit
-): void {
-  for (let index = start; index < end; index++) {
-    const leaf = group[index]!;
-    const node = leaf.node;
-    if (node.type !== 'Declaration' || node.merge === null) {
-      continue;
-    }
-    names[index] = declName(node, leaf.frame, e);
-  }
-}
-
 /** Append one contiguous merge-member owner run without allocating a callback. */
 function appendMixedMergeMemberRun(
   group: Leaf[],
@@ -20204,66 +20139,61 @@ function appendMixedMergeMemberRun(
   return combined;
 }
 
-/** Emit one already-resolved mixed-source merge run under its active owner. */
+/**
+ * Emit the mixed-source leaf at `index` under its active owner: a non-merge leaf
+ * as is, a merge declaration as its group's one line at the group's last member.
+ */
 function emitMixedMergeMembers(
   group: Leaf[],
   names: (string | null)[],
   mergeGroups: Map<string, number[]>,
-  start: number,
-  end: number,
+  index: number,
   e: Emit,
   idt: string,
   emitOne: (leaf: Leaf, emit: Emit) => void
 ): void {
-  for (let index = start; index < end; index++) {
-    const leaf = group[index]!;
-    const node = leaf.node;
-    if (node.type !== 'Declaration' || node.merge === null) {
-      emitOne(leaf, e);
-      continue;
-    }
-    for (const comment of leaf.leadingBlockComments ?? []) {
-      putBlockComment(e, idt, comment);
-    }
-    const indices = mergeGroups.get(names[index]!)!;
-    if (index !== indices[indices.length - 1]) {
-      continue;
-    }
-    let combined = '';
-    const previousImportant = e.mergeImportant;
-    e.mergeImportant = false;
-    for (let member = 0; member < indices.length;) {
-      const sourceOwner = group[indices[member]!]!.frame.sourceOwner;
-      let memberEnd = member + 1;
-      while (
-        memberEnd < indices.length
-        && group[indices[memberEnd]!]!.frame.sourceOwner === sourceOwner
-      ) {
-        memberEnd++;
-      }
-      if (
-        sourceOwner !== null
-        && sourceOwner !== undefined
-        && e.context !== undefined
-        && sourceOwner !== e.context.documentContext
-      ) {
-        const start = member;
-        withSourceOwner(e, sourceOwner, () => {
-          combined = appendMixedMergeMemberRun(
-            group, indices, start, memberEnd, combined, e
-          );
-        });
-      } else {
-        combined = appendMixedMergeMemberRun(
-          group, indices, member, memberEnd, combined, e
-        );
-      }
-      member = memberEnd;
-    }
-    const mergedImportant = Boolean(e.mergeImportant);
-    e.mergeImportant = previousImportant;
-    emitMergedLine(e, names[index]!, combined, mergedImportant, idt);
+  const leaf = group[index]!;
+  const node = leaf.node;
+  if (node.type !== 'Declaration' || node.merge === null) {
+    emitOne(leaf, e);
+    return;
   }
+  for (const comment of leaf.leadingBlockComments ?? []) {
+    putBlockComment(e, idt, comment);
+  }
+  const indices = mergeGroups.get(names[index]!)!;
+  if (index !== indices[indices.length - 1]) {
+    return;
+  }
+  let combined = '';
+  const previousImportant = e.mergeImportant;
+  e.mergeImportant = false;
+  for (let member = 0; member < indices.length;) {
+    const sourceOwner = group[indices[member]!]!.frame.sourceOwner;
+    let memberEnd = member + 1;
+    while (
+      memberEnd < indices.length
+      && group[indices[memberEnd]!]!.frame.sourceOwner === sourceOwner
+    ) {
+      memberEnd++;
+    }
+    if (ownerDiffers(sourceOwner, e)) {
+      const start = member;
+      withSourceOwner(e, sourceOwner, () => {
+        combined = appendMixedMergeMemberRun(
+          group, indices, start, memberEnd, combined, e
+        );
+      });
+    } else {
+      combined = appendMixedMergeMemberRun(
+        group, indices, member, memberEnd, combined, e
+      );
+    }
+    member = memberEnd;
+  }
+  const mergedImportant = Boolean(e.mergeImportant);
+  e.mergeImportant = previousImportant;
+  emitMergedLine(e, names[index]!, combined, mergedImportant, idt);
 }
 
 /** Fold a merge group whose leaves come from more than one source document. */
@@ -20275,27 +20205,15 @@ function mergeFoldMixedOwners(
 ): void {
   const names = new Array<string | null>(group.length);
 
-  for (let index = 0; index < group.length;) {
-    const sourceOwner = group[index]!.frame.sourceOwner;
-    let end = index + 1;
-    while (end < group.length && group[end]!.frame.sourceOwner === sourceOwner) {
-      end++;
+  /* Resolve each merge name while its contiguous source-owner run owns Context. */
+  let at = 0;
+  forEachOwnerRun(group, e, (leaf, emit) => {
+    const node = leaf.node;
+    if (node.type === 'Declaration' && node.merge !== null) {
+      names[at] = declName(node, leaf.frame, emit);
     }
-    if (
-      sourceOwner !== null
-      && sourceOwner !== undefined
-      && e.context !== undefined
-      && sourceOwner !== e.context.documentContext
-    ) {
-      const start = index;
-      withSourceOwner(e, sourceOwner, () => {
-        captureMixedMergeNames(group, names, start, end, e);
-      });
-    } else {
-      captureMixedMergeNames(group, names, index, end, e);
-    }
-    index = end;
-  }
+    at++;
+  }, null);
 
   const mergeGroups = new Map<string, number[]>();
   for (let index = 0; index < group.length; index++) {
@@ -20312,31 +20230,10 @@ function mergeFoldMixedOwners(
     }
   }
 
-  for (let index = 0; index < group.length;) {
-    const sourceOwner = group[index]!.frame.sourceOwner;
-    let end = index + 1;
-    while (end < group.length && group[end]!.frame.sourceOwner === sourceOwner) {
-      end++;
-    }
-    if (
-      sourceOwner !== null
-      && sourceOwner !== undefined
-      && e.context !== undefined
-      && sourceOwner !== e.context.documentContext
-    ) {
-      const start = index;
-      withSourceOwner(e, sourceOwner, () => {
-        emitMixedMergeMembers(
-          group, names, mergeGroups, start, end, e, idt, emitOne
-        );
-      });
-    } else {
-      emitMixedMergeMembers(
-        group, names, mergeGroups, index, end, e, idt, emitOne
-      );
-    }
-    index = end;
-  }
+  at = 0;
+  forEachOwnerRun(group, e, (_leaf, emit) => {
+    emitMixedMergeMembers(group, names, mergeGroups, at++, emit, idt, emitOne);
+  }, null);
 }
 
 /** A declaration value that is an SCSS nested-property block. */
@@ -20505,15 +20402,51 @@ function finishDrop(e: Emit, mark: DropMark, deferred: boolean): void {
   }
 }
 
+/**
+ * Emit `leaves` in order through `emitOne`, once each. A maximal run of leaves
+ * authored in a document other than the active one re-enters that document once
+ * around the whole run: leaves are grouped for dedup and merge, so a mixin's
+ * expansion can outlive its source-scope callback. Every other leaf is emitted
+ * directly. `syncWhere` is the `settled()` position a re-entry must finish
+ * synchronously at; `null` leaves the re-entry's result unobserved.
+ */
+function forEachOwnerRun(
+  leaves: readonly Leaf[],
+  e: Emit,
+  emitOne: (leaf: Leaf, e: Emit) => void,
+  syncWhere: string | null
+): void {
+  for (let index = 0; index < leaves.length;) {
+    const leaf = leaves[index]!;
+    const sourceOwner = leaf.frame.sourceOwner;
+
+    /* The run's captured bindings live only in this rare branch, so the common
+     * path allocates no block context per leaf. */
+    if (ownerDiffers(sourceOwner, e)) {
+      let end = index + 1;
+      while (end < leaves.length && leaves[end]!.frame.sourceOwner === sourceOwner) {
+        end++;
+      }
+      const start = index;
+      const emitted = withSourceOwner(e, sourceOwner, () => {
+        for (let at = start; at < end; at++) {
+          emitOne(leaves[at]!, e);
+        }
+      });
+      if (syncWhere !== null) {
+        settled(emitted, syncWhere, leaf.node, e);
+      }
+      index = end;
+      continue;
+    }
+    emitOne(leaf, e);
+    index++;
+  }
+}
+
 function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   const sourceOwner = leaf.frame.sourceOwner;
-  const context = e.context;
-  if (
-    sourceOwner !== null
-    && sourceOwner !== undefined
-    && context !== undefined
-    && sourceOwner !== context.documentContext
-  ) {
+  if (ownerDiffers(sourceOwner, e)) {
     /* Mixin expansion can outlive its source-scope callback because leaves are
      * grouped for dedup/merge. Re-enter only on that exceptional mismatch. */
     settled(withSourceOwner(e, sourceOwner, () => emitLeafOwned(leaf, e, atRoot)), SYNC_LEAF_FLUSH, leaf.node, e);
@@ -23962,13 +23895,7 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
 function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   const sourceOwner = leaf.frame.sourceOwner;
-  const context = e.context;
-  if (
-    sourceOwner !== null
-    && sourceOwner !== undefined
-    && context !== undefined
-    && sourceOwner !== context.documentContext
-  ) {
+  if (ownerDiffers(sourceOwner, e)) {
     /* Shared nested-leaf buffers have the same deferred source-owner boundary
      * as collapsed leaf groups; the ordinary identity-equal lane stays direct. */
     settled(withSourceOwner(e, sourceOwner, () => emitNestedLeafOwned(leaf, e)), SYNC_LEAF_FLUSH, leaf.node, e);

@@ -182,6 +182,43 @@ describe('reference mixin trivia', () => {
     }
   );
 
+  /*
+   * A leaf that a reference-imported mixin authored keeps its inline comment in
+   * its own document's trivia, so it is written correctly only once that document
+   * is re-entered: in a plain body (collapsed and nested flushes), in a merge group
+   * whose members all come from the one imported document, and in a directive body
+   * that writes its leaves one by one.
+   */
+  it.each([
+    ['plain body', '.consumer {\n  .library();\n}\n',
+      '.consumer {\n  color: green /* carried inline */;\n  /* carried from the selected body */\n}\n'],
+    ['merge group', '@import (reference) "nested/merge-library.less";\n.consumer {\n  .merged();\n}\n',
+      '.consumer {\n'
+      + '  box-shadow: url("nested/merge-one.png") /* carried from the first merge member */, url("nested/merge-two.png") /* carried from the merge anchor */;\n'
+      + '  /* carried after the merge */\n'
+      + '}\n'],
+    ['directive body', '@media screen {\n  .library();\n}\n',
+      '@media screen {\n  color: green /* carried inline */;\n  /* carried from the selected body */\n}\n']
+  ].flatMap(([position, body, css]) => [true, false].map(collapseNesting => ({ position, body, css, collapseNesting }))))(
+    'writes imported leaves in their own document in a $position (collapseNesting=$collapseNesting)',
+    async ({ body, css, collapseNesting }) => {
+      const compiler = new Compiler({
+        output: { collapseNesting },
+        compile: { plugins: [lessPlugin({ rewriteUrls: 'all' })] }
+      });
+
+      const result = await compiler.renderToResult({
+        source: '@import (reference) "library.less";\n' + body,
+        filePath: path.join(fixtureDir, 'consumer.less'),
+        language: 'less',
+        extension: '.less'
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(result.css).toBe(css);
+    }
+  );
+
   it('keeps delayed plugin capabilities in the imported source and restores the caller', async () => {
     const compiler = new Compiler({
       compile: {

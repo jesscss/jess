@@ -199,7 +199,7 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^(?:export )?(?:async )?function /gmu)).toBeLessThanOrEqual(618);
+    expect(occurrences(/^(?:export )?(?:async )?function /gmu)).toBeLessThanOrEqual(617);
     expect(occurrences(/new Map/gu)).toBeLessThanOrEqual(94);
     expect(occurrences(/new Set/gu)).toBeLessThanOrEqual(44);
     expect(occurrences(/new WeakMap/gu)).toBeLessThanOrEqual(11);
