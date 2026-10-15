@@ -91,7 +91,6 @@
     "import-option-split: if (reference || again || importHasOption(options, 'multiple')) {",
     "import-option-split: multipleImportDepth || importHasOption(options, 'multiple'),",
     "import-option-split: if (importHasOption(options, 'inline')) {",
-    "emit-literal: const e: Emit = {",
     "frame-literal: const rootFrame: Frame = {",
     "frame-literal: const plannerRootFrame: Frame = {",
     "emit-literal: const e: Emit = {",

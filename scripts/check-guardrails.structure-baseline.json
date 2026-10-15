@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24764
+    "lines": 24720
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -168,11 +168,8 @@
   "packages/core/src/ast/serialize.ts#planImportedFacts.visit.visitImport": {
     "lines": 195
   },
-  "packages/core/src/ast/serialize.ts#prepareStaticImports": {
-    "lines": 108
-  },
   "packages/core/src/ast/serialize.ts#serialize": {
-    "lines": 267
+    "lines": 209
   },
   "packages/core/src/ast/serialize.ts#serialize.continueRender": {
     "lines": 150
