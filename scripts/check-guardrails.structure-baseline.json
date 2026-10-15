@@ -62,7 +62,7 @@
     "lines": 2162
   },
   "packages/core/src/ast/serialize.ts": {
-    "lines": 24672
+    "lines": 24631
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -80,7 +80,7 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#findPathInScope": {
-    "lines": 146
+    "lines": 142
   },
   "packages/core/src/ast/serialize.ts#activateVariableDeclaration": {
     "lines": 103
