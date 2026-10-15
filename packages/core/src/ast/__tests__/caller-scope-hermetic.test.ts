@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
+import { parse as parseScss } from '../../../../syntax/scss/scss-parser/src/index.js';
 import { buildEvaluator } from '../evaluator.js';
-import { makeLessRegistry } from '@jesscss/fns';
+import { makeLessRegistry, makeSassRegistry } from '@jesscss/fns';
 import { serialize } from '../serialize.js';
 import { Context } from '../../context.js';
 
@@ -15,6 +16,7 @@ import { Context } from '../../context.js';
  * so any future re-widening of the caller `fallback` traversal fails here.
  */
 const evaluator = buildEvaluator(makeLessRegistry());
+const sassEvaluator = buildEvaluator(makeSassRegistry());
 const render = (src: string, allowCallerScope = false): string =>
   serialize(parseLess(src), {
     evaluator,
@@ -59,5 +61,27 @@ describe('R16 hermetic body scoping — every read form', () => {
     const src = '@x: DEF;\n.mk() { c: @x; }\n.a { @x: CALLER; .mk(); }\n';
     expect(render(src)).toContain('c: DEF');
     expect(render(src, true)).toContain('c: DEF');
+  });
+
+  /*
+   * The detached-ruleset call and the value lambda each build their own body frame
+   * and mark its caller link as caller-only. The cases above all go through a mixin
+   * call, so these two pin the same rule (DESIGN-DECISIONS R16) at the other two
+   * body kinds that row names.
+   */
+  it('detached ruleset call: a caller-only free var is a miss by default; the flag restores it', () => {
+    const src = '@dr: { c: @x; }\n.a { @x: red; @dr(); }\n';
+    expect(() => render(src)).toThrow(expect.objectContaining({
+      code: 'resolve/name-not-found',
+      reason: 'Symbol "@x" is undefined in this scope.'
+    }));
+    expect(render(src, true)).toBe('.a {\n  c: red;\n}\n');
+  });
+
+  it('value lambda (SCSS @function): a caller-only free var is a miss by default', () => {
+    const src = '@function f() { @return $x; }\n.a { $x: red; b: f(); }\n';
+    expect(() => serialize(parseScss(src), { evaluator: sassEvaluator })).toThrow(expect.objectContaining({
+      code: 'resolve/name-not-found'
+    }));
   });
 });
