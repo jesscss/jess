@@ -817,7 +817,13 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'a comment between two var() fallback components',
     group: 'value',
-    source: 'a { color: var(--x, red /* c */ blue) }'
+    source: 'a { color: var(--x, red /* c */ blue) }',
+    brokenIn: ['jess'],
+    defect:
+      'css-syntax-3 §5.4.4 skips comments wherever whitespace is allowed; css, '
+      + 'Less and SCSS accept a comment between fallback components. .jess '
+      + 'rejects it (`Expected: ")"`), though it accepts one before the first '
+      + 'component.'
   },
   {
     id: 'slashes between words in a function argument',

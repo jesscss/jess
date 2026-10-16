@@ -3257,21 +3257,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     children => any(requireToken(children[0]).value)
   );
 
-  /** A delim component and the slash group glued after it (`a=b`'s `=b`). */
-  const delimValue = sequence(
+  /*
+   * A delim between two slash groups, glued or padded (`a=b`, `a = b`,
+   * `foo(a /* c *\/ = b)`). The whitespace before it is the run's own
+   * separator, so only a comment or a glued delim reaches the leading padding.
+   */
+  const delimJoin = sequence(
+    optional(valueTrivia),
     punctuationDelim,
-    optional(sequence(
-      not(literal('{')),
-      g.ValueTerm
-    ))
+    optional(valueTrivia),
+    not(literal('{')),
+    g.ValueTerm
   );
 
   /*
-   * The authored adjacency run of slash groups: a separator (whitespace or a
-   * comment) then a group or a delim, a delim glued to the group before it, or
-   * a glued `:`/`.` (see `gluedDelim`). The separator is read once, then the
-   * next component decides. A brace block may only be a value's FIRST atom
-   * (see `nonBlockValueAtom`), so a continuation term may not open one.
+   * The authored space-adjacency run of slash groups: whitespace then a group
+   * or a delim, a delim glued to the group before it, or a glued `:`/`.` (see
+   * `gluedDelim`). The whitespace is read once, then the next component
+   * decides. A brace block may only be a value's FIRST atom (see
+   * `nonBlockValueAtom`), so a continuation term may not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
@@ -3281,17 +3285,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         sequence(
           field(
             'separator',
-            valueTrivia
+            regex(/[ \t\n\r\f]+/)
           ),
           choice(
             sequence(
               not(literal('{')),
               g.ValueTerm
             ),
-            delimValue
+            delimJoin
           )
         ),
-        delimValue,
+        delimJoin,
         sequence(
           gluedPunctuationDelim,
           not(literal('{')),

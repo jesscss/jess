@@ -329,7 +329,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/ie-filters-REMOVED/legacy/ie-filters.less',
-    'legacy IE progid:DXImageTransform filter syntax is not supported'
+    'legacy IE progid:DXImageTransform filter syntax has no meaning of its own: it parses as a CSS run (ledger N18), and the call\'s `name=value` arguments are Less comparisons (V11), so `Alpha(opacity = 20)` renders `Alpha(false)` where the golden keeps the IE form'
   ],
   [
     'tests-unit/functions/legacy/functions.less',
