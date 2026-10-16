@@ -78,6 +78,7 @@ const FILES = [
   'packages/syntax/less/less-parser/src/parse-with.ts',
   'packages/syntax/less/less-parser/src/positions.ts',
   'packages/syntax/less/less-parser/src/trivia-labels.ts',
+  'packages/syntax/less/less-parser/src/trivia-layout.ts',
   'packages/syntax/less/less-parser/tsdown.config.ts'
 ];
 const snapDir = mkdtempSync(join(tmpdir(), 'less-ab-'));

@@ -911,27 +911,28 @@ const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|
  * that point (`=`, `>=`, `==`): only the Less spellings (`guardOperatorText`)
  * compare, and only one per argument — `foo(a==b)`, `foo(a=b=c)` and
  * `foo(a = b < c)` are a CSS run of component values, written as authored
- * (ledger N18).
+ * (ledger N18). Its padding is ambient trivia, which the run reads back.
  */
-const functionConditionOperator = regex(/[ \t\n\r\f]*[<>=]+~?[ \t\n\r\f]*/);
+const functionConditionOperator = regex(/[<>=]+~?/);
 
-/*
+/**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
  * gives no meaning, glued or padded: `x: a=b`, `x: a ~ b`. It is the css
- * `PunctuationValue` run less the characters Less reads itself: `@`, `$`, `#`,
- * `&`, `!`, `%`, `<`, `>`, the math operators, and `:` and `.` (see
+ * `punctuationValueCharacter` run less the characters Less reads itself: `@`,
+ * `$`, `#`, `&`, `!`, `%`, `<`, `>`, the math operators, and `:` and `.` (see
  * `gluedDelim`). A `~` that opens an escape (`~"…"`, `~(…)`) is the escape: the
  * value piece is tried first. In a call argument `=` is a comparison
  * (`functionConditionStop` decides first).
  */
 const delimRun = regex(/[=~|^?]+/);
 
-/*
+/**
  * `:` and `.` join a value only glued on both sides, inside one authored
  * component (`progid:DXImageTransform.Microsoft.gradient(…)`): after
- * whitespace a `.` leads a mixin call and a `:` ends a property name.
+ * whitespace a `.` leads a mixin call and a `:` ends a property name. A `.`
+ * that starts a number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
  */
-const gluedDelim = regex(/[:.]/);
+const gluedDelim = regex(/:|\.(?![0-9])/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionNot = word(
@@ -2359,15 +2360,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.MathSum,
     (children, _fields, _span, _rawChildren, _triviaLog, state) => lessMathInValue(requireMathSum(children), state)
   );
-  // Value pieces are separated by grammar-owned whitespace. Keeping that token
-  // here is what lets a canonical Sequence retain multiline CSS layout without
-  // scanning/re-splitting a completed declaration value later.
-  /*
-   * A delim piece (`=`, `~`, …) and the piece glued after it: `x: a = b`,
-   * `x: a=b`. Its `Any` delim is the one the css grammar builds (ledger N18).
+  /**
+   * A delim Less gives no meaning, as the component css builds for it: the
+   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
+   * override of `PunctuationValue` itself would narrow every css rule that
+   * reaches the css value atom.
    */
-  const delimValue = sequence(delimRun, optional(g.valuePiece));
+  const punctuationDelim = node(
+    'PunctuationValue',
+    delimRun,
+    children => any(requireTerminalText(children[0]))
+  );
+  const gluedPunctuationDelim = node(
+    'PunctuationValue',
+    gluedDelim,
+    children => any(requireTerminalText(children[0]))
+  );
+
+  /** A delim piece and the piece glued after it: `x: a = b`, `x: a=b`. */
+  const delimValue = sequence(punctuationDelim, optional(g.valuePiece));
+
   /*
+   * Value pieces are separated by grammar-owned whitespace. Keeping that token
+   * here is what lets a canonical Sequence retain multiline CSS layout without
+   * scanning/re-splitting a completed declaration value later.
+   *
    * No bare `literal('/')` arm: a slash is only ever reachable BETWEEN two
    * operands, through the division operator in `MathSum`. So `p: / 1` fails for
    * the same structural reason a leading `,` does (DESIGN-DECISIONS P33/P34).
@@ -2390,14 +2407,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     BacktickJavaScript,
     optional(g.valuePiece)
   ));
-  // A delim glued to the piece before it, or a `:`/`.` glued on both sides:
-  // the adjacent component values of a CSS run (ledger N18).
+  /*
+   * A delim glued to the piece before it, or a `:`/`.` glued on both sides:
+   * the adjacent component values of a CSS run (ledger N18). The delim is only
+   * PEEKED, then read as a value piece, so a glued escape (`a~"b"`, `a~(b)`)
+   * still reaches the escape in `MathValue` before the delim arm.
+   */
   const gluedDelimValueBoundary = choice(
     sequence(
       leaf(peek(delimRun), () => ({ kind: 'glued-value-boundary' })),
       g.valuePiece
     ),
-    sequence(gluedDelim, g.valuePiece)
+    sequence(gluedPunctuationDelim, g.valuePiece)
   );
   const valueContinuation = choice(
     valueTriviaBoundary,

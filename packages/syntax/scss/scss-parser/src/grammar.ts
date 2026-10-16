@@ -23,9 +23,9 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, componentRun, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgumentRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -357,22 +357,22 @@ const sumOperator = choice(
 const space = regex(/[ \t\n\r\f]+/);
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 
-/*
+/**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that SCSS gives no
  * meaning, glued or padded: `alpha(opacity=50)`, `x: a ~ b`. It is the css
- * `PunctuationValue` run less the characters SCSS reads itself: `$`, `#`, `%`,
- * `&`, `!`, `@`, the math operators, the comparisons (`==`, `<`, `>`), and `:`
- * and `.` (see `gluedDelim`).
+ * `punctuationValueCharacter` run less the characters SCSS reads itself: `$`,
+ * `#`, `%`, `&`, `!`, `@`, the math operators, the comparisons (`==`, `<`,
+ * `>`), and `:` and `.` (see `gluedDelim`).
  */
 const delimRun = regex(/(?:[~|^?]|=(?!=))+/);
 
-/*
+/**
  * `:` and `.` join a declaration value's run only glued on both sides, inside
  * one authored component (`progid:DXImageTransform.Microsoft.gradient(…)`).
- * Spaced, a `:` is a keyword argument's or a map entry's, and `.` leads a
- * selector.
+ * Elsewhere a `:` is a keyword argument's or a map entry's. A `.` that starts
+ * a number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
  */
-const gluedDelim = regex(/[:.]/);
+const gluedDelim = regex(/:|\.(?![0-9])/);
 
 /*
  * Where every SCSS keyword ends. A keyword is an identifier, and css-syntax-3
@@ -1239,31 +1239,56 @@ const scssFactory = (g: ScssInputRules) => {
     )),
     children => foldLogicalOperation(children)
   );
+
+  /**
+   * A delim SCSS gives no meaning, as the component css builds for it: the
+   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
+   * override of `PunctuationValue` itself would narrow every css rule that
+   * reaches the css value atom.
+   */
+  const punctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    delimRun,
+    children => any(requireToken(children[0]).value)
+  );
+
+  const gluedPunctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    gluedDelim,
+    children => any(requireToken(children[0]).value)
+  );
+
+  /** A delim component and the operand glued after it (`a=b`'s `=b`). */
+  const delimValue = sequence(
+    punctuationDelim,
+    optional(g.ValueLogicalOr)
+  );
+
+  /*
+   * One boundary of a space list: padding then an operand or a delim, a slash
+   * group, or a delim glued to what precedes it. A delim is a component of the
+   * list like any other (`x: a=b c`, `foo(a = b)`), so its padding is the
+   * list's own and the tree is css's flat run.
+   */
   const ValueTail = node<ScssValueTail>(
     'ValueTail',
     choice(
       sequence(
         valueTrivia,
-        g.ValueLogicalOr
+        choice(
+          g.ValueLogicalOr,
+          delimValue
+        )
       ),
       sequence(
         optional(space),
         literal('/'),
         optional(space),
         g.ValueLogicalOr
-      )
+      ),
+      delimValue
     ),
-    (children) => {
-      if (isScssValue(children[1])) {
-        return { kind: 'space', value: children[1], separator: isToken(children[0]) ? children[0].value : ' ' };
-      }
-      const value = children[children.length - 1];
-      if (!isScssValue(value)) {
-        throw new TypeError('SCSS slash list lost its value.');
-      }
-      const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
-      return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}` };
-    }
+    children => scssValueTail(children)
   );
   const ValueTerm = node<ValueSlot>(
     'ValueTerm',
@@ -1302,17 +1327,6 @@ const scssFactory = (g: ScssInputRules) => {
     literal('<')
   );
 
-  /*
-   * A delim SCSS gives no meaning (`=`, `~`, …) after the argument is not an
-   * operator. CSS reads `alpha(opacity=50)` as a `=` delim between component
-   * values (css-syntax-3 §4.3.1), and so does this tail: the run is that CSS
-   * reading — the same `Any` delims the css grammar builds — written as
-   * authored, glued or padded (owner 2026-10-16: valid, balanced syntax parses;
-   * ledger N18). It is one more arm of the operator choice, so a positional
-   * argument still pays one failed match; `==` is tried first. Any operator
-   * after the first continues the run (`a=b=c`, `a = b < c`, `$x: a=b`): only
-   * the head — one comparison or a keyword — keeps an SCSS meaning.
-   */
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
@@ -1321,62 +1335,49 @@ const scssFactory = (g: ScssInputRules) => {
         optional(valueTrivia),
         choice(
           comparisonOperator,
-          literal(':'),
-          delimRun
+          literal(':')
         ),
         optional(valueTrivia),
-        g.ValueTerm,
-        many(sequence(
-          optional(valueTrivia),
-          choice(
-            comparisonOperator,
-            delimRun
-          ),
-          optional(valueTrivia),
-          g.ValueTerm
-        ))
+        g.ValueTerm
       ))
     )),
-    children => scssCallArgumentRun(children)
+    children => scssCallArgument(children)
   );
 
-  /*
-   * A declaration value's item: its space list, then the delims SCSS gives no
-   * meaning between further lists (`x: a=b`, `x: a ~ b`, `filter: progid:DX.M`),
-   * the CSS run of component values written as authored (ledger N18). A
-   * comparison is not among them: SCSS reads one.
+  /**
+   * A declaration value's comma item: its space list, then a `:` or `.` glued
+   * on both sides and the next list (`filter: progid:DX.Microsoft.f()`), the
+   * css run of component values (ledger N18). Labelled as the css rung it is.
    */
-  const valueRun = noTrivia(sequence(
-    g.ValueTerm,
-    many(choice(
-      sequence(
-        optional(valueTrivia),
-        delimRun,
-        optional(valueTrivia),
+  const valueSequence = node<ValueSlot>(
+    'ValueSequence',
+    noTrivia(sequence(
+      g.ValueTerm,
+      many(sequence(
+        gluedPunctuationDelim,
         g.ValueTerm
-      ),
-      sequence(
-        gluedDelim,
-        g.ValueTerm
-      )
-    ))
-  ));
+      ))
+    )),
+    children => gluedRun(children)
+  );
   const ValuePair = node<ScssValuePair>(
     'ValuePair',
     noTrivia(sequence(
       literal(','),
       optional(valueTrivia),
-      valueRun
+      valueSequence
     )),
     (children) => {
+      if (children.length !== 2 && children.length !== 3) {
+        throw new TypeError('ValuePair produced unexpected children.');
+      }
       if (requireToken(children[0]).value !== ',') {
         throw new TypeError('ValuePair lost its comma.');
       }
-      const padded = !isScssValueSlotValue(children[1]);
-      return {
-        separator: padded ? `,${requireToken(children[1]).value}` : ',',
-        value: componentRun(children.slice(padded ? 2 : 1), isScssValueSlotValue)
-      };
+      const separator = children.length === 3
+        ? `,${requireToken(children[1]).value}`
+        : ',';
+      return { separator, value: requireValueSlot(children[children.length - 1]) };
     }
   );
 
@@ -1409,17 +1410,16 @@ const scssFactory = (g: ScssInputRules) => {
   const Value = node<ValueSlot>(
     'Value',
     sequence(
-      valueRun,
+      valueSequence,
       many(g.ValuePair)
     ),
     (children) => {
-      const firstPair = children.findIndex(isScssValuePair);
-      const first = componentRun(firstPair === -1 ? children : children.slice(0, firstPair), isScssValueSlotValue);
-      if (firstPair === -1) {
+      const first = requireValueSlot(children[0]);
+      if (children.length === 1) {
         return first;
       }
       const pairs: ScssValuePair[] = [];
-      for (let index = firstPair; index < children.length; index += 1) {
+      for (let index = 1; index < children.length; index += 1) {
         const child = children[index];
         if (!isScssValuePair(child)) {
           throw new TypeError('SCSS value produced a non-list child.');
@@ -2286,21 +2286,38 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && ('name' in child || 'rest' in child))
   );
-
-  /*
-   * An `@include` argument is a call argument (§4.5.2) — `g.CallArgument`, so
-   * a keyword argument, a comparison and a CSS delim run (`m(a=b)`) read as in
-   * a function call — and may spread (`$args...`).
-   */
   const MixinCallArgument = node<ScssCallArg>(
     'MixinCallArgument',
-    sequence(
-      g.CallArgument,
-      optional(literal('...'))
+    choice(
+      sequence(
+        mixinParamSigilName,
+        literal(':'),
+        g.ValueTerm
+      ),
+      sequence(
+        g.ValueTerm,
+        literal('...')
+      ),
+      g.ValueTerm
     ),
     (children) => {
-      const argument = requireScssCallArg(children[0]);
-      return children.length === 1 ? argument : callArg(argument.value, argument.name, true, argument.sigil);
+      const value = children.find(isScssValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('MixinCallArgument requires a value.');
+      }
+      const nameToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== ':' && child.value !== '...');
+      const named = nameToken !== undefined
+        && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':');
+
+      /* ONE shape for all three arms. The conditional-return spelling this
+       * replaced ({name,value} / {value,spread} / {value}) realized three hidden
+       * classes on the mixin-call argument array. */
+      return callArg(
+        value,
+        named ? nameToken.value : undefined,
+        children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...'),
+        named ? '$' : undefined
+      );
     }
   );
 

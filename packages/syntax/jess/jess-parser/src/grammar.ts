@@ -781,23 +781,23 @@ const interpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
  */
 const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 
-/*
+/**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that `.jess` gives no
- * meaning outside `$( … )`, glued or padded: `alpha(opacity=50)`, `x: a ~ b`,
- * `foo(a==b)`. It is the css `PunctuationValue` run less the characters
- * `.jess` reads itself: `$` (its execution forms), `@`, `&`, `%`, the `+ - * /`
- * separators and signs, and `:` and `.` (see `gluedDelim`).
+ * meaning outside `$( … )`: `alpha(opacity=50)`, `x: a ~ b`, `foo(a==b)`. It is
+ * the css `punctuationValueCharacter` run less the characters `.jess` reads
+ * itself: `$` (its execution forms), `@`, `&`, `%`, the `+ - * /` separators
+ * and signs, and `:` and `.` (see `gluedDelim`).
  */
 const delimRun = regex(/[=<>|~^?]+/);
 
-/*
+/**
  * `:` and `.` join a run only glued on both sides, inside one authored
  * component (`progid:DXImageTransform.Microsoft.gradient(…)`). After
  * whitespace they open `.jess` structure instead: `name: value` (a collection
- * entry or a named argument) and a nested rule's `.class` selector after an
- * unterminated declaration.
+ * entry or a named argument) and a nested rule's `.class` selector. A `.` that
+ * starts a number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
  */
-const gluedDelim = regex(/[:.]/);
+const gluedDelim = regex(/:|\.(?![0-9])/);
 const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /* CSS at-rule URL bodies stay closed to Jess value syntax. */
@@ -3240,25 +3240,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
 
-  /*
-   * A delim between two slash groups, glued or padded (`a=b`, `a = b`,
-   * `foo(a /* c *\/ = b)`): CSS's adjacent component values, kept as authored —
-   * the same `Any` delim the css grammar builds (ledger N18). The padding before
-   * it is the run's own separator when there is whitespace, so only a comment
-   * or a glued delim reaches this sequence's leading trivia.
+  /**
+   * A delim `.jess` gives no meaning, as the component css builds for it: the
+   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
+   * override of `PunctuationValue` itself would narrow every css rule that
+   * reaches the css value atom.
    */
-  const delimJoin = sequence(
-    optional(valueTrivia),
+  const punctuationDelim = node<ValueNode>(
+    'PunctuationValue',
     delimRun,
-    optional(valueTrivia),
-    not(literal('{')),
-    g.ValueTerm
+    children => any(requireToken(children[0]).value)
+  );
+  const gluedPunctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    gluedDelim,
+    children => any(requireToken(children[0]).value)
+  );
+
+  /** A delim component and the slash group glued after it (`a=b`'s `=b`). */
+  const delimValue = sequence(
+    punctuationDelim,
+    optional(sequence(
+      not(literal('{')),
+      g.ValueTerm
+    ))
   );
 
   /*
-   * The authored space-adjacency run of slash groups, and of the delims
-   * `delimJoin` and `gluedDelim` read between them. A brace block may only be a value's FIRST
-   * atom (see `nonBlockValueAtom`), so a continuation term may not open one.
+   * The authored adjacency run of slash groups: a separator (whitespace or a
+   * comment) then a group or a delim, a delim glued to the group before it, or
+   * a glued `:`/`.` (see `gluedDelim`). The separator is read once, then the
+   * next component decides. A brace block may only be a value's FIRST atom
+   * (see `nonBlockValueAtom`), so a continuation term may not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
@@ -3268,19 +3281,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         sequence(
           field(
             'separator',
-            regex(/[ \t\n\r\f]+/)
+            valueTrivia
           ),
           choice(
             sequence(
               not(literal('{')),
               g.ValueTerm
             ),
-            delimJoin
+            delimValue
           )
         ),
-        delimJoin,
+        delimValue,
         sequence(
-          gluedDelim,
+          gluedPunctuationDelim,
           not(literal('{')),
           g.ValueTerm
         )

@@ -96,16 +96,74 @@ describe('a delim run in a call argument', () => {
     expect(await render('scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }')).toMatch(/x: a ?= ?b;/);
   });
 
-  /*
-   * KNOWN GAP (not the grammar): a run bound to a mixin parameter, or a
-   * variable holding one substituted into a call argument, loses its authored
-   * layout in evaluation and is written spaced (`a = b`); the same run written
-   * in place keeps it. Turns red when fixed.
-   */
-  it.fails.each([
-    ['@mixin m($a) { x: $a; }\na { @include m(a=b); }', 'x: a=b;'],
-    ['$v: a=b;\na { y: foo($v); }', 'y: foo(a=b);']
-  ])('scss: a substituted run keeps its layout (%s)', async (source, written) => {
-    expect(await render('scss', source)).toContain(written);
+  it('scss: a line comment beside an `@include` keyword argument still parses', async () => {
+    expect(await render('scss', '@mixin m($a) { x: $a; }\na { @include m($a: // c\n 1); }')).toContain('x: 1;');
   });
+});
+
+describe('compressed output keeps a glued delim glued and a padded one padded', () => {
+  it.each(['css', 'less', 'scss', 'jess'] as const)('%s', async (dialect) => {
+    const result = await new Compiler({ output: { compress: true } }).renderToResult(
+      { source: 'a { x: a=b; y: a ~ b; z: a=b, c ~ d; }', filePath: `/proj/delim-run.${dialect}` },
+      {}
+    );
+    expect(result.errors).toEqual([]);
+    expect(String(result.css)).toBe('a{x:a=b;y:a ~ b;z:a=b,c ~ d}');
+  });
+});
+
+/*
+ * KNOWN GAP (evaluation, not the grammar; ledger N18): a run that reaches the
+ * writer through a variable, a mixin or function parameter, or an
+ * interpolation loses its authored layout and is written spaced (`a = b`); the
+ * same run written in place keeps it. Each turns red when fixed.
+ */
+describe('a substituted delim run keeps its layout', () => {
+  it.fails.each([
+    ['scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }', 'x: a=b;'],
+    ['scss', '$v: a=b;\na { y: foo($v); }', 'y: foo(a=b);'],
+    ['scss', '@function f($a) { @return $a; }\na { x: f(a=b); }', 'x: a=b;'],
+    ['scss', '$v: a=b;\na { s: "#{$v}"; }', 's: "a=b";'],
+    ['scss', '$v: a=b;\na { #{$v}: 1; }', 'a=b: 1;'],
+    ['less', '.m(@a) { x: @a; }\na { .m(a=b); }', 'x: a=b;'],
+    ['less', '@v: a=b;\na { y: foo(@v); }', 'y: foo(a=b);'],
+    ['less', '@v: a=b;\na { s: ~"@{v}"; }', 's: a=b;']
+  ] as const)('%s: %s', async (dialect, source, written) => {
+    expect(await render(dialect, source)).toContain(written);
+  });
+});
+
+/*
+ * A delim run now continues a declaration value, so where the value ends before
+ * a nested rule moves (ledger N18). `.jess` follows css and Less: an
+ * unterminated declaration before a nested qualified rule is not read as two
+ * statements. SCSS reads a value followed by a block as a nested property.
+ */
+describe('a delim run before a nested rule', () => {
+  it.each([
+    'a { x: y\n > b { c: d } }',
+    'a { x: y\n ~ b { c: d } }',
+    'a { x: y\n b:hover { c: d } }'
+  ])('jess: %s does not parse', async (source) => {
+    const result = await new Compiler({}).renderToResult({ source, filePath: '/proj/delim-run.jess' }, {});
+    expect(result.errors).not.toEqual([]);
+  });
+
+  it('scss: a delim-run value followed by a block is a nested property', async () => {
+    expect(await render('scss', 'a { x: y\n ~ b { c: d } }')).toBe('a {\n  x: y\n    ~ b;\n  x-c: d;\n}\n');
+  });
+
+  it.each(['scss', 'jess'] as const)('%s: a terminated-by-rule glued run keeps the rule', async (dialect) => {
+    expect(await render(dialect, '.k { x: a~b .n { y: 1 } }')).toBe('.k {\n  x: a~b;\n  .n {\n    y: 1;\n  }\n}\n');
+  });
+});
+
+/*
+ * OPEN for the owner (ledger N18): Less reads each component of a glued-`.` run
+ * as it reads any value, so a Less function after the `.` evaluates
+ * (`color.mix(red, blue)` → `color.#800080`). Turns red if the owner rules the
+ * member form is written as authored.
+ */
+it.fails('less: a glued member form is written as authored', async () => {
+  expect(await value('less', 'color.mix(red, blue)')).toBe('color.mix(red, blue)');
 });
