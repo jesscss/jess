@@ -23,6 +23,18 @@ import { parseJessCst as parseJessDiagnosticCst, parseJessDoc as parseJessDiagno
 import { LessMixinArgumentError, mixinListProblems, parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc, type MixinListItemShape } from '@jesscss/less-parser/cst/positions';
 import { parseScssCst as parseScssDiagnosticCst, parseScssDoc as parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst/positions';
 import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
+import {
+  CUSTOM_DECLARATION_TYPES,
+  CUSTOM_PROPERTY_VALUE_TYPES,
+  DECLARATION_TYPES,
+  FUNCTION_TYPES,
+  RULESET_TYPES,
+  absoluteEnd,
+  absoluteStart,
+  cstChildrenOf,
+  isCstNode
+} from './cst-node.js';
+import { pushParseTwinDiagnostics } from './parse-twins.js';
 import type {
   CollectDiagnosticsInput,
   CollectDiagnosticsResult,
@@ -296,12 +308,6 @@ const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
   ])
 };
 
-const RULESET_TYPES = new Set([
-  'Ruleset',
-  'NestedRuleset',
-  'RulesetWithExtends',
-  'NestedRulesetWithExtends'
-]);
 const MIXIN_DEFINITION_TYPES = new Set([
   'MixinDefinition',
   'MixinDefinitionRule',
@@ -317,11 +323,8 @@ const ATRULE_TYPES = new Set([
   'UnknownAtRuleBlock',
   'QueryAtRuleBlock'
 ]);
-const DECLARATION_TYPES = new Set(['Declaration']);
-const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
 const DIMENSION_TYPES = new Set(['Dimension']);
 const PERCENTAGE_TYPES = new Set(['Percentage']);
-const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
@@ -330,7 +333,6 @@ const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'St
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
 const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'PseudoSelectorComplex']);
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
-const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
 
 /* The css CST node holding a query feature's name (`Property`) and value (`QueryValue`) children. */
@@ -707,14 +709,6 @@ const ROOT_VISIT_CONTEXT_BASE = {
   allowResolutionXUnit: false
 };
 
-function isCstNode(c: CssCstChild): c is CssCstNode {
-  return c._tag === 'node';
-}
-
-function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
-  return node.rules;
-}
-
 function isQuotedCstNode(node: CssCstNode): boolean {
   return node.grammarType === 'Quoted';
 }
@@ -791,14 +785,6 @@ function propNameOf(slice: string): string {
   const colon = slice.indexOf(':');
   const head = colon >= 0 ? slice.slice(0, colon) : slice;
   return head.trim();
-}
-
-function absoluteStart(node: CssCstNode): number {
-  return Number(node.span.start);
-}
-
-function absoluteEnd(node: CssCstNode): number {
-  return Number(node.span.end);
 }
 
 function isWhitespaceOnly(source: string, start: number, end: number): boolean {
@@ -5513,60 +5499,7 @@ export function cstLintDiagnostics(
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
 
-    /*
-     * Less v5 removes executable backtick values, but the tolerant CST keeps the
-     * complete legacy construct as one node. Report from that node so editors
-     * underline exactly the removed expression and retain the rest of the tree.
-     * The compiler's strict AST entry throws the matching parser error before
-     * evaluation; this path is the non-halting editor/diagnostic twin.
-     */
-    if (language === 'less' && gt === 'BacktickJavaScript') {
-      pushDiagnostic(
-        'parse/unsupported-inline-javascript',
-        'error',
-        'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
-        node.span,
-        {
-          phase: 'parse',
-          reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
-          fix: 'Move it to a module loaded with @use.'
-        }
-      );
-    }
-
-    /*
-     * Shapes the strict Less AST rejects by name — a slash-led value (ledger
-     * P33) and an uncalled mixin reference (rejected today; ruling OPEN under
-     * P33) — are kept as nodes in the tolerant CST, so their twin is reported
-     * from the node.
-     */
-    if (language === 'less' && gt === 'LeadingSeparatorValue') {
-      pushDiagnostic(
-        'parse/leading-separator-value',
-        'error',
-        'A Less value cannot start with "/".',
-        node.span,
-        {
-          phase: 'parse',
-          reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
-          fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
-        }
-      );
-    }
-    if (language === 'less' && gt === 'UncalledMixinReference') {
-      const name = source.slice(start, end);
-      pushDiagnostic(
-        'parse/uncalled-mixin-reference',
-        'error',
-        'A mixin reference is not a value.',
-        node.span,
-        {
-          phase: 'parse',
-          reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
-          fix: `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`
-        }
-      );
-    }
+    pushParseTwinDiagnostics(node, gt, language, source, pushDiagnostic);
 
     /*
      * The strict AST raises the FIRST item a `;` makes invalid in a mixin list;

@@ -9,14 +9,16 @@ import { Compiler } from '../src/index.js';
  * the dialect gives it a meaning in that position:
  *
  * - Less reads `=`, `<` and `>` in a call argument as its comparison (V11), so
- *   a single comparison evaluates (`gradient(startColorstr='#000')` →
- *   `gradient(false)`, as `alpha(opacity=50)` → `alpha(false)`).
+ *   a single comparison evaluates (`alpha(opacity=50)` → `alpha(false)`).
  * - SCSS reads `==` in a call argument as its comparison.
  *
  * Where a dialect's meaning is not settled by a ruling — a chained comparison
  * (`a=b=c`, `a = b < c`), a spelling the dialect has no operator for (`==` in
  * Less), or a delim in a Less declaration value — the run is written as
  * authored.
+ *
+ * A `progid:` filter is such a run too; it parses, and then fails the compile
+ * as legacy IE syntax (`legacy-ie-syntax.test.ts`).
  */
 type Dialect = 'css' | 'less' | 'scss' | 'jess';
 
@@ -31,8 +33,6 @@ async function value(dialect: Dialect, authored: string): Promise<string> {
   return css.slice(css.indexOf('x: ') + 3, css.lastIndexOf(';'));
 }
 
-const PROGID = 'progid:DXImageTransform.Microsoft.gradient(startColorstr=\'#000\', endColorstr=\'#fff\')';
-
 const DECLARATION_RUNS = [
   'a=b',
   'a = b',
@@ -40,8 +40,8 @@ const DECLARATION_RUNS = [
   'a ~ b',
   'a=b c~d',
   'a=b, c~d',
-  'progid:DX.Microsoft.Blur(pixelradius=2)',
-  PROGID
+  'a:b.c',
+  'a.b:c(d=e=f)'
 ];
 
 const ARGUMENT_RUNS = [
@@ -62,18 +62,8 @@ describe('a delim between declaration components', () => {
     expect(await value('jess', authored)).toBe(authored);
   });
 
-  it.each(DECLARATION_RUNS.slice(0, 6))('less: writes %s as authored', async (authored) => {
+  it.each(DECLARATION_RUNS.slice(0, 7))('less: writes %s as authored', async (authored) => {
     expect(await value('less', authored)).toBe(authored);
-  });
-
-  it('less: a progid filter\'s call compares its `=` arguments, as `alpha()` does', async () => {
-    expect(await value('less', PROGID)).toBe('progid:DXImageTransform.Microsoft.gradient(false, false)');
-    expect(await value('less', 'progid:DX.Microsoft.Blur(pixelradius=2)')).toBe('progid:DX.Microsoft.Blur(false)');
-  });
-
-  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: a progid filter as the filter property', async (dialect) => {
-    const css = await render(dialect, `a { filter: ${PROGID}; }`);
-    expect(css).toContain('filter: progid:DXImageTransform.Microsoft.');
   });
 });
 

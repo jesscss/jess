@@ -182,6 +182,8 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
+import { assertNoLegacyIeSyntax } from './legacy-ie-syntax.js';
+import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
@@ -201,8 +203,8 @@ import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, 
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
-import { JessError, type TreeContextLike } from '../error/jess-error.js';
-import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from '../error/code-frame.js';
+import { JessError } from '../error/jess-error.js';
+import { lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
@@ -8715,27 +8717,6 @@ function moduleLoadFailed(statement: ModuleImport, e: Lane): (error: unknown) =>
 }
 
 /**
- * Source position of a node, for a diagnostic that points at it. The diagnostic
- * keeps the file object, which says where the authored file sits in the parsed
- * text, so its code frame counts lines as `lineColAt` does (ledger O16). A node
- * in text the host injected around the file is counted in the prepared text and
- * says so ({@link fileAt}).
- */
-function callSiteLocation(node: object, s: Pick<EvalSession, 'context'>): { ctx: TreeContextLike; line?: number; column?: number; note?: string } {
-  const authored = s.context?.sourceContext?.file;
-  const source = authored?.source;
-  const span = source === undefined ? undefined : sourceSpanOf(node);
-  if (source === undefined || span === undefined) {
-    return { ctx: { file: authored } };
-  }
-  const file = fileAt(authored!, source, span.start);
-  const location = lineColAt(source, span.start, file);
-  return file === authored
-    ? { ctx: { file }, line: location.line, column: location.column }
-    : { ctx: { file }, line: location.line, column: location.column, note: INJECTED_TEXT_NOTE };
-}
-
-/**
  * Surface one `less.logger` record from a legacy plugin as a real diagnostic at
  * the call site. A plugin that reports a problem must not do so into a void.
  */
@@ -9046,7 +9027,7 @@ function writtenBlockBody(
   const items: Array<Entry | MaybePromise<string>> = [];
   const addDeclaration = (rule: Declaration, frame: Frame, important: boolean): void => {
     recordPropertyDeclaration(bodyFrame, rule, frame);
-    assertDeclarationValueIsNotRuleset(rule, frame, e);
+    assertWrittenDeclaration(rule, frame, e);
     const sink = { elided: false };
     const value = evalBytes(rule.value, frame, deriveLane(e, 'elide', sink));
     const key = rule.merge !== null && typeof rule.name === 'string' ? rule.name : null;
@@ -12650,11 +12631,13 @@ function evaluateLeafStatement(
 
   const parts = nestedPropertyDeclarations(node);
   if (parts === null) {
+    assertNoLegacyIeSyntax(node, e.s);
     recordPropertyDeclaration(propertyScope, node, frame);
     place({ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
     return;
   }
   for (const part of parts) {
+    assertNoLegacyIeSyntax(part, e.s);
     recordPropertyDeclaration(propertyScope, part, frame);
     place({ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
   }
@@ -18194,6 +18177,12 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: Lane): ValueBl
     return undefined;
   }
   return undefined;
+}
+
+/** A declaration of a ruleset written out as a value (P37): legacy IE syntax (P47), then a ruleset value. */
+function assertWrittenDeclaration(node: Declaration, frame: Frame, e: Lane): void {
+  assertNoLegacyIeSyntax(node, e.s);
+  assertDeclarationValueIsNotRuleset(node, frame, e);
 }
 
 /** An anonymous mixin is callable, not a CSS declaration value. Jess collection

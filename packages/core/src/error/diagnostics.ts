@@ -951,6 +951,19 @@ export const ERR = {
     });
   },
 
+  /**
+   * Legacy Internet Explorer syntax — a `progid:` value or a `name=value` call
+   * argument — parsed as balanced CSS and is then an error (owner 2026-10-16:
+   * "parsed fine, but then errored").
+   */
+  legacyIeSyntax(args: Common & { meta: { what: string; fix: string } }) {
+    return makeJessError({
+      code: 'css/legacy-ie-syntax',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   // Plugin
   /**
    * A plugin reached for an API this compiler deliberately does not provide

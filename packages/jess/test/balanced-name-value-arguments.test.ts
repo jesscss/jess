@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
 
 /**
- * `alpha(opacity=50)` is well-formed CSS: a function holding an ident, a `=`
- * delim and a number, as balanced component values (css-syntax-3 §5.4.9).
- * Owner 2026-10-16: *"we should be more permissive around valid / balanced
- * syntax"*, and in `.jess` *"it would be preserved as-is"*. So `.css`, `.scss`
- * and `.jess` parse it and write it exactly as authored, glued or padded.
- * dart-sass reads the same argument as its Microsoft `name=value` form and also
- * writes it out (it drops the padding: `c = 2` becomes `c=2`). Less reads `=`
- * as its ordinary comparison (owner-ruled), so `alpha(opacity=50)` is
+ * A `=` delim in a function argument is well-formed CSS: balanced component
+ * values (css-syntax-3 §5.4.9). Owner 2026-10-16: *"we should be more
+ * permissive around valid / balanced syntax"*, and in `.jess` *"it would be
+ * preserved as-is"*. So `.css`, `.scss` and `.jess` parse it and write it
+ * exactly as authored, glued or padded. An argument that is exactly an
+ * identifier, `=` and one value (`alpha(opacity=50)`) is legacy IE syntax: it
+ * parses and then fails the compile (`legacy-ie-syntax.test.ts`). Less reads
+ * `=` as its ordinary comparison (owner-ruled), so `alpha(opacity=50)` is
  * `alpha(false)` there.
  *
  * A query range comparison (`@media (width=600px)`) is a real comparison in
@@ -30,16 +30,14 @@ async function value(dialect: Dialect, authored: string): Promise<string> {
 }
 
 const AS_WRITTEN = [
-  'alpha(opacity=50)',
-  'foo(b=1, c = 2)',
   'foo(a=b=c)',
-  'foo(bar(x=1))',
-  'foo(a /* c */ = b)',
+  'foo(a = b = c)',
+  'foo(a /* c */ = b = c)',
   'foo(a b=c d)',
+  'foo(bar(x=y=1))',
   'foo("a"=b)',
   'foo("=")',
-  'foo(x, "=")',
-  'gradient(startColorstr=\'#000\', endColorstr=\'#fff\')'
+  'foo(x, "=")'
 ];
 
 describe('a `=` delim in a function argument', () => {
@@ -49,27 +47,14 @@ describe('a `=` delim in a function argument', () => {
     });
   }
 
-  it('css: writes a progid filter as authored', async () => {
-    const authored = 'progid:DXImageTransform.Microsoft.gradient(startColorstr=\'#000\', endColorstr=\'#fff\')';
-    expect(await value('css', authored)).toBe(authored);
-  });
-
   for (const dialect of ['css', 'scss', 'jess'] as const) {
     it(`${dialect}: keeps a glued \`=\` glued in compressed output`, async () => {
-      expect(await render(dialect, 'a { x: alpha(opacity=50); y: foo(b=1, c = 2); }', true)).toBe('a{x:alpha(opacity=50);y:foo(b=1,c = 2)}');
+      expect(await render(dialect, 'a { x: foo(a=b=c); y: foo(b, c = d = 2); }', true)).toBe('a{x:foo(a=b=c);y:foo(b,c = d = 2)}');
     });
   }
 
   it('scss: a keyword argument whose value is a string `=` stays a keyword argument', async () => {
     expect(await render('scss', '@function f($a) { @return $a; }\na { x: f($a: "="); }')).toContain('x: "=";');
-  });
-
-  it('scss: evaluates a variable beside the `=`', async () => {
-    expect(await render('scss', '$o: 50;\na { x: alpha(opacity=$o); }')).toContain('x: alpha(opacity=50);');
-  });
-
-  it('jess: evaluates a variable beside the `=`', async () => {
-    expect(await render('jess', '$o: 50;\na { x: alpha(opacity=$o); }')).toContain('x: alpha(opacity=50);');
   });
 });
 
@@ -129,10 +114,9 @@ describe('css: an operator delim between components is spaced (F1)', () => {
   });
 
   it.each([
-    'alpha(opacity=50)',
+    'foo(a=b=c)',
     'a~b',
     'foo(:x)',
-    'progid:DX.Microsoft.Blur(pixelradius=2)',
     'calc(1px + 2px)'
   ])('keeps %s as authored', async (authored) => {
     expect(await value('css', authored)).toBe(authored);
@@ -147,6 +131,6 @@ describe('css: an operator delim between components is spaced (F1)', () => {
   });
 
   it('compressed output keeps the spaced separator and the glued delims', async () => {
-    expect(await render('css', 'a { x: a+b; y: alpha(opacity=50); z: a~b; }', true)).toBe('a{x:a + b;y:alpha(opacity=50);z:a~b}');
+    expect(await render('css', 'a { x: a+b; y: foo(a=b=c); z: a~b; }', true)).toBe('a{x:a + b;y:foo(a=b=c);z:a~b}');
   });
 });

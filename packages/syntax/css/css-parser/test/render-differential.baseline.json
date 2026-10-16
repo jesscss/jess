@@ -10,12 +10,12 @@
     "bootstrapVersion": "5.3.8"
   },
   "counts": {
-    "ok": 65,
+    "ok": 64,
     "reject": 56,
-    "emitError": 0
+    "emitError": 1
   },
-  "emittedBytes": 609226,
-  "aggregate": "ab5a0395ca5b58912615ed6daa5969a316befb31b114a8d917579fa546cb8566",
+  "emittedBytes": 609103,
+  "aggregate": "197116ef0e0f85c4fabd69a25cd25edf3972ed04c6e028b3b35e718946d02b59",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -655,9 +655,9 @@
     },
     "repo/packages/syntax/css/css-parser/test/css/ie-progid.css": {
       "bucket": "repo",
-      "status": "ok",
-      "bytes": 123,
-      "fingerprint": "dcb491f74740469a"
+      "status": "emitError",
+      "bytes": null,
+      "fingerprint": "29253e530f43f925"
     },
     "repo/packages/syntax/css/css-parser/test/css/important.css": {
       "bucket": "repo",

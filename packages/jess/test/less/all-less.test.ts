@@ -329,7 +329,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/ie-filters-REMOVED/legacy/ie-filters.less',
-    'legacy IE progid:DXImageTransform filter syntax has no meaning of its own: it parses as a CSS run (ledger N18), and the call\'s `name=value` arguments are Less comparisons (V11), so `Alpha(opacity = 20)` renders `Alpha(false)` where the golden keeps the IE form'
+    'legacy IE progid:DXImageTransform filter syntax parses as a CSS run (ledger N18) and then fails the compile with css/legacy-ie-syntax (owner 2026-10-16: "parsed fine, but then errored"), where the golden keeps the IE form'
   ],
   [
     'tests-unit/functions/legacy/functions.less',
@@ -443,6 +443,7 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
   ['tests-config/debug/all/linenumbers-all.less', 'deprecation/dump-line-numbers-option'],
   ['tests-config/debug/comments/linenumbers-comments.less', 'deprecation/dump-line-numbers-option'],
   ['tests-config/debug/mediaquery/linenumbers-mediaquery.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-unit/ie-filters-REMOVED/legacy/ie-filters.less', 'css/legacy-ie-syntax'],
   ['tests-config/math-always/mixins-guards.less', 'parse/syntax-error'],
   ['tests-config/math-always/no-sm-operations.less', 'parse/unsupported-variable-name'],
   ['tests-config/math-parens-division/new-division.less', 'parse/syntax-error']

@@ -377,6 +377,37 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
+    /* The compiler's `css/legacy-ie-syntax` error, at the same place: the declaration (owner 2026-10-16). */
+    it.each([
+      ['css', 'a {\n  filter: alpha(opacity=50);\n}\n'],
+      ['scss', 'a {\n  filter: alpha(opacity=50);\n}\n'],
+      ['jess', 'a {\n  filter: alpha(opacity=50);\n}\n'],
+      ['css', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n'],
+      ['less', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n'],
+      ['scss', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n'],
+      ['jess', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n']
+    ])('reports legacy IE syntax (%s: %s) at the declaration', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/legacy-ie-syntax');
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(diagnostics[0]!.message.startsWith('Legacy IE syntax is not supported')).toBe(true);
+      expect(diagnostics[0]!.range.start).toEqual({ line: 1, character: 2 });
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'parse/parser')).toBe(false);
+    });
+
+    it('does not report a Less `=` comparison in a call argument as legacy IE syntax', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', 'a {\n  filter: alpha(opacity=50);\n}\n');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/legacy-ie-syntax')).toBe(false);
+    });
+
     it('recovers an unfinished Less backtick value at the declaration boundary', () => {
       const engine = createEngine();
       const input = '.legacy { value: `1 + 1; }\n.after { color: red; }';
