@@ -70,8 +70,8 @@ function runHasDirective(run) {
  *
  * JS block comments do not nest, so a run whose prose quotes a CSS comment
  * would otherwise END at that inner terminator and spill the remainder into the
- * code as syntax. This is not hypothetical: `packages/core/src/tree/any.ts`
- * documents a CSS value that embeds a comment, and wrapping it naively produced
+ * code as syntax. This is not hypothetical: the legacy engine's `any.ts`
+ * documented a CSS value that embeds a comment, and wrapping it naively produced
  * an unterminated string literal.
  *
  * The escape is the ordinary JS idiom — a backslash between the star and the

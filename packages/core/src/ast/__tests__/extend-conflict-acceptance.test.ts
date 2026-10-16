@@ -12,10 +12,9 @@ const render = (document: Stylesheet, collapseNesting = true): string | undefine
   serialize(document, { evaluator, collapseNesting }).css;
 
 /**
- * Element/ID conflict guard — ported from tree-v1 `partialWrapMayConflict`
- * (`packages/core/src/tree/extend/extend-index.ts:817`) and the acceptance cases in
- * `packages/core/src/tree/util/__tests__/extend-duplicate-validation.test.ts` /
- * `extend-selector-algorithm.test.ts:9-37`.
+ * Element/ID conflict guard — ported from tree-v1 `partialWrapMayConflict` and
+ * its acceptance cases (`extend-duplicate-validation.test.ts` /
+ * `extend-selector-algorithm.test.ts`, deleted with the legacy engine).
  *
  * A partial `:is()`-wrap that would place a SECOND element type or a SECOND id into
  * one compound context is INVALID CSS. Extend must REJECT it — the matched branch

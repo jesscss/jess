@@ -1,6 +1,5 @@
 /**
- * Shared CSS named-color table for the tree2 VALUE domain — the boundary-clean
- * twin of `tree/util/color-names.ts`. Maps a CSS color keyword (`red`,
+ * Shared CSS named-color table for the tree2 VALUE domain. Maps a CSS color keyword (`red`,
  * `cornflowerblue`, …) plus `transparent` to `[r, g, b]` + `alpha`, so a
  * `LIT_COLOR_NAMED` literal can MATERIALIZE to a `Color` value when it is
  * operated on (`lighten(red, 10%)`, `iscolor(blue)`, …). Un-operated named
@@ -23,7 +22,7 @@ export interface NamedColor {
 /**
  * Resolve a CSS color keyword to rgb + alpha, or `undefined` for a non-color
  * identifier (so callers fall through to a plain keyword). `transparent` is the
- * one keyword with alpha 0. Byte-identical to `tree/util/color-names.ts`.
+ * one keyword with alpha 0.
  */
 export function namedColor(name: string): NamedColor | undefined {
   const key = name.toLowerCase();

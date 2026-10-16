@@ -1,18 +1,8 @@
-import type {
-  AtRule,
-  Ruleset,
-  Rules,
-  Node,
-  Any,
-  AtRuleStatement,
-  Selector,
-  Nil
-} from './tree/index.js';
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { TriviaMap } from './types/index.js';
-import type { ApplySelectorKind, CollapseNesting, ExtendSelectorKind, OutputOptions } from './types/config.js';
+import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
@@ -34,25 +24,6 @@ import {
   warnCodeMatchesAny,
   makeSuppressionSummary
 } from './warnings.js';
-import type { Call } from './tree/call.js';
-import { BitSetLibrary } from './util/bitset.js';
-import type { PrintOptions } from './tree/util/print.js';
-
-/**
- * The single-pass emit visitor contract (design §6.1/§6.6). `enter` receives the
- * resolved output node and either returns void (inspect / invisibly annotate: the
- * node is emitted unchanged) or returns a new node (an output-affecting replace:
- * a fresh transient serialized in place, never mutating the shared canonical node
- * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame: the node is already
- * resolved. `exit` (optional) fires after the node's children, kept solely for the
- * `inline-urls` enter/exit proof (§6.6).
- */
-export type EmitVisitorEnter = (node: Node) => Node | void;
-export type EmitVisitorExit = (node: Node) => void;
-export interface EmitVisitor {
-  enter: EmitVisitorEnter;
-  exit?: EmitVisitorExit;
-}
 
 /** Extensions of script modules and executable `@plugin` scripts. */
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
@@ -255,8 +226,8 @@ export interface ContextOptions {
 
   /**
    * Per-tree transient serialization data threaded from the parser (source-anchored
-   * comment/whitespace runs). Seeded onto the render {@link Context} (and per-tree
-   * {@link TreeContext}) and read back at emit time.
+   * comment/whitespace runs). Seeded onto the render {@link Context} and read
+   * back at emit time.
    */
   trivia?: TriviaMap;
 
@@ -270,7 +241,7 @@ export interface ContextOptions {
 /**
  * The flat, fully-resolved option set read on the eval fast path. Every field is
  * present (no `undefined`), so a read-site is a single property access —
- * `context.options.unitMode` — with no `?? treeContext ?? default` chain and
+ * `context.options.unitMode` — with no `?? document ?? default` chain and
  * no per-read merge. Resolved once per document when the document is parsed
  * (its policy), and shared by every document that resolves to the same values;
  * entering a document swaps one pointer, so no cost is paid on an option read.
@@ -417,11 +388,6 @@ export class DocumentContext {
     this.file = opts.file;
     this.plugin = opts.plugin;
   }
-
-  /** @internal Replace the cached pointer when a legacy TreeContext is attached. */
-  replaceResolvedOptions(options: Readonly<ResolvedOptions>): void {
-    this._options = options;
-  }
 }
 
 /** Attach canonical-document trivia without changing the public class declaration. */
@@ -440,36 +406,12 @@ export function documentTriviaOf(context: DocumentContext): TriviaMap | undefine
   })[DOCUMENT_TRIVIA];
 }
 
-/** The source facts shared by canonical documents and retained legacy trees. */
+/** The source facts of the active canonical document. */
 export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
 type DiagnosticFile = NonNullable<DocumentContextOptions['file']>;
 
 function isAsyncDocumentWork<T>(value: T | Promise<T>): value is Promise<T> {
   return value instanceof Promise;
-}
-
-export interface TreeContextOptions extends DocumentContextOptions {
-  inlineJavaScript?: boolean;
-
-  scope?: Rules;
-
-  /**
-   * Transient per-tree flag: emit a value-level source map for this tree (scalar
-   * POC). Set by the plugin when output maps are requested.
-   */
-  sourceMap?: boolean;
-
-  /** Per-tree selector key-set library shared by selectors of this tree. */
-  selectorBits?: BitSetLibrary<string>;
-
-  /** Plugin-supplied output policy carried on the tree (read via print/emit options). */
-  collapseNesting?: CollapseNesting;
-
-  /** Plugin-supplied allow-list of extend selector kinds. */
-  allowExtendSelectors?: ExtendSelectorKind[];
-
-  /** Plugin-supplied allow-list of Jess `$apply` selector kinds. */
-  allowApplySelectors?: ApplySelectorKind[];
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
@@ -490,44 +432,6 @@ export const generateId = (length = 8) => {
 };
 
 /**
- * Tree context is attached to each node
- * during the parsing phase / AST creation.
- *
- * Each file (and hence, tree) will get a new tree
- * context. For the most part, it is passed around
- * as an object reference.
- *
- * Additionally, it sets options that may be
- * unique to the tree, such as the math mode.
- */
-export class TreeContext extends DocumentContext {
-  /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
-  opts: Omit<TreeContextOptions, 'isModule' | 'file' | 'plugin'>;
-
-  constructor(opts: TreeContextOptions = {}) {
-    /*
-     * Resolve the file-level options once (no compile context yet — the eval
-     * Context folds that in on attach). Structural identity stays on the
-     * instance; every other unknown key is transient `opts` data.
-     */
-    super(resolveOptions(opts), opts);
-    const { isModule, file, plugin, ...rest } = opts;
-    void isModule;
-    void file;
-    void plugin;
-    delete rest.mathMode;
-    delete rest.unitMode;
-    delete rest.functionMode;
-    delete rest.allowLeakyScope;
-    delete rest.leakyScope;
-    delete rest.allowCallerScope;
-    delete rest.bubbleRootAtRules;
-    delete rest.processImports;
-    this.opts = rest;
-  }
-}
-
-/**
  * This is the context object used for evaluation.
  *
  * @note
@@ -539,7 +443,6 @@ export class Context {
   readonly opts: Omit<ContextOptions, keyof ResolvedOptions>
     & Readonly<Pick<ContextOptions, keyof ResolvedOptions>>;
 
-  private _treeContext: TreeContext | undefined;
   private _documentContext: DocumentContext | undefined;
 
   /** Each distinct resolved policy once, so documents that agree share one object. */
@@ -565,7 +468,7 @@ export class Context {
    * Flat, fully-resolved options for the currently-active source context — the one
    * place to read a resolved option (`context.options.unitMode`). Every field is
    * present, so there is no `??` and no per-read merge. Context source switches
-   * keep it shared with the active tree/document context;
+   * keep it shared with the active document context;
    * consumers must not assign it directly. See {@link ResolvedOptions}.
    */
   private _options: Readonly<ResolvedOptions>;
@@ -595,33 +498,6 @@ export class Context {
   /** Dialect-owned function capability for canonical AST rendering. */
   pluginHost?: PluginHost;
 
-  /**
-   * The active file's tree context. Assigning it (at import entry/exit and
-   * ruleset scope changes) recomputes `options` once and shares the resulting
-   * object with the tree context, so the fast-path reads that follow are plain
-   * field accesses.
-   */
-  get treeContext(): TreeContext | undefined {
-    return this._treeContext;
-  }
-
-  set treeContext(tc: TreeContext | undefined) {
-    this._treeContext = tc;
-
-    /*
-     * The active document's policy is final (C19). Otherwise fold the
-     * compile-level options over the tree's own, once. Either way SHARE the
-     * result: `context.options` and `tc.options` become the same object, so eval
-     * (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
-     * hit one resolved set with nothing left to merge. Idempotent on re-entry
-     * (compile ?? already-folded === already-folded).
-     */
-    this._options = this._documentContext?.options ?? resolveOptions(this.opts, tc?.options);
-    if (tc) {
-      tc.replaceResolvedOptions(this._options);
-    }
-  }
-
   /** Active canonical AST source identity, independent of legacy tree state. */
   get documentContext(): SourceContext | undefined {
     return this._documentContext;
@@ -638,7 +514,7 @@ export class Context {
 
   /** Active source facts for resolver, diagnostics, and file-reading consumers. */
   get sourceContext(): SourceContext | undefined {
-    return this._documentContext ?? this._treeContext;
+    return this._documentContext;
   }
 
   private pluginCacheKey(plugin: PluginInterface | undefined): string {
@@ -999,28 +875,6 @@ export class Context {
     }
   }
 
-  /**
-   * A feature ported from Less - we suppress any `@charset`
-   * after the first one.
-   */
-  currentCharset?: Any | AtRuleStatement;
-
-  /** Track whether charset has been emitted during toString to avoid duplicates */
-  charsetEmitted?: boolean;
-
-  /** @import rules must be at the top of CSS output */
-  topImports?: Node[];
-
-  /**
-   * This is set when entering rulesets so child nodes can look up values in
-   * their containing rule context. Current Jess source uses `$name` for live
-   * lookup and `$^name` for scoped lookup; the old `$!name` spelling is retired.
-   */
-  rulesContext?: Rules;
-
-  /** Entire context root (ultimate root) */
-  root!: Rules;
-
   /** Canonical parsed document for the AST-v2 execution route. */
   document?: Stylesheet;
 
@@ -1040,130 +894,6 @@ export class Context {
    */
   private readonly documentBodyContexts = new WeakMap<object, DocumentContext>();
 
-  /** Set so that we can do ruleset selector lookup for extend */
-  treeRoot!: Rules;
-  allRoots: Rules[] = [];
-
-  /** The call that is currently being evaluated */
-  caller?: Call;
-
-  /**
-   * Spine mixin-fold sink (cutover P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3).
-   * When set by the emit-walk spine before it drives a mixin CALL's resolution,
-   * the callable terminal (`evaluateCallableCandidateOutput`) skips the
-   * `rules.eval()` output-tree build and instead hands the emit-walk driver the
-   * guard-passed BOUND SURFACE (shared body children + the wired live-cell param
-   * frame) so it can descend it INLINE to the writer emit-walk already holds — no
-   * output tree, no `mixinOutputSlot`, no `Rules.derive`. Returning `false` from
-   * the sink signals "not a spine-simple shape" so the terminal falls back to the
-   * eval path for THAT candidate (byte-identical transition; the eval terminal
-   * dies in P4). Scoped save/restore around the drive — undefined on the eval path
-   * so the terminal is unchanged there.
-   */
-  spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules, candidateIsMixin: boolean) => boolean;
-
-  /**
-   * Set by the spine root descent (`_emitRulesBody`) around the render of a
-   * document-ROOT-level mixin CALL. When the callable terminal builds that call's
-   * output tree it consults this flag: an output that drops a bare property
-   * `Declaration` at the document root is invalid ("Properties must be inside
-   * selector blocks") — the same rejection the eval path's `checkValidNodes`
-   * (`isRoot && fromCallOutput`) makes. The spine emits call output as text inline
-   * (no post-eval output tree to walk), so the check moves to the single fold/eval
-   * drive. Scoped save/restore around the root call render; unset for a call nested
-   * inside a selector container (where a folded property is legal).
-   */
-  spineRootCallEmit?: boolean;
-
-  /**
-   * LEAKY forward-propagation (spine): the SOURCE root Rules whose body is
-   * currently emitting a root-level mixin call. Its scope frame is the caller
-   * frame a leaked `@x: …` mixin-body var must inject into so a later root sibling
-   * ruleset resolves it. Captured at the root emit site (where `this === root`)
-   * because `context.root` is reassigned during the call's nested eval. Set only
-   * alongside {@link spineRootCallEmit}; undefined for a nested call.
-   */
-  spineRootCallEmitFrame?: Rules;
-
-  /**
-   * The spine descent (`renderRootViaSpine`) has already established the document
-   * root on `context.root` — no `Rules.eval` frame for the real root sits on
-   * `rulesEvalStack`. A DETACHED-RULESET body (or mixin surface) evaluated INSIDE
-   * the fold reaches `_evalPreparedRules` as the FIRST `Rules.evalNode`, so its
-   * `rulesEvalStack.length === 1` "am I the outermost root?" heuristic fires and
-   * would REASSIGN `context.root` to that nested body — clobbering the real root's
-   * built-in function registry (`findFunction`'s dead-end fallback then misses, so
-   * `length(@list)` emits raw). The eval path never trips this: it pushes the real
-   * root first, so a nested body sees stack length ≥2. This flag lets the nested
-   * eval skip the reassignment when the spine owns the root. Undefined on the eval
-   * path (zero-cost, unchanged there). Scoped save/restore around the spine descent.
-   */
-  spineOwnsRoot?: boolean;
-
-  /**
-   * Generic single-pass emit visitors (design §6). An ordered, initially-empty
-   * list of `(node) => Node | void` hooks (with an optional `exit`) fired at each
-   * resolved output node's emit moment. The list being empty is the zero-cost
-   * common case (§6.5 / §4.0-style gate): emit checks `emitVisitors === undefined`
-   * and skips all hook machinery. `node` is the resolved output node: no ctx, no
-   * frame (§6, decision table). Native Jess visitors and the less-compat bridge
-   * (registered only when at least one real Less visitor exists, not built here)
-   * coexist as plain list entries; core owns no chaining / remove / abort /
-   * per-type dispatch.
-   *
-   * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
-   */
-  emitVisitors?: EmitVisitor[];
-
-  /**
-   * The active single-pass spine `+:`/`+_:` merge plan for the body currently
-   * being emitted (design §merge). Keyed by source declaration node → its
-   * coalesced-value anchor / suppress verdict. Installed by `withSpineMergePlan`
-   * for the duration of a body descent and restored on exit, so a `$prop`
-   * Reference resolved MID-emit reads the coalesced merge value (the anchor's
-   * combined value) rather than the last merge sibling's own truncated value.
-   *
-   * Undefined (the common case) on any body with no merge-flagged declaration —
-   * the reference read fast-bails on the undefined check before touching it, so
-   * the non-merge path pays nothing.
-   */
-  spineMergePlan?: import('./tree/util/spine-merge.js').SpineMergePlan;
-
-  /**
-   * Append a generic emit visitor (design §6.5). Deterministic registration
-   * order; the pass threads each node through `enter` (`shape = enter(shape) ??
-   * shape`) and fires `exit` (if registered) after the node's children. No
-   * auto-registration — the list stays undefined (zero-cost) until a caller
-   * registers.
-   */
-  registerEmitVisitor(enter: EmitVisitorEnter, options?: { exit?: EmitVisitorExit }): void {
-    (this.emitVisitors ??= []).push({ enter, exit: options?.exit });
-  }
-
-  /**
-   * Depth-first document order of each Ruleset (assigned once per root before eval).
-   * Used so processExtends can apply extends in true source order.
-   */
-  documentOrderByRuleset?: WeakMap<Ruleset, number>;
-
-  /**
-   * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
-   */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
-
-  /**
-   * When doing any kind of lookup, the current node and resolved
-   * nodes in the search chain are added to prevent recursion errors.
-   *
-   * We use a set here because we look it up for filtering.
-   * Also used to track mixins currently being evaluated to prevent infinite recursion.
-   */
-  private _searchScope: Set<Node> | undefined;
-  get searchScope() {
-    return (this._searchScope ??= new Set());
-  }
-
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
@@ -1173,8 +903,6 @@ export class Context {
   id = generateId();
   ruleCounter = 1;
 
-  selectorBits = new BitSetLibrary<string>();
-
   /** Rules depth, used to figure out source order */
   depth = -1;
 
@@ -1182,29 +910,6 @@ export class Context {
   get classMap() {
     return (this._classMap ??= new Map());
   }
-
-  private _printState: PrintOptions | undefined;
-  get printState() {
-    return (this._printState ??= { context: this });
-  }
-
-  /** Frames for nested rulesets, used for selector evaluation */
-  rulesetFrames: Ruleset[] = [];
-
-  /**
-   * Spine-mode (P1 §2, ampersand-append fold) resolved-selector side-channel. Maps a
-   * SOURCE ruleset frame node to the CONCRETE selector the spine resolved for it at
-   * ruleset-enter. `Ampersand.evalNode` reads this before the raw `frame.selector` so a
-   * nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`) composes each level against the
-   * RESOLVED parent (`.a-b`), not the raw authored `&-b`. This reproduces the eval
-   * pass, which pushes the resolved OUTPUT node onto `rulesetFrames` — without mutating
-   * the shared canonical source node (the output-affecting-resolution invariant). Set +
-   * cleared per frame push/pop by `serializeSpineFrameContainer`.
-   */
-  spineResolvedFrameSelector: WeakMap<Ruleset, Selector | Nil> | undefined;
-
-  /** Unified frames array for flat rendering when collapseNesting is true */
-  frames: (Ruleset | AtRule)[] = [];
 
   /**
    * We push a boolean to this array when entering a calc() call
@@ -1214,11 +919,6 @@ export class Context {
    * @todo - can't this just be a number?
    */
   calcFrames = 0;
-
-  private _callStack: Call[] | undefined;
-  get callStack() {
-    return (this._callStack ??= []);
-  }
 
   /**
    * Stack to track reference call chain for clearing matched keys at outermost level
@@ -1272,29 +972,9 @@ export class Context {
     this._referenceStack++;
   }
 
-  /**
-   * Stack to track when a value comes from an important declaration.
-   * The exact source leaf is carried when available so downstream render/public
-   * surfaces can preserve it instead of synthesizing a replacement flag node.
-   */
-  private _importantSourceStack: (Any<'flag'> | true)[] = [];
-  get hasImportantSource() {
-    return this._importantSourceStack.length > 0;
-  }
-
-  pushImportantSource(source?: Any<'flag'>) {
-    this._importantSourceStack.push(source ?? true);
-  }
-
-  popImportantSource() {
-    return this._importantSourceStack.pop();
-  }
-
   popReference() {
     this._referenceStack--;
   }
-
-  rulesEvalStack: Rules[] = [];
 
   /**
    * We push a boolean to this array when entering parens call
@@ -1322,15 +1002,11 @@ export class Context {
     /* The policy outside any document; entering a document swaps in its own. */
     this._options = this.policyFor(undefined, undefined);
     this.plugins = plugins ?? [];
-    if (opts.output?.compress !== undefined) {
-      this.printState.compress = opts.output.compress;
-    }
   }
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
-  evaldTrees = new Map<string, Rules>();
 
   /**
    * One document's policy (DESIGN-DECISIONS C19): the settings the host supplies
@@ -1398,8 +1074,7 @@ export class Context {
 
   /**
    * Run work with the source identity of a canonical AST document active.
-   * This is the AST-v2 equivalent of entering a legacy tree's TreeContext:
-   * the Context resolver, option cache, diagnostics and plugin priority all
+   * The Context resolver, option cache, diagnostics and plugin priority all
    * remain one session-owned path.
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {

@@ -71,10 +71,10 @@ When investigating bugs or failures, always use scientific principles to underst
 **Correct approaches:**
 - Use `cd` to change directory first: `cd packages/core && pnpm lint`
 - Use pnpm `--filter` flag from root: `pnpm --filter @jesscss/core lint`
-- Use relative paths from package directory: `cd packages/core && pnpm exec eslint src/tree/util/extend.ts`
+- Use relative paths from package directory: `cd packages/core && pnpm exec eslint src/ast/extend/match.ts`
 
 **DO NOT:**
-- Run from root with package paths: `pnpm exec eslint packages/core/src/tree/util/extend.ts` (may not work due to ignore patterns)
+- Run from root with package paths: `pnpm exec eslint packages/core/src/ast/extend/match.ts` (may not work due to ignore patterns)
 - Assume scripts work from root without proper context
 
 **Why:** Each package has its own `package.json` with scripts configured for that package's context. ESLint configs, build outputs, test configurations, and module resolution all expect execution from the package directory.

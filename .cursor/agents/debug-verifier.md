@@ -26,7 +26,7 @@ Follow `AGENTS.md` for repo-wide constraints while staying within this narrow ro
 
 The parent will tell you what to run. Examples of what they might say:
 
-- "Run the core extend baseline" → `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`
+- "Run the core extend baseline" → `cd packages/core && pnpm test -- --run src/ast/__tests__/extend src/ast/extend/__tests__`
 - "Run core extend then jess less test data" → extend command above, then `pnpm --filter @jesscss/core build` and `pnpm run test:less:test-data`
 - "Run the jess less fixtures" → build core then `pnpm run test:less:test-data`
 - "Run all core tests" → `cd packages/core && pnpm test -- --run`

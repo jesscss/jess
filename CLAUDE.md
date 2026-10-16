@@ -8,7 +8,7 @@
 ## 🎯 Auto-Select Rules (File-Specific)
 @.cursor/rules/debugging-state.mdc <!-- Applies to: .cursor/**, docs/state/** -->
 @.cursor/rules/domains/cli_app.mdc <!-- Applies to: packages/jess/** -->
-@.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/ast/**, packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
+@.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/ast/**, packages/core/src/**/__tests__/** -->
 @.cursor/rules/domains/docs.mdc <!-- Applies to: docs/**, packages/docs/**, README.md -->
 @.cursor/rules/domains/language_tooling.mdc <!-- Applies to: packages/editor/language-service/**, packages/editor/vscode/**, packages/editor/language-service-tests/** -->
 @.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/syntax/*/*-parser/**, packages/parser-shared/** -->
@@ -35,8 +35,7 @@
 @.cursor/rules/packages/style-resolver.mdc <!-- Applies to: packages/style-resolver/** -->
 @.cursor/rules/packages/vscode-extension.mdc <!-- Applies to: packages/editor/vscode/** -->
 @.cursor/rules/project-standards/RULE.mdc <!-- Applies to: .cursor/** -->
-@.cursor/rules/subtrees/core__extend.mdc <!-- Applies to: packages/core/src/tree/util/extend*.ts, packages/core/src/tree/util/**/extend-*.test.ts, packages/core/src/tree/__tests__/extend-*.test.ts, packages/core/src/tree/util/EXTEND_RULES.md, packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md -->
-@.cursor/rules/subtrees/core__tree.mdc <!-- Applies to: packages/core/src/tree/** -->
+@.cursor/rules/subtrees/core__extend.mdc <!-- Applies to: packages/core/src/ast/extend/**, packages/core/src/ast/__tests__/extend-*.test.ts -->
 @.cursor/rules/subtrees/jess__less_tests.mdc <!-- Applies to: packages/jess/test/less/**, packages/jess/test/fixtures/** -->
 @.cursor/rules/test-debugging.mdc <!-- Applies to: .cursor/** -->
 

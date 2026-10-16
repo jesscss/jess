@@ -1,11 +1,8 @@
 ---
 description: "Extend hotspot: selector matching/merging logic and its tests"
 globs:
-  - "packages/core/src/tree/util/extend*.ts"
-  - "packages/core/src/tree/util/**/extend-*.test.ts"
-  - "packages/core/src/tree/__tests__/extend-*.test.ts"
-  - "packages/core/src/tree/util/EXTEND_RULES.md"
-  - "packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md"
+  - "packages/core/src/ast/extend/**"
+  - "packages/core/src/ast/__tests__/extend-*.test.ts"
 ---
 
 # Extend hotspot
@@ -25,14 +22,11 @@ globs:
 
 ## Files
 
-- Implementation: `packages/core/src/tree/util/extend.ts`
-- Related helpers: `packages/core/src/tree/util/extend-helpers.ts`
-- Canonical docs (keep these small and current):
-  - `packages/core/src/tree/util/EXTEND_RULES.md`
-  - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
+- Implementation: `packages/core/src/ast/extend/` (`match.ts`, `solve.ts`, `plan.ts`, `emit.ts`, …)
+- Canonical behavior reference: `docs/architecture/core/EXTEND-SEMANTICS.md`
 - Tests:
-  - `packages/core/src/tree/util/__tests__/extend-*.test.ts`
-  - `packages/core/src/tree/__tests__/extend-*.test.ts`
+  - `packages/core/src/ast/__tests__/extend-*.test.ts`
+  - `packages/core/src/ast/extend/__tests__/`
 
 ## Debugging expectations
 
@@ -42,14 +36,14 @@ globs:
 - If extend debugging becomes an active multi-step session, record the focused
   baseline, pass/fail delta, hypothesis, and next step in `docs/state/PROJECT_STATE.md`.
 - If total extend failures increase, treat as regression: revert unproven changes first, then continue with new hypotheses.
-- Do not invent new extend semantics/features that are not in `EXTEND_RULES.md` or fixture docs.
+- Do not invent new extend semantics/features that are not in `EXTEND-SEMANTICS.md` or fixture docs.
 - Before proposing any behavior-changing hypothesis, map it to documented extend semantics; if it is not documented, stop and ask for human clarification.
 - If a failing test appears to require undocumented behavior, present input/expected/current and request user guidance before code changes.
 
 ## Useful commands
 
 - Core extend baseline:
-  - `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`
+  - `cd packages/core && pnpm test -- --run src/ast/__tests__/extend src/ast/extend/__tests__`
 - Suggested strict workflow:
   1) Run one focused failing case with `.only` or `-t`.
   2) Apply smallest fix.

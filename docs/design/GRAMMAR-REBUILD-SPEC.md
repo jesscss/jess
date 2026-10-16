@@ -259,7 +259,6 @@ when(...), otherwise(...))`: consume one broad token, route by the returned
 | parseman/oracle byte-identity gate (Stage 2 of the rewrite)        | `packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` + committed baseline at commit `a2911a491`            |
 | The un-awaited-assertion helper                                    | `test/expect-sync.ts` — repo root, **not** under `packages/` (§0.6.1)                                                  |
 | The `as any` detector                                              | `pnpm lint:absolute` (§0.6)                                                                                            |
-| The `tree/` cutover inventory                                      | [`../architecture/core/TREE-CUTOVER-SURFACE.md`](../architecture/core/TREE-CUTOVER-SURFACE.md) (§0.7)                  |
 | Removal of the dead `@jesscss/plugin-css`                          | `ls packages` — no such directory                                                                                      |
 
 The **language-service suite is green** (§8.4). Composition is **currently**
@@ -310,10 +309,7 @@ requirements):
    > which **is not checked in** — building or importing it is part of the first
    > unit that needs a perf claim.
 
-**One thing that does _not_ gate you.** The `tree/` cutover (§0.7) is a
-**parallel track** in `packages/core`. Three of its steps are mechanical and
-landable immediately; exactly one is semantic. It does not block grammar work
-and grammar work does not block it. Other agents are frequently live in
+**Coordinate in core.** Other agents are frequently live in
 `packages/core/src/ast/` and `docs/architecture/core/` — coordinate before
 editing there.
 
@@ -648,28 +644,10 @@ lint:absolute` (`package.json:67`, config `eslint.absolute.config.mjs`)
   `grammar/no-regex-outside-combinator`.
 - **Never merge or release a parseman PR.** That is the owner's, always.
 
-### 0.7 The `tree/` cutover — context, not a dependency
+### 0.7 The `tree/` cutover — done
 
-[`../architecture/core/TREE-CUTOVER-SURFACE.md`](../architecture/core/TREE-CUTOVER-SURFACE.md)
-inventories the deletion of `packages/core/src/tree/`. In one paragraph:
-`tree/` is **130** of core's ~180 non-test source files, and **235 of
-`@jesscss/core`'s 319 root exports are declared inside it** — 74% of the public
-API by name count, most of it fallen out of a single wildcard re-export. The
-`Context` step, which sounds like the hard one, is by the runtime-usage audit
-**delete 33 members and the 10 `tree/` imports, keep 73** — every deleted member
-is legacy-eval state, all 25 externally reachable members are already tree-free,
-so it is mechanical with zero external blast radius. **Exactly one step is
-semantic: the Sass map key model** (§1c of that document). Everything else is
-bookkeeping.
-
-This matters to a grammar agent only as context for why core's public surface is
-about to change underneath the AST constructors the grammars import. It is a
-parallel track. It does not gate the rebuild.
-
-> That document was measured at `04e245b56` and states that the
-> `internal-css-recognition` → `parser-shared` rename "had not landed at this
-> SHA", so its paths use the old name. **The rename has since landed**
-> (`a74131e8f`); read those paths accordingly.
+The legacy engine, `packages/core/src/tree/`, has been deleted. Core's public
+surface is the AST/value API the grammars already import.
 
 ---
 

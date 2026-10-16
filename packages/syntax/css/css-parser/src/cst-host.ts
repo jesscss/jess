@@ -95,7 +95,7 @@ const TYPE_NAMES: Record<string, CssCstType> = {
  * `Reference` was exactly that: every Less production carrying the name is a
  * two-or-more-atom `sequence` (`@` + name, `@@` + name, `$` + ident), so the
  * hook could never fire on it. `InterpolatedSelector` is not a grammar node
- * name at all — it survives only as a legacy `core/src/tree/` type — so no CST
+ * name at all — it was only a type of the deleted legacy engine — so no CST
  * node ever presents it.
  *
  * `Color` reaches every dialect only through an arm that carries a reducer (the

@@ -158,10 +158,7 @@ for (const script of [
 
   'verify:aggressive-cutting-review',
   'verify:node-copy-frontier',
-  'verify:materialization-frontier',
-  'verify:render-buffer-frontier',
-  'verify:binding-lookup-hot-paths',
-  'audit:node-creation'
+  'verify:materialization-frontier'
 ]) {
   run('pnpm', ['run', script]);
 }

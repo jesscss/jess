@@ -78,7 +78,7 @@ test('no-line-comments: flags `//`, exempts directives, converts runs to one blo
       /*
        * REGRESSION: a comment quoting a CSS value that embeds a comment used to
        * be wrapped blindly, which closed the block early and turned the rest of
-       * the prose into syntax. Real occurrence: packages/core/src/tree/any.ts.
+       * the prose into syntax. Real occurrence: the legacy engine's any.ts.
        * The terminator must come out escaped, and the result must still parse.
        */
       {

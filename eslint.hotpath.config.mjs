@@ -17,11 +17,6 @@
  *   packages/core/src/ast/**            the AST-v2 eval/serialize engine
  *   packages/syntax/<d>/<d>-parser/src  the four dialect parsers
  *
- * `packages/core/src/tree/**` is NOT scoped in. It is ~67k lines of legacy
- * slated for deletion in the AST-v2 cutover, and pinning an inventory of
- * hundreds of sites in dying code buys nothing and would have to be maintained
- * as that code is deleted. Findings there belong in the audit, not the gate.
- *
  * The four `grammar.ts` files ARE in scope but only for the rules that make
  * sense on an authored parseman macro declaration. `no-loop-invariant-accessor`
  * and `no-rescan-in-loop` are off for them: a combinator declaration is not a

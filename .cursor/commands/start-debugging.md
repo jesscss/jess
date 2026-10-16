@@ -8,8 +8,7 @@ You are starting a focused debugging session. Follow these steps. The **area** (
 - If the state file or the user mentions a relevant active plan file, read that too so you know baseline and order of attack.
 - For extend, prefer the canonical pointers:
   - `.cursor/rules/subtrees/core__extend.mdc`
-  - `packages/core/src/tree/util/EXTEND_RULES.md`
-  - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
+  - `docs/architecture/core/EXTEND-SEMANTICS.md`
 
 ## 2. Run the right baseline
 
@@ -17,7 +16,7 @@ Use **section 3** in PROJECT_STATE and the **current area** to choose what to ru
 
 | Area   | Typical baseline (from PROJECT_STATE §3) |
 |--------|------------------------------------------|
-| extend | `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend` |
+| extend | `cd packages/core && pnpm test -- --run src/ast/__tests__/extend src/ast/extend/__tests__` |
 | core   | From `packages/core`: `pnpm test -- --run` (or the path the user/plan specifies) |
 | jess   | After building core if needed: `pnpm --filter @jesscss/core build` then `pnpm run test:less:test-data` (or a single fixture – see packages/jess/test/less/README.md) |
 

@@ -18,46 +18,7 @@ const ordinaryCopyPattern = /\.copy\(/u;
 const ordinaryClonePattern = /\.clone\(/u;
 const loopEvalSurfaceCopyPattern = /return copyWithReusableLeaves\(node\);/u;
 const guardEvalCopyPattern = /\bcopyGuardForEval\b/u;
-const infrastructureFiles = new Set([
-  'packages/core/src/tree/node-base.ts',
-  'packages/core/src/tree/util/cloning.ts'
-]);
 const allowedOrdinaryClonePatterns = [
-  {
-    file: 'packages/core/src/tree/ampersand.ts',
-    pattern: /\bsuper\.clone\(/u
-  },
-  {
-    file: 'packages/core/src/tree/rules.ts',
-    pattern: /\bsuper\.clone\(/u
-  },
-  {
-    file: 'packages/core/src/tree/selector.ts',
-    pattern: /\bsuper\.clone\(/u
-  },
-  {
-    file: 'packages/core/src/tree/selector-pseudo.ts',
-    pattern: /\bsuper\.clone\(/u
-  },
-  {
-    /*
-     * For.clone / For.derive override bodies do shallow single-node clones of
-     * the structured pattern/iterable parts (committed object-reduction /
-     * live-binding architecture). Same category as the blessed super.clone(
-     * sites above; the override-body shape is `(n) => n.clone()` / `(n: Node)
-     * => n.clone()`, which the super.clone regex does not match.
-     */
-    file: 'packages/core/src/tree/control.ts',
-    pattern: /\bn(?:: Node\))?\s*=>\s*n\.clone\(\)/u
-  },
-  {
-    /*
-     * copySelectorTreeForExtend's structural selector.clone in the still
-     * load-bearing dying eval extend path.
-     */
-    file: 'packages/core/src/tree/util/extend.ts',
-    pattern: /\bselector\.clone\(\(child\)/u
-  },
   {
     /*
      * Not a jess tree node. runtime-worker.ts is the sandboxed Deno worker for
@@ -71,9 +32,6 @@ const allowedOrdinaryClonePatterns = [
   }
 ];
 const expectedRemaining = new Set();
-const expectedLoopEvalSurfaceCopies = new Set([
-  'packages/core/src/tree/control.ts'
-]);
 
 function getScanRoots() {
   if (!fs.existsSync(packagesDir)) {
@@ -110,19 +68,7 @@ function isCommentLine(line) {
     || trimmed.startsWith('/*');
 }
 
-function isBitSetCloneLine(relativeFile, line) {
-  return relativeFile === 'packages/core/src/util/bitset.ts'
-    || /\.keySet\.clone\(\)/u.test(line)
-    || /\.visibleKeySet\.clone\(\)/u.test(line)
-    || /\.requiredKeySet\.clone\(\)/u.test(line)
-    || /\bchildKeySet\.clone\(\)/u.test(line)
-    || /\b_bitset\.clone\(\)/u.test(line);
-}
-
 function isAllowedOrdinaryCloneLine(relativeFile, line) {
-  if (infrastructureFiles.has(relativeFile)) {
-    return true;
-  }
   return allowedOrdinaryClonePatterns.some(allowed => (
     allowed.file === relativeFile && allowed.pattern.test(line)
   ));
@@ -147,7 +93,7 @@ for (const scanRoot of getScanRoots()) {
       if (ordinaryCopyPattern.test(line)) {
         ordinaryCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
-      if (ordinaryClonePattern.test(line) && !isBitSetCloneLine(relative, line) && !isCommentLine(line)) {
+      if (ordinaryClonePattern.test(line) && !isCommentLine(line)) {
         ordinaryCloneMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
       if (loopEvalSurfaceCopyPattern.test(line)) {
@@ -168,26 +114,16 @@ for (const match of matches) {
 }
 
 const files = [...byFile.keys()].sort();
-const frontierFiles = files.filter(file => !infrastructureFiles.has(file));
+const frontierFiles = files;
 const unexpected = frontierFiles.filter(file => !expectedRemaining.has(file));
 const missingExpected = [...expectedRemaining].filter(file => !frontierFiles.includes(file));
-const unexpectedOrdinaryCopy = ordinaryCopyMatches
-  .filter(match => !infrastructureFiles.has(match.file));
+const unexpectedOrdinaryCopy = ordinaryCopyMatches;
 const unexpectedOrdinaryClone = ordinaryCloneMatches
   .filter(match => !isAllowedOrdinaryCloneLine(match.file, match.text));
-const unexpectedLoopEvalSurfaceCopies = loopEvalSurfaceCopyMatches
-  .filter(match => !expectedLoopEvalSurfaceCopies.has(match.file));
+const unexpectedLoopEvalSurfaceCopies = loopEvalSurfaceCopyMatches;
 const unexpectedGuardEvalCopies = guardEvalCopyMatches;
-const filesWithLoopEvalSurfaceCopies = new Set(loopEvalSurfaceCopyMatches.map(match => match.file));
-const missingLoopEvalSurfaceCopies = [...expectedLoopEvalSurfaceCopies]
-  .filter(file => !filesWithLoopEvalSurfaceCopies.has(file));
 
 console.log('Node copy frontier scan');
-console.log('');
-console.log('Infrastructure:');
-for (const file of files.filter(file => infrastructureFiles.has(file))) {
-  console.log(`- ${file}`);
-}
 console.log('');
 console.log('Expected remaining frontier:');
 for (const file of frontierFiles.filter(file => expectedRemaining.has(file))) {
@@ -195,12 +131,6 @@ for (const file of frontierFiles.filter(file => expectedRemaining.has(file))) {
   for (const match of byFile.get(file) ?? []) {
     console.log(`  ${match.line}: ${match.text}`);
   }
-}
-console.log('');
-console.log('Expected loop eval-surface child-copy seams:');
-for (const match of loopEvalSurfaceCopyMatches.filter(match => expectedLoopEvalSurfaceCopies.has(match.file))) {
-  console.log(`- ${match.file}`);
-  console.log(`  ${match.line}: ${match.text}`);
 }
 
 if (unexpected.length > 0) {
@@ -231,15 +161,6 @@ if (unexpectedGuardEvalCopies.length > 0) {
   for (const match of unexpectedGuardEvalCopies) {
     console.log(`- ${match.file}`);
     console.log(`  ${match.line}: ${match.text}`);
-  }
-  process.exitCode = 1;
-}
-
-if (missingLoopEvalSurfaceCopies.length > 0) {
-  console.log('');
-  console.log('Expected loop eval-surface child-copy seams with no remaining matches:');
-  for (const file of missingLoopEvalSurfaceCopies) {
-    console.log(`- ${file}`);
   }
   process.exitCode = 1;
 }

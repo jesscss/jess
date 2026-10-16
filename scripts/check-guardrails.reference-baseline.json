@@ -155,26 +155,6 @@
     "A URL with none is fetched as written, as Less 4.x does, and parsed in the importing document's language.",
     "A path that locates to a URL is never read: as in Less 4.x, these functions read local files only, so it is missing and `data-uri()` keeps its `url()` fallback."
   ],
-  "packages/core/src/tree/__tests__/extend-eval-integration.test.ts": [
-    "These assert exact CSS so core matches real Less behavior; Jess must pass these."
-  ],
-  "packages/core/src/tree/__tests__/extend-rules.test.ts": [
-    "The extend is a no-op (the target IS the subject), so both blocks stream unchanged — the STRUCTURALLY-CORRECT form, matching Less 4.x's two-block output (`.btn:hover, .btn:hover { color: red } .btn:hover { background: blue }`; Less adds a self-duplicate branch to the first block, an inert self-extend quirk the spine omits)."
-  ],
-  "packages/core/src/tree/rules.ts": [
-    "Unlike the eval path the surface is NOT pre-evaluated, so each leaked value is bound through a cell that resolves the declaration's value against the SURFACE frame (its wired lexical/param bindings), so a param-dependent leak (`@x: @a`) reads the bound param, byte-identical to the less@4 leak (a shape jess EVAL itself throws on)."
-  ],
-  "packages/core/src/tree/util/__tests__/extend-selector-algorithm.test.ts": [
-    ".b.c cannot consume the 2nd `.b` (stranded) → NOT a full match (Less 4.x parity)."
-  ],
-  "packages/core/src/tree/util/callable-candidate-output.ts": [
-    "Inject the evaluated output's leaked vars into the ROOT frame at the call's source index so a LATER root sibling ruleset (`.heightIsSet { height: @height }`) resolves the leak — byte-identical to less@4. Zero-cost off leaky mode; only a root-level spine call reaches here."
-  ],
-  "packages/core/src/tree/util/emit-walk.ts": [
-    "RECURSION (a self / mutual name-cycle) with a FRAME-DEPENDENT arg (`.loop((@n-1))`) now folds too (the frame-threaded arg-binding rung, §7): each level's freshly-bound param frame is threaded through the recursive call's arg-binding eval AND the spliced body decls' dedup-key + emit resolution (`computeDeclKey` / `processNode` push the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n` producing level N-1's surface, byte-identical to eval / less@4. `callMap` bounds it.",
-    "`runSpineMixinExpansion`'s `distinctFoldChild` now splices a DISTINCT per-level copy (reusing scalar leaves) on a container child's 2nd+ occurrence — mirroring the loop fold's per-iteration `copyWithReusableLeaves` — so each level emits its own `.wrap a{…}` block, byte-identical to eval / less@4. The recursion gate is therefore lifted entirely; an unfoldable recursive sub-shape (a non-spine-simple body) still falls back to the eval terminal per-call (`isSpineSimpleMixinSurface` → `anyRejected` → kind:'eval').",
-    "The injection is scoped to the caller frame (a later out-of-scope sibling sees the outer binding, byte-identical to less@4)."
-  ],
   "packages/docs/docs-content/docs/less/advanced/compressed-output.md": [
     "All comments are removed **except** \"bang\" comments (`/*! … */`), which are preserved for license headers — matching Less 4.x, dart-sass, cssnano, and lightningcss."
   ],

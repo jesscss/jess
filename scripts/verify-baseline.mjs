@@ -63,7 +63,6 @@ function run(name, args, opts = {}) {
 
 function runFrontierChecks() {
   run('pnpm', ['run', 'verify:node-copy-frontier']);
-  run('pnpm', ['run', 'verify:render-buffer-frontier']);
   run('pnpm', ['run', 'verify:materialization-frontier']);
 }
 
@@ -315,6 +314,5 @@ if (runLessCompat) {
 runParserRuntimeBoundary();
 runFrontierChecks();
 run('pnpm', ['run', 'verify:package-exports']);
-run('pnpm', ['run', 'verify:node-constructor-metadata']);
 
 console.log('\n>>> Verify baseline passed (core + parsers + Less fixture and compatibility suites + frontier checks).');
