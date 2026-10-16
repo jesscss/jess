@@ -125,11 +125,13 @@ const MIXIN_NAME = /^[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*$/u
 const WHITESPACE = /^[ \t\n\r\f]+$/u;
 
 /**
- * `jess-parser` `delimRun` / `gluedDelim`: the delims a `.jess` value run joins
- * (ledger N18) — glued or padded, a comment beside them included, and `:` or
- * `.` glued only.
+ * `jess-parser` `delimRun` / `paddedDelimRun` / `gluedDelim`: the delims a
+ * `.jess` value run joins (ledger N18) — glued, or after whitespace when it
+ * does not start with `>` or `~`, a comment beside it included; `:` or `.`
+ * glued only.
  */
-const PADDED_DELIM = /^[=<>|~^?]+$/u;
+const DELIM = /^[=<>|~^?]+$/u;
+const PADDED_DELIM = /^[=<|^?][=<>|~^?]*$/u;
 const GLUED_DELIM = /^[:.]$/u;
 const isDelim = (part: ValueSlot | undefined, delim: RegExp): boolean =>
   part !== undefined && !isSlotArray(part) && part.type === 'Any' && delim.test(part.src);
@@ -729,8 +731,10 @@ class JessPrinter {
         const before = parts[i - 1];
         if (isDelim(before, GLUED_DELIM) || isDelim(part, GLUED_DELIM)) {
           out += sep === '' ? sep : gap('Any', 'a padded `:` or `.`: a `.jess` value joins them only glued');
+        } else if (isDelim(part, DELIM) && sep !== '' && !isDelim(part, PADDED_DELIM)) {
+          out += gap('Any', 'a `>` or `~` after whitespace: a `.jess` block reads it as a selector combinator');
         } else {
-          out += WHITESPACE.test(sep) || isDelim(before, PADDED_DELIM) || isDelim(part, PADDED_DELIM)
+          out += WHITESPACE.test(sep) || isDelim(before, DELIM) || isDelim(part, DELIM)
             ? sep
             : gap('Comment', 'a comment between value parts: `ValueSpaceGroup` separators are whitespace only');
         }

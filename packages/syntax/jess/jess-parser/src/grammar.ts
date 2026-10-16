@@ -783,12 +783,19 @@ const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 
 /**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that `.jess` gives no
- * meaning outside `$( … )`: `alpha(opacity=50)`, `x: a ~ b`, `foo(a==b)`. It is
+ * meaning outside `$( … )`: `alpha(opacity=50)`, `x: a~b`, `foo(a==b)`. It is
  * the css `punctuationValueCharacter` run less the characters `.jess` reads
  * itself: `$` (its execution forms), `@`, `&`, `%`, the `+ - * /` separators
  * and signs, and `:` and `.` (see `gluedDelim`).
  */
 const delimRun = regex(/[=<>|~^?]+/);
+
+/**
+ * The same run after whitespace, where it may not start with `>` or `~`: there
+ * a `.jess` block reads a selector's leading combinator, and `x: y > b { … }`
+ * stays a declaration and a nested rule (`x: y` + `> b { … }`).
+ */
+const paddedDelimRun = regex(/[=<|^?][=<>|~^?]*/);
 
 /**
  * `:` and `.` join a run only glued on both sides, inside one authored
@@ -3251,20 +3258,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     delimRun,
     children => any(requireToken(children[0]).value)
   );
+  const paddedPunctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    paddedDelimRun,
+    children => any(requireToken(children[0]).value)
+  );
   const gluedPunctuationDelim = node<ValueNode>(
     'PunctuationValue',
     gluedDelim,
     children => any(requireToken(children[0]).value)
   );
 
-  /*
-   * A delim between two slash groups, glued or padded (`a=b`, `a = b`,
-   * `foo(a /* c *\/ = b)`). The whitespace before it is the run's own
-   * separator, so only a comment or a glued delim reaches the leading padding.
-   */
-  const delimJoin = sequence(
-    optional(valueTrivia),
-    punctuationDelim,
+  /** What follows a delim: its padding, then the next slash group. */
+  const delimTail = sequence(
     optional(valueTrivia),
     not(literal('{')),
     g.ValueTerm
@@ -3272,10 +3278,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * The authored space-adjacency run of slash groups: whitespace then a group
-   * or a delim, a delim glued to the group before it, or a glued `:`/`.` (see
-   * `gluedDelim`). The whitespace is read once, then the next component
-   * decides. A brace block may only be a value's FIRST atom (see
-   * `nonBlockValueAtom`), so a continuation term may not open one.
+   * or a padded delim (`a = b`, `foo(a /* c *\/ = b)`), a delim glued to the
+   * group before it (`a=b`, `a~ b`), or a glued `:`/`.` (see `gluedDelim`). The
+   * whitespace is read once, then the next component decides; only a comment
+   * reaches the padded delim's leading padding. A brace block may only be a
+   * value's FIRST atom (see `nonBlockValueAtom`), so a continuation term may
+   * not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
@@ -3292,10 +3300,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
               not(literal('{')),
               g.ValueTerm
             ),
-            delimJoin
+            sequence(
+              optional(valueTrivia),
+              paddedPunctuationDelim,
+              delimTail
+            )
           )
         ),
-        delimJoin,
+        sequence(
+          punctuationDelim,
+          delimTail
+        ),
         sequence(
           gluedPunctuationDelim,
           not(literal('{')),

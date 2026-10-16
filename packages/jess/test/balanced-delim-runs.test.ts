@@ -51,11 +51,16 @@ const ARGUMENT_RUNS = [
 ];
 
 describe('a delim between declaration components', () => {
-  for (const dialect of ['css', 'scss', 'jess'] as const) {
+  for (const dialect of ['css', 'scss'] as const) {
     it.each(DECLARATION_RUNS)(`${dialect}: writes %s as authored`, async (authored) => {
       expect(await value(dialect, authored)).toBe(authored);
     });
   }
+
+  /* After whitespace a `.jess` block reads `>` and `~` as a selector's leading combinator. */
+  it.each(DECLARATION_RUNS.filter(authored => authored !== 'a ~ b'))('jess: writes %s as authored', async (authored) => {
+    expect(await value('jess', authored)).toBe(authored);
+  });
 
   it.each(DECLARATION_RUNS.slice(0, 6))('less: writes %s as authored', async (authored) => {
     expect(await value('less', authored)).toBe(authored);
@@ -104,11 +109,11 @@ describe('a delim run in a call argument', () => {
 describe('compressed output keeps a glued delim glued and a padded one padded', () => {
   it.each(['css', 'less', 'scss', 'jess'] as const)('%s', async (dialect) => {
     const result = await new Compiler({ output: { compress: true } }).renderToResult(
-      { source: 'a { x: a=b; y: a ~ b; z: a=b, c ~ d; }', filePath: `/proj/delim-run.${dialect}` },
+      { source: 'a { x: a=b; y: a ^ b; z: a=b, c ^ d; }', filePath: `/proj/delim-run.${dialect}` },
       {}
     );
     expect(result.errors).toEqual([]);
-    expect(String(result.css)).toBe('a{x:a=b;y:a ~ b;z:a=b,c ~ d}');
+    expect(String(result.css)).toBe('a{x:a=b;y:a ^ b;z:a=b,c ^ d}');
   });
 });
 
@@ -134,18 +139,22 @@ describe('a substituted delim run keeps its layout', () => {
 });
 
 /*
- * A delim run now continues a declaration value, so where the value ends before
- * a nested rule moves (ledger N18). `.jess` follows css and Less: an
- * unterminated declaration before a nested qualified rule is not read as two
- * statements. SCSS reads a value followed by a block as a nested property.
+ * Where a declaration value ends before a nested rule (ledger N18). `.jess`
+ * keeps reading a `>` or `~` after whitespace as the nested rule's leading
+ * combinator. OPEN for the owner: a glued `:` now continues the run, so
+ * `x: y b:hover { … }` stops, where it was read as `x: y b` and a `:hover`
+ * rule; SCSS reads a delim-run value followed by a block as a nested property.
  */
 describe('a delim run before a nested rule', () => {
   it.each([
-    'a { x: y\n > b { c: d } }',
-    'a { x: y\n ~ b { c: d } }',
-    'a { x: y\n b:hover { c: d } }'
-  ])('jess: %s does not parse', async (source) => {
-    const result = await new Compiler({}).renderToResult({ source, filePath: '/proj/delim-run.jess' }, {});
+    ['a { x: y\n > b { c: d } } .z { q: 1 }', 'a {\n  x: y;\n  > b {\n    c: d;\n  }\n}\n.z {\n  q: 1;\n}\n'],
+    ['a { x: y ~ b { c: d } }', 'a {\n  x: y;\n  ~ b {\n    c: d;\n  }\n}\n']
+  ])('jess: %s keeps the leading combinator', async (source, written) => {
+    expect(await render('jess', source)).toBe(written);
+  });
+
+  it('jess: a glued `:` continues the run before a nested rule', async () => {
+    const result = await new Compiler({}).renderToResult({ source: 'a { x: y\n b:hover { c: d } }', filePath: '/proj/delim-run.jess' }, {});
     expect(result.errors).not.toEqual([]);
   });
 
@@ -153,9 +162,26 @@ describe('a delim run before a nested rule', () => {
     expect(await render('scss', 'a { x: y\n ~ b { c: d } }')).toBe('a {\n  x: y\n    ~ b;\n  x-c: d;\n}\n');
   });
 
-  it.each(['scss', 'jess'] as const)('%s: a terminated-by-rule glued run keeps the rule', async (dialect) => {
+  it.each(['scss', 'jess'] as const)('%s: a glued run before a rule keeps the rule', async (dialect) => {
     expect(await render(dialect, '.k { x: a~b .n { y: 1 } }')).toBe('.k {\n  x: a~b;\n  .n {\n    y: 1;\n  }\n}\n');
   });
+});
+
+/*
+ * OPEN for the owner (ledger N18): SCSS reads `not` before a group as its
+ * operator; a group holding a delim run is truthy.
+ */
+it.fails('scss: not() over a delim run is written as css writes it', async () => {
+  expect(await value('scss', 'foo(not(a=b=c))')).toBe('foo(not(a=b=c))');
+});
+
+it.fails('scss: a map value keeps its delim run layout', async () => {
+  expect(await render('scss', '$m: (a: b=c);\na { x: map-get($m, a); }')).toContain('x: b=c;');
+});
+
+/* OPEN for the owner: Less evaluates `$q` after the glued `.`, and `ns.1` re-reads as `ns` and `.1`. */
+it.fails('less: a glued property reference after `.` is written as authored', async () => {
+  expect(await render('less', 'a { q: 1; x: ns.$q; }')).toContain('x: ns.$q;');
 });
 
 /*

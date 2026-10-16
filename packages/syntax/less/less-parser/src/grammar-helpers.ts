@@ -21,7 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -2371,7 +2371,7 @@ function functionConditionTermFrom(
   }
   if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null)) {
     const run = functionConditionRun(left, children, index, triviaLog, state);
-    const fact = { guard: lessTruth(spaced(run)), src: run.map(functionConditionSource).join(' '), grouped: false, hasComparison: false };
+    const fact = { guard: lessTruth(spaced(run)), src: run.map((value, at) => `${at === 0 ? '' : valueLayoutOf(run)?.[at - 1] ?? ' '}${functionConditionSource(value)}`).join(''), grouped: false, hasComparison: false };
     return negated ? { ...fact, guard: { g: 'not', inner: fact.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${fact.src})` } : { ...fact, run };
   }
   const operator = guardOperatorText(children[index]);
