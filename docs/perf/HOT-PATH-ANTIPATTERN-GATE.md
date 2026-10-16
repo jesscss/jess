@@ -154,10 +154,9 @@ Stated plainly, because a gate that overstates its coverage is worse than none.
 4. **Source text passed under an unrecognized name.** `no-source-text-rescan` is
    name-based and is exactly as good as the repo's naming.
 
-5. **`packages/core/src/tree/**`.** Deliberately out of scope: ~67k lines of
-   legacy slated for deletion in the AST-v2 cutover. Pinning hundreds of sites
-   in dying code buys nothing and would have to be maintained as that code is
-   removed. Findings there belong in an audit, not this gate.
+5. **The legacy `packages/core/src/tree/` engine** was deliberately out of
+   scope while it existed (~67k lines slated for deletion in the AST-v2
+   cutover). It has since been deleted, so nothing is excluded on this count.
 
 6. **Purity.** `no-loop-invariant-accessor` cannot prove a zero-arg accessor is
    side-effect-free. It excludes an explicit denylist of stateful zero-arg calls
@@ -205,10 +204,8 @@ handled the way any finding is: fix the rule if the fix is simple and proven by
 
    The open question is whether to widen it. The site that motivated the rule
    lives in `scripts/**`, which this pass does not lint at all. Widening to
-   `scripts/**` means accepting a fresh inventory there; widening to
-   `packages/core/src/tree/**` conflicts with item 5 of "What this does NOT
-   catch". Both are the owner's call, and neither blocks gating the rule at its
-   current scope.
+   `scripts/**` means accepting a fresh inventory there. That is the owner's
+   call, and it does not block gating the rule at its current scope.
 
 3. **Decide on the strong-globals knob.** `no-node-keyed-side-map` has an
    `includeStrongGlobals` option (off) that also flags module-global `Map`/`Set`
