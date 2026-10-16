@@ -360,7 +360,6 @@ svg.railroad-diagram rect {
     <a href="#rule-FunctionCondition">FunctionCondition</a>
     <a href="#rule-FunctionKeywordArgument">FunctionKeywordArgument</a>
     <a href="#rule-FunctionScalarArgument">FunctionScalarArgument</a>
-    <a href="#rule-FunctionAssignmentArgument">FunctionAssignmentArgument</a>
     <a href="#rule-DoubledQuoteArgument">DoubledQuoteArgument</a>
     <a href="#rule-FunctionArgument">FunctionArgument</a>
     <a href="#rule-FunctionArguments">FunctionArguments</a>
@@ -1964,11 +1963,6 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="FunctionScalarArgument"></div>
     <div class="ebnf">FunctionScalarArgument ::= MathValue !/[^,;:)]|$/</div>
   </section>
-  <section class="rule" id="rule-FunctionAssignmentArgument">
-    <h2><a href="#rule-FunctionAssignmentArgument">§</a> FunctionAssignmentArgument</h2>
-    <div class="diagram" data-rule="FunctionAssignmentArgument"></div>
-    <div class="ebnf">FunctionAssignmentArgument ::= /[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*=(?![=&lt;&gt;~]))/ /[ \t\n\r\f]*=[ \t\n\r\f]*/ ArgumentValueSequence</div>
-  </section>
   <section class="rule" id="rule-DoubledQuoteArgument">
     <h2><a href="#rule-DoubledQuoteArgument">§</a> DoubledQuoteArgument</h2>
     <div class="diagram" data-rule="DoubledQuoteArgument"></div>
@@ -1977,7 +1971,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-FunctionArgument">
     <h2><a href="#rule-FunctionArgument">§</a> FunctionArgument</h2>
     <div class="diagram" data-rule="FunctionArgument"></div>
-    <div class="ebnf">FunctionArgument ::= &amp;(&quot;not&quot; &quot;(&quot; | &quot;not&quot; WHITESPACE /[^,;)]/) FunctionCondition | FunctionKeywordArgument | FunctionScalarArgument | ArgumentValueSequence | FunctionAssignmentArgument | FunctionCondition</div>
+    <div class="ebnf">FunctionArgument ::= &amp;(&quot;not&quot; &quot;(&quot; | &quot;not&quot; WHITESPACE /[^,;)]/) FunctionCondition | FunctionKeywordArgument | FunctionScalarArgument | ArgumentValueSequence | FunctionCondition</div>
   </section>
   <section class="rule" id="rule-FunctionArguments">
     <h2><a href="#rule-FunctionArguments">§</a> FunctionArguments</h2>
@@ -3309,9 +3303,8 @@ At runtime, these constants can be found on the Diagram class.
   { name: "FunctionCondition", dsl: function(){ return Diagram(NonTerminal("FunctionConditionOr")); } },
   { name: "FunctionKeywordArgument", dsl: function(){ return Diagram(Sequence(Terminal("/@[-_a-zA-Z\\u0080-\\uffff][-\\w\\u0080-\\uffff]*(?=[ \\t\\n\\r\\f]*:(?!:))/"), Terminal("/[ \\t\\n\\r\\f]*:[ \\t\\n\\r\\f]*/"), NonTerminal("ArgumentValueSequence"))); } },
   { name: "FunctionScalarArgument", dsl: function(){ return Diagram(Sequence(NonTerminal("MathValue"), Sequence(Comment("not"), Terminal("/[^,;:)]|$/")))); } },
-  { name: "FunctionAssignmentArgument", dsl: function(){ return Diagram(Sequence(Terminal("/[-_a-zA-Z\\u0080-\\uffff][-\\w\\u0080-\\uffff]*(?=[ \\t\\n\\r\\f]*=(?![=<>~]))/"), Terminal("/[ \\t\\n\\r\\f]*=[ \\t\\n\\r\\f]*/"), NonTerminal("ArgumentValueSequence"))); } },
   { name: "DoubledQuoteArgument", dsl: function(){ return Diagram(Sequence(Terminal("\"\""), Terminal("/[^\"()]+/"), Terminal("\"\""))); } },
-  { name: "FunctionArgument", dsl: function(){ return Diagram(Choice(0, Sequence(Sequence(Comment("peek"), Choice(0, Sequence(Terminal("not"), Terminal("(")), Sequence(Terminal("not"), Terminal("WHITESPACE"), Terminal("/[^,;)]/")))), NonTerminal("FunctionCondition")), NonTerminal("FunctionKeywordArgument"), NonTerminal("FunctionScalarArgument"), NonTerminal("ArgumentValueSequence"), NonTerminal("FunctionAssignmentArgument"), NonTerminal("FunctionCondition"))); } },
+  { name: "FunctionArgument", dsl: function(){ return Diagram(Choice(0, Sequence(Sequence(Comment("peek"), Choice(0, Sequence(Terminal("not"), Terminal("(")), Sequence(Terminal("not"), Terminal("WHITESPACE"), Terminal("/[^,;)]/")))), NonTerminal("FunctionCondition")), NonTerminal("FunctionKeywordArgument"), NonTerminal("FunctionScalarArgument"), NonTerminal("ArgumentValueSequence"), NonTerminal("FunctionCondition"))); } },
   { name: "FunctionArguments", dsl: function(){ return Diagram(Optional(Sequence(NonTerminal("functionArgument"), Choice(0, NonTerminal("BranchRest"), Sequence(ZeroOrMore(Sequence(Terminal("/[;,][ \\t\\n\\r\\f]*/"), NonTerminal("functionArgument"))), Optional(Terminal("/[;,][ \\t\\n\\r\\f]*/"))))))); } },
   { name: "CallArgumentValue", dsl: function(){ return Diagram(Choice(0, NonTerminal("FlatMixinCall"), NonTerminal("ValueBlock"), NonTerminal("ValueSequence"))); } },
   { name: "CallArgumentFunction", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal("calc("), Terminal("url("))), NonTerminal("InterpolatedValueStart"), Terminal("("), Optional(Sequence(OneOrMore(NonTerminal("CallArgumentValue"), Terminal("/[;,][ \\t\\n\\r\\f]*/")), Optional(Terminal("/[;,][ \\t\\n\\r\\f]*/")))), Terminal(")"))); } },

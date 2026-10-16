@@ -3180,7 +3180,6 @@ export {
   lessTriviaEntryInsertIndex,
   lowerLogicalCall,
   lowerLogicalCallStatement,
-  mixinArgumentSource,
   mixinArgumentsFromChildren,
   mixinCallArgsFromInterior,
   mixinCallArgumentFromInterior,

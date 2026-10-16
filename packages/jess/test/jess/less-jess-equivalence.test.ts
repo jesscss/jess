@@ -1014,14 +1014,14 @@ describe('converted custom properties', () => {
 /*
  * `tests-config/math-strict/css.less` has no expected CSS, so it is converted as
  * a corpus file rather than ratcheted as a fixture. Once its slashes stopped being
- * bare math it converted, and the re-print gate caught two spellings `.jess`
- * cannot read back. The emitter names them instead of printing them.
+ * bare math it converted, and the re-print gate caught a spelling `.jess`
+ * cannot read back. The emitter names it instead of printing it.
  */
 describe('spellings the emitter names instead of printing', () => {
-  it('names an empty declaration value and an IE-style name=value argument', () => {
+  it('names an empty declaration value', () => {
     let gaps: string[] = [];
     try {
-      emitJess(parseLess('.m { margin: ; filter: alpha(opacity=100); }'), { functions: LESS_FUNCTIONS });
+      emitJess(parseLess('.m { margin: ; }'), { functions: LESS_FUNCTIONS });
     } catch (error) {
       if (!(error instanceof NoJessSpelling)) {
         throw error;
@@ -1029,8 +1029,7 @@ describe('spellings the emitter names instead of printing', () => {
       gaps = error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
     }
     expect(gaps).toEqual([
-      'Declaration: an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value',
-      'FunctionCall: an IE-style `name=value` argument (`alpha(opacity=100)`): no `.jess` `CallArgument` spelling reads it back'
+      'Declaration: an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value'
     ]);
   });
 

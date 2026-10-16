@@ -1983,7 +1983,7 @@ parser's classification *is* the node.
 | `FunctionCall` | `lighten(blue, 10%)` — a modeled arg list, so params bind typed. `modern` = Color-4 syntax |
 | `Block` | delimiter-bearing value — `(#aaa * 3)`, `[a, b]` |
 | `Condition` | a boolean condition reaching a **value** position; carries the same `GuardNode` tree `when (…)` builds |
-| `Assignment` | `name=value` call **argument** pair — `alpha(opacity=50)`. Never a comparison. *(§12.3 row 2 — deleted, becomes `Any`)* |
+| `Assignment` | `name=value` call **argument** pair — `alpha(opacity=50)`. Never a comparison. *(§12.3 row 2 — deleted; removed entirely by ledger V11, 2026-10-16)* |
 | `Important` | `!important` as a **flag on a value**, not bytes; propagates to the enclosing declaration |
 | `GeneralEnclosed` | CSS general-enclosed; content stays a template, never a call. *(§12.3 row 3 — deleted, becomes `Call` + `Block`)* |
 | `Range` | `$for` bounds + inclusion flags. Iteration-only — the serializer expands it directly |
@@ -2048,7 +2048,7 @@ not re-raised.
 | # | kind | becomes | note |
 | --- | --- | --- | --- |
 | 1 | `SpacedValue` | `Sequence` | Same shape (`{ parts: ValueNode[] }`). `separators?` is **deleted, not migrated** — trivia is carried structurally, never as an array on a value node. |
-| 2 | `Assignment` | `Any` | `alpha(opacity=@x)` resolving `@x` has no utility; **dropped from Less v5**, test-data updated. The pair becomes verbatim bytes. |
+| 2 | `Assignment` | — | `alpha(opacity=@x)` resolving `@x` has no utility; **dropped from Less v5**, test-data updated. The pair first became verbatim bytes; since ledger V11 was ruled REMOVED (owner 2026-10-16) there is no `name=value` argument at all, and `alpha(opacity=50)` is an ordinary call with a comparison argument. |
 | 3 | `GeneralEnclosed` | `Call` + `Block` | `form: 'function' \| 'paren'` fused two forms that both already had a node. Function form → `Call`; paren form → `Block`. `content` stays an `Interpolation` in both. |
 | 4 | the **reference family** (8 kinds) | one lookup descriptor | See §12.3a. Subsumes what earlier drafts listed as two separate merges (`VarIndirect`, and `DotLookup`/`DeclarationReference`). |
 | 5 | `RawInline` | `StyleImport` → `Any` | Unresolved it is a `StyleImport` with an inline flag; resolved it is bytes. `Statement` already admits a value node (`FunctionCall`, `nodes.ts:1155`) for exactly this reason. Two fields move to `StyleImport` — see below. |
