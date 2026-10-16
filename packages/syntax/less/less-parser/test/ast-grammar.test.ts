@@ -4213,7 +4213,16 @@ describe('Less AST grammar facts', () => {
   });
 
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
-    expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
+    /*
+     * A chain of comparisons is not one Less comparison and Less gives it no
+     * meaning, so it is the CSS run of component values (ledger N18, P45).
+     */
+    expect(parse('a { x: foo(2 > 1 = 3 > 2); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'FunctionCall', args: [{ value: [
+        { type: 'Dimension', src: '2' }, { type: 'Any', src: '>' }, { type: 'Dimension', src: '1' },
+        { type: 'Any', src: '=' }, { type: 'Dimension', src: '3' }, { type: 'Any', src: '>' }, { type: 'Dimension', src: '2' }
+      ] }] } }]
+    });
   });
 
   /*

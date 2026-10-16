@@ -446,7 +446,7 @@ describe('public Less parse()', () => {
 
   it('keeps direct parse error messages free of raw Parseman expected tokens', () => {
     const source =
-      '.theme(){foo:bar;} .val { @alias: ~; foo: @alias[foo]; }';
+      '.theme(){foo:bar;} .val { @alias: #; foo: @alias[foo]; }';
     let thrown: unknown;
 
     try {
@@ -465,7 +465,8 @@ describe('public Less parse()', () => {
      * selector-context and value-atom facts. The direct-parse message summary
      * names neither, so it falls to the bare-generic form. That is clean (the
      * point of this test). `@alias: .theme;` used to be the input here; it now
-     * reports its own uncalled-mixin-reference diagnostic (jess#236).
+     * reports its own uncalled-mixin-reference diagnostic (jess#236). So did
+     * `@alias: ~;`, which now parses as a `~` delim (ledger N18).
      */
     expect(thrown.message).toBe(
       'Unexpected Less syntax. Expected valid Less syntax here.'

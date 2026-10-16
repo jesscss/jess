@@ -381,8 +381,20 @@ describe('Jess constructs discovered outside the parser suites', () => {
   });
 
   it.each([
-    ['Sass namespaced call', 'a { b: ns.fn() }'],
-    ['Sass namespaced variable', 'a { b: ns.$var }'],
+    ['Sass namespaced call', 'a { b: ns.fn() }', ['Keyword', 'Any', 'FunctionCall']],
+    ['Sass namespaced variable', 'a { b: ns.$var }', ['Keyword', 'Any', 'Lookup']]
+  ])('reads a Sass member form as a CSS component run (%s)', (_label, source, types) => {
+    /*
+     * `ns.fn()` is well-formed CSS: an ident, a `.` delim and a function, glued
+     * (ledger N18, P45). `.jess` has no namespace member access here, so it is
+     * that run, with `$var` read as the `.jess` variable it spells.
+     */
+    expect(firstRule(source)).toMatchObject({
+      rules: [{ value: types.map(type => ({ type })) }]
+    });
+  });
+
+  it.each([
     ['Sass named argument', 'a { b: f($x: 1) }'],
     ['Sass spread argument', 'a { b: f($x...) }']
   ])('PINNED DEFECT — rejects a Sass call/member form (%s)', (_label, source) => {

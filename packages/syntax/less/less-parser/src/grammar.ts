@@ -215,7 +215,7 @@ type LessRules = {
   FunctionScalarArgument: Combinator<ValueNode>;
   FunctionKeywordArgument: Combinator<LessCallArg>;
   ArgumentValueSequence: Combinator<ValueSlot>;
-  FunctionCondition: Combinator<ValueNode>;
+  FunctionCondition: Combinator<ValueSlot>;
   FunctionConditionOr: Combinator<FunctionConditionFact>;
   FunctionConditionAnd: Combinator<FunctionConditionFact>;
   FunctionConditionTerm: Combinator<FunctionConditionFact>;
@@ -906,7 +906,42 @@ const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ 
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
 const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-_a-zA-Z0-9\u0080-\uffff\\]))/i);
-const functionConditionOperator = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=])[ \t\n\r\f]*/);
+/*
+ * A comparison operator in a call argument, read as the whole CSS delim run at
+ * that point (`=`, `>=`, `==`): only the Less spellings (`guardOperatorText`)
+ * compare, and only one per argument — `foo(a==b)`, `foo(a=b=c)` and
+ * `foo(a = b < c)` are a CSS run of component values, written as authored
+ * (ledger N18). Its padding is ambient trivia, which the run reads back.
+ */
+const functionConditionOperator = regex(/[<>=]+~?/);
+
+/**
+ * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
+ * gives no meaning, glued or padded: `x: a=b`, `x: a ~ b`. It is the css
+ * `punctuationValueCharacter` run less the characters Less reads itself: `@`,
+ * `$`, `#`, `&`, `!`, `%`, `<`, `>`, the math operators, and `:` and `.` (see
+ * `gluedDelim`). A `~` that opens an escape (`~"…"`, `~(…)`) is the escape: the
+ * value piece is tried first. In a call argument `=` is a comparison
+ * (`functionConditionStop` decides first).
+ */
+const delimRun = regex(/[=~|^?]+/);
+
+/**
+ * `:` and `.` join a value only glued on both sides, inside one authored
+ * component (`progid:DXImageTransform.Microsoft.gradient(…)`): after
+ * whitespace a `.` leads a mixin call and a `:` ends a property name. A `.`
+ * that starts a number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
+ */
+const gluedDelim = regex(/:|\.(?![0-9])/);
+
+/**
+ * What may open a piece glued to the one before it (`gluedValueBoundary`): a
+ * Less variable's `@`, a `delimRun`, or a `gluedDelim`. A call argument's set
+ * leaves out `=`, its comparison.
+ */
+const gluedValueStart = regex(/[@=~|^?:.]/);
+const gluedArgumentStart = regex(/[@~|^?:.]/);
+const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionNot = word(
@@ -1727,12 +1762,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * (`if(((1 + 1) * 2 = 4), …)`), and a comparison compares the value it holds.
    */
   const functionConditionGroupLed = sequence(g.FunctionConditionParen, noTrivia(mathRunTail));
-  const functionConditionCompared = optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)));
+  const functionConditionCompared = many(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)));
   /*
    * `not`?, an operand, an optional comparison. `not` negates a group, which a
    * comparison may follow (`not (1) > 2`), or a bare operand, which none may:
    * `not 1 > 2` does not say what `not` negates. It is well-formed, so the
    * reducer reports it at the comparison and reads it as `not (1 > 2)` (P45).
+   * A further operator (`a=b=c`) makes the operands a CSS run (ledger N18).
    */
   const FunctionConditionTerm = node(
     'FunctionConditionTerm',
@@ -1741,7 +1777,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       choice(functionConditionGroupLed, g.FunctionConditionOperand),
       functionConditionCompared
     ),
-    (children, _fields, _span, rawChildren, _triviaLog, state) => functionConditionTermFrom(children, rawChildren, state)
+    (children, _fields, _span, rawChildren, triviaLog, state) => functionConditionTermFrom(children, rawChildren, state, undefined, triviaLog)
   );
   const FunctionConditionAnd = node(
     'FunctionConditionAnd',
@@ -1761,7 +1797,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (fact === undefined) {
         throw new TypeError('Less function condition lost its fact.');
       }
-      return condition(fact.guard, fact.src);
+      return fact.run ?? condition(fact.guard, fact.src);
     }
   );
   /**
@@ -2333,15 +2369,36 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.MathSum,
     (children, _fields, _span, _rawChildren, _triviaLog, state) => lessMathInValue(requireMathSum(children), state)
   );
-  // Value pieces are separated by grammar-owned whitespace. Keeping that token
-  // here is what lets a canonical Sequence retain multiline CSS layout without
-  // scanning/re-splitting a completed declaration value later.
+  /**
+   * A delim Less gives no meaning, as the component css builds for it: the
+   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
+   * override of `PunctuationValue` itself would narrow every css rule that
+   * reaches the css value atom.
+   */
+  const punctuationDelim = node(
+    'PunctuationValue',
+    delimRun,
+    children => any(requireTerminalText(children[0]))
+  );
+  const gluedPunctuationDelim = node(
+    'PunctuationValue',
+    gluedDelim,
+    children => any(requireTerminalText(children[0]))
+  );
+
+  /** A delim piece and the piece glued after it: `x: a = b`, `x: a=b`. */
+  const delimValue = sequence(punctuationDelim, optional(g.valuePiece));
+
   /*
+   * Value pieces are separated by grammar-owned whitespace. Keeping that token
+   * here is what lets a canonical Sequence retain multiline CSS layout without
+   * scanning/re-splitting a completed declaration value later.
+   *
    * No bare `literal('/')` arm: a slash is only ever reachable BETWEEN two
    * operands, through the division operator in `MathSum`. So `p: / 1` fails for
    * the same structural reason a leading `,` does (DESIGN-DECISIONS P33/P34).
    */
-  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'));
+  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'), delimValue);
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
@@ -2351,9 +2408,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.valuePiece
     )
   );
-  const gluedVariableValueBoundary = sequence(
-    leaf(peek(literal('@')), () => ({ kind: 'glued-value-boundary' })),
-    g.valuePiece
+  /*
+   * A piece glued to the one before it: a Less variable (`1px@v`), a delim
+   * (`a=b`, `a~b`), or a `:` or `.` glued on both sides
+   * (`progid:DX.Microsoft.f()`), the adjacent component values of a CSS run
+   * (ledger N18). One peek decides there is a glued piece at all, so a value's
+   * end pays one failed test. The other openers are only PEEKED, then read as a
+   * value piece, so a glued escape (`a~"b"`, `a~(b)`) still reaches the escape
+   * in `MathValue` before the delim arm; a `:` or `.` is the delim itself, never
+   * a piece's start (`a.5em` is not `a` and `.5em`). In a call argument `=` is a
+   * comparison, so its glued set leaves it out.
+   */
+  const gluedPiece = choice(
+    sequence(gluedPunctuationDelim, g.valuePiece),
+    sequence(not(gluedPunctuationStart), g.valuePiece)
+  );
+  const gluedValueBoundary = sequence(
+    leaf(peek(gluedValueStart), () => ({ kind: 'glued-value-boundary' })),
+    gluedPiece
+  );
+  const gluedArgumentBoundary = sequence(
+    leaf(peek(gluedArgumentStart), () => ({ kind: 'glued-value-boundary' })),
+    gluedPiece
   );
   const gluedBacktickValueBoundary = noTrivia(sequence(
     BacktickJavaScript,
@@ -2361,7 +2437,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   ));
   const valueContinuation = choice(
     valueTriviaBoundary,
-    gluedVariableValueBoundary,
+    gluedValueBoundary,
     gluedBacktickValueBoundary
   );
   // Function arguments are the one value context where top-level Less
@@ -2375,7 +2451,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const functionArgumentValueContinuation = choice(
     functionArgumentValueTriviaBoundary,
-    gluedVariableValueBoundary,
+    gluedArgumentBoundary,
     gluedBacktickValueBoundary
   );
   // Adjacent value pieces are normally separated by authored whitespace, but a

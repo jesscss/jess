@@ -21,9 +21,10 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
+import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
 import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
@@ -119,6 +120,9 @@ type FunctionConditionFact = {
    * group's math group (see {@link LessGuardOperand}).
    */
   readonly raw?: ValueNode | LessMathRun;
+
+  /** A chain of operators (`a=b=c`, `a==b`): the CSS run it is, written as authored. */
+  readonly run?: ValueSlot;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type VariableNameFact = {
@@ -828,15 +832,6 @@ function separatorsFromFields(fields: FieldMap | undefined): string[] {
     : requireFields(fields, 'separator').map(separator => staticText(separator.value));
 }
 
-function sourceFromState(state: unknown): string | undefined {
-  return typeof state === 'object'
-    && state !== null
-    && 'source' in state
-    && typeof state.source === 'string'
-    ? state.source
-    : undefined;
-}
-
 /**
  * Does Less's configured `math:` policy compute THIS operator with no enclosing
  * math context (§12.6b)?
@@ -859,73 +854,6 @@ function lessMathOutsideParens(state: unknown, operator: string): boolean {
     return operator !== '/';
   }
   return false;
-}
-
-const LESS_NODE_TRIVIA_STRIDE = 4;
-
-function lessTriviaEntryCount(triviaLog: readonly number[]): number {
-  return Math.trunc(triviaLog.length / LESS_NODE_TRIVIA_STRIDE);
-}
-
-function lessTriviaEntryInsertIndex(triviaLog: readonly number[], index: number): number {
-  return triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 2] ?? 0;
-}
-
-/** The layout text of the trivia before raw child `insertIndex` ({@link triviaTextAt}). */
-function triviaTextAtInsertIndex(
-  triviaLog: readonly number[],
-  state: unknown,
-  insertIndex: number
-): string {
-  const source = sourceFromState(state);
-  return source === undefined ? '' : triviaTextAt(triviaLog, source, insertIndex);
-}
-
-function rawLeafText(entry: unknown): string | undefined {
-  return typeof entry === 'object'
-    && entry !== null
-    && '_tag' in entry
-    && entry._tag === 'leaf'
-    && 'value' in entry
-    && typeof entry.value === 'string'
-    ? entry.value
-    : undefined;
-}
-
-/** `sepBy`/`oneOrMoreSep` contribute their items and nothing else, so a list
- * separator is absent from `children` and present in `rawChildren` — which is
- * the array a trivia insert index has always addressed. Locate the k-th
- * separator's `rawChildren` index by the exact text `field('separator')`
- * captured, matched in source order, so trivia can be read against the array it
- * is indexed against rather than against a `children` array that no longer
- * advances in step with it. */
-function separatorRawIndexes(
-  rawChildren: readonly unknown[],
-  separators: readonly string[]
-): number[] {
-  const indexes: number[] = [];
-  let next = 0;
-  for (let index = 0; index < rawChildren.length && next < separators.length; index += 1) {
-    if (rawLeafText(rawChildren[index]) === separators[next]) {
-      indexes.push(index);
-      next += 1;
-    }
-  }
-  return indexes;
-}
-
-/** Trivia around one separator: what sits before it, then the separator, then
- * what sits between it and the item that follows. `rawIndex + 1` is that item —
- * a `sepBy` separator is always followed immediately by one item entry. */
-function separatorWithSurroundingTrivia(
-  separator: string,
-  rawIndex: number,
-  triviaLog: readonly number[],
-  state: unknown
-): string {
-  return triviaTextAtInsertIndex(triviaLog, state, rawIndex)
-    + separator
-    + triviaTextAtInsertIndex(triviaLog, state, rawIndex + 1);
 }
 
 function functionSeparatorsFromFields(
@@ -979,6 +907,11 @@ function queryListHasImportCondition(value: ValueNode): boolean {
   return false;
 }
 
+/** A delim piece: the `Any` a `PunctuationValue` builds (ledger N18). */
+function isDelimPiece(child: unknown): boolean {
+  return isValueNode(child) && child.type === 'Any';
+}
+
 function isGluedValueBoundary(child: unknown): boolean {
   return typeof child === 'object'
     && child !== null
@@ -994,30 +927,38 @@ function valuePieceReducerWithTrivia(
   state: unknown
 ): ValueSlot {
   const values = children
-    .filter(child => isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))
-    .map(child => isLessTerminalText(child, '-') || isLessTerminalText(child, '%')
-      ? keyword(requireTerminalText(child))
-      : requireValueNode(child));
+    .filter(isValuePiece)
+    .map(child => isValueNode(child) ? child : keyword(requireTerminalText(child)));
   if (values.length === 1) {
     return values[0]!;
   }
 
+  /* A delim is glued to its neighbours unless trivia stands between them (ledger N18). */
   const separators: string[] = [];
   let previousValue = -1;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
-    if (!(isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))) {
+    if (!isValuePiece(child)) {
       continue;
     }
     if (previousValue >= 0) {
       const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
-      const boundary = children.slice(previousValue + 1, index).some(isGluedValueBoundary);
-      separators.push(trivia.length > 0 ? trivia : boundary ? '' : ' ');
+      separators.push(trivia.length > 0
+        ? trivia
+        : children.slice(previousValue + 1, index).some(isGluedValueBoundary)
+          || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index))
+          ? ''
+          : ' ');
     }
     previousValue = index;
   }
 
   return withValueLayout(values, separators);
+}
+
+/** A value piece: a value node, or the bare `-` / `%` a value may hold. */
+function isValuePiece(child: unknown): boolean {
+  return isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%');
 }
 
 /** A structural value child stays as-is; a grammar terminal becomes a keyword. */
@@ -2411,7 +2352,8 @@ function functionConditionTermFrom(
   children: readonly unknown[],
   rawChildren: readonly unknown[],
   state: unknown,
-  notGluedAt = NO_SPAN
+  notGluedAt = NO_SPAN,
+  triviaLog: readonly number[] = []
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
@@ -2434,6 +2376,11 @@ function functionConditionTermFrom(
     left = { guard: lessTruth(bare), src, grouped: false, hasComparison: false, bare };
     index = operand.next;
   }
+  if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null)) {
+    const run = functionConditionRun(left, children, index, triviaLog, state);
+    const fact = { guard: lessTruth(spaced(run)), src: run.map((value, at) => `${at === 0 ? '' : valueLayoutOf(run)?.[at - 1] ?? ' '}${functionConditionSource(value)}`).join(''), grouped: false, hasComparison: false };
+    return negated ? { ...fact, guard: { g: 'not', inner: fact.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${fact.src})` } : { ...fact, run };
+  }
   const operator = guardOperatorText(children[index]);
 
   /* The value paren group passes no raw children: it reads its own operands, and reports there. */
@@ -2453,6 +2400,31 @@ function functionConditionTermFrom(
   return negated
     ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
+}
+
+/**
+ * A function condition with more than one operator, or one Less does not spell
+ * (`a=b=c`, `a = b < c`, `a==b`): the CSS run of component values it is,
+ * operands and `Any` delims (ledger N18). Less gives a chain no meaning, so it
+ * is written as authored; its padding reads as a value's does, from trivia.
+ */
+function functionConditionRun(
+  left: FunctionConditionFact,
+  children: readonly unknown[],
+  start: number,
+  triviaLog: readonly number[],
+  state: unknown
+): ValueNode[] {
+  const values: ValueNode[] = [functionConditionValue(left, state)];
+  const layout: string[] = [];
+  for (let at = start; at < children.length; at += 2) {
+    layout.push(
+      triviaTextAtInsertIndex(triviaLog, state, at) || (hasTriviaAtInsertIndex(triviaLog, at) ? ' ' : ''),
+      triviaTextAtInsertIndex(triviaLog, state, at + 1) || (hasTriviaAtInsertIndex(triviaLog, at + 1) ? ' ' : '')
+    );
+    values.push(any(requireTerminalText(children[at])), functionConditionValue(functionConditionOperandFact(children[at + 1], state), state));
+  }
+  return withValueLayout(values, layout);
 }
 
 /**
@@ -2682,6 +2654,9 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
   }
   if (first === undefined || guard === undefined) {
     throw new TypeError('Less function condition lost its first term.');
+  }
+  if (guard === first.guard && first.run !== undefined) {
+    return first;
   }
   if (guard === first.guard) {
     return first.raw === undefined

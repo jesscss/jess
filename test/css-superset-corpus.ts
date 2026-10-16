@@ -509,9 +509,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'a type selector with an attribute :not() in a nested rule',
     group: 'selector',
-    source: 'form { input:not([type=text]) { color: red } }',
-    brokenIn: ['scss', 'jess'],
-    defect: NESTED_GLUED_SELECTOR_FUNCTION_DEFECT
+    source: 'form { input:not([type=text]) { color: red } }'
   },
   {
     id: 'a descendant selector pseudo-function in a nested rule',

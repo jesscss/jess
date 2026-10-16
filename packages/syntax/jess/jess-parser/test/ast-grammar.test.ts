@@ -1049,7 +1049,6 @@ describe('Jess AST grammar facts', () => {
       '$w: 2px; .card { x: $w * 2; }',
       '$w: 2px; .card { x: $w / 2 + 1; }',
       '$w: 2px; .card { x: $w % 2; }',
-      '$w: 2px; .card { x: $w = 2px; }',
       '$w: 2px; .card { x: ^w; }',
       '$w: 2px; .card { x: ^w + 1px; }'
     ]) {
@@ -1057,6 +1056,16 @@ describe('Jess AST grammar facts', () => {
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+
+    /*
+     * `=` is not a `.jess` operator outside `$( … )`: it is CSS's `=` delim
+     * between component values (ledger N18), written as authored.
+     */
+    expect(parse('$w: 2px; .card { x: $w = 2px; }')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
+        { value: [{ type: 'Lookup', kind: 'var', name: 'w' }, { type: 'Any', src: '=' }, { type: 'Dimension', src: '2px' }] }
+      ] }]
+    });
   });
 
   it('keeps declaration-entry lookup and operators inside explicit Jess expressions', () => {

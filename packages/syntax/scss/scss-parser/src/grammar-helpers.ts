@@ -16,12 +16,14 @@
  * parameterised by.
  */
 
-import { NO_SPAN, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { ScssImportPostludeError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
-export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
+
+/** One space-list boundary; `glued` is the operand written straight after a delim (`a=b`'s `b`). */
+export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string; readonly glued: ValueNode | null };
 
 /** One authored call argument. The AST's own {@link CallArg}, not a local
  *  look-alike: a `$name:` argument is the SAME node whether the callee is a
@@ -412,21 +414,14 @@ export const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
 export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
 
 /**
- * A grammar terminal — a delim or its padding — and never a value node. A
- * `Quoted` also carries a string `value`, so `isToken` alone cannot tell
- * `foo("=")` from `foo(a=b)`.
+ * `CallArgument`'s reduction: the operand alone, a keyword argument, or a
+ * comparison. A comparison one of whose sides is a run holding a delim SCSS
+ * gives no meaning (`a = b < c`) is not read: the whole argument is that css
+ * run, written as authored (ledger N18).
  */
-export function isScssTerminal(child: unknown): child is Token {
-  return isToken(child) && !isScssValue(child);
-}
-
-/**
- * A call argument's head, `children[0, end)`: the operand alone, a keyword
- * argument, or a comparison. A `=` run after it is the caller's.
- */
-export function scssCallArgument(children: readonly unknown[], end: number): ScssCallArg {
+export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
   const left = requireValueSlot(children[0]);
-  if (end === 1) {
+  if (children.length === 1) {
     return callArg(left);
   }
 
@@ -445,10 +440,19 @@ export function scssCallArgument(children: readonly unknown[], end: number): Scs
     if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
       throw new TypeError('A named argument must be spelled `$name: value`.');
     }
-    return callArg(requireValueSlot(children[end - 1]), left.name, false, '$');
+    return callArg(requireValueSlot(children[children.length - 1]), left.name, false, '$');
   }
-  const operator = requireToken(children.find(child => isToken(child) && COMPARISON_OPERATORS.has(child.value))).value;
-  const right = requireValueSlot(children[end - 1]);
+  const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
+  const operator = requireToken(children[at]).value;
+  const right = requireValueSlot(children[children.length - 1]);
+  if (holdsDelim(left) || holdsDelim(right)) {
+    const values: ValueSlot[] = [];
+    const layout: string[] = [];
+    appendRun(values, layout, left, '');
+    appendRun(values, layout, any(operator), at > 1 ? requireToken(children[at - 1]).value : '');
+    appendRun(values, layout, right, at + 2 < children.length ? requireToken(children[at + 1]).value : '');
+    return callArg(withValueLayout(values, layout));
+  }
 
   /*
    * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
@@ -468,6 +472,63 @@ export function scssCallArgument(children: readonly unknown[], end: number): Scs
     operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
     `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
   )));
+}
+
+/** A space list holding a delim component — the `Any` a `PunctuationValue` builds. */
+function holdsDelim(value: ValueSlot): boolean {
+  return isValueSlotArray(value) && value.some(item => !isValueSlotArray(item) && item.type === 'Any');
+}
+
+/**
+ * Append one component to a run after `separator`, splicing a space list in
+ * with its own layout so the run is css's flat one.
+ */
+function appendRun(values: ValueSlot[], layout: string[], value: ValueSlot, separator: string): void {
+  if (values.length > 0) {
+    layout.push(separator);
+  }
+  if (!isValueSlotArray(value)) {
+    values.push(value);
+    return;
+  }
+  const inner = valueLayoutOf(value);
+  value.forEach((item, index) => {
+    if (index > 0) {
+      layout.push(inner?.[index - 1] ?? ' ');
+    }
+    values.push(item);
+  });
+}
+
+/** `valueSequence`'s reduction: space lists joined by a glued `:` or `.` (`progid:DX.M`). */
+export function gluedRun(children: readonly unknown[]): ValueSlot {
+  const values: ValueSlot[] = [];
+  const layout: string[] = [];
+  for (const child of children) {
+    appendRun(values, layout, requireValueSlot(child), '');
+  }
+  return withValueLayout(values, layout);
+}
+
+/**
+ * `ValueTail`'s reduction: a delim glued to what precedes it, padding then a
+ * component, or a slash group. The operand written straight after a delim
+ * rides along as `glued` (`a=b`'s `b`).
+ */
+export function scssValueTail(children: readonly unknown[]): ScssValueTail {
+  const [first, second, third] = children;
+  if (isScssValue(first)) {
+    return { kind: 'space', value: first, separator: '', glued: isScssValue(second) ? second : null };
+  }
+  if (isScssValue(second)) {
+    return { kind: 'space', value: second, separator: isToken(first) ? first.value : ' ', glued: isScssValue(third) ? third : null };
+  }
+  const value = children[children.length - 1];
+  if (!isScssValue(value)) {
+    throw new TypeError('SCSS slash list lost its value.');
+  }
+  const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
+  return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}`, glued: null };
 }
 
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
@@ -712,6 +773,11 @@ export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
       items.push(child.value);
       grouped.push(false);
       separators.push(child.separator);
+      if (child.glued !== null) {
+        items.push(child.glued);
+        grouped.push(false);
+        separators.push('');
+      }
     }
   }
   return items.length === 1
@@ -727,7 +793,8 @@ export function isScssValueTail(value: unknown): value is ScssValueTail {
     && 'value' in value
     && isScssValue(value.value)
     && 'separator' in value
-    && typeof value.separator === 'string';
+    && typeof value.separator === 'string'
+    && 'glued' in value;
 }
 
 export function isVarDeclaration(value: unknown): value is VariableDeclaration {
