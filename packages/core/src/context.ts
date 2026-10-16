@@ -901,100 +901,11 @@ export class Context {
    * @todo - Make the id a hash of the (project-relative) path + contents
    */
   id = generateId();
-  ruleCounter = 1;
-
-  /** Rules depth, used to figure out source order */
-  depth = -1;
 
   private _classMap: Map<string, string> | undefined;
   get classMap() {
     return (this._classMap ??= new Map());
   }
-
-  /**
-   * We push a boolean to this array when entering a calc() call
-   * and pop it when leaving. This helps us determine if operations
-   * should be performed or not.
-   *
-   * @todo - can't this just be a number?
-   */
-  calcFrames = 0;
-
-  /**
-   * Stack to track reference call chain for clearing matched keys at outermost level
-   */
-  private _referenceStack: number = 0;
-  get referenceStack() {
-    return this._referenceStack;
-  }
-
-  /**
-   * Import-evaluation scope stack.
-   *
-   * This intentionally models lexical import scope instead of global counters:
-   * - each import branch pushes its semantics on entry
-   * - each branch pops in `finally`
-   * - readers ask semantic questions (`inReferenceImportScope`) instead of
-   *   inspecting mutable depth values.
-   *
-   * Why this exists:
-   * some behaviors depend on "how we got here" (call-path scope), not only
-   * on the current node's own options. Example: suppressing top-level @import
-   * hoists while traversing a reference-only branch.
-   */
-  private _importScopeStack: Array<{ reference: boolean; multiple: boolean }> = [];
-  get importScope() {
-    return this._importScopeStack;
-  }
-
-  get inReferenceImportScope() {
-    return this._importScopeStack.some(scope => scope.reference);
-  }
-
-  get inMultipleImportScope() {
-    return this._importScopeStack.some(scope => scope.multiple);
-  }
-
-  pushImportScope(scope: { reference?: boolean; multiple?: boolean }) {
-    this._importScopeStack.push({
-      reference: scope.reference === true,
-      multiple: scope.multiple === true
-    });
-  }
-
-  popImportScope() {
-    if (this._importScopeStack.length > 0) {
-      this._importScopeStack.pop();
-    }
-  }
-
-  pushReference() {
-    this._referenceStack++;
-  }
-
-  popReference() {
-    this._referenceStack--;
-  }
-
-  /**
-   * We push a boolean to this array when entering parens call
-   * and pop it when leaving. This helps us determine if operations
-   * should be performed or not.
-   *
-   * Sometimes we "reset" the "in parentheses" state by pushing false,
-   * such as within a function call.
-   */
-  parenFrames: boolean[] = [];
-
-  /**
-   * In a custom declaration's value. All nodes should
-   * be preserved as-is and not evaluated, except for
-   * $() expressions.
-  */
-  inCustom: boolean | undefined;
-
-  /** A flag set when evaluating conditions */
-  isDefault: boolean | undefined;
 
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
