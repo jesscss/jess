@@ -65,9 +65,39 @@ describe('other argument kinds a mixin lookup call re-spells', () => {
   });
 });
 
-describe('a grouped value in an IE filter assignment argument', () => {
-  it.each(MATH_MODES)('keeps the authored spelling (math: %s)', async (math) => {
-    await expect(render('.x { v: alpha(opacity=(1 + 2)); }\n', math))
-      .resolves.toBe('.x {\n  v: alpha(opacity=(1 + 2));\n}\n');
+/*
+ * When the looked-up member is itself a mixin call, the reference writes its
+ * fallback text: the call as stored, with a math group's parens kept exactly
+ * where the author wrote them.
+ */
+describe('the fallback text of a mixin lookup call keeps grouped arguments', () => {
+  it.each([
+    ['(1 + 2)', '.m((1 + 2))[@r]'],
+    ['((1 + 2))', '.m(((1 + 2)))[@r]'],
+    ['1 + 2', '.m(1 + 2)[@r]'],
+    ['url(x.png)', '.m(url(x.png))[@r]'],
+    ['boolean(1 > 0)', '.m(boolean(1 > 0))[@r]']
+  ])('.m(%s)[@r] writes %s', async (argument, text) => {
+    for (const math of MATH_MODES) {
+      await expect(render(`.n() { a: b; }\n.m(@a) { @r: .n(); }\n.x { v: .m(${argument})[@r]; }\n`, math))
+        .resolves.toBe(`.x {\n  v: ${text};\n}\n`);
+    }
+  });
+});
+
+describe('a grouped value in a `name=value` function argument', () => {
+  it.each(MATH_MODES)('does not stop the parse (math: %s)', async (math) => {
+    await expect(render('.x { v: alpha(opacity=(1 + 2)); }\n', math)).resolves.toContain('alpha(opacity=');
+  });
+});
+
+/*
+ * P45: still stopped by the same fallback-text spelling, which has no spelling
+ * for a detached ruleset or an interpolation. Each turns red when fixed.
+ */
+describe('argument kinds the fallback text still cannot spell', () => {
+  it.fails.each(['{ a: b }', '@{b}x', 'url(@{b}.png)'])('.m(%s)[@r] evaluates', async (argument) => {
+    await expect(render(`@b: 2;\n.m(@a) { @r: 1; }\n.x { v: .m(${argument})[@r]; }\n`, 'parens-division'))
+      .resolves.toBe('.x {\n  v: 1;\n}\n');
   });
 });
