@@ -44,6 +44,7 @@ import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranch
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import { renderCombinator } from './node.js';
+import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
@@ -122,19 +123,6 @@ const EXPRESSION_NODES = new Set([
 const IDENT = /^-?(?:[_a-zA-Z\u0080-\uffff]|\\.)(?:[-_a-zA-Z0-9\u0080-\uffff]|\\.)*$/u;
 const DOLLAR_NAME = /^-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*$/u;
 const MIXIN_NAME = /^[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*$/u;
-const WHITESPACE = /^[ \t\n\r\f]+$/u;
-
-/**
- * `jess-parser` `delimRun` / `paddedDelimRun` / `gluedDelim`: the delims a
- * `.jess` value run joins (ledger N18) — glued, or after whitespace when it
- * does not start with `>` or `~`, a comment beside it included; `:` or `.`
- * glued only.
- */
-const DELIM = /^[=<>|~^?]+$/u;
-const PADDED_DELIM = /^[=<|^?][=<>|~^?]*$/u;
-const GLUED_DELIM = /^[:.]$/u;
-const isDelim = (part: ValueSlot | undefined, delim: RegExp): boolean =>
-  part !== undefined && !isSlotArray(part) && part.type === 'Any' && delim.test(part.src);
 
 /** `jess-parser` `guardUnaryTypePredicate` / `guardIsUnitPredicate`. */
 const TYPE_PREDICATES = new Set(['iscolor', 'isnumber', 'isstring', 'iskeyword', 'ispixel', 'ispercentage', 'isem']);
@@ -728,16 +716,7 @@ class JessPrinter {
     for (const [i, part] of parts.entries()) {
       if (i > 0) {
         const sep = layout?.[i - 1] ?? ' ';
-        const before = parts[i - 1];
-        if (isDelim(before, GLUED_DELIM) || isDelim(part, GLUED_DELIM)) {
-          out += sep === '' ? sep : gap('Any', 'a padded `:` or `.`: a `.jess` value joins them only glued');
-        } else if (isDelim(part, DELIM) && sep !== '' && !isDelim(part, PADDED_DELIM)) {
-          out += gap('Any', 'a `>` or `~` after whitespace: a `.jess` block reads it as a selector combinator');
-        } else {
-          out += WHITESPACE.test(sep) || isDelim(before, DELIM) || isDelim(part, DELIM)
-            ? sep
-            : gap('Comment', 'a comment between value parts: `ValueSpaceGroup` separators are whitespace only');
-        }
+        out += runSeparator(parts[i - 1], part, sep, gap);
       }
       out += this.value(part, at, indent);
     }
