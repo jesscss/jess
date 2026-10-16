@@ -42,7 +42,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, writeRenderTextResult, type RenderBuffer } from './util/render-buffer.js';
-import { registerRulesetWithRoot } from './util/extend-roots.js';
+import { extendRootsOf, registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership, reuseLeaf } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
@@ -2154,7 +2154,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     node.selector = sel;
 
     // Register the concrete Ruleset with the current extend root.
-    const extendRoot = context.extendRoots.getCurrentExtendRoot();
+    const extendRoot = extendRootsOf(context).getCurrentExtendRoot();
     if (extendRoot) {
       registerRulesetWithRoot(extendRoot, rulesetNode);
     }
@@ -2205,7 +2205,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       context.rulesetFrames.push(rulesetNode);
       if (extendRoot) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        context.extendRoots.registerRoot(node as unknown as Rules, extendRoot);
+        extendRootsOf(context).registerRoot(node as unknown as Rules, extendRoot);
       }
       let preparedRules: MaybePromise<Node>;
       try {

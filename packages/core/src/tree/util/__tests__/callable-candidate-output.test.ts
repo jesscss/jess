@@ -3,6 +3,7 @@ import { Context } from '../../../context.js';
 import { any, call, decl, mixin, ref, rules } from '../../index.js';
 import { getMixinOutputPlacementRecord } from '../mixin-output-slot.js';
 import { evaluateCallableCandidateOutput } from '../callable-candidate-output.js';
+import { callMapOf } from '../recursion-helper.js';
 
 describe('callable candidate output helper', () => {
   it('skips recursive candidates without disturbing the caller call-map entry', async () => {
@@ -11,7 +12,7 @@ describe('callable candidate output helper', () => {
       name: ref({ key: '.loop' }, { type: 'mixin' })
     });
     context.callStack.push(currentCall);
-    expect(context.callMap.add(currentCall, 'sig')).toBe(false);
+    expect(callMapOf(context).add(currentCall, 'sig')).toBe(false);
 
     const candidateParent = rules([]);
     const sourceRules = rules([decl({ name: 'color', value: any('red') })]);
@@ -29,9 +30,9 @@ describe('callable candidate output helper', () => {
     });
 
     expect(output).toBeUndefined();
-    expect(context.callMap.add(currentCall, 'sig')).toBe(true);
-    expect(context.callMap.delete(currentCall)).toBe(true);
-    expect(context.callMap.delete(currentCall)).toBe(false);
+    expect(callMapOf(context).add(currentCall, 'sig')).toBe(true);
+    expect(callMapOf(context).delete(currentCall)).toBe(true);
+    expect(callMapOf(context).delete(currentCall)).toBe(false);
   });
 
   it('evaluates candidate rules and attaches mixin output placement state', async () => {

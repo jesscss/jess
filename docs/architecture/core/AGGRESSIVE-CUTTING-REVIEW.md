@@ -337,12 +337,14 @@ a blanket optimization exemption or a new active architecture queue.
     ],
     "supportFiles": [
       "packages/core/src/util/calculate.ts",
+      "packages/core/src/tree/at-rule.ts",
       "packages/core/src/tree/color.ts",
       "packages/core/src/tree/dimension.ts",
       "packages/core/src/tree/node.ts",
       "packages/core/src/tree/number.ts",
       "packages/core/src/tree/operation.ts",
       "packages/core/src/tree/selector.ts",
+      "packages/core/src/tree/util/recursion-helper.ts",
       "packages/core/src/tree/util/selector-utils.ts",
       "packages/core/src/tree/util/should-operate.ts"
     ],

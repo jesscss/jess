@@ -18,11 +18,11 @@ import {
 } from './node.js';
 
 /*
- * Load Context before the tree utility graph. The legacy tree's module cycle
- * relies on this initialization order, but TreeContext is intentionally not
- * re-exported from this public barrel.
+ * Enter the tree utility graph through the extend-root driver. The legacy
+ * tree's module cycle (rules -> extend-roots -> ruleset -> rules) relies on
+ * this initialization order.
  */
-import '../context.js';
+import './util/extend-roots.js';
 import { compare } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';

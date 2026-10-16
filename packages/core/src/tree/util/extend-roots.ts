@@ -21,11 +21,13 @@ import { keySetOf, requiredKeySetOf, visibleKeySetOf } from './selector-analysis
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, beginExtendMatchPass, endExtendMatchPass } from './extend-walk.js';
-import type { MatchResult } from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, beginExtendMatchPass, endExtendMatchPass, type MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
+import { extendRootsOf } from './extend-roots-of.js';
+
+export { extendRootsOf };
 
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
@@ -752,13 +754,10 @@ function isInstructionVisibleForRoot(
   getCachedVisibleRoots?: (root: Rules) => Set<Rules>,
   isSameOrDescendant?: (rulesetRoot: Rules, extendRoot: Rules) => boolean
 ): boolean {
-  if (!instruction.extendRoot) {
+  if (!instruction.extendRoot || instruction.fromReferenceScope === true) {
     return false;
   }
-  if (instruction.fromReferenceScope === true) {
-    return false;
-  }
-  if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
+  if (extendRootsOf(context).isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
     return false;
   }
   if (instruction.extendRoot === rootRules) {
@@ -766,13 +765,13 @@ function isInstructionVisibleForRoot(
   }
   const sameOrDescendant = isSameOrDescendant
     ? isSameOrDescendant(rootRules, instruction.extendRoot)
-    : context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot);
+    : extendRootsOf(context).isSameOrDescendantRoot(rootRules, instruction.extendRoot);
   if (sameOrDescendant) {
     return true;
   }
   const visibleRoots = getCachedVisibleRoots
     ? getCachedVisibleRoots(instruction.extendRoot)
-    : context.extendRoots.getVisibleRoots(instruction.extendRoot);
+    : extendRootsOf(context).getVisibleRoots(instruction.extendRoot);
   return visibleRoots.has(rootRules);
 }
 
@@ -874,7 +873,7 @@ export function processExtends(context: Context): void {
     const getCachedVisibleRoots = (extendRoot: Rules): Set<Rules> => {
       let cached = visibleRootsCache.get(extendRoot);
       if (!cached) {
-        cached = context.extendRoots.getVisibleRoots(extendRoot);
+        cached = extendRootsOf(context).getVisibleRoots(extendRoot);
         visibleRootsCache.set(extendRoot, cached);
       }
       return cached;
@@ -898,7 +897,7 @@ export function processExtends(context: Context): void {
       }
       let cached = byRuleset.get(rulesetRoot);
       if (cached === undefined) {
-        cached = context.extendRoots.isSameOrDescendantRoot(rulesetRoot, extendRoot);
+        cached = extendRootsOf(context).isSameOrDescendantRoot(rulesetRoot, extendRoot);
         byRuleset.set(rulesetRoot, cached);
       }
       return cached;

@@ -326,7 +326,7 @@
     "statements": 53
   },
   "packages/core/src/context.ts": {
-    "statements": 569
+    "statements": 559
   },
   "packages/core/src/context.ts#Context.appendWarning": {
     "params": 14
@@ -656,7 +656,7 @@
     "statements": 92
   },
   "packages/core/src/tree/util/extend-roots.ts": {
-    "statements": 626
+    "statements": 625
   },
   "packages/core/src/tree/util/extend-roots.ts#processExtends": {
     "statements": 294

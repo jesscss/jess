@@ -1,7 +1,7 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
 import type { Rules } from '../rules.js';
-import type { CallSignature } from './recursion-helper.js';
+import { callMapOf, type CallSignature } from './recursion-helper.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { makeJessError } from '../../jess-error.js';
 import { isNode } from './is-node.js';
@@ -67,7 +67,7 @@ export async function evaluateCallableCandidateOutput({
   allowSpineFold = true,
   candidateIsMixin
 }: EvaluateCallableCandidateOutputOptions): Promise<Rules | undefined> {
-  if (currentCall && context.callMap.add(currentCall, getParamsSignature())) {
+  if (currentCall && callMapOf(context).add(currentCall, getParamsSignature())) {
     return undefined;
   }
 
@@ -149,7 +149,7 @@ export async function evaluateCallableCandidateOutput({
     throw error;
   } finally {
     if (currentCall) {
-      context.callMap.delete(currentCall);
+      callMapOf(context).delete(currentCall);
     }
   }
 }

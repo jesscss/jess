@@ -30,7 +30,7 @@ import { isNode } from './util/is-node.js';
 import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { copySelectorForPlacement } from './util/selector-utils.js';
-import { asExtendSelectorNode } from './util/extend-roots.js';
+import { asExtendSelectorNode, extendRootsOf } from './util/extend-roots.js';
 import {
   renderInvisibleEffect,
   type RenderBuffer
@@ -248,7 +248,7 @@ export class Extend extends Node<ExtendValue> {
      * Don't convert non-ampersand value to ampersand - they should be used as-is
      * Get current extend root from registry stack
      */
-    const extendRoot = context.extendRoots.getCurrentExtendRoot();
+    const extendRoot = extendRootsOf(context).getCurrentExtendRoot();
     if (!extendRoot) {
       return undefined;
     }

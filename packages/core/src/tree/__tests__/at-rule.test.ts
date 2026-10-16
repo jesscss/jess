@@ -7,6 +7,7 @@ import {
   keyword, Any
 } from '../index.js';
 import { Context } from '../../context.js';
+import { extendRootsOf } from '../util/extend-roots-of.js';
 import {
   AtRule
 } from '../at-rule.js';
@@ -258,11 +259,11 @@ describe('AtRule', () => {
       rules: [throwingChild]
     });
     context.rulesetFrames = [savedFrame];
-    const extendRootStackLength = context.extendRoots.extendRootStack.length;
+    const extendRootStackLength = extendRootsOf(context).extendRootStack.length;
 
     expect(() => node.prepareRegistration(context)).toThrow('child registration prep failed');
     expect(context.rulesetFrames).toEqual([savedFrame]);
-    expect(context.extendRoots.extendRootStack).toHaveLength(extendRootStackLength);
+    expect(extendRootsOf(context).extendRootStack).toHaveLength(extendRootStackLength);
   });
 
   it('restores rules context when at-rule prelude eval throws', () => {
@@ -556,8 +557,8 @@ describe('AtRule', () => {
       rules: outerBody.rules
     });
     const registeredLayers: Array<string | undefined> = [];
-    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
-    context.extendRoots.registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
+    const originalRegisterRoot = extendRootsOf(context).registerRoot.bind(extendRootsOf(context));
+    extendRootsOf(context).registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
@@ -597,8 +598,8 @@ describe('AtRule', () => {
       rules: outerBody.rules
     });
     const registeredLayers: Array<string | undefined> = [];
-    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
-    context.extendRoots.registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
+    const originalRegisterRoot = extendRootsOf(context).registerRoot.bind(extendRootsOf(context));
+    extendRootsOf(context).registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
@@ -647,8 +648,8 @@ describe('AtRule', () => {
       rules: outerBody.rules
     });
     const registeredLayers: Array<string | undefined> = [];
-    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
-    context.extendRoots.registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
+    const originalRegisterRoot = extendRootsOf(context).registerRoot.bind(extendRootsOf(context));
+    extendRootsOf(context).registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };

@@ -9,8 +9,6 @@ import type {
   Nil
 } from './tree/index.js';
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
-import { ExtendRootRegistry } from './tree/util/extend-roots.js';
-import { type Operator } from './util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { TriviaMap } from './types/index.js';
@@ -19,7 +17,6 @@ import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
 import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
 import { INJECTED_TEXT_NOTE, extractRelevantLines, fileAt, lineColAt } from './error/code-frame.js';
@@ -38,9 +35,7 @@ import {
   makeSuppressionSummary
 } from './warnings.js';
 import type { Call } from './tree/call.js';
-import { CallMap } from './tree/util/recursion-helper.js';
 import { BitSetLibrary } from './util/bitset.js';
-import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
 
 /**
@@ -1105,9 +1100,6 @@ export class Context {
    */
   spineOwnsRoot?: boolean;
 
-  /** Extend roots registry for managing extend scoping */
-  extendRoots!: ExtendRootRegistry;
-
   /**
    * Generic single-pass emit visitors (design §6). An ordered, initially-empty
    * list of `(node) => Node | void` hooks (with an optional `exit`) fired at each
@@ -1183,15 +1175,6 @@ export class Context {
 
   selectorBits = new BitSetLibrary<string>();
 
-  /**
-   * Selector key-set analysis (keySet / visibleKeySet / requiredKeySet), computed
-   * off the selector nodes. Scoped to this Context's bit library, so its cache and
-   * interned keys live and die with the compilation — no cross-run leak.
-   */
-  get selectorAnalysis(): SelectorAnalysis {
-    return selectorAnalysisFor(this.selectorBits);
-  }
-
   /** Rules depth, used to figure out source order */
   depth = -1;
 
@@ -1231,11 +1214,6 @@ export class Context {
    * @todo - can't this just be a number?
    */
   calcFrames = 0;
-
-  private _callMap: CallMap | undefined;
-  get callMap() {
-    return (this._callMap ??= new CallMap());
-  }
 
   private _callStack: Call[] | undefined;
   get callStack() {
@@ -1344,7 +1322,6 @@ export class Context {
     /* The policy outside any document; entering a document swaps in its own. */
     this._options = this.policyFor(undefined, undefined);
     this.plugins = plugins ?? [];
-    this.extendRoots = new ExtendRootRegistry();
     if (opts.output?.compress !== undefined) {
       this.printState.compress = opts.output.compress;
     }
@@ -2191,19 +2168,5 @@ export class Context {
     }
     this.classMap.set(name, mapVal);
     return `.${mapVal}`;
-  }
-
-  shouldOperate(op: Operator, left: Node, right: Node) {
-    const mathMode = this.options.mathMode;
-    return shouldOperateWithMathFrames(
-      {
-        mathMode,
-        parenFrames: this.parenFrames,
-        calcFrames: this.calcFrames
-      },
-      op,
-      left,
-      right
-    );
   }
 }

@@ -4073,6 +4073,135 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-16 `Context` stops loading the legacy `tree/` runtime.
+  `context.ts` value-imported four `tree/` modules (`ExtendRootRegistry`,
+  `shouldOperateWithMathFrames`, `CallMap`, `selectorAnalysisFor`), which put
+  the whole `tree/` graph into `@jesscss/core`'s `lib/index.js` although the
+  compiler never runs it. `Context` now imports only `tree/` types: the
+  unused `selectorAnalysis` getter is deleted; `shouldOperate` is a free
+  function in `tree/util/should-operate.ts`; the call-recursion guard and the
+  extend-root registry are per-`Context` `WeakMap` entries owned by
+  `tree/util/recursion-helper.ts` (`callMapOf`) and
+  `tree/util/extend-roots-of.ts` (`extendRootsOf`, re-exported by
+  `extend-roots.ts`). `tree/index.ts` enters its own module cycle through
+  `extend-roots` instead of loading `context.ts` for that side effect.
+- Architecture surface: `context.ts` (fields `extendRoots` and `_callMap`, the
+  `callMap` and `selectorAnalysis` getters, the `shouldOperate` method and five
+  imports deleted); `tree/util/should-operate.ts` (`shouldOperate`);
+  `tree/util/recursion-helper.ts` (`callMapOf`); `tree/util/extend-roots-of.ts`
+  (`extendRootsOf`); read sites in `tree/at-rule.ts`, `tree/extend.ts`,
+  `tree/rules.ts`, `tree/ruleset.ts`, `tree/operation.ts`,
+  `tree/util/callable-candidate-output.ts`; `tree/index.ts` load order.
+- Separation/duplication: none added. Each moved member has one owner on the
+  `tree/` side; `Context` keeps no copy.
+- Cumulative node weight: no node field. `Context` loses two instance fields.
+- New traversal: [loop/traversal] none new; the three flagged `while` lines are
+  the existing extend-root stack unwinds in `tree/at-rule.ts` and
+  `tree/rules.ts`, now reading the registry through `extendRootsOf(context)`.
+- New node/materialization: [node construction] `new ExtendRootRegistry()` and
+  `new CallMap()` move from `Context` into their `WeakMap` helpers (`semantic
+  placement state`, one each per `Context`, created on first `tree/` use
+  instead of in every `Context` constructor). [side map/set] two module-level
+  `WeakMap<Context, …>` replace the two `Context` fields.
+- Render path: unchanged; the AST v2 renderer reads none of these members.
+- Helper/API surface: added `shouldOperate`, `callMapOf`, `extendRootsOf`;
+  deleted `Context.shouldOperate`, `Context.callMap`, `Context.extendRoots`,
+  `Context.selectorAnalysis`.
+- Metadata mutations: [routine error control] none; `extendRootsOf` is a plain
+  get-or-create with no throw. Registry creation is lazy per `Context`. To stay
+  inside the structure ceiling, `extend-roots.ts` merges its two `extend-walk`
+  imports and its two leading early returns in `isInstructionVisibleForRoot`
+  into one guard (same result).
+- Review-flagged diff tokens: [loop/traversal] the existing stack-unwind
+  `while` loops (read site renamed only); [node construction] the two moved
+  constructions; [side map/set] the two `WeakMap`s; [routine error control]
+  `extendRootsOf`, a get-or-create helper.
+- Behavior evidence: core 218 files / 3,491 tests pass; the `tree/` suite (142
+  files / 2,593 tests) passes; `compare-less-builds --corpus` against the
+  b7eae18db build is byte-identical in all six output modes (361 fixtures);
+  `@jesscss/jess` `test:ratchet` passes.
+- Build evidence: `pnpm build:release`; `verify:types`, `verify:core-public-types`,
+  `verify:package-exports`, `verify:jess-api` pass. `lib/index.js` 760,640 →
+  329,466 bytes; 0 of 189 `tree/`-only string literals remain in `lib/*.js`
+  (86 before).
+- Boundary evidence: `@jesscss/core`'s public exports are unchanged
+  (`verify:package-exports`, `verify:core-public-types`, `verify:jess-api`);
+  the deleted `Context` members had no reader outside `tree/` and its tests.
+  The process-global value-layout store in `ast/provenance.ts` still lives in
+  one shared chunk (`lib/guard-node.js` / `.cjs`), as before.
+- Evidence: behavior and build as above; no speed claim. `benchmark.less`
+  render baseline 20.28 ms median (30 pairs), output 123,312 bytes.
+- Verdict: accepted with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context sheds its value imports of the legacy tree runtime: the call-recursion guard and the extend-root registry move to tree-owned per-Context WeakMaps and shouldOperate becomes a tree free function, so the compiler bundle no longer carries tree code it never runs. No output or dispatch semantics change.",
+    "dangerTokensJustification": "Two module-level WeakMaps keyed by Context replace two Context fields; each entry is created once per Context on first tree use, and callers reach it through one get-or-create helper. No new traversal; the flagged while loops are existing stack unwinds with a renamed read.",
+    "behaviorEvidence": "The core suite (218 files, 3491 tests) and tree suite pass; the corpus renders byte-identically to the b7eae18db build in six output modes.",
+    "buildEvidence": "pnpm build:release, verify:types, verify:core-public-types, verify:package-exports and verify:jess-api pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 20.28,
+      "outputSha256": "6c5df3a12e1514cfd7261047054282b411910c1367bfa0839533193884215161",
+      "outputBytes": 123312
+    }
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the sixteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, call, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": [
+      "declaration-sync-and-async-render-result",
+      "declaration-merge-source-span-exclusion",
+      "default-guard-owned-value",
+      "bitset-inversion-and-disjointness",
+      "string-and-node-combinator-recognition",
+      "selector-list-singleton-collapse",
+      "selector-list-array-or-node-inheritance",
+      "parser-delivered-selector-array-ampersand",
+      "selector-array-ruleset-callable-registration",
+      "selector-array-key-set-analysis",
+      "function-call-silent-preserve",
+      "selector-compose-cache-node-boundary",
+      "ordered-registration-context-restoration",
+      "property-merge-container-scope",
+      "mixin-invisible-sync-render-and-registration-result",
+      "extend-record-selector-surface",
+      "extend-root-composition-selector-surface",
+      "extend-walk-composed-match-selector-surface"
+    ],
+    "why": "The tree extend-root registry, call-recursion guard and math-frame decision are owned by tree modules instead of Context fields and methods, so Context imports only tree types. Tree read sites change from a Context property to a tree helper; registration, scoping and math decisions are unchanged.",
+    "dangerTokensJustification": "extendRootsOf and callMapOf are get-or-create reads of a per-Context WeakMap, replacing a property read; the registry and call map are constructed once per Context as before, lazily. The existing stack-unwind loops only change how they read the registry.",
+    "behaviorEvidence": "The tree suite (142 files, 2593 tests) passes, including the at-rule extend-root tests that patch the registry through extendRootsOf.",
+    "buildEvidence": "pnpm build:release and pnpm --filter @jesscss/core build pass; verify:types passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 20.28,
+      "outputSha256": "6c5df3a12e1514cfd7261047054282b411910c1367bfa0839533193884215161",
+      "outputBytes": 123312
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-06 a string is one string, and text the parser typed is
   never re-read from its bytes (owner ruling 2026-10-06 on PINNED-DEFECTS-AUDIT
   D22; ledger V3 and C2). Every string — escaped or not, interpolating or not,

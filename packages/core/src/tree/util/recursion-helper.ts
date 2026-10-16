@@ -1,5 +1,6 @@
 import type { Call } from '../call.js';
 import type { List } from '../list.js';
+import type { Context } from '../../context.js';
 
 type CallItem = List | string | undefined;
 export type CallSignature = List | string | undefined;
@@ -49,4 +50,16 @@ export class CallMap {
     }
     return false;
   }
+}
+
+const callMaps = new WeakMap<Context, CallMap>();
+
+/** The recursion guard for calls evaluated under `context`, created on first use. */
+export function callMapOf(context: Context): CallMap {
+  let callMap = callMaps.get(context);
+  if (callMap === undefined) {
+    callMap = new CallMap();
+    callMaps.set(context, callMap);
+  }
+  return callMap;
 }
