@@ -38,7 +38,7 @@ describe('evalGuard', () => {
       ev: null,
       modes: {},
       isDefault: () => false,
-      conditionGroups: false
+      whenGuard: true
     })).toBe(true);
   });
 });

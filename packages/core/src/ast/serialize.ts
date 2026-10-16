@@ -7799,10 +7799,10 @@ function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
  *  like a CSS ruleset guard, never depends on a mixin `default()` decision). A
  *  condition on the written lane of an F5 call is decided in the context that
  *  lane came from ({@link Lane.writtenFrom}). A ruleset's `when` guard passes
- *  `conditionGroups: false` ({@link GuardEvalDeps.conditionGroups}). */
-function guardDeps(frame: Frame | null, e: Lane, conditionGroups = true): GuardEvalDeps {
+ *  `whenGuard` ({@link GuardEvalDeps.whenGuard}). */
+function guardDeps(frame: Frame | null, e: Lane, whenGuard = false): GuardEvalDeps {
   const decide = e.writtenFrom ?? e;
-  return { resolveTyped: makeTypedResolver(frame, decide), ev: decide.ev, modes: decide.modes, isDefault: () => false, conditionGroups };
+  return { resolveTyped: makeTypedResolver(frame, decide), ev: decide.ev, modes: decide.modes, isDefault: () => false, whenGuard };
 }
 
 /**
@@ -9103,7 +9103,7 @@ function writtenBlockBody(
         const guard = rule.guard;
         const holds = guard === undefined
           ? true
-          : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e, false)));
+          : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e, true)));
         items.push(mapMaybe(holds, guarded => guarded
           ? mapMaybe(selector, header => mapMaybe(
               writtenBlockBody(block, rule, bodyFrame, e, trivia),
@@ -14938,7 +14938,7 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: Lane): MaybePromise<boo
     ev: e.ev,
     modes: e.modes,
     isDefault: () => false,
-    conditionGroups: false
+    whenGuard: true
   }));
 }
 
@@ -18986,7 +18986,7 @@ function dispatch(
     if (owner instanceof DocumentContext && changesPolicy(guardCtx, owner)) {
       enterPolicy(guardCtx, owner);
     }
-    return { resolveTyped: makeTypedResolver(overlay, guardCtx), ev: guardCtx.ev, modes: guardCtx.modes, isDefault, conditionGroups: false };
+    return { resolveTyped: makeTypedResolver(overlay, guardCtx), ev: guardCtx.ev, modes: guardCtx.modes, isDefault, whenGuard: true };
   };
 
   /*

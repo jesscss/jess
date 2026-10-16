@@ -300,7 +300,8 @@ side effect does not rewrite an already-evaluated sibling declaration.
 - Under `math=parens` (and `strict`), the arguments of `if()`, `boolean()`, `not()`,
   `and()` and `or()` follow the math mode like any function argument:
   `boolean(1 + 2 = 3)` is `false`, and `boolean((1 + 2 = 3))` is `true`. The
-  parentheses of a guard's `when ( … )` are not a paren group: write
+  outermost parentheses of each condition of a guard's `when ( … )` are not a
+  paren group, and every pair inside them is: write `when ((1 + 2 = 3))` or
   `when ((1 + 2) = 3)` to compute.
 
 ```bash

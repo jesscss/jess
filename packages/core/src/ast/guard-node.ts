@@ -28,9 +28,9 @@ import type { ValueSlot } from './nodes.js';
  * carries them, so each kind keeps one hidden class:
  *
  *  - `parens` — how many paren groups the author wrote around exactly this
- *    condition: `((1 = 1) or 2)` gives the `or` none and its `cmp` one. In a
- *    function's arguments they are paren groups for the math in the
- *    condition; in a `when` guard they are not (ledger V35).
+ *    condition: `((1 = 1) or 2)` gives the `or` none and its `cmp` one. They are
+ *    paren groups for the math in the condition, except the outermost pair
+ *    of each condition of a `when` guard (ledger V35).
  *  - `implied` — the comparison is a dialect's lowering of a bare operand
  *    (Less's `== true`, §4.4.2), not one the author wrote.
  *  - `word` — the `and` / `or` / `not` keyword as the author spelled it

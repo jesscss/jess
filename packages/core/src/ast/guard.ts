@@ -48,7 +48,7 @@ export type ValueResolver = (v: ValueSlot) => MaybePromise<string>;
  *
  * `group` is the nearest group the condition puts around the operand: `true`
  * inside parens written around a condition where they are a paren group
- * ({@link GuardEvalDeps.conditionGroups}), `false` in a type function's
+ * ({@link GuardEvalDeps.whenGuard}), `false` in a type function's
  * arguments, which those parens do not reach (V34), and `undefined` where the
  * condition adds none.
  *
@@ -70,14 +70,15 @@ export interface GuardEvalDeps {
   isDefault: () => boolean;
 
   /**
-   * Whether the parens written around a condition are paren groups for its
-   * math (ledger V35). They are in a function's arguments and a control
-   * statement (`if((1 + 2 = 3), y, n)` is `y` under `math: parens`), and are
-   * not in a `when` guard on a mixin or ruleset (`when (1 + 2 = 3)` keeps
-   * `1 + 2`; owner 2026-10-16: "in the expression `when (...)` the parens
-   * don't count as starting parens").
+   * The condition is a `when` guard on a mixin or ruleset, whose outermost
+   * parens around each condition are the `when` syntax, not a paren group for
+   * its math (ledger V35): under `math: parens`, `when (1 + 2 = 3)` keeps
+   * `1 + 2`, while `when ((1 + 2 = 3))` and `when ((1 + 2) = 3)` compute.
+   * Everywhere else (a function's arguments, a control statement) every paren
+   * the author wrote around a condition is a paren group: `if((1 + 2 = 3), y, n)`
+   * is `y`.
    */
-  conditionGroups: boolean;
+  whenGuard: boolean;
 }
 
 /**
@@ -86,12 +87,15 @@ export interface GuardEvalDeps {
  * materialized value objects — real Less semantics by construction; logic/
  * negation/truthiness/default are owned here.
  *
- * Where the parens the author wrote around a condition (`parens`) are paren
- * groups ({@link GuardEvalDeps.conditionGroups}), every operand in them is in
- * one ({@link TypedResolver}).
+ * The parens the author wrote around a condition (`parens`) are paren groups,
+ * so every operand in them is in one ({@link TypedResolver}), except a `when`
+ * guard's first pair on each path from the root ({@link GuardEvalDeps.whenGuard}).
+ * `outer` is what the enclosing condition hands down: `true` inside a group,
+ * `false` once a `when` guard's own pair is passed, `undefined` before any pair.
  */
 export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean): MaybePromise<boolean> {
-  const group = (node.parens > 0 && deps.conditionGroups) || outer;
+  const group = outer === true || (deps.whenGuard && outer === undefined ? node.parens > 1 : node.parens > 0);
+  const inner = group || (outer === undefined && node.parens === 0 ? undefined : false);
   switch (node.g) {
     case 'and':
     case 'or': {
@@ -109,13 +113,13 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
        * guard never gains a microtask hop.
        */
       const decided = node.g !== 'and';
-      const l = evalGuard(node.left, deps, group);
-      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps, group);
+      const l = evalGuard(node.left, deps, inner);
+      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps, inner);
       return isThenable(l) ? l.then(rest) : rest(l);
     }
     case 'not': {
-      const inner = evalGuard(node.inner, deps, group);
-      return isThenable(inner) ? inner.then(value => !value) : !inner;
+      const negated = evalGuard(node.inner, deps, inner);
+      return isThenable(negated) ? negated.then(value => !value) : !negated;
     }
     case 'truth': {
       /*
@@ -123,7 +127,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
        * ONE typed predicate over the materialized value — never a byte test.
        * The dialects do not arrive here: they lower to comparisons (§4.4.2).
        */
-      const value = deps.resolveTyped(node.value, group);
+      const value = deps.resolveTyped(node.value, group || undefined);
       return isThenable(value) ? value.then(isTruthy) : isTruthy(value);
     }
     case 'cmp':
@@ -132,8 +136,8 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
       if (!ev) {
         return false;
       }
-      const left = deps.resolveTyped(node.left, group);
-      const right = deps.resolveTyped(node.right, group);
+      const left = deps.resolveTyped(node.left, group || undefined);
+      const right = deps.resolveTyped(node.right, group || undefined);
 
       /*
        * The node's own `g` picks the primitive — the assertion or the match test

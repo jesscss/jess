@@ -212,12 +212,12 @@ describe('owner rulings (Less 5)', () => {
       .resolves.toBe('.a {\n  b: (foo(1 + 2));\n  c: (foo(3));\n}\n');
   });
 
-  it('V35 (owner 2026-10-16): the when parens of a guard are not a math group; function arguments follow the math mode', async () => {
+  it('V35 (owner 2026-10-16): the outermost when parens of a guard are not a math group; function arguments follow the math mode', async () => {
     const compiler = new Compiler({ compile: { mathMode: 'parens' } });
     await expect(compiler.renderString(
-      '.m() when (1 + 2 = 3) { a: y; } .m() when (default()) { a: n; } .x { .m(); b: if((1 + 2 = 3), y, n); c: boolean(1 + 2 = 3); d: boolean((1 + 2 = 3)); e: not(1 + 2 = 3); }',
+      '.m() when (1 + 2 = 3) { a: y; } .m() when (default()) { a: n; } .k() when ((1 + 2 = 3)) { f: y; } .x { .m(); .k(); b: if((1 + 2 = 3), y, n); c: boolean(1 + 2 = 3); d: boolean((1 + 2 = 3)); e: not(1 + 2 = 3); }',
       { filePath: 'entry.less', extension: '.less', suppressWarnings: true }
-    )).resolves.toBe('.x {\n  a: n;\n  b: y;\n  c: false;\n  d: true;\n  e: true;\n}\n');
+    )).resolves.toBe('.x {\n  a: n;\n  f: y;\n  b: y;\n  c: false;\n  d: true;\n  e: true;\n}\n');
   });
 
   it('P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses', async () => {
