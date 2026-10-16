@@ -17,7 +17,7 @@ import {
 /**
  * processExtends behavior is tested via the real eval flow: build AST as the parser would
  * (rules with rulesets that contain extend() nodes), call root.eval(context), then assert.
- * No manual context.root, context.extendRoots.registerRoot, or context.extends.push.
+ * No manual context.root, extendRootsOf(context).registerRoot, or context.extends.push.
  */
 describe('processExtends function (eval flow)', () => {
   describe('Basic extend processing', () => {

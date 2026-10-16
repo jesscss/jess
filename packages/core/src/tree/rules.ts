@@ -33,7 +33,7 @@ import {
   type CallableFindOptions,
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
-import { processExtends } from './util/extend-roots.js';
+import { extendRootsOf, processExtends } from './util/extend-roots.js';
 import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableCssImportStatement, isSpineEligibleMixinCall, resolveSpineMixinCall, isSpineFoldableStatementCall } from './util/emit-walk.js';
 import type { SpineMixinCallResolution } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -526,8 +526,8 @@ function restoreRulesRenderContext(context: Context, saved: RulesRenderContextSn
   context.treeContext = saved.treeContext;
   context.treeRoot = saved.treeRoot;
   context.root = saved.root;
-  while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-    context.extendRoots.popExtendRoot();
+  while (extendRootsOf(context).extendRootStack.length > saved.extendRootStackLength) {
+    extendRootsOf(context).popExtendRoot();
   }
 }
 
@@ -6373,7 +6373,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       const popNestableBody = () => {
         if (isNestableAtRuleBody) {
-          context.extendRoots.popExtendRoot();
+          extendRootsOf(context).popExtendRoot();
         }
       };
       if (isThenable<this>(mp)) {
@@ -6417,9 +6417,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
      * Register main root as extend root if this is the root (needed for extends during registration prep).
      * Check rules === context.root at registration time (not using stale isMainRoot).
      */
-    if (rules === context.root && !context.extendRoots.root) {
-      context.extendRoots.registerRoot(rules);
-      context.extendRoots.pushExtendRoot(rules);
+    if (rules === context.root && !extendRootsOf(context).root) {
+      extendRootsOf(context).registerRoot(rules);
+      extendRootsOf(context).pushExtendRoot(rules);
     }
 
     /*
@@ -6427,7 +6427,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
      * Needed for both: wrapper (collapseNesting) and direct body (collapseNesting: false).
      */
     if (isNestableAtRuleBody) {
-      context.extendRoots.pushExtendRoot(rules);
+      extendRootsOf(context).pushExtendRoot(rules);
     }
 
     return { saved, isNestableAtRuleBody };
@@ -7025,7 +7025,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       treeContext: context.treeContext,
       treeRoot: context.treeRoot,
       root: context.root,
-      extendRootStackLength: context.extendRoots.extendRootStack.length
+      extendRootStackLength: extendRootsOf(context).extendRootStack.length
     } as const;
   }
 
@@ -7038,8 +7038,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _popExtendRootStackTo(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
-    while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-      context.extendRoots.popExtendRoot();
+    while (extendRootsOf(context).extendRootStack.length > saved.extendRootStackLength) {
+      extendRootsOf(context).popExtendRoot();
     }
   }
 
@@ -7770,13 +7770,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _ensureRootExtendStack(rules: Rules, context: Context): void {
-    if (rules !== context.root || context.extendRoots.extendRootStack.length !== 0) {
+    if (rules !== context.root || extendRootsOf(context).extendRootStack.length !== 0) {
       return;
     }
-    if (!context.extendRoots.root) {
-      context.extendRoots.registerRoot(rules);
+    if (!extendRootsOf(context).root) {
+      extendRootsOf(context).registerRoot(rules);
     }
-    context.extendRoots.pushExtendRoot(rules);
+    extendRootsOf(context).pushExtendRoot(rules);
   }
 
   private _assignRootDocumentOrder(rules: Rules, context: Context): void {
@@ -7978,7 +7978,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._popExtendRootStackTo(context, saved);
     }
     if (rules === context.root) {
-      context.extendRoots.popExtendRoot();
+      extendRootsOf(context).popExtendRoot();
     }
     context.rulesEvalStack.pop();
     context.depth--;

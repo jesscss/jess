@@ -22,7 +22,7 @@ import {
 } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
-import { registerRulesetWithRoot } from './util/extend-roots.js';
+import { extendRootsOf, registerRulesetWithRoot } from './util/extend-roots.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -50,7 +50,7 @@ function registerInnerExtendRootIfHoisted(
   if (!innerRules || !isNode(innerRules, N.Rules)) {
     return;
   }
-  context.extendRoots.registerRoot(innerRules, wrapperRules, { layerName });
+  extendRootsOf(context).registerRoot(innerRules, wrapperRules, { layerName });
 }
 
 function registerEvaluatedRulesetsForRoot(root: Rules, rules: Rules): void {
@@ -365,7 +365,7 @@ function createAtRuleBodyEvalRecordState(
   return {
     evaluatedPrelude: options.evaluatedPrelude,
     frameCount: context.frames.length,
-    extendRootStackLength: context.extendRoots.extendRootStack.length,
+    extendRootStackLength: extendRootsOf(context).extendRootStack.length,
     writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true,
     writeVisibility: options.writeVisibility ?? true
   };
@@ -1231,11 +1231,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   ): AtRuleBodyRegistrationContext {
     const pushedExtendRoot = true;
     if (node.isNestable()) {
-      const parent = context.extendRoots.getCurrentExtendRoot();
-      context.extendRoots.registerRoot(rules, parent);
-      context.extendRoots.pushExtendRoot(rules);
+      const parent = extendRootsOf(context).getCurrentExtendRoot();
+      extendRootsOf(context).registerRoot(rules, parent);
+      extendRootsOf(context).pushExtendRoot(rules);
     } else {
-      context.extendRoots.pushExtendRoot(rules);
+      extendRootsOf(context).pushExtendRoot(rules);
     }
 
     /*
@@ -1260,7 +1260,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       context.rulesetFrames = saved.savedRulesetFrames;
     }
     if (saved.pushedExtendRoot) {
-      context.extendRoots.popExtendRoot();
+      extendRootsOf(context).popExtendRoot();
     }
   }
 
@@ -1305,18 +1305,18 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     context: Context,
     state: AtRuleBodyRegistrationState
   ): AtRuleBodyRegistrationState {
-    context.extendRoots.popExtendRoot();
+    extendRootsOf(context).popExtendRoot();
     const layerName = record.layerName;
     const parent = state.parentExtendRoot ?? context.root ?? undefined;
-    context.extendRoots.registerRoot(state.bodyToEval, parent as Rules | undefined, { layerName });
+    extendRootsOf(context).registerRoot(state.bodyToEval, parent as Rules | undefined, { layerName });
     registerInnerExtendRootIfHoisted(state.bodyToEval, context, layerName);
     if (state.finalRules !== state.bodyToEval) {
-      context.extendRoots.registerRoot(state.finalRules, state.bodyToEval, { layerName });
+      extendRootsOf(context).registerRoot(state.finalRules, state.bodyToEval, { layerName });
       registerEvaluatedRulesetsForRoot(state.finalRules, state.finalRules);
       registerInnerExtendRootIfHoisted(state.finalRules, context, layerName);
     }
-    context.extendRoots.pushExtendRoot(state.bodyToEval);
-    context.extendRoots.popExtendRoot();
+    extendRootsOf(context).pushExtendRoot(state.bodyToEval);
+    extendRootsOf(context).popExtendRoot();
     return state;
   }
 
@@ -1332,20 +1332,20 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         pushedExtendRoot: false
       });
     }
-    const parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
-    context.extendRoots.registerRoot(rules, parentExtendRoot);
-    context.extendRoots.pushExtendRoot(rules);
+    const parentExtendRoot = extendRootsOf(context).getCurrentExtendRoot();
+    extendRootsOf(context).registerRoot(rules, parentExtendRoot);
+    extendRootsOf(context).pushExtendRoot(rules);
     let preparedRules: MaybePromise<Node>;
     try {
       preparedRules = rules.prepareRegistration(context);
     } catch (error) {
-      context.extendRoots.popExtendRoot();
+      extendRootsOf(context).popExtendRoot();
       restoreBodyEvalContext();
       throw error;
     }
     const finish = (resolved: Node): AtRuleBodyRegistrationState => {
       if (!(resolved instanceof Rules)) {
-        context.extendRoots.popExtendRoot();
+        extendRootsOf(context).popExtendRoot();
         restoreBodyEvalContext();
         throw new TypeError('Expected at-rule body registration prep to return Rules');
       }
@@ -1356,7 +1356,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     };
     return isThenable(preparedRules)
       ? preparedRules.then(finish, (error) => {
-          context.extendRoots.popExtendRoot();
+          extendRootsOf(context).popExtendRoot();
           restoreBodyEvalContext();
           throw error;
         })
@@ -1799,8 +1799,8 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       popAtRuleBodyEvalRecord(context, bodyEvalRecord);
       context.frames.length = bodyEvalRecord.frameCount;
       bodyEvalRecord.restoreRulesetFrames();
-      while (context.extendRoots.extendRootStack.length > bodyEvalRecord.extendRootStackLength) {
-        context.extendRoots.popExtendRoot();
+      while (extendRootsOf(context).extendRootStack.length > bodyEvalRecord.extendRootStackLength) {
+        extendRootsOf(context).popExtendRoot();
       }
     };
     pushAtRuleBodyEvalRecord(context, bodyEvalRecord);

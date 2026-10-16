@@ -21,6 +21,14 @@ counts as the current public `@jesscss/core` surface.
 tests, and the `packages/core/test/` files that only exercised `tree/`. Rows
 below that name them are provenance.
 
+**`Context` no longer loads `tree/` at runtime (2026-10-16):** `context.ts`
+imports only `tree/` types. Of the §2c members, `selectorAnalysis` is deleted;
+`shouldOperate` is `shouldOperate(context, …)` in `tree/util/should-operate.ts`;
+`callMap` and `extendRoots` are per-`Context` `WeakMap` entries read through
+`callMapOf(context)` (`tree/util/recursion-helper.ts`) and
+`extendRootsOf(context)` (`tree/util/extend-roots-of.ts`). `tree/` code is no
+longer bundled into `@jesscss/core`'s `lib/index.js`.
+
 ## Method
 
 Three passes, each stated because two of them correct an earlier, wrong version

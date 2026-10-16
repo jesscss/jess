@@ -3,6 +3,7 @@ import type { Operator } from '../../util/calculate.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Node } from '../node.js';
+import type { Context } from '../../context.js';
 
 export type MathFrameState = {
   mathMode: MathMode;
@@ -22,11 +23,23 @@ export function isInParens(parenFrames: ReadonlyArray<boolean>): boolean {
   return parenFrames.at(-1) ?? false;
 }
 
+/** Whether `left op right` computes under `context`'s current math frames. */
+export function shouldOperate(context: Context, op: Operator, left: Node, right: Node): boolean {
+  return shouldOperateWithMathFrames(
+    {
+      mathMode: context.options.mathMode,
+      parenFrames: context.parenFrames,
+      calcFrames: context.calcFrames
+    },
+    op,
+    left,
+    right
+  );
+}
+
 /**
- * Shared calculation decision logic for both eval-time (`Context.shouldOperate`)
+ * Shared calculation decision logic for both eval-time ({@link shouldOperate})
  * and parse-time decisions (Less→Jess conversion).
- *
- * This must remain behaviorally equivalent to `Context.shouldOperate`.
  */
 export function shouldOperateWithMathFrames(
   state: MathFrameState,

@@ -6,6 +6,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { shouldOperate } from './util/should-operate.js';
 import { Dimension } from './dimension.js';
 import { Color } from './color.js';
 import { Call, isCalcCall } from './call.js';
@@ -249,7 +250,7 @@ export class Operation extends Node<OperationValue> {
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
         return renderOperands();
       }
-      if (context.shouldOperate(op, l, r)) {
+      if (shouldOperate(context, op, l, r)) {
         if (isCalcCall(l) || isCalcCall(r)) {
           return this.createCalcFallback(
             Operation.unwrapCalcOperand(l),
@@ -376,7 +377,7 @@ export class Operation extends Node<OperationValue> {
         }
         return n.withOperands(l, r);
       }
-      if (context.shouldOperate(op, l, r)) {
+      if (shouldOperate(context, op, l, r)) {
         /*
          * A preserved `calc(...)` operand must compose INTO a calc — nest and
          * flatten to a single `calc(l op r)`, not a bare operation with a calc
