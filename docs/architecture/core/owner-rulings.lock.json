@@ -55,16 +55,17 @@
     "V27": "47f2dd7bff39f962",
     "V28": "ca8fb72b227e0428",
     "V33": "054bbd6f3df04c38",
-    "O1": "8766f07f1696feeb",
+    "V34": "da53c65dd1318b11",
+    "O1": "0361aff13826730b",
     "O2": "4cc0db272d7a46a4",
-    "O3": "8e116c172ef49b4c",
+    "O3": "bd5d3ae3a8bee4ba",
     "O4": "7c93a6427534d0ba",
     "O5": "bdaa9673e8ac30b8",
     "O6": "f0948dca466eb7d1",
     "O7": "f2c202fe0a75c46f",
     "O8": "111d4b93199be3f9",
     "O9": "2cd3f5ae6b4cd62c",
-    "O10": "33de99c10c8cd1d1",
+    "O10": "c7cc40786c8001b8",
     "O11": "4241a3e4d79d3c23",
     "O17": "599c6f5810f2b019",
     "O19": "0b464f8c92945e12",
@@ -251,6 +252,7 @@
     "X3 (owner 2026-10-05): an all extend groups equal-specificity extenders into an :is() at the match": "cf0356554d88cbb6",
     "O9 (owner-delegated judgment 2026-10-04; owner: \"just use your judgement - whatever's most correct / most like CSS, and/or best UX\"): a root & before content drops; a lone root & is kept": "ec21f20a0b4dacb3",
     "F12 (owner 2026-07-24): a custom property keeps its comments and trims edge whitespace": "5303faad314efb3e",
+    "V34 (owner 2026-10-15): the parentheses around a call do not reach its arguments": "7254fc2933a28121",
     "P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses": "537519cc5a3c4e5d"
   }
 }
