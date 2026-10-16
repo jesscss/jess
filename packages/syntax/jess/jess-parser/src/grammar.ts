@@ -780,6 +780,24 @@ const interpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
  * commented value still fails exactly where it did before.
  */
 const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
+
+/*
+ * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that `.jess` gives no
+ * meaning outside `$( … )`, glued or padded: `alpha(opacity=50)`, `x: a ~ b`,
+ * `foo(a==b)`. It is the css `PunctuationValue` run less the characters
+ * `.jess` reads itself: `$` (its execution forms), `@`, `&`, `%`, the `+ - * /`
+ * separators and signs, and `:` and `.` (see `gluedDelim`).
+ */
+const delimRun = regex(/[=<>|~^?]+/);
+
+/*
+ * `:` and `.` join a run only glued on both sides, inside one authored
+ * component (`progid:DXImageTransform.Microsoft.gradient(…)`). After
+ * whitespace they open `.jess` structure instead: `name: value` (a collection
+ * entry or a named argument) and a nested rule's `.class` selector after an
+ * unterminated declaration.
+ */
+const gluedDelim = regex(/[:.]/);
 const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /* CSS at-rule URL bodies stay closed to Jess value syntax. */
@@ -2405,28 +2423,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * A call component is one space group; a modern CSS component's slash
    * (`rgb(15 23 42 / .22)`) is the same direct-neighbour slash group a value
    * uses (P33): `[15, 23, 42 / .22]`. `/` stays unavailable as unwrapped Jess
-   * arithmetic, and a dangling separator still has no right operand.
-   *
-   * A `=` after a group gives `.jess` no expression to read: it is CSS's `=`
-   * delim between component values (`alpha(opacity=50)`, `foo(a=b=c)`), so the
-   * component is that CSS run, kept as authored, glued or padded — the same
-   * `Any` delim the css grammar builds. Comparison stays inside `$( … )`.
+   * arithmetic, and a dangling separator still has no right operand. A delim
+   * run (`alpha(opacity=50)`, `foo(a==b)`) is the group's own: comparison stays
+   * inside `$( … )`.
    */
   const CallComponent = node<ValueSlot>(
     'CallComponent',
-    noTrivia(sequence(
-      g.ValueSpaceGroup,
-      many(sequence(
-        optional(valueTrivia),
-        literal('='),
-        optional(valueTrivia),
-        g.ValueSpaceGroup
-      ))
-    )),
+    g.ValueSpaceGroup,
     (children) => {
-      if (children.length > 1) {
-        return componentRun(children);
-      }
       const value = children.find((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
       if (value === undefined) {
         throw new TypeError('Jess call component produced unexpected children.');
@@ -3237,41 +3241,52 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * The authored space-adjacency run of slash groups. A brace block may only be
-   * a value's FIRST atom (see `nonBlockValueAtom`), so a continuation term may
-   * not open one.
+   * A delim between two slash groups, glued or padded (`a=b`, `a = b`,
+   * `foo(a /* c *\/ = b)`): CSS's adjacent component values, kept as authored —
+   * the same `Any` delim the css grammar builds (ledger N18). The padding before
+   * it is the run's own separator when there is whitespace, so only a comment
+   * or a glued delim reaches this sequence's leading trivia.
+   */
+  const delimJoin = sequence(
+    optional(valueTrivia),
+    delimRun,
+    optional(valueTrivia),
+    not(literal('{')),
+    g.ValueTerm
+  );
+
+  /*
+   * The authored space-adjacency run of slash groups, and of the delims
+   * `delimJoin` and `gluedDelim` read between them. A brace block may only be a value's FIRST
+   * atom (see `nonBlockValueAtom`), so a continuation term may not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
     noTrivia(sequence(
       g.ValueTerm,
-      many(sequence(
-        field(
-          'separator',
-          regex(/[ \t\n\r\f]+/)
+      many(choice(
+        sequence(
+          field(
+            'separator',
+            regex(/[ \t\n\r\f]+/)
+          ),
+          choice(
+            sequence(
+              not(literal('{')),
+              g.ValueTerm
+            ),
+            delimJoin
+          )
         ),
-        not(literal('{')),
-        g.ValueTerm
+        delimJoin,
+        sequence(
+          gluedDelim,
+          not(literal('{')),
+          g.ValueTerm
+        )
       ))
     )),
-    (children, fields) => {
-      const values = children.filter(isJessValueSlotValue);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(
-            fields,
-            'separator'
-          ).map(separator => typeof separator.value === 'string'
-            ? separator.value
-            : requireToken(separator.value).value);
-      return withValueLayout(
-        values,
-        separators
-      );
-    }
+    children => componentRun(children, isJessValueSlotValue)
   );
   const Value = node<ValueSlot>(
     'Value',

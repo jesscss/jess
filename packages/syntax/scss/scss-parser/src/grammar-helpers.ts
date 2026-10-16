@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, componentRun, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { ScssImportPostludeError } from './parse-error.js';
 
@@ -412,19 +412,43 @@ export const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
 export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
 
 /**
- * A grammar terminal — a delim or its padding — and never a value node. A
- * `Quoted` also carries a string `value`, so `isToken` alone cannot tell
- * `foo("=")` from `foo(a=b)`.
+ * An operator terminal — a delim, a comparison or a keyword `:` — and never its
+ * padding (whitespace or a comment) or a value node. A `Quoted` also carries a
+ * string `value`, so `isToken` alone cannot tell `foo("=")` from `foo(a=b)`.
  */
-export function isScssTerminal(child: unknown): child is Token {
-  return isToken(child) && !isScssValue(child);
+function isScssOperator(child: unknown): child is Token {
+  return isToken(child) && !isScssValue(child) && child.value.length > 0 && !' \t\n\r\f/'.includes(child.value[0]!);
+}
+
+/**
+ * `CallArgument`'s reduction. The head — the operand alone, one comparison, or
+ * a keyword — keeps its SCSS meaning; the run from the first operator SCSS
+ * gives no meaning (`=`, `~`, …), or from a second operator, is the CSS run of
+ * component values written as authored (ledger N18): `a=b=c`, `a = b < c`,
+ * `$x: a=b`.
+ */
+export function scssCallArgumentRun(children: readonly unknown[]): ScssCallArg {
+  const operators = children.flatMap((child, index) => isScssOperator(child) ? [index] : []);
+  const first = operators[0] === undefined ? undefined : requireToken(children[operators[0]]).value;
+  const runStart = first === undefined || first === ':' || COMPARISON_OPERATORS.has(first) ? operators[1] : operators[0];
+  if (runStart === undefined) {
+    return scssCallArgument(children, children.length);
+  }
+  const head = isToken(children[runStart - 1]) && !isScssOperator(children[runStart - 1]) && !isScssValue(children[runStart - 1]) ? runStart - 1 : runStart;
+  const argument = scssCallArgument(children, head);
+  return callArg(
+    componentRun([argument.value, ...children.slice(head)], isScssValueSlotValue),
+    argument.name,
+    false,
+    argument.name === undefined ? undefined : '$'
+  );
 }
 
 /**
  * A call argument's head, `children[0, end)`: the operand alone, a keyword
  * argument, or a comparison. A `=` run after it is the caller's.
  */
-export function scssCallArgument(children: readonly unknown[], end: number): ScssCallArg {
+function scssCallArgument(children: readonly unknown[], end: number): ScssCallArg {
   const left = requireValueSlot(children[0]);
   if (end === 1) {
     return callArg(left);

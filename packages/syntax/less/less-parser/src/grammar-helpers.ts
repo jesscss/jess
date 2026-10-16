@@ -119,6 +119,9 @@ type FunctionConditionFact = {
    * group's math group (see {@link LessGuardOperand}).
    */
   readonly raw?: ValueNode | LessMathRun;
+
+  /** A chain of operators (`a=b=c`, `a==b`): the CSS run it is, written as authored. */
+  readonly run?: ValueSlot;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type VariableNameFact = {
@@ -871,6 +874,16 @@ function lessTriviaEntryInsertIndex(triviaLog: readonly number[], index: number)
   return triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 2] ?? 0;
 }
 
+/** Whether any trivia stands before raw child `insertIndex`. */
+function hasTriviaAtInsertIndex(triviaLog: readonly number[], insertIndex: number): boolean {
+  for (let entry = 0; entry < lessTriviaEntryCount(triviaLog); entry++) {
+    if (lessTriviaEntryInsertIndex(triviaLog, entry) === insertIndex) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** The layout text of the trivia before raw child `insertIndex` ({@link triviaTextAt}). */
 function triviaTextAtInsertIndex(
   triviaLog: readonly number[],
@@ -979,6 +992,12 @@ function queryListHasImportCondition(value: ValueNode): boolean {
   return false;
 }
 
+/** A CSS delim run a Less value gives no meaning (`=`, `~`, glued `:`/`.`): an `Any` component. */
+function isDelimTerminal(child: unknown): boolean {
+  const text = lessTerminalText(child);
+  return text !== null && text.length > 0 && [...text].every(character => '=~|^?:.'.includes(character));
+}
+
 function isGluedValueBoundary(child: unknown): boolean {
   return typeof child === 'object'
     && child !== null
@@ -993,25 +1012,28 @@ function valuePieceReducerWithTrivia(
   triviaLog: readonly number[],
   state: unknown
 ): ValueSlot {
+  const isPiece = (child: unknown): boolean => isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%') || isDelimTerminal(child);
   const values = children
-    .filter(child => isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))
-    .map(child => isLessTerminalText(child, '-') || isLessTerminalText(child, '%')
-      ? keyword(requireTerminalText(child))
-      : requireValueNode(child));
+    .filter(isPiece)
+    .map(child => isDelimTerminal(child)
+      ? any(requireTerminalText(child))
+      : isValueNode(child) ? child : keyword(requireTerminalText(child)));
   if (values.length === 1) {
     return values[0]!;
   }
 
+  /* A delim is glued to its neighbours unless trivia stands between them (ledger N18). */
   const separators: string[] = [];
   let previousValue = -1;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
-    if (!(isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))) {
+    if (!isPiece(child)) {
       continue;
     }
     if (previousValue >= 0) {
       const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
-      const boundary = children.slice(previousValue + 1, index).some(isGluedValueBoundary);
+      const boundary = children.slice(previousValue + 1, index).some(isGluedValueBoundary)
+        || ((isDelimTerminal(child) || isDelimTerminal(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index));
       separators.push(trivia.length > 0 ? trivia : boundary ? '' : ' ');
     }
     previousValue = index;
@@ -2411,7 +2433,8 @@ function functionConditionTermFrom(
   children: readonly unknown[],
   rawChildren: readonly unknown[],
   state: unknown,
-  notGluedAt = NO_SPAN
+  notGluedAt = NO_SPAN,
+  triviaLog: readonly number[] = []
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
@@ -2434,6 +2457,14 @@ function functionConditionTermFrom(
     left = { guard: lessTruth(bare), src, grouped: false, hasComparison: false, bare };
     index = operand.next;
   }
+  if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null)) {
+    const run = functionConditionRun(left, children, index, triviaLog, state);
+    const guard = lessTruth(Array.isArray(run) ? spaced(run) : run);
+    const src = functionConditionSourceOfRun(left, children, index, state);
+    return negated
+      ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: false }
+      : { guard, src, grouped: false, hasComparison: false, run };
+  }
   const operator = guardOperatorText(children[index]);
 
   /* The value paren group passes no raw children: it reads its own operands, and reports there. */
@@ -2453,6 +2484,47 @@ function functionConditionTermFrom(
   return negated
     ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
+}
+
+/**
+ * A function condition with more than one operator, or one Less does not spell
+ * (`a=b=c`, `a = b < c`, `a==b`): the CSS run of component values it is,
+ * operands and `Any` delims, the operator padding kept as its layout
+ * (ledger N18). Less gives a chain no meaning, so it is written as authored.
+ */
+function functionConditionRun(
+  left: FunctionConditionFact,
+  children: readonly unknown[],
+  start: number,
+  triviaLog: readonly number[],
+  state: unknown
+): ValueSlot {
+  const values: ValueNode[] = [functionConditionValue(left, state)];
+  const layout: string[] = [];
+  const source = sourceFromState(state) ?? '';
+  for (let at = start; at < children.length; at += 2) {
+    /* Ambient trivia took the padding before the operator; the token holds the padding after it. */
+    let before = '';
+    for (let entry = 0; entry < lessTriviaEntryCount(triviaLog); entry++) {
+      if (lessTriviaEntryInsertIndex(triviaLog, entry) === at) {
+        before += source.slice(triviaLog[entry * LESS_NODE_TRIVIA_STRIDE]!, triviaLog[entry * LESS_NODE_TRIVIA_STRIDE + 1]!);
+      }
+    }
+    const text = requireTerminalText(children[at]);
+    const core = text.trim();
+    layout.push(before + text.slice(0, text.indexOf(core)), text.slice(text.indexOf(core) + core.length));
+    values.push(any(core), functionConditionValue(functionConditionOperandFact(children[at + 1], state), state));
+  }
+  return withValueLayout(values, layout);
+}
+
+/** {@link functionConditionRun}'s source, for a condition that wraps it. */
+function functionConditionSourceOfRun(left: FunctionConditionFact, children: readonly unknown[], start: number, state: unknown): string {
+  let src = left.src;
+  for (let at = start; at < children.length; at += 2) {
+    src += requireTerminalText(children[at]) + functionConditionOperandFact(children[at + 1], state).src;
+  }
+  return src;
 }
 
 /**
@@ -2682,6 +2754,9 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
   }
   if (first === undefined || guard === undefined) {
     throw new TypeError('Less function condition lost its first term.');
+  }
+  if (guard === first.guard && first.run !== undefined) {
+    return first;
   }
   if (guard === first.guard) {
     return first.raw === undefined

@@ -2647,10 +2647,14 @@ describe('SCSS canonical-AST grammar', () => {
   it('does not admit a bare identifier-dot-identifier value as a namespace read', () => {
     /*
      * `ns.name` with neither a glued `(` nor a `$` is not a Sass member form.
-     * Admitting it would silently reinterpret plain CSS value text, so the
-     * qualifier arms require the deciding suffix and this stays a rejection.
+     * Reading it as one would silently reinterpret plain CSS value text, so the
+     * qualifier arms require the deciding suffix. It is well-formed CSS — an
+     * ident, a `.` delim and an ident, glued (ledger N18, P45) — so it is that
+     * run, written as authored.
      */
-    expect(() => parse('a { b: foo.bar; }')).toThrow();
+    expect(bare(parse('a { b: foo.bar; }'))).toMatchObject({
+      rules: [{ rules: [{ value: [{ type: 'Keyword', src: 'foo' }, { type: 'Any', src: '.' }, { type: 'Keyword', src: 'bar' }] }] }]
+    });
   });
 
   it('lowers a user SCSS @function to a $var-bound anonymous mixin whose @return is result:', () => {

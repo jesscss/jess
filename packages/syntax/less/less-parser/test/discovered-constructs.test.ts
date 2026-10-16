@@ -233,10 +233,24 @@ describe('Less constructs discovered outside the parser suites', () => {
   });
 
   it.each([
-    ['namespaced function', 'a { b: ns.fn() }'],
-    ['namespaced variable', 'a { b: ns.$var }'],
-    ['namespaced map read', 'a { b: map.get($m, k) }'],
-    ['namespaced colour helper', 'a { b: color.mix(red, blue) }'],
+    ['namespaced function', 'a { b: ns.fn() }', 'FunctionCall'],
+    ['namespaced variable', 'a { b: ns.$var }', 'Lookup'],
+    ['namespaced map read', 'a { b: map.get($m, k) }', 'FunctionCall'],
+    ['namespaced colour helper', 'a { b: color.mix(red, blue) }', 'FunctionCall']
+  ])('reads Sass module-system member access as a CSS component run (%s)', (_label, source, member) => {
+    /*
+     * `ns.member` is Sass module syntax, not Less syntax, so Less gives it no
+     * member-access meaning. It is well-formed CSS — an ident, a glued `.`
+     * delim and a component (ledger N18, P45) — so it is that run, with the
+     * component read as Less reads it.
+     */
+    const rule = parse(source).rules[0];
+    expect(rule).toMatchObject({
+      rules: [{ value: [{ type: 'Keyword' }, { type: 'Any', src: '.' }, { type: member }] }]
+    });
+  });
+
+  it.each([
     ['namespaced assignment', 'ns.$v: value;']
   ])('PINNED DEFECT — rejects Sass module-system member access (%s)', (_label, source) => {
     /*
