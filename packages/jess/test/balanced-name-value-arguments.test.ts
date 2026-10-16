@@ -107,3 +107,46 @@ describe('a query range comparison stays spaced', () => {
     });
   }
 });
+
+/**
+ * Ledger F1: `/`, `+`, `-` and `*` are separators and are written with one
+ * space on each side regardless of source. A glued `+`, `-`, `*` or `/` delim
+ * between components in a `.css` value (outside any math function) is that
+ * separator; the other glued delims (`=`, `~`, `:`, `.`) stay as authored.
+ */
+describe('css: an operator delim between components is spaced (F1)', () => {
+  it.each([
+    ['a+b', 'a + b'],
+    ['1px*2px', '1px * 2px'],
+    ['a/b', 'a / b'],
+    ['a*b*c', 'a * b * c'],
+    ['(a)-(b)', '(a) - (b)'],
+    ['foo(a+b)', 'foo(a + b)'],
+    ['a +b', 'a + b'],
+    ['a+ b', 'a + b']
+  ])('writes %s as %s', async (authored, written) => {
+    expect(await value('css', authored)).toBe(written);
+  });
+
+  it.each([
+    'alpha(opacity=50)',
+    'a~b',
+    'foo(:x)',
+    'progid:DX.Microsoft.Blur(pixelradius=2)',
+    'calc(1px + 2px)'
+  ])('keeps %s as authored', async (authored) => {
+    expect(await value('css', authored)).toBe(authored);
+  });
+
+  it('leaves An+B microsyntax glued', async () => {
+    expect(await render('css', 'a:nth-child(2n+1) { b: c; }')).toContain(':nth-child(2n+1)');
+  });
+
+  it('leaves a custom property verbatim', async () => {
+    expect(await render('css', 'a { --x: a+b; }')).toContain('--x: a+b;');
+  });
+
+  it('compressed output keeps the spaced separator and the glued delims', async () => {
+    expect(await render('css', 'a { x: a+b; y: alpha(opacity=50); z: a~b; }', true)).toBe('a{x:a + b;y:alpha(opacity=50);z:a~b}');
+  });
+});

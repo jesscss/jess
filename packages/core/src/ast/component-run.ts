@@ -12,6 +12,11 @@ import type { ValueSlot } from './nodes.js';
  * meaning in a call argument (`alpha(opacity=50)`, `foo(a = b)`) — is the same
  * `Any` component the css reading builds, so the run is written exactly as
  * authored.
+ *
+ * The exception is a `+`, `-` or `*` delim between two components: ledger F1
+ * makes those separators, written with a space on each side regardless of
+ * source (`a+b` → `a + b`). A run of more than one delim (`a+-b`'s `+-`) is not
+ * one of them and stays as authored.
  */
 export function componentRun(children: readonly unknown[]): ValueSlot {
   const values: ValueSlot[] = [];
@@ -35,5 +40,20 @@ export function componentRun(children: readonly unknown[]): ValueSlot {
       }
     }
   }
+  for (let i = 1; i < values.length - 1; i++) {
+    if (isOperatorDelim(values[i])) {
+      if (layout[i - 1] === '') {
+        layout[i - 1] = ' ';
+      }
+      if (layout[i] === '') {
+        layout[i] = ' ';
+      }
+    }
+  }
   return values.length === 1 ? values[0]! : withValueLayout(values, layout);
+}
+
+function isOperatorDelim(value: ValueSlot | undefined): boolean {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Any'
+    && (value.src === '+' || value.src === '-' || value.src === '*');
 }
