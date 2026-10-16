@@ -68,7 +68,7 @@ describe('Compiler reuse', () => {
     fs.mkdirSync(dirA, { recursive: true });
     fs.mkdirSync(dirB, { recursive: true });
 
-    fs.writeFileSync(path.join(dirA, 'styles.config.js'), 'module.exports = { output: { collapseNesting: true } };');
+    fs.writeFileSync(path.join(dirA, 'styles.config.js'), 'module.exports = { output: { collapseNesting: true }, language: { less: { mathMode: \'always\' } } };');
     fs.writeFileSync(path.join(dirB, 'styles.config.js'), 'module.exports = { output: { collapseNesting: false } };');
 
     const fileA = path.join(dirA, 'a.less');

@@ -53,9 +53,10 @@ Jess follows the common CLI pattern where the default command compiles a file an
 `jess lint` is a separate workflow. Use `jess <input> [output]` when you want CSS
 output; use `jess lint` when you want diagnostics without writing CSS.
 
-`jess <input> [output]` compiles one `.less`, `.scss`, or `.jess` file. A `.css`
-input is refused (it is CSS already), and so is `-` (reading stdin is not
-supported; `/dev/stdout` works as an output). With `-o <dir>`, `[output]` is a
+`jess <input> [output]` compiles one `.less`, `.scss`, `.jess` or `.css` file.
+A `.css` input needs an output path or `-o`, since its default output would be
+the input itself. `-` is refused (reading stdin is not supported;
+`/dev/stdout` works as an output). With `-o <dir>`, `[output]` is a
 file name in that directory.
 
 - An existing output file is replaced, not written into: the CSS goes to a new

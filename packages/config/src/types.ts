@@ -1,5 +1,4 @@
 import type {
-  CollapseNesting,
   FunctionMode,
   MathMode,
   ModuleMode,
@@ -314,19 +313,6 @@ export interface LessOptions {
   allowCallerScope?: boolean;
 
   /**
-   * Whether/how to flatten nested selectors.
-   * - `false` (default): keep authored nesting, emit no `:is()`.
-   * - `'native'`: flatten with native CSS Nesting specificity and matching —
-   *   parent wrapped in `:is()`; a child selector list folds into `:is(…)` only
-   *   where every folded branch has the same specificity.
-   * - `'compact'`: like `'native'`, but fold every same-combinator descendant
-   *   child run into a single `:is(…)` (group-max specificity).
-   * `true` is a deprecated alias for `'native'`.
-   * @default false
-   */
-  collapseNesting?: CollapseNesting;
-
-  /**
    * @deprecated This is legacy Less behavior.
    *
    * Whether to bubble root-only at-rules (@font-face, @keyframes, etc.) to the root
@@ -340,7 +326,6 @@ export interface ScssOptions {
   allowExtendSelectors?: ExtendSelectorKind[];
   allowApplySelectors?: ApplySelectorKind[];
   unitMode?: UnitMode;
-  collapseNesting?: CollapseNesting;
 
   [key: string]: any;
 }
@@ -388,7 +373,6 @@ export interface InputOptions extends FileMatchOptions {
   /** @deprecated Use `allowLeakyScope`. Alias: used when `allowLeakyScope` is unset. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
-  collapseNesting?: CollapseNesting;
   bubbleRootAtRules?: boolean;
 
   /** Allow additional language-specific options */
