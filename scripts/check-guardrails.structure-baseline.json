@@ -435,9 +435,6 @@
   "packages/core/src/tree/extend/pipeline.ts#solveContributions": {
     "statements": 52
   },
-  "packages/core/src/tree/extend/solve.ts#solveSubject": {
-    "statements": 46
-  },
   "packages/core/src/tree/extend/spine-extend.ts": {
     "statements": 883
   },

@@ -14,6 +14,13 @@ below has since been removed. Keep the measured inventory as provenance for the
 remaining internal deletion work, but do not treat the historical root-export
 counts as the current public `@jesscss/core` surface.
 
+**Deleted since (2026-10-16):** files under `tree/` that nothing imported —
+`extend/plan.ts`, `extend/solve.ts`, `extend/process-extends-by-index.ts`,
+`util/extend-trace-debug.ts`, `util/format.ts`, `util/list-like.ts`,
+`util/regex.ts`, `util/value-text.ts`, `util/sourcemap.ts` — with their own
+tests, and the `packages/core/test/` files that only exercised `tree/`. Rows
+below that name them are provenance.
+
 ## Method
 
 Three passes, each stated because two of them correct an earlier, wrong version
