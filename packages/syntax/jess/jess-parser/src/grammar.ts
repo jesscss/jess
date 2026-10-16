@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, anonymousMixin, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { NO_SPAN, any, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
 import type { Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -2406,11 +2406,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * (`rgb(15 23 42 / .22)`) is the same direct-neighbour slash group a value
    * uses (P33): `[15, 23, 42 / .22]`. `/` stays unavailable as unwrapped Jess
    * arithmetic, and a dangling separator still has no right operand.
+   *
+   * A `=` after a group gives `.jess` no expression to read: it is CSS's `=`
+   * delim between component values (`alpha(opacity=50)`, `foo(a=b=c)`), so the
+   * component is that CSS run, kept as authored, glued or padded — the same
+   * `Any` delim the css grammar builds. Comparison stays inside `$( … )`.
    */
   const CallComponent = node<ValueSlot>(
     'CallComponent',
-    g.ValueSpaceGroup,
+    noTrivia(sequence(
+      g.ValueSpaceGroup,
+      many(sequence(
+        optional(valueTrivia),
+        literal('='),
+        optional(valueTrivia),
+        g.ValueSpaceGroup
+      ))
+    )),
     (children) => {
+      if (children.length > 1) {
+        return componentRun(children);
+      }
       const value = children.find((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
       if (value === undefined) {
         throw new TypeError('Jess call component produced unexpected children.');

@@ -60,7 +60,8 @@ export const AUTHORED_FILES: readonly string[] = [
   'selector-nth-anb-spacing.css',
   'selectors-full.css',
   'value-slash-separator.css',
-  'values-full.css'
+  'values-full.css',
+  'values-glued-components.css'
 ];
 
 export function loadAuthoredCorpus(): CorpusEntry[] {

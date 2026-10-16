@@ -23,9 +23,9 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, componentRun, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, isScssTerminal, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -1284,6 +1284,17 @@ const scssFactory = (g: ScssInputRules) => {
     literal('>'),
     literal('<')
   );
+
+  /*
+   * A `=` after the argument is not an operator. CSS reads `alpha(opacity=50)`
+   * as a `=` delim between component values (css-syntax-3 §4.3.1), and so does
+   * this tail: the run after the head is that CSS reading — the same `Any` delim
+   * the css grammar builds — written as authored, glued or padded (owner
+   * 2026-10-16: valid, balanced syntax parses). It is one more arm of the
+   * operator choice, so a positional argument still pays one failed match, and
+   * `==` is tried first and fails on the second character of `=b`. A further
+   * `=` after any arm continues the run (`a=b=c`, `$x: a=b`).
+   */
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
@@ -1292,56 +1303,32 @@ const scssFactory = (g: ScssInputRules) => {
         optional(valueTrivia),
         choice(
           comparisonOperator,
-          literal(':')
+          literal(':'),
+          literal('=')
         ),
         optional(valueTrivia),
-        g.ValueTerm
+        g.ValueTerm,
+        many(sequence(
+          optional(valueTrivia),
+          literal('='),
+          optional(valueTrivia),
+          g.ValueTerm
+        ))
       ))
     )),
     (children) => {
-      const left = requireValueSlot(children[0]);
-      if (children.length === 1) {
-        return callArg(left);
+      const equals = children.findIndex(child => isScssTerminal(child) && child.value === '=');
+      if (equals === -1) {
+        return scssCallArgument(children, children.length);
       }
-
-      /*
-       * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
-       * `@include m($x: 1)` already spells, so it is the same {@link CallArg}
-       * and the function's own parameter names bind it. It shares the operand
-       * with the comparison arm rather than opening a second left-factored
-       * lane: the operator tail is parsed ONCE and its spelling decides which
-       * reading applies, so a positional argument pays nothing.
-       *
-       * Only a `$`-sigil variable can be a keyword. A bare identifier before a
-       * colon is not a Sass named argument, and it is a parse error here today.
-       */
-      if (children.some(child => isToken(child) && child.value === ':')) {
-        if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
-          throw new TypeError('A named argument must be spelled `$name: value`.');
-        }
-        return callArg(requireValueSlot(children[children.length - 1]), left.name, false, '$');
-      }
-      const operator = requireToken(children.find(child => isToken(child) && COMPARISON_OPERATORS.has(child.value))).value;
-      const right = requireValueSlot(children[children.length - 1]);
-
-      /*
-       * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
-       * operator (§5.1) — the SAME lowering `IfComparison` performs, because a
-       * comparison must not mean one thing in a guard and another in an
-       * argument. `!=` is that comparison under `not`.
-       */
-      const comparison = {
-        g: 'cmp' as const,
-        op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
-        left: requireValue(left),
-        right: requireValue(right),
-        implied: false,
-        parens: 0
-      };
-      return callArg(expression(condition(
-        operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
-        `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
-      )));
+      const head = isScssTerminal(children[equals - 1]) ? equals - 1 : equals;
+      const argument = scssCallArgument(children, head);
+      return callArg(
+        componentRun([argument.value, ...children.slice(head)]),
+        argument.name,
+        false,
+        argument.name === undefined ? undefined : '$'
+      );
     }
   );
   const ValuePair = node<ScssValuePair>(

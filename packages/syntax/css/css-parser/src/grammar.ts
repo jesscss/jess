@@ -43,6 +43,7 @@ import {
   queryValueRatio,
   color,
   complexSegments,
+  componentRun,
   cssRelativeCombinator,
   decl,
   dimension,
@@ -89,7 +90,6 @@ import {
   semanticTextWithTriviaGaps,
   semicolonGroupedCall,
   simpleSelector,
-  spaceRun,
   sourceText,
   spaced,
   structuredPseudoFrom,
@@ -1008,7 +1008,7 @@ const cssFactory = (g: GrammarSelf) => {
         )
       ))
     )),
-    (children, fields) => spaceRun(children, fields)
+    children => componentRun(children)
   );
   const branchColon = noTrivia(sequence(
     literal(':'),
@@ -2737,7 +2737,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.ValueTerm
       ))
     )),
-    (children, fields) => spaceRun(children, fields)
+    children => componentRun(children)
   );
 
   /*
