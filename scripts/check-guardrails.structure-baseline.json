@@ -824,7 +824,7 @@
     "statements": 60
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
-    "statements": 1312
+    "statements": 1290
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts#callWithLayout": {
     "params": 6
