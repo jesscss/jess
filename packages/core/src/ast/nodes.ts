@@ -457,6 +457,13 @@ export interface AuthoredCallSlot {
 export interface Expression extends SpanSlots, AuthoredCallSlot {
   readonly type: 'Expression';
   readonly value: ValueSlot;
+
+  /**
+   * The boundary is a lowered call's argument (Less `boolean()`, `not()`,
+   * `and()`, `or()`): it decides the condition in it and, as any call's
+   * argument, opens no math frame of its own (ledger V34, V35).
+   */
+  readonly _callArgument: boolean;
 }
 
 /**
@@ -1952,8 +1959,8 @@ export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren',
 export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ type: 'Branch', condition, value });
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
-export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>
-  ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall });
+export const expression = (value: ValueSlot, asCall: FunctionCall | null = null, callArgument = false): Expression =>
+  ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall, _callArgument: callArgument });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
 export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
   ({ type: 'IfValue', branches, _asCall: asCall });

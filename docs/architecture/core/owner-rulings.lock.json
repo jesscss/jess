@@ -56,6 +56,7 @@
     "V28": "ca8fb72b227e0428",
     "V33": "054bbd6f3df04c38",
     "V34": "da53c65dd1318b11",
+    "V35": "70c69b8944342497",
     "O1": "0361aff13826730b",
     "O2": "4cc0db272d7a46a4",
     "O3": "bd5d3ae3a8bee4ba",
@@ -253,6 +254,7 @@
     "O9 (owner-delegated judgment 2026-10-04; owner: \"just use your judgement - whatever's most correct / most like CSS, and/or best UX\"): a root & before content drops; a lone root & is kept": "ec21f20a0b4dacb3",
     "F12 (owner 2026-07-24): a custom property keeps its comments and trims edge whitespace": "5303faad314efb3e",
     "V34 (owner 2026-10-15): the parentheses around a call do not reach its arguments": "7254fc2933a28121",
+    "V35 (owner 2026-10-16): the outermost when parens of a guard are not a math group; function arguments follow the math mode": "76bc22c6286339a3",
     "P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses": "537519cc5a3c4e5d"
   }
 }
