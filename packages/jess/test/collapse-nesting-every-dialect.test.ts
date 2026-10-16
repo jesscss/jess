@@ -2,7 +2,9 @@
  * `collapseNesting` is the compiler's output option, not a dialect option. Owner
  * (2026-10-15): "collapseNesting is not language-specific. It's a serialization
  * option for the compiler. It applies for all Jess output regardless of sources,
- * including SCSS".
+ * including SCSS". A `.css` entry compiles through the same path (owner
+ * 2026-10-16, on letting plain CSS use the output options: "Sure let's allow
+ * that use case").
  *
  * So one stylesheet, written as `.css`, `.less`, `.scss` and `.jess`, gives the
  * same CSS under each mode, set in code or in a `styles.config` next to the input.
