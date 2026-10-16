@@ -19,7 +19,7 @@ const value = async (source: string): Promise<string> => {
 
 describe('Less `alpha()` with a `name=value` argument', () => {
   it('renders exactly like the same call to any other function', async () => {
-    for (const args of ['x=1', 'opacity=50', 'opacity = 50', 'opacity=@v', 'a=1, b=2']) {
+    for (const args of ['x=1', 'opacity=50', 'opacity = 50', 'opacity=@v', 'opacity=(1 + 2)', 'a=1, b=2']) {
       expect(await value(`alpha(${args})`)).toBe((await value(`foo(${args})`)).replace(/^foo/, 'alpha'));
     }
   });
