@@ -221,7 +221,7 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
    * (1) every instruction in a group has the identical target/partial/hidden, so
    * they always become applicable together — folding never fires one early;
    * (2) extend application is CONFLUENT (branch-SET order independence, pinned by
-   * tree/extend/__tests__/oqd-confluence-differential.test.ts), so applying
+   * the legacy engine's confluence differential before its deletion), so applying
    * groups all-in-one-pass yields the same final branch set as one-at-a-time,
    * and document-ordered extender concatenation keeps the append order.
    *

@@ -53,10 +53,10 @@ export type SafeParseOptions = {
   /**
    * The compile-level option bag threaded to a plugin's `safeParse` (the caller
    * passes the render {@link Context}'s `opts`). Includes `allowExtendSelectors`,
-   * which lives on the per-tree {@link TreeContextOptions} rather than the base.
+   * which is not a {@link ContextOptions} field.
    */
   compilerOptions?: ContextOptions & {
-    /** Extend-selector kinds a plugin permits; consumed when building the TreeContext. */
+    /** Extend-selector kinds a plugin permits. */
     allowExtendSelectors?: ExtendSelectorKind[];
 
     /** Jess `$apply` selector kinds a plugin permits. Defaults to class-only. */

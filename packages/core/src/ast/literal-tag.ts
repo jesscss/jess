@@ -31,7 +31,7 @@ import { namedColor } from './color-names.js';
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
-/** Byte-identical port of `parseHexString` (tree/color.ts). */
+/** Byte-identical port of the legacy engine's `parseHexString`. */
 export function parseHex(hex: string): { rgb: [number, number, number]; alpha: number } {
   const hexValue = hex.slice(1);
   const rgba: number[] = [];

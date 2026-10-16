@@ -8,7 +8,7 @@
  * lookup latched onto the innermost mixin-body frame's (empty) fallback and
  * never advanced to the root's fallback — first-fallback-wins shadowed every
  * outer import fallback. Fixed by queueing each parent frame's fallback in
- * `lookupScopeFrameVariable` (packages/core/src/tree/scope-frame.ts).
+ * the legacy engine's `lookupScopeFrameVariable`.
  */
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';

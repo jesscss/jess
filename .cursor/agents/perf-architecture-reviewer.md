@@ -153,8 +153,7 @@ R6 compose/stale-build — … — evidence: …
 - Do not change code. Do not run destructive git operations.
 - Do not emit a verdict without the per-item evidence above it.
 - If a gate exists for an item (`verify:node-copy-frontier`,
-  `verify:materialization-frontier`, `verify:render-buffer-frontier`,
-  `verify:binding-lookup-hot-paths`, `verify:aggressive-cutting-review`,
+  `verify:materialization-frontier`, `verify:aggressive-cutting-review`,
   `verify:compose-integrity`, shape-stability `test/ast-shape/`, extend
   `extend-op-budget`), you may run it and cite its output as evidence — but still
   reason about shape and op-growth (invariants 1, 4, 8; R3–R5) yourself, since no

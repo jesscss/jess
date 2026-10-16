@@ -14,8 +14,7 @@ Remind the user and yourself to update project state so the next session (or a n
 2. **Area-specific plan file** (only if one is currently active and you changed status or priorities):
    - For extend, prefer `PROJECT_STATE.md` plus the canonical pointers:
      - `.cursor/rules/subtrees/core__extend.mdc`
-     - `packages/core/src/tree/util/EXTEND_RULES.md`
-     - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
+     - `docs/architecture/core/EXTEND-SEMANTICS.md`
    - For other areas: create a plan file only when the repo starts tracking that area as active work.
 
 ## Prompt the user

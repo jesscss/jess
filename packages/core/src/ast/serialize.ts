@@ -3638,7 +3638,7 @@ function ifReadsInOrder(node: If): boolean {
  * The same-activation binding a new live write for `node.name` SHADOWS.
  *
  * This is the live-store equivalent of v1's `declarationBucketsByName`
- * (`tree/scope-frame.ts:211`), the per-name source-order history v1 kept
+ * (the deleted legacy scope frame), the per-name source-order history v1 kept
  * ALONGSIDE its current-value map. v2 collapsed the live store to one slot per
  * name, which is what left the exclusion walk with nothing to fall back onto.
  *

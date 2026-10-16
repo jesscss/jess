@@ -16,7 +16,7 @@ From repo root. See PROJECT_STATE §3 for the canonical list. Examples:
 
 | Area   | Command |
 |--------|--------|
-| extend | `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend` |
+| extend | `cd packages/core && pnpm test -- --run src/ast/__tests__/extend src/ast/extend/__tests__` |
 | extend + jess | Then: `pnpm --filter @jesscss/core build` and `pnpm run test:less:test-data` (report extend-related fixture failures if any) |
 | core   | `cd packages/core && pnpm test -- --run` (or path user/state specifies) |
 | jess   | `pnpm --filter @jesscss/core build` then `pnpm run test:less:test-data` |

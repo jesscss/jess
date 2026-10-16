@@ -1,8 +1,8 @@
-import type { TreeContext } from '../context.js';
+import type { DocumentContext } from '../context.js';
 import { type JessErrorCode, type Phase, type Severity, resolveTemplate } from './codes.js';
 import { INJECTED_TEXT_NOTE, fileAt, lineColAt } from './code-frame.js';
 
-type JessFile = TreeContext['file'];
+type JessFile = DocumentContext['file'];
 
 /** Minimal shape for passing context and a node to helpers. */
 export type TreeContextLike = { file?: JessFile };

@@ -17,7 +17,7 @@ Always run the relevant verification command, read its output, and cite the resu
 
 ## Steps (apply every time before claiming success)
 
-1. **Identify the proof command** – e.g., `pnpm test -- --run src/tree/util/__tests__/extend`, `pnpm --filter @jesscss/core build`, `pnpm lint`, `git status -sb`, or `pnpm test --run <suite>`.
+1. **Identify the proof command** – e.g., `pnpm test -- --run src/ast/__tests__/extend`, `pnpm --filter @jesscss/core build`, `pnpm lint`, `git status -sb`, or `pnpm test --run <suite>`.
 2. **Run it fresh** – don’t assume past output; run the full command that proves your claim.
 3. **Read the entire output** – note exit code and any failures/fixes.
 4. **Verify** – if the output contradicts your claim, describe the failure; do not claim success. If it confirms success, explicitly mention the command + its clean output.
@@ -37,7 +37,7 @@ Always run the relevant verification command, read its output, and cite the resu
 - **Move the bar up:** As we increase stability, always move the baseline up — fix failing tests, add new critical suites to the baseline; never relax expectations or remove tests to get green.
 - Tests/builds must run from the package directory or via `pnpm --filter <pkg>` per `.cursor/rules/30-tests.mdc`.
 - Vitest is the test runner; use `pnpm test -- --run` as the verification command for unit suites.
-- Scoped examples: core extend `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend`; Less fixtures `pnpm run test:less:test-data`.
+- Scoped examples: core extend `cd packages/core && pnpm test -- --run src/ast/__tests__/extend`; Less fixtures `pnpm run test:less:test-data`.
 - Always read the command output; mention “exit 0 / 0 failures” before claiming success.
 
 ## Reference

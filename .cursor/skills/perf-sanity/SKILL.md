@@ -7,8 +7,8 @@ description: Use when changing perf-sensitive codepaths (parsing, selector/exten
 
 Use this skill when touching known perf-sensitive hotspots, especially:
 
-- `packages/*-parser/src/**` (tokenization/productions/parsing)
-- `packages/core/src/tree/util/extend.ts` (extend selector algorithm)
+- `packages/syntax/*/*-parser/src/**` (tokenization/productions/parsing)
+- `packages/core/src/ast/extend/**` (extend selector algorithm)
 
 ## Workflow
 
