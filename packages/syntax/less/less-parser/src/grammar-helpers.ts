@@ -926,9 +926,8 @@ function valuePieceReducerWithTrivia(
   triviaLog: readonly number[],
   state: unknown
 ): ValueSlot {
-  const isPiece = (child: unknown): boolean => isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%');
   const values = children
-    .filter(isPiece)
+    .filter(isValuePiece)
     .map(child => isValueNode(child) ? child : keyword(requireTerminalText(child)));
   if (values.length === 1) {
     return values[0]!;
@@ -939,19 +938,27 @@ function valuePieceReducerWithTrivia(
   let previousValue = -1;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
-    if (!isPiece(child)) {
+    if (!isValuePiece(child)) {
       continue;
     }
     if (previousValue >= 0) {
       const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
-      const boundary = children.slice(previousValue + 1, index).some(isGluedValueBoundary)
-        || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index));
-      separators.push(trivia.length > 0 ? trivia : boundary ? '' : ' ');
+      separators.push(trivia.length > 0
+        ? trivia
+        : children.slice(previousValue + 1, index).some(isGluedValueBoundary)
+          || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index))
+          ? ''
+          : ' ');
     }
     previousValue = index;
   }
 
   return withValueLayout(values, separators);
+}
+
+/** A value piece: a value node, or the bare `-` / `%` a value may hold. */
+function isValuePiece(child: unknown): boolean {
+  return isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%');
 }
 
 /** A structural value child stays as-is; a grammar terminal becomes a keyword. */
