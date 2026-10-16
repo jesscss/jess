@@ -2332,7 +2332,7 @@ function functionConditionSource(value: ValueSlot): string {
   }
   const node = requireValueNode(value);
   switch (node.type) {
-    case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
+    case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': case 'Condition': return node.src;
     case 'Lookup': return node.kind === 'var'
       ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
       : node.raw;
@@ -2354,7 +2354,6 @@ function functionConditionSource(value: ValueSlot): string {
     }
     case 'List': return node.value.map(functionConditionSource).join(sepGlue(node.sep));
     case 'Sequence': return node.parts.map(functionConditionSource).join(' ');
-    case 'Condition': return node.src;
     case 'Url': return `url(${functionConditionSource(node.value)})`;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
   }
