@@ -206,6 +206,12 @@ describe('owner rulings (Less 5)', () => {
     await expect(render('.a { --x: /* c */ red; --y:   blue  ; }')).resolves.toBe('.a {\n  --x: /* c */ red;\n  --y: blue;\n}\n');
   });
 
+  it('V34 (owner 2026-10-15): the parentheses around a call do not reach its arguments', async () => {
+    const compiler = new Compiler({ compile: { mathMode: 'parens' } });
+    await expect(compiler.renderString('.a { b: (foo(1 + 2)); c: (foo((1 + 2))); }', { filePath: 'entry.less', extension: '.less', suppressWarnings: true }))
+      .resolves.toBe('.a {\n  b: (foo(1 + 2));\n  c: (foo(3));\n}\n');
+  });
+
   it('P35 (owner 2026-09-23; parens owner 2026-10-06): math inside calc() keeps its authored parentheses', async () => {
     await expect(render('.a { b: calc(50% + (50vh / 2 - 20px)); }')).resolves.toBe('.a {\n  b: calc(50% + (50vh / 2 - 20px));\n}\n');
   });
