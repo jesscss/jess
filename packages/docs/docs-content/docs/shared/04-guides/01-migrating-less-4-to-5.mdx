@@ -297,6 +297,10 @@ side effect does not rewrite an already-evaluated sibling declaration.
 - Under `math=parens` (and `strict`), parentheses around a function call do not
   reach its arguments: `(foo(1 + 2))` stays `(foo(1 + 2))`, where Less 4.x computed
   it (`foo(3)`). Write `(foo((1 + 2)))` to compute the argument.
+- Under `math=parens` (and `strict`), the parentheses around a condition are a
+  paren group: `when (1 + 2 = 3)` matches. A `boolean()` argument follows the math
+  mode like any function argument: `boolean(1 + 2 = 3)` is `false`, and
+  `boolean((1 + 2 = 3))` is `true`.
 
 ```bash
 # old

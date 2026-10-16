@@ -4147,22 +4147,18 @@ function makeResolver(frame: Frame | null, e: Lane): ValueResolver {
  * synchronous guard costs nothing extra.
  */
 function makeTypedResolver(frame: Frame | null, e: Lane): TypedResolver {
-  return (v: ValueSlot) => {
-    const value = evalTypedSlot(v, frame, e);
-    if (isThenable(value)) {
-      return value.then((settled) => {
-        warnConsumedOperand(settled, v, e);
-        return settled;
-      });
-    }
-    warnConsumedOperand(value, v, e);
-    return value;
-  };
+  /* The lane of a condition's paren group ({@link TypedResolver}), derived once. */
+  let paren: Lane | undefined;
+  return (v: ValueSlot, group?: boolean) => mapMaybe(
+    evalTypedSlot(v, frame, group === undefined ? e : group ? (paren ??= deriveLane(e, 'paren')) : deriveLane(e, 'call')),
+    value => warnConsumedOperand(value, v, e)
+  );
 }
 
 /** A guard reads its operands and emits none of them, so it consumes a kept operation (§4.7). */
-function warnConsumedOperand(value: ValueGroup, slot: ValueSlot, e: Lane): void {
+function warnConsumedOperand(value: ValueGroup, slot: ValueSlot, e: Lane): ValueGroup {
   warnConsumedKept(value, undefined, isValueSlotArray(slot) ? (slot[0] ?? {}) : slot, e);
+  return value;
 }
 
 /* ---------------------------------------------------- typed value eval */
@@ -4446,6 +4442,12 @@ interface EvalSession {
  *   frame, so `(foo((1 + 2)))` is `(foo(3))`. Only the top frame is read, so
  *   when the top frame is not a paren `e` already is that lane and is returned
  *   as-is: a call outside a group allocates nothing.
+ * - `callBoundary`: the argument of a lowered Less `boolean()` (its `_asCall`),
+ *   a call's argument as `call` is and a boundary as `boundary` is, so the
+ *   condition in it is decided but opens no math frame of its own: under
+ *   `parens`, `boolean(1 + 2 = 3)` is `false` and `boolean((1 + 2 = 3))` is
+ *   `true`, where the condition's own parens open one (owner 2026-10-16,
+ *   ledger V35).
  * - `unreached`: a math function's arguments, written there and not reached
  *   ({@link whileReached}).
  * - `calc`: one `calc()` deeper.
@@ -4464,7 +4466,7 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement',
   sink?: { elided: boolean },
   isDefault?: () => boolean
 ): Lane {
@@ -4485,10 +4487,10 @@ function deriveLane(
         calcDepth: change === 'calc' ? e.calcDepth + 1 : change === 'statement' ? 0 : e.calcDepth,
         parenFrames: change === 'paren' || change === 'parenBoundary'
           ? e.parenFrames === undefined ? [true] : [...e.parenFrames, true]
-          : change === 'call'
+          : change === 'call' || change === 'callBoundary'
             ? e.parenFrames === undefined ? [false] : [...e.parenFrames, false]
             : change === 'statement' ? undefined : e.parenFrames,
-        exprBoundary: change === 'parenBoundary' || change === 'boundary' || (change !== 'statement' && e.exprBoundary),
+        exprBoundary: change === 'parenBoundary' || change === 'boundary' || change === 'callBoundary' || (change !== 'statement' && e.exprBoundary),
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
         mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
@@ -5261,7 +5263,7 @@ function evalTyped(
       if (!e.ev) {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
-      const computed = evalTypedSlot(node.value, frame, deriveLane(e, 'parenBoundary'), projectMixinValues, argument);
+      const computed = evalTypedSlot(node.value, frame, deriveLane(e, node._asCall === null ? 'parenBoundary' : 'callBoundary'), projectMixinValues, argument);
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, v => keepAuthoredGroup(v, e)) : computed;
     }
     case 'Interpolation': {
@@ -6072,7 +6074,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
          */
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
-      const computed = evalValueSlot(node.value, frame, deriveLane(e, 'parenBoundary'));
+      const computed = evalValueSlot(node.value, frame, deriveLane(e, node._asCall === null ? 'parenBoundary' : 'callBoundary'));
       return isAuthoredGroupExpression(node) ? mapMaybe(computed, v => keepAuthoredGroup(v, e)) : computed;
     }
     case 'Condition':

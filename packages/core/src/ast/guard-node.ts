@@ -24,11 +24,12 @@ import type { ValueSlot } from './nodes.js';
  * off the node). Nothing at eval time inspects context or a mode to choose.
  *
  * The facts the parser records so a written condition is written as authored
- * (ledger J20). Evaluation never reads them, and every instance of a kind
+ * (ledger J20). Evaluation reads only `parens`, and every instance of a kind
  * carries them, so each kind keeps one hidden class:
  *
  *  - `parens` — how many paren groups the author wrote around exactly this
- *    condition: `((1 = 1) or 2)` gives the `or` none and its `cmp` one.
+ *    condition: `((1 = 1) or 2)` gives the `or` none and its `cmp` one. They
+ *    are paren groups for the math in the condition (ledger V35).
  *  - `implied` — the comparison is a dialect's lowering of a bare operand
  *    (Less's `== true`, §4.4.2), not one the author wrote.
  *  - `word` — the `and` / `or` / `not` keyword as the author spelled it

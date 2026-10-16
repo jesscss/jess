@@ -46,13 +46,18 @@ export type ValueResolver = (v: ValueSlot) => MaybePromise<string>;
 /**
  * Resolve a value node to a materialized TYPED value object.
  *
+ * `group` is the nearest group the condition puts around the operand: `true`
+ * inside parens written around a condition, which are a paren group (owner
+ * 2026-10-16, ledger V35), `false` in a type function's arguments, which those
+ * parens do not reach (V34), and `undefined` where the condition adds none.
+ *
  * A guard operand can name a value the engine cannot produce without awaiting —
  * a `@plugin` function result, say — so this is a {@link MaybePromise}. It stays
  * SYNCHRONOUS whenever the value is: the resolver returns the value itself, and
  * every consumer below checks `isThenable` before reaching for a promise. No
  * guard that could already be answered synchronously gains a microtask hop.
  */
-export type TypedResolver = (v: ValueSlot) => MaybePromise<ValueGroup>;
+export type TypedResolver = (v: ValueSlot, group?: boolean) => MaybePromise<ValueGroup>;
 
 export interface GuardEvalDeps {
   /** Typed resolver (comparison / type-fn leaves compare typed values). */
@@ -69,8 +74,13 @@ export interface GuardEvalDeps {
  * delegated to the TYPED value evaluator (`compare`/`typeCheck`) over
  * materialized value objects — real Less semantics by construction; logic/
  * negation/truthiness/default are owned here.
+ *
+ * The parens the author wrote around a condition (`parens`) are a paren group
+ * for every operand in it ({@link TypedResolver}), so `when (1 + 2 = 3)`
+ * computes under `math: parens` as `((1 + 2) = 3)` does.
  */
-export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<boolean> {
+export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean): MaybePromise<boolean> {
+  const group = node.parens > 0 || outer;
   switch (node.g) {
     case 'and':
     case 'or': {
@@ -88,12 +98,12 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * guard never gains a microtask hop.
        */
       const decided = node.g !== 'and';
-      const l = evalGuard(node.left, deps);
-      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps);
+      const l = evalGuard(node.left, deps, group);
+      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps, group);
       return isThenable(l) ? l.then(rest) : rest(l);
     }
     case 'not': {
-      const inner = evalGuard(node.inner, deps);
+      const inner = evalGuard(node.inner, deps, group);
       return isThenable(inner) ? inner.then(value => !value) : !inner;
     }
     case 'truth': {
@@ -102,7 +112,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * ONE typed predicate over the materialized value — never a byte test.
        * The dialects do not arrive here: they lower to comparisons (§4.4.2).
        */
-      const value = deps.resolveTyped(node.value);
+      const value = deps.resolveTyped(node.value, group);
       return isThenable(value) ? value.then(isTruthy) : isTruthy(value);
     }
     case 'cmp':
@@ -111,8 +121,8 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       if (!ev) {
         return false;
       }
-      const left = deps.resolveTyped(node.left);
-      const right = deps.resolveTyped(node.right);
+      const left = deps.resolveTyped(node.left, group);
+      const right = deps.resolveTyped(node.right, group);
 
       /*
        * The node's own `g` picks the primitive — the assertion or the match test
@@ -147,7 +157,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       const settled: ValueGroup[] = [];
       let pending: Array<MaybePromise<ValueGroup>> | null = null;
       for (const arg of node.args) {
-        const value = deps.resolveTyped(arg);
+        const value = deps.resolveTyped(arg, false);
         if (pending) {
           pending.push(value);
         } else if (isThenable(value)) {
