@@ -25,7 +25,7 @@ Compile a stylesheet by passing the input file first:
 jess input.less
 ```
 
-Jess compiles one `.less`, `.scss`, or `.jess` file per run. It writes
+Jess compiles one `.less`, `.scss`, `.jess` or `.css` file per run. It writes
 `input.css` next to the source file. Pass an output file, or an existing output
 directory with `-o`, when you want to control the destination:
 
@@ -41,10 +41,19 @@ To compile several files, run Jess once per file:
 for f in src/*.less; do jess "$f" -o dist; done
 ```
 
+A `.css` input goes through the same output options as the other languages, so
+Jess can flatten its native nesting or minify it. Its default output,
+`input.css`, is the input itself, which Jess never overwrites: give an output
+path or a different `-o` directory.
+
+```bash
+jess input.css dist/input.css
+jess input.css -o dist
+```
+
 `jess a.less b.less` does not compile two files: the second argument is the
 output, and Jess refuses it because it is named like a stylesheet. A third
-argument is an error. A `.css` input is refused (it is CSS already), and so is
-`-`: reading a stylesheet from stdin is not supported. Use `/dev/stdout` as the
+argument is an error. Reading a stylesheet from stdin with `-` is not supported. Use `/dev/stdout` as the
 output to print the CSS.
 
 ### How the output is written

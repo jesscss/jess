@@ -9,7 +9,7 @@ import lessPlugin from '@jesscss/plugin-less';
  * name-not-found error under the default and fine under collapseNesting.
  */
 const render = (source: string, collapseNesting: boolean) =>
-  new Compiler({ compile: { plugins: [lessPlugin({ collapseNesting })] } })
+  new Compiler({ output: { collapseNesting }, compile: { plugins: [lessPlugin()] } })
     .renderToResult({ source, language: 'less', extension: '.less' }, {});
 
 const cases: [string, string, RegExp][] = [

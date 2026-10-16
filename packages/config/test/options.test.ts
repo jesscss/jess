@@ -218,7 +218,7 @@ describe('getOptions', () => {
           }
         },
         input: [
-          { mathMode: 'strict', collapseNesting: false }
+          { mathMode: 'strict', bubbleRootAtRules: false }
         ],
         output: [
           { compress: true, sourceMap: true }
@@ -229,7 +229,7 @@ describe('getOptions', () => {
       expect(options.allowApplySelectors).toEqual(['class']); // from compile
       expect(options.leakyScope).toBe(true); // from language.less
       expect(options.mathMode).toBe('strict'); // from input (overrides language)
-      expect(options.collapseNesting).toBe(false); // from input
+      expect(options.bubbleRootAtRules).toBe(false); // from input
       expect(options.compress).toBe(true); // from output
       expect(options.sourceMap).toBe(true); // from output
     });

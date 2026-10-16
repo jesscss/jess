@@ -551,7 +551,9 @@ describe('jess CLI', () => {
   it.each([
     [['-'], 'jess: reading a stylesheet from stdin (-) is not supported; pass a file path\n'],
     [['a.less', '-'], 'jess: writing CSS to stdout with - is not supported; pass /dev/stdout as the output\n'],
-    [['a.css'], 'jess: a.css is CSS already; jess compiles .less, .scss and .jess files to CSS\n'],
+    [['a.css'], 'jess: refusing to write CSS over the input file a.css; pass an output path, or a directory with -o\n'],
+    [['a.css', 'a.css'], 'jess: refusing to write CSS over the input file a.css\n'],
+    [['a.css', '-o', '.'], 'jess: refusing to write CSS over the input file a.css; pass an output path, or a directory with -o\n'],
     [['a.less', 'sub/a.css', '-o', 'dist'], 'jess: the output sub/a.css names a directory, and so does -o dist; pass the output path alone, or a file name with -o\n']
   ])('refuses the command line %j', async (args, message) => inTempDir(async (directory) => {
     fs.writeFileSync(path.join(directory, 'a.less'), '.a { color: red; }');
@@ -563,6 +565,21 @@ describe('jess CLI', () => {
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe(message);
     expect(fs.readdirSync(path.join(directory, 'dist'))).toEqual([]);
+    expect(fs.readFileSync(path.join(directory, 'a.css'), 'utf8')).toBe('.a { color: red; }');
+  }));
+
+  it('compiles a .css input to an output path or into the -o directory', async () => inTempDir(async (directory) => {
+    fs.writeFileSync(path.join(directory, 'a.css'), '.a {\n  .b { color: red; }\n}\n');
+    fs.mkdirSync(path.join(directory, 'dist'));
+
+    const named = await run(['a.css', 'out.css'], { cwd: directory });
+    expect(named.code).toBe(0);
+    expect(fs.readFileSync(path.join(directory, 'out.css'), 'utf8')).toBe('.a {\n  .b {\n    color: red;\n  }\n}\n');
+
+    const into = await run(['a.css', '-o', 'dist'], { cwd: directory });
+    expect(into.code).toBe(0);
+    expect(fs.readFileSync(path.join(directory, 'dist', 'a.css'), 'utf8')).toBe('.a {\n  .b {\n    color: red;\n  }\n}\n');
+    expect(fs.readFileSync(path.join(directory, 'a.css'), 'utf8')).toBe('.a {\n  .b { color: red; }\n}\n');
   }));
 
   it('writes the output file name into the -o directory', async () => inTempDir(async (directory) => {
