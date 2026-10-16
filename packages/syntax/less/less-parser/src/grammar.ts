@@ -111,7 +111,6 @@ import {
   parenLogicalFrom,
   requireMathSum,
   lowerLogicalCallStatement,
-  mixinArgumentSource,
   mixinArgumentsFromChildren,
   mixinCallArgsFromInterior,
   mixinCallFromSelectorBranch,
@@ -214,7 +213,6 @@ type LessRules = {
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot | LessCallArg>;
   FunctionScalarArgument: Combinator<ValueNode>;
-  FunctionAssignmentArgument: Combinator<ValueNode>;
   FunctionKeywordArgument: Combinator<LessCallArg>;
   ArgumentValueSequence: Combinator<ValueSlot>;
   FunctionCondition: Combinator<ValueNode>;
@@ -1796,41 +1794,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))),
     noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,;)]/)))
   ));
-  // `name=value` is a call-argument PAIR, not a comparison — Less models it as a
-  // dedicated assignment (`tree/assignment.js`) so `filter: alpha(opacity=50)`
-  // replays verbatim instead of collapsing to `false`. The form is nothing
-  // IE-specific: `foo(bar=1)` takes the same shape.
-  //
-  // The two forms are separated by SHAPE, not by function name: an assignment
-  // key is a bare authored identifier, so a comparison whose left operand is
-  // anything else — a number (`boolean(3 = 4)`), a variable (`foo(@a = 1)`), a
-  // group or a call — still reaches `FunctionCondition` untouched. The `=` must
-  // also open no other operator, keeping `==`, `=<`, `=>` and `=~` out.
-  const assignmentKey = regex(/[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*=(?![=<>~]))/);
-  const assignmentOperator = regex(/[ \t\n\r\f]*=[ \t\n\r\f]*/);
-  const FunctionAssignmentArgument = node(
-    'FunctionAssignmentArgument',
-    noTrivia(sequence(field('key', assignmentKey), assignmentOperator, g.ArgumentValueSequence)),
-    (children, fields) => {
-      const value = children.find(isLessValueSlotValue);
-      if (value === undefined) {
-        throw new TypeError('Less function assignment argument lost its value.');
-      }
-      /*
-       * §12.3 row 2: the pair is VERBATIM BYTES, not a node. Resolving `@x` in
-       * `alpha(opacity=@x)` has no utility — the construct is dropped from
-       * Less v5 — so this keeps the authored spelling and stops pretending the
-       * value is live. The `=` re-emits unspaced, exactly as `Assignment` did.
-       */
-      return any(`${staticText(requireField(fields, 'key').value)}=${mixinArgumentSource(value)}`);
-    }
-  );
   // `@name: value` is a KEYWORD argument — the SAME construct `.m(@name: 1)`
   // already spells on the mixin lane (§12.0: one `.less` source, one node), so
   // it reduces to the same `CallArg` and the callee's own parameter names bind
-  // it. It sits beside `FunctionAssignmentArgument` because it is the same
-  // shape of problem — a key, an operator, a value — and it is gated the same
-  // way: the key regex carries the operator LOOKAHEAD, so a positional `@c`
+  // it. The key regex carries the operator LOOKAHEAD, so a positional `@c`
   // fails the key match outright instead of parsing a variable and backtracking
   // out of it. `@name:` must open no other operator, keeping `::` out.
   const keywordArgumentKey = regex(/@[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*:(?!:))/);
@@ -1853,7 +1820,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.FunctionKeywordArgument,
       g.FunctionScalarArgument,
       g.ArgumentValueSequence,
-      g.FunctionAssignmentArgument,
       g.FunctionCondition
     ),
     (children) => {
@@ -5527,7 +5493,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     DoubledQuoteArgument,
     FunctionArgument,
     FunctionScalarArgument,
-    FunctionAssignmentArgument,
     FunctionKeywordArgument,
     ArgumentValueSequence,
     FunctionCondition,

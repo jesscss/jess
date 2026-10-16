@@ -85,12 +85,6 @@ describe('the fallback text of a mixin lookup call keeps grouped arguments', () 
   });
 });
 
-describe('a grouped value in a `name=value` function argument', () => {
-  it.each(MATH_MODES)('does not stop the parse (math: %s)', async (math) => {
-    await expect(render('.x { v: alpha(opacity=(1 + 2)); }\n', math)).resolves.toContain('alpha(opacity=');
-  });
-});
-
 /*
  * P45: still stopped by the same fallback-text spelling, which has no spelling
  * for a detached ruleset or an interpolation. Each turns red when fixed.

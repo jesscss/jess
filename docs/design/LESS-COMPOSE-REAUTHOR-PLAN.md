@@ -383,9 +383,8 @@ Buckets: **C** = CONVERGE→INHERIT (firm), **C?** = CONVERGE? NEEDS-ORACLE-PROO
 | DoubledQuoteArgument | 3162 | A | — | legacy `""…""` unknown-fn arg |
 | FunctionCondition{Operand,Paren,Term,And,Or} + FunctionCondition | 3170–3243 | A | — | Less mixin/fn guard-condition tower |
 | FunctionScalarArgument | 3264 | **O** | valueFunctionArguments:743 | wraps `MathSum` (math tower folds arithmetic) |
-| FunctionAssignmentArgument | 3289 | A | — | legacy `key=value` verbatim pair |
 | FunctionKeywordArgument | 3316 | A | — | `@name: value` keyword arg |
-| FunctionArgument | 3327 | **O** | valueFunctionArguments:743 | choice over condition/keyword/assignment/scalar |
+| FunctionArgument | 3327 | **O** | valueFunctionArguments:743 | choice over condition/keyword/scalar |
 | FunctionArguments | 3369 | **O** | genericFunctionArguments | admits `DoubledQuoteArgument`/`ValueBlock` + `;`/`,` capture |
 | GenericFunction | 3384 | **O** | GenericFunction:2003 | Less args + `functionCallFromChildren` reducer |
 | Call | 3390 | **O** | Call:1377 | same skeleton, Less args + reducer |

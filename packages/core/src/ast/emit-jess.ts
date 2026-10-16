@@ -943,9 +943,6 @@ class JessPrinter {
       if (!isSlotArray(value) && value.type === 'List' && value.sep === ',') {
         return gap('FunctionCall', 'comma-list argument: `.jess` would read it as separate arguments');
       }
-      if (!isSlotArray(value) && value.type === 'Any' && value.src.includes('=')) {
-        return gap('FunctionCall', 'an IE-style `name=value` argument (`alpha(opacity=100)`): no `.jess` `CallArgument` spelling reads it back');
-      }
       return this.value(value, inner);
     });
     const name = exported === undefined ? node.name : `$${node.name}`;

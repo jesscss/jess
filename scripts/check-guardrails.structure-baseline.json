@@ -9,7 +9,7 @@
     "statements": 738
   },
   "packages/core/src/ast/emit-jess.ts": {
-    "statements": 533
+    "statements": 531
   },
   "packages/core/src/ast/emit-jess.ts#JessPrinter.node": {
     "statements": 51
