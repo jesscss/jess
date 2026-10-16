@@ -606,23 +606,20 @@ lint:absolute` (`package.json:67`, config `eslint.absolute.config.mjs`)
   concludes the rule is dead will add the 501st. The backlog is a backlog; the
   rule is live. Re-check with `pnpm lint:absolute` rather than trusting the
   number.
-- **Hundreds of test assertions deliberately omit `await`** on
-  `MaybePromise`-returning calls. `Node.eval()` (`packages/core/src/tree/node-base.ts:1480`)
-  and `Node.render()` (`:1645-1647`) are **not** `async`; on the synchronous path
-  they return a value, not a promise. The omission is **load-bearing** — it is
-  what pins the synchronous fast path under test. **Adding `await` to silence a
-  lint warning silently deletes that coverage, and the suite still passes.**
-  Count as a heuristic upper bound:
+- **A test assertion that omits `await` on a `MaybePromise`-returning call is
+  load-bearing** — on the synchronous path the call returns a value, not a
+  promise, so the omission is what pins the synchronous fast path under test.
+  **Adding `await` to silence a lint warning silently deletes that coverage, and
+  the suite still passes.** The legacy engine's `Node.eval()`/`Node.render()`
+  tests carried 272 such assertions (at `92d38af4f`); they were deleted with
+  `packages/core/src/tree/`. Re-count before relying on any number:
 
   ```sh
   grep -rnE "(^|[^a-zA-Z])expect\([^)]*\.(render|eval)\(" --include='*.ts' packages/core \
     | grep -v await | wc -l
   ```
 
-  **272** at `92d38af4f`, across 45 files, all under
-  `packages/core/src/tree/__tests__/`. (A previously circulated figure of ~237
-  does not reproduce by this method; the exact number depends on the regex, so
-  re-run it rather than quoting either.) A helper exists for cases that should
+  A helper exists for cases that should
   assert synchrony explicitly — **`test/expect-sync.ts` at the repo root**, which
   throws when handed a thenable and carries its own instruction never to "fix" a
   failure by adding `await`. **It currently has zero call sites**

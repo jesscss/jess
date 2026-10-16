@@ -2231,7 +2231,7 @@ extend semantics.
 This is not optional cleanup: any agent proposal that keeps selector reparse,
 source scanning, or broad `:extend(` lookahead as the steady state is a grammar
 architecture finding. The helper must be adversarially reviewed against
-`packages/core/src/tree/util/EXTEND_RULES.md`: extend matching is selector
+`docs/architecture/core/EXTEND-SEMANTICS.md`: extend matching is selector
 equivalency-based, full/partial mode is target matching policy, and parser
 convenience must not special-case matching based on selector-list context. The
 parser's job is only to preserve source structure and collect the authored

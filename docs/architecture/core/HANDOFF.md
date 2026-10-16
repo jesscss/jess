@@ -1909,8 +1909,7 @@ byte-identity + minimal-diff gates let all of P1 through.
       Design record: `docs/architecture/llm-quality-enforcement-design.md`.
 - [ ] **No serialize-then-reparse of structure** — still prose, not a lint/assertion. The one
       known live violation on the shipping `ast/` route (P1.1, `selectorAtoms`) is fixed; the
-      remaining twin is in `packages/core/src/tree/`, which the hot-path gate scopes out as
-      code slated for deletion.
+      remaining twin was in the legacy `packages/core/src/tree/` engine and was deleted with it.
 
 ### P1 — EVAL/RENDER (see [[eval-render-perf-roadmap]])
 
@@ -2337,6 +2336,10 @@ missing mixin remains an error; only an ordinary function call with an optional
 function reference may fall back to a CSS `Call` when lookup misses.
 
 ### `callWithContext` deletion prerequisite
+
+> Resolved by deletion: `callWithContext`, `packages/core/src/define-function.ts` and
+> `packages/core/src/tree/call.ts` were removed with the legacy `tree/` engine. The
+> paths below no longer exist; the section is kept as the record of the audit.
 
 The legacy tree call path has been audited rather than treated as an implicit
 compatibility seam. `packages/core/src/tree/call.ts` reaches

@@ -7,6 +7,11 @@ node (`Any`/`BasicSelector`/`Combinator`/`Keyword`). Base: `origin/work/cutover-
 (`587d56140`). All mechanisms cited below are ALREADY LIVE in the base — this doc
 canonicalizes them so the reduction stops getting reverted.
 
+> The code paths this document cites (`tree/util/print.ts`, `tree/util/sourcemap.ts`,
+> `tree/util/trivia.ts`, `tree/util/provenance.ts` and their tests) belonged to the
+> legacy `packages/core/src/tree/` engine, which has been deleted. They are kept
+> here as the record of how that engine worked; they no longer exist on disk.
+
 ## The problem (why this doc exists)
 
 The compiler reduces object churn by carrying simple tokens as bare `string`s. A node

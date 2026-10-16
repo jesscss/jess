@@ -92,7 +92,7 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 | `docs/architecture/parser/parseman-jess-parse-benchmarks.jsonl` | jess parse-bench history over commits |
 | `docs/perf/perf-drift.baseline.json` | committed perf-gate ratio baseline |
 | `docs/perf/node-copy-reduction/less-hotpath-history.jsonl` | render hot-path history (seed with `measure:less:hotpath:record`) |
-| `packages/jess/benchmark/import-placement-multiple/baseline-*.json` | import-placement parse/render baselines |
+| `packages/jess/benchmark/import-placement-multiple/baseline-*.json` | import-placement parse/render baselines (historical; the harness that produced them measured the legacy tree engine and was removed with it) |
 
 ## Also present (situational, not the standard four)
 

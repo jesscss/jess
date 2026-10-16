@@ -25,8 +25,9 @@ Do NOT treat the legacy `tree/extend/**` renderer (`renderRealOracle`) as a
 correctness reference — it has known nested-extender bugs. The clean-room engine is
 `packages/core/src/ast/extend/` (barrel: `packages/core/src/ast/extend.ts`), split
 into `ir` / `compose` / `match` / `plan` / `solve` / `emit`; read it for the feature
-surface, not the correctness answer. Corpus/differential coverage lives in
-`packages/core/src/tree/extend/__tests__/` and the cross-`@import` output reference
+surface, not the correctness answer. Engine coverage lives in
+`packages/core/src/ast/__tests__/extend-*.test.ts` and
+`packages/core/src/ast/extend/__tests__/`, and the cross-`@import` output reference
 in `packages/jess/test/less/extend-cross-import.test.ts`.
 
 Every fixture snippet below is `<fixture>.less` → `<fixture>.css` from `alpha`
@@ -857,7 +858,6 @@ a fixture. These are the owner questions:
 ## Cross-links
 
 - Engine: `packages/core/src/ast/extend/` (clean-room `ir`/`compose`/`match`/`plan`/`solve`/`emit`; barrel `packages/core/src/ast/extend.ts`).
-- Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
 - Reference plumbing: `docs/architecture/core/REFERENCE.md`.
 - Byte-identity gates: `packages/jess/test/less/all-less.test.ts`, `packages/jess/test/less/extend-exact-oracle.test.ts` (pending golden edits: `packages/jess/test/less/pending-golden-edits.ts`).
 - Corrections: `docs/architecture/core/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
