@@ -10,9 +10,8 @@
  * (`#a` + `#b`). less.js / tree-v1 REJECT such an extend and leave the branch as
  * authored; this module reproduces that decision for the AST-v2 matcher.
  *
- * Ported from tree-v1 `partialWrapMayConflict`
- * (`packages/core/src/tree/extend/extend-index.ts:817`) and its `collectTagsAndIds`
- * (`:785`). Two deliberate refinements make the AST-v2 port PRECISE rather than
+ * Ported from tree-v1 `partialWrapMayConflict` and its `collectTagsAndIds`
+ * (the deleted legacy engine). Two deliberate refinements make the AST-v2 port PRECISE rather than
  * conservative — tree-v1 could afford to over-reject because a hit routed to a
  * SEPARATE fallback engine (`UNSUPPORTED`), whereas AST-v2 builds the output
  * directly, so an over-reject would emit a WRONG (unchanged) selector:

@@ -104,10 +104,9 @@ failure shape.
 discover `:extend()`.
 
 **DETECTOR:** operation-counter budgets require an extend-free fixture to do
-zero extend-discovery work. `verify:binding-lookup-hot-paths` guards the
-current occurrence-helper route. When that implementation moves out of legacy
-`tree/`, preserve the O(1)-shaped occurrence contract rather than the path or
-helper spelling.
+zero extend-discovery work. The O(1)-shaped binding-lookup contract has no
+mechanical gate (`verify:binding-lookup-hot-paths` pinned the legacy `tree/`
+helpers and was retired with them); it is a reviewer obligation.
 
 ## 4. Complexity class is an invariant, including clean-room rewrites
 
@@ -139,8 +138,8 @@ tree plus lazy per-placement state.
 **INCIDENT:** spread/slice expression folding in hot reducers, and cloned sets
 in the extend transitive-closure fixpoint.
 
-**DETECTOR:** `verify:node-copy-frontier` pins the allowed deep-copy sites and
-`audit:node-creation` exposes allocation hotspots. A deterministic
+**DETECTOR:** `verify:node-copy-frontier` rejects `.copy(`/`.clone(` sites in
+production source. A deterministic
 allocation-count budget is planned; until it exists, reviewers must supply a
 path-specific allocation argument.
 
@@ -153,9 +152,8 @@ buffer.
 *Why:* parallel string assembly duplicates output state, allocations, and
 source-map accounting.
 
-**DETECTOR:** `verify:render-buffer-frontier`. The canonical implementation may
-move during the AST-v2 cutover; the invariant is one render path, not a frozen
-legacy `tree/` location.
+**DETECTOR:** none mechanical; a reviewer obligation. (`verify:render-buffer-frontier`
+pinned the legacy `tree/` render helpers and was retired with them.)
 
 ## 7. Leanest path only
 

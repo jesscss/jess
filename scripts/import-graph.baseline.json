@@ -15,11 +15,9 @@
       "@jridgewell/trace-mapping",
       "@ungap/set-methods",
       "big.js",
-      "bitset",
-      "chalk",
-      "lodash-es"
+      "chalk"
     ],
-    "bytes": 1576701
+    "bytes": 492083
   },
   "@jesscss/core/ast": {
     "modules": [
@@ -28,7 +26,7 @@
       "packages/core/lib/value-eval.js"
     ],
     "externals": [],
-    "bytes": 50489
+    "bytes": 50933
   },
   "@jesscss/core/diagnostics": {
     "modules": [
@@ -36,7 +34,7 @@
       "packages/core/lib/diagnostics2.js"
     ],
     "externals": [],
-    "bytes": 32532
+    "bytes": 32357
   },
   "@jesscss/core/value": {
     "modules": [
@@ -45,7 +43,7 @@
       "packages/core/lib/value2.js"
     ],
     "externals": [],
-    "bytes": 32396
+    "bytes": 32379
   },
   "@jesscss/css-parser": {
     "modules": [
@@ -62,7 +60,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3708120
+    "bytes": 3667790
   },
   "@jesscss/css-parser/cst": {
     "modules": [
@@ -79,7 +77,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1834324
+    "bytes": 1792901
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
@@ -89,7 +87,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 938736
+    "bytes": 941478
   },
   "@jesscss/css-parser/cst/positions": {
     "modules": [
@@ -106,7 +104,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1834491
+    "bytes": 1793068
   },
   "@jesscss/css-parser/grammar/ast": {
     "modules": [
@@ -120,7 +118,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2910674
+    "bytes": 2867859
   },
   "@jesscss/css-parser/grammar/ast/positions": {
     "modules": [
@@ -134,7 +132,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1034113
+    "bytes": 990205
   },
   "@jesscss/css-parser/grammar/cst": {
     "modules": [
@@ -148,7 +146,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1034287
+    "bytes": 990379
   },
   "@jesscss/css-parser/grammar/cst/positions": {
     "modules": [
@@ -162,7 +160,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1034259
+    "bytes": 990351
   },
   "@jesscss/css-parser/positions": {
     "modules": [
@@ -179,7 +177,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1831384
+    "bytes": 1789961
   },
   "@jesscss/jess-parser": {
     "modules": [
@@ -198,7 +196,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2464089
+    "bytes": 2406141
   },
   "@jesscss/jess-parser/cst": {
     "modules": [
@@ -218,7 +216,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2465568
+    "bytes": 2407433
   },
   "@jesscss/jess-parser/cst/positions": {
     "modules": [
@@ -238,7 +236,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2474679
+    "bytes": 2416915
   },
   "@jesscss/jess-parser/grammar/ast": {
     "modules": [
@@ -254,7 +252,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1664687
+    "bytes": 1604254
   },
   "@jesscss/jess-parser/grammar/ast/positions": {
     "modules": [
@@ -270,7 +268,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1673541
+    "bytes": 1613292
   },
   "@jesscss/jess-parser/grammar/cst": {
     "modules": [
@@ -286,7 +284,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1664979
+    "bytes": 1604359
   },
   "@jesscss/jess-parser/grammar/cst/positions": {
     "modules": [
@@ -302,7 +300,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1673833
+    "bytes": 1613584
   },
   "@jesscss/jess-parser/positions": {
     "modules": [
@@ -321,7 +319,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2472767
+    "bytes": 2415003
   },
   "@jesscss/less-parser": {
     "modules": [
@@ -342,7 +340,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2748737
+    "bytes": 2663305
   },
   "@jesscss/less-parser/cst": {
     "modules": [
@@ -363,7 +361,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2717322
+    "bytes": 2632065
   },
   "@jesscss/less-parser/cst/positions": {
     "modules": [
@@ -384,7 +382,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2721628
+    "bytes": 2636749
   },
   "@jesscss/less-parser/grammar/ast": {
     "modules": [
@@ -400,7 +398,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1915343
+    "bytes": 1827601
   },
   "@jesscss/less-parser/grammar/ast/positions": {
     "modules": [
@@ -416,7 +414,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1919470
+    "bytes": 1832106
   },
   "@jesscss/less-parser/grammar/cst": {
     "modules": [
@@ -432,7 +430,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1915727
+    "bytes": 1827985
   },
   "@jesscss/less-parser/grammar/cst/positions": {
     "modules": [
@@ -448,7 +446,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1919774
+    "bytes": 1832410
   },
   "@jesscss/less-parser/positions": {
     "modules": [
@@ -469,7 +467,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2752563
+    "bytes": 2667509
   },
   "@jesscss/scss-parser": {
     "modules": [
@@ -488,7 +486,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2400347
+    "bytes": 2336536
   },
   "@jesscss/scss-parser/cst": {
     "modules": [
@@ -508,7 +506,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2403973
+    "bytes": 2340124
   },
   "@jesscss/scss-parser/cst/positions": {
     "modules": [
@@ -528,7 +526,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2411145
+    "bytes": 2347362
   },
   "@jesscss/scss-parser/grammar/ast": {
     "modules": [
@@ -544,7 +542,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1603138
+    "bytes": 1536842
   },
   "@jesscss/scss-parser/grammar/ast/positions": {
     "modules": [
@@ -560,7 +558,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1610053
+    "bytes": 1543785
   },
   "@jesscss/scss-parser/grammar/cst": {
     "modules": [
@@ -576,7 +574,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1603384
+    "bytes": 1537050
   },
   "@jesscss/scss-parser/grammar/cst/positions": {
     "modules": [
@@ -592,7 +590,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1610299
+    "bytes": 1544031
   },
   "@jesscss/scss-parser/positions": {
     "modules": [
@@ -611,6 +609,6 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2407086
+    "bytes": 2343303
   }
 }

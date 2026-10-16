@@ -32,7 +32,7 @@ When running scripts (npm/pnpm scripts, ESLint, tests, builds, etc.) for a speci
 3. **Using relative paths from package directory:**
    ```bash
    cd packages/core
-   pnpm exec eslint src/tree/util/extend.ts
+   pnpm exec eslint src/ast/extend/match.ts
    ```
 
 ### Incorrect Approaches:
@@ -40,7 +40,7 @@ When running scripts (npm/pnpm scripts, ESLint, tests, builds, etc.) for a speci
 ❌ **DO NOT run from root with package paths:**
    ```bash
    # WRONG - This may not work correctly due to ignore patterns
-   pnpm exec eslint packages/core/src/tree/util/extend.ts
+   pnpm exec eslint packages/core/src/ast/extend/match.ts
    ```
 
 ❌ **DO NOT assume scripts work from root:**

@@ -154,10 +154,6 @@ Two things to know before you plan anything:
   empty/renderability check, not by keeping `Comment` children in grammar
   bodies.
 
-A **separate, parallel track** is the deletion of `packages/core/src/tree/` —
-inventory in [`docs/architecture/core/TREE-CUTOVER-SURFACE.md`](docs/architecture/core/TREE-CUTOVER-SURFACE.md).
-It neither blocks nor is blocked by the grammar work.
-
 ## The Failure Class This Repo Pays For
 
 **A check that reports success because it cannot see the failure mode.** Nearly
@@ -546,8 +542,8 @@ instead.
   the specific failure — that is the one legitimate reason not to finish.
 - **On hot paths the reference class is a compiler, not an application.** Hot
   paths are `packages/core/src/ast/**` (`serialize.ts`, `provenance.ts`,
-  `extend/**`), `packages/syntax/*/*-parser/src/**`, `packages/parser-shared/**`,
-  and `packages/core/src/tree/**`. Idiomatic general-purpose JavaScript is not
+  `extend/**`), `packages/syntax/*/*-parser/src/**`, and `packages/parser-shared/**`.
+  Idiomatic general-purpose JavaScript is not
   the bar: restarting a scan at index 0 inside a per-item loop over ordered
   data, allocating an array or string only to test `.length` or emptiness,
   per-node `WeakMap` side tables, and per-entry objects holding two integers are

@@ -76,10 +76,9 @@ function createSink() {
  * whether it is a container. Mirrors SerializeJSONProperty: `toJSON` first,
  * then the scalar cases. Returns `undefined` for values JSON omits.
  *
- * NOTE `toJSON` is load-bearing here, not incidental: `packages/core/src/tree/
- * node-base.ts` defines `toJSON()` on every node precisely to drop the
- * back-references that would otherwise make a node cyclic. Honoring it is what
- * keeps this identical to the previous behavior.
+ * NOTE `toJSON` is honored because `JSON.stringify` honors it: a value that
+ * defines `toJSON()` (the legacy engine's nodes did, to drop cyclic
+ * back-references) must digest the same as its JSON text.
  */
 function resolveValue(value, key) {
   let resolved = value;

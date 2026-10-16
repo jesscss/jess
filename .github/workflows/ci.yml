@@ -248,16 +248,6 @@ jobs:
       - name: Jess public API surface
         run: pnpm run verify:jess-api
 
-      # verify:baseline itself is a LOCAL pre-push meta-gate that rebuilds the
-      # runtime chain and re-runs core/parser tests + the frontier checks — all
-      # already covered above by the one clean build, `-r test`, and the explicit
-      # frontier gates below. Its only non-redundant check that is green on a
-      # clean tree is this one (verify:parser-runtime-boundary is NOT — it reports
-      # pre-existing handwritten-recognizer debt in the parser grammars, so it
-      # stays a report/local check, not a blocking gate, until that debt is paid):
-      - name: Node constructor metadata
-        run: pnpm run verify:node-constructor-metadata
-
       # --- perf / structural invariants (were wired only into release:alpha:check) ---
       - name: Gate — aggressive cutting review
         run: pnpm run verify:aggressive-cutting-review
@@ -268,12 +258,6 @@ jobs:
       - name: Gate — materialization frontier
         run: pnpm run verify:materialization-frontier
 
-      - name: Gate — render-buffer frontier
-        run: pnpm run verify:render-buffer-frontier
-
-      - name: Gate — binding lookup hot paths
-        run: pnpm run verify:binding-lookup-hot-paths
-
       - name: Gate — diagnostic cold path
         run: pnpm run verify:diagnostic-cold-path
 
@@ -282,9 +266,6 @@ jobs:
 
       - name: Gate — hot-path antipattern inventory (shrink-only)
         run: pnpm run verify:hot-path
-
-      - name: Audit — node creation hotspots
-        run: pnpm run audit:node-creation
 
   # Build-free source tests, run IN PARALLEL with `verify`. vitest source-aliases
   # every `@jesscss/*` to `src`, so this suite does not need the full build — only

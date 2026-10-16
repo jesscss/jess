@@ -7,19 +7,6 @@ import { resolve } from 'node:path';
  * never touch `value:` positions or node types whose name is intentionally a Node.
  */
 const files = [
-  'packages/core/src/tree/__tests__/at-rule.test.ts',
-  'packages/core/src/tree/__tests__/extend-roots.test.ts',
-  'packages/core/src/tree/__tests__/extend-eval-integration.test.ts',
-  'packages/core/src/tree/__tests__/nesting-collapse.test.ts',
-  'packages/core/src/tree/__tests__/ruleset.test.ts',
-  'packages/core/src/tree/__tests__/rules.test.ts',
-  'packages/core/src/tree/__tests__/func.test.ts',
-  'packages/core/src/tree/__tests__/declaration.test.ts',
-  'packages/core/src/tree/__tests__/at-rule-statement.test.ts',
-  'packages/core/src/tree/__tests__/node-render-buffer.test.ts',
-  'packages/core/src/tree/__tests__/import-style.test.ts',
-  'packages/core/src/tree/__tests__/reference.test.ts',
-  'packages/core/src/tree/__tests__/mixin.test.ts',
   'packages/core/test/helpers.ts',
   'packages/core/test/at-rule-statement.test.ts',
   'packages/core/test/at-rule-basic.test.ts'

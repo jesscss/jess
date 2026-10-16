@@ -11,7 +11,7 @@ import type { Color } from './value-eval.js';
 import { round } from './round.js';
 import { formatNumber } from './format-number.js';
 
-/* color-format enum, mirrored from tree/color.ts ColorFormat (opaque `number`). */
+/* color-format enum, mirrored from the legacy engine's ColorFormat (opaque `number`). */
 export const HEX = 0;
 export const RGB = 1;
 export const HSL = 2;

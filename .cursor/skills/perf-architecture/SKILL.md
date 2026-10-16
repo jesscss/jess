@@ -12,8 +12,6 @@ Load this skill **before** writing code on a perf-sensitive path, especially:
   and `extend/**`. This is the hot path that ships.
 - `packages/syntax/*/*-parser/src/**` and `packages/parser-shared/**` (grammar,
   productions, parseman macros)
-- `packages/core/src/tree/**` — the legacy engine, still live until the cutover
-  completes
 
 **The reference class is a compiler, not an application.** Idiomatic
 general-purpose JavaScript is not the bar here: a side table that "every blog
@@ -56,7 +54,7 @@ Numbered to match the canonical `docs/perf/V8-ARCHITECTURE.md` invariants 1–9.
    `documentHas*` scan, `.findVariable/.findProperty/.findDeclaration`, or
    recomputing a set/array you already hold: use a parse-time flag / O(1) bitset
    reject and the occurrence helpers; short-circuit the empty case before any
-   scan. *(gate: `verify:binding-lookup-hot-paths` + extend op-counter budgets)*
+   scan. *(gate: extend op-counter budgets)*
 
 4. **Complexity class is an invariant (even clean-room)** — before rewriting a
    tuned subsystem (extend, selectors, grammar): consult the tuned impl + its
@@ -67,11 +65,11 @@ Numbered to match the canonical `docs/perf/V8-ARCHITECTURE.md` invariants 1–9.
    `Array(n).fill()` / `{ ...clone }` / a fresh `Set`/`Map` per iteration, or a
    deep `.copy(true)`/`.clone(true)` to isolate eval: single-value fast-path
    first, reuse buffers, prefer one canonical tree + lazy per-placement state.
-   *(gate: `verify:node-copy-frontier` + `audit:node-creation`)*
+   *(gate: `verify:node-copy-frontier`)*
 
 6. **Render through the canonical buffer** — before concatenating output or
    adding a bespoke `renderNodeTo*` path: route through the one canonical render
-   buffer. One pass, one buffer. *(gate: `verify:render-buffer-frontier`)*
+   buffer. One pass, one buffer. *(no gate: reviewer obligation)*
 
 7. **Leanest path only** — before adding a node field, helper, wrapper, or
    compat shim: is it on the leanest path to the target runtime model, or just

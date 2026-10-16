@@ -952,8 +952,7 @@ if (ts) {
  * Scope: `packages/core/src/ast/` (tests excluded), the live evaluation and
  * output engine where the owner modules go. The other packages that test the
  * same characters (the diagnostics-core and language-service lexers) have their
- * own tokenizers and no dependency they could share these owners through, and
- * `packages/core/src/tree/` is being deleted.
+ * own tokenizers and no dependency they could share these owners through.
  *
  * Patterns run over one code line at a time; comment lines are skipped.
  */

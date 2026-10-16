@@ -58,7 +58,6 @@ Two files were reprieved on evidence:
 | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | Patch-shape review standard. |
 | [`AST-QUALITY-AUDIT.md`](./AST-QUALITY-AUDIT.md) | Audit criteria for `packages/core/src/ast` as a parser-independent leaf. |
 | [`PERF_IDEAS.md`](./PERF_IDEAS.md) | The measured workload and comparator numbers behind the current CPU lane. |
-| [`TREE-CUTOVER-SURFACE.md`](./TREE-CUTOVER-SURFACE.md) | Deleting `packages/core/src/tree/`: public-surface inventory, `Context` decomposition, extraction order. |
 | [`TREE2-DESIGN-SPEC.md`](./TREE2-DESIGN-SPEC.md) | Subsystem-by-subsystem spec for the core rewrite. |
 | [`VALUE-NODE-MODEL-DESIGN.md`](./VALUE-NODE-MODEL-DESIGN.md) · [`VALUE-LITERAL-TAG-SPEC.md`](./VALUE-LITERAL-TAG-SPEC.md) · [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) | The value model: shape, literal tagging, materialization/memoization. |
 | [`RESOLVER-SHAPE-SPEC.md`](./RESOLVER-SHAPE-SPEC.md) · [`VARIABLE-RESOLUTION-SEMANTICS.md`](./VARIABLE-RESOLUTION-SEMANTICS.md) · [`REFERENCE.md`](./REFERENCE.md) · [`REFERENCE-CALL-PLAN.md`](./REFERENCE-CALL-PLAN.md) | Reference / resolution shape. |

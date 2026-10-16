@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 /**
  * Exact-match vite aliases that resolve every workspace package export — the
  * bare name and each subpath — to the source module its `lib` file is built
- * from. Used by `vitest.config.ts`, `vitest.sweep.config.ts` and the parseman
+ * from. Used by `vitest.config.ts` and the parseman
  * diagnostics loader, so tests and diagnostics run current source with no lib
  * rebuild and no stale-lib phantom results.
  *

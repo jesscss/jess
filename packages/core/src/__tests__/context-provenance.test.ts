@@ -27,7 +27,6 @@ describe('Context canonical document provenance', () => {
       expect(owner).not.toBeNull();
       expect(context.documentContext).toBe(owner);
       expect(context.sourceContext).toBe(owner);
-      expect(context.treeContext).toBeUndefined();
       context.rememberDocumentBody(imported, body);
       return owner;
     });
