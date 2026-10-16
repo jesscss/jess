@@ -1363,7 +1363,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
     return call;
   }
   const boundaryCondition = (guard: MixinGuard, asCall: FunctionCall | null = null): Expression =>
-    expression(condition(guard, functionConditionSource(call)), asCall);
+    expression(condition(guard, functionConditionSource(call)), asCall, true);
 
   /* `and`/`or` are n-ary in Less and fold LEFT, so `and(a, b, c)` is
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
@@ -2576,11 +2576,12 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
     if (lead.length > 0 && groupLeading(left) === null) {
       reportAmbiguousNot(rawChildren[at], state);
     }
+    /* The group is a paren group (ledger V35), so a `/` in an operand divides, as in `(10px/2)`. */
     return functionConditionTermFrom([
       ...lead,
-      functionConditionOperandFrom([left], state),
+      lessComputation(lessMathInGroup(left!, state)),
       children[at],
-      functionConditionOperandFrom([right], state)
+      lessComputation(lessMathInGroup(right, state))
     ], [], state, notGluedAt);
   }
   const value = lessMathInValue(left!, state);
