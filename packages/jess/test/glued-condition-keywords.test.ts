@@ -107,7 +107,6 @@ describe('a glued and( / or( / not( in a written value condition', () => {
     ['((1) and(2))', '((1) and(2))', [14]],
     ['(not(1 = 1))', '(not(1 = 1))', [10]],
     ['(NOT(1 = 1))', '(NOT(1 = 1))', [10]],
-    ['((1 = 1)and(2 = 2))', '((1 = 1) and(2 = 2))', [17]],
     ['((1 = 1) or(2 = 2) and(3 = 3))', '((1 = 1) or(2 = 2) and(3 = 3))', [18, 28]]
   ];
 
@@ -137,12 +136,22 @@ describe('a glued and( / or( / not( in a written value condition', () => {
   });
 
   /*
-   * P45 (owner 2026-10-09): valid CSS parses in every dialect. Not yet: the
-   * SCSS and Jess value grammars reject a CSS `=` delimiter in a function
-   * argument (`x: foo(1 = 1)` stops the same way), so `not(1 = 1)` stops there.
+   * A keyword glued to the group BEFORE it, `(1 = 1)and(`, has no whitespace
+   * there, so css writes it as authored (css-syntax-3: adjacent component
+   * values). Less's written condition does not yet record that gap and writes
+   * `(1 = 1) and(`: the one input above where Less is not yet css.
    */
+  it('css: writes a keyword glued to the group before it as authored', async () => {
+    expect((await serialize(parseCss('.k { x: ((1 = 1)and(2 = 2)); }'))).css).toBe('.k {\n  x: ((1 = 1)and(2 = 2));\n}\n');
+  });
+
+  it.fails('less: writes a keyword glued to the group before it as css does', async () => {
+    expect((await render('less', '.k { x: ((1 = 1)and(2 = 2)); }')).css).toBe('.k {\n  x: ((1 = 1)and(2 = 2));\n}\n');
+  });
+
+  /* P45 (owner 2026-10-09): valid CSS parses in every dialect, `=` delim in a call argument included. */
   for (const dialect of ['scss', 'jess'] as const) {
-    it.fails(`${dialect}: parses (not(1 = 1)) and writes it as css does`, async () => {
+    it(`${dialect}: parses (not(1 = 1)) and writes it as css does`, async () => {
       expect((await render(dialect, '.k { x: (not(1 = 1)); }')).css).toBe('.k {\n  x: (not(1 = 1));\n}\n');
     });
   }

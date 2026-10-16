@@ -4590,8 +4590,12 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: Lane): MaybeProm
         continue;
       }
       if (!empty) {
-        /* [compress] one space; the authored (possibly multi-line) run is pretty-only. */
-        bytes += e.compress === true ? ' ' : authoredSpace(separators?.[index - 1]);
+        /*
+         * [compress] one space; the authored (possibly multi-line) run is
+         * pretty-only. A glued boundary (`opacity=50`) is the value's own
+         * spelling, not layout, so it stays glued in every mode ({@link itemBoundary}).
+         */
+        bytes += e.compress === true ? (separators?.[index - 1] === '' ? '' : ' ') : authoredSpace(separators?.[index - 1]);
       }
       bytes += emitValueC(item, e);
       empty = false;
@@ -9333,9 +9337,10 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: Lane): MaybePro
     for (let index = 1; index < values.length; index++) {
       /*
        * [compress] a space list keeps ONE space; the authored (possibly multi-line)
-       * boundary run is replayed only in pretty output.
+       * boundary run is replayed only in pretty output. A glued boundary stays
+       * glued in every mode, as in `evalValueSlot`.
        */
-      out += e.compress === true ? ' ' : authoredSpace(authored?.[index - 1]);
+      out += e.compress === true ? (authored?.[index - 1] === '' ? '' : ' ') : authoredSpace(authored?.[index - 1]);
       out += emitValueC(values[index]!, e);
     }
     return literal(out);

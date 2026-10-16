@@ -285,12 +285,6 @@ export function fallbackCall(children: readonly unknown[]): FunctionCall {
   return funcCall(name, [groups.length === 1 ? groups[0]! : withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
-/** A whitespace run: one value is itself, several keep their authored separators. */
-export function spaceRun(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
-  const values = valueSlotChildren(children);
-  return values.length === 1 ? values[0]! : withAuthoredSeparators(values, fields, values.length - 1);
-}
-
 /**
  * A branch list after its first condition and colon (ledger P38): the first
  * branch's value — the branch still waiting for that condition, which the

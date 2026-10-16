@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { ScssImportPostludeError } from './parse-error.js';
 
@@ -410,6 +410,65 @@ export const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
  * the operator token is found by WHAT IT IS rather than by a child index the
  * optional trivia arms would shift. */
 export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
+
+/**
+ * A grammar terminal — a delim or its padding — and never a value node. A
+ * `Quoted` also carries a string `value`, so `isToken` alone cannot tell
+ * `foo("=")` from `foo(a=b)`.
+ */
+export function isScssTerminal(child: unknown): child is Token {
+  return isToken(child) && !isScssValue(child);
+}
+
+/**
+ * A call argument's head, `children[0, end)`: the operand alone, a keyword
+ * argument, or a comparison. A `=` run after it is the caller's.
+ */
+export function scssCallArgument(children: readonly unknown[], end: number): ScssCallArg {
+  const left = requireValueSlot(children[0]);
+  if (end === 1) {
+    return callArg(left);
+  }
+
+  /*
+   * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
+   * `@include m($x: 1)` already spells, so it is the same {@link CallArg}
+   * and the function's own parameter names bind it. It shares the operand
+   * with the comparison arm rather than opening a second left-factored
+   * lane: the operator tail is parsed ONCE and its spelling decides which
+   * reading applies, so a positional argument pays nothing.
+   *
+   * Only a `$`-sigil variable can be a keyword. A bare identifier before a
+   * colon is not a Sass named argument, and it is a parse error here today.
+   */
+  if (children.some(child => isToken(child) && child.value === ':')) {
+    if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
+      throw new TypeError('A named argument must be spelled `$name: value`.');
+    }
+    return callArg(requireValueSlot(children[end - 1]), left.name, false, '$');
+  }
+  const operator = requireToken(children.find(child => isToken(child) && COMPARISON_OPERATORS.has(child.value))).value;
+  const right = requireValueSlot(children[end - 1]);
+
+  /*
+   * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
+   * operator (§5.1) — the SAME lowering `IfComparison` performs, because a
+   * comparison must not mean one thing in a guard and another in an
+   * argument. `!=` is that comparison under `not`.
+   */
+  const comparison = {
+    g: 'cmp' as const,
+    op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
+    left: requireValue(left),
+    right: requireValue(right),
+    implied: false,
+    parens: 0
+  };
+  return callArg(expression(condition(
+    operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
+    `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
+  )));
+}
 
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
  *  whose single LookupStep carries the key. A `$var` key selects the

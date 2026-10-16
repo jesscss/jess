@@ -33,7 +33,7 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['an unknown function with a nested semicolon', 'foo(a; b)'],
   ['empty semicolon groups', 'foo(a;; b)'],
   ['comments beside a `;`', 'foo(a /* c */ ; /* d */ b)'],
-  ['a leading colon, which has no condition', 'foo(:x)', 'foo(: x)'],
+  ['a leading colon, which has no condition', 'foo(:x)'],
   ['punctuation glued to a colon, which is not a branch colon', 'foo(a +: 1)'],
   ['an escaped colon, which is not a branch colon', 'foo(a\\:b)'],
   ['a colon inside a string, which is not a branch colon', 'foo("a:b", c)'],
