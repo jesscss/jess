@@ -202,6 +202,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/css-parser':
+        specifier: workspace:*
+        version: link:../syntax/css/css-parser
       '@jesscss/plugin-jess':
         specifier: workspace:*
         version: link:../syntax/jess/jess-plugin-jess

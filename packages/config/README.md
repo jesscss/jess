@@ -75,7 +75,7 @@ interface InputOptions {
 
 interface OutputOptions {
   file?: string;  // Path or glob pattern to match output files
-  collapseNesting?: boolean;
+  collapseNesting?: false | 'native' | 'compact';  // applies to every source dialect
   compress?: boolean;
   sourceMap?: boolean;
   // ... any output options to override
@@ -204,7 +204,7 @@ For example, with this config:
     { file: '**/*.min.css', compress: true }
   ],
   language: {
-    less: { collapseNesting: true }
+    less: { allowCallerScope: true }
   }
 }
 ```
@@ -212,7 +212,7 @@ For example, with this config:
 Calling `getOptions(config, { input: 'legacy/old.less', output: 'dist/old.min.css' })`:
 - `mathMode: 'always'` - from matched input (overrides compile)
 - `leakyRules: true` - from matched input (overrides default input)
-- `collapseNesting: true` - from language.less
+- `allowCallerScope: true` - from language.less
 - `compress: true` - from matched output (overrides default output)
 
 ### File Matching

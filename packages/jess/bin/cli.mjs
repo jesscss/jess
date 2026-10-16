@@ -44,9 +44,10 @@ const MANY_FILES_HINT = `To compile several files, run jess once per file, for e
 const COMPILE_USAGE = `Usage: jess <input> [output] [options]
        jess lint [files...] [options]
 
-Compile one .less, .scss, or .jess file to CSS. The CSS is written to
+Compile one .less, .scss, .jess or .css file to CSS. The CSS is written to
 [output], or else next to the input with a .css extension. With -o, [output]
-is a file name in <dir>. Reading stdin with - is not supported.
+is a file name in <dir>. Reading stdin with - is not supported. A .css input
+needs an output path or -o, since its default output is the input itself.
 
 An existing output file is replaced, not written into: the CSS goes to a new
 file that is renamed over it. A symlink there is replaced rather than
@@ -194,7 +195,8 @@ function planOutput(outPath, input, inFile, outArg) {
     return { replace: true }; // A dangling symlink: replacing it creates no file behind it.
   }
   if (file.dev === input.dev && file.ino === input.ino) {
-    fail(`refusing to write CSS over the input file ${inFile}`, EXIT_USAGE);
+    const hint = outArg === undefined ? '; pass an output path, or a directory with -o' : '';
+    fail(`refusing to write CSS over the input file ${inFile}${hint}`, EXIT_USAGE);
   }
   if (file.isDirectory()) {
     fail(`${display(outPath)} is a directory; to write the CSS into it, use -o ${display(outPath)}`, EXIT_USAGE);
@@ -329,9 +331,6 @@ async function runCompile(args) {
   }
   if (outArg === '-') {
     fail('writing CSS to stdout with - is not supported; pass /dev/stdout as the output', EXIT_USAGE);
-  }
-  if (path.extname(inFile).toLowerCase() === '.css') {
-    fail(`${inFile} is CSS already; jess compiles .less, .scss and .jess files to CSS`, EXIT_USAGE);
   }
   if (values.out !== undefined && outArg !== undefined && path.basename(outArg) !== outArg) {
     fail(`the output ${outArg} names a directory, and so does -o ${values.out}; pass the output path alone, or a file name with -o`, EXIT_USAGE);
