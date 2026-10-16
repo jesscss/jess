@@ -20,6 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
+import { callArgumentSource, expressionWroteParens, mixinArgumentSource } from './mixin-reference-source.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
@@ -546,43 +547,6 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
     steps.push({ type: 'LookupStep', kind: accessor.keyKind, name: accessor.key });
   }
   return reference(base, steps, raw);
-}
-
-/** Source fallback for a grammar fact. This deliberately walks already
- * reduced facts; it never inspects or re-parses source bytes. */
-/** One authored call argument re-spelled, KEYWORD INCLUDED. A named argument
- *  whose name were dropped here would re-emit as a positional one — the same
- *  lossy re-derivation the node shape exists to prevent. */
-function callArgumentSource(argument: MixinCallArgument): string {
-  return `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`;
-}
-
-function mixinArgumentSource(value: CallValue): string {
-  if (isMixinCall(value)) {
-    const path = value.path.map((segment, index) => index === 0 ? segment.selector : `${segment.combinator}${segment.selector}`).join('');
-    const args = value.args.map(callArgumentSource).join(', ');
-    return `${path}${value.name}(${args})${value.important ? ' !important' : ''}`;
-  }
-  if (Array.isArray(value)) {
-    return value.map(part => mixinArgumentSource(part)).join(' ');
-  }
-  const node = requireValueNode(value);
-  switch (node.type) {
-    case 'Keyword': case 'Color': case 'Dimension': case 'Any': case 'SelectorCapture': return node.src;
-    case 'Quoted': return node.src;
-    case 'Lookup': return node.kind === 'var'
-      ? `@${typeof node.name === 'string' ? node.name : mixinArgumentSource(node.name)}`
-      : node.raw;
-    case 'Reference': return node.raw;
-    case 'FunctionCall': return `${node.name}(${node.args.map(callArgumentSource).join(', ')})`;
-    case 'Block': return `${node.escaped ? '~' : ''}${delimiterOpen(node.delimiter)}${mixinArgumentSource(node.value)}${delimiterClose(node.delimiter)}`;
-    case 'Branch': return `${mixinArgumentSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${mixinArgumentSource(node.value)}`}`;
-    case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
-    case 'Sequence': return node.parts.map(mixinArgumentSource).join(' ');
-    case 'List': return node.value.map(mixinArgumentSource).join(sepGlue(node.sep));
-    case 'Important': return `${mixinArgumentSource(node.value)} !important`;
-    default: throw new TypeError(`Less mixin-reference raw source cannot represent ${node.type}.`);
-  }
 }
 
 /**
@@ -2378,17 +2342,13 @@ function functionConditionSource(value: ValueSlot): string {
     case 'Block': return `${delimiterOpen(node.delimiter)}${functionConditionSource(node.value)}${delimiterClose(node.delimiter)}`;
     case 'Branch': return `${functionConditionSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${functionConditionSource(node.value)}`}`;
     /*
-     * An `Expression` owns no delimiters of its own. A nested `boolean(…)`/
-     * `if(…)` condition is replayed with the enclosing group's `(inner)`, as
-     * the boundary `Block` spelled it before the boundary became its own node
-     * kind. A math computation (ledger P35) is replayed with parens only when
-     * the author wrote them: a paren group that became the boundary starts
-     * before its value does; bare math starts where its value starts.
+     * A nested `boolean(…)`/`if(…)` condition is replayed with the enclosing
+     * group's `(inner)`, as the boundary `Block` spelled it before the boundary
+     * became its own node kind; math follows {@link expressionWroteParens}.
      */
     case 'Expression': {
       const inner = functionConditionSource(node.value);
-      return isValueNode(node.value) && node.value.type !== 'Condition'
-        && sourceStartOf(node) === sourceStartOf(node.value)
+      return isValueNode(node.value) && node.value.type !== 'Condition' && !expressionWroteParens(node)
         ? inner
         : `(${inner})`;
     }
