@@ -31,3 +31,14 @@ describe('Less `alpha()` with a `name=value` argument', () => {
     expect(await value('foo(@v = 50)')).toBe('foo(true)');
   });
 });
+
+/*
+ * P45: the comparison reading still stops the parse on two well-formed argument
+ * shapes, whatever the function is called and whether or not the left operand
+ * is a name: a `url()` operand and a chained `=`. Each turns red when fixed.
+ */
+describe('comparison arguments that still stop the parse', () => {
+  it.fails.each(['alpha(x=url(a.png))', 'foo(@v = url(a.png))', 'alpha(a=b=c)', 'foo(1 = 2 = 3)'])('%s evaluates', async (call) => {
+    await value(call);
+  });
+});
