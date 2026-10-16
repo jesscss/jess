@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { callArgumentSource, expressionWroteParens, mixinArgumentSource } from './mixin-reference-source.js';
+import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';

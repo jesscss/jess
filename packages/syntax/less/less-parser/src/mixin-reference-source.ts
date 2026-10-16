@@ -27,7 +27,7 @@ export function expressionWroteParens(node: Expression): boolean {
   return !isValueSlotArray(node.value) && sourceStartOf(node) !== sourceStartOf(node.value);
 }
 
-export function mixinArgumentSource(value: CallValue): string {
+function mixinArgumentSource(value: CallValue): string {
   if (isValueSlotArray(value)) {
     return value.map(part => mixinArgumentSource(part)).join(' ');
   }
