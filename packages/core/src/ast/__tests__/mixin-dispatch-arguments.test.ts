@@ -194,7 +194,7 @@ describe('mixin bound-source cleanup', () => {
     [mixinDef('.tracked', [{ name: 'value' }], [], guard)],
     mixinCall('.tracked', [any('source')]),
     resolve,
-    (_def, _bindings, isDefault) => ({ resolveTyped: typed, ev: null, modes: DEFAULT_MODES, isDefault }),
+    (_def, _bindings, isDefault) => ({ resolveTyped: typed, ev: null, modes: DEFAULT_MODES, isDefault, conditionGroups: false }),
     undefined,
     undefined,
     tracker

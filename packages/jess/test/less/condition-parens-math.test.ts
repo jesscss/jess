@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
 /*
- * A condition's own parentheses are a paren group, and a lowered `boolean()`
- * is a call (owner 2026-10-16, DESIGN-DECISIONS V35). Under `parens`/`strict`
- * math runs only inside a paren group: the parens written around a condition —
- * a mixin or CSS guard's `when (…)`, an `if()`/`boolean()` condition, a
- * condition inside `if()` — open one, so `when (1 + 2 = 3)` matches. The
- * argument of `boolean()` is a call argument (V34): `boolean(1 + 2 = 3)` keeps
- * `1 + 2` under `parens`/`strict`, while `boolean((1 + 2 = 3))` computes in
- * the condition's own parens. `always` and `parens-division` compute `+ - *`
- * everywhere and are unchanged.
+ * Ledger V35 (owner 2026-10-16). Under `parens`/`strict` math runs only inside
+ * a paren group:
+ * - a guard's `when ( … )` parens are not one: `when (1 + 2 = 3)` keeps
+ *   `1 + 2`, while the group in `when ((1 + 2) = 3)` computes;
+ * - in a function's arguments (`if()`, `boolean()`, `not()`, `and()`, `or()`)
+ *   parens around a condition are an ordinary paren group: `if((1 + 2 = 3), y, n)`
+ *   is `y`, and under `parens-division` `if((10px/2 = 5px), y, n)` divides;
+ * - a bare argument is a call argument (V34) and does not compute:
+ *   `boolean(1 + 2 = 3)` is `false`, `not(1 + 2 = 3)` is `true`.
+ * `always` computes everything; `parens-division` computes `+ - *` everywhere.
  */
 const MODES = ['always', 'parens-division', 'parens', 'strict'] as const;
 
@@ -25,25 +26,40 @@ const value = (source: string): string => `.x { a: ${source}; }`;
 
 /* `[label, source, always, parens-division, parens, strict]`, each the value of `.x { a }` */
 const cases: ReadonlyArray<readonly [string, string, string, string, string, string]> = [
-  ['when (1 + 2 = 3)', guard('(1 + 2 = 3)'), 'y', 'y', 'y', 'y'],
+  ['when (1 + 2 = 3)', guard('(1 + 2 = 3)'), 'y', 'y', 'n', 'n'],
   ['when ((1 + 2) = 3)', guard('((1 + 2) = 3)'), 'y', 'y', 'y', 'y'],
-  ['when (1 + 2 = 3) and (2 * 2 = 4)', guard('(1 + 2 = 3) and (2 * 2 = 4)'), 'y', 'y', 'y', 'y'],
-  ['when not (1 + 2 = 3)', guard('not (1 + 2 = 3)'), 'n', 'n', 'n', 'n'],
+  ['when (1 + 2 = 3) and (2 * 2 = 4)', guard('(1 + 2 = 3) and (2 * 2 = 4)'), 'y', 'y', 'n', 'n'],
+  ['when not (1 + 2 = 3)', guard('not (1 + 2 = 3)'), 'n', 'n', 'y', 'y'],
   ['when (isnumber(1 + 2))', guard('(isnumber(1 + 2))'), 'y', 'y', 'n', 'n'],
   ['when (isnumber((1 + 2)))', guard('(isnumber((1 + 2)))'), 'y', 'y', 'y', 'y'],
+  ['when (10px/2 = 5px)', guard('(10px/2 = 5px)'), 'y', 'n', 'n', 'n'],
+  ['when ((10px/2) = 5px)', guard('((10px/2) = 5px)'), 'y', 'y', 'y', 'y'],
   ['if((1 + 2 = 3), y, n)', value('if((1 + 2 = 3), y, n)'), 'y', 'y', 'y', 'y'],
   ['if(1 + 2 = 3, y, n)', value('if(1 + 2 = 3, y, n)'), 'y', 'y', 'n', 'n'],
   ['if((1 + 2) = 3, y, n)', value('if((1 + 2) = 3, y, n)'), 'y', 'y', 'y', 'y'],
   ['(if(1 + 2 = 3, y, n))', value('(if(1 + 2 = 3, y, n))'), 'y', 'y', 'n', 'n'],
   ['if((1 + 2 = 3) and (2 * 2 = 4), y, n)', value('if((1 + 2 = 3) and (2 * 2 = 4), y, n)'), 'y', 'y', 'y', 'y'],
   ['if(not (1 + 2 = 3), y, n)', value('if(not (1 + 2 = 3), y, n)'), 'n', 'n', 'n', 'n'],
+  ['if((10px/2 = 5px), y, n)', value('if((10px/2 = 5px), y, n)'), 'y', 'y', 'y', 'y'],
+  ['if(10px/2 = 5px, y, n)', value('if(10px/2 = 5px, y, n)'), 'y', 'n', 'n', 'n'],
+  ['statement if((1 + 2 = 3), {…}, {…})', '.x { if((1 + 2 = 3), { a: y }, { a: n }); }', 'y', 'y', 'y', 'y'],
+  ['statement if(1 + 2 = 3, {…}, {…})', '.x { if(1 + 2 = 3, { a: y }, { a: n }); }', 'y', 'y', 'n', 'n'],
+  ['foo((10px/2 = 5px))', value('foo((10px/2 = 5px))'), 'foo(true)', 'foo(true)', 'foo(true)', 'foo(true)'],
+  ['(10px/2 = 5px)', value('(10px/2 = 5px)'), '(5px = 5px)', '(5px = 5px)', '(5px = 5px)', '(5px = 5px)'],
   ['boolean(1 + 2 = 3)', value('boolean(1 + 2 = 3)'), 'true', 'true', 'false', 'false'],
   ['boolean((1 + 2 = 3))', value('boolean((1 + 2 = 3))'), 'true', 'true', 'true', 'true'],
   ['boolean((1 + 2) = 3)', value('boolean((1 + 2) = 3)'), 'true', 'true', 'true', 'true'],
-  ['(boolean(1 + 2 = 3))', value('(boolean(1 + 2 = 3))'), 'true', 'true', 'false', 'false']
+  ['(boolean(1 + 2 = 3))', value('(boolean(1 + 2 = 3))'), 'true', 'true', 'false', 'false'],
+  ['boolean((10px/2 = 5px))', value('boolean((10px/2 = 5px))'), 'true', 'true', 'true', 'true'],
+  ['not(1 + 2 = 3)', value('not(1 + 2 = 3)'), 'false', 'false', 'true', 'true'],
+  ['not((1 + 2 = 3))', value('not((1 + 2 = 3))'), 'false', 'false', 'false', 'false'],
+  ['and(1 + 2 = 3, 1 = 1)', value('and(1 + 2 = 3, 1 = 1)'), 'true', 'true', 'false', 'false'],
+  ['and((1 + 2 = 3), 1 = 1)', value('and((1 + 2 = 3), 1 = 1)'), 'true', 'true', 'true', 'true'],
+  ['or(1 + 2 = 3, 1 = 2)', value('or(1 + 2 = 3, 1 = 2)'), 'true', 'true', 'false', 'false'],
+  ['or((1 + 2 = 3), 1 = 2)', value('or((1 + 2 = 3), 1 = 2)'), 'true', 'true', 'true', 'true']
 ];
 
-describe('a condition\'s own parens open a math frame; boolean() arguments follow the math mode', () => {
+describe('when ( … ) parens are not a math group; function arguments follow the math mode', () => {
   MODES.forEach((mode, index) => {
     describe(`mathMode: ${mode}`, () => {
       for (const [label, source, ...expected] of cases) {
@@ -51,8 +67,8 @@ describe('a condition\'s own parens open a math frame; boolean() arguments follo
           expect(await output(source, mode)).toBe(`.x { a: ${expected[index]}; }`);
         });
       }
-      it(`.x when (1 + 2 = 3) { a: y } -> .x { a: y; }`, async () => {
-        expect(await output('.x when (1 + 2 = 3) { a: y }', mode)).toBe('.x { a: y; }');
+      it('a ruleset\'s when (1 + 2 = 3) is not a math group', async () => {
+        expect(await output('.x when (1 + 2 = 3) { a: y }', mode)).toBe(index < 2 ? '.x { a: y; }' : '');
       });
     });
   });

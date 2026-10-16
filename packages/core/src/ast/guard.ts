@@ -47,9 +47,10 @@ export type ValueResolver = (v: ValueSlot) => MaybePromise<string>;
  * Resolve a value node to a materialized TYPED value object.
  *
  * `group` is the nearest group the condition puts around the operand: `true`
- * inside parens written around a condition, which are a paren group (owner
- * 2026-10-16, ledger V35), `false` in a type function's arguments, which those
- * parens do not reach (V34), and `undefined` where the condition adds none.
+ * inside parens written around a condition where they are a paren group
+ * ({@link GuardEvalDeps.conditionGroups}), `false` in a type function's
+ * arguments, which those parens do not reach (V34), and `undefined` where the
+ * condition adds none.
  *
  * A guard operand can name a value the engine cannot produce without awaiting —
  * a `@plugin` function result, say — so this is a {@link MaybePromise}. It stays
@@ -67,6 +68,16 @@ export interface GuardEvalDeps {
 
   /** True iff no non-default definition matched (the `default()` value). */
   isDefault: () => boolean;
+
+  /**
+   * Whether the parens written around a condition are paren groups for its
+   * math (ledger V35). They are in a function's arguments and a control
+   * statement (`if((1 + 2 = 3), y, n)` is `y` under `math: parens`), and are
+   * not in a `when` guard on a mixin or ruleset (`when (1 + 2 = 3)` keeps
+   * `1 + 2`; owner 2026-10-16: "in the expression `when (...)` the parens
+   * don't count as starting parens").
+   */
+  conditionGroups: boolean;
 }
 
 /**
@@ -75,12 +86,12 @@ export interface GuardEvalDeps {
  * materialized value objects — real Less semantics by construction; logic/
  * negation/truthiness/default are owned here.
  *
- * The parens the author wrote around a condition (`parens`) are a paren group
- * for every operand in it ({@link TypedResolver}), so `when (1 + 2 = 3)`
- * computes under `math: parens` as `((1 + 2) = 3)` does.
+ * Where the parens the author wrote around a condition (`parens`) are paren
+ * groups ({@link GuardEvalDeps.conditionGroups}), every operand in them is in
+ * one ({@link TypedResolver}).
  */
 export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean): MaybePromise<boolean> {
-  const group = node.parens > 0 || outer;
+  const group = (node.parens > 0 && deps.conditionGroups) || outer;
   switch (node.g) {
     case 'and':
     case 'or': {
