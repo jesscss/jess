@@ -1347,7 +1347,8 @@ const scssFactory = (g: ScssInputRules) => {
   /**
    * A declaration value's comma item: its space list, then a `:` or `.` glued
    * on both sides and the next list (`filter: progid:DX.Microsoft.f()`), the
-   * css run of component values (ledger N18). Labelled as the css rung it is.
+   * css run of component values (ledger N18). Labelled as the css rung it is;
+   * a lone space list is that list, with no node of its own.
    */
   const valueSequence = node<ValueSlot>(
     'ValueSequence',
@@ -1358,7 +1359,8 @@ const scssFactory = (g: ScssInputRules) => {
         g.ValueTerm
       ))
     )),
-    children => gluedRun(children)
+    children => gluedRun(children),
+    { collapse: true }
   );
   const ValuePair = node<ScssValuePair>(
     'ValuePair',
