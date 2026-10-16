@@ -315,27 +315,21 @@ production, matching the property-declaration rule. One production.
 **Why no fixture caught it:** every upstream fixture that declares a variable in
 a block writes the semicolon.
 
-### 4.2 FIXED — `name=value` function arguments evaluated to `false`
+### 4.2 REMOVED — `name=value` function arguments (IE filter syntax)
 
 ```less
-.x { filter: alpha(opacity=50); }   →  jess: filter: alpha(false)    less4: alpha(opacity=50)
-.x { a: foo(bar=1); }               →  jess: a: foo(false)           less4: foo(bar=1)
+.x { filter: alpha(opacity=50); }   →  jess: filter: alpha(false)
+.x { a: foo(opacity=50); }          →  jess: a: foo(false)
 ```
 
-The Less grammar now recognizes this as `FunctionAssignmentArgument`, ahead of
-the comparison grammar, and preserves the authored assignment pair as one
-opaque argument value. Both examples above now emit `opacity=50` / `bar=1`
-rather than a boolean. This is generic, not IE-specific; exact parser and public
-render coverage includes whitespace variants and non-`alpha` function names.
+This was briefly preserved as an opaque `name=value` argument. The owner ruled
+the IE filter form removed (2026-10-16, ledger V11): `alpha` is interpreted like
+every other CSS function in Less, so `alpha(opacity=50)` takes exactly the path
+`foo(opacity=50)` takes, an ordinary `=` comparison argument. Nothing keys on
+the function name or on the `name=value` shape.
 
-`progid:DXImageTransform…` is a hard `parse/syntax-error`; that one is covered by
-the deliberate `ie-filters-REMOVED` removal (`all-less.test.ts:257-260`) and is
-not filed here. The `name=value` argument form is not.
-
-Less 4.x's dedicated `Assignment` node (`less-4x/.../tree/assignment.js`, parsed
-at `.../parser/parser.js:715`) was evidence for the construct, not the v5
-representation: v5 keeps the pair as authored bytes because its value is not
-evaluated independently.
+`progid:DXImageTransform…` is a hard `parse/syntax-error`, covered by the
+deliberate `ie-filters-REMOVED` removal (`all-less.test.ts`).
 
 ### 4.3 FIXED — `@import` option keywords leaked into emitted CSS
 

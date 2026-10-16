@@ -4073,48 +4073,24 @@ describe('Less AST grammar facts', () => {
     expect(parsesCompleteStylesheet('x: boolean(foo(1 = 1) and);')).toBe(false);
   });
 
-  it('keeps `name=value` as verbatim bytes, not an equality comparison', () => {
+  it('gives `alpha(opacity=50)` no shape of its own: it is a call like `foo(opacity=50)`', () => {
     /*
-     * §12.3 row 2: `Assignment` is deleted and the pair becomes an opaque `Any`.
-     * Resolving `@v` in `foo(bar=@v)` has no utility — the construct is dropped
-     * from Less v5 — so the argument keeps its authored spelling and nothing
-     * inside it is live. What still matters is the SHAPE split: this is one
-     * argument, not a comparison, which is what the `d:` row pins.
+     * The IE `name=value` filter argument is removed from Less v5 (ledger V11):
+     * `alpha` is an ordinary function name and `opacity=50` an ordinary
+     * comparison argument, whatever the function is called.
      */
     const result = run(
       lessGrammar.Document,
-      'a: alpha(opacity=50); b: foo(bar=1, baz=2); c: foo(bar = 1); d: foo(bar=@v);',
+      'a: alpha(opacity=50); b: foo(opacity=50);',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    const condition = { type: 'Condition', guard: { g: 'cmp', op: '=' } };
     expect(result.value).toMatchObject({
       rules: [
-        {
-          value: {
-            type: 'FunctionCall',
-            name: 'alpha',
-            args: [{ value: { type: 'Any', src: 'opacity=50' } }]
-          }
-        },
-        {
-          value: {
-            args: [
-              { value: { type: 'Any', src: 'bar=1' } },
-              { value: { type: 'Any', src: 'baz=2' } }
-            ]
-          }
-        },
-        {
-          value: {
-            args: [{ value: { type: 'Any', src: 'bar=1' } }]
-          }
-        },
-        {
-          value: {
-            args: [{ value: { type: 'Any', src: 'bar=@v' } }]
-          }
-        }
+        { value: { type: 'FunctionCall', name: 'alpha', args: [{ value: condition }] } },
+        { value: { type: 'FunctionCall', name: 'foo', args: [{ value: condition }] } }
       ]
     });
   });
