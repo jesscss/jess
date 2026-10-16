@@ -19,7 +19,7 @@ const value = async (source: string): Promise<string> => {
 
 describe('Less `alpha()` with a `name=value` argument', () => {
   it('renders exactly like the same call to any other function', async () => {
-    for (const args of ['x=1', 'opacity=50', 'opacity = 50', 'opacity=@v', 'opacity=(1 + 2)', 'a=1, b=2']) {
+    for (const args of ['x=1', 'opacity=50', 'opacity = 50', 'opacity=@v', 'opacity=(1 + 2)', 'x=url(a.png)', 'a=1, b=2']) {
       expect(await value(`alpha(${args})`)).toBe((await value(`foo(${args})`)).replace(/^foo/, 'alpha'));
     }
   });
@@ -29,16 +29,17 @@ describe('Less `alpha()` with a `name=value` argument', () => {
     expect(await value('boolean(@v = 50)')).toBe('true');
     expect(await value('if((@v = 50), yes, no)')).toBe('yes');
     expect(await value('foo(@v = 50)')).toBe('foo(true)');
+    expect(await value('foo(url(a.png) = url(a.png))')).toBe('foo(true)');
   });
 });
 
 /*
- * P45: the comparison reading still stops the parse on two well-formed argument
- * shapes, whatever the function is called and whether or not the left operand
- * is a name: a `url()` operand and a chained `=`. Each turns red when fixed.
+ * P45: the comparison reading still stops the parse on a chained `=`, whatever
+ * the function is called and whether or not the left operand is a name. Each
+ * turns red when fixed.
  */
 describe('comparison arguments that still stop the parse', () => {
-  it.fails.each(['alpha(x=url(a.png))', 'foo(@v = url(a.png))', 'alpha(a=b=c)', 'foo(1 = 2 = 3)'])('%s evaluates', async (call) => {
+  it.fails.each(['alpha(a=b=c)', 'foo(1 = 2 = 3)'])('%s evaluates', async (call) => {
     await value(call);
   });
 });

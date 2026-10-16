@@ -2355,6 +2355,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'List': return node.value.map(functionConditionSource).join(sepGlue(node.sep));
     case 'Sequence': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
+    case 'Url': return `url(${functionConditionSource(node.value)})`;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
   }
 }
