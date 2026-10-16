@@ -933,6 +933,15 @@ const delimRun = regex(/[=~|^?]+/);
  * that starts a number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
  */
 const gluedDelim = regex(/:|\.(?![0-9])/);
+
+/**
+ * What may open a piece glued to the one before it (`gluedValueBoundary`): a
+ * Less variable's `@`, a `delimRun`, or a `gluedDelim`. A call argument's set
+ * leaves out `=`, its comparison.
+ */
+const gluedValueStart = regex(/[@=~|^?:.]/);
+const gluedArgumentStart = regex(/[@~|^?:.]/);
+const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionNot = word(
@@ -2399,32 +2408,37 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.valuePiece
     )
   );
-  const gluedVariableValueBoundary = sequence(
-    leaf(peek(literal('@')), () => ({ kind: 'glued-value-boundary' })),
-    g.valuePiece
+  /*
+   * A piece glued to the one before it: a Less variable (`1px@v`), a delim
+   * (`a=b`, `a~b`), or a `:` or `.` glued on both sides
+   * (`progid:DX.Microsoft.f()`), the adjacent component values of a CSS run
+   * (ledger N18). One peek decides there is a glued piece at all, so a value's
+   * end pays one failed test. The other openers are only PEEKED, then read as a
+   * value piece, so a glued escape (`a~"b"`, `a~(b)`) still reaches the escape
+   * in `MathValue` before the delim arm; a `:` or `.` is the delim itself, never
+   * a piece's start (`a.5em` is not `a` and `.5em`). In a call argument `=` is a
+   * comparison, so its glued set leaves it out.
+   */
+  const gluedPiece = choice(
+    sequence(gluedPunctuationDelim, g.valuePiece),
+    sequence(not(gluedPunctuationStart), g.valuePiece)
+  );
+  const gluedValueBoundary = sequence(
+    leaf(peek(gluedValueStart), () => ({ kind: 'glued-value-boundary' })),
+    gluedPiece
+  );
+  const gluedArgumentBoundary = sequence(
+    leaf(peek(gluedArgumentStart), () => ({ kind: 'glued-value-boundary' })),
+    gluedPiece
   );
   const gluedBacktickValueBoundary = noTrivia(sequence(
     BacktickJavaScript,
     optional(g.valuePiece)
   ));
-  /*
-   * A delim glued to the piece before it, or a `:`/`.` glued on both sides:
-   * the adjacent component values of a CSS run (ledger N18). The delim is only
-   * PEEKED, then read as a value piece, so a glued escape (`a~"b"`, `a~(b)`)
-   * still reaches the escape in `MathValue` before the delim arm.
-   */
-  const gluedDelimValueBoundary = choice(
-    sequence(
-      leaf(peek(delimRun), () => ({ kind: 'glued-value-boundary' })),
-      g.valuePiece
-    ),
-    sequence(gluedPunctuationDelim, g.valuePiece)
-  );
   const valueContinuation = choice(
     valueTriviaBoundary,
-    gluedVariableValueBoundary,
-    gluedBacktickValueBoundary,
-    gluedDelimValueBoundary
+    gluedValueBoundary,
+    gluedBacktickValueBoundary
   );
   // Function arguments are the one value context where top-level Less
   // comparison/logical syntax has a separate continuation. Stop before that
@@ -2437,12 +2451,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const functionArgumentValueContinuation = choice(
     functionArgumentValueTriviaBoundary,
-    gluedVariableValueBoundary,
-    gluedBacktickValueBoundary,
-    sequence(
-      not(functionConditionStop),
-      gluedDelimValueBoundary
-    )
+    gluedArgumentBoundary,
+    gluedBacktickValueBoundary
   );
   // Adjacent value pieces are normally separated by authored whitespace, but a
   // Less variable reference may also be glued straight onto the previous piece
