@@ -1155,8 +1155,13 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  /* Once P45 residuals: a delim-led value and a `*` delim (balanced-value-shapes.test.ts). */
+  it.each(['$t: * [.notice];', 'a { b: 2*[3]; }'])('parses `%s`', (source) => {
+    expect(parseRecovering(source).document).toBeDefined();
+  });
+
   /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
-  it.fails.each(['$t: * [.notice];', 'a { b: 2*[3]; }', '$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+  it.fails.each(['$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
     expect(parseRecovering(source).document).toBeDefined();
   });
 

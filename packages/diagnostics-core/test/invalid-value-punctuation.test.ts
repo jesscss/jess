@@ -116,7 +116,10 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(x, a:b)', ':'],
     ['a<b', '<'],
     ['a>b', '>'],
-    ['foo(a<b<c)', '<']
+    ['foo(a<b<c)', '<'],
+    ['(a ~ b)', '~'],
+    ['(3px > 2px and 3px < 5px)', '>'],
+    ['(a : b)', ':']
   ]
 };
 
@@ -156,13 +159,17 @@ describe('a var(), env() or attr() fallback is a value', () => {
     /* Less reads a `var()` fallback written directly as text (a parser shape gap, not this check). */
     ...(['css', 'scss', 'jess'] as const).flatMap(dialect => ['var(--gap, a.b)', 'var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)']
       .map(value => [dialect, `a {\n  margin: ${value};\n}\n`, '.'] as const)),
-    ...['attr(foo, a.b)', 'env(x, a.b)'].map(value => ['less', `a {\n  margin: ${value};\n}\n`, '.'] as const)
+    ...['attr(foo, a.b)', 'env(x, a.b)'].map(value => ['less', `a {\n  margin: ${value};\n}\n`, '.'] as const),
+    ...(['css', 'scss', 'jess'] as const).map(dialect => [dialect, 'a {\n  margin: var(--x, a:b);\n}\n', ':'] as const)
   ] as const)('%s: %s is reported', (dialect, source, delim) => {
     expect(reported(dialect, source)).toEqual([punctuation(delim, 2, 3)]);
   });
 
   it.each([
-    ['css', 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n'],
+    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => [
+      [dialect, 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n'],
+      [dialect, 'a {\n  width: attr(data-w type(<length>),0px);\n}\n']
+    ] as const),
     ...DIALECTS.flatMap(dialect => [
       [dialect, 'a {\n  --y: var(--x, a.b);\n}\n'],
       [dialect, 'a {\n  color: var(--brand, red);\n}\n']

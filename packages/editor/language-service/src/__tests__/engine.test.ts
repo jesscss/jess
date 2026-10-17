@@ -390,6 +390,25 @@ describe('JessLanguageServiceEngine', () => {
       expect(input.slice(doc.offsetAt(diagnostic!.range.start), doc.offsetAt(diagnostic!.range.end))).toBe('* [.notice]');
     });
 
+    /* SCSS and `.jess` read a punctuation-led value as Less does, and SCSS's `&` in a value is its own error; each as the compiler names it. */
+    it.each([
+      ['scss', 'parse/leading-separator-value', '$t: * [.notice];\n.after { color: red; }', '* [.notice]', 'A value cannot start with "*".'],
+      ['jess', 'parse/leading-separator-value', '$t: * [.notice];\n.after { color: red; }', '* [.notice]', 'A value cannot start with "*".'],
+      ['scss', 'parse/unsupported-parent-selector-value', '.btn { content: &; }\n.after { color: red; }', '&', 'The parent selector `&` has no value here.']
+    ] as const)('%s: underlines %s without losing the document', (language, code, input, underlined, message) => {
+      const engine = createEngine();
+      const doc = createDocument(language, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(item => item.code === code);
+
+      expect(diagnostic).toMatchObject({ message, severity: DiagnosticSeverity.Error });
+      expect(input.slice(doc.offsetAt(diagnostic!.range.start), doc.offsetAt(diagnostic!.range.end))).toBe(underlined);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
     /* The compiler's `css/legacy-ie-syntax` error, at the same place: the declaration (owner 2026-10-16). */
     it.each([
       ['css', 'a {\n  filter: alpha(opacity=50);\n}\n'],
