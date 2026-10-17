@@ -25,7 +25,6 @@
     "throw new LessUnsupportedVariableNameError(span.start, span.end, '-');",
     "throw new LessSourceImportSyntaxError(span.start, span.end);",
     "throw new LessImportPostludeError(span.start, span.end);",
-    "throw new LessLeadingSeparatorValueError(span.start, span.end);",
     "throw new LessUncalledMixinReferenceError(span.start, span.end, name);",
     "throw new LessInlineJavaScriptError(span.start, span.end);",
     "throw new LessUnparenthesizedMixinGuardError(span.start, span.end);",

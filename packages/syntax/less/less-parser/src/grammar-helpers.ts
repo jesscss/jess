@@ -21,6 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
+import { groupContent } from './delim-runs.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
@@ -2538,12 +2539,15 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
     if (lead.length > 0 && groupLeading(left) === null) {
       reportAmbiguousNot(rawChildren[at], state);
     }
-    /* The group is a paren group (ledger V35), so a `/` in an operand divides, as in `(10px/2)`. */
+    /*
+     * The group is a paren group (ledger V35), so a `/` in an operand divides, as in `(10px/2)`.
+     * A further operator (`(a=b=c)`) makes the operands a CSS run (ledger N18).
+     */
     return functionConditionTermFrom([
       ...lead,
-      lessComputation(lessMathInGroup(left!, state)),
-      children[at],
-      lessComputation(lessMathInGroup(right, state))
+      ...children
+        .filter(child => isMathOperand(child) || guardOperatorText(child) !== null)
+        .map(child => isMathOperand(child) ? lessComputation(lessMathInGroup(child, state)) : child)
     ], [], state, notGluedAt);
   }
   const value = lessMathInValue(left!, state);
@@ -2577,7 +2581,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
     }
   }
   if (!conditional && operand !== undefined) {
-    return withSourceSpan(block(lessMathInGroup(operand, state)), span);
+    return withSourceSpan(block(groupContent(lessMathInGroup(operand, state))), span);
   }
   const ors: unknown[] = [];
   let ands: unknown[] = [];
@@ -2602,9 +2606,8 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
     }
   }
   ands.push(parenConditionTermFrom(term, termRaw, state));
-  ors.push(foldFunctionCondition('and', ands));
-  const fact = foldFunctionCondition('or', ors);
-  return withSourceSpan(block(condition(fact.guard, fact.src)), span);
+  const fact = foldFunctionCondition('or', [...ors, foldFunctionCondition('and', ands)]);
+  return withSourceSpan(block(fact.run ?? condition(fact.guard, fact.src)), span);
 }
 
 /**

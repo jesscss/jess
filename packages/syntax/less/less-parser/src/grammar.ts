@@ -31,7 +31,7 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
+import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
@@ -159,6 +159,7 @@ import {
   variableValueSlot
 } from './grammar-helpers.js';
 import { removedSelectorCaptureFrom, selectorCaptureFrom } from './selector-capture.js';
+import { runOperand } from './delim-runs.js';
 import type {
   BodyExtendFact,
   CustomValuePart,
@@ -236,6 +237,7 @@ type LessRules = {
   CalcSum: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
   MathSum: Combinator<ValueNode | LessMathRun>;
+  OperandRun: Combinator<ValueNode | LessMathRun>;
   MathValue: Combinator<ValueNode>;
   EscapedParen: Combinator<ValueNode>;
   Paren: Combinator<ValueNode>;
@@ -384,6 +386,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: a `[…]` simple block in a value (grid line names), over Less's ValueList.
+  SquareValue: Combinator<ValueNode>;
   // Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal.
   AttributeNamespace: Combinator<unknown>;
   // Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments and the `<an+b>` fact.
@@ -931,6 +935,8 @@ const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|
  * (ledger N18). Its padding is ambient trivia, which the run reads back.
  */
 const functionConditionOperator = regex(/[<>=]+~?/);
+/* The comparison a mixin argument's value stops before (`.m(1 < 2)`, `.m(a = b)`). */
+const comparisonAhead = regex(/[ \t\n\r\f]*[<>=]/);
 
 /**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
@@ -1662,17 +1668,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * the token that starts them and names the cause. Each is the last arm of a
    * value position, so valid input never reaches it, and each accepts nothing.
    *
-   * A leading `/` is a separator with nothing on its left (ledger P33: a
-   * punctuation-led value is rejected, in a variable and in a property alike);
-   * a comment opener is trivia and never matches. The rest of the value is read
-   * as the permissive custom-property value — the one place a bare path is a
-   * value — so the statement keeps its extent for recovery.
+   * A leading `/` is a separator, and a leading `*` an operator, with nothing
+   * on its left (ledger P33: a punctuation-led value is rejected, in a variable
+   * and in a property alike); a comment opener or closer is trivia and never
+   * matches. The rest of the value is read as the permissive custom-property
+   * value — the one place a bare path is a value — and the value is kept as
+   * written, reported at the token, and the parse carries on (P45).
    */
   const LeadingSeparatorValue = node(
     'LeadingSeparatorValue',
-    sequence(regex(/\/(?![*/])/), g.CustomValue),
-    (_children, _fields, span) => {
-      throw new LessLeadingSeparatorValueError(span.start, span.end);
+    sequence(regex(/[/*](?![*/])/), g.CustomValue),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const operator = any(requireTerminalText(children[0]));
+      reportRecovered(new LessLeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
+      return [operator, requireValueNode(children[1])];
     }
   );
   /*
@@ -1759,7 +1768,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // only after those values have been recognized.
   const FunctionConditionOperand = node(
     'FunctionConditionOperand',
-    oneOrMore(sequence(not(functionConditionStop), g.MathSum)),
+    oneOrMore(sequence(not(functionConditionStop), g.OperandRun)),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => functionConditionOperandFrom(children, state)
   );
   const FunctionConditionParen = node(
@@ -2180,10 +2189,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * a group with neither, nor a comparison or `not`, is the ordinary math group
    * and its tree is unchanged.
    */
-  const parenConditionCompared = optional(sequence(mixinGuardOperator, optional(whitespace), g.MathSum, optional(whitespace)));
+  const parenConditionCompared = many(sequence(mixinGuardOperator, optional(whitespace), g.OperandRun, optional(whitespace)));
   const parenConditionTerm = sequence(
     optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
-    g.MathSum,
+    g.OperandRun,
     optional(whitespace),
     parenConditionCompared
   );
@@ -2210,20 +2219,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal(')')
     )),
     (children, _fields, span, rawChildren, _triviaLog, state) => lessParenFrom(children, rawChildren, span, state)
-  );
-  // CSS grid line names are a bracketed value piece, not a map accessor or an
-  // opaque post-parse string. Keep the delimited grammar fact as one existing
-  // raw value leaf; dynamic/interpolated grid names remain outside this slice.
-  const gridLineName = node(
-    'GridLineName',
-    noTrivia(sequence(literal('['), g.Keyword, literal(']'))),
-    (children) => {
-      const name = requireValueNode(children[1]);
-      if (name.type !== 'Keyword') {
-        throw new TypeError('Less grid line name requires a keyword fact.');
-      }
-      return any(`[${name.src}]`);
-    }
   );
   // A parenthesized `feature: value` is an ordinary typed Less value as well
   // as a media/container query fact: `@tablet: (min-width: @size)`.  Keep the
@@ -2330,7 +2325,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.EscapedParen,
       g.QueryColonFeature,
       g.Paren,
-      gridLineName,
+      g.SquareValue,
       g.EscapeValue,
       PercentEscape
     ),
@@ -2448,6 +2443,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const gluedArgumentBoundary = sequence(
     leaf(peek(gluedArgumentStart), () => ({ kind: 'glued-value-boundary' })),
     gluedPiece
+  );
+  /**
+   * An operand of a comparison or a paren group: a math run, and the component
+   * values glued after it — a delim Less gives no meaning and what follows it
+   * (`a.b`, `a~b`), the run a value reads there (ledger N18). Glued only, as in
+   * a call argument, so `=` stays the comparison. With no glued piece it is the
+   * math run itself, left unfolded for its consumer.
+   */
+  const OperandRun = node(
+    'OperandRun',
+    noTrivia(sequence(g.MathSum, many(gluedArgumentBoundary))),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => runOperand(valuePieceReducerWithTrivia(
+      [lessMathInValue(requireMathSum(children), state), ...children.slice(1)],
+      triviaLog,
+      state
+    )),
+    { collapse: true }
   );
   const gluedBacktickValueBoundary = noTrivia(sequence(
     BacktickJavaScript,
@@ -3275,7 +3287,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // is that group's math (`mixinGuardTermFrom`).
     choice(
       mixinGuardDefaultOperand,
-      g.MathSum
+      g.OperandRun
     ),
     children => requireMathSum(children)
   );
@@ -3551,11 +3563,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
+  /*
+   * A mixin argument's value, read as a value is, except that it stops before a
+   * comparison and glues no `=`: a call argument, where one Less comparison
+   * compares (`.m(1 < 2)` binds `true`) and a chain is the CSS run it is
+   * (`.m(a=b=c)`, ledger N18), as in a function call's arguments.
+   */
+  const callArgumentContinuation = choice(
+    sequence(not(comparisonAhead), valueTriviaBoundary),
+    gluedArgumentBoundary,
+    gluedBacktickValueBoundary
+  );
+  const callArgumentSequence = node(
+    'ValueSequence',
+    noTrivia(sequence(g.valuePiece, many(callArgumentContinuation))),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
+  );
   const CallArgumentValue = node(
     'CallArgumentValue',
-    choice(attempt(g.FlatMixinCall), g.ValueBlock, g.ValueSequence),
-    (children) => {
+    choice(attempt(g.FlatMixinCall), g.ValueBlock, sequence(callArgumentSequence, functionConditionCompared)),
+    (children, _fields, _span, rawChildren, triviaLog, state) => {
       const value = children[0];
+      if (children.length > 1) {
+        const fact = functionConditionTermFrom([runOperand(requireValueSlot(value)), ...children.slice(1)], rawChildren, state, NO_SPAN, triviaLog);
+        return fact.run ?? condition(fact.guard, fact.src);
+      }
       if (isMixinCall(value) || isLessValueSlotValue(value)) {
         return value;
       }
@@ -5635,6 +5667,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CalcSum,
     MathUnary,
     MathSum,
+    OperandRun,
     MathValue,
     EscapedParen,
     Paren,

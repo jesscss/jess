@@ -327,15 +327,20 @@ export function pushParseTwinDiagnostics(
    * from the node.
    */
   if (language === 'less' && gt === 'LeadingSeparatorValue') {
+    const slash = source[absoluteStart(node)] === '/';
     push(
       'parse/leading-separator-value',
       'error',
-      'A Less value cannot start with "/".',
+      `A Less value cannot start with "${slash ? '/' : '*'}".`,
       node.span,
       {
         phase: 'parse',
-        reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
-        fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+        reason: slash
+          ? 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.'
+          : 'A `*` multiplies two values, so it needs a value before it.',
+        fix: slash
+          ? 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+          : 'Write the value it multiplies before it, or remove it.'
       }
     );
   }
