@@ -67,7 +67,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9520
+    "statements": 9518
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -335,7 +335,7 @@
     "statements": 63
   },
   "packages/diagnostics-core/src/tolerant-cst.ts": {
-    "statements": 3484
+    "statements": 3467
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#animationNameReferences": {
     "statements": 81
@@ -353,11 +353,11 @@
     "statements": 61
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#cstLintDiagnostics": {
-    "statements": 591,
+    "statements": 585,
     "params": 7
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#cstLintDiagnostics.visit": {
-    "statements": 521
+    "statements": 515
   },
   "packages/editor/language-service/src/cst-analysis.ts#cstDocumentSymbols": {
     "statements": 51

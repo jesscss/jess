@@ -72,7 +72,8 @@ export type JessErrorCode =
   | 'selector/duplicate'
   | 'selector/parentless-ampersand'
   | 'selector/comma-list-interpolation'
-  | 'css/glued-condition-keyword';
+  | 'css/glued-condition-keyword'
+  | 'css/legacy-ie-syntax';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -461,6 +462,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${keyword}(` is read by CSS as a function, so this condition never matches — write `${keyword} (` if you meant the keyword',
       reason: 'An identifier glued to "(" is one function token (CSS Syntax 3 §4.3.4), so `${keyword}(` is an unknown function, not the `${keyword}` keyword, and a condition holding it matches nothing (Media Queries 4 §3.2). It is written as authored.',
       fix: 'Write `${keyword} (`, with a space, if you meant the keyword.'
+    }
+  ],
+  [
+    'css/legacy-ie-syntax',
+    {
+      summary: 'Legacy IE syntax is not supported',
+      reason: '`${what}` is legacy Internet Explorer syntax, which no other browser reads.',
+      fix: '${fix}'
     }
   ],
   [

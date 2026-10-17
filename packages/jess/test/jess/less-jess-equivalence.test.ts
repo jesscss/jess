@@ -651,9 +651,9 @@ const KNOWN = new Map<string, Known>([
     reason: 'the Less arm itself does not render: parse/syntax-error: Unexpected Less input after a complete stylesheet.'
   }],
   ['all-less:tests-unit/ie-filters-REMOVED/legacy/ie-filters.less', {
-    cause: 'cannot-express',
-    outcome: 'cannot-express',
-    reason: 'Condition: a comparison outside `$( … )`: `.jess` has no `boolean()` (ledger P17)'
+    cause: 'no-arm-a',
+    outcome: 'arm-a-error',
+    reason: 'the Less arm itself does not render: css/legacy-ie-syntax: legacy IE `progid:` syntax parses and then fails the compile (ledger P47)'
   }],
   ['all-less:tests-unit/import/import-inline.less', {
     cause: 'cannot-express',
