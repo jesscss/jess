@@ -280,19 +280,28 @@ describe('Less logical / conditional functions', () => {
 });
 
 /*
- * A paren group of comparisons joined by `and` / `or` is valid CSS, and valid
+ * A paren group of keywords joined by `and` / `or` is valid CSS, and valid
  * CSS writes the same bytes in every dialect (SEMANTIC-INVARIANTS 4): Less
- * reads it as a condition and writes it as authored, adding no parens.
+ * reads it as a condition and writes it as authored, adding no parens. A
+ * comparison in it is Less's; css gives `>` and `<` no meaning there, so it is
+ * invalid punctuation (ledger P48). `.jess` reads a paren group holding a
+ * padded `>` as one text `Any`, not a run, so it writes it as authored.
  */
 describe('a written condition is dialect-invariant valid CSS', () => {
-  const source = '.y { x: (3px > 2px and 3px < 5px); a: (a and (b or c)); b: ((a or b) and c); c: (not (1 or 2)); }';
-  const expected = '.y {\n  x: (3px > 2px and 3px < 5px);\n  a: (a and (b or c));\n  b: ((a or b) and c);\n  c: (not (1 or 2));\n}\n';
+  const source = '.y { a: (a and (b or c)); b: ((a or b) and c); c: (not (1 or 2)); }';
+  const expected = '.y {\n  a: (a and (b or c));\n  b: ((a or b) and c);\n  c: (not (1 or 2));\n}\n';
+  const comparisons = '.y { x: (3px > 2px and 3px < 5px); }';
 
   it('writes the same bytes from css, less and .jess', async () => {
     const jess = new Compiler({ output: { collapseNesting: true } });
     expect((await serialize(parseCss(source), { collapseNesting: true })).css).toBe(expected);
     expect(await render(source)).toBe(expected);
     expect(await jess.renderString(source, { extension: '.jess' })).toBe(expected);
+  });
+
+  it('writes a Less comparison as authored; css reports its `>`', async () => {
+    expect(await render(comparisons)).toBe('.y {\n  x: (3px > 2px and 3px < 5px);\n}\n');
+    await expect((async () => serialize(parseCss(comparisons), { collapseNesting: true }))()).rejects.toMatchObject({ code: 'css/invalid-value-punctuation' });
   });
 });
 

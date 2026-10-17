@@ -33,8 +33,6 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['an unknown function with a nested semicolon', 'foo(a; b)'],
   ['empty semicolon groups', 'foo(a;; b)'],
   ['comments beside a `;`', 'foo(a /* c */ ; /* d */ b)'],
-  ['a leading colon, which has no condition', 'foo(:x)'],
-  ['punctuation glued to a colon, which is not a branch colon', 'foo(a +: 1)'],
   ['an escaped colon, which is not a branch colon', 'foo(a\\:b)'],
   ['a colon inside a string, which is not a branch colon', 'foo("a:b", c)'],
   ['a later `;` group with no colon', 'if(a: 1; b)'],
@@ -108,6 +106,17 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
       expect(await emitted(css)).toBe(expected ?? css);
     });
   }
+
+  /* Neither colon is a branch colon; the delim then fails the compile (ledger P48), so the parsed shape is what these pin. */
+  it.each([
+    ['a leading colon, which has no condition', 'foo(:x)', ':'],
+    ['punctuation glued to a colon, which is not a branch colon', 'foo(a +: 1)', '+:']
+  ])('parses %s as a run', (_name, css, delim) => {
+    expect(declarationValue(css)).toMatchObject({
+      type: 'FunctionCall',
+      args: [{ value: expect.arrayContaining([expect.objectContaining({ type: 'Any', src: delim })]) }]
+    });
+  });
 
   it('keeps a function after a range comparison one FunctionCall', () => {
     expect(declarationValue('media(1px < foo(x))')).toMatchObject({

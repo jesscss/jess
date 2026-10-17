@@ -102,8 +102,7 @@ describe('a query range comparison stays spaced', () => {
  * Ledger F1: `/`, `+`, `-` and `*` are separators and are written with one
  * space on each side regardless of source. A glued `+`, `-`, `*` or `/` delim
  * between components in a `.css` value (outside any math function) is that
- * separator; a glued `:` stays as authored, and `=`, `~`, `.` are invalid
- * punctuation (P48).
+ * separator; `=`, `~`, `.` and `:` are invalid punctuation (P48).
  */
 describe('css: an operator delim between components is spaced (F1)', () => {
   it.each([
@@ -119,12 +118,12 @@ describe('css: an operator delim between components is spaced (F1)', () => {
     expect(await value('css', authored)).toBe(written);
   });
 
-  it.each([
-    'foo(:x)',
-    'a:b',
-    'calc(1px + 2px)'
-  ])('keeps %s as authored', async (authored) => {
-    expect(await value('css', authored)).toBe(authored);
+  it('keeps calc(1px + 2px) as authored', async () => {
+    expect(await value('css', 'calc(1px + 2px)')).toBe('calc(1px + 2px)');
+  });
+
+  it.each(['foo(:x)', 'a:b'])('%s is invalid punctuation (P48)', async (authored) => {
+    expect(await errorCodes('css', `a { x: ${authored}; }`)).toEqual(['css/invalid-value-punctuation']);
   });
 
   it('leaves An+B microsyntax glued', async () => {
@@ -135,7 +134,7 @@ describe('css: an operator delim between components is spaced (F1)', () => {
     expect(await render('css', 'a { --x: a+b; }')).toContain('--x: a+b;');
   });
 
-  it('compressed output keeps the spaced separator and the glued delims', async () => {
-    expect(await render('css', 'a { x: a+b; y: foo(:x); z: a:b; }', true)).toBe('a{x:a + b;y:foo(:x);z:a:b}');
+  it('compressed output keeps the spaced separator', async () => {
+    expect(await render('css', 'a { x: a+b; }', true)).toBe('a{x:a + b}');
   });
 });
