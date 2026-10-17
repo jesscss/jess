@@ -102,6 +102,9 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(a<b<c)', '<'] // one comparison is Less's (V11); a chain is the run
   ],
   scss: [
+    ['f(a.b)', '.'],
+    ['list.append(c, a.b)', '.'],
+    ['expression(document.body.clientWidth)', '.'],
     ['foo(a b=c d)', '='],
     ['foo(a=1px 2px)', '='],
     ['foo("a"=b)', '='],
@@ -226,6 +229,8 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['scss', '@function f() { @return a=b; }\na { x: f(); }\n', '=', 2, 5],
     ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a=b); }\n', '=', 2, 3],
     ['scss', '$v: a.b;\na {\n  font: {\n    family: $v;\n  }\n}\n', '.', 3, 3],
+    ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a.b); }\n', '.', 2, 3],
+    ['scss', '$m: (k: a.b);\na { x: map-get($m, k); }\n', '.', 2, 5],
     ['jess', '$v: a~b;\na { x: $v; }\n', '~', 2, 5],
     ['jess', '$m: { a: b.c };\na { x: $m.a; }\n', '.', 2, 5]
   ] as const)('%s: %s', async (dialect, source, delim, line, column) => {
@@ -245,20 +250,66 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['less', 'a function result passed to a rest parameter', '.m(@rest...) { x: @rest; }\n.a { .m(e("|"), c); }\n'], // guards: a parameter snapshot's evaluated bytes read as a delim
     ['scss', 'a function that is never called', '@function f() { @return a=b; }\na { x: y; }\n'],
     ['less', 'a custom property', '@v: a.b;\na { --x: @v; }\n'],
-    ['less', 'a var() fallback', '@v: a.b;\na { x: var(--y, @v); }\n'],
     ['less', 'strings', '@v: a.b;\na { x: "@{v}"; y: ~"@{v}"; }\n'],
     ['less', 'a url', '@v: a.b;\na { x: url(@v); }\n'],
     ['less', 'conditions', '@v: a.b;\na { x: if((@v = a), b, c); y: boolean(@v = a); }\n'],
     ['less', 'a guard', '.m(@a) when not (@a = a) { x: y; }\na { .m(a.b); }\n'],
     ['less', 'a selector and a query', '@v: a.b;\n.c-@{v} { d: e; }\n@media (min-width: @v) { a { b: c; } }\n'],
     ['scss', 'an unused variable', '$v: a.b;\na { x: y; }\n'],
-    ['scss', 'a custom property and a var() fallback', '$v: a.b;\na { --x: #{$v}; y: var(--z, $v); }\n'],
+    ['scss', 'a custom property', '$v: a.b;\na { --x: #{$v}; }\n'],
     ['scss', 'a string', '$v: a.b;\na { x: "#{$v}"; }\n'],
     ['jess', 'an unused variable and collection', '$v: a~b;\n$m: { a: b.c };\na { x: y; }\n']
   ] as const)('%s: %s compiles', async (dialect, _label, source) => {
     const result = await compile(dialect, source);
     expect(result.errors).toEqual([]);
     expect(result.css).not.toBe('');
+  });
+});
+
+/*
+ * A `var()`, `env()` or `attr()` fallback in a regular declaration is
+ * substituted into that property, so it is a value and is checked as one.
+ * Owner 2026-10-16, verbatim, on `x: var(--x, a.b~c)`: *"errr... but a.b is not
+ * a valid value"*; *"even so... it's not a valid value"*. The custom-property
+ * name of `var()`, the variable name of `env()`, and `attr()`'s attribute name,
+ * namespace `|` and `type(…)` are not values; a custom property's value,
+ * a `var()` in it included, is written as authored.
+ */
+describe('a var(), env() or attr() fallback is a value', () => {
+  it.each([
+    ['css', 'a {\n  color: var(--brand, $primary);\n}\n', '$'],
+    ['css', 'a {\n  padding-top: env(safe-area-inset-top, $gutter);\n}\n', '$'],
+    ['css', 'a {\n  width: attr(data-w type(<length>), $default-width);\n}\n', '$'],
+
+    /* Less reads a `var()` fallback written directly as one text node, not a run (a parser shape gap, pinned below). */
+    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => ['var(--gap, a.b)', 'var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)']
+      .map(value => [dialect, `a {\n  margin: ${value};\n}\n`, '.'] as const)),
+    ...['attr(foo, a.b)', 'env(x, a.b)'].map(value => ['less', `a {\n  margin: ${value};\n}\n`, '.'] as const),
+    ['less', '@gap: a.b;\na {\n  margin: var(--gap, @gap);\n}\n', '.']
+  ] as const)('%s: %s fails the compile', async (dialect, source, delim) => {
+    const result = await compile(dialect, source);
+    expect(result.css).toBe('');
+    expect(result.errors.map(error => [error.code, error.line, error.column, error.message])).toEqual([
+      [CODE, source.startsWith('@') ? 3 : 2, 3, `\`${delim}\` is not valid in any CSS value`]
+    ]);
+  });
+
+  /* Known gap: Less builds a fallback written directly as one text node, so its delim is not read until the Less grammar builds the run. */
+  it.fails('less: a fallback written directly', async () => {
+    const result = await compile('less', 'a {\n  margin: var(--gap, a.b);\n}\n');
+    expect(result.errors.map(error => error.code)).toEqual([CODE]);
+  });
+
+  it.each([
+    ['css', 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
+    ...DIALECTS.flatMap(dialect => [
+      [dialect, 'a {\n  --y: var(--x, a.b);\n}\n', '--y: var(--x, a.b);'],
+      [dialect, 'a {\n  color: var(--brand, red);\n}\n', 'color: var(--brand, red);']
+    ] as const)
+  ] as const)('%s: %s compiles', async (dialect, source, written) => {
+    const result = await compile(dialect, source);
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain(written);
   });
 });
 
@@ -285,34 +336,43 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     });
   }
 
-  /*
-   * SCSS does not yet parse a fallback with these delims (a P45 gap, not this
-   * check). css writes a `var()` fallback's delims spaced, as it does on dev.
-   */
-  for (const dialect of ['css', 'less', 'jess'] as const) {
-    it.each([
-      'var(--x, a.b~c)',
-      'var(--x, a:b)',
-      'attr(foo, a.b)',
-      'env(x, a.b)'
-    ])(`${dialect}: a var() / attr() / env() fallback: %s`, async (value) => {
-      await clean(dialect, sheet(value));
-    });
-  }
-
-  /* SCSS and `.jess` do not yet parse CSS if() (a P45 gap, not this check). */
+  const CSS_IF = [
+    'if(media(width = 600px): a; else: c)',
+    'if(media(400px <= width <= 700px): a; else: c)',
+    'if(media(width >= 600px): 1px; else: 2px)',
+    'if(supports(display: grid): a; else: b)',
+    'if(supports(selector(.a ~ .b)): a; else: c)',
+    'if(supports(selector(ns|a)): a; else: c)',
+    'if(style(--x: a.b): a; else: c)',
+    'if(media(width < 600px): a; media(width < 900px): b; else: c)',
+    'if(style(--a: 1): red; else: blue)'
+  ];
   for (const dialect of ['css', 'less'] as const) {
-    it.each([
-      'if(media(width = 600px): a; else: c)',
-      'if(media(400px <= width <= 700px): a; else: c)',
-      'if(supports(selector(.a ~ .b)): a; else: c)',
-      'if(supports(selector(ns|a)): a; else: c)',
-      'if(style(--x: a.b): a; else: c)',
-      'if(style(--a: 1): red; else: blue)'
-    ])(`${dialect}: a CSS if() condition: %s`, async (value) => {
+    it.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
       expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
     });
   }
+
+  /*
+   * OPEN for the owner (P38, P45): SCSS and `.jess` stop at CSS if(). SCSS reads
+   * `if(` as Sass's if(), and a condition's `and` / `not` with Sass meaning;
+   * `.jess` has no branch list in an ordinary call.
+   */
+  for (const dialect of ['scss', 'jess'] as const) {
+    it.fails.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
+      expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
+    });
+  }
+
+  const IF_AND = 'if(media(print) and supports(display: grid): a; else: b)';
+  it('css: a CSS if() condition joined by `and`', async () => {
+    expect(await clean('css', sheet(IF_AND))).toContain(`x: ${IF_AND};`);
+  });
+
+  /* Less reads `and` between two tests as its own condition (`if(false: a; else: b)`). */
+  it.fails.each(['less', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
+    expect(await clean(dialect, sheet(IF_AND))).toContain(`x: ${IF_AND};`);
+  });
 
   /* A call argument whose first item is followed by a `:` is a branch (ledger P38): the colon is its structure. */
   it.each(['css', 'less'] as const)('%s: a branch list', async (dialect) => {
@@ -382,9 +442,8 @@ describe('not decided: compiles, unreported', () => {
   }
 
   it.each([
-    ['css', 'attr(a.b)'],
-    ['css', 'var(--x, a=b)']
-  ] as const)('%s: any argument of var() / attr() / env(): %s', async (dialect, value) => {
+    ['css', 'attr(a.b)']
+  ] as const)('%s: the attribute name of attr(): %s', async (dialect, value) => {
     await written(dialect, sheet(value));
   });
 

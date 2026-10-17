@@ -179,7 +179,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { assertValidValueSyntax, bindingArgument, boundArgument, isAnyTokenFunction, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
+import { assertValidValueSyntax, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
@@ -4310,7 +4310,7 @@ interface Lane {
    * (`reportReached`): the declaration whose value this lane writes,
    * `ARGUMENT` while a mixin argument is bound, or `undefined` where a
    * value is not written as a CSS value (a statement, a condition, a string, a
-   * url, a `var()` / `env()` / `attr()` argument; an `unchecked` lane).
+   * url; an `unchecked` lane).
    */
   checks: ValueCheckLane['checks'];
 }
@@ -8848,11 +8848,6 @@ function evalCall(
    */
   if (e.parenFrames?.at(-1) === true || (e.reached && isMathFunctionName(node.name))) {
     return evalCall(node, frame, deriveLane(e, e.parenFrames?.at(-1) === true ? 'call' : 'unreached'), demanded);
-  }
-
-  /* [P47/P48] Any tokens are a `var()`, `env()` or `attr()` argument. */
-  if (e.checks !== undefined && isAnyTokenFunction(node.name)) {
-    return evalCall(node, frame, deriveLane(e, 'unchecked'), demanded);
   }
 
   /*

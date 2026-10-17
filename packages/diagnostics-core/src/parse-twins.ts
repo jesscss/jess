@@ -1,4 +1,4 @@
-import { ERR, PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, isAnyTokenFunction, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
+import { ERR, PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, nameArguments, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
 import type { CssCstNode } from '@jesscss/css-parser/cst-host';
 import {
   CUSTOM_DECLARATION_TYPES,
@@ -33,7 +33,8 @@ type ParseTwinPusher = (
  * delim holding `.`, `~`, `=`, `|`, `^`, `?`, `:`, `<`, `>`, `$`, `%` or `&`.
  *
  * What the compiler does not enter is not read here either: a custom
- * property, a string, an interpolation, a `var()` / `env()` / `attr()` call,
+ * property, a string, an interpolation, the name argument of a `var()` /
+ * `env()` / `attr()` call (its fallback is a value),
  * a branch condition (the part of a call argument before its `:`), and a Less
  * or SCSS condition — a comparison, Less's `boolean()` / `not()` / `and()` /
  * `or()`, SCSS's `not(…)` and the first argument of a Less or SCSS `if()`. An
@@ -51,7 +52,7 @@ const SEMICOLON: ValueAtom = { kind: 'semicolon' };
 const COLON: ValueAtom = { kind: 'colon' };
 const OTHER: ValueAtom = { kind: 'other' };
 const IDENT_TYPES = new Set(['Keyword', 'KeywordOrInterpolatedValue', 'Identifier']);
-const DELIM_TYPES = new Set(['DeclarationAny']);
+const DELIM_TYPES = new Set(['DeclarationAny', 'VarFallbackPunctuation']);
 const OPAQUE_TYPES = new Set([
   ...DECLARATION_TYPES,
   ...CUSTOM_DECLARATION_TYPES,
@@ -217,9 +218,7 @@ function isComparisonRun(atoms: readonly ValueAtom[]): boolean {
 
 function invalidValueSyntaxInCall(node: CssCstNode, language: JessLanguage, source: string): InvalidValueSyntax | undefined {
   const name = callNameOf(node, source);
-  if (isAnyTokenFunction(name)) {
-    return undefined;
-  }
+  const names = nameArguments(name);
   const inner = valueAtoms(node, language, source, []);
   const conditions = conditionArguments(name, inner.filter(atom => atom.kind === 'comma').length + 1, language);
   let found: InvalidValueSyntax | undefined;
@@ -231,10 +230,10 @@ function invalidValueSyntaxInCall(node: CssCstNode, language: JessLanguage, sour
     }
     const arg = index === 0 ? branchColon(inner.slice(from, at)) : inner.slice(from, at);
     const head = arg[0];
-    if (conditions === 0 && arg.length === 3 && isAtom(head, 'ident') && isAtom(arg[1], 'delim', '=')) {
+    if (conditions === 0 && index >= names && arg.length === 3 && isAtom(head, 'ident') && isAtom(arg[1], 'delim', '=')) {
       return nameValueIeSyntax(head.text);
     }
-    if (index >= conditions) {
+    if (index >= names + conditions) {
       found = better(found, invalidValueSyntaxInAtoms(branchValues(arg), language, source));
     }
     from = at + 1;
