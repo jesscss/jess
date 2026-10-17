@@ -99,6 +99,9 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(a<b<c)', '<'] // one comparison is Less's (V11); a chain is the run
   ],
   scss: [
+    ['f(a.b)', '.'],
+    ['list.append(c, a.b)', '.'],
+    ['expression(document.body.clientWidth)', '.'],
     ['foo(a b=c d)', '='],
     ['foo(a=1px 2px)', '='],
     ['foo("a"=b)', '='],
@@ -222,6 +225,8 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['scss', '@function f() { @return a=b; }\na { x: f(); }\n', '=', 2, 5],
     ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a=b); }\n', '=', 2, 3],
     ['scss', '$v: a.b;\na {\n  font: {\n    family: $v;\n  }\n}\n', '.', 3, 3],
+    ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a.b); }\n', '.', 2, 3],
+    ['scss', '$m: (k: a.b);\na { x: map-get($m, k); }\n', '.', 2, 5],
     ['jess', '$v: a~b;\na { x: $v; }\n', '~', 2, 5],
     ['jess', '$m: { a: b.c };\na { x: $m.a; }\n', '.', 2, 5]
   ] as const)('%s: %s', async (dialect, source, delim, line, column) => {
@@ -281,34 +286,61 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     });
   }
 
-  /*
-   * SCSS does not yet parse a fallback with these delims (a P45 gap, not this
-   * check). css writes a `var()` fallback's delims spaced, as it does on dev.
-   */
-  for (const dialect of ['css', 'less', 'jess'] as const) {
-    it.each([
-      'var(--x, a.b~c)',
-      'var(--x, a:b)',
-      'attr(foo, a.b)',
-      'env(x, a.b)'
-    ])(`${dialect}: a var() / attr() / env() fallback: %s`, async (value) => {
-      await clean(dialect, sheet(value));
-    });
-  }
-
-  /* SCSS and `.jess` do not yet parse CSS if() (a P45 gap, not this check). */
-  for (const dialect of ['css', 'less'] as const) {
-    it.each([
-      'if(media(width = 600px): a; else: c)',
-      'if(media(400px <= width <= 700px): a; else: c)',
-      'if(supports(selector(.a ~ .b)): a; else: c)',
-      'if(supports(selector(ns|a)): a; else: c)',
-      'if(style(--x: a.b): a; else: c)',
-      'if(style(--a: 1): red; else: blue)'
-    ])(`${dialect}: a CSS if() condition: %s`, async (value) => {
+  const FALLBACKS = ['var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)'];
+  for (const dialect of ['less', 'scss', 'jess'] as const) {
+    it.each(FALLBACKS)(`${dialect}: a var() / attr() / env() fallback is written as authored: %s`, async (value) => {
       expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
     });
   }
+
+  /* css compiles them but spaces the delims (`a . b ~ c`), as on dev (P48 notes). */
+  it.each(FALLBACKS)('css: a var() / attr() / env() fallback compiles: %s', async (value) => {
+    await clean('css', sheet(value));
+  });
+  it.each(['css', 'less', 'jess'] as const)('%s: a var() fallback with a glued `:`', async (dialect) => {
+    await clean(dialect, sheet('var(--x, a:b)'));
+  });
+  it.fails('css: a var() fallback is written as authored', async () => {
+    expect(await clean('css', sheet('var(--x, a.b~c)'))).toContain('x: var(--x, a.b~c);');
+  });
+
+  const CSS_IF = [
+    'if(media(width = 600px): a; else: c)',
+    'if(media(400px <= width <= 700px): a; else: c)',
+    'if(media(width >= 600px): 1px; else: 2px)',
+    'if(supports(display: grid): a; else: b)',
+    'if(supports(selector(.a ~ .b)): a; else: c)',
+    'if(supports(selector(ns|a)): a; else: c)',
+    'if(style(--x: a.b): a; else: c)',
+    'if(media(width < 600px): a; media(width < 900px): b; else: c)',
+    'if(style(--a: 1): red; else: blue)'
+  ];
+  for (const dialect of ['css', 'less'] as const) {
+    it.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
+      expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
+    });
+  }
+
+  /*
+   * OPEN for the owner (P38, P45): SCSS and `.jess` stop at CSS if(). SCSS reads
+   * `if(` as Sass's if(), and a condition's `and` / `not` with Sass meaning;
+   * `.jess` has no branch list in an ordinary call.
+   */
+  for (const dialect of ['scss', 'jess'] as const) {
+    it.fails.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
+      expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
+    });
+  }
+
+  const IF_AND = 'if(media(print) and supports(display: grid): a; else: b)';
+  it('css: a CSS if() condition joined by `and`', async () => {
+    expect(await clean('css', sheet(IF_AND))).toContain(`x: ${IF_AND};`);
+  });
+
+  /* Less reads `and` between two tests as its own condition (`if(false: a; else: b)`). */
+  it.fails.each(['less', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
+    expect(await clean(dialect, sheet(IF_AND))).toContain(`x: ${IF_AND};`);
+  });
 
   /* A call argument whose first item is followed by a `:` is a branch (ledger P38): the colon is its structure. */
   it.each(['css', 'less'] as const)('%s: a branch list', async (dialect) => {

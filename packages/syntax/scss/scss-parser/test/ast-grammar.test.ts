@@ -7,6 +7,7 @@ import { serialize as serializeMaybeAsync, type SerializeResult } from '../../..
 import { scssGrammar } from '../src/grammar.js';
 import { parseScssCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
+import { parse as parseCss } from '@jesscss/css-parser';
 import { bare } from '../../../../../test/provenance-free.js';
 
 /*
@@ -2816,5 +2817,41 @@ describe('statement spelling of the typed at-rules', () => {
     /* CSS rejects `@media screen;` too — its dispatch keyword excludes them. */
     expect(() => parse('@media screen;')).toThrow();
     expect(() => parse('@supports (display: grid);')).toThrow();
+  });
+});
+
+/*
+ * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
+ * builds. OPEN for the owner: SCSS reads `if(` as Sass's
+ * `if($condition, $if-true, $if-false)`, so a branch list stops the parse.
+ */
+describe('CSS if()', () => {
+  const declarationValue = (document: Stylesheet): unknown => {
+    const rule = document.rules[0];
+    return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
+  };
+
+  it.fails.each([
+    'if(media(width >= 600px): 1px; else: 2px)',
+    'if(supports(display: grid): grid; else: block)',
+    'if(style(--theme: dark): white; else: black)',
+    'if(supports(selector(.a ~ .b)): a; else: b)',
+    'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
+    'if(media(print) and supports(display: grid): a; else: b)'
+  ])('builds the css tree for %s', (value) => {
+    const source = `a { x: ${value}; }`;
+    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  });
+
+  it('keeps Sass if() for any other first argument', () => {
+    expect(declarationValue(parse('a { x: if($a, 1px, 2px); }'))).toMatchObject({ type: 'IfValue' });
+  });
+});
+
+/* A `.` glued on both sides is a delim component in an @if operand too (P45). */
+it('parses a `.` glued into an @if comparison operand', () => {
+  expect(parse('$v: a;\n@if $v == a.b { a { x: y; } }').rules[1]).toMatchObject({
+    type: 'If',
+    branches: [{ guard: { g: 'cmp', right: { type: 'Sequence', parts: [{ src: 'a' }, { type: 'Any', src: '.' }, { src: 'b' }] } } }]
   });
 });
