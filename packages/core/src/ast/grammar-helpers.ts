@@ -223,12 +223,6 @@ export function selectorCaptureOf(children: readonly unknown[], span: SourceSpan
   return { start, end: start + text.length, written: `${opener}${lead}${text})` };
 }
 
-/** A removed `*[…]` capture: the list it holds, for the fix that names `selector(…)`, and the construct as written. */
-export function removedSelectorCaptureOf(children: readonly unknown[]): { readonly list: string; readonly written: string } {
-  const body = writtenTokenBetween(children)?.value ?? '';
-  return { list: body.trim(), written: `*[${body}]` };
-}
-
 /**
  * A reduction that recovers from a problem builds a value and reports the
  * problem, but a reduction can run inside an attempt the parser later

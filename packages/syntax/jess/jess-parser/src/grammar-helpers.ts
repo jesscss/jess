@@ -20,8 +20,8 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { JessRemovedSelectorCaptureError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
-import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, removedSelectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
+import { JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
+import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -501,14 +501,6 @@ function selectorCaptureFrom(children: readonly unknown[], span: Span, state: un
   return value;
 }
 
-/** The removed `*[…]` capture (ledger P49): an error naming `selector(…)`, kept as written (P45). */
-function removedSelectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): Any {
-  const found = removedSelectorCaptureOf(children);
-  const value = any(found.written);
-  reportRecovered(new JessRemovedSelectorCaptureError(span.start, span.end, found.list, value), state);
-  return value;
-}
-
 function interpolationValue(fact: ExpressionFact): Interpolation {
   if (!isInterpolation(fact.value)) {
     throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
@@ -935,7 +927,6 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
 }
 
 export {
-  removedSelectorCaptureFrom,
   selectorCaptureFrom,
   requireToken,
   requireFields,

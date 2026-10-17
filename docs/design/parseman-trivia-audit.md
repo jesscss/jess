@@ -76,7 +76,7 @@ its own compile point.
   point. (The grammar's "measured, not reasoned / deferred-trivia-commit boundaries"
   note is a MISDIAGNOSIS; the real cause is compile-time `activeTrivia`.)
 - Empirical: dropping `SelectorCapture`'s wrapper makes a selector capture with
-  interior trivia (then spelled with `*[`, now `selector( .notice )`, ledger P49)
+  interior trivia (`selector( .notice )`, ledger P49)
   fail while the glued capture still parses — the regression fixed in
   `be826ec02`.
 

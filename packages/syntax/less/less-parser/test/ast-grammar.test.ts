@@ -926,7 +926,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
+  it('reads what selector() cannot capture, then reports it at its span (P45)', () => {
     for (const [source, code, at] of [
       ['@t: selector(@{selector});', 'parse/selector-capture-argument', '@{selector}'],
       ['@t: selector(.card-@{tone});', 'parse/selector-capture-argument', '@{tone}'],
@@ -935,10 +935,7 @@ describe('Less AST grammar facts', () => {
       ['@t: selector(.a, "b");', 'parse/selector-capture-argument', ', "b"'],
       ['@t: selector();', 'parse/selector-capture-argument', 'selector()'],
       ['@t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
-      ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
-      ['@t: *[x {]} y];', 'parse/removed-selector-capture', '*[x {]} y]'],
-      ['@t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
-      ['@t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
+      ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y']
     ] as const) {
       const diagnostics: LessRecoveredError[] = [];
       const result = run(lessGrammar.Document, source, {

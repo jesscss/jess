@@ -393,9 +393,8 @@ export function pushParseTwinDiagnostics(
 
 /*
  * Selector capture (ledger P49), `.less` and `.jess` only: a `selector(…)` whose
- * argument is not a selector list, and the removed `*[…]`, parse as their own
- * CST nodes, and the compiler fails on them; the editor underlines the
- * argument, or the whole `*[…]`.
+ * argument is not a selector list parses as its own CST node, and the compiler
+ * fails on it; the editor underlines the argument.
  */
 function pushSelectorCaptureTwin(
   node: CssCstNode,
@@ -406,14 +405,7 @@ function pushSelectorCaptureTwin(
   if (language !== 'less' && language !== 'jess') {
     return;
   }
-  const gt = node.grammarType;
-  if (gt === 'RemovedSelectorCapture') {
-    const written = source.slice(absoluteStart(node), absoluteEnd(node));
-    const error = ERR.removedSelectorCapture({ meta: { list: written.slice(2, -1).trim() } });
-    push('parse/removed-selector-capture', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
-    return;
-  }
-  if (gt !== 'SelectorCapture') {
+  if (node.grammarType !== 'SelectorCapture') {
     return;
   }
   const parts = cstChildrenOf(node).filter(isCstNode);

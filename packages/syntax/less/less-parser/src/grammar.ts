@@ -158,7 +158,7 @@ import {
   variableNameText,
   variableValueSlot
 } from './grammar-helpers.js';
-import { removedSelectorCaptureFrom, selectorCaptureFrom } from './selector-capture.js';
+import { selectorCaptureFrom } from './selector-capture.js';
 import { operatorRun, runOperand } from './delim-runs.js';
 import type {
   BodyExtendFact,
@@ -230,7 +230,6 @@ type LessRules = {
   FunctionStatement: Combinator<Statement | string>;
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
-  RemovedSelectorCapture: Combinator<Any>;
   MathAtom: Combinator<ValueNode>;
   calcValueAtom: Combinator<unknown>;
   CalcProduct: Combinator<ValueNode>;
@@ -524,10 +523,10 @@ const unknownAtRuleBody = noTrivia(scanTo(
   { skip: [unknownAtRuleBrace] }
 ));
 /*
- * What a `selector(` or a removed `*[` holds past the point the selector list
- * stops: read to the closing delimiter as opaque text, nested groups inert, and
- * strings and comments inert through the grammar's ambient scan skippers (P45:
- * well-formed input parses; the reducer reports it). The leading `not(')')`
+ * What a `selector(` holds past the point the selector list stops: read to
+ * `)` as opaque text, nested groups inert, and strings and comments inert
+ * through the grammar's ambient scan skippers (P45: well-formed input parses;
+ * the reducer reports it). The leading `not(')')`
  * keeps the rest from matching empty: `scanTo` matches nothing when its
  * sentinel is next, and an empty argument is the reducer's to report.
  */
@@ -537,7 +536,6 @@ const selectorCaptureRest = noTrivia(sequence(
   not(literal(')')),
   scanTo(literal(')'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] })
 ));
-const removedCaptureBody = scanTo(literal(']'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] });
 // Trivia that may surround an arithmetic operator: whitespace, `//` line
 // comments, or `/* */` block comments. This matches CSS, where `*` and `/` need
 // no whitespace and comments are freely allowed around them (`1/**/*/**/2`,
@@ -2319,7 +2317,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Dimension,
       g.FormatFunction,
       IdentifierOrFunction,
-      g.RemovedSelectorCapture,
       g.EscapedParen,
       g.QueryColonFeature,
       g.Paren,
@@ -4856,16 +4853,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ))),
     (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
   );
-  /*
-   * `*[…]` was the selector capture before `selector(…)` replaced it (ledger
-   * P49). It still parses — a delim and a simple block — and is reported with
-   * its replacement (P45).
-   */
-  const RemovedSelectorCapture = node(
-    'RemovedSelectorCapture',
-    noTrivia(sequence(literal('*['), removedCaptureBody, literal(']'))),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => removedSelectorCaptureFrom(children, span, state)
-  );
   const pseudoOpen = token(noTrivia(sequence(
     regex(/::?(?![ \t\n\r\f])/),
     not(extendPseudoNameOpen),
@@ -5670,7 +5657,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Dimension,
     Value,
     SelectorCapture,
-    RemovedSelectorCapture,
     MathAtom,
     calcValueAtom,
     CalcProduct,

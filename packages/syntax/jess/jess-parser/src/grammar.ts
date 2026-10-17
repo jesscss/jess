@@ -105,7 +105,6 @@ import {
   reduceSelectorList,
   dollarValueFromChildren,
   foldCalcOperation,
-  removedSelectorCaptureFrom,
   selectorCaptureFrom
 } from './grammar-helpers.js';
 import type {
@@ -222,7 +221,6 @@ type JessRules = {
   PseudoSelectorTail: Combinator<SelectorBranch>;
   PseudoSelectorList: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
-  RemovedSelectorCapture: Combinator<Any>;
   ComplexSelector: Combinator<SelectorBranch>;
   NestedSelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
@@ -591,12 +589,6 @@ const balancedBraces = balanced(
 );
 const rawParenInner = scanTo(
   literal(')'),
-  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
-);
-
-/* The `]`-closed twin of `rawParenInner`: the body of a removed `*[…]` capture (ledger P49). */
-const rawBracketInner = scanTo(
-  literal(']'),
   { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
 );
 
@@ -2450,17 +2442,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * `*[…]` was the selector capture before `selector(…)` replaced it (ledger
-   * P49). It still parses — a delim and a simple block — and is reported with
-   * its replacement (P45).
-   */
-  const RemovedSelectorCapture = node<Any>(
-    'RemovedSelectorCapture',
-    noTrivia(sequence(literal('*['), rawBracketInner, literal(']'))),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => removedSelectorCaptureFrom(children, span, state)
-  );
-
-  /*
    * A call component is one space group; a modern CSS component's slash
    * (`rgb(15 23 42 / .22)`) is the same direct-neighbour slash group a value
    * uses (P33): `[15, 23, 42 / .22]`. `/` stays unavailable as unwrapped Jess
@@ -3241,7 +3222,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.DollarValue,
     g.ExpressionLambda,
     g.InterpolatedValue,
-    g.RemovedSelectorCapture,
     g.CustomPropertyValue,
     g.UnicodeRange,
     g.IdentifierOrFunction,
@@ -6137,7 +6117,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelectorTail,
     PseudoSelectorList,
     SelectorCapture,
-    RemovedSelectorCapture,
     ComplexSelector,
     NestedSelectorList,
     Ruleset,

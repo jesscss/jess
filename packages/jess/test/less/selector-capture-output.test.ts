@@ -137,7 +137,7 @@ describe('Less selector-capture output boundaries', () => {
 
 /*
  * `selector(<selector-list>)` is the selector-capture spelling in `.less` and
- * `.jess` (owner 2026-10-16); `*[…]` is an error naming it. Inside a support condition
+ * `.jess` (owner 2026-10-16). Inside a support condition
  * `selector()` stays CSS's feature test, and `.css` / `.scss` keep value-position
  * `selector()` an ordinary function call.
  */
@@ -172,18 +172,14 @@ describe('selector() capture', () => {
   });
 
   /*
-   * What selector() cannot capture, and the removed `*[…]`, parse (P45) and are
-   * then an error at their span (ledger P49).
+   * What selector() cannot capture parses (P45) and is then an error at its
+   * span (ledger P49).
    */
   it.each([
     ['less', '.x { a: selector(1px); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
     ['less', '.x { a: selector(@v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
     ['less', '.x { a: selector(); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 9]],
-    ['less', '@s: *[apple, satsuma];\n@{s} { c: d; }', 'parse/removed-selector-capture', [1, 5]],
-    ['jess', '.x { a: selector($v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
-    ['jess', '$s: *[apple, satsuma];\n${s} { c: d; }', 'parse/removed-selector-capture', [1, 5]],
-    ['less', '.x { a: *[.a ~ .b]; }', 'parse/removed-selector-capture', [1, 9]],
-    ['jess', '.x { a: *[.a ~ .b]; }', 'parse/removed-selector-capture', [1, 9]]
+    ['jess', '.x { a: selector($v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]]
   ] as const)('parses %s `%s`, then reports its error', async (language, source, code, [line, column]) => {
     const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
     expect(result.css).toBe('');
@@ -193,11 +189,9 @@ describe('selector() capture', () => {
   /* An error-severity diagnostic fails the compile (owner 2026-10-16), a recovered parse error too. */
   it.each([
     ['less', '.x { a: selector(1px); }'],
-    ['less', '.x { a: *[.a]; }'],
-    ['jess', '.x { a: selector(1px); }'],
-    ['jess', '.x { a: *[.a]; }']
+    ['jess', '.x { a: selector(1px); }']
   ] as const)('fails the %s compile of `%s`', async (language, source) => {
-    await expect(render(source, false, language)).rejects.toThrow(/selector\(\) takes a selector list|Selector capture is now written selector\(…\)/u);
+    await expect(render(source, false, language)).rejects.toThrow(/selector\(\) takes a selector list/u);
   });
 
   /* A selector's own punctuation is selector syntax, never value punctuation (ledger P48). */
@@ -210,11 +204,6 @@ describe('selector() capture', () => {
   ] as const)('reports no error for %s `%s`', async (language, source) => {
     const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
     expect(result.errors).toEqual([]);
-  });
-
-  it('names the replacement for a removed `*[…]`', async () => {
-    const result = await new Compiler().renderToResult({ source: '@s: *[.a, .b > .c];', filePath: 'entry.less', extension: '.less' }, { quiet: true });
-    expect(result.errors[0]).toMatchObject({ message: 'Selector capture is now written selector(…).', fix: 'Write selector(.a, .b > .c).' });
   });
 
   /* A capture in a calc() operand or a var() name is an operand like any other: written as authored, no crash. */

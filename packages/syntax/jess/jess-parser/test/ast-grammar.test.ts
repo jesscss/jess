@@ -1137,7 +1137,7 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
+  it('reads what selector() cannot capture, then reports it at its span (P45)', () => {
     for (const [source, code, at] of [
       ['$t: selector($[selector]);', 'parse/selector-capture-argument', '$[selector]'],
       ['$t: selector(.card-$[tone]);', 'parse/selector-capture-argument', '$[tone]'],
@@ -1146,22 +1146,12 @@ describe('Jess AST grammar facts', () => {
       ['$t: selector( .a, "b" );', 'parse/selector-capture-argument', ', "b"'],
       ['$t: selector();', 'parse/selector-capture-argument', 'selector()'],
       ['$t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
-      ['$t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
-      ['$t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
-      ['$t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
+      ['$t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y']
     ] as const) {
       const { document, recovered } = parseRecovering(source);
       expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`), source).toEqual([`${code} ${at}`]);
       expect(document.rules[0], source).toMatchObject({ value: { type: 'Any' } });
       expect(() => parse(source), source).toThrow(SyntaxError);
-    }
-  });
-
-  /* A report from an attempt the parser abandons is dropped: here the declaration reading of a nested rule. */
-  it('reports nothing for a `*[…]` in a nested rule\'s selector', () => {
-    for (const source of ['.x { a:hover *[href] { b: c; } }', '.x { a:b *[c] { } }']) {
-      expect(parseRecovering(source).recovered, source).toEqual([]);
-      expect(() => parse(source), source).not.toThrow();
     }
   });
 

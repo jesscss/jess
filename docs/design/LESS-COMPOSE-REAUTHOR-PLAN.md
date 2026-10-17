@@ -475,7 +475,7 @@ Buckets: **C** = CONVERGE→INHERIT (firm), **C?** = CONVERGE? NEEDS-ORACLE-PROO
 | PseudoArgumentCompound | 5859 | **O** | CompoundSelector:1145 | SEPARATE pseudo-arg compound tower (admits NthPseudoSelector) |
 | PseudoArgumentComplex | 5875 | **O** | ComplexSelector:1156 | duplicate complex tower carrying `not(whenGuardAhead)` + `staticCombinator` (incl `\|`) |
 | PseudoArgumentSelectorTail / PseudoArgumentSelector | 5889/5894 | **O** | SelectorList:1188 | Less-private pseudo-arg selector list on the duplicate tower |
-| SelectorCapture | 5903 | A | — | `selector(<selector-list>)` selector-valued value (was `*[…]`; P49) |
+| SelectorCapture | 5903 | A | — | `selector(<selector-list>)` selector-valued value (P49) |
 | PseudoSelector | 5984 | **O** | PseudoSelector:1048 | different whitelist (`:global(`/`:local(`), excludes `:extend(`, Less arg tower |
 | InterpolatedPseudo | 5993 | A | — | `:@{pseudo}` interpolated pseudo NAME |
 | AttributeNamespace / AttributeName | 6005/6022 | A | — | Less decomposition nodes (`{namespace,name}` facts) reused for attr interpolation; `AttributeMatch` removed with ledger O7 |

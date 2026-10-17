@@ -208,7 +208,7 @@ API/diagnostic tests added first.
   which settled P7 rejects in favor of `@{function-name}`. Its later golden rows
   also encode bare-variable custom-property evaluation that settled P2 leaves
   literal unless explicitly interpolated.
-- **Selector capture `selector(...)`** (`parse-interpolation.less`; spelled `*[...]` until ledger P49) — implemented
+- **Selector capture `selector(...)`** (`parse-interpolation.less`; ledger P49) — implemented
   in both the Jess and Less parsers; there is no remaining selector-capture
   feature work in this fixture. Its final mismatch is an **intended output-policy
   divergence** (owner ruling 2026-08-22): local `collapseNesting:false` preserves

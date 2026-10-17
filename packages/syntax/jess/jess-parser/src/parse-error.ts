@@ -69,30 +69,5 @@ export class JessSelectorCaptureArgumentError extends SyntaxError {
   }
 }
 
-/**
- * The removed `*[…]` selector capture (owner 2026-10-16, ledger P49: replaced
- * by `selector(…)`, no alias). Located at the whole `*[…]`; the parse carries
- * on (P45).
- */
-export class JessRemovedSelectorCaptureError extends SyntaxError {
-  readonly code = 'parse/removed-selector-capture' as const;
-  readonly offset: number;
-  readonly endOffset: number;
-  readonly reason = 'The `*[…]` selector capture is removed; a selector capture is written selector(<selector-list>).';
-  readonly fix: string;
-
-  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
-  readonly recoveredValue: object;
-
-  constructor(offset: number, endOffset: number, list: string, recoveredValue: object) {
-    super('Selector capture is now written selector(…).');
-    this.name = 'JessRemovedSelectorCaptureError';
-    this.offset = offset;
-    this.endOffset = endOffset;
-    this.fix = `Write selector(${list}).`;
-    this.recoveredValue = recoveredValue;
-  }
-}
-
 /** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
-export type JessRecoveredError = JessSelectorCaptureArgumentError | JessRemovedSelectorCaptureError;
+export type JessRecoveredError = JessSelectorCaptureArgumentError;

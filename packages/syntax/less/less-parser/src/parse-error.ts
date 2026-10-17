@@ -357,36 +357,11 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
 }
 
 /**
- * The removed `*[…]` selector capture (owner 2026-10-16, ledger P49: replaced
- * by `selector(…)`, no alias). Located at the whole `*[…]`; the parse carries
- * on (P45).
- */
-export class LessRemovedSelectorCaptureError extends SyntaxError {
-  readonly code = 'parse/removed-selector-capture' as const;
-  readonly offset: number;
-  readonly endOffset: number;
-  readonly reason = 'The `*[…]` selector capture is removed; a selector capture is written selector(<selector-list>).';
-  readonly fix: string;
-
-  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
-  readonly recoveredValue: object;
-
-  constructor(offset: number, endOffset: number, list: string, recoveredValue: object) {
-    super('Selector capture is now written selector(…).');
-    this.name = 'LessRemovedSelectorCaptureError';
-    this.offset = offset;
-    this.endOffset = endOffset;
-    this.fix = `Write selector(${list}).`;
-    this.recoveredValue = recoveredValue;
-  }
-}
-
-/**
  * A problem the grammar recovered from: a located error diagnostic the parse
  * carries on past (ledger P45).
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
-  | LessSelectorCaptureArgumentError | LessRemovedSelectorCaptureError | LessLeadingSeparatorValueError;
+  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

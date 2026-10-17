@@ -417,7 +417,6 @@ svg.railroad-diagram rect {
     <a href="#rule-PseudoSelectorTail">PseudoSelectorTail</a>
     <a href="#rule-PseudoSelectorList">PseudoSelectorList</a>
     <a href="#rule-SelectorCapture">SelectorCapture</a>
-    <a href="#rule-RemovedSelectorCapture">RemovedSelectorCapture</a>
     <a href="#rule-NestedSelectorList">NestedSelectorList</a>
     <a href="#rule-NestedRuleset">NestedRuleset</a>
     <a href="#rule-ForName">ForName</a>
@@ -1023,7 +1022,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ValueTerm">
     <h2><a href="#rule-ValueTerm">§</a> ValueTerm</h2>
     <div class="diagram" data-rule="ValueTerm"></div>
-    <div class="ebnf">ValueTerm ::= ValueAtom (/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/ (ParenValue | SquareValue | DollarValue | ExpressionLambda | InterpolatedValue | RemovedSelectorCapture | CustomPropertyValue | UnicodeRange | IdentifierOrFunction | Quoted | Color | Dimension))*</div>
+    <div class="ebnf">ValueTerm ::= ValueAtom (/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/ (ParenValue | SquareValue | DollarValue | ExpressionLambda | InterpolatedValue | CustomPropertyValue | UnicodeRange | IdentifierOrFunction | Quoted | Color | Dimension))*</div>
   </section>
   <section class="rule" id="rule-CurlyValue">
     <h2><a href="#rule-CurlyValue">§</a> CurlyValue</h2>
@@ -2073,7 +2072,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ValueAtom">
     <h2><a href="#rule-ValueAtom">§</a> ValueAtom</h2>
     <div class="diagram" data-rule="ValueAtom"></div>
-    <div class="ebnf">ValueAtom ::= Collection | ParenValue | SquareValue | DollarValue | ExpressionLambda | InterpolatedValue | RemovedSelectorCapture | CustomPropertyValue | UnicodeRange | IdentifierOrFunction | Quoted | Color | Dimension</div>
+    <div class="ebnf">ValueAtom ::= Collection | ParenValue | SquareValue | DollarValue | ExpressionLambda | InterpolatedValue | CustomPropertyValue | UnicodeRange | IdentifierOrFunction | Quoted | Color | Dimension</div>
   </section>
   <section class="rule" id="rule-ValueSpaceGroup">
     <h2><a href="#rule-ValueSpaceGroup">§</a> ValueSpaceGroup</h2>
@@ -2224,11 +2223,6 @@ svg.railroad-diagram rect {
     <h2><a href="#rule-SelectorCapture">§</a> SelectorCapture</h2>
     <div class="diagram" data-rule="SelectorCapture"></div>
     <div class="ebnf">SelectorCapture ::= WHITESPACE? PseudoSelectorList? WHITESPACE? (!&quot;)&quot; /* … */)? &quot;)&quot;</div>
-  </section>
-  <section class="rule" id="rule-RemovedSelectorCapture">
-    <h2><a href="#rule-RemovedSelectorCapture">§</a> RemovedSelectorCapture</h2>
-    <div class="diagram" data-rule="RemovedSelectorCapture"></div>
-    <div class="ebnf">RemovedSelectorCapture ::= &quot;*[&quot; /* … */ &quot;]&quot;</div>
   </section>
   <section class="rule" id="rule-NestedSelectorList">
     <h2><a href="#rule-NestedSelectorList">§</a> NestedSelectorList</h2>
@@ -2938,7 +2932,7 @@ svg.railroad-diagram rect {
   { name: "RawParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Comment("…"), Terminal(")"))); } },
   { name: "PunctuationValue", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("/@(?!-?(?:[-_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])))/"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal(".")), ZeroOrMore(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("/"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("@"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal("."))))); } },
   { name: "ValueSequence", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("ValueTerm")), NonTerminal("ValueTerm"))))); } },
-  { name: "ValueTerm", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueAtom"), ZeroOrMore(Sequence(Terminal("/[ \\t\\n\\r\\f]*\\/(?!\\*)[ \\t\\n\\r\\f]*/"), Choice(0, NonTerminal("ParenValue"), NonTerminal("SquareValue"), NonTerminal("DollarValue"), NonTerminal("ExpressionLambda"), NonTerminal("InterpolatedValue"), NonTerminal("RemovedSelectorCapture"), NonTerminal("CustomPropertyValue"), NonTerminal("UnicodeRange"), NonTerminal("IdentifierOrFunction"), NonTerminal("Quoted"), NonTerminal("Color"), NonTerminal("Dimension")))))); } },
+  { name: "ValueTerm", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueAtom"), ZeroOrMore(Sequence(Terminal("/[ \\t\\n\\r\\f]*\\/(?!\\*)[ \\t\\n\\r\\f]*/"), Choice(0, NonTerminal("ParenValue"), NonTerminal("SquareValue"), NonTerminal("DollarValue"), NonTerminal("ExpressionLambda"), NonTerminal("InterpolatedValue"), NonTerminal("CustomPropertyValue"), NonTerminal("UnicodeRange"), NonTerminal("IdentifierOrFunction"), NonTerminal("Quoted"), NonTerminal("Color"), NonTerminal("Dimension")))))); } },
   { name: "CurlyValue", dsl: function(){ return Diagram(Sequence(Terminal("{"), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("ValueList"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal("}"))); } },
   { name: "ValueList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ValueSequence"), Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))); } },
   { name: "ValueSequenceBeforeColon", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), Sequence(Comment("not"), Terminal(":")), NonTerminal("ValueTerm")), Sequence(Sequence(Comment("not"), Terminal(":")), NonTerminal("ValueTerm")))))); } },
@@ -3148,7 +3142,7 @@ svg.railroad-diagram rect {
   { name: "CollectionSpread", dsl: function(){ return Diagram(Sequence(Terminal("..."), NonTerminal("Value"), Terminal(";"))); } },
   { name: "Collection", dsl: function(){ return Diagram(Sequence(Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("CollectionSpread"), NonTerminal("CollectionEntry"))), Optional(Terminal("WHITESPACE")), Terminal("}"))); } },
   { name: "InterpolatedValue", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("Expression"), NonTerminal("DollarInterp")), ZeroOrMore(Choice(0, Terminal("/[-_a-zA-Z0-9\\u0080-\\uffff%]+/"), NonTerminal("Expression"), NonTerminal("DollarInterp"))))); } },
-  { name: "ValueAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("Collection"), NonTerminal("ParenValue"), NonTerminal("SquareValue"), NonTerminal("DollarValue"), NonTerminal("ExpressionLambda"), NonTerminal("InterpolatedValue"), NonTerminal("RemovedSelectorCapture"), NonTerminal("CustomPropertyValue"), NonTerminal("UnicodeRange"), NonTerminal("IdentifierOrFunction"), NonTerminal("Quoted"), NonTerminal("Color"), NonTerminal("Dimension"))); } },
+  { name: "ValueAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("Collection"), NonTerminal("ParenValue"), NonTerminal("SquareValue"), NonTerminal("DollarValue"), NonTerminal("ExpressionLambda"), NonTerminal("InterpolatedValue"), NonTerminal("CustomPropertyValue"), NonTerminal("UnicodeRange"), NonTerminal("IdentifierOrFunction"), NonTerminal("Quoted"), NonTerminal("Color"), NonTerminal("Dimension"))); } },
   { name: "ValueSpaceGroup", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE"), Choice(0, Sequence(Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueTerm")), Sequence(Optional(Terminal("WHITESPACE or COMMENT (incl. //)")), Terminal("/[=<|^?][=<>|~^?]*/"), Optional(Terminal("WHITESPACE or COMMENT (incl. //)")), Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueTerm")))), Sequence(Terminal("/[=<>|~^?]+/"), Optional(Terminal("WHITESPACE or COMMENT (incl. //)")), Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueTerm")), Sequence(Choice(0, Terminal(":"), Terminal(".")), Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueTerm")))))); } },
   { name: "InterpolatedCustomPropertyName", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("--"), ZeroOrMore(Terminal("NAME (escapes allowed)")), NonTerminal("DollarBrace"), ZeroOrMore(Choice(0, Terminal("NAME (escapes allowed)"), NonTerminal("DollarBrace")))), NonTerminal("CustomPropertyName"))); } },
   { name: "CustomPart", dsl: function(){ return Diagram(Choice(0, NonTerminal("DollarBrace"), NonTerminal("CustomOuterContent"), NonTerminal("CustomSingleQuoted"), NonTerminal("CustomDoubleQuoted"), NonTerminal("CustomGroup"))); } },
@@ -3179,7 +3173,6 @@ svg.railroad-diagram rect {
   { name: "PseudoSelectorTail", dsl: function(){ return Diagram(Sequence(Terminal(","), NonTerminal("PseudoSelectorComplex"))); } },
   { name: "PseudoSelectorList", dsl: function(){ return Diagram(Sequence(NonTerminal("PseudoSelectorComplex"), ZeroOrMore(NonTerminal("PseudoSelectorTail")))); } },
   { name: "SelectorCapture", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE")), Optional(NonTerminal("PseudoSelectorList")), Optional(Terminal("WHITESPACE")), Optional(Sequence(Sequence(Comment("not"), Terminal(")")), Comment("…"))), Terminal(")"))); } },
-  { name: "RemovedSelectorCapture", dsl: function(){ return Diagram(Sequence(Terminal("*["), Comment("…"), Terminal("]"))); } },
   { name: "NestedSelectorList", dsl: function(){ return Diagram(OneOrMore(Sequence(Optional(Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("ComplexSelector")), Terminal(","))); } },
   { name: "NestedRuleset", dsl: function(){ return Diagram(Sequence(NonTerminal("NestedSelectorList"), Terminal("{"), ZeroOrMore(Choice(0, Terminal(";"), NonTerminal("MixinCall"), NonTerminal("ValueBlockDeclaration"), NonTerminal("VariableDeclaration"), NonTerminal("Declaration"), NonTerminal("MixinDefinition"), NonTerminal("For"), NonTerminal("If"), NonTerminal("While"), NonTerminal("ReferenceCall"), NonTerminal("Apply"), NonTerminal("Extend"), NonTerminal("NestedRuleset"), NonTerminal("SupportsAtRuleBlock"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("ScopeBlock"), NonTerminal("AtRuleBlock"), NonTerminal("AtRuleStatement"))), Terminal("}"))); } },
   { name: "ForName", dsl: function(){ return Diagram(Sequence(Terminal("$"), Terminal("IDENT"))); } },
