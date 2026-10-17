@@ -50,8 +50,6 @@ import {
   foldFunctionCondition,
   foldMixinGuards,
   reportConditionKeywordCase,
-  removedSelectorCaptureFrom,
-  selectorCaptureFrom,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,
@@ -160,6 +158,7 @@ import {
   variableNameText,
   variableValueSlot
 } from './grammar-helpers.js';
+import { removedSelectorCaptureFrom, selectorCaptureFrom } from './selector-capture.js';
 import type {
   BodyExtendFact,
   CustomValuePart,

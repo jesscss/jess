@@ -21,12 +21,12 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorCaptureOf, removedSelectorCaptureOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
-import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessRemovedSelectorCaptureError, LessSelectorCaptureArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
+import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
+import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -2439,12 +2439,7 @@ function reportAmbiguousNot(operator: unknown, state: unknown): void {
     throw new TypeError('Less condition lost its comparison operator provenance.');
   }
   const start = operator.span.start + text.length - text.trimStart().length;
-  const error = new LessAmbiguousNotError(start, start + text.trim().length);
-  const sink = diagnosticsOf(state);
-  if (sink === null) {
-    throw error;
-  }
-  sink.push(error);
+  reportRecovered(new LessAmbiguousNotError(start, start + text.trim().length), state);
 }
 
 /**
@@ -2463,45 +2458,7 @@ function reportConditionKeywordCase(keyword: unknown, state: unknown): void {
     return;
   }
   const start = keyword.span.start + text.length - text.trimStart().length;
-  const error = new LessConditionKeywordCaseError(start, start + word.length, word);
-  const sink = diagnosticsOf(state);
-  if (sink === null) {
-    throw error;
-  }
-  sink.push(error);
-}
-
-/** A problem the grammar recovered from (P45): kept on the document, or raised by a raw-grammar run that keeps none. */
-function reportRecovered(error: LessRecoveredError, state: unknown): void {
-  const sink = diagnosticsOf(state);
-  if (sink === null) {
-    throw error;
-  }
-  sink.push(error);
-}
-
-/**
- * `selector(…)` in a value (owner 2026-10-16, ledger P49): the capture, or —
- * when the argument is not a selector list — an error at the rest the list
- * could not read (the whole call when the argument holds nothing), and the
- * call kept as its value (P45).
- */
-function selectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): SelectorCapture | Any {
-  const found = selectorCaptureOf(children, span);
-  if ('type' in found) {
-    return found;
-  }
-  const value = any(found.written);
-  reportRecovered(new LessSelectorCaptureArgumentError(found.start, found.end, value), state);
-  return value;
-}
-
-/** The removed `*[…]` capture (ledger P49): an error naming `selector(…)`, kept as written (P45). */
-function removedSelectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): Any {
-  const found = removedSelectorCaptureOf(children);
-  const value = any(found.written);
-  reportRecovered(new LessRemovedSelectorCaptureError(span.start, span.end, found.list, value), state);
-  return value;
+  reportRecovered(new LessConditionKeywordCaseError(start, start + word.length, word), state);
 }
 
 function isFunctionConditionNot(value: unknown): boolean {
@@ -3060,8 +3017,6 @@ export {
   foldFunctionCondition,
   foldMixinGuards,
   reportConditionKeywordCase,
-  removedSelectorCaptureFrom,
-  selectorCaptureFrom,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,
