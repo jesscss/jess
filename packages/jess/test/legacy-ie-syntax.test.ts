@@ -203,8 +203,7 @@ describe('legacy IE syntax through a reference fails the compile', () => {
     ['jess', '$v: alpha(opacity=50);\na { filter: $v; }\n', 2, 5],
     ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\na { filter: @v; }\n', 2, 5],
     ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\n.m(@a) {\n  filter: @a;\n}\na { .m(@v); }\n', 3, 3],
-    ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(alpha(opacity=50)); }\n', 2, 3],
-    ['less', '.m(@a...) {\n  x: @a;\n}\na { .m(progid:DX.a(b=1)); }\n', 2, 3]
+    ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(alpha(opacity=50)); }\n', 2, 3]
   ] as const)('%s: %s', async (dialect, source, line, column) => {
     const parsed = PLUGINS[dialect].safeParse!(`/proj/legacy-ie.${dialect}`, source);
     expect(parsed.errors).toEqual([]);

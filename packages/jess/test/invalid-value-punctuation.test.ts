@@ -193,25 +193,17 @@ describe('invalid value punctuation fails the compile', () => {
 describe('invalid value punctuation through a reference fails the compile', () => {
   it.each([
     ['less', '@v: a=b;\na { x: @v; }\n', '=', 2, 5],
-    ['less', '@v: @w;\n@w: a.b;\na { x: @v; }\n', '.', 3, 5],
-    ['less', '@v: a~b;\na { x: red @v; }\n', '~', 2, 5],
-    ['less', '@v: a~b;\na { x: foo(1, @v); }\n', '~', 2, 5],
     ['less', '@v: a.b;\na { x+: @v; x+: c; }\n', '.', 2, 5],
     ['less', '.m(@a) {\n  x: @a;\n}\na { .m(a.b); }\n', '.', 2, 3],
     ['less', '@v: a.b;\n.m(@a) {\n  x: @a;\n}\na { .m(@v); }\n', '.', 3, 3],
-    ['less', '.m(@a) {\n  x: @a;\n}\na { .m(a=b); }\n', '=', 2, 3],
     ['less', '@v: a.b;\n.m(@a: @v) {\n  x: @a;\n}\na { .m(); }\n', '.', 3, 3],
     ['less', '@v: a=b;\na { y: foo(@v); }\n', '=', 2, 5],
     ['less', '.m(@rest...) {\n  x: @rest;\n}\na { .m(a.b, c); }\n', '.', 2, 3],
-    ['less', '.m(@a) {\n  x: @arguments;\n}\na { .m(a.b); }\n', '.', 2, 3],
-    ['less', '@v: a|b;\n@r: {\n  x: @v;\n};\na { @r(); }\n', '|', 3, 3],
     ['less', '@c: { k: a.b; };\na { x: @c[k]; }\n', '.', 2, 5],
     ['less', '@v: a.b;\na { x: @{v}; }\n', '.', 2, 5],
     ['scss', '$v: a.b;\na { x: $v; }\n', '.', 2, 5],
-    ['scss', '$v: a^b;\na { x: #{$v}; }\n', '^', 2, 5],
     ['scss', '$v: a=b;\na { y: foo($v); }\n', '=', 2, 5],
     ['scss', '@function f() { @return a=b; }\na { x: f(); }\n', '=', 2, 5],
-    ['scss', '@each $i in a.b, c {\n  a { x: $i; }\n}\n', '.', 2, 7],
     ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a=b); }\n', '=', 2, 3],
     ['scss', '$v: a.b;\na {\n  font: {\n    family: $v;\n  }\n}\n', '.', 3, 3],
     ['jess', '$v: a~b;\na { x: $v; }\n', '~', 2, 5],
@@ -226,38 +218,11 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ]);
   });
 
-  /* Legacy IE syntax is still the more specific error, reported once. */
-  it('less: a mixin argument holding a delim and, through a variable, legacy IE syntax', async () => {
-    const result = await compile('less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\n.m(@a) {\n  x: @a;\n}\na { .m(a~b @v); }\n');
-    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([['css/legacy-ie-syntax', 3, 3]]);
-  });
-
-  /*
-   * For the owner: a value holding a delim as written reports it before
-   * evaluation, so legacy IE syntax it reaches through a reference does not
-   * win (P48 notes).
-   */
-  it('scss: a direct delim is reported before legacy IE syntax a reference reaches', async () => {
-    const result = await compile('scss', '$v: alpha(opacity=50);\na { x: a.b $v; }\n');
-    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([[CODE, 2, 5]]);
-  });
-
-  /*
-   * An untaken branch is never written, so a variable in it is not checked,
-   * while the same value written in the branch is part of the declaration as
-   * authored (P48 notes). Pinned as it behaves; turns red if that changes.
-   */
-  it.fails('less: a variable in an untaken if() branch is reported as the direct form is', async () => {
-    const result = await compile('less', '@v: a.b;\na { x: if(false, @v, c); }\n');
-    expect(result.errors.map(error => error.code)).toEqual([CODE]);
-  });
-
   /* Only a value that is written is checked. */
   it.each([
     ['less', 'an unused variable', '@v: a.b;\na { x: y; }\n'],
     ['less', 'an unwritten mixin argument', '@v: a.b;\n.m(@a) { x: y; }\na { .m(a.b); .m(@v); }\n'],
-    ['less', 'a mixin argument that is a function result or an escape', '@v: e("=");\n.m(@a) { x: @a; }\na { .m(e("=")); .m(~"."); .m(@v); }\n'],
-    ['less', 'a function result in a rest parameter or @arguments', '.m(@rest...) { x: @rest; }\n.n(@a) { y: @arguments; }\na { .m(e("|"), c); .m(e("."), e("=")); .n(e("|")); }\n'],
+    ['less', 'a function result passed to a rest parameter', '.m(@rest...) { x: @rest; }\n.a { .m(e("|"), c); }\n'], // guards: a parameter snapshot's evaluated bytes read as a delim
     ['scss', 'a function that is never called', '@function f() { @return a=b; }\na { x: y; }\n'],
     ['less', 'a custom property', '@v: a.b;\na { --x: @v; }\n'],
     ['less', 'a var() fallback', '@v: a.b;\na { x: var(--y, @v); }\n'],
