@@ -565,6 +565,19 @@ export class Context {
    */
   errors: ErrorDiagnostic[] = [];
 
+  /**
+   * An error-severity diagnostic fails the compile, whichever phase recorded it
+   * (owner 2026-10-16: "compiling stops on the first error", "if the diagnostic
+   * treats it as an error, then no it doesn't succeed"; ledger P47). Throws the
+   * first one recorded. Something that must not fail the build is a warning.
+   */
+  failOnRecordedError(): void {
+    const first = this.errors[0];
+    if (first !== undefined) {
+      throw makeJessErrorFromDiagnostic(first);
+    }
+  }
+
   /*
    * Warning rows deliberately stay columnar until a public result or renderer
    * asks for them. A warning is an expected compiler event—not an exception—so
@@ -1329,15 +1342,13 @@ export class Context {
     }
 
     /*
-     * Break on a parse error the parser could not recover from. One it parsed
-     * past comes with its document: it is reported, and the rest of the sheet
-     * still evaluates (P45, owner 2026-10-09: "should be _diagnostic_ errors
-     * but probably shouldn't stop parsing and evaluation").
+     * Stop on a parse error, whether or not the parser recovered from it and
+     * returned its document. Collecting diagnostics (`breakOnError: false`)
+     * goes on with that document, so the rest of the sheet is still checked
+     * (P45, owner 2026-10-09), and the compile fails at the end.
      */
-    if (parseResult.errors.length > 0 && parseResult.document === undefined && this.opts.breakOnError !== false) {
-      // Throw the first error as a JessError
-      const firstError = parseResult.errors[0]!;
-      throw makeJessErrorFromDiagnostic(firstError);
+    if (this.opts.breakOnError !== false) {
+      this.failOnRecordedError();
     }
 
     const document = parseResult.document;
@@ -1517,9 +1528,9 @@ export class Context {
       this.warn(warning);
     }
 
-    /* As in `getTree`: a parse error that came with its document is reported, and evaluation continues (P45). */
-    if (result.errors.length > 0 && result.document === undefined && this.opts.breakOnError !== false) {
-      throw makeJessErrorFromDiagnostic(result.errors[0]!);
+    /* As in `getTree`: stop on a parse error unless collecting diagnostics. */
+    if (this.opts.breakOnError !== false) {
+      this.failOnRecordedError();
     }
     const document = result.document;
     if (!document) {
