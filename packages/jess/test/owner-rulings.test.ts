@@ -192,7 +192,7 @@ describe('owner rulings (Less 5)', () => {
     await expect(render('@m: screen;\n@media @m { .a { b: c; } }')).rejects.toThrow();
   });
 
-  it('P48 (owner 2026-10-16): selector(<selector-list>) is a selector capture in .less and .jess, an ordinary call in .scss', async () => {
+  it('P49 (owner 2026-10-16): selector(<selector-list>) is a selector capture in .less and .jess, an ordinary call in .scss', async () => {
     await expect(render('@s: selector(.a, .b > .c);\n@{s} { d: e; }')).resolves.toBe('.a,\n.b > .c {\n  d: e;\n}\n');
     await expect(compile('$s: selector(.a, .b > .c);\n${s} { d: e; }', '.jess')).resolves.toBe('.a,\n.b > .c {\n  d: e;\n}\n');
     await expect(compile('.x { v: selector(a, b); }', '.scss')).resolves.toBe('.x {\n  v: selector(a, b);\n}\n');

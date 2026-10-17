@@ -408,6 +408,44 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/legacy-ie-syntax')).toBe(false);
     });
 
+    /* Ledger P49: what selector() cannot capture, and the removed `*[…]`, parse and are errors (P45). */
+    it.each([
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(1px); }\n.after { color: red; }', '1px'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', '.a, @x'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(); }\n.after { color: red; }', 'selector()'],
+      ['less', 'parse/removed-selector-capture', '.legacy { a: *[.a, .b]; }\n.after { color: red; }', '*[.a, .b]'],
+      ['jess', 'parse/selector-capture-argument', '.legacy { a: selector($x); }\n.after { color: red; }', '$x'],
+      ['jess', 'parse/removed-selector-capture', '.legacy { a: *[.a]; }\n.after { color: red; }', '*[.a]']
+    ])('underlines %s %s without losing the document', (languageId, code, input, underlined) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(item => item.code === code);
+
+      expect(diagnostic).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe(underlined);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it.each([
+      ['less', '.x { a: selector(.a > .b, &.c); }'],
+      ['jess', '.x { a: selector(.a > .b, &.c); }'],
+      ['css', '.x { a: selector(1px); }'],
+      ['scss', '.x { a: selector(1px); }']
+    ])('reports no selector-capture error for %s %s', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).filter(item => String(item.code).includes('selector-capture'))).toEqual([]);
+    });
+
     it('recovers an unfinished Less backtick value at the declaration boundary', () => {
       const engine = createEngine();
       const input = '.legacy { value: `1 + 1; }\n.after { color: red; }';

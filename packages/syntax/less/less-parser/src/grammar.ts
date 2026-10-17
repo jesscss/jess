@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -50,6 +50,8 @@ import {
   foldFunctionCondition,
   foldMixinGuards,
   reportConditionKeywordCase,
+  removedSelectorCaptureFrom,
+  selectorCaptureFrom,
   functionConditionOperandFrom,
   functionConditionParenFrom,
   functionConditionTermFrom,
@@ -227,7 +229,8 @@ type LessRules = {
   CallArgumentValue: Combinator<MixinCallArgument['value']>;
   FunctionStatement: Combinator<Statement | string>;
   Value: Combinator<ValueNode>;
-  SelectorCapture: Combinator<SelectorCapture>;
+  SelectorCapture: Combinator<SelectorCapture | Any>;
+  RemovedSelectorCapture: Combinator<Any>;
   MathAtom: Combinator<ValueNode>;
   calcValueAtom: Combinator<unknown>;
   CalcProduct: Combinator<ValueNode>;
@@ -517,6 +520,18 @@ const unknownAtRuleBody = noTrivia(scanTo(
   literal('}'),
   { skip: [unknownAtRuleBrace] }
 ));
+/*
+ * What a `selector(` or a removed `*[` holds past the point the selector list
+ * stops: read to the closing delimiter as opaque text, nested groups and
+ * strings inert (P45: well-formed input parses; the reducer reports it).
+ */
+const captureParens = balanced('(', ')', { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString] });
+const captureBrackets = balanced('[', ']', { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString] });
+const selectorCaptureRest = noTrivia(sequence(
+  not(literal(')')),
+  scanTo(literal(')'), { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString, captureParens, captureBrackets] })
+));
+const removedCaptureBody = scanTo(literal(']'), { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString, captureParens, captureBrackets] });
 // Trivia that may surround an arithmetic operator: whitespace, `//` line
 // comments, or `/* */` block comments. This matches CSS, where `*` and `/` need
 // no whitespace and comments are freely allowed around them (`1/**/*/**/2`,
@@ -2309,6 +2324,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Dimension,
       g.FormatFunction,
       IdentifierOrFunction,
+      g.RemovedSelectorCapture,
       g.EscapedParen,
       g.QueryColonFeature,
       g.Paren,
@@ -4770,21 +4786,41 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   /*
    * `selector(<selector-list>)` in value position is a selector capture (owner
-   * 2026-10-16, DESIGN-DECISIONS P48): `IdentifierOrFunction` routes the
+   * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
    * `selector(` opener here, and its argument is the `:is()` family's
    * `pseudoSelectorArgument`, read as `pseudoSelectorRouted` reads it: the
    * padding before `)` is the argument's. It is a selector-valued Less value,
    * not a text capture: the selector grammar owns every branch boundary and the
    * AST keeps the canonical branches for selector interpolation.
+   *
+   * Where the list cannot start or cannot continue (`selector()`,
+   * `selector(1px)`, `selector(@x)`), the rest of the argument is read to `)`
+   * as `InvalidSelectorCaptureArgument` and reported, and the parse carries on
+   * (P45).
    */
+  const InvalidSelectorCaptureArgument = node(
+    'InvalidSelectorCaptureArgument',
+    selectorCaptureRest,
+    children => requireToken(children[0])
+  );
   const SelectorCapture = node(
     'SelectorCapture',
-    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(pseudoSelectorArgument, literal(')')))),
-    (children) => {
-      const selector = requireSelectorList(children[1]);
-      const branches = selector.selectors.map(selectorBranchCanonical);
-      return selectorCapture(branches, `selector(${branches.join(', ')})`);
-    }
+    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(
+      optional(pseudoSelectorArgument),
+      optional(InvalidSelectorCaptureArgument),
+      literal(')')
+    ))),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
+  );
+  /*
+   * `*[…]` was the selector capture before `selector(…)` replaced it (ledger
+   * P49). It still parses — a delim and a simple block — and is reported with
+   * its replacement (P45).
+   */
+  const RemovedSelectorCapture = node(
+    'RemovedSelectorCapture',
+    noTrivia(sequence(literal('*['), removedCaptureBody, literal(']'))),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => removedSelectorCaptureFrom(children, span, state)
   );
   const pseudoOpen = token(noTrivia(sequence(
     regex(/::?(?![ \t\n\r\f])/),
@@ -5590,6 +5626,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Dimension,
     Value,
     SelectorCapture,
+    RemovedSelectorCapture,
     MathAtom,
     calcValueAtom,
     CalcProduct,

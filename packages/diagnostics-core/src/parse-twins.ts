@@ -131,6 +131,8 @@ export function pushParseTwinDiagnostics(
   source: string,
   push: ParseTwinPusher
 ): void {
+  pushSelectorCaptureTwin(node, language, source, push);
+
   /*
    * Less v5 removes executable backtick values, but the tolerant CST keeps the
    * complete legacy construct as one node. Report from that node so editors
@@ -198,4 +200,41 @@ export function pushParseTwinDiagnostics(
       }
     );
   }
+}
+
+/*
+ * Selector capture (ledger P49), `.less` and `.jess` only: a `selector(…)` whose
+ * argument is not a selector list, and the removed `*[…]`, parse as their own
+ * CST nodes, and the compiler fails on them; the editor underlines the
+ * argument, or the whole `*[…]`.
+ */
+function pushSelectorCaptureTwin(
+  node: CssCstNode,
+  language: JessLanguage,
+  source: string,
+  push: ParseTwinPusher
+): void {
+  if (language !== 'less' && language !== 'jess') {
+    return;
+  }
+  const gt = node.grammarType;
+  if (gt === 'RemovedSelectorCapture') {
+    const written = source.slice(absoluteStart(node), absoluteEnd(node));
+    const error = ERR.removedSelectorCapture({ meta: { list: written.slice(2, -1).trim() } });
+    push('parse/removed-selector-capture', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+    return;
+  }
+  if (gt !== 'SelectorCapture') {
+    return;
+  }
+  const parts = cstChildrenOf(node).filter(isCstNode);
+  if (parts.length > 0 && !parts.some(part => part.grammarType === 'InvalidSelectorCaptureArgument')) {
+    return;
+  }
+
+  /* The argument, between `selector(` and `)`, as the compiler reports it; the whole call when it is empty. */
+  const start = absoluteStart(node) + 'selector('.length;
+  const end = absoluteEnd(node) - 1;
+  const error = ERR.selectorCaptureArgument();
+  push('parse/selector-capture-argument', 'error', error.message, parts.length > 0 ? { ...node.span, start, end } : node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
 }

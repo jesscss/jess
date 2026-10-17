@@ -72,3 +72,12 @@ concept is identical across syntaxes; only the spelling differs.
 CSS's feature test — `@supports selector(.a > .b)` and `if(supports(selector(.a)): …)`
 test whether the browser supports the selector — and in plain CSS and SCSS a
 value-position `selector()` is an ordinary function call.
+
+<AudienceGate include={['less', 'jess']}>
+
+An argument that is not a selector list (`selector(1px)`, `selector()`) is an error
+at the argument, and so is the earlier `*[ … ]` spelling, which now reports the
+`selector( … )` to write instead. The rest of the stylesheet still parses, so an
+editor shows every such error at once.
+
+</AudienceGate>

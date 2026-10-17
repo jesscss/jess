@@ -40,7 +40,7 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
    bare `*[.notice]`. The docs (which show `$*[…]`) are WRONG and get the `$`
    dropped in the docs-update task. The `$extend`/dynamic-property forms that reuse
    capture reconcile to bare `*[…]` too.
-   **Superseded 2026-10-16 (owner, ledger P48):** the capture is now spelled
+   **Superseded 2026-10-16 (owner, ledger P49):** the capture is now spelled
    `selector(<selector-list>)` — the `selector(` function token dispatches to
    the `:is()` selector-list production — and `*[…]` is removed. The `*[…]`
    spellings below in this file are the history of that earlier syntax.
@@ -113,7 +113,7 @@ semantics: apply ONLY plain `Ruleset`s, whole-selector match, merge-ALL; paramet
 
 ## `*[.foo]()` bracket-capture CALL is ruleset-only (DONE)
 History: the legacy `tree/` engine this section describes is deleted, and the
-`*[…]` capture spelling is removed (ledger P48); the AST grammar has no capture call.
+`*[…]` capture spelling is removed (ledger P49); the AST grammar has no capture call.
 Correction to an earlier N/A: the bracket-capture CALL `*[.foo]()` IS made
 ruleset-only, and it's a DIFFERENT construct from the dot mixin-ruleset call
 `*.foo()` — so the change is surgical and leaves `*.foo()` untouched:

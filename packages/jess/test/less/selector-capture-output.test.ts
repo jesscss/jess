@@ -137,7 +137,7 @@ describe('Less selector-capture output boundaries', () => {
 
 /*
  * `selector(<selector-list>)` is the selector-capture spelling in `.less` and
- * `.jess` (owner 2026-10-16); `*[…]` is gone. Inside a support condition
+ * `.jess` (owner 2026-10-16); `*[…]` is an error naming it. Inside a support condition
  * `selector()` stays CSS's feature test, and `.css` / `.scss` keep value-position
  * `selector()` an ordinary function call.
  */
@@ -171,9 +171,50 @@ describe('selector() capture', () => {
     await expect(render('@s: selector( .a>.b ,satsuma );\n.x { v: @s; }', false)).resolves.toBe('.x {\n  v: selector(.a > .b, satsuma);\n}\n');
   });
 
-  it('rejects the removed `*[…]` spelling in .less and .jess', async () => {
-    await expect(render('@s: *[apple, satsuma];\n@{s} { c: d; }', false)).rejects.toThrow();
-    await expect(render('$s: *[apple, satsuma];\n${s} { c: d; }', false, 'jess')).rejects.toThrow();
+  /*
+   * What selector() cannot capture, and the removed `*[…]`, parse (P45) and are
+   * then an error at their span (ledger P49).
+   */
+  it.each([
+    ['less', '.x { a: selector(1px); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
+    ['less', '.x { a: selector(@v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
+    ['less', '.x { a: selector(); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 9]],
+    ['less', '@s: *[apple, satsuma];\n@{s} { c: d; }', 'parse/removed-selector-capture', [1, 5]],
+    ['jess', '.x { a: selector($v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
+    ['jess', '$s: *[apple, satsuma];\n${s} { c: d; }', 'parse/removed-selector-capture', [1, 5]]
+  ] as const)('parses %s `%s`, then reports its error', async (language, source, code, [line, column]) => {
+    const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
+    expect(result.errors.map(error => [error.code, error.phase, error.line, error.column])).toEqual([[code, 'parse', line, column]]);
+  });
+
+  /*
+   * An error-severity diagnostic fails the compile (owner 2026-10-16). The
+   * compiler does not yet stop on an error a parser recovered from; these flip
+   * when it does (P49 NOTES).
+   */
+  it.fails.each([
+    ['less', '.x { a: selector(1px); }'],
+    ['less', '.x { a: *[.a]; }'],
+    ['jess', '.x { a: selector(1px); }'],
+    ['jess', '.x { a: *[.a]; }']
+  ] as const)('fails the %s compile of `%s`', async (language, source) => {
+    await expect(render(source, false, language)).rejects.toThrow();
+  });
+
+  it('names the replacement for a removed `*[…]`', async () => {
+    const result = await new Compiler().renderToResult({ source: '@s: *[.a, .b > .c];', filePath: 'entry.less', extension: '.less' }, { quiet: true });
+    expect(result.errors[0]).toMatchObject({ message: 'Selector capture is now written selector(…).', fix: 'Write selector(.a, .b > .c).' });
+  });
+
+  /* A capture in a calc() operand or a var() name is an operand like any other: written as authored, no crash. */
+  it('writes a capture read as a calc() operand or a var() name as authored', async () => {
+    await expect(render('.x { a: calc(selector(.a) + 1px); b: var(selector(.c)); }', false)).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n  b: var(selector(.c));\n}\n');
+    await expect(render('.x { a: calc(selector(.a) + 1px); }', false, 'jess')).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n}\n');
+  });
+
+  /* Follow-up (P49 NOTES): an interpolated selector is not captured yet; today it takes the error path above. */
+  it.fails('captures an interpolated selector', async () => {
+    await expect(render('@x: ~".a";\n@s: selector(@{x}, .b);\n@{s} { c: d; }', false)).resolves.toBe('.a,\n.b {\n  c: d;\n}\n');
   });
 
   it('converts to the same selector() capture in .jess', () => {

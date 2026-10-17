@@ -964,6 +964,27 @@ export const ERR = {
     });
   },
 
+  /**
+   * A value-position `selector(…)` whose argument is not a selector list
+   * (ledger P49): parsed, then an error (P45).
+   */
+  selectorCaptureArgument(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/selector-capture-argument',
+      phase: 'parse',
+      ...args
+    });
+  },
+
+  /** The removed `*[…]` selector capture (ledger P49): parsed, then an error naming `selector(…)` (P45). */
+  removedSelectorCapture(args: Common & { meta: { list: string } }) {
+    return makeJessError({
+      code: 'parse/removed-selector-capture',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   // Plugin
   /**
    * A plugin reached for an API this compiler deliberately does not provide

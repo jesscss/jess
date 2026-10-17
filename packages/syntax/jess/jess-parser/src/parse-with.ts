@@ -26,7 +26,7 @@ import {
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
 import type { jessGrammar } from './grammar/ast.js';
-import { JessParseError } from './parse-error.js';
+import { JessParseError, type JessRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
 
 /** The rule map both compiled Jess AST variants expose. */
@@ -218,7 +218,27 @@ function lineOptions(input: string, span: Span): {
   };
 }
 
+/** A parse that recovered: the document, and the located errors it carried on past (ledger P45). */
+export interface JessParsed {
+  readonly document: Stylesheet;
+  readonly recovered: readonly JessRecoveredError[];
+}
+
+/** The document, or the first problem the grammar recovered from, raised. */
 export function parseWith(grammar: JessAstGrammar, input: string, options: JessParseOptions = {}): Stylesheet {
+  const { document, recovered } = parseRecoveringWith(grammar, input, options);
+  if (recovered[0] !== undefined) {
+    throw recovered[0];
+  }
+  return document;
+}
+
+/**
+ * The document with the problems the grammar recovered from (P45: a
+ * well-formed shape Jess gives no meaning to is a located error, and the parse
+ * carries on). A shape that is not well-formed still throws.
+ */
+export function parseRecoveringWith(grammar: JessAstGrammar, input: string, options: JessParseOptions = {}): JessParsed {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -227,12 +247,14 @@ export function parseWith(grammar: JessAstGrammar, input: string, options: JessP
 
   /*
    * `state.source` lets the CSS base's media reducers keep a
-   * `<general-enclosed>` query group as written (ledger N14).
+   * `<general-enclosed>` query group as written (ledger N14);
+   * `state.diagnostics` collects what the grammar recovered from (P45).
    */
+  const diagnostics: JessRecoveredError[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics }, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok) {
     throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));
@@ -283,5 +305,5 @@ export function parseWith(grammar: JessAstGrammar, input: string, options: JessP
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
   validateJessOptions(document, options);
-  return document;
+  return { document, recovered: [...diagnostics].sort((a, b) => a.offset - b.offset) };
 }

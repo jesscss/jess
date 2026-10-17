@@ -1,7 +1,7 @@
 # Assignable control nodes — mixins / `each` / `$for` / `$if` as value-returning nodes
 
 Status: DESIGN ONLY (owner-decision input). No production code changed.
-Spelling: the selector capture is written `selector(…)` throughout (ledger P48, 2026-10-16; it was `*[…]` when this plan was drafted).
+Spelling: the selector capture is written `selector(…)` throughout (ledger P49, 2026-10-16; it was `*[…]` when this plan was drafted).
 Worktree: `/Users/matthew/git/worktrees/jess-trivia-cleanup`, branch `feat/selector-list-cast-distribute` (off dev).
 Parseman: `/Users/matthew/git/oss/parser-thing` @ v0.23.0 (symlinked).
 

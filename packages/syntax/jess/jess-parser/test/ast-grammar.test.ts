@@ -5,7 +5,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
-import { JessParseError, parse } from '../src/index.js';
+import { JessParseError, parse, parseRecovering } from '../src/index.js';
 import { jessGrammar } from '../src/grammar.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -1134,11 +1134,23 @@ describe('Jess AST grammar facts', () => {
     expect(parse('$s: selector(a), selector(b);')).toMatchObject({
       rules: [{ value: { type: 'List', value: [{ type: 'SelectorCapture', branches: ['a'] }, { type: 'SelectorCapture', branches: ['b'] }] } }]
     });
+  });
 
-    for (const invalid of ['$targets: *[.notice];', '$targets: *[apple, satsuma];', '$targets: selector($[selector]);', '$targets: selector(.card-$[tone]);', '$targets: selector(.card:not($[tone]));', '$targets: selector(.card:nth-child(2n+1of .item));']) {
-      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+  it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
+    for (const [source, code, at] of [
+      ['$t: selector($[selector]);', 'parse/selector-capture-argument', '$[selector]'],
+      ['$t: selector(.card-$[tone]);', 'parse/selector-capture-argument', '.card-$[tone]'],
+      ['$t: selector(1px);', 'parse/selector-capture-argument', '1px'],
+      ['$t: selector($x);', 'parse/selector-capture-argument', '$x'],
+      ['$t: selector( .a, "b" );', 'parse/selector-capture-argument', ' .a, "b" '],
+      ['$t: selector();', 'parse/selector-capture-argument', 'selector()'],
+      ['$t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
+      ['$t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
+    ] as const) {
+      const { document, recovered } = parseRecovering(source);
+      expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`), source).toEqual([`${code} ${at}`]);
+      expect(document.rules[0], source).toMatchObject({ value: { type: 'Any', src: source.slice(4, -1) } });
+      expect(() => parse(source), source).toThrow(SyntaxError);
     }
   });
 

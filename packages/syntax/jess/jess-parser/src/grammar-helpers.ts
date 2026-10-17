@@ -19,9 +19,10 @@
  * parameterised by.
  */
 
-import type { FieldCapture, FieldMap } from 'parseman';
-import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
+import type { FieldCapture, FieldMap, Span } from 'parseman';
+import { JessRemovedSelectorCaptureError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
+import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCapture, isSelectorList, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
+import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string; readonly start: number };
@@ -472,6 +473,62 @@ function sourceFromState(state: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * A problem the grammar recovered from (P45): kept on the run's
+ * `state.diagnostics`, or raised by a raw-grammar run that keeps none.
+ */
+function reportRecovered(error: JessRecoveredError, state: unknown): void {
+  const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
+  if (!Array.isArray(sink)) {
+    throw error;
+  }
+  sink.push(error);
+}
+
+/** A raw child holding written text — not a selector node, not a padding run. */
+function isWrittenToken(child: unknown): child is Token {
+  return isToken(child) && child.value.trim() !== '';
+}
+
+/** The written token between a construct's opening and closing delimiter tokens, if any. */
+function writtenTokenBetween(children: readonly unknown[]): Token | undefined {
+  for (let index = 1; index < children.length - 1; index += 1) {
+    const child = children[index];
+    if (isWrittenToken(child)) {
+      return child;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * `selector(…)` in a value (owner 2026-10-16, ledger P49): a capture of the
+ * selector list the grammar read. An argument that is not one — nothing, or a
+ * rest the list could not continue into — is an error diagnostic at the
+ * argument, and the call is kept as its written text (P45).
+ */
+function selectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): SelectorCapture | Any {
+  const selector = children.find(isSelectorList);
+  const rest = writtenTokenBetween(children);
+  if (selector !== undefined && rest === undefined) {
+    const branches = selector.selectors.map(selectorBranchCanonical);
+    return selectorCapture(branches, `selector(${branches.join(', ')})`);
+  }
+  const open = children[0];
+  const close = children.at(-1);
+  const start = isSpannedToken(open) ? open.span.end : span.start;
+  const end = isSpannedToken(close) ? close.span.start : span.end;
+  reportRecovered(end > start ? new JessSelectorCaptureArgumentError(start, end) : new JessSelectorCaptureArgumentError(span.start, span.end), state);
+  return any(sourceFromState(state)?.slice(span.start, span.end) ?? `selector(${rest?.value ?? ''})`);
+}
+
+/** The removed `*[…]` capture (ledger P49): an error diagnostic naming `selector(…)`, kept as its written text (P45). */
+function removedSelectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): Any {
+  const list = writtenTokenBetween(children)?.value.trim() ?? '';
+  reportRecovered(new JessRemovedSelectorCaptureError(span.start, span.end, list), state);
+  return any(sourceFromState(state)?.slice(span.start, span.end) ?? `*[${list}]`);
+}
+
 function interpolationValue(fact: ExpressionFact): Interpolation {
   if (!isInterpolation(fact.value)) {
     throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
@@ -898,6 +955,8 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
 }
 
 export {
+  removedSelectorCaptureFrom,
+  selectorCaptureFrom,
   requireToken,
   requireFields,
   jessCombinator,

@@ -881,16 +881,18 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('.notice,\n.tail:nth-child(-n+2) {\n  color: red;\n}\n');
+  });
 
-    for (const invalid of [
-      '@targets: selector(@{selector});',
-      '@targets: selector(.card-@{tone});',
-      '@targets: selector(.card:not(@{tone}));',
-      '@targets: *[.notice];',
-      '@targets: * [.notice];'
-    ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
-    }
+  it('returns the document with an error for what selector() cannot capture and for the removed `*[…]` (P45)', () => {
+    const source = '.a { b: selector(1px); }\n.c { d: *[.e, .f]; }\n.g { h: i; }';
+    const result = safeParse('/entry.less', source);
+
+    expect(result.document?.rules).toHaveLength(3);
+    expect(result.errors.map(error => [error.code, error.line, error.column, error.fix])).toEqual([
+      ['parse/selector-capture-argument', 1, 18, 'Write a selector list, for example selector(.a, .b > .c).'],
+      ['parse/removed-selector-capture', 2, 9, 'Write selector(.e, .f).']
+    ]);
+    expect(() => parse(source)).toThrow('selector() takes a selector list.');
   });
 
   it('retains top-level comments as public Stylesheet trivia', () => {

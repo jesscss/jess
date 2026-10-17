@@ -4,6 +4,7 @@ import type { Declaration, Ruleset, SelectorBranch, SelectorTerm, Stylesheet } f
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessGrammar } from '../src/grammar.js';
+import type { LessRecoveredError } from '../src/parse-error.js';
 
 /*
  * `math:` is a PARSE-TIME input (ledger P1): the same bytes produce a different
@@ -925,23 +926,27 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('rejects dynamic content inside selector() and the removed `*[…]` capture spelling', () => {
-    for (const invalid of [
-      '@targets: selector(@{selector});',
-      '@targets: selector(.card-@{tone});',
-      '@targets: selector(.card:not(@{tone}));',
-      '@targets: *[.notice];',
-      '@targets: *[apple, satsuma];'
-    ]) {
-      const rejected = run(lessGrammar.Document, invalid, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+  it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
+    for (const [source, code, at] of [
+      ['@t: selector(@{selector});', 'parse/selector-capture-argument', '@{selector}'],
+      ['@t: selector(.card-@{tone});', 'parse/selector-capture-argument', '.card-@{tone}'],
+      ['@t: selector(1px);', 'parse/selector-capture-argument', '1px'],
+      ['@t: selector(@x);', 'parse/selector-capture-argument', '@x'],
+      ['@t: selector(.a, "b");', 'parse/selector-capture-argument', '.a, "b"'],
+      ['@t: selector();', 'parse/selector-capture-argument', 'selector()'],
+      ['@t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
+      ['@t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
+    ] as const) {
+      const diagnostics: LessRecoveredError[] = [];
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace,
+        state: { ...LESS_TEST_STATE, source, document: { functions: { ambient: true }, diagnostics } }
       });
-      expect(
-        rejected.ok
-        && rejected.unconsumedFrom === null
-        && isStylesheet(rejected.value),
-        invalid
-      ).toBe(false);
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+
+      /* A reducer may run more than once; `parse()` keeps one report per item, as here. */
+      expect([...new Set(diagnostics.map(d => `${d.code} ${source.slice(d.offset, d.endOffset)}`))], source).toEqual([`${code} ${at}`]);
+      expect((result.value as Stylesheet).rules[0], source).toMatchObject({ value: { type: 'Any', src: source.slice(4, -1) } });
     }
   });
 
