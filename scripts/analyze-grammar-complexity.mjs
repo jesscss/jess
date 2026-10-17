@@ -88,6 +88,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'node:module';
+import { LOADER_HOOK, BALANCED_PINS, DIALECTS } from './generate-railroad-diagrams.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -95,58 +96,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const UNREADABLE_AT = 30;      // symbols
 const TOO_MANY_ROWS = 10;      // stacked alternatives in the rule's own diagram
 const CHAINS_UNBOUNDED = 1e6;  // above this, report "unbounded" rather than a fiction
-
-const LOADER_HOOK = `
-import { existsSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-const strip = (context) => {
-  const attrs = context && context.importAttributes
-  if (!attrs || attrs.type !== 'macro') return context
-  const rest = { ...attrs }
-  delete rest.type
-  return { ...context, importAttributes: rest }
-}
-export async function resolve(specifier, context, nextResolve) {
-  const ctx = strip(context)
-  // A source dialect must compose the source CSS base, not its macro-built table.
-  if (specifier === '@jesscss/css-parser/grammar/base') {
-    return {
-      url: ${JSON.stringify(pathToFileURL(join(ROOT, 'packages/syntax/css/css-parser/src/grammar.ts')).href)},
-      shortCircuit: true
-    }
-  }
-  if (specifier.startsWith('.') && specifier.endsWith('.js') && ctx.parentURL) {
-    const url = new URL(specifier, ctx.parentURL)
-    const ts = fileURLToPath(url).slice(0, -3) + '.ts'
-    if (existsSync(ts)) return { url: pathToFileURL(ts).href, shortCircuit: true }
-  }
-  return nextResolve(specifier, ctx)
-}
-export async function load(url, context, nextLoad) {
-  return nextLoad(url, strip(context))
-}
-`;
-
-/** Same pins the diagram generator uses — without them `buildSpecModel` does not
- *  terminate on a rule containing `balanced()`. See generate-railroad-diagrams.mjs. */
-const BALANCED_PINS = {
-  css: { AtRulePreludeGroup: 'balanced ( … ) or [ … ]' },
-  less: {
-    AtRulePrelude: 'at-rule prelude text, with balanced ( … ) / [ … ] groups',
-    OpaqueAtPrelude: 'opaque at-rule prelude text, with balanced ( … ) / [ … ] groups'
-  },
-  scss: { AtRootFilterPrelude: 'balanced ( … )' },
-  jess: {}
-};
-
-const DIALECTS = [
-  { id: 'css', title: 'CSS', pkg: 'packages/syntax/css/css-parser', exportName: 'cssGrammar' },
-  { id: 'less', title: 'Less', pkg: 'packages/syntax/less/less-parser', exportName: 'lessGrammar' },
-  { id: 'scss', title: 'SCSS', pkg: 'packages/syntax/scss/scss-parser', exportName: 'scssGrammar' },
-  { id: 'jess', title: 'Jess', pkg: 'packages/syntax/jess/jess-parser', exportName: 'jessGrammar' }
-];
-
-const ENTRY = 'Stylesheet';
 
 const BOXES = new Set(['terminal', 'ref', 'annotation']);
 const OPS = new Set(['star', 'plus', 'opt', 'sepBy']);
