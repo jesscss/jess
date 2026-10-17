@@ -456,7 +456,9 @@ describe('JessLanguageServiceEngine', () => {
       ['less', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
       ['less', 'a {\n  x: foo(a=b=c);\n}\n', '='],
       ['scss', 'a {\n  x: a~b;\n}\n', '~'],
-      ['jess', 'a {\n  x: foo(a==b);\n}\n', '==']
+      ['jess', 'a {\n  x: foo(a==b);\n}\n', '=='],
+      ['css', 'a {\n  color: var(--brand, $primary);\n}\n', '$'],
+      ['jess', 'a {\n  margin: var(--gap, a.b);\n}\n', '.']
     ])('reports invalid value punctuation (%s: %s) at the declaration', (languageId, input, delim) => {
       const engine = createEngine();
       const doc = createDocument(languageId, input);
@@ -474,7 +476,8 @@ describe('JessLanguageServiceEngine', () => {
     it.each([
       ['less', 'a {\n  x: foo(a=b);\n  y: ~"a.b";\n}\n'],
       ['scss', '@use "sass:color";\na {\n  x: color.mix(red, blue);\n}\n'],
-      ['css', 'a {\n  --x: a.b~c;\n  y: attr(ns|foo);\n}\n']
+      ['css', 'a {\n  --x: a.b~c;\n  y: attr(ns|foo);\n}\n'],
+      ['css', 'a {\n  --y: var(--x, a.b);\n  width: attr(data-w type(<length>), 0px);\n  color: var(--brand, red);\n}\n']
     ])('does not report punctuation the dialect gives meaning (%s: %s)', (languageId, input) => {
       const engine = createEngine();
       const doc = createDocument(languageId, input);

@@ -58,14 +58,17 @@ export function invalidValuePunctuation(spelling: string): InvalidValueSyntax | 
 }
 
 /**
- * A call whose arguments are not an ordinary value: a `var()`, `env()` or
- * `attr()` fallback is any tokens, and `attr()`'s name takes a namespace `|`.
+ * How many leading arguments of a call are not a value: the first of `var()`
+ * (the custom-property name), `env()` (the variable name) and `attr()` (the
+ * attribute name, its namespace `|` and its `type(…)`). The fallback after it
+ * is substituted into the property, so it is a value (owner 2026-10-16: "errr...
+ * but a.b is not a valid value").
  */
-export function isAnyTokenFunction(name: string): boolean {
-  return name.length <= 4 && ANY_TOKEN_FUNCTION.test(name);
+export function nameArguments(name: string): number {
+  return name.length <= 4 && NAMED_FALLBACK_FUNCTION.test(name) ? 1 : 0;
 }
 
-const ANY_TOKEN_FUNCTION = /^(?:var|env|attr)$/i;
+const NAMED_FALLBACK_FUNCTION = /^(?:var|env|attr)$/i;
 
 /**
  * The first error in a declaration value, read from its parsed shape (owner
@@ -83,8 +86,9 @@ const ANY_TOKEN_FUNCTION = /^(?:var|env|attr)$/i;
  * anywhere in the same value. Only runs, comma lists, paren groups, call
  * arguments and the values of a call's branches and of a lowered `if()` are
  * entered. A branch condition, a dialect's own expression (a Less or SCSS
- * condition, a `.jess` `$(…)`), a lookup, a string and a `var()`, `env()` or
- * `attr()` call are leaves here.
+ * condition, a `.jess` `$(…)`), a lookup, a string and the name argument
+ * of a `var()`, `env()` or `attr()` call ({@link nameArguments}) are leaves
+ * here.
  */
 export function invalidValueSyntaxIn(value: ValueSlot, kept?: ValueCheckLane['s']): InvalidValueSyntax | undefined {
   if (isValueSlotArray(value)) {
@@ -110,11 +114,8 @@ export function invalidValueSyntaxIn(value: ValueSlot, kept?: ValueCheckLane['s'
        */
       return kept?.snapshotValues?.has(value) === true ? kept.invalidArguments.get(value) : invalidValuePunctuation(value.src);
     case 'FunctionCall': {
-      if (isAnyTokenFunction(value.name)) {
-        return undefined;
-      }
       let found: InvalidValueSyntax | undefined;
-      for (let i = 0; i < value.args.length; i++) {
+      for (let i = nameArguments(value.name); i < value.args.length; i++) {
         const arg = value.args[i]!;
         const branchValue = i === 0 && arg.name === undefined ? branchValueOf(arg.value) : undefined;
         const inner = branchValue !== undefined
