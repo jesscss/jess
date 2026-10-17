@@ -190,19 +190,34 @@ describe('what is not legacy IE syntax compiles', () => {
       expect(result.errors.map(error => error.code)).toEqual(['css/invalid-value-punctuation']);
     });
   });
+});
 
-  /*
-   * OPEN for the owner: a variable or a mixin argument holding either form
-   * reaches a declaration only through a reference, so it is not reported.
-   */
-  describe('not decided: written as authored, unreported', () => {
-    it.each([
-      ['scss', '$v: alpha(opacity=50);\na { filter: $v; }\n', 'filter: alpha(opacity=50);'],
-      ['jess', '$v: alpha(opacity=50);\na { filter: $v; }\n', 'filter: alpha(opacity=50);'],
-      ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\na { filter: @v; }\n', 'filter: progid:DX.Microsoft.Blur(false);'],
-      ['scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }\n', 'x: a = b;']
-    ] as const)('%s: a variable or mixin argument holding the form: %s', async (dialect, source, written) => {
-      expect(await clean(dialect, source)).toContain(written);
-    });
+/*
+ * A value a reference reaches is checked where it is written, as the same
+ * value written in the declaration is (owner 2026-10-16: *"Nah, variables
+ * aren't looser"*): the error is the declaration's that writes it.
+ */
+describe('legacy IE syntax through a reference fails the compile', () => {
+  it.each([
+    ['scss', '$v: alpha(opacity=50);\na { filter: $v; }\n', 2, 5],
+    ['jess', '$v: alpha(opacity=50);\na { filter: $v; }\n', 2, 5],
+    ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\na { filter: @v; }\n', 2, 5],
+    ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\n.m(@a) {\n  filter: @a;\n}\na { .m(@v); }\n', 3, 3],
+    ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(alpha(opacity=50)); }\n', 2, 3]
+  ] as const)('%s: %s', async (dialect, source, line, column) => {
+    const parsed = PLUGINS[dialect].safeParse!(`/proj/legacy-ie.${dialect}`, source);
+    expect(parsed.errors).toEqual([]);
+    const result = await compile(dialect, source);
+    expect(result.css).toBe('');
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([[CODE, line, column]]);
+  });
+
+  it.each([
+    ['scss', '$v: alpha(opacity=50);\na { x: y; --z: #{$v}; }\n'],
+    ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\na { x: y; --z: @v; }\n']
+  ] as const)('%s: unwritten or in a custom property, compiles: %s', async (dialect, source) => {
+    const result = await compile(dialect, source);
+    expect(result.errors).toEqual([]);
+    expect(result.css).not.toBe('');
   });
 });

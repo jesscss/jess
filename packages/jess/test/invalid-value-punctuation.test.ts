@@ -185,6 +185,67 @@ describe('invalid value punctuation fails the compile', () => {
   });
 });
 
+/*
+ * A value a reference reaches is checked where it is written, as the same
+ * value written in the declaration is (owner 2026-10-16: *"Nah, variables
+ * aren't looser"*): the error is the declaration's that writes it.
+ */
+describe('invalid value punctuation through a reference fails the compile', () => {
+  it.each([
+    ['less', '@v: a=b;\na { x: @v; }\n', '=', 2, 5],
+    ['less', '@v: @w;\n@w: a.b;\na { x: @v; }\n', '.', 3, 5],
+    ['less', '@v: a~b;\na { x: red @v; }\n', '~', 2, 5],
+    ['less', '@v: a~b;\na { x: foo(1, @v); }\n', '~', 2, 5],
+    ['less', '@v: a.b;\na { x+: @v; x+: c; }\n', '.', 2, 5],
+    ['less', '.m(@a) {\n  x: @a;\n}\na { .m(a.b); }\n', '.', 2, 3],
+    ['less', '@v: a.b;\n.m(@a) {\n  x: @a;\n}\na { .m(@v); }\n', '.', 3, 3],
+    ['less', '@v: a|b;\n@r: {\n  x: @v;\n};\na { @r(); }\n', '|', 3, 3],
+    ['less', '@c: { k: a.b; };\na { x: @c[k]; }\n', '.', 2, 5],
+    ['less', '@v: a.b;\na { x: @{v}; }\n', '.', 2, 5],
+    ['scss', '$v: a.b;\na { x: $v; }\n', '.', 2, 5],
+    ['scss', '$v: a^b;\na { x: #{$v}; }\n', '^', 2, 5],
+    ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a=b); }\n', '=', 2, 3],
+    ['scss', '$v: a.b;\na {\n  font: {\n    family: $v;\n  }\n}\n', '.', 3, 3],
+    ['jess', '$v: a~b;\na { x: $v; }\n', '~', 2, 5],
+    ['jess', '$m: { a: b.c };\na { x: $m.a; }\n', '.', 2, 5]
+  ] as const)('%s: %s', async (dialect, source, delim, line, column) => {
+    const parsed = PLUGINS[dialect].safeParse!(`/proj/punctuation.${dialect}`, source);
+    expect(parsed.errors).toEqual([]);
+    const result = await compile(dialect, source);
+    expect(result.css).toBe('');
+    expect(result.errors.map(error => [error.code, error.line, error.column, error.message])).toEqual([
+      [CODE, line, column, `\`${delim}\` is not valid in any CSS value`]
+    ]);
+  });
+
+  /* Legacy IE syntax is still the more specific error, reported once. */
+  it('less: a mixin argument holding a delim and, through a variable, legacy IE syntax', async () => {
+    const result = await compile('less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\n.m(@a) {\n  x: @a;\n}\na { .m(a~b @v); }\n');
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([['css/legacy-ie-syntax', 3, 3]]);
+  });
+
+  /* Only a value that is written is checked. */
+  it.each([
+    ['less', 'an unused variable', '@v: a.b;\na { x: y; }\n'],
+    ['less', 'an unwritten mixin argument', '@v: a.b;\n.m(@a) { x: y; }\na { .m(a.b); .m(@v); }\n'],
+    ['less', 'a custom property', '@v: a.b;\na { --x: @v; }\n'],
+    ['less', 'a var() fallback', '@v: a.b;\na { x: var(--y, @v); }\n'],
+    ['less', 'strings', '@v: a.b;\na { x: "@{v}"; y: ~"@{v}"; }\n'],
+    ['less', 'a url', '@v: a.b;\na { x: url(@v); }\n'],
+    ['less', 'conditions', '@v: a.b;\na { x: if((@v = a), b, c); y: boolean(@v = a); }\n'],
+    ['less', 'a guard', '.m(@a) when not (@a = a) { x: y; }\na { .m(a.b); }\n'],
+    ['less', 'a selector and a query', '@v: a.b;\n.c-@{v} { d: e; }\n@media (min-width: @v) { a { b: c; } }\n'],
+    ['scss', 'an unused variable', '$v: a.b;\na { x: y; }\n'],
+    ['scss', 'a custom property and a var() fallback', '$v: a.b;\na { --x: #{$v}; y: var(--z, $v); }\n'],
+    ['scss', 'a string', '$v: a.b;\na { x: "#{$v}"; }\n'],
+    ['jess', 'an unused variable and collection', '$v: a~b;\n$m: { a: b.c };\na { x: y; }\n']
+  ] as const)('%s: %s compiles', async (dialect, _label, source) => {
+    const result = await compile(dialect, source);
+    expect(result.errors).toEqual([]);
+    expect(result.css).not.toBe('');
+  });
+});
+
 describe('punctuation a dialect or CSS gives meaning compiles', () => {
   async function clean(dialect: Dialect, source: string): Promise<string> {
     const result = await compile(dialect, source);
@@ -305,16 +366,6 @@ describe('not decided: compiles, unreported', () => {
 
   it('css: a branch condition of an ordinary call', async () => {
     expect(await written('css', sheet('foo(a.b: c)'))).toContain('x: foo(a.b: c);');
-  });
-
-  it.each([
-    ['less', '@v: a=b;\na { x: @v; }\n', 'x: a=b;'],
-    ['less', '.m(@a) { x: @a; }\na { .m(a.b); }\n', 'x: a . b;'],
-    ['scss', '$v: a.b;\na { x: $v; }\n', 'x: a.b;'],
-    ['scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }\n', 'x: a = b;'],
-    ['jess', '$v: a~b;\na { x: $v; }\n', 'x: a~b;']
-  ] as const)('%s: a variable or mixin argument holding the delim: %s', async (dialect, source, css) => {
-    expect(await written(dialect, source)).toContain(css);
   });
 
   it.each([
