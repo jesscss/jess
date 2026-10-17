@@ -850,9 +850,9 @@ describe('public Less parse()', () => {
     });
   });
 
-  it('uses a static Less selector capture through the public AST and render route', () => {
+  it('uses a static Less selector() capture through the public AST and render route', () => {
     const source =
-      '@targets: *[.notice, .tail:nth-child(-n+2)]; @{targets} { color: red; }';
+      '@targets: selector(.notice, .tail:nth-child(-n+2)); @{targets} { color: red; }';
     const document = parse(source);
 
     expect(document).toMatchObject({
@@ -881,15 +881,28 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('.notice,\n.tail:nth-child(-n+2) {\n  color: red;\n}\n');
+  });
 
-    for (const invalid of [
-      '@targets: *[@{selector}];',
-      '@targets: *[.card-@{tone}];',
-      '@targets: *[.card:not(@{tone})];',
-      '@targets: * [.notice];'
-    ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
-    }
+  it('returns the document with an error for what selector() cannot capture and for the removed `*[…]` (P45)', () => {
+    const source = '.a { b: selector(1px); }\n.c { d: *[.e, .f]; }\n.g { h: i; }';
+    const result = safeParse('/entry.less', source);
+
+    expect(result.document?.rules).toHaveLength(3);
+    expect(result.errors.map(error => [error.code, error.line, error.column, error.fix])).toEqual([
+      ['parse/selector-capture-argument', 1, 18, 'Write a selector list, for example selector(.a, .b > .c).'],
+      ['parse/removed-selector-capture', 2, 9, 'Write selector(.e, .f).']
+    ]);
+    expect(() => parse(source)).toThrow('selector() takes a selector list.');
+  });
+
+  /* A report from an attempt the parser abandons is dropped: here the declaration reading of a nested rule. */
+  it('reports nothing for a `*[…]` in a nested rule\'s selector', () => {
+    expect(safeParse('/entry.less', '.x { a:hover *[href] { b: c; } }').errors).toEqual([]);
+  });
+
+  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
+  it.fails.each(['@t: * [.notice];', 'a { b: 2*[3]; }', 'a { b: b*[3]; }', '@t: selector(.a:not(@{t}));', '@t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+    expect(safeParse('/entry.less', source).document).toBeDefined();
   });
 
   it('retains top-level comments as public Stylesheet trivia', () => {
@@ -2172,7 +2185,7 @@ describe('public Less parse()', () => {
 
   it('returns and renders adjacent captured and quoted selector interpolation through the public route', () => {
     const source =
-      '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+      '@cap-a: selector(.a, .b); @cap-b: selector(.c, .d); @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
     const document = parse(source);
 
     expect(document).toMatchObject({

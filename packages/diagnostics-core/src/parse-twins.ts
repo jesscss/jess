@@ -1,4 +1,4 @@
-import { PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, isAnyTokenFunction, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
+import { ERR, PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, isAnyTokenFunction, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
 import type { CssCstNode } from '@jesscss/css-parser/cst-host';
 import {
   CUSTOM_DECLARATION_TYPES,
@@ -284,6 +284,7 @@ export function pushParseTwinDiagnostics(
   push: ParseTwinPusher
 ): void {
   const gt = node.grammarType;
+  pushSelectorCaptureTwin(node, language, source, push);
 
   /*
    * Less v5 removes executable backtick values, but the tolerant CST keeps the
@@ -352,4 +353,43 @@ export function pushParseTwinDiagnostics(
       }
     );
   }
+}
+
+/*
+ * Selector capture (ledger P49), `.less` and `.jess` only: a `selector(…)` whose
+ * argument is not a selector list, and the removed `*[…]`, parse as their own
+ * CST nodes, and the compiler fails on them; the editor underlines the
+ * argument, or the whole `*[…]`.
+ */
+function pushSelectorCaptureTwin(
+  node: CssCstNode,
+  language: JessLanguage,
+  source: string,
+  push: ParseTwinPusher
+): void {
+  if (language !== 'less' && language !== 'jess') {
+    return;
+  }
+  const gt = node.grammarType;
+  if (gt === 'RemovedSelectorCapture') {
+    const written = source.slice(absoluteStart(node), absoluteEnd(node));
+    const error = ERR.removedSelectorCapture({ meta: { list: written.slice(2, -1).trim() } });
+    push('parse/removed-selector-capture', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+    return;
+  }
+  if (gt !== 'SelectorCapture') {
+    return;
+  }
+  const parts = cstChildrenOf(node).filter(isCstNode);
+  const rest = parts.find(part => part.grammarType === 'InvalidSelectorCaptureArgument');
+  if (parts.length > 0 && rest === undefined) {
+    return;
+  }
+
+  /* The rest the selector list could not read, as the compiler reports it; the whole call when the argument holds nothing. */
+  const error = ERR.selectorCaptureArgument();
+  const at = rest === undefined
+    ? node.span
+    : { ...rest.span, end: absoluteStart(rest) + source.slice(absoluteStart(rest), absoluteEnd(rest)).trimEnd().length };
+  push('parse/selector-capture-argument', 'error', error.message, at, { phase: 'parse', reason: error.reason, fix: error.fix });
 }

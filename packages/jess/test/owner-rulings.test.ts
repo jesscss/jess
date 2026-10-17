@@ -192,6 +192,13 @@ describe('owner rulings (Less 5)', () => {
     await expect(render('@m: screen;\n@media @m { .a { b: c; } }')).rejects.toThrow();
   });
 
+  it('P49 (owner 2026-10-16): selector(<selector-list>) is a selector capture in .less and .jess, an ordinary call in .scss', async () => {
+    await expect(render('@s: selector(.a, .b > .c);\n@{s} { d: e; }')).resolves.toBe('.a,\n.b > .c {\n  d: e;\n}\n');
+    await expect(compile('$s: selector(.a, .b > .c);\n${s} { d: e; }', '.jess')).resolves.toBe('.a,\n.b > .c {\n  d: e;\n}\n');
+    await expect(compile('.x { v: selector(a, b); }', '.scss')).resolves.toBe('.x {\n  v: selector(a, b);\n}\n');
+    await expect(render('@supports selector(.a ~ .b) { .x { c: d; } }')).resolves.toBe('@supports selector(.a ~ .b) {\n  .x {\n    c: d;\n  }\n}\n');
+  });
+
   it('X3 (owner 2026-10-05): an all extend groups equal-specificity extenders into an :is() at the match', async () => {
     await expect(render('.a .c { color: red; }\n.d:extend(.c all) {}\n#e:extend(.c all) {}'))
       .resolves.toBe('.a :is(.c, .d),\n.a #e {\n  color: red;\n}\n');

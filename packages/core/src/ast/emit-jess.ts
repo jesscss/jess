@@ -762,7 +762,7 @@ class JessPrinter {
         }
         return `url(${node.value.type === 'Interpolation' ? this.template(node.value, 'string') : this.value(node.value, at)})`;
       case 'SelectorCapture':
-        return `*[${node.branches.join(', ')}]`;
+        return `selector(${node.branches.join(', ')})`;
       case 'List': {
         if (valueLayoutOf(node)?.some(sep => !/^[ \t]*[,/][ \t]*$/u.test(sep)) === true) {
           return gap('List', 'a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout');

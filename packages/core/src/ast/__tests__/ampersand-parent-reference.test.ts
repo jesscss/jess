@@ -175,7 +175,7 @@ describe('a `&` is a plain reference to a parent of several compounds', () => {
   });
 
   it('places a selector glued before `&` on each branch of a selector capture', () => {
-    expect(headers('@list: *[apple, pear]; @{list} { K }', '.fruit-cap-&').own).toBe('apple.fruit-cap-, pear.fruit-cap-');
+    expect(headers('@list: selector(apple, pear); @{list} { K }', '.fruit-cap-&').own).toBe('apple.fruit-cap-, pear.fruit-cap-');
   });
 
   it('writes escaped text a `&` references as written (owner 2026-10-09: "everywhere that is text should print AS WRITTEN")', () => {

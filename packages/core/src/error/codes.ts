@@ -29,6 +29,8 @@ export type JessErrorCode =
   | 'parse/invalid-mixin-argument'
   | 'parse/ambiguous-not'
   | 'parse/condition-keyword-case'
+  | 'parse/selector-capture-argument'
+  | 'parse/removed-selector-capture'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'compose/not-top-level'
@@ -220,6 +222,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Less condition keyword not lowercase',
       reason: 'A Less condition (a mixin guard, if() or boolean()) reads lowercase and, or and not; a CSS condition reads them in any case.',
       fix: 'Write the keyword in lowercase.'
+    }
+  ],
+  [
+    'parse/selector-capture-argument',
+    {
+      summary: 'selector() takes a selector list',
+      reason: 'In a value, selector() captures a selector list, the argument :is() takes, and this argument is not one.',
+      fix: 'Write a selector list, for example selector(.a, .b > .c).'
+    }
+  ],
+  [
+    'parse/removed-selector-capture',
+    {
+      summary: 'Selector capture is now written selector(…)',
+      reason: 'The `*[…]` selector capture is removed; a selector capture is written selector(<selector-list>).',
+      fix: 'Write selector(${list}).'
     }
   ],
   [

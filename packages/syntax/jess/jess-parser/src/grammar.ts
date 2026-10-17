@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
-import type { Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { NO_SPAN, any, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import type { Any, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -104,7 +104,9 @@ import {
   reduceSelectorTail,
   reduceSelectorList,
   dollarValueFromChildren,
-  foldCalcOperation
+  foldCalcOperation,
+  removedSelectorCaptureFrom,
+  selectorCaptureFrom
 } from './grammar-helpers.js';
 import type {
   ExpressionFact,
@@ -176,7 +178,7 @@ type JessRules = {
   CalcSequence: Combinator<ValueSlot>;
   calcFunctionArguments: Combinator<ValueSlot>;
   MathFunction: Combinator<FunctionCall>;
-  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
+  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url | SelectorCapture | Any]>;
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
@@ -219,7 +221,8 @@ type JessRules = {
   PseudoSelectorComplex: Combinator<SelectorBranch>;
   PseudoSelectorTail: Combinator<SelectorBranch>;
   PseudoSelectorList: Combinator<SelectorList>;
-  SelectorCapture: Combinator<SelectorCapture>;
+  SelectorCapture: Combinator<SelectorCapture | Any>;
+  RemovedSelectorCapture: Combinator<Any>;
   ComplexSelector: Combinator<SelectorBranch>;
   NestedSelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
@@ -588,6 +591,12 @@ const balancedBraces = balanced(
 );
 const rawParenInner = scanTo(
   literal(')'),
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
+);
+
+/* The `]`-closed twin of `rawParenInner`: the body of a removed `*[…]` capture (ledger P49). */
+const rawBracketInner = scanTo(
+  literal(']'),
   { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
 );
 
@@ -2410,20 +2419,45 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return children.filter((child): child is string => typeof child === 'string').join('');
     }
   );
-  const SelectorCapture = node<SelectorCapture>(
+
+  /*
+   * `selector(<selector-list>)` in value position is a selector capture (owner
+   * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
+   * `selector(` opener here, and its argument is the static selector list the
+   * `:is()` family takes, padded the same way. Where the list cannot start or
+   * cannot continue (`selector()`, `selector(1px)`, `selector($x)`), the rest
+   * of the argument is read to `)` as `InvalidSelectorCaptureArgument` and
+   * reported, and the parse carries on (P45). Its leading `not(')')` keeps it
+   * from matching empty (`scanTo` matches nothing when its sentinel is next);
+   * an empty argument is the reducer's to report.
+   */
+  const InvalidSelectorCaptureArgument = node<SpannedToken & Token>(
+    'InvalidSelectorCaptureArgument',
+    noTrivia(sequence(not(literal(')')), rawParenInner)),
+    children => scannedLeaf(children)
+  );
+  const SelectorCapture = node<SelectorCapture | Any>(
     'SelectorCapture',
     sequence(
-      literal('*['),
-      g.PseudoSelectorList,
-      literal(']')
+      routed(),
+      optional(rawWhitespace),
+      optional(g.PseudoSelectorList),
+      optional(rawWhitespace),
+      optional(InvalidSelectorCaptureArgument),
+      literal(')')
     ),
-    (children) => {
-      const branches = requireSelectorList(children[1]).selectors.map(selectorBranchCanonical);
-      return selectorCapture(
-        branches,
-        `*[${branches.join(', ')}]`
-      );
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
+  );
+
+  /*
+   * `*[…]` was the selector capture before `selector(…)` replaced it (ledger
+   * P49). It still parses — a delim and a simple block — and is reported with
+   * its replacement (P45).
+   */
+  const RemovedSelectorCapture = node<Any>(
+    'RemovedSelectorCapture',
+    noTrivia(sequence(literal('*['), rawBracketInner, literal(']'))),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => removedSelectorCaptureFrom(children, span, state)
   );
 
   /*
@@ -2731,6 +2765,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     caseInsensitiveWhen(
       'var(',
       g.VarCall
+    ),
+    caseInsensitiveWhen(
+      'selector(',
+      g.SelectorCapture
     ),
 
     /*
@@ -3203,7 +3241,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.DollarValue,
     g.ExpressionLambda,
     g.InterpolatedValue,
-    g.SelectorCapture,
+    g.RemovedSelectorCapture,
     g.CustomPropertyValue,
     g.UnicodeRange,
     g.IdentifierOrFunction,
@@ -6099,6 +6137,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelectorTail,
     PseudoSelectorList,
     SelectorCapture,
+    RemovedSelectorCapture,
     ComplexSelector,
     NestedSelectorList,
     Ruleset,

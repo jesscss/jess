@@ -10,7 +10,7 @@ import {
   type SafeParseOptions,
   type ValueEvaluator
 } from '@jesscss/core';
-import { parse, type JessParseOptions } from '@jesscss/jess-parser';
+import { parseRecovering, type JessParseOptions } from '@jesscss/jess-parser';
 
 /**
  * The selector policies for one document: the settings the host scopes to it
@@ -69,9 +69,10 @@ export class JessPlugin extends AbstractPlugin {
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     try {
+      const { document, recovered } = parseRecovering(source, parseOptionsFromSafeParse(parseOptions));
       return {
-        document: parse(source, parseOptionsFromSafeParse(parseOptions)),
-        errors: [],
+        document,
+        errors: recovered.map(error => parserDiagnostic({ dialect: 'Jess', error, filePath, source })),
         warnings: [],
         dialectDefaults: JESS_DIALECT_DEFAULTS
       };

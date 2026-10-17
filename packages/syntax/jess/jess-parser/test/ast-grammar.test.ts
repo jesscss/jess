@@ -5,7 +5,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
-import { JessParseError, parse } from '../src/index.js';
+import { JessParseError, parse, parseRecovering } from '../src/index.js';
 import { jessGrammar } from '../src/grammar.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -1099,8 +1099,8 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('parses a static selector list between *[…] delimiters and rejects dynamic selector content', () => {
-    const source = '$targets: *[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)];';
+  it('parses a static selector list inside selector() and rejects dynamic selector content', () => {
+    const source = '$targets: selector(.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2));';
     const cst = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -1117,7 +1117,7 @@ describe('Jess AST grammar facts', () => {
         value: {
           type: 'SelectorCapture',
           branches: ['.notice', 'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)', '.tail:nth-child(-n+2)'],
-          src: '*[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)]'
+          src: 'selector(.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2))'
         }
       }]
     });
@@ -1125,11 +1125,53 @@ describe('Jess AST grammar facts', () => {
       rules: [{ value: { type: 'SelectorCapture', branches: ['.notice', 'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)', '.tail:nth-child(-n+2)'] } }]
     });
 
-    for (const invalid of ['$targets: * [.notice];', '$targets: *[$[selector]];', '$targets: *[.card-$[tone]];', '$targets: *[.card:not($[tone])];', '$targets: *[.card:nth-child(2n+1of .item)];']) {
-      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    expect(parse('$s: selector( .a > .b ~ .c + .d , input[type=text], a:hover::before, &.x, & + & );')).toMatchObject({
+      rules: [{ value: { type: 'SelectorCapture', branches: ['.a > .b ~ .c + .d', 'input[type=text]', 'a:hover::before', '&.x', '& + &'] } }]
+    });
+    expect(parse('$s: SELECTOR(apple, satsuma);')).toMatchObject({
+      rules: [{ value: { type: 'SelectorCapture', branches: ['apple', 'satsuma'], src: 'selector(apple, satsuma)' } }]
+    });
+    expect(parse('$s: selector(a), selector(b);')).toMatchObject({
+      rules: [{ value: { type: 'List', value: [{ type: 'SelectorCapture', branches: ['a'] }, { type: 'SelectorCapture', branches: ['b'] }] } }]
+    });
+  });
+
+  it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
+    for (const [source, code, at] of [
+      ['$t: selector($[selector]);', 'parse/selector-capture-argument', '$[selector]'],
+      ['$t: selector(.card-$[tone]);', 'parse/selector-capture-argument', '$[tone]'],
+      ['$t: selector(1px);', 'parse/selector-capture-argument', '1px'],
+      ['$t: selector($x);', 'parse/selector-capture-argument', '$x'],
+      ['$t: selector( .a, "b" );', 'parse/selector-capture-argument', ', "b"'],
+      ['$t: selector();', 'parse/selector-capture-argument', 'selector()'],
+      ['$t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
+      ['$t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
+      ['$t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
+      ['$t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
+    ] as const) {
+      const { document, recovered } = parseRecovering(source);
+      expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`), source).toEqual([`${code} ${at}`]);
+      expect(document.rules[0], source).toMatchObject({ value: { type: 'Any' } });
+      expect(() => parse(source), source).toThrow(SyntaxError);
     }
+  });
+
+  /* A report from an attempt the parser abandons is dropped: here the declaration reading of a nested rule. */
+  it('reports nothing for a `*[…]` in a nested rule\'s selector', () => {
+    for (const source of ['.x { a:hover *[href] { b: c; } }', '.x { a:b *[c] { } }']) {
+      expect(parseRecovering(source).recovered, source).toEqual([]);
+      expect(() => parse(source), source).not.toThrow();
+    }
+  });
+
+  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
+  it.fails.each(['$t: * [.notice];', 'a { b: 2*[3]; }', '$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+    expect(parseRecovering(source).document).toBeDefined();
+  });
+
+  it('keeps selector() inside an @supports prelude the CSS feature test', () => {
+    const source = '@supports selector(.a ~ .b) { .x { c: d; } }';
+    expect(JSON.stringify(parse(source))).not.toContain('SelectorCapture');
   });
 
   it('keeps static selector-list structure aligned with ordinary selectors', () => {

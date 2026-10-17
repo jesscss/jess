@@ -19,6 +19,8 @@ export {
   LessAmbiguousNotError,
   LessBareVariableInterpolationError,
   LessConditionKeywordCaseError,
+  LessRemovedSelectorCaptureError,
+  LessSelectorCaptureArgumentError,
   LessDynamicCharsetError,
   LessImportPostludeError,
   LessInlineJavaScriptError,

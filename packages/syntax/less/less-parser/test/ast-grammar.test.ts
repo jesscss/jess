@@ -4,6 +4,7 @@ import type { Declaration, Ruleset, SelectorBranch, SelectorTerm, Stylesheet } f
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessGrammar } from '../src/grammar.js';
+import type { LessRecoveredError } from '../src/parse-error.js';
 
 /*
  * `math:` is a PARSE-TIME input (ledger P1): the same bytes produce a different
@@ -863,9 +864,9 @@ describe('Less AST grammar facts', () => {
     );
   });
 
-  it('constructs static Less selector captures as existing selector-valued facts', () => {
+  it('constructs a static selector() capture as a selector-valued fact', () => {
     const source =
-      '@targets: *[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)];';
+      '@targets: selector(.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1));';
     const cst = parseLessCst(source);
     const direct = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -888,27 +889,80 @@ describe('Less AST grammar facts', () => {
               '.card:not(.muted, .disabled):nth-child(-n+2)',
               '.tail:nth-child(2n+1)'
             ],
-            src: '*[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)]'
+            src: 'selector(.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1))'
           }
         }
       ]
     });
+  });
 
-    for (const invalid of [
-      '@targets: *[@{selector}];',
-      '@targets: *[.card-@{tone}];',
-      '@targets: *[.card:not(@{tone})];',
-      '@targets: * [.notice];'
-    ]) {
-      const rejected = run(lessGrammar.Document, invalid, {
+  it('reads every selector shape inside selector(), padded or not, as the capture\'s branches', () => {
+    const capture = (value: string) => {
+      const result = run(lessGrammar.Document, `@s: ${value};`, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
-      expect(
-        rejected.ok
-        && rejected.unconsumedFrom === null
-        && isStylesheet(rejected.value),
-        invalid
-      ).toBe(false);
+      expect(result.ok && result.unconsumedFrom === null, value).toBe(true);
+      return (result.value as Stylesheet).rules[0];
+    };
+
+    expect(capture('selector(apple, satsuma)')).toMatchObject({
+      value: { type: 'SelectorCapture', branches: ['apple', 'satsuma'], src: 'selector(apple, satsuma)' }
+    });
+    expect(capture('selector( .a > .b ~ .c + .d , input[type=text], a:hover::before, &.x, & + & )')).toMatchObject({
+      value: {
+        type: 'SelectorCapture',
+        branches: ['.a > .b ~ .c + .d', 'input[type=text]', 'a:hover::before', '&.x', '& + &']
+      }
+    });
+    expect(capture('SELECTOR(.a)')).toMatchObject({ value: { type: 'SelectorCapture', branches: ['.a'] } });
+    expect(capture('selector(a), selector(b)')).toMatchObject({
+      value: {
+        type: 'List',
+        value: [
+          { type: 'SelectorCapture', branches: ['a'] },
+          { type: 'SelectorCapture', branches: ['b'] }
+        ]
+      }
+    });
+  });
+
+  it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
+    for (const [source, code, at] of [
+      ['@t: selector(@{selector});', 'parse/selector-capture-argument', '@{selector}'],
+      ['@t: selector(.card-@{tone});', 'parse/selector-capture-argument', '@{tone}'],
+      ['@t: selector(1px);', 'parse/selector-capture-argument', '1px'],
+      ['@t: selector(@x);', 'parse/selector-capture-argument', '@x'],
+      ['@t: selector(.a, "b");', 'parse/selector-capture-argument', ', "b"'],
+      ['@t: selector();', 'parse/selector-capture-argument', 'selector()'],
+      ['@t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
+      ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
+      ['@t: *[x {]} y];', 'parse/removed-selector-capture', '*[x {]} y]'],
+      ['@t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
+      ['@t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
+    ] as const) {
+      const diagnostics: LessRecoveredError[] = [];
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace,
+        state: { ...LESS_TEST_STATE, source, document: { functions: { ambient: true }, diagnostics } }
+      });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+
+      /* A reducer may run more than once; `parse()` keeps one report per item, as here. */
+      expect([...new Set(diagnostics.map(d => `${d.code} ${source.slice(d.offset, d.endOffset)}`))], source).toEqual([`${code} ${at}`]);
+      expect((result.value as Stylesheet).rules[0], source).toMatchObject({ value: { type: 'Any' } });
+    }
+  });
+
+  it('keeps selector() inside an @supports prelude and a supports() if-test the CSS feature test', () => {
+    for (const source of [
+      '@supports selector(.a ~ .b) { .x { c: d; } }',
+      '.x { c: if(supports(selector(.a)): x; else: y); }'
+    ]) {
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      expect(JSON.stringify(result.value), source).not.toContain('SelectorCapture');
     }
   });
 
@@ -9325,7 +9379,7 @@ describe('Less AST grammar facts', () => {
 
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
     const source =
-      '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+      '@cap-a: selector(.a, .b); @cap-b: selector(.c, .d); @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
     const result = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });

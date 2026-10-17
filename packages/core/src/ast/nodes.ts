@@ -127,14 +127,14 @@ export interface Url extends SpanSlots {
 }
 
 /**
- * A Less selector-list CAPTURE value `*[…]` — a STRUCTURED list of selector
+ * A selector-list CAPTURE value `selector(…)` (`.less` and `.jess`) — a STRUCTURED list of selector
  * branches captured for interpolation into a selector position. The parser owns
  * the branch split (grammar `SelectorList`); `branches` holds the canonical text
  * of each captured complex selector, so the serializer never re-scans bytes for
  * top-level commas. Interpolated into a selector, the branches expand structurally:
  * a WHOLE-selector position emits them as comma-separated header branches, a
  * COMPOUND position compacts them into a single `:is(…)` group. As a plain value
- * (never the intended use) it emits its verbatim `src`.
+ * (never the intended use) it emits its `src`, the canonical `selector(…)` spelling.
  */
 export interface SelectorCapture {
   readonly type: 'SelectorCapture';

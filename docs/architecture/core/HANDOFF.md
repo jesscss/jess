@@ -3111,7 +3111,7 @@ or a completion milestone.
   existing typed keyframes and flat static mixin-call iterables/bindings), and
   inline `:extend(...)` rules with the same canonical statement body as an
   ordinary ruleset while retaining authored `ExtendInstruction` placement,
-  `*[selector-list]` capture delimiters around its explicit static
+  `selector(<selector-list>)` capture (P49) around its explicit static
   selector-list family (checked against ordinary selectors for that static
   subset; dynamic selector content is rejected only in capture),
   properties, a terminal declaration without a final semicolon, typed static

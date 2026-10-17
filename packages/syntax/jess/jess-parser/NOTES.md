@@ -40,6 +40,10 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
    bare `*[.notice]`. The docs (which show `$*[…]`) are WRONG and get the `$`
    dropped in the docs-update task. The `$extend`/dynamic-property forms that reuse
    capture reconcile to bare `*[…]` too.
+   **Superseded 2026-10-16 (owner, ledger P49):** the capture is now spelled
+   `selector(<selector-list>)` — the `selector(` function token dispatches to
+   the `:is()` selector-list production — and `*[…]` is removed. The `*[…]`
+   spellings below in this file are the history of that earlier syntax.
 2. **`$apply` — `$|…` is INVALID; drop the `$|`-glued shorthand entirely.** The
    class-merge surface is `$apply <selector-list>` (space after `$apply`), incl.
    comma-lists: `$apply .a, .b`. Lower it to whatever the earlier
@@ -63,8 +67,8 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   target, `*[.sel]` capture target) — corpus 09 (`bddeb55ac` + capture commit).
   Literal targets wrapped in a `BasicSelector` (a bare string crashes
   `Extend.writeSyntax`); node targets (Reference/SelectorCapture) used directly.
-- Selector capture `*[.notice]` / `*[.a, .b]` / `*[.foo .bar]` — corpus 10. Core
-  `SelectorCapture` wrapping a coerced Selector node; renders `*[…]`, NO `$`
+- Selector capture `selector(.notice)` / `selector(.a, .b)` / `selector(.foo .bar)` (then `*[…]`) — corpus 10. Core
+  `SelectorCapture` wrapping a coerced Selector node; renders `selector(…)`, NO `$`
   (adjudication #1). Inner: lone → BasicSelector, list → SelectorList, complex →
   ComplexSelector. Read from `children` (the comma-list array collapses to `""` in
   `spannedComponents`, so rawChildren is unusable for it).
@@ -108,6 +112,8 @@ semantics: apply ONLY plain `Ruleset`s, whole-selector match, merge-ALL; paramet
 - Tests: `core/src/tree/__tests__/apply.test.ts` (8 eval tests). Core 2745/0.
 
 ## `*[.foo]()` bracket-capture CALL is ruleset-only (DONE)
+History: the legacy `tree/` engine this section describes is deleted, and the
+`*[…]` capture spelling is removed (ledger P49); the AST grammar has no capture call.
 Correction to an earlier N/A: the bracket-capture CALL `*[.foo]()` IS made
 ruleset-only, and it's a DIFFERENT construct from the dot mixin-ruleset call
 `*.foo()` — so the change is surgical and leaves `*.foo()` untouched:
@@ -253,7 +259,7 @@ rediscovered.
   production is the outlier. Worked around by moving the comment above the block
   in `docs/jess/02-Language/10-namespaces-and-maps.mdx`.
 - **`$extend $type;` does not parse.** The documented selector-capture flow
-  (`$type: *[.notice]; .danger { $extend $type; }`) errors at the `$extend`
+  (`$type: selector(.notice); .danger { $extend $type; }`) errors at the `$extend`
   statement. `$extend .notice;` with a literal selector is fine, so the gap is
   the variable-valued target. Example 4 in
   `docs/jess/02-Language/08-interpolation.mdx` teaches the failing form.

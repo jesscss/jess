@@ -25,7 +25,7 @@ import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, 
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
-import { diagnosticsOf, functionScopeOf, requireLessParseState } from './parse-state.js';
+import { diagnosticsOf, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
 import { LessAmbiguousNotError, LessConditionKeywordCaseError, LessMixinArgumentError, LessUnsupportedVariableNameError, type LessMixinArgumentProblem, type LessRecoveredError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
@@ -2439,12 +2439,7 @@ function reportAmbiguousNot(operator: unknown, state: unknown): void {
     throw new TypeError('Less condition lost its comparison operator provenance.');
   }
   const start = operator.span.start + text.length - text.trimStart().length;
-  const error = new LessAmbiguousNotError(start, start + text.trim().length);
-  const sink = diagnosticsOf(state);
-  if (sink === null) {
-    throw error;
-  }
-  sink.push(error);
+  reportRecovered(new LessAmbiguousNotError(start, start + text.trim().length), state);
 }
 
 /**
@@ -2463,12 +2458,7 @@ function reportConditionKeywordCase(keyword: unknown, state: unknown): void {
     return;
   }
   const start = keyword.span.start + text.length - text.trimStart().length;
-  const error = new LessConditionKeywordCaseError(start, start + word.length, word);
-  const sink = diagnosticsOf(state);
-  if (sink === null) {
-    throw error;
-  }
-  sink.push(error);
+  reportRecovered(new LessConditionKeywordCaseError(start, start + word.length, word), state);
 }
 
 function isFunctionConditionNot(value: unknown): boolean {

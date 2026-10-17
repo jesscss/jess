@@ -178,7 +178,7 @@ Phase split (JESS_PROFILE, steady state): **parse ~42 ms · render(eval+emit) ~2
   CompoundSelector 10997, simpleSelector 17644). The grammar frames in flat CPU
   profiles are 100% **parse** (getTree), conflated only because `render()`
   re-parses each call. `selector-capture.ts` is the *only* eval-path parser
-  re-entry and is a niche `*[…]` node. **Suspicion #1 (grammar-at-render) is
+  re-entry and is a niche selector-capture node. **Suspicion #1 (grammar-at-render) is
   false — not a render lever.**
 - **Render cost is node ALLOCATION, and it is ~86% selectors.** One render
   constructs **102,284 nodes** over a **21,199-node** source tree → eval creates

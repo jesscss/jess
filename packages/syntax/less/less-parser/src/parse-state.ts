@@ -130,6 +130,15 @@ export function diagnosticsOf(state: unknown): LessRecoveredError[] | null {
   return documentOf(state)?.diagnostics ?? null;
 }
 
+/** A problem the grammar recovered from (P45): kept on the document, or raised by a raw-grammar run that keeps none. */
+export function reportRecovered(error: LessRecoveredError, state: unknown): void {
+  const sink = diagnosticsOf(state);
+  if (sink === null) {
+    throw error;
+  }
+  sink.push(error);
+}
+
 /** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */
 export function closeAmbientFunctions(state: unknown): void {
   const scope = functionScopeOf(state);
