@@ -103,22 +103,24 @@ describe('a `;` list error is reported at the argument (P46)', () => {
 });
 
 /*
- * P45 (owner 2026-10-09): well-formed input never stops the pipeline. An item a
+ * P45 (owner 2026-10-09): well-formed input never stops the parser. An item a
  * `;` list makes invalid is an error diagnostic at that item, and the rest of
- * the sheet still parses and evaluates.
+ * the sheet still parses, so each item is reported where it is written; the
+ * error fails the compile (owner 2026-10-16: "if the diagnostic treats it as an
+ * error, then no it doesn't succeed").
  */
-describe('a `;` list error does not stop the sheet (P45)', () => {
+describe('a `;` list error is reported at its item and fails the compile', () => {
   it.each([
     ['.m(@a, @rest...; @c) { x: y; }', '@rest...'],
     ['.m(@a: 1, @b: 2; @c) { x: y; }', '@b: 2'],
     ['.m(@a, ...; @b) { x: y; }', '...'],
     ['.t() { x: y; } .k { .t(...); }', '...']
-  ])('%s reports %s and writes the rest', async (source, at) => {
+  ])('%s reports %s', async (source, at) => {
     const result = await render(`${source}\n.other { a: b; }`);
     expect(result.errors.map(error => [error.code, source.slice(error.column - 1, error.column - 1 + at.length)])).toEqual([
       ['parse/invalid-mixin-argument', at]
     ]);
-    expect(String(result.css)).toContain('.other {\n  a: b;\n}\n');
+    expect(result.css).toBe('');
   });
 });
 

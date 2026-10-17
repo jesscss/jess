@@ -230,13 +230,13 @@ describe('Less logical / conditional functions', () => {
   /*
    * Owner 2026-10-13: "B: CSS any case, Less lowercase". A mixin guard, `if()`
    * and `boolean()` read lowercase `and`, `or` and `not`; another case is an
-   * error diagnostic at the keyword, and the sheet still evaluates, reading it
-   * as the keyword (P45); a condition in a call's argument (`rgb(1 AND 2, 3, 4)`)
+   * error diagnostic at the keyword (P45), and an error fails the compile
+   * (owner 2026-10-16: "if the diagnostic treats it as an error, then no it
+   * doesn't succeed"); a condition in a call's argument (`rgb(1 AND 2, 3, 4)`)
    * is read by the same Less condition grammar and reported the same way. A
-   * value paren group keeps the authored case and reports nothing. Written out,
-   * each keeps the authored case.
+   * value paren group keeps the authored case and reports nothing.
    */
-  it('reads and, or and not lowercase in a Less condition, and reports another case', async () => {
+  it('reports another case than lowercase in a Less condition, and fails the compile', async () => {
     const source = [
       '@x: (NOT (1px > 2px)); @y: ((1px > 2px) AND (1 = 1)); @z: (1 Or 2);',
       '.m(@a) when (@a > 1) AND (@a < 5) { x: in; }',
@@ -253,25 +253,17 @@ describe('Less logical / conditional functions', () => {
       ['parse/condition-keyword-case', 5, 'NOT'],
       ['parse/condition-keyword-case', 5, 'AND']
     ]);
-    expect(String(result.css)).toBe([
-      '.y {',
-      '  a: (NOT (1px > 2px));',
-      '  c: ((1px > 2px) AND (1 = 1));',
-      '  e: (1 Or 2);',
-      '  h: true;',
-      '  i: yes;',
-      '}',
-      '.a {',
-      '  x: in;',
-      '}',
-      '.b {',
-      '  x: low;',
-      '}',
-      '.c {',
-      '  x: nine;',
-      '}',
-      ''
-    ].join('\n'));
+    expect(result.css).toBe('');
+  });
+
+  it('writes a value paren group in the authored case and reports nothing', async () => {
+    const result = await compiler.renderToResult({
+      source: '@x: (NOT (1px > 2px)); @y: ((1px > 2px) AND (1 = 1)); @z: (1 Or 2);\n.y { a: @x; c: @y; e: @z; }',
+      filePath: 'entry.less',
+      extension: '.less'
+    }, { quiet: true });
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.y {\n  a: (NOT (1px > 2px));\n  c: ((1px > 2px) AND (1 = 1));\n  e: (1 Or 2);\n}\n');
   });
 
   /*
@@ -307,11 +299,12 @@ describe('a written condition is dialect-invariant valid CSS', () => {
 /*
  * `not` before a bare operand a comparison follows (`not 1 > 2`) does not say
  * what it negates: an error diagnostic at the comparison, and the sheet still
- * evaluates (P45, owner 2026-10-09), reading it as `not (1 > 2)`. A condition
- * written into a value is written as authored.
+ * parses (P45, owner 2026-10-09); the error fails the compile (owner
+ * 2026-10-16: "if the diagnostic treats it as an error, then no it doesn't
+ * succeed").
  */
 describe('a `not` before a bare compared operand is a diagnostic', () => {
-  it('reports it at the comparison and writes the rest', async () => {
+  it('reports each at its comparison and fails the compile', async () => {
     const result = await compiler.renderToResult(
       { source: '@x: (not 1px > 2px);\n.a { b: @x; c: boolean(not 1 > 2); d: e; }', filePath: 'entry.less', extension: '.less' },
       { quiet: true }
@@ -320,6 +313,6 @@ describe('a `not` before a bare compared operand is a diagnostic', () => {
       ['parse/ambiguous-not', 1, 14],
       ['parse/ambiguous-not', 2, 30]
     ]);
-    expect(String(result.css)).toBe('.a {\n  b: (not 1px > 2px);\n  c: true;\n  d: e;\n}\n');
+    expect(result.css).toBe('');
   });
 });
