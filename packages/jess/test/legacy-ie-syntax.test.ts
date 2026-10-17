@@ -178,17 +178,11 @@ describe('what is not legacy IE syntax compiles', () => {
         ['a run after `=`', 'a { x: foo(a=1px 2px); }\n'],
         ['a quoted argument before `=`', 'a { x: foo("a"=b); }\n'],
         ['expression()', 'a { width: expression(document.body.clientWidth); }\n']
-      ].filter(([label]) => dialect !== 'scss' || label !== 'expression()'))(`${dialect}: %s`, async (_label, source) => {
+      ])(`${dialect}: %s`, async (_label, source) => {
         const result = await compile(dialect, source);
         expect(result.errors.map(error => error.code)).toEqual(['css/invalid-value-punctuation']);
       });
     }
-
-    /* A parse gap, not this check: SCSS stops at the glued `.` run inside the call (P45). */
-    it.fails('scss: expression() parses', async () => {
-      const result = await compile('scss', 'a { width: expression(document.body.clientWidth); }\n');
-      expect(result.errors.map(error => error.code)).toEqual(['css/invalid-value-punctuation']);
-    });
   });
 });
 

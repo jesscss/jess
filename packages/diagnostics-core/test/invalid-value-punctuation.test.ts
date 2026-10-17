@@ -147,8 +147,10 @@ describe('a var(), env() or attr() fallback is a value', () => {
     ['css', 'a {\n  padding-top: env(safe-area-inset-top, $gutter);\n}\n', '$'],
     ['css', 'a {\n  width: attr(data-w type(<length>), $default-width);\n}\n', '$'],
 
-    /* SCSS does not yet parse a fallback holding a delim, and Less reads one as text (parser gaps, not this check). */
-    ...(['css', 'jess'] as const).map(dialect => [dialect, 'a {\n  margin: var(--gap, a.b);\n}\n', '.'] as const)
+    /* Less reads a `var()` fallback written directly as text (a parser shape gap, not this check). */
+    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => ['var(--gap, a.b)', 'var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)']
+      .map(value => [dialect, `a {\n  margin: ${value};\n}\n`, '.'] as const)),
+    ...['attr(foo, a.b)', 'env(x, a.b)'].map(value => ['less', `a {\n  margin: ${value};\n}\n`, '.'] as const)
   ] as const)('%s: %s is reported', (dialect, source, delim) => {
     expect(reported(dialect, source)).toEqual([punctuation(delim, 2, 3)]);
   });
