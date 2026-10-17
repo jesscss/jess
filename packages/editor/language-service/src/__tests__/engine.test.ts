@@ -413,9 +413,9 @@ describe('JessLanguageServiceEngine', () => {
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(1px); }\n.after { color: red; }', '1px'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', '.a, @x'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(); }\n.after { color: red; }', 'selector()'],
-      ['less', 'parse/removed-selector-capture', '.legacy { a: *[.a, .b]; }\n.after { color: red; }', '*[.a, .b]'],
+      ['less', 'parse/removed-selector-capture', '.legacy { a: *[.a ~ .b]; }\n.after { color: red; }', '*[.a ~ .b]'],
       ['jess', 'parse/selector-capture-argument', '.legacy { a: selector($x); }\n.after { color: red; }', '$x'],
-      ['jess', 'parse/removed-selector-capture', '.legacy { a: *[.a]; }\n.after { color: red; }', '*[.a]']
+      ['jess', 'parse/removed-selector-capture', '.legacy { a: *[.a ~ .b]; }\n.after { color: red; }', '*[.a ~ .b]']
     ])('underlines %s %s without losing the document', (languageId, code, input, underlined) => {
       const engine = createEngine();
       const doc = createDocument(languageId, input);
@@ -429,21 +429,56 @@ describe('JessLanguageServiceEngine', () => {
         doc.offsetAt(diagnostic!.range.start),
         doc.offsetAt(diagnostic!.range.end)
       )).toBe(underlined);
-      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(diagnostics.filter(item => item.code === 'parse/parser' || item.code === 'css/invalid-value-punctuation')).toEqual([]);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
     it.each([
-      ['less', '.x { a: selector(.a > .b, &.c); }'],
-      ['jess', '.x { a: selector(.a > .b, &.c); }'],
+      ['less', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
+      ['jess', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
+      ['less', '@supports selector(.a ~ .b) { .x { c: d; } }'],
+      ['less', '.x { c: if(supports(selector(.a ~ .b)): x; else: y); }'],
       ['css', '.x { a: selector(1px); }'],
       ['scss', '.x { a: selector(1px); }']
-    ])('reports no selector-capture error for %s %s', (languageId, input) => {
+    ])('reports no selector-capture or punctuation error for %s %s', (languageId, input) => {
       const engine = createEngine();
       const doc = createDocument(languageId, input);
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
-      expect(engine.getDiagnostics(doc.uri).filter(item => String(item.code).includes('selector-capture'))).toEqual([]);
+      expect(engine.getDiagnostics(doc.uri).filter(item => String(item.code).includes('selector-capture') || item.code === 'css/invalid-value-punctuation')).toEqual([]);
+    });
+
+    /* The compiler's `css/invalid-value-punctuation` error, at the same place: the declaration (ledger P48). */
+    it.each([
+      ['css', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
+      ['less', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
+      ['less', 'a {\n  x: foo(a=b=c);\n}\n', '='],
+      ['scss', 'a {\n  x: a~b;\n}\n', '~'],
+      ['jess', 'a {\n  x: foo(a==b);\n}\n', '==']
+    ])('reports invalid value punctuation (%s: %s) at the declaration', (languageId, input, delim) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/invalid-value-punctuation');
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(diagnostics[0]!.message.startsWith(`\`${delim}\` is not valid in any CSS value`)).toBe(true);
+      expect(diagnostics[0]!.range.start).toEqual({ line: 1, character: 2 });
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'parse/parser')).toBe(false);
+    });
+
+    it.each([
+      ['less', 'a {\n  x: foo(a=b);\n  y: ~"a.b";\n}\n'],
+      ['scss', '@use "sass:color";\na {\n  x: color.mix(red, blue);\n}\n'],
+      ['css', 'a {\n  --x: a.b~c;\n  y: attr(ns|foo);\n}\n']
+    ])('does not report punctuation the dialect gives meaning (%s: %s)', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/invalid-value-punctuation')).toBe(false);
     });
 
     it('recovers an unfinished Less backtick value at the declaration boundary', () => {

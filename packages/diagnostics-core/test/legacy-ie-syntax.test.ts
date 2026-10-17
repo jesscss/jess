@@ -84,21 +84,24 @@ describe('what is not legacy IE syntax is not reported', () => {
       '@media (width=600px) { a { b: c } }\n@container (width=600px) { a { b: c } }\n',
       '[type=text] { a: b }\na[x="="] { a: b }\n',
       'a { --x: a=b; --y: progid:DX.Microsoft.Blur(pixelradius=2); --z: alpha(opacity=50); }\n',
-      'a { x: foo("a=b"); y: foo("="); content: "progid:x"; }\n',
-      'a { x: foo("a"=b); }\n'
+      'a { x: foo("a=b"); y: foo("="); content: "progid:x"; }\n'
     ])(`${dialect}: %s`, (source) => {
       expect(legacyIe(dialect, source)).toEqual([]);
     });
   }
 
+  /* A `=` delim outside the two forms is invalid punctuation instead (ledger P48). */
   for (const dialect of NAME_VALUE_DIALECTS) {
     it.each([
       'a { x: a=b; }\n',
       'a { x: foo(a=b=c); }\n',
       'a { x: foo(a b=c d); }\n',
-      'a { x: foo(a=1px 2px); }\n'
-    ])(`${dialect}: not decided, unreported: %s`, (source) => {
+      'a { x: foo(a=1px 2px); }\n',
+      'a { x: foo("a"=b); }\n'
+    ])(`${dialect}: invalid punctuation, not legacy IE syntax: %s`, (source) => {
       expect(legacyIe(dialect, source)).toEqual([]);
+      expect(collectTolerantDiagnostics({ source, language: dialect }).diagnostics.map(diagnostic => diagnostic.code))
+        .toContain('css/invalid-value-punctuation');
     });
   }
 

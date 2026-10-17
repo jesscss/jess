@@ -110,15 +110,23 @@ describe('a glued and( / or( / not( in a written value condition', () => {
     ['((1 = 1) or(2 = 2) and(3 = 3))', '((1 = 1) or(2 = 2) and(3 = 3))', [18, 28]]
   ];
 
-  it.each(WRITTEN)('less: writes %s as css does and warns at each glued keyword', async (value, css, columns) => {
+  /*
+   * css writes a group holding a `=` delim no longer: `=` is invalid
+   * punctuation in a css value (ledger P48). Less reads the group as its
+   * condition, so its `=` is the comparison, written as authored.
+   */
+  it.each(WRITTEN)('less: writes %s as authored and warns at each glued keyword', async (value, css, columns) => {
     const source = `.k { x: ${value}; }`;
-    const plain = (await serialize(parseCss(source))).css;
-    expect(plain).toBe(`.k {\n  x: ${css};\n}\n`);
     const { css: less, warnings } = await render('less', source);
-    expect(less).toBe(plain);
+    expect(less).toBe(`.k {\n  x: ${css};\n}\n`);
     expect(warnings.map(warning => [warning.code, warning.line, warning.column])).toEqual(
       columns.map(column => ['css/glued-condition-keyword', 1, column])
     );
+    if (value.includes('=')) {
+      await expect((async () => await serialize(parseCss(source)))()).rejects.toMatchObject({ code: 'css/invalid-value-punctuation' });
+    } else {
+      expect((await serialize(parseCss(source))).css).toBe(less);
+    }
   });
 
   it('less: warns where a condition a variable holds is written', async () => {
@@ -142,16 +150,20 @@ describe('a glued and( / or( / not( in a written value condition', () => {
    * `(1 = 1) and(`: the one input above where Less is not yet css.
    */
   it('css: writes a keyword glued to the group before it as authored', async () => {
-    expect((await serialize(parseCss('.k { x: ((1 = 1)and(2 = 2)); }'))).css).toBe('.k {\n  x: ((1 = 1)and(2 = 2));\n}\n');
+    expect((await serialize(parseCss('.k { x: ((1)and(2)); }'))).css).toBe('.k {\n  x: ((1)and(2));\n}\n');
   });
 
   it.fails('less: writes a keyword glued to the group before it as css does', async () => {
     expect((await render('less', '.k { x: ((1 = 1)and(2 = 2)); }')).css).toBe('.k {\n  x: ((1 = 1)and(2 = 2));\n}\n');
   });
 
-  /* P45 (owner 2026-10-09): valid CSS parses in every dialect, `=` delim in a call argument included. */
-  it('jess: parses (not(1 = 1)) and writes it as css does', async () => {
-    expect((await render('jess', '.k { x: (not(1 = 1)); }')).css).toBe('.k {\n  x: (not(1 = 1));\n}\n');
+  /*
+   * P45 (owner 2026-10-09): valid CSS parses in every dialect, `=` delim in a
+   * call argument included; as in css, the `=` is then invalid punctuation (P48).
+   */
+  it('jess: parses (not(1 = 1)), then fails as css does', async () => {
+    const result = await new Compiler().renderToResult({ source: '.k { x: (not(1 = 1)); }', filePath: '/proj/glued.jess' }, {});
+    expect(result.errors.map(error => error.code)).toEqual(['css/invalid-value-punctuation']);
   });
 
   /*

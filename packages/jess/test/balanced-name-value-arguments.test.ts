@@ -4,13 +4,13 @@ import { Compiler } from '../src/index.js';
 /**
  * A `=` delim in a function argument is well-formed CSS: balanced component
  * values (css-syntax-3 §5.4.9). Owner 2026-10-16: *"we should be more
- * permissive around valid / balanced syntax"*, and in `.jess` *"it would be
- * preserved as-is"*. So `.css`, `.scss` and `.jess` parse it and write it
- * exactly as authored, glued or padded. An argument that is exactly an
- * identifier, `=` and one value (`alpha(opacity=50)`) is legacy IE syntax: it
- * parses and then fails the compile (`legacy-ie-syntax.test.ts`). Less reads
- * `=` as its ordinary comparison (owner-ruled), so `alpha(opacity=50)` is
- * `alpha(false)` there.
+ * permissive around valid / balanced syntax"*. So `.css`, `.scss` and `.jess`
+ * parse it, and then it fails the compile: an argument that is exactly an
+ * identifier, `=` and one value (`alpha(opacity=50)`) is legacy IE syntax
+ * (`legacy-ie-syntax.test.ts`), and any other `=` delim is invalid punctuation
+ * (ledger P48; owner 2026-10-16: *"So all that punctuation is out"*;
+ * `invalid-value-punctuation.test.ts`). Less reads `=` as its ordinary
+ * comparison (owner-ruled), so `alpha(opacity=50)` is `alpha(false)` there.
  *
  * A query range comparison (`@media (width=600px)`) is a real comparison in
  * every dialect and keeps its spaced form (owner 2026-10-16: *"we do that in
@@ -29,27 +29,32 @@ async function value(dialect: Dialect, authored: string): Promise<string> {
   return css.slice(css.indexOf('x: ') + 3, css.lastIndexOf(';'));
 }
 
-const AS_WRITTEN = [
+async function errorCodes(dialect: Dialect, source: string, compress = false): Promise<string[]> {
+  const result = await new Compiler({ output: { compress } }).renderToResult({ source, filePath: `/proj/name-value.${dialect}` }, {});
+  return result.errors.map(error => error.code);
+}
+
+const INVALID = [
   'foo(a=b=c)',
   'foo(a = b = c)',
   'foo(a /* c */ = b = c)',
   'foo(a b=c d)',
   'foo(bar(x=y=1))',
-  'foo("a"=b)',
-  'foo("=")',
-  'foo(x, "=")'
+  'foo("a"=b)'
 ];
 
 describe('a `=` delim in a function argument', () => {
   for (const dialect of ['css', 'scss', 'jess'] as const) {
-    it.each(AS_WRITTEN)(`${dialect}: writes %s as authored`, async (authored) => {
+    it.each(INVALID)(`${dialect}: %s parses, then is invalid punctuation`, async (authored) => {
+      expect(await errorCodes(dialect, `a { x: ${authored}; }`)).toEqual(['css/invalid-value-punctuation']);
+    });
+
+    it.each(['foo("=")', 'foo(x, "=")'])(`${dialect}: a string holding \`=\` is written as authored: %s`, async (authored) => {
       expect(await value(dialect, authored)).toBe(authored);
     });
-  }
 
-  for (const dialect of ['css', 'scss', 'jess'] as const) {
-    it(`${dialect}: keeps a glued \`=\` glued in compressed output`, async () => {
-      expect(await render(dialect, 'a { x: foo(a=b=c); y: foo(b, c = d = 2); }', true)).toBe('a{x:foo(a=b=c);y:foo(b,c = d = 2)}');
+    it(`${dialect}: compressed output fails the same way`, async () => {
+      expect(await errorCodes(dialect, 'a { x: foo(a=b=c); y: foo(b, c = d = 2); }', true)).toEqual(['css/invalid-value-punctuation']);
     });
   }
 
@@ -97,7 +102,8 @@ describe('a query range comparison stays spaced', () => {
  * Ledger F1: `/`, `+`, `-` and `*` are separators and are written with one
  * space on each side regardless of source. A glued `+`, `-`, `*` or `/` delim
  * between components in a `.css` value (outside any math function) is that
- * separator; the other glued delims (`=`, `~`, `:`, `.`) stay as authored.
+ * separator; a glued `:` stays as authored, and `=`, `~`, `.` are invalid
+ * punctuation (P48).
  */
 describe('css: an operator delim between components is spaced (F1)', () => {
   it.each([
@@ -114,9 +120,8 @@ describe('css: an operator delim between components is spaced (F1)', () => {
   });
 
   it.each([
-    'foo(a=b=c)',
-    'a~b',
     'foo(:x)',
+    'a:b',
     'calc(1px + 2px)'
   ])('keeps %s as authored', async (authored) => {
     expect(await value('css', authored)).toBe(authored);
@@ -131,6 +136,6 @@ describe('css: an operator delim between components is spaced (F1)', () => {
   });
 
   it('compressed output keeps the spaced separator and the glued delims', async () => {
-    expect(await render('css', 'a { x: a+b; y: foo(a=b=c); z: a~b; }', true)).toBe('a{x:a + b;y:foo(a=b=c);z:a~b}');
+    expect(await render('css', 'a { x: a+b; y: foo(:x); z: a:b; }', true)).toBe('a{x:a + b;y:foo(:x);z:a:b}');
   });
 });

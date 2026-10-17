@@ -182,7 +182,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { assertNoLegacyIeSyntax } from './legacy-ie-syntax.js';
+import { assertValidValueSyntax } from './invalid-value-syntax.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
@@ -12631,13 +12631,13 @@ function evaluateLeafStatement(
 
   const parts = nestedPropertyDeclarations(node);
   if (parts === null) {
-    assertNoLegacyIeSyntax(node, e.s);
+    assertValidValueSyntax(node, e.s, isCustomPropertyName);
     recordPropertyDeclaration(propertyScope, node, frame);
     place({ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
     return;
   }
   for (const part of parts) {
-    assertNoLegacyIeSyntax(part, e.s);
+    assertValidValueSyntax(part, e.s, isCustomPropertyName, node);
     recordPropertyDeclaration(propertyScope, part, frame);
     place({ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
   }
@@ -18179,9 +18179,9 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: Lane): ValueBl
   return undefined;
 }
 
-/** A declaration of a ruleset written out as a value (P37): legacy IE syntax (P47), then a ruleset value. */
+/** A declaration of a ruleset written out as a value (P37): legacy IE syntax or invalid punctuation (P47, P48), then a ruleset value. */
 function assertWrittenDeclaration(node: Declaration, frame: Frame, e: Lane): void {
-  assertNoLegacyIeSyntax(node, e.s);
+  assertValidValueSyntax(node, e.s, isCustomPropertyName);
   assertDeclarationValueIsNotRuleset(node, frame, e);
 }
 

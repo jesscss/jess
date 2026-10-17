@@ -138,8 +138,7 @@ describe('what is not legacy IE syntax compiles', () => {
       ['a query range', '@media (width=600px) { a { b: c } }\n@container (width=600px) { a { b: c } }\n'],
       ['an attribute selector', '[type=text] { a: b }\na[x="="] { a: b }\n'],
       ['a custom property', 'a { --x: a=b; --y: progid:DX.Microsoft.Blur(pixelradius=2); --z: alpha(opacity=50); }\n'],
-      ['a string holding `=` or `progid:`', 'a { x: foo("a=b"); y: foo("="); content: "progid:x"; }\n'],
-      ['a quoted argument before `=`', 'a { x: foo("a"=b); }\n']
+      ['a string holding `=` or `progid:`', 'a { x: foo("a=b"); y: foo("="); content: "progid:x"; }\n']
     ])(`${dialect}: %s`, async (_label, source) => {
       await clean(dialect, source);
     });
@@ -167,27 +166,36 @@ describe('what is not legacy IE syntax compiles', () => {
   });
 
   /*
-   * OPEN for the owner: each needs a decision beyond the two forms above, so
-   * none is reported. Each is written as authored.
+   * Not legacy IE syntax, and not written either: a `=` delim no IE form
+   * holds is invalid punctuation (ledger P48, `invalid-value-punctuation.test.ts`).
    */
-  describe('not decided: written as authored, unreported', () => {
+  describe('a `=` delim outside the two forms is invalid punctuation', () => {
     for (const dialect of NAME_VALUE_DIALECTS) {
       it.each([
-        ['a bare `=` run in a declaration', 'a { x: a=b; }\n', 'x: a=b;'],
-        ['a chained `=` argument', 'a { x: foo(a=b=c); }\n', 'x: foo(a=b=c);'],
-        ['an ident run before `=`', 'a { x: foo(a b=c d); }\n', 'x: foo(a b=c d);'],
-        ['a run after `=`', 'a { x: foo(a=1px 2px); }\n', 'x: foo(a=1px 2px);'],
-        ['expression()', 'a { width: expression(document.body.clientWidth); }\n', 'width: expression(document.body.clientWidth);']
-      ].filter(([label]) => dialect !== 'scss' || label !== 'expression()'))(`${dialect}: %s`, async (_label, source, written) => {
-        expect(await clean(dialect, source)).toContain(written);
+        ['a bare `=` run in a declaration', 'a { x: a=b; }\n'],
+        ['a chained `=` argument', 'a { x: foo(a=b=c); }\n'],
+        ['an ident run before `=`', 'a { x: foo(a b=c d); }\n'],
+        ['a run after `=`', 'a { x: foo(a=1px 2px); }\n'],
+        ['a quoted argument before `=`', 'a { x: foo("a"=b); }\n'],
+        ['expression()', 'a { width: expression(document.body.clientWidth); }\n']
+      ].filter(([label]) => dialect !== 'scss' || label !== 'expression()'))(`${dialect}: %s`, async (_label, source) => {
+        const result = await compile(dialect, source);
+        expect(result.errors.map(error => error.code)).toEqual(['css/invalid-value-punctuation']);
       });
     }
 
     /* A parse gap, not this check: SCSS stops at the glued `.` run inside the call (P45). */
     it.fails('scss: expression() parses', async () => {
-      await clean('scss', 'a { width: expression(document.body.clientWidth); }\n');
+      const result = await compile('scss', 'a { width: expression(document.body.clientWidth); }\n');
+      expect(result.errors.map(error => error.code)).toEqual(['css/invalid-value-punctuation']);
     });
+  });
 
+  /*
+   * OPEN for the owner: a variable or a mixin argument holding either form
+   * reaches a declaration only through a reference, so it is not reported.
+   */
+  describe('not decided: written as authored, unreported', () => {
     it.each([
       ['scss', '$v: alpha(opacity=50);\na { filter: $v; }\n', 'filter: alpha(opacity=50);'],
       ['jess', '$v: alpha(opacity=50);\na { filter: $v; }\n', 'filter: alpha(opacity=50);'],

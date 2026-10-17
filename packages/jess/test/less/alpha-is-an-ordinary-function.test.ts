@@ -35,11 +35,11 @@ describe('Less `alpha()` with a `name=value` argument', () => {
 
 /*
  * A chained `=` (P45, ledger N18) is not one comparison, and Less gives a chain
- * no meaning: the argument is the CSS run of component values, written as
- * authored, whatever the function is called.
+ * no meaning: the argument is the CSS run of component values, whatever the
+ * function is called, and its `=` delims are invalid punctuation (ledger P48).
  */
 describe('a chained comparison argument', () => {
-  it.each(['alpha(a=b=c)', 'foo(1 = 2 = 3)'])('%s is written as authored', async (call) => {
-    expect(await value(call)).toBe(call);
+  it.each(['alpha(a=b=c)', 'foo(1 = 2 = 3)'])('%s parses, then is invalid punctuation', async (call) => {
+    await expect(render(`@v: 50; .x { a: ${call}; }`)).rejects.toMatchObject({ code: 'css/invalid-value-punctuation' });
   });
 });

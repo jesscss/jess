@@ -181,7 +181,9 @@ describe('selector() capture', () => {
     ['less', '.x { a: selector(); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 9]],
     ['less', '@s: *[apple, satsuma];\n@{s} { c: d; }', 'parse/removed-selector-capture', [1, 5]],
     ['jess', '.x { a: selector($v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
-    ['jess', '$s: *[apple, satsuma];\n${s} { c: d; }', 'parse/removed-selector-capture', [1, 5]]
+    ['jess', '$s: *[apple, satsuma];\n${s} { c: d; }', 'parse/removed-selector-capture', [1, 5]],
+    ['less', '.x { a: *[.a ~ .b]; }', 'parse/removed-selector-capture', [1, 9]],
+    ['jess', '.x { a: *[.a ~ .b]; }', 'parse/removed-selector-capture', [1, 9]]
   ] as const)('parses %s `%s`, then reports its error', async (language, source, code, [line, column]) => {
     const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
     expect(result.errors.map(error => [error.code, error.phase, error.line, error.column])).toEqual([[code, 'parse', line, column]]);
@@ -199,6 +201,18 @@ describe('selector() capture', () => {
     ['jess', '.x { a: *[.a]; }']
   ] as const)('fails the %s compile of `%s`', async (language, source) => {
     await expect(render(source, false, language)).rejects.toThrow();
+  });
+
+  /* A selector's own punctuation is selector syntax, never value punctuation (ledger P48). */
+  it.each([
+    ['less', '@s: selector(.a ~ .b, .c.d, a|b, [x^=y], [x|=y]);\n.p { @{s} { c: d; } }'],
+    ['jess', '$s: selector(.a ~ .b, .c.d, [x^=y]);\n.p { ${s} { c: d; } }'],
+    ['less', '.x { c: if(supports(selector(.a ~ .b)): x; else: y); }'],
+    ['less', '@supports selector(.a ~ .b) { .x { c: d; } }'],
+    ['jess', '@supports selector(.a ~ .b) { .x { c: d; } }']
+  ] as const)('reports no error for %s `%s`', async (language, source) => {
+    const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
+    expect(result.errors).toEqual([]);
   });
 
   it('names the replacement for a removed `*[…]`', async () => {
