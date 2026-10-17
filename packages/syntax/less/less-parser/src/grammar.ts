@@ -526,9 +526,9 @@ const unknownAtRuleBody = noTrivia(scanTo(
  * What a `selector(` holds past the point the selector list stops: read to
  * `)` as opaque text, nested groups inert, and strings and comments inert
  * through the grammar's ambient scan skippers (P45: well-formed input parses;
- * the reducer reports it). The leading `not(')')`
- * keeps the rest from matching empty: `scanTo` matches nothing when its
- * sentinel is next, and an empty argument is the reducer's to report.
+ * the reducer reports it). The leading `not(')')` keeps the rest from
+ * matching empty: `scanTo` matches nothing when its sentinel is next, and an
+ * empty argument is the reducer's to report.
  */
 const captureParens = balanced('(', ')');
 const captureBrackets = balanced('[', ']');
