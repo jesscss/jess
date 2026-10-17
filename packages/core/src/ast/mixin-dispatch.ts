@@ -433,6 +433,11 @@ export function isTypedCallValue(v: CallValue): v is ValueSlot {
   if (isTypedLiteral(v)) {
     return true;
   }
+
+  /* A selector capture (P49) is a parser-typed leaf: erased to bytes it could not be interpolated as its branches. */
+  if (v.type === 'SelectorCapture') {
+    return true;
+  }
   if (v.type === 'List') {
     return v.value.every(isTypedCallValue);
   }
