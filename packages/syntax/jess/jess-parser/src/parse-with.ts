@@ -11,6 +11,7 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
+  recoveredInTree,
   simpleSelectorIsPlaceholder,
   withSourceSpan,
   withTriviaMap,
@@ -305,5 +306,17 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
   validateJessOptions(document, options);
-  return { document, recovered: [...diagnostics].sort((a, b) => a.offset - b.offset) };
+  return { document, recovered: inSourceOrder(recoveredInTree(document, diagnostics)) };
+}
+
+/** One report per item, ordered by where it is written: a reducer may run more than once. */
+function inSourceOrder(diagnostics: readonly JessRecoveredError[]): readonly JessRecoveredError[] {
+  if (diagnostics.length < 2) {
+    return diagnostics;
+  }
+  const byItem = new Map<string, JessRecoveredError>();
+  for (const error of diagnostics) {
+    byItem.set(`${error.offset}:${error.endOffset}:${error.message}`, error);
+  }
+  return [...byItem.values()].sort((a, b) => a.offset - b.offset);
 }

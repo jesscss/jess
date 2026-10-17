@@ -46,10 +46,14 @@ export {
   isSpannedToken,
   isToken,
   keywordOrNull,
+  recoveredInTree,
+  removedSelectorCaptureOf,
+  scannedLeaf,
+  selectorCaptureOf,
   semanticGapText,
   withBlockBody
 } from './ast/grammar-helpers.js';
-export type { SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
+export type { SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
 export {
   appendCustomValueParts,
   appendInterpolationLiteral,

@@ -21,7 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorCapture, isSelectorList, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorCaptureOf, removedSelectorCaptureOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -2480,48 +2480,28 @@ function reportRecovered(error: LessRecoveredError, state: unknown): void {
   sink.push(error);
 }
 
-/** A raw child holding written text — not a selector node, not a padding run. */
-function isWrittenToken(child: unknown): child is Token {
-  return isToken(child) && child.value.trim() !== '';
-}
-
-/** The written token between a construct's opening and closing delimiter tokens, if any. */
-function writtenTokenBetween(children: readonly unknown[]): Token | undefined {
-  for (let index = 1; index < children.length - 1; index += 1) {
-    const child = children[index];
-    if (isWrittenToken(child)) {
-      return child;
-    }
-  }
-  return undefined;
-}
-
 /**
- * `selector(…)` in a value (owner 2026-10-16, ledger P49): a capture of the
- * selector list the grammar read. An argument that is not one — nothing, or a
- * rest the list could not continue into — is an error diagnostic at the
- * argument, and the call is kept as its written text (P45).
+ * `selector(…)` in a value (owner 2026-10-16, ledger P49): the capture, or —
+ * when the argument is not a selector list — an error at the rest the list
+ * could not read (the whole call when the argument holds nothing), and the
+ * call kept as its value (P45).
  */
 function selectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): SelectorCapture | Any {
-  const selector = children.find(isSelectorList);
-  const rest = writtenTokenBetween(children);
-  if (selector !== undefined && rest === undefined) {
-    const branches = selector.selectors.map(selectorBranchCanonical);
-    return selectorCapture(branches, `selector(${branches.join(', ')})`);
+  const found = selectorCaptureOf(children, span);
+  if ('type' in found) {
+    return found;
   }
-  const open = children[0];
-  const close = children.at(-1);
-  const start = isSpannedToken(open) ? open.span.end : span.start;
-  const end = isSpannedToken(close) ? close.span.start : span.end;
-  reportRecovered(end > start ? new LessSelectorCaptureArgumentError(start, end) : new LessSelectorCaptureArgumentError(span.start, span.end), state);
-  return any(sourceFromState(state)?.slice(span.start, span.end) ?? `selector(${rest?.value ?? ''})`);
+  const value = any(found.written);
+  reportRecovered(new LessSelectorCaptureArgumentError(found.start, found.end, value), state);
+  return value;
 }
 
-/** The removed `*[…]` capture (ledger P49): an error diagnostic naming `selector(…)`, kept as its written text (P45). */
+/** The removed `*[…]` capture (ledger P49): an error naming `selector(…)`, kept as written (P45). */
 function removedSelectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): Any {
-  const list = writtenTokenBetween(children)?.value.trim() ?? '';
-  reportRecovered(new LessRemovedSelectorCaptureError(span.start, span.end, list), state);
-  return any(sourceFromState(state)?.slice(span.start, span.end) ?? `*[${list}]`);
+  const found = removedSelectorCaptureOf(children);
+  const value = any(found.written);
+  reportRecovered(new LessRemovedSelectorCaptureError(span.start, span.end, found.list, value), state);
+  return value;
 }
 
 function isFunctionConditionNot(value: unknown): boolean {

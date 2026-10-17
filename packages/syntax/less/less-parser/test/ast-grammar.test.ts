@@ -929,11 +929,14 @@ describe('Less AST grammar facts', () => {
   it('reads what selector() cannot capture, and the removed `*[…]`, then reports each at its span (P45)', () => {
     for (const [source, code, at] of [
       ['@t: selector(@{selector});', 'parse/selector-capture-argument', '@{selector}'],
-      ['@t: selector(.card-@{tone});', 'parse/selector-capture-argument', '.card-@{tone}'],
+      ['@t: selector(.card-@{tone});', 'parse/selector-capture-argument', '@{tone}'],
       ['@t: selector(1px);', 'parse/selector-capture-argument', '1px'],
       ['@t: selector(@x);', 'parse/selector-capture-argument', '@x'],
-      ['@t: selector(.a, "b");', 'parse/selector-capture-argument', '.a, "b"'],
+      ['@t: selector(.a, "b");', 'parse/selector-capture-argument', ', "b"'],
       ['@t: selector();', 'parse/selector-capture-argument', 'selector()'],
+      ['@t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
+      ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
+      ['@t: *[x {]} y];', 'parse/removed-selector-capture', '*[x {]} y]'],
       ['@t: *[.notice];', 'parse/removed-selector-capture', '*[.notice]'],
       ['@t: *[apple, satsuma];', 'parse/removed-selector-capture', '*[apple, satsuma]']
     ] as const) {
@@ -946,7 +949,7 @@ describe('Less AST grammar facts', () => {
 
       /* A reducer may run more than once; `parse()` keeps one report per item, as here. */
       expect([...new Set(diagnostics.map(d => `${d.code} ${source.slice(d.offset, d.endOffset)}`))], source).toEqual([`${code} ${at}`]);
-      expect((result.value as Stylesheet).rules[0], source).toMatchObject({ value: { type: 'Any', src: source.slice(4, -1) } });
+      expect((result.value as Stylesheet).rules[0], source).toMatchObject({ value: { type: 'Any' } });
     }
   });
 

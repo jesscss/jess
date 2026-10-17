@@ -24,6 +24,7 @@ import {
   importSourceStartOf,
   importTailStartOf,
   isValueSlotArray,
+  recoveredInTree,
   sourceStartOf,
   valueLayoutOf,
   withSourceSpan,
@@ -290,12 +291,13 @@ function parseRecovering(
     result.value,
     result.rootTrivia === undefined ? undefined : triviaMap
   );
+  const document = withTriviaMap(
+    withSourceSpan(result.value, result.span),
+    triviaMap
+  );
   return {
-    document: withTriviaMap(
-      withSourceSpan(result.value, result.span),
-      triviaMap
-    ),
-    recovered: inSourceOrder(diagnostics)
+    document,
+    recovered: inSourceOrder(recoveredInTree(document, diagnostics))
   };
 }
 

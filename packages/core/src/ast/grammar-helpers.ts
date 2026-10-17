@@ -15,7 +15,7 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
-import { keyword, NULL_NODE } from './nodes.js';
+import { keyword, NULL_NODE, selectorBranchCanonical, selectorCapture } from './nodes.js';
 import { withBodySpan } from './provenance.js';
 import type {
   ComplexSelector,
@@ -23,7 +23,9 @@ import type {
   Keyword,
   ModuleImport,
   Null,
-  SelectorBranch
+  SelectorBranch,
+  SelectorCapture,
+  SelectorList
 } from './nodes.js';
 
 /** The `{ start, end }` offset pair parseman hands a reduction. */
@@ -150,4 +152,107 @@ export function isRelativeSelector(value: unknown): value is Extract<SelectorBra
 
 export function isModuleImport(value: unknown): value is ModuleImport {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport';
+}
+
+/*
+ * Selector capture (ledger P49), shared by the `.less` and `.jess` grammars.
+ *
+ * `selector(` reads the selector list as far as it can, then — only where the
+ * next token is not `)` — the rest of the argument as one opaque token. A
+ * capture with no rest is the selector list; anything else is an error at the
+ * argument (P45), and the value is the call as written.
+ */
+
+/** A raw child holding written text — not a selector node, not a padding run. */
+function isWrittenToken(child: unknown): child is Token {
+  return isToken(child) && child.value.trim() !== '';
+}
+
+/** The written token between a construct's opening and closing delimiter tokens, if any. */
+function writtenTokenBetween(children: readonly unknown[]): Token | undefined {
+  for (let index = 1; index < children.length - 1; index += 1) {
+    const child = children[index];
+    if (isWrittenToken(child)) {
+      return child;
+    }
+  }
+  return undefined;
+}
+
+function isSelectorListChild(child: unknown): child is SelectorList {
+  return typeof child === 'object' && child !== null && 'type' in child && child.type === 'SelectorList';
+}
+
+/** The one leaf a scan matched, with its span: the opaque rest of a recovered construct. */
+export function scannedLeaf(children: readonly unknown[]): SpannedToken & Token {
+  const leaf = children[0];
+  if (!isSpannedToken(leaf) || !isToken(leaf)) {
+    throw new TypeError('A scan produced no leaf.');
+  }
+  return leaf;
+}
+
+/**
+ * What `selector(…)` holds when its argument is not a selector list: where to
+ * report it — the rest the list could not read, without its trailing padding,
+ * or the whole call when the argument holds nothing — and the call, written
+ * as a capture prints (the list canonical, the rest as written).
+ */
+export interface SelectorCaptureProblem {
+  readonly start: number;
+  readonly end: number;
+  readonly written: string;
+}
+
+/** The capture a `selector(` reduction built, or the problem to report. */
+export function selectorCaptureOf(children: readonly unknown[], span: SourceSpan): SelectorCapture | SelectorCaptureProblem {
+  const selector = children.find(isSelectorListChild);
+  const rest = writtenTokenBetween(children);
+  const list = selector?.selectors.map(selectorBranchCanonical).join(', ');
+  if (list !== undefined && rest === undefined) {
+    return selectorCapture(selector!.selectors.map(selectorBranchCanonical), `selector(${list})`);
+  }
+  const open = children[0];
+  const opener = isToken(open) ? open.value : 'selector(';
+  if (rest === undefined) {
+    return { start: span.start, end: span.end, written: `${opener})` };
+  }
+  const text = rest.value.trimEnd();
+  const start = isSpannedToken(rest) ? rest.span.start : span.start;
+  const lead = list === undefined ? '' : `${list}${text.startsWith(',') ? '' : ' '}`;
+  return { start, end: start + text.length, written: `${opener}${lead}${text})` };
+}
+
+/** A removed `*[…]` capture: the list it holds, for the fix that names `selector(…)`, and the construct as written. */
+export function removedSelectorCaptureOf(children: readonly unknown[]): { readonly list: string; readonly written: string } {
+  const body = writtenTokenBetween(children)?.value ?? '';
+  return { list: body.trim(), written: `*[${body}]` };
+}
+
+/**
+ * A reduction that recovers from a problem builds a value and reports the
+ * problem, but a reduction can run inside an attempt the parser later
+ * abandons, and a report is not rolled back with it. So a report names the
+ * value it was built for (`recoveredValue`), and after the run only the
+ * reports whose value is in the accepted tree are kept.
+ */
+export function recoveredInTree<E extends object>(root: object, errors: readonly E[]): readonly E[] {
+  if (!errors.some(error => 'recoveredValue' in error)) {
+    return errors;
+  }
+  const seen = new Set<object>();
+  const stack: unknown[] = [root];
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (typeof item !== 'object' || item === null || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    for (const value of Object.values(item)) {
+      if (typeof value === 'object' && value !== null) {
+        stack.push(value);
+      }
+    }
+  }
+  return errors.filter(error => !('recoveredValue' in error) || (typeof error.recoveredValue === 'object' && error.recoveredValue !== null && seen.has(error.recoveredValue)));
 }

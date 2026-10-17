@@ -411,8 +411,10 @@ describe('JessLanguageServiceEngine', () => {
     /* Ledger P49: what selector() cannot capture, and the removed `*[…]`, parse and are errors (P45). */
     it.each([
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(1px); }\n.after { color: red; }', '1px'],
-      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', '.a, @x'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', ', @x'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(); }\n.after { color: red; }', 'selector()'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector( ); }\n.after { color: red; }', 'selector( )'],
+      ['jess', 'parse/selector-capture-argument', '.legacy { a: selector( .a, 1px ); }\n.after { color: red; }', ', 1px'],
       ['less', 'parse/removed-selector-capture', '.legacy { a: *[.a ~ .b]; }\n.after { color: red; }', '*[.a ~ .b]'],
       ['jess', 'parse/selector-capture-argument', '.legacy { a: selector($x); }\n.after { color: red; }', '$x'],
       ['jess', 'parse/removed-selector-capture', '.legacy { a: *[.a ~ .b]; }\n.after { color: red; }', '*[.a ~ .b]']

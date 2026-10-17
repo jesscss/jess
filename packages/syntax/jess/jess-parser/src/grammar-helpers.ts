@@ -21,7 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { JessRemovedSelectorCaptureError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
-import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCapture, isSelectorList, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
+import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, removedSelectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -485,48 +485,28 @@ function reportRecovered(error: JessRecoveredError, state: unknown): void {
   sink.push(error);
 }
 
-/** A raw child holding written text — not a selector node, not a padding run. */
-function isWrittenToken(child: unknown): child is Token {
-  return isToken(child) && child.value.trim() !== '';
-}
-
-/** The written token between a construct's opening and closing delimiter tokens, if any. */
-function writtenTokenBetween(children: readonly unknown[]): Token | undefined {
-  for (let index = 1; index < children.length - 1; index += 1) {
-    const child = children[index];
-    if (isWrittenToken(child)) {
-      return child;
-    }
-  }
-  return undefined;
-}
-
 /**
- * `selector(…)` in a value (owner 2026-10-16, ledger P49): a capture of the
- * selector list the grammar read. An argument that is not one — nothing, or a
- * rest the list could not continue into — is an error diagnostic at the
- * argument, and the call is kept as its written text (P45).
+ * `selector(…)` in a value (owner 2026-10-16, ledger P49): the capture, or —
+ * when the argument is not a selector list — an error at the rest the list
+ * could not read (the whole call when the argument holds nothing), and the
+ * call kept as its value (P45).
  */
 function selectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): SelectorCapture | Any {
-  const selector = children.find(isSelectorList);
-  const rest = writtenTokenBetween(children);
-  if (selector !== undefined && rest === undefined) {
-    const branches = selector.selectors.map(selectorBranchCanonical);
-    return selectorCapture(branches, `selector(${branches.join(', ')})`);
+  const found = selectorCaptureOf(children, span);
+  if ('type' in found) {
+    return found;
   }
-  const open = children[0];
-  const close = children.at(-1);
-  const start = isSpannedToken(open) ? open.span.end : span.start;
-  const end = isSpannedToken(close) ? close.span.start : span.end;
-  reportRecovered(end > start ? new JessSelectorCaptureArgumentError(start, end) : new JessSelectorCaptureArgumentError(span.start, span.end), state);
-  return any(sourceFromState(state)?.slice(span.start, span.end) ?? `selector(${rest?.value ?? ''})`);
+  const value = any(found.written);
+  reportRecovered(new JessSelectorCaptureArgumentError(found.start, found.end, value), state);
+  return value;
 }
 
-/** The removed `*[…]` capture (ledger P49): an error diagnostic naming `selector(…)`, kept as its written text (P45). */
+/** The removed `*[…]` capture (ledger P49): an error naming `selector(…)`, kept as written (P45). */
 function removedSelectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): Any {
-  const list = writtenTokenBetween(children)?.value.trim() ?? '';
-  reportRecovered(new JessRemovedSelectorCaptureError(span.start, span.end, list), state);
-  return any(sourceFromState(state)?.slice(span.start, span.end) ?? `*[${list}]`);
+  const found = removedSelectorCaptureOf(children);
+  const value = any(found.written);
+  reportRecovered(new JessRemovedSelectorCaptureError(span.start, span.end, found.list, value), state);
+  return value;
 }
 
 function interpolationValue(fact: ExpressionFact): Interpolation {

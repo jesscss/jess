@@ -331,11 +331,15 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
   readonly reason = 'In a value, selector() captures a selector list, the argument :is() takes, and this argument is not one.';
   readonly fix = 'Write a selector list, for example selector(.a, .b > .c).';
 
-  constructor(offset: number, endOffset: number) {
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
     super('selector() takes a selector list.');
     this.name = 'LessSelectorCaptureArgumentError';
     this.offset = offset;
     this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
   }
 }
 
@@ -351,12 +355,16 @@ export class LessRemovedSelectorCaptureError extends SyntaxError {
   readonly reason = 'The `*[…]` selector capture is removed; a selector capture is written selector(<selector-list>).';
   readonly fix: string;
 
-  constructor(offset: number, endOffset: number, list: string) {
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, list: string, recoveredValue: object) {
     super('Selector capture is now written selector(…).');
     this.name = 'LessRemovedSelectorCaptureError';
     this.offset = offset;
     this.endOffset = endOffset;
     this.fix = `Write selector(${list}).`;
+    this.recoveredValue = recoveredValue;
   }
 }
 

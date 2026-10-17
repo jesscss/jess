@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -522,16 +522,19 @@ const unknownAtRuleBody = noTrivia(scanTo(
 ));
 /*
  * What a `selector(` or a removed `*[` holds past the point the selector list
- * stops: read to the closing delimiter as opaque text, nested groups and
- * strings inert (P45: well-formed input parses; the reducer reports it).
+ * stops: read to the closing delimiter as opaque text, nested groups inert, and
+ * strings and comments inert through the grammar's ambient scan skippers (P45:
+ * well-formed input parses; the reducer reports it). The leading `not(')')`
+ * keeps the rest from matching empty: `scanTo` matches nothing when its
+ * sentinel is next, and an empty argument is the reducer's to report.
  */
-const captureParens = balanced('(', ')', { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString] });
-const captureBrackets = balanced('[', ']', { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString] });
+const captureParens = balanced('(', ')');
+const captureBrackets = balanced('[', ']');
 const selectorCaptureRest = noTrivia(sequence(
   not(literal(')')),
-  scanTo(literal(')'), { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString, captureParens, captureBrackets] })
+  scanTo(literal(')'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] })
 ));
-const removedCaptureBody = scanTo(literal(']'), { skip: [blockComment, scanSkipDoubleString, scanSkipSingleString, captureParens, captureBrackets] });
+const removedCaptureBody = scanTo(literal(']'), { skip: [captureParens, captureBrackets, unknownAtRuleBrace] });
 // Trivia that may surround an arithmetic operator: whitespace, `//` line
 // comments, or `/* */` block comments. This matches CSS, where `*` and `/` need
 // no whitespace and comments are freely allowed around them (`1/**/*/**/2`,
@@ -4801,7 +4804,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const InvalidSelectorCaptureArgument = node(
     'InvalidSelectorCaptureArgument',
     selectorCaptureRest,
-    children => requireToken(children[0])
+    children => scannedLeaf(children)
   );
   const SelectorCapture = node(
     'SelectorCapture',

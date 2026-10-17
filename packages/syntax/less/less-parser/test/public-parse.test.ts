@@ -895,6 +895,16 @@ describe('public Less parse()', () => {
     expect(() => parse(source)).toThrow('selector() takes a selector list.');
   });
 
+  /* A report from an attempt the parser abandons is dropped: here the declaration reading of a nested rule. */
+  it('reports nothing for a `*[…]` in a nested rule\'s selector', () => {
+    expect(safeParse('/entry.less', '.x { a:hover *[href] { b: c; } }').errors).toEqual([]);
+  });
+
+  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
+  it.fails.each(['@t: * [.notice];', 'a { b: 2*[3]; }', 'a { b: b*[3]; }', '@t: selector(.a:not(@{t}));', '@t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+    expect(safeParse('/entry.less', source).document).toBeDefined();
+  });
+
   it('retains top-level comments as public Stylesheet trivia', () => {
     const source = '/* before */ .card { color: red; } /* after */';
     const document = parse(source);

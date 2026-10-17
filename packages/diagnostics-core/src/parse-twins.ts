@@ -381,13 +381,15 @@ function pushSelectorCaptureTwin(
     return;
   }
   const parts = cstChildrenOf(node).filter(isCstNode);
-  if (parts.length > 0 && !parts.some(part => part.grammarType === 'InvalidSelectorCaptureArgument')) {
+  const rest = parts.find(part => part.grammarType === 'InvalidSelectorCaptureArgument');
+  if (parts.length > 0 && rest === undefined) {
     return;
   }
 
-  /* The argument, between `selector(` and `)`, as the compiler reports it; the whole call when it is empty. */
-  const start = absoluteStart(node) + 'selector('.length;
-  const end = absoluteEnd(node) - 1;
+  /* The rest the selector list could not read, as the compiler reports it; the whole call when the argument holds nothing. */
   const error = ERR.selectorCaptureArgument();
-  push('parse/selector-capture-argument', 'error', error.message, parts.length > 0 ? { ...node.span, start, end } : node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  const at = rest === undefined
+    ? node.span
+    : { ...rest.span, end: absoluteStart(rest) + source.slice(absoluteStart(rest), absoluteEnd(rest)).trimEnd().length };
+  push('parse/selector-capture-argument', 'error', error.message, at, { phase: 'parse', reason: error.reason, fix: error.fix });
 }
