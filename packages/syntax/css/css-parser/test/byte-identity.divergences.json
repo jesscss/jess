@@ -18,6 +18,12 @@
       "detail": "':nth-child(2n + 1)' and ':nth-last-child(n - 3 of .item)' emit as ':nth-child(2n+1)' and ':nth-last-child(n-3 of .item)'. The An+B is a structured selector argument (AnPlusB: a, b and its form) and is spelled unspaced; css-syntax-3 6.1 lets whitespace sit around the sign, and it carries no meaning there.",
       "citation": "docs/architecture/core/DESIGN-DECISIONS.md F2 (SETTLED): the An+B microsyntax in :nth-*() is selector syntax and stays unspaced. The CSSOM serialization of an <an+b> (css-syntax-3 'Serializing <an+b>') is unspaced too.",
       "consequence": "Byte-identity and the unspaced An+B cannot both hold for a spaced input. F2 wins; the fixture stays so that if the An+B ever silently goes back to authored spacing, this file becomes identical and the named-set assertion fails."
+    },
+    "values-glued-components.css": {
+      "construct": "a declaration value holding a delim no CSS value accepts (`=`, `~`, `.`)",
+      "detail": "The file parses with no error, and the round trip then fails the compile with css/invalid-value-punctuation at its first declaration, so nothing is emitted. Each value is balanced CSS (ledger N18, P45); `.`, `~`, `=`, `|`, `^` and `?` are then an error diagnostic.",
+      "citation": "docs/architecture/core/DESIGN-DECISIONS.md row P48 (owner 2026-10-16: \"Yes of course, the point of parsing valid CSS isn't that we're obligated to actually accept everything\"; \"So all that punctuation is out\"). Implemented in packages/core/src/ast/invalid-value-syntax.ts (invalidValueSyntaxIn, assertValidValueSyntax); pinned by packages/jess/test/invalid-value-punctuation.test.ts.",
+      "consequence": "Byte-identity and the error cannot both hold for this input. The error wins; the fixture stays so that if the error ever silently stops, this file becomes identical and the named-set assertion fails."
     }
   }
 }

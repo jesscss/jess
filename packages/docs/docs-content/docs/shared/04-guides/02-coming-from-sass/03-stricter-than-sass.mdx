@@ -72,7 +72,13 @@ a { b: css(env(safe-area-inset-top)); }
 a { b: unknownfn(1px, 2%); }
 ```
 
-But a call whose contents are not valid CSS — unbalanced brackets and stray punctuation — is a **parse error** in Sass+, where Sass would emit the garbage verbatim.
+But a call whose contents are not valid CSS is not passed through. Unbalanced brackets are a **parse error**. Punctuation that no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?` between values, as in `foo(a=b=c)`, `a~b` or `foo(a.b)` — parses, and then the compile fails with a `css/invalid-value-punctuation` error at the declaration, where Sass would emit the garbage verbatim. The error is the same in `.css`, `.less` and `.jess`, and the editor reports it too. Sass's own operators and module calls (`==`, `color.mix(…)`) and custom properties (`--x: a.b`) are not affected.
+
+```scss
+// ❌ css/invalid-value-punctuation
+a { b: foo(a=b=c); }
+a { b: a~b; }
+```
 
 **Verdict:** A pass-through for *valid* plain CSS is useful; a pass-through for arbitrary invalid punctuation is not. Sass+ draws the line at valid CSS.
 

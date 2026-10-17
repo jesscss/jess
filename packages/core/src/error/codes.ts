@@ -73,7 +73,8 @@ export type JessErrorCode =
   | 'selector/parentless-ampersand'
   | 'selector/comma-list-interpolation'
   | 'css/glued-condition-keyword'
-  | 'css/legacy-ie-syntax';
+  | 'css/legacy-ie-syntax'
+  | 'css/invalid-value-punctuation';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -469,6 +470,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     {
       summary: 'Legacy IE syntax is not supported',
       reason: '`${what}` is legacy Internet Explorer syntax, which no other browser reads.',
+      fix: '${fix}'
+    }
+  ],
+  [
+    'css/invalid-value-punctuation',
+    {
+      summary: '`${what}` is not valid in any CSS value',
+      reason: 'CSS reads `${what}` as a delim token, and no CSS value accepts it, so a browser drops the declaration.',
       fix: '${fix}'
     }
   ],

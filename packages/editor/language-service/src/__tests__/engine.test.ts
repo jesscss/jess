@@ -408,6 +408,39 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/legacy-ie-syntax')).toBe(false);
     });
 
+    /* The compiler's `css/invalid-value-punctuation` error, at the same place: the declaration (ledger P48). */
+    it.each([
+      ['css', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
+      ['less', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
+      ['less', 'a {\n  x: foo(a=b=c);\n}\n', '='],
+      ['scss', 'a {\n  x: a~b;\n}\n', '~'],
+      ['jess', 'a {\n  x: foo(a==b);\n}\n', '==']
+    ])('reports invalid value punctuation (%s: %s) at the declaration', (languageId, input, delim) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/invalid-value-punctuation');
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(diagnostics[0]!.message.startsWith(`\`${delim}\` is not valid in any CSS value`)).toBe(true);
+      expect(diagnostics[0]!.range.start).toEqual({ line: 1, character: 2 });
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'parse/parser')).toBe(false);
+    });
+
+    it.each([
+      ['less', 'a {\n  x: foo(a=b);\n  y: ~"a.b";\n}\n'],
+      ['scss', '@use "sass:color";\na {\n  x: color.mix(red, blue);\n}\n'],
+      ['css', 'a {\n  --x: a.b~c;\n  y: attr(ns|foo);\n}\n']
+    ])('does not report punctuation the dialect gives meaning (%s: %s)', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/invalid-value-punctuation')).toBe(false);
+    });
+
     it('recovers an unfinished Less backtick value at the declaration boundary', () => {
       const engine = createEngine();
       const input = '.legacy { value: `1 + 1; }\n.after { color: red; }';

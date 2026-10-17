@@ -5499,7 +5499,7 @@ export function cstLintDiagnostics(
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
 
-    pushParseTwinDiagnostics(node, gt, language, source, pushDiagnostic);
+    pushParseTwinDiagnostics(node, language, source, context.inDeclaration, pushDiagnostic);
 
     /*
      * The strict AST raises the FIRST item a `;` makes invalid in a mixin list;
@@ -5533,7 +5533,7 @@ export function cstLintDiagnostics(
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
       inVarCall: context.inVarCall || gt === 'VarCall',
-      inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt),
+      inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt) || gt === 'NestedPropertyDeclaration',
       queryAtRuleKind: isMediaAtRule ? 'media' : isSupportsAtRule ? 'supports' : context.queryAtRuleKind,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
