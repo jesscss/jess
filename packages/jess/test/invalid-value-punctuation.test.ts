@@ -241,20 +241,68 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['less', 'a function result passed to a rest parameter', '.m(@rest...) { x: @rest; }\n.a { .m(e("|"), c); }\n'], // guards: a parameter snapshot's evaluated bytes read as a delim
     ['scss', 'a function that is never called', '@function f() { @return a=b; }\na { x: y; }\n'],
     ['less', 'a custom property', '@v: a.b;\na { --x: @v; }\n'],
-    ['less', 'a var() fallback', '@v: a.b;\na { x: var(--y, @v); }\n'],
     ['less', 'strings', '@v: a.b;\na { x: "@{v}"; y: ~"@{v}"; }\n'],
     ['less', 'a url', '@v: a.b;\na { x: url(@v); }\n'],
     ['less', 'conditions', '@v: a.b;\na { x: if((@v = a), b, c); y: boolean(@v = a); }\n'],
     ['less', 'a guard', '.m(@a) when not (@a = a) { x: y; }\na { .m(a.b); }\n'],
     ['less', 'a selector and a query', '@v: a.b;\n.c-@{v} { d: e; }\n@media (min-width: @v) { a { b: c; } }\n'],
     ['scss', 'an unused variable', '$v: a.b;\na { x: y; }\n'],
-    ['scss', 'a custom property and a var() fallback', '$v: a.b;\na { --x: #{$v}; y: var(--z, $v); }\n'],
+    ['scss', 'a custom property', '$v: a.b;\na { --x: #{$v}; }\n'],
     ['scss', 'a string', '$v: a.b;\na { x: "#{$v}"; }\n'],
     ['jess', 'an unused variable and collection', '$v: a~b;\n$m: { a: b.c };\na { x: y; }\n']
   ] as const)('%s: %s compiles', async (dialect, _label, source) => {
     const result = await compile(dialect, source);
     expect(result.errors).toEqual([]);
     expect(result.css).not.toBe('');
+  });
+});
+
+/*
+ * A `var()`, `env()` or `attr()` fallback in a regular declaration is
+ * substituted into that property, so it is a value and is checked as one.
+ * Owner 2026-10-16, verbatim, on `x: var(--x, a.b~c)`: *"errr... but a.b is not
+ * a valid value"*; *"even so... it's not a valid value"*. The custom-property
+ * name of `var()`, the variable name of `env()`, and `attr()`'s attribute name,
+ * namespace `|` and `type(…)` are not values; a custom property's value,
+ * a `var()` in it included, is written as authored.
+ */
+describe('a var(), env() or attr() fallback is a value', () => {
+  it.each([
+    ['css', 'a {\n  color: var(--brand, $primary);\n}\n', '$'],
+    ['css', 'a {\n  padding-top: env(safe-area-inset-top, $gutter);\n}\n', '$'],
+    ['css', 'a {\n  width: attr(data-w type(<length>), $default-width);\n}\n', '$'],
+
+    /*
+     * SCSS does not yet parse a fallback holding a delim (a P45 parse gap), and
+     * Less reads a fallback written directly as one text node, not a run (a
+     * parser shape gap); neither is this check.
+     */
+    ...(['css', 'jess'] as const).map(dialect => [dialect, 'a {\n  margin: var(--gap, a.b);\n}\n', '.'] as const),
+    ['less', '@gap: a.b;\na {\n  margin: var(--gap, @gap);\n}\n', '.']
+  ] as const)('%s: %s fails the compile', async (dialect, source, delim) => {
+    const result = await compile(dialect, source);
+    expect(result.css).toBe('');
+    expect(result.errors.map(error => [error.code, error.line, error.column, error.message])).toEqual([
+      [CODE, source.startsWith('@') ? 3 : 2, 3, `\`${delim}\` is not valid in any CSS value`]
+    ]);
+  });
+
+  /* Known gap: Less builds a fallback written directly as one text node, so its delim is not read until the Less grammar builds the run. */
+  it.fails('less: a fallback written directly', async () => {
+    const result = await compile('less', 'a {\n  margin: var(--gap, a.b);\n}\n');
+    expect(result.errors.map(error => error.code)).toEqual([CODE]);
+  });
+
+  it.each([
+    ['css', 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
+    ...DIALECTS.flatMap(dialect => [
+      [dialect, 'a {\n  --y: var(--x, a.b);\n}\n', '--y: var(--x, a.b);'],
+      [dialect, 'a {\n  color: var(--brand, red);\n}\n', 'color: var(--brand, red);']
+    ] as const)
+  ] as const)('%s: %s compiles', async (dialect, source, written) => {
+    const result = await compile(dialect, source);
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain(written);
   });
 });
 
@@ -278,21 +326,6 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
       ['an operator', 'a { x: calc(1px + 2px); y: 12px/1.5 a; }\n']
     ])(`${dialect}: %s`, async (_label, source) => {
       await clean(dialect, source);
-    });
-  }
-
-  /*
-   * SCSS does not yet parse a fallback with these delims (a P45 gap, not this
-   * check). css writes a `var()` fallback's delims spaced, as it does on dev.
-   */
-  for (const dialect of ['css', 'less', 'jess'] as const) {
-    it.each([
-      'var(--x, a.b~c)',
-      'var(--x, a:b)',
-      'attr(foo, a.b)',
-      'env(x, a.b)'
-    ])(`${dialect}: a var() / attr() / env() fallback: %s`, async (value) => {
-      await clean(dialect, sheet(value));
     });
   }
 
@@ -378,9 +411,8 @@ describe('not decided: compiles, unreported', () => {
   }
 
   it.each([
-    ['css', 'attr(a.b)'],
-    ['css', 'var(--x, a=b)']
-  ] as const)('%s: any argument of var() / attr() / env(): %s', async (dialect, value) => {
+    ['css', 'attr(a.b)']
+  ] as const)('%s: the attribute name of attr(): %s', async (dialect, value) => {
     await written(dialect, sheet(value));
   });
 

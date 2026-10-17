@@ -136,6 +136,34 @@ describe('invalid value punctuation is reported at the declaration', () => {
   });
 });
 
+/*
+ * A `var()`, `env()` or `attr()` fallback in a regular declaration is a value
+ * (owner 2026-10-16: *"errr... but a.b is not a valid value"*), as
+ * `packages/jess/test/invalid-value-punctuation.test.ts` asserts for the compile.
+ */
+describe('a var(), env() or attr() fallback is a value', () => {
+  it.each([
+    ['css', 'a {\n  color: var(--brand, $primary);\n}\n', '$'],
+    ['css', 'a {\n  padding-top: env(safe-area-inset-top, $gutter);\n}\n', '$'],
+    ['css', 'a {\n  width: attr(data-w type(<length>), $default-width);\n}\n', '$'],
+
+    /* SCSS does not yet parse a fallback holding a delim, and Less reads one as text (parser gaps, not this check). */
+    ...(['css', 'jess'] as const).map(dialect => [dialect, 'a {\n  margin: var(--gap, a.b);\n}\n', '.'] as const)
+  ] as const)('%s: %s is reported', (dialect, source, delim) => {
+    expect(reported(dialect, source)).toEqual([punctuation(delim, 2, 3)]);
+  });
+
+  it.each([
+    ['css', 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n'],
+    ...DIALECTS.flatMap(dialect => [
+      [dialect, 'a {\n  --y: var(--x, a.b);\n}\n'],
+      [dialect, 'a {\n  color: var(--brand, red);\n}\n']
+    ] as const)
+  ] as const)('%s: %s is not reported', (dialect, source) => {
+    expect(reported(dialect, source)).toEqual([]);
+  });
+});
+
 describe('punctuation a dialect or CSS gives meaning is not reported', () => {
   for (const dialect of DIALECTS) {
     it.each([
@@ -150,12 +178,6 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
       'a { x: calc(1px + 2px); y: 12px/1.5 a; }\n'
     ])(`${dialect}: %s`, (source) => {
       expect(reported(dialect, source)).toEqual([]);
-    });
-  }
-
-  for (const dialect of ['css', 'less', 'jess'] as const) {
-    it.each(['var(--x, a.b~c)', 'var(--x, a:b)', 'attr(foo, a.b)', 'env(x, a.b)'])(`${dialect}: a fallback: %s`, (value) => {
-      expect(reported(dialect, sheet(value))).toEqual([]);
     });
   }
 
