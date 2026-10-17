@@ -1969,7 +1969,7 @@ parser's classification *is* the node.
 | `Dimension` | number + unit split plus the verbatim `src` spelling — `0px`, `50%` |
 | `Any` | opaque value bytes. **The only leaf that sniffs its `src`**, and only when operated |
 | `Url` | `url(…)` — the wrapper is syntax; the content stays an ordinary structured value |
-| `SelectorCapture` | Less `*[…]` — structured captured selector branches, canonical text per branch |
+| `SelectorCapture` | `selector(…)` in `.less` / `.jess` (P48) — structured captured selector branches, canonical text per branch |
 
 **Value structure.**
 

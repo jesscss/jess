@@ -45,14 +45,14 @@ are the boundary.
 
 Jess also has explicit selector capture:
 
-- `*[...]` stores a selector or selector list as a selector-valued variable.
+- `selector(...)` stores a selector or selector list as a selector-valued variable.
 
 In selector contexts, an interpolated value may still resolve to a non-identifier selector fragment at runtime.
 
 ## Quick guide: which form to use?
 
 - **Selector / property / mixin names, at-rule preludes**: use `${ident}`
-- **Selector-valued variables**: use `*[...]`
+- **Selector-valued variables**: use `selector(...)`
 - **Strings and custom property values**: use `${ident}`
 - **Reading a property out of scope, in a name**: use `${[ident]}`
 - **Normal values**: use direct references like `$var`; use `$(...)` when you need expression behavior
@@ -60,16 +60,16 @@ In selector contexts, an interpolated value may still resolve to a non-identifie
 
 ## Selector capture
 
-Use `*[...]` when the value itself should stay a selector, not just text output.
+Use `selector(...)` when the value itself should stay a selector, not just text output.
 
 ```scss
-$target: *[.notice, .warning];
+$target: selector(.notice, .warning);
 ```
 
 This differs from normal interpolation:
 
 - `$(...)` interpolates an expression into output.
-- `*[...]` captures parsed selector syntax so selector-aware features can use it later.
+- `selector(...)` captures parsed selector syntax so selector-aware features can use it later.
 
 ## Interpolation examples
 
@@ -136,7 +136,7 @@ Note: in normal property values, you can usually just use `$theme`. A custom pro
 
 ### 4. $extend
 ```scss
-$type: *[.notice];
+$type: selector(.notice);
 .notice {
   color: orange;
 }
@@ -202,7 +202,7 @@ $color-name: "red";
 
 ## TL;DR
 1. Use `${name}` for a dynamic selector, property, mixin-name, or at-rule-prelude segment; use `$(…)` for a full expression in value position; use `$m[key]` (or `$[key]`) to read a key out of a collection.
-2. Use `*[]` when the variable itself should hold a selector or selector list.
+2. Use `selector()` when the variable itself should hold a selector or selector list.
 3. Don't wrap variables for no reason; use direct variables unless you need interpolation.
 4. Never interpolate numbers if you want to do math with them.
 5. Escape strings with `~""` for clarity when you want to drop quotes from a string.

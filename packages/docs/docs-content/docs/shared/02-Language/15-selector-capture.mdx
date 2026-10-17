@@ -19,22 +19,24 @@ live selector syntax attached to a rule.
 
 <AudienceGate include={['less']}>
 
-Write it with `*[ … ]` in value position:
+Write it with `selector( … )` in value position. Its argument is a selector list, the
+same one `:is()` takes:
 
 ```less
-@card:  *[.card];
-@both:  *[.card, .panel];   // a selector list is fine
+@card:  selector(.card);
+@both:  selector(.card, .panel);   // a selector list is fine
 ```
 
 </AudienceGate>
 
 <AudienceGate include={['jess']}>
 
-Write it with `*[ … ]` in value position (no `$` sigil — it serializes back as `*[…]`):
+Write it with `selector( … )` in value position (no `$` sigil — it serializes back as
+`selector(…)`). Its argument is a selector list, the same one `:is()` takes:
 
 ```less
-$card: *[.card];
-$both: *[.card, .panel];    // a selector list is fine
+$card: selector(.card);
+$both: selector(.card, .panel);    // a selector list is fine
 ```
 
 </AudienceGate>
@@ -62,6 +64,11 @@ Once a selector is a value you can:
   replace…) that build new selectors from existing ones.
 - **Compute selectors** — assemble a selector from parts and apply the result.
 
-The captured value round-trips — `*[.card, .panel]` serializes back to
-`*[.card, .panel]` — and behaves the same wherever a selector value is expected. The
+The captured value round-trips — `selector(.card, .panel)` serializes back to
+`selector(.card, .panel)` — and behaves the same wherever a selector value is expected. The
 concept is identical across syntaxes; only the spelling differs.
+
+`selector()` captures only in an ordinary value. Inside a support condition it is still
+CSS's feature test — `@supports selector(.a > .b)` and `if(supports(selector(.a)): …)`
+test whether the browser supports the selector — and in plain CSS and SCSS a
+value-position `selector()` is an ordinary function call.

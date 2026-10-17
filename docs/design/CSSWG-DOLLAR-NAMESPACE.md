@@ -103,7 +103,11 @@ Stated honestly, because a filing should not overclaim:
   they cannot collide with an at-rule name. But the honest claim is *"no new bare
   at-keyword"*, not *"no new bare `@` syntax"*.
 - A few Jess constructs carry no sigil at all: mixin definitions
-  (`name(params) { … }`) and the `*[…]` selector capture.
+  (`name(params) { … }`) and the `selector(…)` selector capture. The capture
+  reuses a CSS function name: CSS defines `selector()` only inside a support
+  condition (`@supports selector(…)`, `supports(selector(…))`), where Jess
+  leaves it CSS's feature test, and Jess gives it a meaning in an ordinary value
+  position, where CSS gives it none.
 - Jess is in places *stricter* than CSS about at-rule placement and prelude
   shape, and its grammar currently rejects non-keyframes `@-vendor-` at-rules.
   Being stricter is a different failure mode from squatting, but it is not
@@ -205,7 +209,7 @@ Reserve `$` followed by anything **other than `=`**. The shapes in use today:
 |---|---|
 | `$<ident>` | Sass variables; Jess variables (`$^name` = scoped lookup) |
 | `$(…)` | Jess value-position expression boundary (also allowed inside a string) |
-| `$[…]` | Jess value-position lookup (`*[…]` = selector capture) |
+| `$[…]` | Jess value-position lookup |
 | `${…}` | Less interpolation (alongside `@{…}`); Jess interpolation in identifier and string positions |
 | `$<ident>` block statements | Jess control flow — `$if`/`$else`, `$for`, `$extend`, `$apply` |
 
