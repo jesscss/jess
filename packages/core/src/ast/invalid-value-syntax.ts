@@ -1,8 +1,9 @@
+import { mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { Declaration, ValueSlot } from './nodes.js';
+import type { CallValue, Declaration, ValueSlot } from './nodes.js';
 
 /**
  * What a declaration value holds that parses as balanced CSS and is then an
@@ -167,6 +168,136 @@ function nameValueArgument(arg: ValueSlot): InvalidValueSyntax | undefined {
 /** The error for a finding, at the place `args` names. */
 export function invalidValueSyntaxError(found: InvalidValueSyntax, args: Parameters<typeof ERR.invalidValuePunctuation>[0]) {
   return found.code === 'css/legacy-ie-syntax' ? ERR.legacyIeSyntax(args) : ERR.invalidValuePunctuation(args);
+}
+
+/**
+ * The error for a finding, at the declaration `at`, or, for a part of an SCSS
+ * nested property, which carries no span, at the declaration it came from.
+ */
+function invalidValueSyntaxAt(found: InvalidValueSyntax, at: Declaration, s: ValueCheckLane['s']) {
+  const node = s.nestedPropertyOwners?.get(at) ?? at;
+  return invalidValueSyntaxError(found, { node, ...callSiteLocation(node, s), meta: { what: found.what, fix: found.fix } });
+}
+
+/** Of two findings, the more specific: legacy IE syntax, else the first. */
+function moreSpecific(kept: InvalidValueSyntax | undefined, found: InvalidValueSyntax): InvalidValueSyntax {
+  return kept === undefined || (kept.code !== 'css/legacy-ie-syntax' && found.code === 'css/legacy-ie-syntax') ? found : kept;
+}
+
+/** {@link ValueCheckLane.checks} while a mixin argument is bound. */
+const ARGUMENT = 'argument';
+
+/**
+ * What the evaluator's lane carries for checking a value a reference reaches
+ * (serialize.ts `Lane`, `EvalSession`).
+ */
+export interface ValueCheckLane {
+  /**
+   * The declaration whose value is being written, `'argument'` while a mixin
+   * argument is bound, or `undefined` where a value is not written as a CSS
+   * value.
+   */
+  checks: Declaration | typeof ARGUMENT | undefined;
+  readonly s: {
+    readonly context: Context | undefined;
+
+    /** What the mixin argument being bound holds or reached. */
+    argumentSyntax: InvalidValueSyntax | undefined;
+
+    /**
+     * Mixin arguments and collection entries holding an error, by the typed
+     * value each evaluated to and the snapshot an argument binds as; created
+     * at the first one.
+     */
+    invalidArguments: WeakMap<object, InvalidValueSyntax> | undefined;
+
+    /** The authored declaration each part of an SCSS nested property came from. */
+    readonly nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
+  };
+}
+
+/**
+ * A value a reference reached, checked as the declaration value it is written
+ * into is checked (owner 2026-10-16: "Nah, variables aren't looser"): legacy IE
+ * syntax or a delim no CSS value accepts (`found`) fails the compile at the
+ * declaration that writes it. While a mixin argument is bound the finding is
+ * kept for it ({@link bindingArgument}), legacy IE syntax first. Each hop of a
+ * chain is checked as it is reached, so no walk follows a reference itself.
+ */
+export function reportReached(e: ValueCheckLane, found: InvalidValueSyntax | undefined): void {
+  const at = e.checks;
+  if (found === undefined || at === undefined) {
+    return;
+  }
+  if (at === ARGUMENT) {
+    e.s.argumentSyntax = moreSpecific(e.s.argumentSyntax, found);
+    return;
+  }
+  throw invalidValueSyntaxAt(found, at, e.s);
+}
+
+/**
+ * An evaluated value a reference reached — a collection entry, a loop item —
+ * checked by what was kept when it was evaluated ({@link boundArgument}).
+ */
+export function reachedEvaluated<T extends object>(e: ValueCheckLane, value: T): T {
+  if (e.checks !== undefined && e.s.invalidArguments !== undefined) {
+    reportReached(e, e.s.invalidArguments.get(value));
+  }
+  return value;
+}
+
+/**
+ * Start binding a mixin argument or a collection entry (`source`): until
+ * {@link boundArgument}, what a reference in it reaches is kept, not raised,
+ * and the argument as written is the first finding. Returns the finding of an
+ * enclosing argument, to restore; the caller restores `checks`.
+ */
+export function bindingArgument(e: ValueCheckLane, source: ValueSlot): InvalidValueSyntax | undefined {
+  const outer = e.s.argumentSyntax;
+  e.checks = ARGUMENT;
+  e.s.argumentSyntax = invalidValueSyntaxIn(source);
+  return outer;
+}
+
+/**
+ * Finish binding an argument: what it held or reached is kept for the value it
+ * evaluated to, to be raised where a reference writes it
+ * ({@link reachedEvaluated}, {@link keepArgumentSyntax}).
+ */
+export function boundArgument<T extends object>(s: ValueCheckLane['s'], outer: InvalidValueSyntax | undefined, value: MaybePromise<T>): MaybePromise<T> {
+  const found = s.argumentSyntax;
+  s.argumentSyntax = outer;
+  return found === undefined
+    ? value
+    : mapMaybe(value, (settled) => {
+        (s.invalidArguments ??= new WeakMap()).set(settled, found);
+        return settled;
+      });
+}
+
+/** What an argument's typed `value` holds is kept for the snapshot it binds as (`bound`). */
+export function keepArgumentSyntax(s: ValueCheckLane['s'], value: object, bound: object): void {
+  const found = s.invalidArguments?.get(value);
+  if (found !== undefined) {
+    s.invalidArguments!.set(bound, found);
+  }
+}
+
+/**
+ * The first error in a value a reference reached, read from its shape as a
+ * declaration value is ({@link invalidValueSyntaxIn}); a mixin argument's
+ * snapshot is read from what its evaluation kept (`kept`). A mixin call is
+ * not a value.
+ */
+export function reachedValueSyntax(value: CallValue, kept: WeakMap<object, InvalidValueSyntax> | undefined): InvalidValueSyntax | undefined {
+  if (isValueSlotArray(value)) {
+    return invalidValueSyntaxIn(value);
+  }
+  if (value.type === 'MixinCall') {
+    return undefined;
+  }
+  return invalidValueSyntaxIn(value) ?? (value.type === 'Any' ? kept?.get(value) : undefined);
 }
 
 /**

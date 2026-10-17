@@ -31,11 +31,9 @@ import {
   callArg,
   collection,
   collectionEntry,
-  decl,
   dimension,
   funcCall,
   importOptionWords,
-  interpolation,
   mixinCall,
   mixinDef,
   operation,
@@ -86,7 +84,6 @@ import type {
   AuthoredCallSlot,
   Block,
   Collection,
-  NestedPropertyBlock,
   Color,
   Comment,
   ComplexSelector,
@@ -182,7 +179,8 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { assertValidValueSyntax } from './invalid-value-syntax.js';
+import { assertValidValueSyntax, bindingArgument, boundArgument, isAnyTokenFunction, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
+import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
@@ -4013,7 +4011,7 @@ function withExcluded<T>(e: Lane, node: Binding, run: () => T): T {
   e.excluded.add(node);
   try {
     /* A root variable's value is looked up only once the session's documents differ. */
-    return whileReachedFrom(e, e.s.context?.mixedPolicies === true ? e.s.context.bodyOwner(node) : undefined, run);
+    return whileReachedFrom(e, node, e.s.context?.mixedPolicies === true ? e.s.context.bodyOwner(node) : undefined, run);
   } finally {
     e.excluded.delete(node);
   }
@@ -4023,8 +4021,13 @@ function withExcluded<T>(e: Lane, node: Binding, run: () => T): T {
  * {@link whileReached}, under the policy of the document that wrote the value
  * (`owner`) when it differs: a value a reference reaches answers the settings
  * of the file it is written in, wherever it is read (DESIGN-DECISIONS C19).
+ * Every value a reference reaches passes here, so `value` is checked here
+ * (`reportReached`).
  */
-function whileReachedFrom<T>(e: Lane, owner: object | null | undefined, run: () => T): T {
+function whileReachedFrom<T>(e: Lane, value: Binding, owner: object | null | undefined, run: () => T): T {
+  if (e.checks !== undefined) {
+    reportReached(e, reachedValueSyntax(value, e.s.invalidArguments));
+  }
   return e.s.context?.mixedPolicies === true && owner instanceof DocumentContext && changesPolicy(e, owner)
     ? withPolicy(e, owner, () => whileReached(e, run))
     : whileReached(e, run);
@@ -4068,13 +4071,8 @@ function whileReached<T>(e: Lane, run: () => T): T {
  * binding is not byte-serializable there — it is only accessible/callable (`@p[k]`,
  * `@p()`), so like a detached ruleset reaching a value position it folds to empty
  * bytes; every other binding is an ordinary value node. */
-function evalBinding(
-  b: Binding,
-  frame: Frame | null,
-  e: Lane,
-  evaluated: ValueGroup | null = null
-): MaybePromise<EvalValue> {
-  return evaluated ?? ('type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e));
+function evalBinding(b: Binding, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
+  return 'type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: Lane): never {
@@ -4306,6 +4304,15 @@ interface Lane {
    * where `default()` emits verbatim (`case: default()` outside a guard).
    */
   defaultFn: (() => boolean) | undefined;
+
+  /**
+   * [P47/P48] What answers for a value a reference reaches here
+   * (`reportReached`): the declaration whose value this lane writes,
+   * `ARGUMENT` while a mixin argument is bound, or `undefined` where a
+   * value is not written as a CSS value (a statement, a condition, a string, a
+   * url, a `var()` / `env()` / `attr()` argument; an `unchecked` lane).
+   */
+  checks: ValueCheckLane['checks'];
 }
 
 /**
@@ -4430,6 +4437,23 @@ interface EvalSession {
    * the render, so every derived context shares it.
    */
   snapshotValues: WeakMap<Binding, ValueGroup> | undefined;
+
+  /** [P47/P48] What the mixin argument being bound holds or reached (`evalArgument`). */
+  argumentSyntax: InvalidValueSyntax | undefined;
+
+  /**
+   * [P47/P48] Mixin arguments holding legacy IE syntax or invalid punctuation,
+   * by the typed value each evaluated to and the snapshot it binds as
+   * (`evalArgument`); created at the first one.
+   */
+  invalidArguments: WeakMap<object, InvalidValueSyntax> | undefined;
+
+  /**
+   * [P47/P48] The authored declaration each part of an SCSS nested property
+   * came from: a part carries no span, so an error in what it writes is
+   * reported at the declaration (`reportReached`).
+   */
+  nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
 }
 
 /**
@@ -4468,7 +4492,7 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked',
   sink?: { elided: boolean },
   isDefault?: () => boolean
 ): Lane {
@@ -4496,7 +4520,8 @@ function deriveLane(
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
         mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
-        defaultFn: change === 'guard' ? isDefault : change === 'statement' ? undefined : e.defaultFn
+        defaultFn: change === 'guard' ? isDefault : change === 'statement' ? undefined : e.defaultFn,
+        checks: change === 'statement' || change === 'unchecked' ? undefined : e.checks
       };
 }
 
@@ -5047,7 +5072,7 @@ function evalTyped(
        * keyword.
        */
       if (node.interp !== null) {
-        return mapMaybe(evalInterp(node.interp, frame, e), content => !isLiteral(content)
+        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => !isLiteral(content)
           ? content
           : node.escaped ? makeAny(content, node.quote) : makeQuoted(content, node.quote, false));
       }
@@ -5084,10 +5109,11 @@ function evalTyped(
           return force(unresolvedRef(node, nm, e));
         }
         const bound = hit.value;
-        return hit.evaluated ?? withExcluded(e, bound, () =>
-          isMixinCallValue(bound)
-            ? force(literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
+        return hit.evaluated !== null
+          ? reachedEvaluated(e, hit.evaluated)
+          : withExcluded(e, bound, () => isMixinCallValue(bound)
+              ? force(literal(''))
+              : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -5107,8 +5133,9 @@ function evalTyped(
       const member = resolved.value;
       return isMixinCallValue(member)
         ? force(literal(node.raw))
-        : resolved.evaluated
-          ?? whileReachedFrom(e, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
+        : resolved.evaluated !== null
+          ? reachedEvaluated(e, resolved.evaluated)
+          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
     }
     case 'Block':
       /*
@@ -5655,8 +5682,9 @@ function writtenGroup(v: EvalValue): Value {
  * math function's arguments do ({@link whileReached}).
  */
 function writtenCondition(guard: GuardNode, frame: Frame | null, e: Lane): MaybePromise<string> {
-  if (e.reached) {
-    return writtenCondition(guard, frame, deriveLane(e, 'unreached'));
+  if (e.reached || e.checks !== undefined) {
+    /* [P47/P48] A condition is not a CSS value, so what it reaches is not checked. */
+    return writtenCondition(guard, frame, deriveLane(e, e.reached ? 'unreached' : 'unchecked'));
   }
   const parens = guard.parens;
   const written = (bytes: string): string => parens === 0 ? bytes : `${'('.repeat(parens)}${bytes}${')'.repeat(parens)}`;
@@ -5844,7 +5872,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
       if (node.interp !== null) {
-        return mapMaybe(evalInterp(node.interp, frame, e), content => isLiteral(content) && !node.escaped
+        return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => isLiteral(content) && !node.escaped
           ? literal(`${node.quote}${content}${node.quote}`)
           : content);
       }
@@ -5856,7 +5884,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        */
       const body = node.value;
       if (body.type === 'Quoted') {
-        return mapMaybe(body.interp === null ? body.value : evalInterp(body.interp, frame, e), (content) => {
+        return mapMaybe(body.interp === null ? body.value : evalInterp(body.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), (content) => {
           if (!isLiteral(content)) {
             return content;
           }
@@ -5882,7 +5910,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         const target = e.s.context?.transformUrl(body.src, false) ?? body.src;
         return literal(`url(${target})`);
       }
-      return mapMaybe(evalTyped(body, frame, e), (value) => {
+
+      /* [P47/P48] A url's content is not checked as a value. */
+      return mapMaybe(evalTyped(body, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), (value) => {
         /*
          * Dynamic URL content — `url(@var)` / any non-literal — gets the same URL
          * transform (rootpath/rewriteUrls/urlArgs) an authored `url("…")` gets. A
@@ -5924,11 +5954,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
             }
             return unresolvedRef(node, nm, e);
           }
-          return hit.evaluated ?? withExcluded(
-            e,
-            hit.value,
-            () => evalBinding(hit.value, hit.frame, e, hit.evaluated)
-          );
+          return hit.evaluated !== null
+            ? reachedEvaluated(e, hit.evaluated)
+            : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
         });
       }
 
@@ -6371,7 +6399,7 @@ function evalCollectionEntries(
             : projectMixinValues && node.type === 'AnonymousMixin'
               && !isValueSlotArray(valueSlot) && valueSlot.type === 'AnonymousMixin'
               ? evalCollection(valueSlot, frame, e, true)
-              : evalTypedSlot(valueSlot, frame, e, projectMixinValues);
+              : evalArgument(valueSlot, frame, e, ARG_NONE, projectMixinValues);
           return mapMaybe(value, (resolvedValue) => {
             addEntry(important, resolvedKey, resolvedValue);
             return run(index + 1);
@@ -6383,7 +6411,7 @@ function evalCollectionEntries(
         : projectMixinValues && node.type === 'AnonymousMixin'
           && !isValueSlotArray(valueSlot) && valueSlot.type === 'AnonymousMixin'
           ? evalCollection(valueSlot, frame, e, true)
-          : evalTypedSlot(valueSlot, frame, e, projectMixinValues);
+          : evalArgument(valueSlot, frame, e, ARG_NONE, projectMixinValues);
       if (isThenable(value)) {
         return value.then((resolvedValue) => {
           addEntry(important, key, resolvedValue);
@@ -7641,7 +7669,9 @@ function evalReference(node: Reference, frame: Frame | null, e: Lane): MaybeProm
   const member = resolved.value;
   return isMixinCallValue(member)
     ? literal(node.raw)
-    : resolved.evaluated ?? whileReachedFrom(e, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e));
+    : resolved.evaluated !== null
+      ? reachedEvaluated(e, resolved.evaluated)
+      : whileReachedFrom(e, member, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e));
 }
 
 /**
@@ -7808,7 +7838,7 @@ function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
  *  `whenGuard` ({@link GuardEvalDeps.whenGuard}). */
 function guardDeps(frame: Frame | null, e: Lane, whenGuard = false): GuardEvalDeps {
   const decide = e.writtenFrom ?? e;
-  return { resolveTyped: makeTypedResolver(frame, decide), ev: decide.ev, modes: decide.modes, isDefault: () => false, whenGuard };
+  return { resolveTyped: makeTypedResolver(frame, decide.checks === undefined ? decide : deriveLane(decide, 'unchecked')), ev: decide.ev, modes: decide.modes, isDefault: () => false, whenGuard };
 }
 
 /**
@@ -8027,7 +8057,7 @@ function snapshotPreparedMixinValue(
   source?: ValueSlot,
   frame: Frame | null = null
 ): Any {
-  const bound = argumentSnapshot(bytes, source, frame, e);
+  const bound = argumentSnapshot(bytes, source, frame, e, value);
   if (mode === MIXIN_GROUP_URL) {
     (e.s.mixinUrlBindings ??= new Map()).set(bound, value);
     retain?.(bound);
@@ -8041,13 +8071,15 @@ function snapshotPreparedMixinValue(
 
 /**
  * The snapshot an argument binds as: its evaluated bytes, marked when the
- * argument computed ({@link computedArguments}). A parameter is reached through
- * a variable, so a group written around one value as the argument evaluates to
- * that value (`.m((10px))` binds `10px`; {@link withExcluded}). `source` is the
- * argument as written.
+ * argument computed ({@link computedArguments}) and when its typed `value`
+ * holds legacy IE syntax or invalid punctuation (`evalArgument`). A
+ * parameter is reached through a variable, so a group written around one value
+ * as the argument evaluates to that value (`.m((10px))` binds `10px`;
+ * {@link withExcluded}). `source` is the argument as written.
  */
-function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: Frame | null, e: Lane): Any {
+function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: Frame | null, e: Lane, value: ValueGroup): Any {
   const bound = any(bytes);
+  keepArgumentSyntax(e.s, value, bound);
   if (source === undefined) {
     return bound;
   }
@@ -8106,10 +8138,10 @@ function carryCompressed(bound: Any, value: ValueGroup, e: Lane): void {
  * twice.
  */
 function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: Lane): MaybePromise<Any> {
-  return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+  return mapMaybe(evalArgument(source, frame, spliceCtx(e), ARG_NONE), (value) => {
     validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e);
     const bytes = emitValue(value);
-    const bound = argumentSnapshot(bytes, source, frame, e);
+    const bound = argumentSnapshot(bytes, source, frame, e, value);
     carrySnapshot(bound, value, e, bound.src !== bytes);
     return bound;
   });
@@ -8175,10 +8207,35 @@ function resolveAuthoredMixinValue(
   e: Lane,
   retain: (key: Binding) => void
 ): MaybePromise<CallValue> {
-  return mapMaybe(evalTypedSlot(source, frame, e, true, ARG_BINDING), (value) => {
+  return mapMaybe(evalArgument(source, frame, e, ARG_BINDING), (value) => {
     const mode = mixinGroupMode(value);
     return snapshotPreparedMixinValue(value, mode, mode === MIXIN_GROUP_VALUE ? writtenBytes(value, source, e) : emitValue(value), e, retain, source, frame);
   });
+}
+
+/**
+ * [P47/P48] A mixin argument or a collection entry, evaluated typed to bind.
+ * Legacy IE syntax or invalid punctuation in it as written, or in a value a
+ * reference in it reaches, is not raised here — it may never be written — but
+ * kept for the value, and so for the snapshot an argument binds as
+ * ({@link argumentSnapshot}), to be raised where a reference writes it
+ * ({@link bindingArgument}, {@link boundArgument}).
+ *
+ * ponytail: `checks` is set for the synchronous part of an evaluation, as
+ * {@link Lane.importantSink} is; a reference reached only after an await (an
+ * async plugin function) is not checked. Carry it through the continuation if
+ * one needs it.
+ */
+function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
+  const outerChecks = e.checks;
+  const outerFound = bindingArgument(e, source);
+  let value: MaybePromise<ValueGroup>;
+  try {
+    value = evalTypedSlot(source, frame, e, project, argument);
+  } finally {
+    e.checks = outerChecks;
+  }
+  return boundArgument(e.s, outerFound, value);
 }
 
 /**
@@ -8372,11 +8429,11 @@ function boundSourceTracker(
     ? (source: ValueSlot, mode: MixinValueSourceMode): MaybePromise<ValueGroup> => {
         const argument = mode === MIXIN_VALUE_AUTHORED ? ARG_BINDING : ARG_NONE;
         if (source === valueSources?.valueSource) {
-          return primaryValue ??= evalTypedSlot(source, frame, e, true, argument);
+          return primaryValue ??= evalArgument(source, frame, e, argument);
         }
         let value = additionalValues?.get(source);
         if (value === undefined) {
-          value = evalTypedSlot(source, frame, e, true, argument);
+          value = evalArgument(source, frame, e, argument);
           (additionalValues ??= new Map()).set(source, value);
         }
         return value;
@@ -8783,6 +8840,11 @@ function evalCall(
    */
   if (e.parenFrames?.at(-1) === true || (e.reached && isMathFunctionName(node.name))) {
     return evalCall(node, frame, deriveLane(e, e.parenFrames?.at(-1) === true ? 'call' : 'unreached'), demanded);
+  }
+
+  /* [P47/P48] Any tokens are a `var()`, `env()` or `attr()` argument. */
+  if (e.checks !== undefined && isAnyTokenFunction(node.name)) {
+    return evalCall(node, frame, deriveLane(e, 'unchecked'), demanded);
   }
 
   /*
@@ -10908,7 +10970,10 @@ function scratchEmit(e: Lane): Emit {
       mixinUrlBindings: e.s.mixinUrlBindings,
       mixinValueBindings: e.s.mixinValueBindings,
       compressedBindings: e.s.compressedBindings,
-      snapshotValues: e.s.snapshotValues
+      snapshotValues: e.s.snapshotValues,
+      argumentSyntax: undefined,
+      invalidArguments: e.s.invalidArguments,
+      nestedPropertyOwners: e.s.nestedPropertyOwners
     },
     ev: e.ev,
     modes: e.modes,
@@ -10927,6 +10992,7 @@ function scratchEmit(e: Lane): Emit {
     elideSink: undefined,
     mergeImportant: undefined,
     defaultFn: undefined,
+    checks: undefined,
     chunks: [],
     positions: null,
     pending: [],
@@ -12637,6 +12703,7 @@ function evaluateLeafStatement(
     return;
   }
   for (const part of parts) {
+    (e.s.nestedPropertyOwners ??= new Map()).set(part, node);
     assertValidValueSyntax(part, e.s, isCustomPropertyName, node);
     recordPropertyDeclaration(propertyScope, part, frame);
     place({ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
@@ -14223,7 +14290,10 @@ function createRenderSession(
       mixinUrlBindings: null,
       mixinValueBindings: null,
       compressedBindings: options?.compress === true ? new WeakMap() : undefined,
-      snapshotValues: new WeakMap()
+      snapshotValues: new WeakMap(),
+      argumentSyntax: undefined,
+      invalidArguments: undefined,
+      nestedPropertyOwners: undefined
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -14244,6 +14314,7 @@ function createRenderSession(
     elideSink: undefined,
     mergeImportant: undefined,
     defaultFn: undefined,
+    checks: undefined,
     chunks: [],
     positions: entry.positions,
     pending: [], // async patches
@@ -19843,8 +19914,11 @@ function mergeFoldOwned(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, 
          * already takes this path only after `mergeGroupMode` admitted the group.
          */
         const previousImportant = e.mergeImportant;
+        const previousChecks = e.checks;
         e.mergeImportant = false;
+        e.checks = dn;
         const bytes = evalBytesSync(dn.value, group[idx]!.frame, e);
+        e.checks = previousChecks;
         const inlineComment = takeIndexedInlineBlockCommentTriviaAfter(dn, e) ?? '';
         important ||= dn.important || group[idx]!.important === true || e.mergeImportant;
         e.mergeImportant = previousImportant;
@@ -19878,8 +19952,11 @@ function appendMixedMergeMemberRun(
       throw new TypeError('Expected declaration merge member');
     }
     const memberImportant = e.mergeImportant;
+    const memberChecks = e.checks;
     e.mergeImportant = false;
+    e.checks = memberNode;
     const bytes = evalBytesSync(memberNode.value, memberLeaf.frame, e);
+    e.checks = memberChecks;
     const inlineComment = takeIndexedInlineBlockCommentTriviaAfter(memberNode, e) ?? '';
     combined += at === 0
       ? bytes + inlineComment
@@ -19989,47 +20066,6 @@ function mergeFoldMixedOwners(
   }, null);
 }
 
-/** A declaration value that is an SCSS nested-property block. */
-function isNestedPropertyValue(value: ValueSlot): value is NestedPropertyBlock {
-  return !isValueSlotArray(value) && value.type === 'NestedPropertyBlock';
-}
-
-/** Append literal text to an interpolation part list, coalescing adjacent literals. */
-function appendInterpLiteral(parts: Interpolation['parts'], text: string): void {
-  const previous = parts[parts.length - 1];
-  if (previous !== undefined && 'lit' in previous) {
-    parts[parts.length - 1] = { lit: previous.lit + text };
-  } else {
-    parts.push({ lit: text });
-  }
-}
-
-/** Join an SCSS nested-property outer name and a leaf name with a literal `-`,
- * preserving interpolation structure when either side is an {@link Interpolation}. */
-function joinNestedPropertyName(prefix: string | Interpolation, leaf: string | Interpolation): string | Interpolation {
-  if (typeof prefix === 'string' && typeof leaf === 'string') {
-    return `${prefix}-${leaf}`;
-  }
-  const parts: Interpolation['parts'] = [];
-  const appendName = (name: string | Interpolation): void => {
-    if (typeof name === 'string') {
-      appendInterpLiteral(parts, name);
-    } else {
-      for (const part of name.parts) {
-        if ('lit' in part) {
-          appendInterpLiteral(parts, part.lit);
-        } else {
-          parts.push(part);
-        }
-      }
-    }
-  };
-  appendName(prefix);
-  appendInterpLiteral(parts, '-');
-  appendName(leaf);
-  return interpolation(parts);
-}
-
 /**
  * A custom property name (`--foo`, or an interpolation whose literal head is `--`).
  * A custom property's value is an arbitrary token stream, so `--foo: { … }` is
@@ -20041,37 +20077,6 @@ function isCustomPropertyName(name: string | Interpolation): boolean {
   }
   const head = name.parts[0];
   return head !== undefined && 'lit' in head && head.lit.startsWith('--');
-}
-
-/** [nested-property] Append one carrier level's declarations to `out`, recursing
- * through an entry that is itself a `{ … }` block (`font: { family: { weight: bold } }`). */
-function collectNestedProperty(
-  name: string | Interpolation,
-  block: NestedPropertyBlock,
-  merge: Declaration['merge'],
-  important: boolean,
-  out: Declaration[]
-): void {
-  if (block.base !== null) {
-    out.push(decl(name, block.base, merge, important));
-  }
-  for (const entry of block.entries) {
-    const key = entry.key;
-    const leaf = isValueSlotArray(key)
-      ? null
-      : key.type === 'Keyword' || key.type === 'Color' || key.type === 'Dimension' || key.type === 'Any'
-        ? key.src
-        : key.type === 'Quoted' ? key.interp ?? key.value : key.type === 'Interpolation' ? key : null;
-    if (leaf === null) {
-      continue;
-    }
-    const joined = joinNestedPropertyName(name, leaf);
-    if (isNestedPropertyValue(entry.value)) {
-      collectNestedProperty(joined, entry.value, entry.merge, entry.important, out);
-    } else {
-      out.push(decl(joined, entry.value, entry.merge, entry.important));
-    }
-  }
 }
 
 /**
@@ -20226,9 +20231,12 @@ function putDeclarationValue(
   const customValue = isCustom ? customPropertyValueWithTrivia(node.value, frame, e) : null;
   if (customValue === null) {
     const prevElide = e.elideSink;
+    const prevChecks = e.checks;
     e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
+    e.checks = isCustom ? undefined : node; // [P47/P48] a value a reference reaches is this declaration's
     const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, continuationIndent, important, onNewLine) === null; // [whitespace] continuation indent
     e.elideSink = prevElide;
+    e.checks = prevChecks;
     return deferred;
   }
   const valStart = e.chunks.length;
@@ -22322,7 +22330,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
       const member = resolved.value;
       return resolved.evaluated !== null
         ? typedPreludeParts(resolved.evaluated, e.compress === true)
-        : whileReachedFrom(e, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e));
+        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e));
     }
     default:
       /*

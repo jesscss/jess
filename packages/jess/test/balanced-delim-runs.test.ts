@@ -116,8 +116,12 @@ describe('a delim run in a call argument', () => {
     expect(await value('less', 'foo(1 < 2)')).toBe('foo(true)');
   });
 
-  it('scss: an `@include` argument with an `=` run evaluates', async () => {
-    expect(await render('scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }')).toMatch(/x: a ?= ?b;/);
+  /* Written through the parameter, the run is invalid punctuation (P48; owner 2026-10-16: "Nah, variables aren't looser"). */
+  it('scss: an `@include` argument with an `=` run parses, then is invalid punctuation where it is written', async () => {
+    const source = '@mixin m($a) { x: $a; }\na { @include m(a=b); }';
+    expect(PLUGINS.scss.safeParse!('/proj/delim-run.scss', source).errors).toEqual([]);
+    const result = await new Compiler({}).renderToResult({ source, filePath: '/proj/delim-run.scss' }, {});
+    expect(result.errors.map(error => error.code)).toEqual([CODE]);
   });
 
   it('scss: a line comment beside an `@include` keyword argument still parses', async () => {
@@ -145,17 +149,16 @@ describe('compressed output keeps a glued delim glued and a padded one padded', 
  * KNOWN GAP (evaluation, not the grammar; ledger N18): a run that reaches the
  * writer through a variable, a mixin or function parameter, or an
  * interpolation loses its authored layout and is written spaced (`a = b`); the
- * same run written in place keeps it. Each turns red when fixed.
+ * same run written in place keeps it. Each turns red when fixed. A run with
+ * `=` written into a declaration value through a reference is now invalid
+ * punctuation (P48), so those cases left here are a string, an escape, a
+ * property name, and `f(a=b)`, which is legacy IE syntax as written (P47).
  */
 describe('a substituted delim run keeps its layout', () => {
   it.fails.each([
-    ['scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }', 'x: a=b;'],
-    ['scss', '$v: a=b;\na { y: foo($v); }', 'y: foo(a=b);'],
     ['scss', '@function f($a) { @return $a; }\na { x: f(a=b); }', 'x: a=b;'],
     ['scss', '$v: a=b;\na { s: "#{$v}"; }', 's: "a=b";'],
     ['scss', '$v: a=b;\na { #{$v}: 1; }', 'a=b: 1;'],
-    ['less', '.m(@a) { x: @a; }\na { .m(a=b); }', 'x: a=b;'],
-    ['less', '@v: a=b;\na { y: foo(@v); }', 'y: foo(a=b);'],
     ['less', '@v: a=b;\na { s: ~"@{v}"; }', 's: a=b;']
   ] as const)('%s: %s', async (dialect, source, written) => {
     expect(await render(dialect, source)).toContain(written);
