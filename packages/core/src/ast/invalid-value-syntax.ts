@@ -83,7 +83,7 @@ const ANY_TOKEN_FUNCTION = /^(?:var|env|attr)$/i;
  * condition, a `.jess` `$(…)`), a lookup, a string and a `var()`, `env()` or
  * `attr()` call are leaves here.
  */
-export function invalidValueSyntaxIn(value: ValueSlot): InvalidValueSyntax | undefined {
+export function invalidValueSyntaxIn(value: ValueSlot, kept?: ValueCheckLane['s']): InvalidValueSyntax | undefined {
   if (isValueSlotArray(value)) {
     let found: InvalidValueSyntax | undefined;
     for (let i = 0; i < value.length; i++) {
@@ -91,7 +91,7 @@ export function invalidValueSyntaxIn(value: ValueSlot): InvalidValueSyntax | und
       if (isProgid(item, value[i + 1])) {
         return PROGID_IE_SYNTAX;
       }
-      const inner = invalidValueSyntaxIn(item);
+      const inner = invalidValueSyntaxIn(item, kept);
       if (inner?.code === 'css/legacy-ie-syntax') {
         return inner;
       }
@@ -101,14 +101,18 @@ export function invalidValueSyntaxIn(value: ValueSlot): InvalidValueSyntax | und
   }
   switch (value.type) {
     case 'Any':
-      return invalidValuePunctuation(value.src);
+      /*
+       * A mixin argument's snapshot holds evaluated bytes, not a parsed delim:
+       * it answers from what its evaluation kept (`kept`), never by its text.
+       */
+      return kept?.snapshotValues?.has(value) === true ? kept.invalidArguments.get(value) : invalidValuePunctuation(value.src);
     case 'FunctionCall': {
       if (isAnyTokenFunction(value.name)) {
         return undefined;
       }
       let found: InvalidValueSyntax | undefined;
       for (const arg of value.args) {
-        const inner = (arg.name === undefined ? nameValueArgument(arg.value) : undefined) ?? invalidValueSyntaxIn(arg.value);
+        const inner = (arg.name === undefined ? nameValueArgument(arg.value) : undefined) ?? invalidValueSyntaxIn(arg.value, kept);
         if (inner?.code === 'css/legacy-ie-syntax') {
           return inner;
         }
@@ -119,7 +123,7 @@ export function invalidValueSyntaxIn(value: ValueSlot): InvalidValueSyntax | und
     case 'List': {
       let found: InvalidValueSyntax | undefined;
       for (const item of value.value) {
-        const inner = invalidValueSyntaxIn(item);
+        const inner = invalidValueSyntaxIn(item, kept);
         if (inner?.code === 'css/legacy-ie-syntax') {
           return inner;
         }
@@ -130,7 +134,7 @@ export function invalidValueSyntaxIn(value: ValueSlot): InvalidValueSyntax | und
     case 'IfValue': {
       let found: InvalidValueSyntax | undefined;
       for (const branch of value.branches) {
-        const inner = invalidValueSyntaxIn(branch.value);
+        const inner = invalidValueSyntaxIn(branch.value, kept);
         if (inner?.code === 'css/legacy-ie-syntax') {
           return inner;
         }
@@ -140,7 +144,7 @@ export function invalidValueSyntaxIn(value: ValueSlot): InvalidValueSyntax | und
     }
     case 'Block':
     case 'Branch':
-      return invalidValueSyntaxIn(value.value);
+      return invalidValueSyntaxIn(value.value, kept);
     default:
       return undefined;
   }
@@ -257,7 +261,7 @@ export function reachedEvaluated<T extends object>(e: ValueCheckLane, value: T):
 export function bindingArgument(e: ValueCheckLane, source: ValueSlot): InvalidValueSyntax | undefined {
   const outer = e.s.argumentSyntax;
   e.checks = ARGUMENT;
-  e.s.argumentSyntax = invalidValueSyntaxIn(source);
+  e.s.argumentSyntax = invalidValueSyntaxIn(source, e.s);
   return outer;
 }
 
@@ -298,20 +302,13 @@ export function keepArgumentSyntax(s: ValueCheckLane['s'], value: object, bound:
 /**
  * The first error in a value a reference reached, read from its shape as a
  * declaration value is ({@link invalidValueSyntaxIn}). A mixin argument's
- * snapshot holds evaluated bytes, not a parsed delim, so it is answered only
- * from what its evaluation kept ({@link keepArgumentSyntax}): `e("=")` or
- * `~"."` passed to a mixin is not a delim. A mixin call is not a value.
+ * snapshot, alone or as a member of a rest parameter or `@arguments`, holds
+ * evaluated bytes, not a parsed delim, so it is answered only from what its
+ * evaluation kept ({@link keepArgumentSyntax}): `e("=")` or `~"."` passed to a
+ * mixin is not a delim. A mixin call is not a value.
  */
 export function reachedValueSyntax(value: CallValue, s: ValueCheckLane['s']): InvalidValueSyntax | undefined {
-  if (isValueSlotArray(value)) {
-    return invalidValueSyntaxIn(value);
-  }
-  if (value.type === 'MixinCall') {
-    return undefined;
-  }
-  return value.type === 'Any' && s.snapshotValues?.has(value) === true
-    ? s.invalidArguments.get(value)
-    : invalidValueSyntaxIn(value);
+  return !isValueSlotArray(value) && value.type === 'MixinCall' ? undefined : invalidValueSyntaxIn(value, s);
 }
 
 /**

@@ -8585,14 +8585,19 @@ function boundSourceTracker(
             restBytes = bytes;
           }
           const slots: ValueSlot[] = [];
+
+          /*
+           * [P47/P48] What the argument held is kept for each member it splits
+           * into, so writing the rest raises it.
+           */
           for (let index = 0; index < members.length; index++) {
-            slots.push(snapshotPreparedMixinValue(
+            keepArgumentSyntax(e.s, group, slots[slots.push(snapshotPreparedMixinValue(
               members[index]!,
               restModes![index]!,
               restBytes![index]!,
               e,
               retain
-            ));
+            )) - 1]!);
           }
           return slots;
         });
@@ -8814,6 +8819,9 @@ function evalLambdaCall(
   if (invoked === null) {
     return undefined;
   }
+
+  /* [P47/P48] A function's result is checked where it is written, as a variable's value is. */
+  reportReached(e, e.checks === undefined ? undefined : reachedValueSyntax(invoked.value, e.s));
 
   /*
    * A typed consumer reads the result typed, as it reads any value: a result
@@ -20229,8 +20237,7 @@ function putDeclarationValue(
 ): boolean {
   const customValue = isCustom ? customPropertyValueWithTrivia(node.value, frame, e) : null;
   if (customValue === null) {
-    const prevElide = e.elideSink;
-    const prevChecks = e.checks;
+    const prevElide = e.elideSink, prevChecks = e.checks;
     e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
     e.checks = isCustom ? undefined : node; // [P47/P48] a value a reference reaches is this declaration's
     const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, continuationIndent, important, onNewLine) === null; // [whitespace] continuation indent
