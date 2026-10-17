@@ -17,13 +17,13 @@ const CODE = 'css/invalid-value-punctuation';
  *   a single comparison evaluates (`alpha(opacity=50)` → `alpha(false)`).
  * - SCSS reads `==` in a call argument as its comparison.
  *
- * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?` — then fails
- * the compile with `css/invalid-value-punctuation` (ledger P48, owner
- * 2026-10-16: *"So all that punctuation is out, yes, except where it is used in
- * Less expressions and forms like mixin calls"*); the full matrix is
- * `invalid-value-punctuation.test.ts`. The other delims (`:`, `<` where the
- * dialect parses it) are written as authored, glued or padded. A `progid:`
- * filter is legacy IE syntax (`legacy-ie-syntax.test.ts`).
+ * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?`, and `:`, `<`,
+ * `>`, `$`, `%` and `&` where no dialect gives them meaning — then fails the
+ * compile with `css/invalid-value-punctuation` (ledger P48, owner 2026-10-16:
+ * *"So all that punctuation is out, yes, except where it is used in Less
+ * expressions and forms like mixin calls"*); the full matrix is
+ * `invalid-value-punctuation.test.ts`. A `progid:` filter is legacy IE syntax
+ * (`legacy-ie-syntax.test.ts`).
  */
 type Dialect = 'css' | 'less' | 'scss' | 'jess';
 
@@ -86,13 +86,13 @@ describe('a delim between declaration components', () => {
     expect(await errorCodes('less', authored)).toEqual([CODE]);
   });
 
-  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: writes a glued `:` as authored', async (dialect) => {
-    expect(await value(dialect, 'a:b')).toBe('a:b');
+  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: a glued `:` parses, then is invalid punctuation', async (dialect) => {
+    expect(await errorCodes(dialect, 'a:b')).toEqual([CODE]);
   });
 
-  it.each(['css', 'jess'] as const)('%s: writes `<` as authored, glued or padded', async (dialect) => {
-    expect(await value(dialect, 'a<b')).toBe('a<b');
-    expect(await value(dialect, 'a < b')).toBe('a < b');
+  it.each(['css', 'jess'] as const)('%s: `<`, glued or padded, parses, then is invalid punctuation', async (dialect) => {
+    expect(await errorCodes(dialect, 'a<b')).toEqual([CODE]);
+    expect(await errorCodes(dialect, 'a < b')).toEqual([CODE]);
   });
 });
 
@@ -126,22 +126,6 @@ describe('a delim run in a call argument', () => {
 
   it('scss: a line comment beside an `@include` keyword argument still parses', async () => {
     expect(await render('scss', '@mixin m($a) { x: $a; }\na { @include m($a: // c\n 1); }')).toContain('x: 1;');
-  });
-});
-
-describe('compressed output keeps a glued delim glued and a padded one padded', () => {
-  it.each([
-    ['css', 'a { x: a:b; y: a < b; z: a<b, c < d; }', 'a{x:a:b;y:a < b;z:a<b,c < d}'],
-    ['jess', 'a { x: a:b; y: a < b; z: a<b, c < d; }', 'a{x:a:b;y:a < b;z:a<b,c < d}'],
-    ['less', 'a { x: a:b; z: a:b, c:d; }', 'a{x:a:b;z:a:b,c:d}'],
-    ['scss', 'a { x: a:b; z: a:b, c:d; }', 'a{x:a:b;z:a:b,c:d}']
-  ] as const)('%s', async (dialect, source, css) => {
-    const result = await new Compiler({ output: { compress: true } }).renderToResult(
-      { source, filePath: `/proj/delim-run.${dialect}` },
-      {}
-    );
-    expect(result.errors).toEqual([]);
-    expect(String(result.css)).toBe(css);
   });
 });
 

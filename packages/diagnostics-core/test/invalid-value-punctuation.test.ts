@@ -46,7 +46,8 @@ const EVERY_DIALECT: ReadonlyArray<readonly [value: string, delim: string]> = [
   ['foo(a~b)', '~'],
   ['foo(x, a~b)', '~'],
   ['foo(bar(a|b))', '|'],
-  ['foo(a = b < c)', '=']
+  ['foo(a = b < c)', '='],
+  ['a:b', ':']
 ];
 
 const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: string]>> = {
@@ -63,7 +64,16 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['~"a=b"', '~'],
     ['expression(document.body.clientWidth)', '.'],
     ['if(media(width >= 600px): a.b; else: c)', '.'],
-    ['foo(a: b.c)', '.']
+    ['foo(a: b.c)', '.'],
+    ['a : b', ':'],
+    ['foo(x, a:b)', ':'],
+    ['a<b', '<'],
+    ['a>b', '>'],
+    ['foo(a<b<c)', '<'],
+    ['<length>', '<'],
+    ['$brand-primary', '$'],
+    ['AT&T Sans', '&'],
+    ['100%%', '%']
   ],
   less: [
     ['foo(a==b)', '=='],
@@ -75,7 +85,8 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['expression(document.body.clientWidth)', '.'],
     ['if(media(width >= 600px): a.b; else: c)', '.'],
     ['if((1 = 1), a.b, c)', '.'],
-    ['a.b alpha(opacity=50)', '.']
+    ['a.b alpha(opacity=50)', '.'],
+    ['foo(a<b<c)', '<']
   ],
   scss: [
     ['foo(a b=c d)', '='],
@@ -95,7 +106,11 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(a=1px 2px)', '='],
     ['foo("a"=b)', '='],
     ['(a.b)', '.'],
-    ['expression(document.body.clientWidth)', '.']
+    ['expression(document.body.clientWidth)', '.'],
+    ['foo(x, a:b)', ':'],
+    ['a<b', '<'],
+    ['a>b', '>'],
+    ['foo(a<b<c)', '<']
   ]
 };
 
@@ -124,14 +139,14 @@ describe('invalid value punctuation is reported at the declaration', () => {
 describe('punctuation a dialect or CSS gives meaning is not reported', () => {
   for (const dialect of DIALECTS) {
     it.each([
-      'a { --x: a.b~c; --y: =; --z: a|b ^ c?; }\n',
+      'a { --x: a.b~c; --y: =; --z: a|b ^ c?; --w: a:hover > b; --v: <length>; }\n',
       'a { x: attr(ns|foo); }\n',
       '@media (width=600px) { a { b: c } }\n@media (400px<=width<=700px) { a { b: c } }\n@container (width=600px) { a { b: c } }\n',
       '[type=text], a ~ b, ns|a, *|a, .a.b, a[x^="y"], a[x|="y"], a[x~="y"] { c: d }\n',
       'a { x: "a.b~c"; y: foo("a=b"); }\n',
-      'a { x: url(a.b?c=d); }\n',
+      'a { x: url(a.b?c=d); y: url(https://example.com/a.png?w=1&h=2); }\n',
       '@font-face { unicode-range: U+0025-00FF, u+4??; }\n',
-      'a { x: .5em -.5em +.5em 1.5; }\n',
+      'a { x: .5em -.5em +.5em 1.5 50%; }\n',
       'a { x: calc(1px + 2px); y: 12px/1.5 a; }\n'
     ])(`${dialect}: %s`, (source) => {
       expect(reported(dialect, source)).toEqual([]);
@@ -139,7 +154,7 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
   }
 
   for (const dialect of ['css', 'less', 'jess'] as const) {
-    it.each(['var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)'])(`${dialect}: a fallback: %s`, (value) => {
+    it.each(['var(--x, a.b~c)', 'var(--x, a:b)', 'attr(foo, a.b)', 'env(x, a.b)'])(`${dialect}: a fallback: %s`, (value) => {
       expect(reported(dialect, sheet(value))).toEqual([]);
     });
   }
@@ -150,8 +165,10 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
       'if(media(400px <= width <= 700px): a; else: c)',
       'if(supports(selector(.a ~ .b)): a; else: c)',
       'if(supports(selector(ns|a)): a; else: c)',
-      'if(style(--x: a.b): a; else: c)'
-    ])(`${dialect}: a CSS if() condition: %s`, (value) => {
+      'if(style(--x: a.b): a; else: c)',
+      'if(style(--a: 1): red; else: blue)',
+      'foo(a:b; c:d)'
+    ])(`${dialect}: a CSS if() condition or a branch list: %s`, (value) => {
       expect(reported(dialect, sheet(value))).toEqual([]);
     });
   }
@@ -166,21 +183,31 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
     ['less', 'a { x: if((1 = 1), b, c); y: boolean(3 = 4); z: if(boolean(1 = 1), d, e); }\n'],
     ['less', 'a { x: (1 = 1); y: foo((a = b)); }\n'],
     ['less', '.k { x: (not(1 = 1)); }\n'],
+    ['less', '@a: 2;\na { x: if(@a > 1, b, c); y: boolean(@a < 2); z: foo(@a > 1); }\n'],
+    ['less', '.m(@a) when (@a > 0) and (@a < 5) { x: y; }\na { .m(2); }\n'],
+    ['less', '@a: 7;\na { x: @a % 2; y: 10 % 3; z: %("%d/%d", 1, 2); }\n'],
+    ['less', 'a { color: red; x: $color; }\n'],
+    ['less', '.m(@a: 1; @b: 2) { x: @a @b; }\na { .m(@a: 3); }\n'],
+    ['less', '.b { c: d; }\n.a { &:extend(.b); }\n'],
     ['scss', '@use "sass:color";\na { x: color.mix(red, blue); }\n'],
     ['scss', 'a { x: color.mix(red, blue); y: ns.fn(); }\n'],
     ['scss', 'a { x: foo(3 == 4); y: if(1 == 1, a, b); z: foo(1 < 2); }\n'],
     ['scss', 'a { x: foo(not(a=b=c)); }\n'],
     ['scss', '$m: (k: v);\na { x: map-get($m, k); }\n'],
+    ['scss', '$a: 2;\na { x: if($a > 1, b, c); y: foo($a <= 1); z: $a % 2; }\n'],
+    ['scss', '@mixin m($a: 1) { x: $a; }\na { @include m($a: 3); y: map-get((a: 1, b: 2), a); }\n'],
+    ['scss', '%p { c: d; }\na { @extend %p; }\n'],
+    ['css', sheet('attr(data-x type(<length> | <percentage>), 0px)')],
     ['jess', 'a { x: $(1 == 2); }\n'],
-    ['jess', '$m: { a: 1 };\na { x: $m.a; }\n']
+    ['jess', '$m: { a: 1 };\na { x: $m.a; }\n'],
+    ['jess', '$a: 2;\na { x: $($a > 1); }\n'],
+    ['jess', sheet('foo(a:b)')]
   ] as const)('%s: %s', (dialect, source) => {
     expect(reported(dialect, source)).toEqual([]);
   });
 
   /* Not decided (see the compile test): unreported, as the compiler leaves them. */
   it.each([
-    ['css', sheet('a:b')],
-    ['css', sheet('a<b')],
     ['css', sheet('foo(a.b: c)')],
     ['css', sheet('attr(a.b)')],
     ['less', sheet('boolean(a=b=c)')],
