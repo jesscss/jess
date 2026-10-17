@@ -977,7 +977,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ValueTerm">
     <h2><a href="#rule-ValueTerm">§</a> ValueTerm</h2>
     <div class="diagram" data-rule="ValueTerm"></div>
-    <div class="ebnf">ValueTerm ::= ValueLogicalOr (WHITESPACE or COMMENT (ValueLogicalOr | /(?:[~|^?]|=(?!=))+/ ValueLogicalOr?) | WHITESPACE? &quot;/&quot; WHITESPACE? ValueLogicalOr | /(?:[~|^?]|=(?!=))+/ ValueLogicalOr?)*</div>
+    <div class="ebnf">ValueTerm ::= ValueLogicalOr (WHITESPACE or COMMENT (ValueLogicalOr | /(?:[~|^?]|=(?!=))+/ ValueLogicalOr?) | WHITESPACE? &quot;/&quot; WHITESPACE? ValueLogicalOr | /(?:[~|^?]|=(?!=))+/ ValueLogicalOr? | &quot;.&quot; ValueLogicalOr)*</div>
   </section>
   <section class="rule" id="rule-CurlyValue">
     <h2><a href="#rule-CurlyValue">§</a> CurlyValue</h2>
@@ -1047,7 +1047,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-Value">
     <h2><a href="#rule-Value">§</a> Value</h2>
     <div class="diagram" data-rule="Value"></div>
-    <div class="ebnf">Value ::= ValueTerm ((&quot;:&quot; | &quot;.&quot;) ValueTerm)* ValuePair*</div>
+    <div class="ebnf">Value ::= ValueTerm (&quot;:&quot; ValueTerm)* ValuePair*</div>
   </section>
   <section class="rule" id="rule-TypedValue">
     <h2><a href="#rule-TypedValue">§</a> TypedValue</h2>
@@ -1737,7 +1737,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ValuePair">
     <h2><a href="#rule-ValuePair">§</a> ValuePair</h2>
     <div class="diagram" data-rule="ValuePair"></div>
-    <div class="ebnf">ValuePair ::= &quot;,&quot; WHITESPACE or COMMENT? ValueTerm ((&quot;:&quot; | &quot;.&quot;) ValueTerm)*</div>
+    <div class="ebnf">ValuePair ::= &quot;,&quot; WHITESPACE or COMMENT? ValueTerm (&quot;:&quot; ValueTerm)*</div>
   </section>
   <section class="rule" id="rule-ArgumentPair">
     <h2><a href="#rule-ArgumentPair">§</a> ArgumentPair</h2>
@@ -1887,7 +1887,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-IfComparison">
     <h2><a href="#rule-IfComparison">§</a> IfComparison</h2>
     <div class="diagram" data-rule="IfComparison"></div>
-    <div class="ebnf">IfComparison ::= MathTopSum (&quot;==&quot; | &quot;!=&quot; | &quot;&gt;=&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&lt;&quot;) MathTopSum</div>
+    <div class="ebnf">IfComparison ::= MathTopSum (&quot;.&quot; MathTopSum)* (&quot;==&quot; | &quot;!=&quot; | &quot;&gt;=&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&lt;&quot;) MathTopSum (&quot;.&quot; MathTopSum)*</div>
   </section>
   <section class="rule" id="rule-IfBody">
     <h2><a href="#rule-IfBody">§</a> IfBody</h2>
@@ -2662,7 +2662,7 @@ svg.railroad-diagram rect {
   { name: "RawParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Comment("…"), Terminal(")"))); } },
   { name: "PunctuationValue", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("/@(?!-?(?:[-_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])))/"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal(".")), ZeroOrMore(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("/"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("@"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal("."))))); } },
   { name: "ValueSequence", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("ValueTerm")), NonTerminal("ValueTerm"))))); } },
-  { name: "ValueTerm", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueLogicalOr"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), Choice(0, NonTerminal("ValueLogicalOr"), Sequence(Terminal("/(?:[~|^?]|=(?!=))+/"), Optional(NonTerminal("ValueLogicalOr"))))), Sequence(Optional(Terminal("WHITESPACE")), Terminal("/"), Optional(Terminal("WHITESPACE")), NonTerminal("ValueLogicalOr")), Sequence(Terminal("/(?:[~|^?]|=(?!=))+/"), Optional(NonTerminal("ValueLogicalOr"))))))); } },
+  { name: "ValueTerm", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueLogicalOr"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), Choice(0, NonTerminal("ValueLogicalOr"), Sequence(Terminal("/(?:[~|^?]|=(?!=))+/"), Optional(NonTerminal("ValueLogicalOr"))))), Sequence(Optional(Terminal("WHITESPACE")), Terminal("/"), Optional(Terminal("WHITESPACE")), NonTerminal("ValueLogicalOr")), Sequence(Terminal("/(?:[~|^?]|=(?!=))+/"), Optional(NonTerminal("ValueLogicalOr"))), Sequence(Terminal("."), NonTerminal("ValueLogicalOr")))))); } },
   { name: "CurlyValue", dsl: function(){ return Diagram(Sequence(Terminal("{"), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("ValueList"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal("}"))); } },
   { name: "ValueList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ValueSequence"), Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))); } },
   { name: "ValueSequenceBeforeColon", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), Sequence(Comment("not"), Terminal(":")), NonTerminal("ValueTerm")), Sequence(Sequence(Comment("not"), Terminal(":")), NonTerminal("ValueTerm")))))); } },
@@ -2676,7 +2676,7 @@ svg.railroad-diagram rect {
   { name: "calcFunctionArguments", dsl: function(){ return Diagram(OneOrMore(NonTerminal("CalcSequence"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))); } },
   { name: "MathFunction", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("calcFunctionArguments"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
   { name: "valueAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("Dimension"), NonTerminal("Color"), NonTerminal("UnicodeRange"), Sequence(NonTerminal("IdentToken"), Optional(Terminal("(")), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("UrlInner"))), Optional(Terminal("WHITESPACE")), Terminal(")")), NonTerminal("MathFunction"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")")), NonTerminal("MediaTest"), NonTerminal("SupportsTest"), NonTerminal("StyleTest"), Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("RawParenValue")), NonTerminal("RoutedKeyword"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Optional(Choice(0, Sequence(NonTerminal("branchLead"), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("BranchRest"), Sequence(ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")))), ZeroOrMore(Sequence(Terminal(";"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")), ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT"))))))))))), OneOrMore(Sequence(Terminal(";"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")), ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")))))))))), Terminal(")")), NonTerminal("RoutedCustomPropertyValue"), Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("RawParenValue")), NonTerminal("RoutedKeyword"))), NonTerminal("ParenValue"), NonTerminal("SquareValue"), NonTerminal("Quoted"), NonTerminal("PunctuationValue"))); } },
-  { name: "Value", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Sequence(Choice(0, Terminal(":"), Terminal(".")), NonTerminal("ValueTerm"))), ZeroOrMore(NonTerminal("ValuePair")))); } },
+  { name: "Value", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Sequence(Terminal(":"), NonTerminal("ValueTerm"))), ZeroOrMore(NonTerminal("ValuePair")))); } },
   { name: "TypedValue", dsl: function(){ return Diagram(Choice(0, NonTerminal("Dimension"), NonTerminal("Color"), NonTerminal("Quoted"), NonTerminal("UnicodeRange"), NonTerminal("CalcIdentOrFunction"))); } },
   { name: "Important", dsl: function(){ return Diagram(Sequence(Terminal("!"), NonTerminal("ImportantToken"))); } },
   { name: "Declaration", dsl: function(){ return Diagram(Choice(0, NonTerminal("CustomDeclaration"), Sequence(Choice(0, NonTerminal("InterpolatedProperty"), Sequence(Terminal("*"), NonTerminal("Identifier")), NonTerminal("Identifier")), Terminal(":"), NonTerminal("Value"), Optional(NonTerminal("Important")), Choice(0, Terminal(";"), Sequence(Comment("not"), Choice(0, Terminal("{"), Terminal(","))))))); } },
@@ -2814,7 +2814,7 @@ svg.railroad-diagram rect {
   { name: "ValueLogicalAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("LogicalAnd"), Terminal("WHITESPACE or COMMENT"), NonTerminal("MathTopSum"))))); } },
   { name: "ValueLogicalOr", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueLogicalAnd"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("LogicalOr"), Terminal("WHITESPACE or COMMENT"), NonTerminal("ValueLogicalAnd"))))); } },
   { name: "CallArgument", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueTerm"), Optional(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, Terminal("=="), Terminal("!="), Terminal(">="), Terminal("<="), Terminal(">"), Terminal("<"), Terminal(":")), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("ValueTerm"))))); } },
-  { name: "ValuePair", dsl: function(){ return Diagram(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("ValueTerm"), ZeroOrMore(Sequence(Choice(0, Terminal(":"), Terminal(".")), NonTerminal("ValueTerm"))))); } },
+  { name: "ValuePair", dsl: function(){ return Diagram(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("ValueTerm"), ZeroOrMore(Sequence(Terminal(":"), NonTerminal("ValueTerm"))))); } },
   { name: "ArgumentPair", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CallArgument"))); } },
   { name: "InterpolatedProperty", dsl: function(){ return Diagram(Sequence(Optional(Terminal("*")), ZeroOrMore(Terminal("NAME (escapes allowed)")), NonTerminal("SassInterpolation"), ZeroOrMore(Choice(0, Terminal("NAME (escapes allowed)"), NonTerminal("SassInterpolation"))))); } },
   { name: "CustomPart", dsl: function(){ return Diagram(Choice(0, NonTerminal("SassInterpolation"), NonTerminal("CustomOuterContent"), NonTerminal("CustomSingleQuoted"), NonTerminal("CustomDoubleQuoted"), NonTerminal("CustomGroup"))); } },
@@ -2844,7 +2844,7 @@ svg.railroad-diagram rect {
   { name: "IfAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("IfTerm"), ZeroOrMore(Sequence(NonTerminal("LogicalAnd"), NonTerminal("IfTerm"))))); } },
   { name: "IfTerm", dsl: function(){ return Diagram(Sequence(Optional(NonTerminal("LogicalNot")), NonTerminal("IfAtom"))); } },
   { name: "IfAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("IfComparison"), Sequence(Terminal("("), NonTerminal("IfCondition"), Terminal(")")), Terminal("true"), Terminal("false"), NonTerminal("MathTopSum"))); } },
-  { name: "IfComparison", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), Choice(0, Terminal("=="), Terminal("!="), Terminal(">="), Terminal("<="), Terminal(">"), Terminal("<")), NonTerminal("MathTopSum"))); } },
+  { name: "IfComparison", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))), Choice(0, Terminal("=="), Terminal("!="), Terminal(">="), Terminal("<="), Terminal(">"), Terminal("<")), NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("."), NonTerminal("MathTopSum"))))); } },
   { name: "IfBody", dsl: function(){ return Diagram(Sequence(Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("VariableDeclaration"), NonTerminal("NestedPropertyDeclaration"), NonTerminal("Declaration"), NonTerminal("IfBodyConditionalBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("ReturnRule"), NonTerminal("SassNestedDirective"), NonTerminal("IfBodyRule"))), Terminal("}"))); } },
   { name: "IfBodyRule", dsl: function(){ return Diagram(Sequence(NonTerminal("SelectorList"), NonTerminal("IfBody"))); } },
   { name: "IfBodyConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), NonTerminal("IfBody")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), NonTerminal("IfBody")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), NonTerminal("IfBody")), Sequence(NonTerminal("StartingStyleAtKeyword"), NonTerminal("AtRulePrelude"), NonTerminal("IfBody")), Sequence(NonTerminal("LayerAtKeyword"), NonTerminal("AtRulePrelude"), NonTerminal("IfBody")))); } },
