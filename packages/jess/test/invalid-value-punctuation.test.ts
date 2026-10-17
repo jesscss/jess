@@ -7,8 +7,9 @@ import jessPlugin from '@jesscss/plugin-jess';
 import { Compiler } from '../src/index.js';
 
 /**
- * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?` — parses in
- * every dialect as balanced CSS (ledger N18, P45) and then fails the compile
+ * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?`, and `:`, `<`,
+ * `>`, `$`, `%` and `&` where no dialect gives them meaning — parses in every
+ * dialect as balanced CSS (ledger N18, P45) and then fails the compile
  * with one `css/invalid-value-punctuation` error at the declaration (ledger
  * P48). Owner 2026-10-16: *"the point of parsing valid CSS isn't that we're
  * obligated to actually accept everything. Jess/Less apply diagnostics like a
@@ -55,7 +56,8 @@ const EVERY_DIALECT: ReadonlyArray<readonly [value: string, delim: string]> = [
   ['foo(a~b)', '~'],
   ['foo(x, a~b)', '~'],
   ['foo(bar(a|b))', '|'],
-  ['foo(a = b < c)', '=']
+  ['foo(a = b < c)', '='],
+  ['a:b', ':']
 ];
 
 const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: string]>> = {
@@ -72,7 +74,16 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['~"a=b"', '~'],
     ['expression(document.body.clientWidth)', '.'],
     ['if(media(width >= 600px): a.b; else: c)', '.'],
-    ['foo(a: b.c)', '.']
+    ['foo(a: b.c)', '.'],
+    ['a : b', ':'],
+    ['foo(x, a:b)', ':'],
+    ['a<b', '<'],
+    ['a>b', '>'],
+    ['foo(a<b<c)', '<'],
+    ['<length>', '<'],
+    ['$brand-primary', '$'],
+    ['AT&T Sans', '&'],
+    ['100%%', '%']
   ],
   less: [
     ['foo(a==b)', '=='],
@@ -87,7 +98,8 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['(a.b)', '.'],
     ['(a=b=c)', '='],
     ['foo((a=b=c))', '='], // a paren group of the run, as `(a=b=c)` is anywhere in a value
-    ['a.b alpha(opacity=50)', '.'] // Less reads `alpha(opacity=50)` as a comparison (V11)
+    ['a.b alpha(opacity=50)', '.'], // Less reads `alpha(opacity=50)` as a comparison (V11)
+    ['foo(a<b<c)', '<'] // one comparison is Less's (V11); a chain is the run
   ],
   scss: [
     ['foo(a b=c d)', '='],
@@ -107,7 +119,11 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(a=1px 2px)', '='],
     ['foo("a"=b)', '='],
     ['(a.b)', '.'],
-    ['expression(document.body.clientWidth)', '.']
+    ['expression(document.body.clientWidth)', '.'],
+    ['foo(x, a:b)', ':'],
+    ['a<b', '<'],
+    ['a>b', '>'],
+    ['foo(a<b<c)', '<']
   ]
 };
 
@@ -255,14 +271,14 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
 
   for (const dialect of DIALECTS) {
     it.each([
-      ['a custom property', 'a { --x: a.b~c; --y: =; --z: a|b ^ c?; }\n'],
+      ['a custom property', 'a { --x: a.b~c; --y: =; --z: a|b ^ c?; --w: a:hover > b; --v: <length>; }\n'],
       ['attr() with a namespace', 'a { x: attr(ns|foo); }\n'],
       ['a query range', '@media (width=600px) { a { b: c } }\n@media (400px<=width<=700px) { a { b: c } }\n@container (width=600px) { a { b: c } }\n'],
       ['selectors', '[type=text], a ~ b, ns|a, *|a, .a.b, a[x^="y"], a[x|="y"], a[x~="y"] { c: d }\n'],
       ['a string', 'a { x: "a.b~c"; y: foo("a=b"); }\n'],
-      ['an unquoted url()', 'a { x: url(a.b?c=d); }\n'],
+      ['an unquoted url()', 'a { x: url(a.b?c=d); y: url(https://example.com/a.png?w=1&h=2); }\n'],
       ['a unicode range', '@font-face { unicode-range: U+0025-00FF, u+4??; }\n'],
-      ['numbers', 'a { x: .5em -.5em +.5em 1.5; }\n'],
+      ['numbers', 'a { x: .5em -.5em +.5em 1.5 50%; }\n'],
       ['an operator', 'a { x: calc(1px + 2px); y: 12px/1.5 a; }\n']
     ])(`${dialect}: %s`, async (_label, source) => {
       await clean(dialect, source);
@@ -276,6 +292,7 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
   for (const dialect of ['css', 'less', 'jess'] as const) {
     it.each([
       'var(--x, a.b~c)',
+      'var(--x, a:b)',
       'attr(foo, a.b)',
       'env(x, a.b)'
     ])(`${dialect}: a var() / attr() / env() fallback: %s`, async (value) => {
@@ -290,11 +307,25 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
       'if(media(400px <= width <= 700px): a; else: c)',
       'if(supports(selector(.a ~ .b)): a; else: c)',
       'if(supports(selector(ns|a)): a; else: c)',
-      'if(style(--x: a.b): a; else: c)'
+      'if(style(--x: a.b): a; else: c)',
+      'if(style(--a: 1): red; else: blue)'
     ])(`${dialect}: a CSS if() condition: %s`, async (value) => {
       expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
     });
   }
+
+  /* A call argument whose first item is followed by a `:` is a branch (ledger P38): the colon is its structure. */
+  it.each(['css', 'less'] as const)('%s: a branch list', async (dialect) => {
+    expect(await clean(dialect, sheet('foo(a:b; c:d)'))).toContain('x: foo(a: b; c: d);');
+  });
+
+  it('jess: a branch', async () => {
+    expect(await clean('jess', sheet('foo(a:b)'))).toContain('x: foo(a:b);');
+  });
+
+  it('css: a typed attr()', async () => {
+    await clean('css', sheet('attr(data-x type(<length> | <percentage>), 0px)'));
+  });
 
   it.each([
     ['a comparison argument', 'a { x: alpha(opacity=50); y: foo(b=1, c = 2); }\n', 'x: alpha(false);'],
@@ -305,7 +336,13 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     ['a guard', '.m(@a) when (@a = 1) and (@a =< 2) { x: y; }\na { .m(1); }\n', 'x: y;'],
     ['if() and boolean() conditions', 'a { x: if((1 = 1), b, c); y: boolean(3 = 4); z: if(boolean(1 = 1), d, e); }\n', 'x: b;'],
     ['a condition in a paren group', 'a { x: (1 = 1); y: foo((a = b)); }\n', 'x: (1 = 1);'],
-    ['a glued condition keyword', '.k { x: (not(1 = 1)); }\n', 'x: (not(1 = 1));']
+    ['a glued condition keyword', '.k { x: (not(1 = 1)); }\n', 'x: (not(1 = 1));'],
+    ['comparisons', '@a: 2;\na { x: if(@a > 1, b, c); y: boolean(@a < 2); z: foo(@a > 1); }\n', 'z: foo(true);'],
+    ['a guard with < and >', '.m(@a) when (@a > 0) and (@a < 5) { x: y; }\na { .m(2); }\n', 'x: y;'],
+    ['modulo and %()', '@a: 7;\na { x: @a % 2; y: 10 % 3; z: %("%d/%d", 1, 2); }\n', 'z: "1/2";'],
+    ['a property accessor', 'a { color: red; x: $color; }\n', 'x: red;'],
+    ['a named mixin argument', '.m(@a: 1; @b: 2) { x: @a @b; }\na { .m(@a: 3); }\n', 'x: 3 2;'],
+    ['an extend', '.b { c: d; }\n.a { &:extend(.b); }\n', '.b,\n.a {']
   ])('less: %s', async (_label, source, written) => {
     expect(await clean('less', source)).toContain(written);
   });
@@ -315,13 +352,17 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     ['a module call written as authored', 'a { x: color.mix(red, blue); y: ns.fn(); }\n'],
     ['`==` and the comparison operators', 'a { x: foo(3 == 4); y: if(1 == 1, a, b); z: foo(1 < 2); }\n'],
     ['the not() operator', 'a { x: foo(not(a=b=c)); }\n'],
-    ['a map', '$m: (k: v);\na { x: map-get($m, k); }\n']
+    ['a map', '$m: (k: v);\na { x: map-get($m, k); }\n'],
+    ['comparisons and modulo', '$a: 2;\na { x: if($a > 1, b, c); y: foo($a <= 1); z: $a % 2; }\n'],
+    ['a keyword argument and a map literal', '@mixin m($a: 1) { x: $a; }\na { @include m($a: 3); y: map-get((a: 1, b: 2), a); }\n'],
+    ['a placeholder', '%p { c: d; }\na { @extend %p; }\n']
   ])('scss: %s', async (_label, source) => {
     await clean('scss', source);
   });
 
   it.each([
     ['an expression', 'a { x: $(1 == 2); }\n', 'x: false;'],
+    ['a comparison', '$a: 2;\na { x: $($a > 1); }\n', 'x: true;'],
     ['a member lookup', '$m: { a: 1 };\na { x: $m.a; }\n', 'x: 1;']
   ])('jess: %s', async (_label, source, written) => {
     expect(await clean('jess', source)).toContain(written);
@@ -340,25 +381,8 @@ describe('not decided: compiles, unreported', () => {
     return result.css;
   }
 
-  for (const dialect of DIALECTS) {
-    it(`${dialect}: a glued \`:\``, async () => {
-      expect(await written(dialect, sheet('a:b'))).toContain('x: a:b;');
-    });
-  }
-
-  it.each([
-    ['css', 'a<b'],
-    ['css', 'a$b'],
-    ['css', 'a&b'],
-    ['css', 'a%b'],
-    ['jess', 'a<b']
-  ] as const)('%s: another delim: %s', async (dialect, value) => {
-    expect(await written(dialect, sheet(value))).toContain(`x: ${value};`);
-  });
-
   it.each([
     ['css', 'attr(a.b)'],
-    ['css', 'attr(foo type(<length> | <percentage>), 0px)'],
     ['css', 'var(--x, a=b)']
   ] as const)('%s: any argument of var() / attr() / env(): %s', async (dialect, value) => {
     await written(dialect, sheet(value));

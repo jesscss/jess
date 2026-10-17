@@ -30,7 +30,7 @@ type ParseTwinPusher = (
  * any other value — through the containers each dialect nests them in, so the
  * forms read the same in all four CSTs: `progid` then a `:` delim; a call
  * argument that is exactly an identifier, an `=` delim and one value; and a
- * delim holding `.`, `~`, `=`, `|`, `^` or `?`.
+ * delim holding `.`, `~`, `=`, `|`, `^`, `?`, `:`, `<`, `>`, `$`, `%` or `&`.
  *
  * What the compiler does not enter is not read here either: a custom
  * property, a string, an interpolation, a `var()` / `env()` / `attr()` call,
@@ -213,7 +213,7 @@ function invalidValueSyntaxInCall(node: CssCstNode, language: JessLanguage, sour
     if (at < inner.length && inner[at]!.kind !== 'comma') {
       continue;
     }
-    const arg = inner.slice(from, at);
+    const arg = index === 0 ? branchColon(inner.slice(from, at)) : inner.slice(from, at);
     const head = arg[0];
     if (conditions === 0 && arg.length === 3 && isAtom(head, 'ident') && isAtom(arg[1], 'delim', '=')) {
       return nameValueIeSyntax(head.text);
@@ -249,6 +249,21 @@ function invalidValueSyntaxInNestedProperty(node: CssCstNode, language: JessLang
     }
   }
   return undefined;
+}
+
+/*
+ * A first argument's `:` delim after its first atom is its branch colon (ledger
+ * P38, in every dialect), where the dialect does not yet build the branch
+ * (`.jess`, jess#297).
+ */
+function branchColon(arg: ValueAtom[]): ValueAtom[] {
+  for (let i = 1; i < arg.length; i++) {
+    if (isAtom(arg[i], 'delim', ':')) {
+      arg[i] = COLON;
+      break;
+    }
+  }
+  return arg;
 }
 
 /* An argument without its branch conditions: in each `;` group, what comes before a `:`. */
