@@ -84,6 +84,9 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['expression(document.body.clientWidth)', '.'],
     ['if(media(width >= 600px): a.b; else: c)', '.'],
     ['if((1 = 1), a.b, c)', '.'],
+    ['(a.b)', '.'],
+    ['(a=b=c)', '='],
+    ['foo((a=b=c))', '='], // a paren group of the run, as `(a=b=c)` is anywhere in a value
     ['a.b alpha(opacity=50)', '.'] // Less reads `alpha(opacity=50)` as a comparison (V11)
   ],
   scss: [
@@ -197,6 +200,7 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['less', '.m(@a) {\n  x: @a;\n}\na { .m(a.b); }\n', '.', 2, 3],
     ['less', '@v: a.b;\n.m(@a) {\n  x: @a;\n}\na { .m(@v); }\n', '.', 3, 3],
     ['less', '@v: a.b;\n.m(@a: @v) {\n  x: @a;\n}\na { .m(); }\n', '.', 3, 3],
+    ['less', '@v: (a.b);\na { x: @v; }\n', '.', 2, 5],
     ['less', '@v: a=b;\na { y: foo(@v); }\n', '=', 2, 5],
     ['less', '.m(@rest...) {\n  x: @rest;\n}\na { .m(a.b, c); }\n', '.', 2, 3],
     ['less', '@c: { k: a.b; };\na { x: @c[k]; }\n', '.', 2, 5],
@@ -366,7 +370,6 @@ describe('not decided: compiles, unreported', () => {
 
   it.each([
     ['boolean(a=b=c)', 'x: false;'],
-    ['foo((a=b=c))', 'x: foo(false);'],
     ['foo(a=b and c=d=e)', 'x: foo(false);'],
     ['foo(not a=b=c)', 'x: foo(true);']
   ])('less: a chained comparison inside a Less condition: %s', async (value, css) => {
