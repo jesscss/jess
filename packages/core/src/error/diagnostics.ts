@@ -964,6 +964,19 @@ export const ERR = {
     });
   },
 
+  /**
+   * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?` — parsed as
+   * balanced CSS and is then an error (owner 2026-10-16: "the point of parsing
+   * valid CSS isn't that we're obligated to actually accept everything").
+   */
+  invalidValuePunctuation(args: Common & { meta: { what: string; fix: string } }) {
+    return makeJessError({
+      code: 'css/invalid-value-punctuation',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   // Plugin
   /**
    * A plugin reached for an API this compiler deliberately does not provide

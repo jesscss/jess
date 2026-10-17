@@ -141,5 +141,5 @@ export {
   defineFunction,
   FunctionDeclined
 } from './value.js';
-export { PROGID_IE_SYNTAX, nameValueIeSyntax, type LegacyIeSyntax } from './ast/legacy-ie-syntax.js';
+export { PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, isAnyTokenFunction, nameValueIeSyntax, type InvalidValueSyntax } from './ast/invalid-value-syntax.js';
 export * from './types/index.js';

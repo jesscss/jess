@@ -140,6 +140,14 @@ describe('CSS byte-identity oracle', () => {
     expect(report.failing).toEqual(KNOWN_DIVERGENT);
   });
 
+  /* A settled divergence (ledger P48): the file parses, then the compile fails at its first declaration. */
+  it('values-glued-components.css parses, then fails with css/invalid-value-punctuation', async () => {
+    const entry = authored.find(e => e.id === 'authored/values-glued-components.css')!;
+    const sheet = parse(entry.source);
+    await expect((async () => await roundTrip(entry.source))()).rejects.toMatchObject({ code: 'css/invalid-value-punctuation' });
+    expect(sheet.rules.length).toBe(1);
+  });
+
   it('emitted CSS is a fixed point: real-world stylesheets round-trip byte for byte', async () => {
     const real = buildCorpus().entries.map((entry: { id: string; path: string }) => ({
       id: entry.id,

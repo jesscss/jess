@@ -19,6 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/less-parser';
 import { parseLessCst } from '@jesscss/less-parser/cst';
+import { Context, serialize } from '@jesscss/core';
 
 /*
  * Narrowed by predicate rather than by assertion: the dialect error class is
@@ -233,33 +234,36 @@ describe('Less constructs discovered outside the parser suites', () => {
   });
 
   it.each([
-    ['namespaced function', 'a { b: ns.fn() }', 'FunctionCall'],
-    ['namespaced variable', 'a { b: ns.$var }', 'Lookup'],
-    ['namespaced map read', 'a { b: map.get($m, k) }', 'FunctionCall'],
-    ['namespaced colour helper', 'a { b: color.mix(red, blue) }', 'FunctionCall']
-  ])('reads Sass module-system member access as a CSS component run (%s)', (_label, source, member) => {
+    ['a dotted call', 'a { b: ns.fn() }', 'FunctionCall'],
+    ['a dotted property reference', 'a { b: ns.$var }', 'Lookup'],
+    ['a dotted call with arguments', 'a { b: map.get($m, k) }', 'FunctionCall'],
+    ['a dotted colour call', 'a { b: color.mix(red, blue) }', 'FunctionCall']
+  ])('reads plain dotted CSS as a component run, which the compile then rejects (%s)', async (_label, source, member) => {
     /*
-     * `ns.member` is Sass module syntax, not Less syntax, so Less gives it no
-     * member-access meaning. It is well-formed CSS — an ident, a glued `.`
-     * delim and a component (ledger N18, P45) — so it is that run, with the
-     * component read as Less reads it.
+     * `ns.member` is not a Less form: Less v5's own module access is `@`- or
+     * `#`-headed. It is well-formed CSS — an ident, a glued `.` delim and a
+     * component (ledger N18, P45) — so it parses as that run, with the
+     * component read as Less reads it, and no parse error. The `.` is then
+     * punctuation no CSS value accepts, so compiling fails (ledger P48; owner
+     * 2026-10-16: "color.mix() should error IMO because it's not valid in any
+     * value I'm aware of", "In CSS and Less if processed by Jess").
      */
-    const rule = parse(source).rules[0];
-    expect(rule).toMatchObject({
+    const sheet = parse(source);
+    expect(sheet.rules[0]).toMatchObject({
       rules: [{ value: [{ type: 'Keyword' }, { type: 'Any', src: '.' }, { type: member }] }]
+    });
+    await expect((async () => await serialize(sheet, { context: new Context({}) }))()).rejects.toMatchObject({
+      code: 'css/invalid-value-punctuation'
     });
   });
 
-  it.each([
-    ['namespaced assignment', 'ns.$v: value;']
-  ])('PINNED DEFECT — rejects Sass module-system member access (%s)', (_label, source) => {
+  it('rejects a dotted declaration name', () => {
     /*
-     * `ns.member` is Sass module syntax, not Less syntax, so rejection here
-     * is arguably right — but it is pinned because the SCSS parser rejects it
-     * too (see the SCSS suite), and whatever admits it there will be reviewed
-     * against these fixtures for dialect leakage.
+     * `ns.$v: value;` is not valid CSS syntax: a declaration name is one
+     * identifier followed by `:` (css-syntax-3, consume a declaration). It is not
+     * a Less form either.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse('ns.$v: value;')).toThrow();
   });
 
   it('admits a keyword argument in a function call', () => {

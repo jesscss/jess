@@ -1,24 +1,29 @@
 import { describe, expect, it } from 'vitest';
+import { CssPlugin } from '@jesscss/compiler-preset';
+import lessPlugin from '@jesscss/plugin-less';
+import scssPlugin from '@jesscss/plugin-scss';
+import jessPlugin from '@jesscss/plugin-jess';
 import { Compiler } from '../src/index.js';
+
+const CODE = 'css/invalid-value-punctuation';
 
 /**
  * Valid, balanced CSS parses in every dialect (owner 2026-10-16: *"we should be
  * more permissive around valid / balanced syntax"*; ledger N18, P45). A CSS
- * delim between component values (`=`, `~`, `:`, `.`, `<`) is a component of
- * the run (css-syntax-3 §5.4.9), written as authored, glued or padded — unless
- * the dialect gives it a meaning in that position:
+ * delim between component values is a component of the run (css-syntax-3
+ * §5.4.9) — unless the dialect gives it a meaning in that position:
  *
  * - Less reads `=`, `<` and `>` in a call argument as its comparison (V11), so
  *   a single comparison evaluates (`alpha(opacity=50)` → `alpha(false)`).
  * - SCSS reads `==` in a call argument as its comparison.
  *
- * Where a dialect's meaning is not settled by a ruling — a chained comparison
- * (`a=b=c`, `a = b < c`), a spelling the dialect has no operator for (`==` in
- * Less), or a delim in a Less declaration value — the run is written as
- * authored.
- *
- * A `progid:` filter is such a run too; it parses, and then fails the compile
- * as legacy IE syntax (`legacy-ie-syntax.test.ts`).
+ * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?` — then fails
+ * the compile with `css/invalid-value-punctuation` (ledger P48, owner
+ * 2026-10-16: *"So all that punctuation is out, yes, except where it is used in
+ * Less expressions and forms like mixin calls"*); the full matrix is
+ * `invalid-value-punctuation.test.ts`. The other delims (`:`, `<` where the
+ * dialect parses it) are written as authored, glued or padded. A `progid:`
+ * filter is legacy IE syntax (`legacy-ie-syntax.test.ts`).
  */
 type Dialect = 'css' | 'less' | 'scss' | 'jess';
 
@@ -32,6 +37,21 @@ async function value(dialect: Dialect, authored: string): Promise<string> {
   const css = await render(dialect, `a { x: ${authored}; }`);
   return css.slice(css.indexOf('x: ') + 3, css.lastIndexOf(';'));
 }
+
+/** The error codes a value's compile reports. */
+async function errorCodes(dialect: Dialect, authored: string): Promise<string[]> {
+  const source = `a { x: ${authored}; }`;
+  expect(PLUGINS[dialect].safeParse!(`/proj/delim-run.${dialect}`, source).errors).toEqual([]);
+  const result = await new Compiler({}).renderToResult({ source, filePath: `/proj/delim-run.${dialect}` }, {});
+  return result.errors.map(error => error.code);
+}
+
+const PLUGINS = {
+  css: new CssPlugin(),
+  less: lessPlugin(),
+  scss: scssPlugin(),
+  jess: jessPlugin()
+};
 
 const DECLARATION_RUNS = [
   'a=b',
@@ -52,30 +72,39 @@ const ARGUMENT_RUNS = [
 
 describe('a delim between declaration components', () => {
   for (const dialect of ['css', 'scss'] as const) {
-    it.each(DECLARATION_RUNS)(`${dialect}: writes %s as authored`, async (authored) => {
-      expect(await value(dialect, authored)).toBe(authored);
+    it.each(DECLARATION_RUNS)(`${dialect}: %s parses, then is invalid punctuation`, async (authored) => {
+      expect(await errorCodes(dialect, authored)).toEqual([CODE]);
     });
   }
 
   /* After whitespace a `.jess` block reads `>` and `~` as a selector's leading combinator. */
-  it.each(DECLARATION_RUNS.filter(authored => authored !== 'a ~ b'))('jess: writes %s as authored', async (authored) => {
-    expect(await value('jess', authored)).toBe(authored);
+  it.each(DECLARATION_RUNS.filter(authored => authored !== 'a ~ b'))('jess: %s parses, then is invalid punctuation', async (authored) => {
+    expect(await errorCodes('jess', authored)).toEqual([CODE]);
   });
 
-  it.each(DECLARATION_RUNS.slice(0, 7))('less: writes %s as authored', async (authored) => {
-    expect(await value('less', authored)).toBe(authored);
+  it.each(DECLARATION_RUNS.slice(0, 7))('less: %s parses, then is invalid punctuation', async (authored) => {
+    expect(await errorCodes('less', authored)).toEqual([CODE]);
+  });
+
+  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: writes a glued `:` as authored', async (dialect) => {
+    expect(await value(dialect, 'a:b')).toBe('a:b');
+  });
+
+  it.each(['css', 'jess'] as const)('%s: writes `<` as authored, glued or padded', async (dialect) => {
+    expect(await value(dialect, 'a<b')).toBe('a<b');
+    expect(await value(dialect, 'a < b')).toBe('a < b');
   });
 });
 
 describe('a delim run in a call argument', () => {
   for (const dialect of ['css', 'less', 'scss', 'jess'] as const) {
-    it.each(ARGUMENT_RUNS)(`${dialect}: writes %s as authored`, async (authored) => {
-      expect(await value(dialect, authored)).toBe(authored);
+    it.each(ARGUMENT_RUNS)(`${dialect}: %s parses, then is invalid punctuation`, async (authored) => {
+      expect(await errorCodes(dialect, authored)).toEqual([CODE]);
     });
   }
 
-  it.each(['css', 'less', 'jess'] as const)('%s: writes foo(a==b) as authored', async (dialect) => {
-    expect(await value(dialect, 'foo(a==b)')).toBe('foo(a==b)');
+  it.each(['css', 'less', 'jess'] as const)('%s: foo(a==b) parses, then is invalid punctuation', async (dialect) => {
+    expect(await errorCodes(dialect, 'foo(a==b)')).toEqual([CODE]);
   });
 
   it('scss: `==` in an argument is the comparison', async () => {
@@ -97,13 +126,18 @@ describe('a delim run in a call argument', () => {
 });
 
 describe('compressed output keeps a glued delim glued and a padded one padded', () => {
-  it.each(['css', 'less', 'scss', 'jess'] as const)('%s', async (dialect) => {
+  it.each([
+    ['css', 'a { x: a:b; y: a < b; z: a<b, c < d; }', 'a{x:a:b;y:a < b;z:a<b,c < d}'],
+    ['jess', 'a { x: a:b; y: a < b; z: a<b, c < d; }', 'a{x:a:b;y:a < b;z:a<b,c < d}'],
+    ['less', 'a { x: a:b; z: a:b, c:d; }', 'a{x:a:b;z:a:b,c:d}'],
+    ['scss', 'a { x: a:b; z: a:b, c:d; }', 'a{x:a:b;z:a:b,c:d}']
+  ] as const)('%s', async (dialect, source, css) => {
     const result = await new Compiler({ output: { compress: true } }).renderToResult(
-      { source: 'a { x: a=b; y: a ^ b; z: a=b, c ^ d; }', filePath: `/proj/delim-run.${dialect}` },
+      { source, filePath: `/proj/delim-run.${dialect}` },
       {}
     );
     expect(result.errors).toEqual([]);
-    expect(String(result.css)).toBe('a{x:a=b;y:a ^ b;z:a=b,c ^ d}');
+    expect(String(result.css)).toBe(css);
   });
 });
 
@@ -148,12 +182,25 @@ describe('a delim run before a nested rule', () => {
     expect(result.errors).not.toEqual([]);
   });
 
+  /* The `~` value is then invalid punctuation (P48); the parse is what these pin. */
   it('scss: a delim-run value followed by a block is a nested property', async () => {
-    expect(await render('scss', 'a { x: y\n ~ b { c: d } }')).toBe('a {\n  x: y\n    ~ b;\n  x-c: d;\n}\n');
+    const parsed = PLUGINS.scss.safeParse!('/proj/delim-run.scss', 'a { x: y\n ~ b { c: d } }');
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.document!.rules[0]).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'x', value: { type: 'NestedPropertyBlock', base: [{ src: 'y' }, { type: 'Any', src: '~' }, { src: 'b' }] } }]
+    });
+    expect(await errorCodes('scss', 'y\n ~ b { c: d }')).toEqual([CODE]);
   });
 
   it.each(['scss', 'jess'] as const)('%s: a glued run before a rule keeps the rule', async (dialect) => {
-    expect(await render(dialect, '.k { x: a~b .n { y: 1 } }')).toBe('.k {\n  x: a~b;\n  .n {\n    y: 1;\n  }\n}\n');
+    const parsed = PLUGINS[dialect].safeParse!(`/proj/delim-run.${dialect}`, '.k { x: a~b .n { y: 1 } }');
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.document!.rules[0]).toMatchObject({
+      rules: [
+        { type: 'Declaration', name: 'x', value: [{ src: 'a' }, { type: 'Any', src: '~' }, { src: 'b' }] },
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'y' }] }
+      ]
+    });
   });
 });
 
@@ -169,17 +216,13 @@ it.fails('scss: a map value keeps its delim run layout', async () => {
   expect(await render('scss', '$m: (a: b=c);\na { x: map-get($m, a); }')).toContain('x: b=c;');
 });
 
-/* OPEN for the owner: Less evaluates `$q` after the glued `.`, and `ns.1` re-reads as `ns` and `.1`. */
-it.fails('less: a glued property reference after `.` is written as authored', async () => {
-  expect(await render('less', 'a { q: 1; x: ns.$q; }')).toContain('x: ns.$q;');
-});
-
 /*
- * OPEN for the owner (ledger N18): Less reads each component of a glued-`.` run
- * as it reads any value, so a Less function after the `.` evaluates
- * (`color.mix(red, blue)` → `color.#800080`). Turns red if the owner rules the
- * member form is written as authored.
+ * A glued `.` member form is plain dotted CSS in Less, not a Less form (Less
+ * v5's own module access is `@`- or `#`-headed), so it is invalid punctuation
+ * (owner 2026-10-16: *"color.mix() should error IMO because it's not valid in
+ * any value I'm aware of"*, *"In CSS and Less if processed by Jess"*). It was
+ * written evaluated (`ns.1`, `color.#800080`).
  */
-it.fails('less: a glued member form is written as authored', async () => {
-  expect(await value('less', 'color.mix(red, blue)')).toBe('color.mix(red, blue)');
+it.each(['ns.$q', 'color.mix(red, blue)'])('less: a glued member form %s parses, then is invalid punctuation', async (authored) => {
+  expect(await errorCodes('less', authored)).toEqual([CODE]);
 });
