@@ -1370,6 +1370,9 @@ export class Compiler {
           trackPositions
         });
       })));
+
+    /* Collecting diagnostics (`breakOnError: false`) evaluates on past an error; the compile still fails. */
+    context.failOnRecordedError();
     let css = result.css;
     for (const plugin of context.plugins || []) {
       if (plugin.runPostProcessors) {
@@ -1571,8 +1574,6 @@ export class Compiler {
 
       context.finalizeWarnings();
 
-      const loadedUrls: string[] = [];
-
       finalizeRenderProfile(profile, {
         method: 'renderToResult',
         filePath,
@@ -1583,7 +1584,7 @@ export class Compiler {
         css,
         errors: [...context.errors],
         warnings: [...context.warnings],
-        loadedUrls,
+        loadedUrls: [],
         ...(map === undefined ? {} : { map }),
         ...(sourceMapURL === undefined ? {} : { sourceMapURL })
       };
