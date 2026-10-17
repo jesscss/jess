@@ -377,6 +377,19 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
+    /* A `*` with nothing on its left is the same punctuation-led value (ledger P33), named as the compiler names it. */
+    it('names a leading `*` as the compiler does', () => {
+      const engine = createEngine();
+      const input = '@t: * [.notice];\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostic = engine.getDiagnostics(doc.uri).find(item => item.code === 'parse/leading-separator-value');
+
+      expect(diagnostic).toMatchObject({ message: expect.stringMatching(/^A Less value cannot start with "\*"\./), severity: DiagnosticSeverity.Error });
+      expect(input.slice(doc.offsetAt(diagnostic!.range.start), doc.offsetAt(diagnostic!.range.end))).toBe('* [.notice]');
+    });
+
     /* The compiler's `css/legacy-ie-syntax` error, at the same place: the declaration (owner 2026-10-16). */
     it.each([
       ['css', 'a {\n  filter: alpha(opacity=50);\n}\n'],

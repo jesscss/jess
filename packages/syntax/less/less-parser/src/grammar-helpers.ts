@@ -21,6 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
+import { flattenRuns, groupContent, holdsDelimRun } from './delim-runs.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
@@ -2210,8 +2211,9 @@ function mixinGuardTermFrom(
     index += 1;
   }
   const operator = guardOperatorText(children[index]);
-  if (operator === null) {
-    term = { kind: 'less-guard-operand', run: left };
+  if (operator === null || holdsDelimRun(left) || holdsDelimRun(children[index + 1])) {
+    /* A side that is a delim run makes the comparison the CSS run it is (ledger N18), as in a condition; its truth is the run's. */
+    term = { kind: 'less-guard-operand', run: operator === null ? left : spaced(flattenRuns([lessMathInValue(left, state), any(operator), lessMathInValue(requireMathOperand(children[index + 1]), state)])) };
   } else {
     /*
      * GUARD position, so the comparison lowers to the MATCH test (§4.2a).
@@ -2376,8 +2378,8 @@ function functionConditionTermFrom(
     left = { guard: lessTruth(bare), src, grouped: false, hasComparison: false, bare };
     index = operand.next;
   }
-  if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null)) {
-    const run = functionConditionRun(left, children, index, triviaLog, state);
+  if (index < children.length && (index + 2 < children.length || guardOperatorText(children[index]) === null || children.some(holdsDelimRun))) {
+    const run = flattenRuns(functionConditionRun(left, children, index, triviaLog, state));
     const fact = { guard: lessTruth(spaced(run)), src: run.map((value, at) => `${at === 0 ? '' : valueLayoutOf(run)?.[at - 1] ?? ' '}${functionConditionSource(value)}`).join(''), grouped: false, hasComparison: false };
     return negated ? { ...fact, guard: { g: 'not', inner: fact.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${fact.src})` } : { ...fact, run };
   }
@@ -2403,10 +2405,11 @@ function functionConditionTermFrom(
 }
 
 /**
- * A function condition with more than one operator, or one Less does not spell
- * (`a=b=c`, `a = b < c`, `a==b`): the CSS run of component values it is,
- * operands and `Any` delims (ledger N18). Less gives a chain no meaning, so it
- * is written as authored; its padding reads as a value's does, from trivia.
+ * A function condition with more than one operator, one Less does not spell
+ * (`a=b=c`, `a = b < c`, `a==b`), or a side that is a delim run (`a = b.c`):
+ * the CSS run of component values it is, operands and `Any` delims (ledger
+ * N18). Less gives it no meaning, so it is written as authored; its padding
+ * reads as a value's does, from trivia.
  */
 function functionConditionRun(
   left: FunctionConditionFact,
@@ -2538,12 +2541,15 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
     if (lead.length > 0 && groupLeading(left) === null) {
       reportAmbiguousNot(rawChildren[at], state);
     }
-    /* The group is a paren group (ledger V35), so a `/` in an operand divides, as in `(10px/2)`. */
+    /*
+     * The group is a paren group (ledger V35), so a `/` in an operand divides, as in `(10px/2)`.
+     * A further operator (`(a=b=c)`) makes the operands a CSS run (ledger N18).
+     */
     return functionConditionTermFrom([
       ...lead,
-      lessComputation(lessMathInGroup(left!, state)),
-      children[at],
-      lessComputation(lessMathInGroup(right, state))
+      ...children
+        .filter(child => isMathOperand(child) || guardOperatorText(child) !== null)
+        .map(child => isMathOperand(child) ? lessComputation(lessMathInGroup(child, state)) : child)
     ], [], state, notGluedAt);
   }
   const value = lessMathInValue(left!, state);
@@ -2577,7 +2583,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
     }
   }
   if (!conditional && operand !== undefined) {
-    return withSourceSpan(block(lessMathInGroup(operand, state)), span);
+    return withSourceSpan(block(groupContent(lessMathInGroup(operand, state))), span);
   }
   const ors: unknown[] = [];
   let ands: unknown[] = [];
@@ -2602,9 +2608,8 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
     }
   }
   ands.push(parenConditionTermFrom(term, termRaw, state));
-  ors.push(foldFunctionCondition('and', ands));
-  const fact = foldFunctionCondition('or', ors);
-  return withSourceSpan(block(condition(fact.guard, fact.src)), span);
+  const fact = foldFunctionCondition('or', [...ors, foldFunctionCondition('and', ands)]);
+  return withSourceSpan(block(fact.run ?? condition(fact.guard, fact.src)), span);
 }
 
 /**

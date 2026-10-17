@@ -86,7 +86,13 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['if(media(width >= 600px): a.b; else: c)', '.'],
     ['if((1 = 1), a.b, c)', '.'],
     ['a.b alpha(opacity=50)', '.'],
-    ['foo(a<b<c)', '<']
+    ['foo(a<b<c)', '<'],
+    ['(a.b)', '.'],
+    ['(a=b=c)', '='],
+    ['foo((a=b=c))', '='],
+    ['(a.b = c)', '.'],
+    ['(a = b.c)', '='],
+    ['foo(a = b~c)', '=']
   ],
   scss: [
     ['foo(a b=c d)', '='],
@@ -235,7 +241,6 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
     ['css', sheet('foo(a.b: c)')],
     ['css', sheet('attr(a.b)')],
     ['less', sheet('boolean(a=b=c)')],
-    ['less', sheet('foo((a=b=c))')],
     ['less', sheet('foo(a=b and c=d=e)')],
     ['less', sheet('foo(not a=b=c)')]
   ] as const)('%s: not decided: %s', (dialect, source) => {

@@ -900,8 +900,31 @@ describe('public Less parse()', () => {
     expect(safeParse('/entry.less', '.x { a:hover *[href] { b: c; } }').errors).toEqual([]);
   });
 
-  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
-  it.fails.each(['@t: * [.notice];', 'a { b: 2*[3]; }', 'a { b: b*[3]; }', '@t: selector(.a:not(@{t}));', '@t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+  /* A `[…]` simple block is a value (css's `SquareValue`), so a product may take one as its operand (P45). */
+  it.each(['a { b: 2*[3]; }', 'a { b: b*[3]; }'])('parses `%s`', (source) => {
+    const result = safeParse('/entry.less', source);
+    expect(result.errors).toEqual([]);
+    expect(result.document?.rules[0]).toMatchObject({
+      rules: [{ value: { type: 'Expression', value: { type: 'Operation', operator: '*', right: { type: 'Block', delimiter: 'square', value: { type: 'Dimension', src: '3' } } } } }]
+    });
+  });
+
+  /* A `*` with nothing on its left is a punctuation-led value (ledger P33): reported at the `*`, and the parse carries on (P45). */
+  it('parses `@t: * [.notice];` and reports its leading `*`', () => {
+    const result = safeParse('/entry.less', '@t: * [.notice];\n.a { b: c; }');
+    expect(result.document?.rules).toHaveLength(2);
+    expect(result.errors.map(error => [error.code, error.line, error.column, error.message])).toEqual([
+      ['parse/leading-separator-value', 1, 5, 'A Less value cannot start with "*".']
+    ]);
+  });
+
+  /*
+   * P45 residuals, balanced input that still stops the parse; they predate
+   * selector() (ledger P49 NOTES). Inside a pseudo argument the pseudo dispatch
+   * commits to the static selector-list arm, which reads no interpolation and
+   * no non-selector argument.
+   */
+  it.fails.each(['@t: selector(.a:not(@{t}));', '@t: selector(.a:is(1px));'])('parses `%s`', (source) => {
     expect(safeParse('/entry.less', source).document).toBeDefined();
   });
 

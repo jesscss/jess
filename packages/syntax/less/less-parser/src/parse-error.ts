@@ -172,19 +172,32 @@ export class LessUnsupportedMixinNameError extends SyntaxError {
   }
 }
 
-/** A value led by `/` is recognized so the diagnostic can sit on the slash. */
+/**
+ * A value led by `/` or `*` (ledger P33) is recognized so the diagnostic can sit
+ * on that token; the parse carries on (P45).
+ */
 export class LessLeadingSeparatorValueError extends SyntaxError {
   readonly code = 'parse/leading-separator-value' as const;
   readonly offset: number;
   readonly endOffset: number;
-  readonly reason = 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.';
-  readonly fix = 'Write the path as url(/path) or as an escaped string such as ~"/path".';
+  readonly reason: string;
+  readonly fix: string;
 
-  constructor(offset: number, endOffset: number) {
-    super('A Less value cannot start with "/".');
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, operator: string, recoveredValue: object) {
+    super(`A Less value cannot start with "${operator}".`);
     this.name = 'LessLeadingSeparatorValueError';
     this.offset = offset;
     this.endOffset = endOffset;
+    this.reason = operator === '/'
+      ? 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.'
+      : 'A `*` multiplies two values, so it needs a value before it.';
+    this.fix = operator === '/'
+      ? 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+      : 'Write the value it multiplies before it, or remove it.';
+    this.recoveredValue = recoveredValue;
   }
 }
 
@@ -373,7 +386,7 @@ export class LessRemovedSelectorCaptureError extends SyntaxError {
  * carries on past (ledger P45).
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
-  | LessSelectorCaptureArgumentError | LessRemovedSelectorCaptureError;
+  | LessSelectorCaptureArgumentError | LessRemovedSelectorCaptureError | LessLeadingSeparatorValueError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

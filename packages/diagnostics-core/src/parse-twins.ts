@@ -43,7 +43,7 @@ type ParseTwinPusher = (
  * are delims.
  */
 type ValueAtom =
-  | { readonly kind: 'ident' | 'delim'; readonly text: string }
+  | { readonly kind: 'ident' | 'delim' | 'comparison'; readonly text: string }
   | { readonly kind: 'call' | 'group'; readonly node: CssCstNode }
   | { readonly kind: 'comma' | 'semicolon' | 'colon' | 'other' };
 
@@ -77,6 +77,8 @@ function valueAtoms(node: CssCstNode, language: JessLanguage, source: string, ou
         out.push(SEMICOLON);
       } else if (text === ':') {
         out.push(COLON);
+      } else if (language === 'less' && LESS_COMPARISONS.has(text)) {
+        out.push({ kind: 'comparison', text });
       }
       continue;
     }
@@ -140,17 +142,20 @@ function lessConditionAtoms(node: CssCstNode, source: string, out: ValueAtom[]):
       return;
     }
   }
-  if (operators.length === 0 || (operators.length === 1 && LESS_COMPARISONS.has(operators[0]!))) {
+  const atoms: ValueAtom[] = [];
+  for (const child of children) {
+    if (child._tag === 'leaf') {
+      atoms.push({ kind: 'delim', text: source.slice(Number(child.span.start), Number(child.span.end)).trim() });
+    } else if (isCstNode(child)) {
+      valueAtoms(child, 'less', source, atoms);
+    }
+  }
+  const operandDelims = atoms.filter(atom => atom.kind === 'delim').length > operators.length;
+  if (operators.length === 0 || (operators.length === 1 && LESS_COMPARISONS.has(operators[0]!) && !operandDelims)) {
     out.push(OTHER);
     return;
   }
-  for (const child of children) {
-    if (child._tag === 'leaf') {
-      out.push({ kind: 'delim', text: source.slice(Number(child.span.start), Number(child.span.end)).trim() });
-    } else if (isCstNode(child)) {
-      valueAtoms(child, 'less', source, out);
-    }
-  }
+  out.push(...atoms);
 }
 
 function isAtom(atom: ValueAtom | undefined, kind: 'ident' | 'delim', text?: string): atom is { kind: 'ident' | 'delim'; text: string } {
@@ -184,12 +189,13 @@ function better(found: InvalidValueSyntax | undefined, next: InvalidValueSyntax 
 
 function invalidValueSyntaxInAtoms(atoms: readonly ValueAtom[], language: JessLanguage, source: string): InvalidValueSyntax | undefined {
   let found: InvalidValueSyntax | undefined;
+  const run = isComparisonRun(atoms);
   for (let i = 0; i < atoms.length && found?.code !== 'css/legacy-ie-syntax'; i++) {
     const atom = atoms[i]!;
     if (isAtom(atom, 'ident') && atom.text.toLowerCase() === 'progid' && isAtom(atoms[i + 1], 'delim', ':')) {
       return PROGID_IE_SYNTAX;
     }
-    if (atom.kind === 'delim') {
+    if (atom.kind === 'delim' || (run && atom.kind === 'comparison')) {
       found = better(found, invalidValuePunctuation(atom.text));
     } else if (atom.kind === 'group') {
       found = better(found, invalidValueSyntaxInAtoms(valueAtoms(atom.node, language, source, []), language, source));
@@ -198,6 +204,16 @@ function invalidValueSyntaxInAtoms(atoms: readonly ValueAtom[], language: JessLa
     }
   }
   return found;
+}
+
+/*
+ * A Less paren group's comparison is Less's when it is one comparison of two
+ * plain values; a chain, or a side holding a delim, is the CSS run it is, its
+ * operators delims (ledger N18), as the compiler reads it.
+ */
+function isComparisonRun(atoms: readonly ValueAtom[]): boolean {
+  const comparisons = atoms.filter(atom => atom.kind === 'comparison').length;
+  return comparisons > 1 || (comparisons === 1 && atoms.some(atom => atom.kind === 'delim'));
 }
 
 function invalidValueSyntaxInCall(node: CssCstNode, language: JessLanguage, source: string): InvalidValueSyntax | undefined {
@@ -341,15 +357,21 @@ export function pushParseTwinDiagnostics(
    * from the node.
    */
   if (language === 'less' && gt === 'LeadingSeparatorValue') {
+    const lead = cstChildrenOf(node)[0];
+    const slash = lead?._tag === 'leaf' && lead.value === '/';
     push(
       'parse/leading-separator-value',
       'error',
-      'A Less value cannot start with "/".',
+      `A Less value cannot start with "${slash ? '/' : '*'}".`,
       node.span,
       {
         phase: 'parse',
-        reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
-        fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+        reason: slash
+          ? 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.'
+          : 'A `*` multiplies two values, so it needs a value before it.',
+        fix: slash
+          ? 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+          : 'Write the value it multiplies before it, or remove it.'
       }
     );
   }
