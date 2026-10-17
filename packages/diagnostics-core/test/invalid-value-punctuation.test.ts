@@ -183,16 +183,27 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
     ['css', sheet('a<b')],
     ['css', sheet('foo(a.b: c)')],
     ['css', sheet('attr(a.b)')],
-    ['less', '@v: a=b;\na { x: @v; }\n'],
-    ['less', '.m(@a) { x: @a; }\na { .m(a.b); }\n'],
     ['less', sheet('boolean(a=b=c)')],
     ['less', sheet('foo((a=b=c))')],
     ['less', sheet('foo(a=b and c=d=e)')],
-    ['less', sheet('foo(not a=b=c)')],
+    ['less', sheet('foo(not a=b=c)')]
+  ] as const)('%s: not decided: %s', (dialect, source) => {
+    expect(reported(dialect, source)).toEqual([]);
+  });
+
+  /*
+   * The compiler reports these at the declaration that writes the value (ledger
+   * P48 notes); the language service reads the parsed document and does not
+   * evaluate references, so a delim that reaches a declaration only through one
+   * is not reported here.
+   */
+  it.each([
+    ['less', '@v: a=b;\na { x: @v; }\n'],
+    ['less', '.m(@a) { x: @a; }\na { .m(a.b); }\n'],
     ['scss', '$v: a.b;\na { x: $v; }\n'],
     ['scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }\n'],
     ['jess', '$v: a~b;\na { x: $v; }\n']
-  ] as const)('%s: not decided: %s', (dialect, source) => {
+  ] as const)('%s: through a reference, not evaluated: %s', (dialect, source) => {
     expect(reported(dialect, source)).toEqual([]);
   });
 });
