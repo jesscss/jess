@@ -258,29 +258,48 @@ describe('reference mixin trivia', () => {
     );
   }, 30000);
 
+  /*
+   * With `functionMode: 'error'` the rejection is an error, and an error fails
+   * the compile (owner 2026-10-16: "if the diagnostic treats it as an error,
+   * then no it doesn't succeed"); with the default `'preserve'` it is a
+   * warning and the sheet is written, the caller's trivia after it included.
+   */
   it('restores caller provenance after a delayed imported plugin rejection', async () => {
-    const compiler = new Compiler({
+    const compilerIn = (functionMode: 'error' | 'preserve') => new Compiler({
       compile: {
         plugins: [
           lessPlugin({ rewriteUrls: 'all' }),
           jsPlugin({ jsReadRoot: fixtureDir, runtimeApi: 'less' }),
           lessCompatPlugin()
         ],
-        functionMode: 'error'
+        functionMode
       },
       output: { collapseNesting: true }
     });
+    const atTheImportedCall = {
+      code: 'plugin/function-threw',
+      filePath: path.join(fixtureDir, 'nested/async-library.less'),
+      line: 12
+    };
 
-    const result = await compiler.renderToResult(rejectFixture, {
+    const failed = await compilerIn('error').renderToResult(rejectFixture, {
       breakOnError: false,
       suppressWarnings: true
     });
-
-    const failure = result.errors.find(error => error.code === 'plugin/function-threw');
+    const failure = failed.errors.find(error => error.code === 'plugin/function-threw');
     expect(failure?.reason).toContain('IMPORTED_ASSET_FAILURE');
-    expect(failure?.filePath).toBe(path.join(fixtureDir, 'nested/async-library.less'));
-    expect(failure?.line).toBe(12);
-    expect(result.css).toContain(
+    expect(failure).toMatchObject(atTheImportedCall);
+    expect(failed.css).toBe('');
+
+    const written = await compilerIn('preserve').renderToResult(rejectFixture, {
+      breakOnError: false,
+      suppressWarnings: true
+    });
+    expect(written.errors).toEqual([]);
+    const warning = written.warnings.find(entry => entry.code === 'plugin/function-threw');
+    expect(warning?.reason).toContain('IMPORTED_ASSET_FAILURE');
+    expect(warning).toMatchObject(atTheImportedCall);
+    expect(written.css).toContain(
       '.after {\n'
       + '  image: url("after.png");\n'
       + '  /* caller after rejection */\n'
