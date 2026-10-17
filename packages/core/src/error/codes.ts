@@ -30,7 +30,6 @@ export type JessErrorCode =
   | 'parse/ambiguous-not'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
-  | 'parse/removed-selector-capture'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'compose/not-top-level'
@@ -230,14 +229,6 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'selector() takes a selector list',
       reason: 'In a value, selector() captures a selector list, the argument :is() takes, and this argument is not one.',
       fix: 'Write a selector list, for example selector(.a, .b > .c).'
-    }
-  ],
-  [
-    'parse/removed-selector-capture',
-    {
-      summary: 'Selector capture is now written selector(…)',
-      reason: 'The `*[…]` selector capture is removed; a selector capture is written selector(<selector-list>).',
-      fix: 'Write selector(${list}).'
     }
   ],
   [

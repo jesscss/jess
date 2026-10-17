@@ -47,7 +47,6 @@ export {
   isToken,
   keywordOrNull,
   recoveredInTree,
-  removedSelectorCaptureOf,
   scannedLeaf,
   selectorCaptureOf,
   semanticGapText,

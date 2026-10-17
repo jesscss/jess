@@ -883,21 +883,15 @@ describe('public Less parse()', () => {
     ).toBe('.notice,\n.tail:nth-child(-n+2) {\n  color: red;\n}\n');
   });
 
-  it('returns the document with an error for what selector() cannot capture and for the removed `*[…]` (P45)', () => {
-    const source = '.a { b: selector(1px); }\n.c { d: *[.e, .f]; }\n.g { h: i; }';
+  it('returns the document with an error for what selector() cannot capture (P45)', () => {
+    const source = '.a { b: selector(1px); }\n.g { h: i; }';
     const result = safeParse('/entry.less', source);
 
-    expect(result.document?.rules).toHaveLength(3);
+    expect(result.document?.rules).toHaveLength(2);
     expect(result.errors.map(error => [error.code, error.line, error.column, error.fix])).toEqual([
-      ['parse/selector-capture-argument', 1, 18, 'Write a selector list, for example selector(.a, .b > .c).'],
-      ['parse/removed-selector-capture', 2, 9, 'Write selector(.e, .f).']
+      ['parse/selector-capture-argument', 1, 18, 'Write a selector list, for example selector(.a, .b > .c).']
     ]);
     expect(() => parse(source)).toThrow('selector() takes a selector list.');
-  });
-
-  /* A report from an attempt the parser abandons is dropped: here the declaration reading of a nested rule. */
-  it('reports nothing for a `*[…]` in a nested rule\'s selector', () => {
-    expect(safeParse('/entry.less', '.x { a:hover *[href] { b: c; } }').errors).toEqual([]);
   });
 
   /* A `[…]` simple block is a value (css's `SquareValue`), so a product may take one as its operand (P45). */

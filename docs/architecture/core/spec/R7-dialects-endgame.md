@@ -196,10 +196,10 @@ again, **no new tree2 kinds**, every target already closed by an earlier rung:
 | `$base.name` STATIC member (literal keyword key → `.name`) | member/lookup value | R4 (namespaces/maps) |
 | `$base[0]` / `$base['k']` / `$base[$key]` (index / literal-prop / dynamic) | indexed lookup value | R4 (maps/indexing) |
 | `$extend <sel>` / `$extend .a -> .target` (NOT `:extend()`) | tree2 `extend` | R1 (extend) |
-| `$apply .foo` (== `$ > *[.foo]`; selector-as-mixin) | mixin-apply over selector match | R1/R4 |
+| `$apply .foo` (== `$ > selector(.foo)`; selector-as-mixin) | mixin-apply over selector match | R1/R4 |
 | mixin call/apply operator `$ > name()`, chain `$ > #ns > .m()` | `MixinCall` + namespace path | R4 (namespaces) |
 | anonymous fns `$fn: @() > { … }` / arrow `@() > $(1+2)`; `$content()` | detached ruleset / fn value | R2/R4 |
-| interpolation `$( … )` (Expression), `$[key]` (ident), `$*[…]` (selector capture) | interpolation value nodes, early-resolved | R4 (interp) |
+| interpolation `$( … )` (Expression), `$[key]` (ident), `selector(…)` (selector capture, ledger P49) | interpolation value nodes, early-resolved | R4 (interp) |
 | collections/maps `$x: { … }`, dot/index/negative-index access | map value node | R4 (maps) |
 | `$if/$else`, `$for`, ranges, destructuring | live-cell control flow | R3 (control flow) |
 | `@-use` / `@-from` (sugar for each other → JsImport) / `@-export` / `@-compose` | module semantics | R6 (modules) |
@@ -219,7 +219,7 @@ Fail-loud `UnsupportedShape` for anything whose core rung is not yet closed.
 2. **Sequencing gate is an invariant**: the `.jess` bridge does not advance ahead
    of Less+SCSS maturity; pulling it forward is a process error, not progress.
 3. Native-only `.jess` features that neither Less nor SCSS express (live `$`
-   bindings, `$extend`/`$apply` sugar, `$( )`/`$[ ]`/`$*[ ]` triad) map onto the
+   bindings, `$extend`/`$apply` sugar, `$( )`/`$[ ]`/`selector( )` triad) map onto the
    SAME core rungs (R1/R3/R4) — the bridge does not get a private core.
 
 ### Reference
@@ -236,7 +236,7 @@ prior-art reference, mark **"needs owner confirmation of intended v5 shape."**
 - **O-JESS-1** — confirm the sequencing gate at build time: is "Less + SCSS bridge
   both byte-identity-green on their corpora" the trigger to start the `.jess`
   bridge, or is there an explicit owner go/no-go?
-- **O-JESS-2** — `$apply .foo` desugaring to `$ > *[.foo]`: does the bridge desugar
+- **O-JESS-2** — `$apply .foo` desugaring to `$ > selector(.foo)`: does the bridge desugar
   to the mixin-apply core path, or does tree2 want a distinct apply node? (Spec
   assumes desugar-in-bridge, zero new kind — confirm.)
 - **O-JESS-3** — `$!`/`$$` are retired. The parser and evaluator must represent
