@@ -186,21 +186,18 @@ describe('selector() capture', () => {
     ['jess', '.x { a: *[.a ~ .b]; }', 'parse/removed-selector-capture', [1, 9]]
   ] as const)('parses %s `%s`, then reports its error', async (language, source, code, [line, column]) => {
     const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
+    expect(result.css).toBe('');
     expect(result.errors.map(error => [error.code, error.phase, error.line, error.column])).toEqual([[code, 'parse', line, column]]);
   });
 
-  /*
-   * An error-severity diagnostic fails the compile (owner 2026-10-16). The
-   * compiler does not yet stop on an error a parser recovered from; these flip
-   * when it does (P49 NOTES).
-   */
-  it.fails.each([
+  /* An error-severity diagnostic fails the compile (owner 2026-10-16), a recovered parse error too. */
+  it.each([
     ['less', '.x { a: selector(1px); }'],
     ['less', '.x { a: *[.a]; }'],
     ['jess', '.x { a: selector(1px); }'],
     ['jess', '.x { a: *[.a]; }']
   ] as const)('fails the %s compile of `%s`', async (language, source) => {
-    await expect(render(source, false, language)).rejects.toThrow();
+    await expect(render(source, false, language)).rejects.toThrow(/selector\(\) takes a selector list|Selector capture is now written selector\(…\)/u);
   });
 
   /* A selector's own punctuation is selector syntax, never value punctuation (ledger P48). */
