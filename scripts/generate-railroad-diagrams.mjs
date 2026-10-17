@@ -32,12 +32,15 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * 2. `.js` specifiers that name a `.ts` source. Node's native type stripping
  *    does not rewrite extensions, so `import … from './parse-error.js'` inside
  *    `src/` fails. Resolve to the sibling `.ts` when it exists on disk.
- * 3. Dialect grammars import `@jesscss/css-parser/grammar/base`. Package resolution
- *    finds the macro-built table artifact, whose serialized builders cannot be
- *    runtime-composed for inspection. Redirect that one edge to the source
- *    grammar so every composed piece remains inspectable by `parseman/spec`.
+ * 3. Grammar pieces imported from another package resolve to that package's
+ *    macro-built `lib/`, a compiled artifact with no live rules, so the runtime
+ *    `compose()` in the source grammar throws "a build-compiled compose()
+ *    result has no live rules to link". Redirect each piece to its source
+ *    module so every composed piece is a live `rules()` map `parseman/spec`
+ *    can walk: `@jesscss/css-parser/grammar/base` (the dialects' CSS base) and
+ *    `@jesscss/parser-shared/<piece>` (composed by all four grammars).
  */
-const LOADER_HOOK = `
+export const LOADER_HOOK = `
 import { existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 const strip = (context) => {
@@ -55,6 +58,10 @@ export async function resolve(specifier, context, nextResolve) {
       url: ${JSON.stringify(pathToFileURL(join(ROOT, 'packages/syntax/css/css-parser/src/grammar.ts')).href)},
       shortCircuit: true
     }
+  }
+  if (specifier.startsWith('@jesscss/parser-shared/')) {
+    const src = ${JSON.stringify(join(ROOT, 'packages/parser-shared/src') + '/')} + specifier.slice('@jesscss/parser-shared/'.length) + '.ts'
+    if (existsSync(src)) return { url: pathToFileURL(src).href, shortCircuit: true }
   }
   if (specifier.startsWith('.') && specifier.endsWith('.js') && ctx.parentURL) {
     const url = new URL(specifier, ctx.parentURL)
@@ -81,7 +88,7 @@ export async function load(url, context, nextLoad) {
  * offers, and it costs real structure in the two Less rules, which are segment
  * lists rather than pure delimiter scans.
  */
-const BALANCED_PINS = {
+export const BALANCED_PINS = {
   css: { AtRulePreludeGroup: 'balanced ( … ) or [ … ]' },
   less: {
     AtRulePrelude: 'at-rule prelude text, with balanced ( … ) / [ … ] groups',
@@ -110,7 +117,7 @@ const LEGIBILITY_PINS = {
   jess: {}
 };
 
-const DIALECTS = [
+export const DIALECTS = [
   { id: 'css', title: 'CSS', pkg: 'packages/syntax/css/css-parser', exportName: 'cssGrammar' },
   { id: 'less', title: 'Less', pkg: 'packages/syntax/less/less-parser', exportName: 'lessGrammar' },
   { id: 'scss', title: 'SCSS', pkg: 'packages/syntax/scss/scss-parser', exportName: 'scssGrammar' },
@@ -118,7 +125,7 @@ const DIALECTS = [
 ];
 
 /** Every dialect's parser enters at `Stylesheet` (see each `src/parse-with.ts`). */
-const ENTRY = 'Stylesheet';
+export const ENTRY = 'Stylesheet';
 
 /**
  * Readable names for the terminals the four grammars share.
@@ -315,6 +322,9 @@ async function main() {
     };
     const html = spec.toRailroadHtml(grammar, opts);
     const model = spec.buildSpecModel(grammar, opts);
+    if (!model.productions.some(p => p.name === ENTRY)) {
+      throw new Error(`${d.id}: the spec model has no ${ENTRY} production`);
+    }
     const file = join(outDir, `${d.id}.html`);
     writeFileSync(file, html);
     results.push({
@@ -333,7 +343,11 @@ async function main() {
   console.log(`index ${' '.repeat(4)}              ${String(Buffer.byteLength(idxHtml)).padStart(9)} bytes  ${idx}`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+/* Run only as a script: analyze-grammar-complexity.mjs imports the loader,
+   pins and dialect list from here. */
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

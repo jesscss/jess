@@ -36,17 +36,20 @@ export function nameValueIeSyntax(name: string): InvalidValueSyntax {
 
 /*
  * A delim's spelling, whole: only the punctuation a delim run reads, at least
- * one of it from the owner's list. Tested against the token the parser built,
- * never against the source around it.
+ * one of it from the owner's list or `:`, `<`, `>`, `$`, `%`, `&`. Tested
+ * against the token the parser built, never against the source around it.
  */
-const INVALID_DELIM_SPELLING = /^[-+*/<>$@%&:.~=|^?]*[.~=|^?][-+*/<>$@%&:.~=|^?]*$/;
+const INVALID_DELIM_SPELLING = /^[-+*/<>$@%&:.~=|^?]*[<>$%&:.~=|^?][-+*/<>$@%&:.~=|^?]*$/;
 
 /**
  * A delim component (the `Any` a `PunctuationValue` builds) holding `.`, `~`,
- * `=`, `|`, `^` or `?` (owner 2026-10-16), by its spelling: `a.b`'s `.`,
- * `a==b`'s `==`. A delim may also hold the other punctuation a run reads
- * (`+ - * / < > $ @ % & :`); an `Any` holding anything else (`U+4??`, a
- * custom property's text) is not a delim.
+ * `=`, `|`, `^` or `?`, or `:`, `<`, `>`, `$`, `%` or `&` (owner 2026-10-16:
+ * "all that punctuation is out"), by its spelling: `a.b`'s `.`, `a==b`'s `==`,
+ * `a:b`'s `:`. A dialect that gives one of them meaning builds another node
+ * for it (a comparison, a modulo, a variable), so its punctuation never
+ * reaches here; a branch's colon is not entered ({@link invalidValueSyntaxIn}).
+ * A delim may also hold `+ - * / @`; an `Any` holding anything
+ * else (`U+4??`, a custom property's text) is not a delim.
  */
 export function invalidValuePunctuation(spelling: string): InvalidValueSyntax | undefined {
   return INVALID_DELIM_SPELLING.test(spelling)
@@ -111,8 +114,12 @@ export function invalidValueSyntaxIn(value: ValueSlot, kept?: ValueCheckLane['s'
         return undefined;
       }
       let found: InvalidValueSyntax | undefined;
-      for (const arg of value.args) {
-        const inner = (arg.name === undefined ? nameValueArgument(arg.value) : undefined) ?? invalidValueSyntaxIn(arg.value, kept);
+      for (let i = 0; i < value.args.length; i++) {
+        const arg = value.args[i]!;
+        const branchValue = i === 0 && arg.name === undefined ? branchValueOf(arg.value) : undefined;
+        const inner = branchValue !== undefined
+          ? invalidValueSyntaxIn(branchValue, kept)
+          : (arg.name === undefined ? nameValueArgument(arg.value) : undefined) ?? invalidValueSyntaxIn(arg.value, kept);
         if (inner?.code === 'css/legacy-ie-syntax') {
           return inner;
         }
@@ -153,6 +160,27 @@ export function invalidValueSyntaxIn(value: ValueSlot, kept?: ValueCheckLane['s'
 function isProgid(item: ValueSlot, next: ValueSlot | undefined): boolean {
   return !isValueSlotArray(item) && item.type === 'Keyword' && item.src.length === 6 && item.src.toLowerCase() === 'progid'
     && next !== undefined && !isValueSlotArray(next) && next.type === 'Any' && next.src === ':';
+}
+
+/*
+ * A call's first argument holding a top-level `:` after its first component is
+ * a branch (ledger P38, in every dialect): what precedes the colon is its
+ * condition, which is not entered, as a `Branch`'s is not. A dialect that does
+ * not yet build the `Branch` (`.jess`, jess#297) leaves the run, so its colon
+ * is not a delim. Returns the branch's value, or `undefined` for any other
+ * argument.
+ */
+function branchValueOf(arg: ValueSlot): ValueSlot | undefined {
+  if (!isValueSlotArray(arg)) {
+    return undefined;
+  }
+  for (let i = 1; i < arg.length; i++) {
+    const item = arg[i]!;
+    if (!isValueSlotArray(item) && item.type === 'Any' && item.src === ':') {
+      return arg.slice(i + 1);
+    }
+  }
+  return undefined;
 }
 
 function nameValueArgument(arg: ValueSlot): InvalidValueSyntax | undefined {
