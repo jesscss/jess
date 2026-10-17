@@ -176,7 +176,7 @@ type JessRules = {
   CalcSequence: Combinator<ValueSlot>;
   calcFunctionArguments: Combinator<ValueSlot>;
   MathFunction: Combinator<FunctionCall>;
-  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
+  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url | SelectorCapture]>;
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
@@ -2410,18 +2410,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return children.filter((child): child is string => typeof child === 'string').join('');
     }
   );
+
+  /*
+   * `selector(<selector-list>)` in value position is a selector capture (owner
+   * 2026-10-16, DESIGN-DECISIONS P48): `IdentifierOrFunction` routes the
+   * `selector(` opener here, and its argument is the static selector list the
+   * `:is()` family takes, padded the same way.
+   */
   const SelectorCapture = node<SelectorCapture>(
     'SelectorCapture',
     sequence(
-      literal('*['),
+      routed(),
+      optional(rawWhitespace),
       g.PseudoSelectorList,
-      literal(']')
+      optional(rawWhitespace),
+      literal(')')
     ),
     (children) => {
-      const branches = requireSelectorList(children[1]).selectors.map(selectorBranchCanonical);
+      const branches = requireSelectorList(children.find(isSelectorList)).selectors.map(selectorBranchCanonical);
       return selectorCapture(
         branches,
-        `*[${branches.join(', ')}]`
+        `selector(${branches.join(', ')})`
       );
     }
   );
@@ -2731,6 +2740,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     caseInsensitiveWhen(
       'var(',
       g.VarCall
+    ),
+    caseInsensitiveWhen(
+      'selector(',
+      g.SelectorCapture
     ),
 
     /*
@@ -3203,7 +3216,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.DollarValue,
     g.ExpressionLambda,
     g.InterpolatedValue,
-    g.SelectorCapture,
     g.CustomPropertyValue,
     g.UnicodeRange,
     g.IdentifierOrFunction,

@@ -1099,8 +1099,8 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('parses a static selector list between *[…] delimiters and rejects dynamic selector content', () => {
-    const source = '$targets: *[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)];';
+  it('parses a static selector list inside selector() and rejects dynamic selector content', () => {
+    const source = '$targets: selector(.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2));';
     const cst = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -1117,7 +1117,7 @@ describe('Jess AST grammar facts', () => {
         value: {
           type: 'SelectorCapture',
           branches: ['.notice', 'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)', '.tail:nth-child(-n+2)'],
-          src: '*[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)]'
+          src: 'selector(.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2))'
         }
       }]
     });
@@ -1125,11 +1125,26 @@ describe('Jess AST grammar facts', () => {
       rules: [{ value: { type: 'SelectorCapture', branches: ['.notice', 'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)', '.tail:nth-child(-n+2)'] } }]
     });
 
-    for (const invalid of ['$targets: * [.notice];', '$targets: *[$[selector]];', '$targets: *[.card-$[tone]];', '$targets: *[.card:not($[tone])];', '$targets: *[.card:nth-child(2n+1of .item)];']) {
+    expect(parse('$s: selector( .a > .b ~ .c + .d , input[type=text], a:hover::before, &.x, & + & );')).toMatchObject({
+      rules: [{ value: { type: 'SelectorCapture', branches: ['.a > .b ~ .c + .d', 'input[type=text]', 'a:hover::before', '&.x', '& + &'] } }]
+    });
+    expect(parse('$s: SELECTOR(apple, satsuma);')).toMatchObject({
+      rules: [{ value: { type: 'SelectorCapture', branches: ['apple', 'satsuma'], src: 'selector(apple, satsuma)' } }]
+    });
+    expect(parse('$s: selector(a), selector(b);')).toMatchObject({
+      rules: [{ value: { type: 'List', value: [{ type: 'SelectorCapture', branches: ['a'] }, { type: 'SelectorCapture', branches: ['b'] }] } }]
+    });
+
+    for (const invalid of ['$targets: *[.notice];', '$targets: *[apple, satsuma];', '$targets: selector($[selector]);', '$targets: selector(.card-$[tone]);', '$targets: selector(.card:not($[tone]));', '$targets: selector(.card:nth-child(2n+1of .item));']) {
       const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+  });
+
+  it('keeps selector() inside an @supports prelude the CSS feature test', () => {
+    const source = '@supports selector(.a ~ .b) { .x { c: d; } }';
+    expect(JSON.stringify(parse(source))).not.toContain('SelectorCapture');
   });
 
   it('keeps static selector-list structure aligned with ordinary selectors', () => {

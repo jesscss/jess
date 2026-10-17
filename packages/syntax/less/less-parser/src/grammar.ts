@@ -2095,6 +2095,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     caseOf('media(', g.MediaTest),
     caseOf('supports(', g.SupportsTest),
     caseOf('style(', g.StyleTest),
+    caseOf('selector(', g.SelectorCapture),
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
      * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
@@ -2308,7 +2309,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Dimension,
       g.FormatFunction,
       IdentifierOrFunction,
-      g.SelectorCapture,
       g.EscapedParen,
       g.QueryColonFeature,
       g.Paren,
@@ -4768,17 +4768,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(g.PseudoArgumentComplex, many(g.PseudoArgumentSelectorTail)),
     children => selist(...selectorBranchesFrom(children))
   );
-  // `*[ … ]` is only the glued capture delimiter around the existing static
-  // selector-list grammar. It is a selector-valued Less value, not a text
-  // capture: the selector grammar owns every branch boundary and the AST keeps
-  // the canonical branches for selector interpolation.
+  /*
+   * `selector(<selector-list>)` in value position is a selector capture (owner
+   * 2026-10-16, DESIGN-DECISIONS P48): `IdentifierOrFunction` routes the
+   * `selector(` opener here, and its argument is the `:is()` family's
+   * `pseudoSelectorArgument`, read as `pseudoSelectorRouted` reads it: the
+   * padding before `)` is the argument's. It is a selector-valued Less value,
+   * not a text capture: the selector grammar owns every branch boundary and the
+   * AST keeps the canonical branches for selector interpolation.
+   */
   const SelectorCapture = node(
     'SelectorCapture',
-    sequence(noTrivia(literal('*[')), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentSelector), noTrivia(literal(']'))),
+    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(pseudoSelectorArgument, literal(')')))),
     (children) => {
       const selector = requireSelectorList(children[1]);
       const branches = selector.selectors.map(selectorBranchCanonical);
-      return selectorCapture(branches, `*[${branches.join(', ')}]`);
+      return selectorCapture(branches, `selector(${branches.join(', ')})`);
     }
   );
   const pseudoOpen = token(noTrivia(sequence(

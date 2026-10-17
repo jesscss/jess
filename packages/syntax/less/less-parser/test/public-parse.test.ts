@@ -850,9 +850,9 @@ describe('public Less parse()', () => {
     });
   });
 
-  it('uses a static Less selector capture through the public AST and render route', () => {
+  it('uses a static Less selector() capture through the public AST and render route', () => {
     const source =
-      '@targets: *[.notice, .tail:nth-child(-n+2)]; @{targets} { color: red; }';
+      '@targets: selector(.notice, .tail:nth-child(-n+2)); @{targets} { color: red; }';
     const document = parse(source);
 
     expect(document).toMatchObject({
@@ -883,9 +883,10 @@ describe('public Less parse()', () => {
     ).toBe('.notice,\n.tail:nth-child(-n+2) {\n  color: red;\n}\n');
 
     for (const invalid of [
-      '@targets: *[@{selector}];',
-      '@targets: *[.card-@{tone}];',
-      '@targets: *[.card:not(@{tone})];',
+      '@targets: selector(@{selector});',
+      '@targets: selector(.card-@{tone});',
+      '@targets: selector(.card:not(@{tone}));',
+      '@targets: *[.notice];',
       '@targets: * [.notice];'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
@@ -2172,7 +2173,7 @@ describe('public Less parse()', () => {
 
   it('returns and renders adjacent captured and quoted selector interpolation through the public route', () => {
     const source =
-      '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+      '@cap-a: selector(.a, .b); @cap-b: selector(.c, .d); @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
     const document = parse(source);
 
     expect(document).toMatchObject({

@@ -10,7 +10,7 @@
  * owner had accepted it. Such an edit is listed here, in a comment, and its fixture is
  * an expected failure in `all-less.test.ts` until the owner decides. Awaiting the owner:
  *
- * - `tests-unit/parse-interpolation/parse-interpolation.less`: a `*[…]` capture's
+ * - `tests-unit/parse-interpolation/parse-interpolation.less`: a `selector(…)` capture's
  *   header branches one per line, `  .d:is(.a, .b, .c)&:hover, baz-cap {` →
  *   `  .d:is(.a, .b, .c)&:hover,\n  baz-cap {` (O8(a), an owner-delegated judgment of
  *   2026-10-04); and the quoted case's `foo: bar` → `foo: baz`, which the source

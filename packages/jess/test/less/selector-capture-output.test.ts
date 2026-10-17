@@ -9,19 +9,22 @@
  * without changing the document's nesting policy.
  */
 import { describe, expect, it } from 'vitest';
+import { emitJess } from '@jesscss/core';
+import { parse as parseLess } from '@jesscss/less-parser';
+import { parse as parseJess } from '@jesscss/jess-parser';
 import { Compiler } from '../../src/index.js';
 
 const captured = [
-  '@fruits: *[apple, satsuma];',
+  '@fruits: selector(apple, satsuma);',
   '@{fruits} {',
   '  .fruit-& { content: "Capture"; }',
   '}'
 ].join('\n');
 
-async function render(source: string, collapseNesting: boolean): Promise<string> {
+async function render(source: string, collapseNesting: boolean, language: 'less' | 'jess' | 'css' | 'scss' = 'less'): Promise<string> {
   return new Compiler({ output: { collapseNesting } }).renderString(source, {
-    language: 'less',
-    filePath: '/virtual/selector-capture-output.less'
+    language,
+    filePath: `/virtual/selector-capture-output.${language}`
   });
 }
 
@@ -83,7 +86,7 @@ describe('Less selector-capture output boundaries', () => {
    * commas are characters, so a nested header keeps it on one line and a
    * collapsed one glues it after its parent, never in an `:is()`. The
    * whitespace it opens with is still dropped at the header (ledger O8(b)).
-   * One branch per line (O8(a)) is for a structured list (`*[…]`).
+   * One branch per line (O8(a)) is for a structured list (`selector(…)`).
    */
   it('prints a quoted selector text as written in a nested header', async () => {
     const source = [
@@ -129,5 +132,77 @@ describe('Less selector-capture output boundaries', () => {
       '}',
       ''
     ].join('\n'));
+  });
+});
+
+/*
+ * `selector(<selector-list>)` is the selector-capture spelling in `.less` and
+ * `.jess` (owner 2026-10-16); `*[…]` is gone. Inside a support condition
+ * `selector()` stays CSS's feature test, and `.css` / `.scss` keep value-position
+ * `selector()` an ordinary function call.
+ */
+describe('selector() capture', () => {
+  const complex = '.a > .b ~ .c + .d, input[type=text], a:hover';
+
+  it('expands every captured branch in a nested and in a collapsed header, in .less and .jess', async () => {
+    const less = `@s: selector(${complex});\n.p { @{s} { c: d; } }`;
+    const jess = `$s: selector(${complex});\n.p { \${s} { c: d; } }`;
+    const nested = '.p {\n  .a > .b ~ .c + .d,\n  input[type=text],\n  a:hover {\n    c: d;\n  }\n}\n';
+    const collapsed = '.p :is(.a > .b ~ .c + .d, input[type=text], a:hover) {\n  c: d;\n}\n';
+
+    await expect(render(less, false)).resolves.toBe(nested);
+    await expect(render(less, true)).resolves.toBe(collapsed);
+    await expect(render(jess, false, 'jess')).resolves.toBe(nested);
+    await expect(render(jess, true, 'jess')).resolves.toBe(collapsed);
+  });
+
+  it('keeps a `&` inside the capture a parent reference', async () => {
+    await expect(render('@s: selector(&.x, & + .y);\n.p { @{s} { c: d; } }', false)).resolves.toBe(
+      '.p {\n  &.x,\n  & + .y {\n    c: d;\n  }\n}\n'
+    );
+  });
+
+  it('is a value a guard compares', async () => {
+    await expect(render('.m() when (selector(.a) = selector(.a)) { ok: 1; }\n.x { .m(); }', false)).resolves.toBe('.x {\n  ok: 1;\n}\n');
+    await expect(render('.m() when (selector(.a)) { ok: 1; }\n.x { .m(); }\n.y { z: 1; }', false)).resolves.toBe('.y {\n  z: 1;\n}\n');
+  });
+
+  it('prints its canonical selector() spelling in a plain value position', async () => {
+    await expect(render('@s: selector( .a>.b ,satsuma );\n.x { v: @s; }', false)).resolves.toBe('.x {\n  v: selector(.a > .b, satsuma);\n}\n');
+  });
+
+  it('rejects the removed `*[…]` spelling in .less and .jess', async () => {
+    await expect(render('@s: *[apple, satsuma];\n@{s} { c: d; }', false)).rejects.toThrow();
+    await expect(render('$s: *[apple, satsuma];\n${s} { c: d; }', false, 'jess')).rejects.toThrow();
+  });
+
+  it('converts to the same selector() capture in .jess', () => {
+    const less = parseLess('@fruits: selector(apple, .b > .c);');
+    const jess = emitJess(less);
+    expect(jess).toBe('$fruits: selector(apple, .b > .c);\n');
+    expect(parseJess(jess).rules[0]).toMatchObject({
+      value: { type: 'SelectorCapture', branches: ['apple', '.b > .c'], src: 'selector(apple, .b > .c)' }
+    });
+  });
+
+  it('leaves @supports selector() a feature test in all four dialects', async () => {
+    const source = '@supports selector(.a ~ .b) {\n  .x {\n    c: d;\n  }\n}\n';
+    for (const language of ['css', 'less', 'scss', 'jess'] as const) {
+      await expect(render(source, false, language), language).resolves.toBe(source);
+    }
+  });
+
+  it('leaves the supports() test of a CSS if() a feature test', async () => {
+    const source = '.x {\n  c: if(supports(selector(.a)): x; else: y);\n}\n';
+    for (const language of ['css', 'less'] as const) {
+      await expect(render(source, false, language), language).resolves.toBe(source);
+    }
+  });
+
+  it('keeps value-position selector() an ordinary function call in .css and .scss', async () => {
+    const source = '.x {\n  v: selector(a, b);\n}\n';
+    for (const language of ['css', 'scss'] as const) {
+      await expect(render(source, false, language), language).resolves.toBe(source);
+    }
   });
 });
