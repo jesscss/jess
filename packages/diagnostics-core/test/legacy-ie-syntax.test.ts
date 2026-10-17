@@ -108,12 +108,22 @@ describe('what is not legacy IE syntax is not reported', () => {
   it.each([
     ['less', 'a { filter: ~"progid:DX.Microsoft.Blur(pixelradius=2)"; }\n'],
     ['less', '.m(@a) when (@a = 1) { x: y; }\na { b: if((1 = 1), c, d); e: boolean(3 = 4); }\n'],
-    ['scss', '$v: alpha(opacity=50);\na { filter: $v; }\n'],
-    ['jess', '$v: alpha(opacity=50);\na { filter: $v; }\n'],
-    ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\na { filter: @v; }\n'],
     ['scss', '@mixin m($a) { x: $a; }\na { @include m(a=b); }\n'],
     ['scss', '@function f($a) { @return $a; }\na { x: f($a: b=c); }\n']
   ] as const)('%s: %s', (dialect, source) => {
+    expect(legacyIe(dialect, source)).toEqual([]);
+  });
+
+  /*
+   * The compiler reports these at the declaration that writes the value (ledger
+   * P47 notes); the language service does not evaluate references, so a form
+   * that reaches a declaration only through one is not reported here.
+   */
+  it.each([
+    ['scss', '$v: alpha(opacity=50);\na { filter: $v; }\n'],
+    ['jess', '$v: alpha(opacity=50);\na { filter: $v; }\n'],
+    ['less', '@v: progid:DX.Microsoft.Blur(pixelradius=2);\na { filter: @v; }\n']
+  ] as const)('%s: through a reference, not evaluated: %s', (dialect, source) => {
     expect(legacyIe(dialect, source)).toEqual([]);
   });
 });
