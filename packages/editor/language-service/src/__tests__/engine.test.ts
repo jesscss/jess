@@ -466,6 +466,7 @@ describe('JessLanguageServiceEngine', () => {
       ['css', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
       ['less', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
       ['less', 'a {\n  x: foo(a=b=c);\n}\n', '='],
+      ['less', 'a {\n  x: (a==b);\n}\n', '=='],
       ['scss', 'a {\n  x: a~b;\n}\n', '~'],
       ['jess', 'a {\n  x: foo(a==b);\n}\n', '=='],
       ['css', 'a {\n  color: var(--brand, $primary);\n}\n', '$'],

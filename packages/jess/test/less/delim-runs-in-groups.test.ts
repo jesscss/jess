@@ -125,13 +125,28 @@ describe('the compile result', () => {
     expect(await clean('@v: a;\na { x: if((@v = a.b), y, n); z: boolean(@v = a.b); }\n')).toBe('a {\n  x: n;\n  z: false;\n}\n');
   });
 
+  it('a comment before a guard comparison operator is padding', async () => {
+    expect(await clean('@a: 1;\n.m() when (@a /* one */ = 1) { x: y; }\n.p { .m(); }\n')).toBe('.p {\n  x: y;\n}\n');
+  });
+
   it('a comparison passed to a mixin binds its truth value', async () => {
     expect(await clean('.m(@a) { x: @a; }\na { .m(1 < 2); }\n')).toBe('a {\n  x: true;\n}\n');
   });
 
+  it('a paren group holding a space run is written as authored', async () => {
+    expect(await clean('a {\n  x: (1px 2px);\n}\n')).toBe('a {\n  x: (1px 2px);\n}\n');
+  });
+
+  /* No row gives a math operator with no operand after it a meaning; it is written as authored (DESIGN-DECISIONS-NOTES § P45). */
+  it('a value ending in a math operator is written as authored', async () => {
+    expect(await clean('a {\n  x: a *;\n}\n')).toBe('a {\n  x: a *;\n}\n');
+  });
+
   it.each([
     ['a mixin argument that is the run', '.m(@a) {\n  x: @a;\n}\na { .m(a = b.c); }\n', '=', 2, 3],
-    ['a written comparison with a delim-run side', 'a {\n  x: (a.b = c);\n}\n', '.', 2, 3]
+    ['a written comparison with a delim-run side', 'a {\n  x: (a.b = c);\n}\n', '.', 2, 3],
+    ['a paren group holding a padded delim', 'a {\n  x: (a ~ b);\n}\n', '~', 2, 3],
+    ['a paren group holding a `==`', 'a {\n  x: (a==b);\n}\n', '==', 2, 3]
   ])('%s fails the compile where it is written (P48)', async (_label, source, delimText, line, column) => {
     const result = await compile(source);
     expect(result.css).toBe('');

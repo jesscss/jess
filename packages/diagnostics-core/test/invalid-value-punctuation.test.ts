@@ -92,7 +92,9 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo((a=b=c))', '='],
     ['(a.b = c)', '.'],
     ['(a = b.c)', '='],
-    ['foo(a = b~c)', '=']
+    ['foo(a = b~c)', '='],
+    ['(a ~ b)', '~'],
+    ['(a==b)', '==']
   ],
   scss: [
     ['foo(a b=c d)', '='],

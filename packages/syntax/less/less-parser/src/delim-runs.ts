@@ -73,3 +73,17 @@ export function flattenRuns(run: readonly ValueNode[]): ValueNode[] {
 export function operatorRun(parts: ReadonlyArray<ValueNode | string>): ValueNode[] {
   return flattenRuns(parts.map(part => typeof part === 'string' ? any(part.trim()) : part));
 }
+
+/**
+ * A comparison operator among a paren term's children: the terminal
+ * `functionConditionOperator` reads, the whole delim run at that point, which
+ * alone of a term's terminals opens with `<`, `>` or `=` (its padding, comments
+ * included, its `not` and the group's parens do not; an operand is a node).
+ * Only a Less spelling compares (`guardOperatorText`); `==` is a delim.
+ */
+export function isComparisonOperator(child: unknown): boolean {
+  const text = typeof child === 'string'
+    ? child
+    : typeof child === 'object' && child !== null && !('type' in child) && 'value' in child && typeof child.value === 'string' ? child.value : '';
+  return text.startsWith('<') || text.startsWith('>') || text.startsWith('=');
+}
