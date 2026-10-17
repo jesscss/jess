@@ -362,17 +362,25 @@ const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
  * meaning, glued or padded: `alpha(opacity=50)`, `x: a ~ b`. It is the css
  * `punctuationValueCharacter` run less the characters SCSS reads itself: `$`,
  * `#`, `%`, `&`, `!`, `@`, the math operators, the comparisons (`==`, `<`,
- * `>`), and `:` and `.` (see `gluedDelim`).
+ * `>`), and `:` and `.` (see `gluedDelim` and `gluedDot`).
  */
 const delimRun = regex(/(?:[~|^?]|=(?!=))+/);
 
 /**
- * `:` and `.` join a declaration value's run only glued on both sides, inside
- * one authored component (`progid:DXImageTransform.Microsoft.gradient(…)`).
- * Elsewhere a `:` is a keyword argument's or a map entry's. A `.` that starts
- * a number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
+ * `:` joins a declaration value's run only glued on both sides, inside one
+ * authored component (`progid:DXImageTransform…`). Elsewhere a `:` is a keyword
+ * argument's or a map entry's, so it stays out of the space list every value
+ * position reads.
  */
-const gluedDelim = regex(/:|\.(?![0-9])/);
+const gluedDelim = literal(':');
+
+/**
+ * `.` joins a space list glued on both sides wherever a value is read — a
+ * declaration, a call or mixin argument, a map value (`document.body.width`,
+ * `f(a.b)`). It has no other reading there, unlike `:`. A `.` that starts a
+ * number (`a.5em`) is that number's (css-syntax-3 §4.3.1).
+ */
+const gluedDot = regex(/\.(?![0-9])/);
 
 /*
  * Where every SCSS keyword ends. A keyword is an identifier, and css-syntax-3
@@ -1264,11 +1272,23 @@ const scssFactory = (g: ScssInputRules) => {
     optional(g.ValueLogicalOr)
   );
 
+  /** A `.` glued on both sides, and the operand after it (`a.b`'s `.b`). */
+  const dotDelim = node<ValueNode>(
+    'PunctuationValue',
+    gluedDot,
+    children => any(requireToken(children[0]).value)
+  );
+  const dotValue = sequence(
+    dotDelim,
+    g.ValueLogicalOr
+  );
+
   /*
    * One boundary of a space list: padding then an operand or a delim, a slash
-   * group, or a delim glued to what precedes it. A delim is a component of the
-   * list like any other (`x: a=b c`, `foo(a = b)`), so its padding is the
-   * list's own and the tree is css's flat run.
+   * group, or a delim glued to what precedes it (a `.` only glued on both
+   * sides). A delim is a component of the list like any other (`x: a=b c`,
+   * `foo(a = b)`, `f(a.b)`), so its padding is the list's own and the tree is
+   * css's flat run.
    */
   const ValueTail = node<ScssValueTail>(
     'ValueTail',
@@ -1286,7 +1306,8 @@ const scssFactory = (g: ScssInputRules) => {
         optional(space),
         g.ValueLogicalOr
       ),
-      delimValue
+      delimValue,
+      dotValue
     ),
     children => scssValueTail(children)
   );
@@ -1345,10 +1366,10 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /**
-   * A declaration value's comma item: its space list, then a `:` or `.` glued
-   * on both sides and the next list (`filter: progid:DX.Microsoft.f()`), the
-   * css run of component values (ledger N18). Labelled as the css rung it is;
-   * a lone space list is that list, with no node of its own.
+   * A declaration value's comma item: its space list, then a `:` glued on both
+   * sides and the next list (`filter: progid:DX.Microsoft.f()`), the css run of
+   * component values (ledger N18). Labelled as the css rung it is; a lone space
+   * list is that list, with no node of its own.
    */
   const valueSequence = node<ValueSlot>(
     'ValueSequence',
@@ -2769,10 +2790,31 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const scssTrueKeyword = caseInsensitiveWord('true');
   const scssFalseKeyword = caseInsensitiveWord('false');
+
+  /*
+   * An `@if` comparison operand: a sum, or sums joined by a `.` glued on both
+   * sides (`@if $v == a.b`), the run a value reads (P45). The `.` is no Sass
+   * operator, so it is the delim component a value builds; a guard operand is
+   * one node, so a run is its `Sequence`, which keeps the glued layout.
+   */
+  const comparisonOperand = node<ValueNode>(
+    'ValueSequence',
+    noTrivia(sequence(
+      g.MathTopSum,
+      many(sequence(
+        dotDelim,
+        g.MathTopSum
+      ))
+    )),
+    children => children.length === 1
+      ? requireValue(children[0])
+      : withValueLayout(spaced(children.filter(isScssValue)), children.slice(1).map(() => '')),
+    { collapse: true }
+  );
   const IfComparison = node<GuardNode>(
     'IfComparison',
     sequence(
-      g.MathTopSum,
+      comparisonOperand,
       choice(
         literal('=='),
         literal('!='),
@@ -2781,7 +2823,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal('>'),
         literal('<')
       ),
-      g.MathTopSum
+      comparisonOperand
     ),
     (children) => {
       const left = requireValue(children[0]);

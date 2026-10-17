@@ -500,7 +500,7 @@ function appendRun(values: ValueSlot[], layout: string[], value: ValueSlot, sepa
   });
 }
 
-/** `valueSequence`'s reduction: space lists joined by a glued `:` or `.` (`progid:DX.M`). */
+/** `valueSequence`'s reduction: space lists joined by a glued `:` (`progid:DX.M`). */
 export function gluedRun(children: readonly unknown[]): ValueSlot {
   const values: ValueSlot[] = [];
   const layout: string[] = [];

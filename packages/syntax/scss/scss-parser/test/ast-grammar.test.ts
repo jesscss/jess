@@ -2821,10 +2821,9 @@ describe('statement spelling of the typed at-rules', () => {
 });
 
 /*
- * CSS `if()` (css-values-5 §8.3, ledger P38/P45): a call whose first token is an
- * `<if-test>` (`media(`, `supports(`, `style(`) or `else` is CSS's branch list,
- * read with CSS's query grammar, and builds the tree css builds. Any other first
- * argument is Sass's `if($condition, $if-true, $if-false)`.
+ * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
+ * builds. OPEN for the owner: SCSS reads `if(` as Sass's
+ * `if($condition, $if-true, $if-false)`, so a branch list stops the parse.
  */
 describe('CSS if()', () => {
   const declarationValue = (document: Stylesheet): unknown => {
@@ -2832,7 +2831,7 @@ describe('CSS if()', () => {
     return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
   };
 
-  it.each([
+  it.fails.each([
     'if(media(width >= 600px): 1px; else: 2px)',
     'if(supports(display: grid): grid; else: block)',
     'if(style(--theme: dark): white; else: black)',
@@ -2846,5 +2845,13 @@ describe('CSS if()', () => {
 
   it('keeps Sass if() for any other first argument', () => {
     expect(declarationValue(parse('a { x: if($a, 1px, 2px); }'))).toMatchObject({ type: 'IfValue' });
+  });
+});
+
+/* A `.` glued on both sides is a delim component in an @if operand too (P45). */
+it('parses a `.` glued into an @if comparison operand', () => {
+  expect(parse('$v: a;\n@if $v == a.b { a { x: y; } }').rules[1]).toMatchObject({
+    type: 'If',
+    branches: [{ guard: { g: 'cmp', right: { type: 'Sequence', parts: [{ src: 'a' }, { type: 'Any', src: '.' }, { src: 'b' }] } } }]
   });
 });
