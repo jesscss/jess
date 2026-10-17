@@ -223,6 +223,38 @@ describe('selector() capture', () => {
     await expect(render('.x { a: calc(selector(.a) + 1px); }', false, 'jess')).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n}\n');
   });
 
+  /* A comma list of captures is the list of their branches, as one capture of them is. */
+  it('expands a comma list of captures like one capture of their branches, in .less and .jess', async () => {
+    const less = '@s: selector(.a), selector(.b);\n.p { @{s} { c: d; } }';
+    const jess = '$s: selector(.a), selector(.b);\n.p { ${s} { c: d; } }';
+    const nested = '.p {\n  .a,\n  .b {\n    c: d;\n  }\n}\n';
+    const collapsed = '.p :is(.a, .b) {\n  c: d;\n}\n';
+
+    await expect(render(less, false)).resolves.toBe(nested);
+    await expect(render(less, true)).resolves.toBe(collapsed);
+    await expect(render(jess, false, 'jess')).resolves.toBe(nested);
+    await expect(render(jess, true, 'jess')).resolves.toBe(collapsed);
+    await expect(render('@s: selector(.a), selector(.b);\n@{s} { c: d; }', false)).resolves.toBe('.a,\n.b {\n  c: d;\n}\n');
+  });
+
+  it('expands a capture passed as a mixin argument, in .less and .jess', async () => {
+    const less = '.m(@s) { @{s} { c: d; } }\n.p { .m(selector(.a, .b)); }';
+    const jess = '.m($s) { ${s} { c: d; } }\n.p { $ > .m(selector(.a, .b)); }';
+    const nested = '.p {\n  .a,\n  .b {\n    c: d;\n  }\n}\n';
+    const collapsed = '.p :is(.a, .b) {\n  c: d;\n}\n';
+
+    await expect(render(less, false)).resolves.toBe(nested);
+    await expect(render(less, true)).resolves.toBe(collapsed);
+    await expect(render(jess, false, 'jess')).resolves.toBe(nested);
+    await expect(render(jess, true, 'jess')).resolves.toBe(collapsed);
+    await expect(render('.m(@s) { @{s} { c: d; } }\n.p { .m(selector(.a), selector(.b);); }', false)).resolves.toBe(nested);
+  });
+
+  /* Follow-up (P49 NOTES): a variable holding a capture binds a mixin parameter as its text. */
+  it.fails('expands a capture a variable passes as a mixin argument', async () => {
+    await expect(render('@t: selector(.a, .b);\n.m(@s) { @{s} { c: d; } }\n.p { .m(@t); }', false)).resolves.toBe('.p {\n  .a,\n  .b {\n    c: d;\n  }\n}\n');
+  });
+
   /* Follow-up (P49 NOTES): an interpolated selector is not captured yet; today it takes the error path above. */
   it.fails('captures an interpolated selector', async () => {
     await expect(render('@x: ~".a";\n@s: selector(@{x}, .b);\n@{s} { c: d; }', false)).resolves.toBe('.a,\n.b {\n  c: d;\n}\n');

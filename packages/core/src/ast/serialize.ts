@@ -120,6 +120,7 @@ import type {
   SimpleToken,
   SelectorTerm,
   SelectorList,
+  SelectorCapture,
   List,
   Statement,
   StyleImport,
@@ -5851,8 +5852,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Comment':
 
     /*
-     * A selector CAPTURE `*[…]` reaching a plain VALUE position (never its intended
-     * use — it belongs in a selector interpolation) emits its verbatim `src`.
+     * A selector CAPTURE `selector(…)` reaching a plain VALUE position (never its intended
+     * use — it belongs in a selector interpolation) emits its canonical `src`.
      */
     case 'SelectorCapture':
       return literal(node.type === 'Comment' ? node.text : node.src);
@@ -9501,7 +9502,7 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
 
 /**
  * [selector-capture] A GROUP interpolation: a lone bare `@{name}` in a selector
- * whose variable resolves to a `*[…]` selector-list CAPTURE, whose branches are
+ * whose variable resolves to a `selector(…)` selector-list CAPTURE, whose branches are
  * parser-owned: a comma-separated branch list at whole-selector position, a
  * `:is(…)` compaction in compound position. Escaped text (`~'.a, .b'`) is never
  * a group: it is printed as written, its commas, `&` and combinators being
@@ -9512,26 +9513,30 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
  */
 interface GroupInterp { branches: string[]; multi: boolean }
 
-/** [selector-capture] The group a single interpolation REF resolves to: a `*[…]`
- *  selector CAPTURE. Any other ref (a plain value, escaped text) is null. */
+/** [selector-capture] The group a single interpolation REF resolves to: a `selector(…)`
+ *  selector CAPTURE, or a comma list of them. Any other ref (a plain value, escaped text) is null. */
 function refGroupInterp(ref: ValueNode, frame: Frame | null, e: Lane): GroupInterp | null {
-  if (ref.type !== 'Lookup' || ref.kind !== 'var') {
+  const hit = ref.type === 'Lookup' && ref.kind === 'var' ? resolveVarRef(frame, literalName(ref), ref.scope, e) : undefined;
+  const bound = hit === undefined || isValueSlotArray(hit.value) ? undefined : hit.value;
+
+  /* A `;` call's argument is the `~(…)` value list it holds (P46). */
+  const list = bound?.type === 'Block' && bound.escaped === true ? bound.value : bound;
+  if (list === undefined || isValueSlotArray(list)) {
     return null;
   }
-  const hit = resolveVarRef(frame, literalName(ref), ref.scope, e);
-  if (hit === undefined) {
+  if (list.type === 'SelectorCapture') {
+    return { branches: list.branches.slice(), multi: list.branches.length > 1 };
+  }
+
+  /* A comma list of captures (`selector(.a), selector(.b)`) is the one list of their branches. */
+  if (list.type !== 'List' || list.sep !== ',' || !list.value.every(isSelectorCaptureSlot)) {
     return null;
   }
-  const bound = hit.value;
-  if (isValueSlotArray(bound)) {
-    return null;
-  }
-  if (bound.type === 'SelectorCapture') {
-    const branches = bound.branches.slice();
-    return { branches, multi: branches.length > 1 };
-  }
-  return null;
+  const branches = list.value.flatMap(capture => capture.branches);
+  return { branches, multi: branches.length > 1 };
 }
+
+const isSelectorCaptureSlot = (slot: ValueSlot): slot is SelectorCapture => !isValueSlotArray(slot) && slot.type === 'SelectorCapture';
 
 /** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
  *  single-part interp whose sole part is a group ref) — else null. */
@@ -9572,7 +9577,7 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
- *  A lone whole-selector `*[…]` capture EXPANDS to one branch per captured
+ *  A lone whole-selector `selector(…)` capture EXPANDS to one branch per captured
  *  selector, one per line in a nested header (ledger O8(a)). Every other complex
  *  resolves to exactly one string (a compound-embedded group compacts to `:is(…)`
  *  inside `resolveComplex`), escaped text included, as written: `~'.a, .b'` is
@@ -9587,7 +9592,7 @@ function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): 
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, escaped text as written, EXCEPT a `*[…]` capture
+ *  part folds to its bytes, escaped text as written, EXCEPT a `selector(…)` capture
  *  embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to
  *  a single `:is(…)` group; a single-branch capture splices its lone branch bare. */
 function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): MaybePromise<string> {
@@ -10386,7 +10391,7 @@ function recordPseudoElementBranches(
   return out;
 }
 
-/* {@link pseudoElementFlag} of a lone `@{s}` that resolves to a `*[…]` selector capture. */
+/* {@link pseudoElementFlag} of a lone `@{s}` that resolves to a `selector(…)` selector capture. */
 const PSEUDO_CAPTURE = 4;
 
 /**
@@ -10395,7 +10400,7 @@ const PSEUDO_CAPTURE = 4;
  * the parser's tokens, and for a one-colon interpolated pseudo (`:@{pe}`) from the
  * name it resolves to, so `&:@{state}` with `@state: valid` does not count. A token
  * whose interpolation awaits a plugin counts. A token an interpolation opens is
- * {@link PSEUDO_TEXT}, but a lone `@{s}` that resolves to a `*[…]` capture, whose
+ * {@link PSEUDO_TEXT}, but a lone `@{s}` that resolves to a `selector(…)` capture, whose
  * branches are selectors ({@link PSEUDO_CAPTURE}).
  *
  * ponytail: a one-colon interpolation is read a second time here, since the
