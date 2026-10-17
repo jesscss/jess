@@ -650,6 +650,31 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: 'a { color: var(--x,) }'
   },
   {
+    id: 'var() with a dotted fallback',
+    group: 'value',
+    source: 'a { color: var(--x, a.b~c) }'
+  },
+  {
+    id: 'if() with media() branches',
+    group: 'value',
+    source: 'a { width: if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px) }'
+  },
+  {
+    id: 'if() with a supports() condition',
+    group: 'value',
+    source: 'a { display: if(supports(display: grid): grid; else: block) }'
+  },
+  {
+    id: 'if() with a style() condition',
+    group: 'value',
+    source: 'a { color: if(style(--theme: dark): white; else: black) }'
+  },
+  {
+    id: 'if() with a supports(selector()) condition',
+    group: 'value',
+    source: 'a { color: if(supports(selector(:has(a))): red; else: blue) }'
+  },
+  {
     id: 'calc() nested in calc()',
     group: 'value',
     source: 'a { width: calc(100% - calc(2 * 1px)) }'

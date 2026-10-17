@@ -6,6 +6,7 @@ import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
 import { JessParseError, parse, parseRecovering } from '../src/index.js';
+import { parse as parseCss } from '@jesscss/css-parser';
 import { jessGrammar } from '../src/grammar.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -3973,5 +3974,35 @@ describe('@layer statement in the document prologue', () => {
 
   it('still refuses a CSS @import after an ordinary rule', () => {
     expect(() => parse('a { color: red }\n@import "a.css";')).toThrow(JessParseError);
+  });
+});
+
+/*
+ * CSS `if()` (css-values-5 §8.3, ledger P38/P45): a call's first argument
+ * followed by a `:` is CSS's branch list, and the `<if-test>`s `media()`,
+ * `supports()` and `style()` read CSS's query grammar, so `.jess` builds the
+ * tree css builds. Inside `supports()`, `selector(…)` stays CSS's feature test,
+ * not a capture (ledger P49).
+ */
+describe('CSS if()', () => {
+  const declarationValue = (document: Stylesheet): unknown => {
+    const rule = document.rules[0];
+    return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
+  };
+
+  it.each([
+    'if(media(width >= 600px): 1px; else: 2px)',
+    'if(supports(display: grid): grid; else: block)',
+    'if(style(--theme: dark): white; else: black)',
+    'if(supports(selector(.a ~ .b)): a; else: b)',
+    'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
+    'if(media(print) and supports(display: grid): a; else: b)'
+  ])('builds the css tree for %s', (value) => {
+    const source = `a { x: ${value}; }`;
+    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  });
+
+  it('keeps selector() inside supports() the CSS feature test', () => {
+    expect(JSON.stringify(parse('a { x: if(supports(selector(.a ~ .b)): a; else: b); }'))).not.toContain('SelectorCapture');
   });
 });
