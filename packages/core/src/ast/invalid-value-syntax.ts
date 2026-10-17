@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
-import type { CallValue, Declaration, ValueSlot } from './nodes.js';
+import type { Any, CallValue, Declaration, ValueSlot } from './nodes.js';
 
 /**
  * What a declaration value holds that parses as balanced CSS and is then an
@@ -59,12 +59,10 @@ export function invalidValuePunctuation(spelling: string): InvalidValueSyntax | 
  * `attr()` fallback is any tokens, and `attr()`'s name takes a namespace `|`.
  */
 export function isAnyTokenFunction(name: string): boolean {
-  if (name.length > 4) {
-    return false;
-  }
-  const lower = name.toLowerCase();
-  return lower === 'var' || lower === 'env' || lower === 'attr';
+  return name.length <= 4 && ANY_TOKEN_FUNCTION.test(name);
 }
+
+const ANY_TOKEN_FUNCTION = /^(?:var|env|attr)$/i;
 
 /**
  * The first error in a declaration value, read from its parsed shape (owner
@@ -206,10 +204,13 @@ export interface ValueCheckLane {
 
     /**
      * Mixin arguments and collection entries holding an error, by the typed
-     * value each evaluated to and the snapshot an argument binds as; created
-     * at the first one.
+     * value each evaluated to and the snapshot an argument binds as. One map
+     * per render, shared by its capture-only sessions.
      */
-    invalidArguments: WeakMap<object, InvalidValueSyntax> | undefined;
+    readonly invalidArguments: Map<object, InvalidValueSyntax>;
+
+    /** The snapshots mixin arguments bind as (serialize.ts `EvalSession.snapshotValues`). */
+    readonly snapshotValues: { has(key: Any): boolean } | undefined;
 
     /** The authored declaration each part of an SCSS nested property came from. */
     readonly nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
@@ -241,7 +242,7 @@ export function reportReached(e: ValueCheckLane, found: InvalidValueSyntax | und
  * checked by what was kept when it was evaluated ({@link boundArgument}).
  */
 export function reachedEvaluated<T extends object>(e: ValueCheckLane, value: T): T {
-  if (e.checks !== undefined && e.s.invalidArguments !== undefined) {
+  if (e.checks !== undefined && e.s.invalidArguments.size !== 0) {
     reportReached(e, e.s.invalidArguments.get(value));
   }
   return value;
@@ -251,7 +252,7 @@ export function reachedEvaluated<T extends object>(e: ValueCheckLane, value: T):
  * Start binding a mixin argument or a collection entry (`source`): until
  * {@link boundArgument}, what a reference in it reaches is kept, not raised,
  * and the argument as written is the first finding. Returns the finding of an
- * enclosing argument, to restore; the caller restores `checks`.
+ * enclosing argument, which {@link boundArgument} restores.
  */
 export function bindingArgument(e: ValueCheckLane, source: ValueSlot): InvalidValueSyntax | undefined {
   const outer = e.s.argumentSyntax;
@@ -261,43 +262,56 @@ export function bindingArgument(e: ValueCheckLane, source: ValueSlot): InvalidVa
 }
 
 /**
- * Finish binding an argument: what it held or reached is kept for the value it
+ * Finish binding an argument, also when its evaluation threw: restores the
+ * enclosing argument's `checks` and finding, and returns what this one held or
+ * reached, for {@link keepArgument}.
+ */
+export function boundArgument(e: ValueCheckLane, checks: ValueCheckLane['checks'], outer: InvalidValueSyntax | undefined): InvalidValueSyntax | undefined {
+  const found = e.s.argumentSyntax;
+  e.checks = checks;
+  e.s.argumentSyntax = outer;
+  return found;
+}
+
+/**
+ * What a bound argument held or reached (`found`) is kept for the value it
  * evaluated to, to be raised where a reference writes it
  * ({@link reachedEvaluated}, {@link keepArgumentSyntax}).
  */
-export function boundArgument<T extends object>(s: ValueCheckLane['s'], outer: InvalidValueSyntax | undefined, value: MaybePromise<T>): MaybePromise<T> {
-  const found = s.argumentSyntax;
-  s.argumentSyntax = outer;
+export function keepArgument<T extends object>(s: ValueCheckLane['s'], found: InvalidValueSyntax | undefined, value: MaybePromise<T>): MaybePromise<T> {
   return found === undefined
     ? value
     : mapMaybe(value, (settled) => {
-        (s.invalidArguments ??= new WeakMap()).set(settled, found);
+        s.invalidArguments.set(settled, found);
         return settled;
       });
 }
 
 /** What an argument's typed `value` holds is kept for the snapshot it binds as (`bound`). */
 export function keepArgumentSyntax(s: ValueCheckLane['s'], value: object, bound: object): void {
-  const found = s.invalidArguments?.get(value);
+  const found = s.invalidArguments.size === 0 ? undefined : s.invalidArguments.get(value);
   if (found !== undefined) {
-    s.invalidArguments!.set(bound, found);
+    s.invalidArguments.set(bound, found);
   }
 }
 
 /**
  * The first error in a value a reference reached, read from its shape as a
- * declaration value is ({@link invalidValueSyntaxIn}); a mixin argument's
- * snapshot is read from what its evaluation kept (`kept`). A mixin call is
- * not a value.
+ * declaration value is ({@link invalidValueSyntaxIn}). A mixin argument's
+ * snapshot holds evaluated bytes, not a parsed delim, so it is answered only
+ * from what its evaluation kept ({@link keepArgumentSyntax}): `e("=")` or
+ * `~"."` passed to a mixin is not a delim. A mixin call is not a value.
  */
-export function reachedValueSyntax(value: CallValue, kept: WeakMap<object, InvalidValueSyntax> | undefined): InvalidValueSyntax | undefined {
+export function reachedValueSyntax(value: CallValue, s: ValueCheckLane['s']): InvalidValueSyntax | undefined {
   if (isValueSlotArray(value)) {
     return invalidValueSyntaxIn(value);
   }
   if (value.type === 'MixinCall') {
     return undefined;
   }
-  return invalidValueSyntaxIn(value) ?? (value.type === 'Any' ? kept?.get(value) : undefined);
+  return value.type === 'Any' && s.snapshotValues?.has(value) === true
+    ? s.invalidArguments.get(value)
+    : invalidValueSyntaxIn(value);
 }
 
 /**

@@ -199,11 +199,16 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['less', '@v: a.b;\na { x+: @v; x+: c; }\n', '.', 2, 5],
     ['less', '.m(@a) {\n  x: @a;\n}\na { .m(a.b); }\n', '.', 2, 3],
     ['less', '@v: a.b;\n.m(@a) {\n  x: @a;\n}\na { .m(@v); }\n', '.', 3, 3],
+    ['less', '.m(@a) {\n  x: @a;\n}\na { .m(a=b); }\n', '=', 2, 3],
+    ['less', '@v: a.b;\n.m(@a: @v) {\n  x: @a;\n}\na { .m(); }\n', '.', 3, 3],
+    ['less', '@v: a=b;\na { y: foo(@v); }\n', '=', 2, 5],
     ['less', '@v: a|b;\n@r: {\n  x: @v;\n};\na { @r(); }\n', '|', 3, 3],
     ['less', '@c: { k: a.b; };\na { x: @c[k]; }\n', '.', 2, 5],
     ['less', '@v: a.b;\na { x: @{v}; }\n', '.', 2, 5],
     ['scss', '$v: a.b;\na { x: $v; }\n', '.', 2, 5],
     ['scss', '$v: a^b;\na { x: #{$v}; }\n', '^', 2, 5],
+    ['scss', '$v: a=b;\na { y: foo($v); }\n', '=', 2, 5],
+    ['scss', '@each $i in a.b, c {\n  a { x: $i; }\n}\n', '.', 2, 7],
     ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a=b); }\n', '=', 2, 3],
     ['scss', '$v: a.b;\na {\n  font: {\n    family: $v;\n  }\n}\n', '.', 3, 3],
     ['jess', '$v: a~b;\na { x: $v; }\n', '~', 2, 5],
@@ -224,10 +229,21 @@ describe('invalid value punctuation through a reference fails the compile', () =
     expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([['css/legacy-ie-syntax', 3, 3]]);
   });
 
+  /*
+   * For the owner: a value holding a delim as written reports it before
+   * evaluation, so legacy IE syntax it reaches through a reference does not
+   * win (P48 notes).
+   */
+  it('scss: a direct delim is reported before legacy IE syntax a reference reaches', async () => {
+    const result = await compile('scss', '$v: alpha(opacity=50);\na { x: a.b $v; }\n');
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([[CODE, 2, 5]]);
+  });
+
   /* Only a value that is written is checked. */
   it.each([
     ['less', 'an unused variable', '@v: a.b;\na { x: y; }\n'],
     ['less', 'an unwritten mixin argument', '@v: a.b;\n.m(@a) { x: y; }\na { .m(a.b); .m(@v); }\n'],
+    ['less', 'a mixin argument that is a function result or an escape', '@v: e("=");\n.m(@a) { x: @a; }\na { .m(e("=")); .m(~"."); .m(@v); }\n'],
     ['less', 'a custom property', '@v: a.b;\na { --x: @v; }\n'],
     ['less', 'a var() fallback', '@v: a.b;\na { x: var(--y, @v); }\n'],
     ['less', 'strings', '@v: a.b;\na { x: "@{v}"; y: ~"@{v}"; }\n'],

@@ -179,7 +179,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { assertValidValueSyntax, bindingArgument, boundArgument, isAnyTokenFunction, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
+import { assertValidValueSyntax, bindingArgument, boundArgument, isAnyTokenFunction, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
@@ -4026,7 +4026,7 @@ function withExcluded<T>(e: Lane, node: Binding, run: () => T): T {
  */
 function whileReachedFrom<T>(e: Lane, value: Binding, owner: object | null | undefined, run: () => T): T {
   if (e.checks !== undefined) {
-    reportReached(e, reachedValueSyntax(value, e.s.invalidArguments));
+    reportReached(e, reachedValueSyntax(value, e.s));
   }
   return e.s.context?.mixedPolicies === true && owner instanceof DocumentContext && changesPolicy(e, owner)
     ? withPolicy(e, owner, () => whileReached(e, run))
@@ -4444,9 +4444,9 @@ interface EvalSession {
   /**
    * [P47/P48] Mixin arguments holding legacy IE syntax or invalid punctuation,
    * by the typed value each evaluated to and the snapshot it binds as
-   * (`evalArgument`); created at the first one.
+   * (`evalArgument`): one map per render, which capture-only sessions share.
    */
-  invalidArguments: WeakMap<object, InvalidValueSyntax> | undefined;
+  invalidArguments: Map<object, InvalidValueSyntax>;
 
   /**
    * [P47/P48] The authored declaration each part of an SCSS nested property
@@ -8229,13 +8229,13 @@ function resolveAuthoredMixinValue(
 function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
   const outerChecks = e.checks;
   const outerFound = bindingArgument(e, source);
-  let value: MaybePromise<ValueGroup>;
+  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined;
   try {
     value = evalTypedSlot(source, frame, e, project, argument);
   } finally {
-    e.checks = outerChecks;
+    found = boundArgument(e, outerChecks, outerFound);
   }
-  return boundArgument(e.s, outerFound, value);
+  return keepArgument(e.s, found, value);
 }
 
 /**
@@ -14292,7 +14292,7 @@ function createRenderSession(
       compressedBindings: options?.compress === true ? new WeakMap() : undefined,
       snapshotValues: new WeakMap(),
       argumentSyntax: undefined,
-      invalidArguments: undefined,
+      invalidArguments: new Map(),
       nestedPropertyOwners: undefined
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
@@ -19107,8 +19107,7 @@ function dispatch(
       : undefined;
     if (mode === MIXIN_VALUE_AUTHORED) {
       if (hitValue !== undefined && !isMixinCallValue(hitValue)) {
-        const evaluated = withExcluded(e, hitValue, () =>
-          evalTypedSlot(hitValue, hit!.frame, e, true, ARG_BINDING));
+        const evaluated = withExcluded(e, hitValue, () => evalArgument(hitValue, hit!.frame, e, ARG_BINDING));
         return mapMaybe(evaluated, (group) => {
           const groupMode = mixinGroupMode(group);
           const bytes = groupMode === MIXIN_GROUP_VALUE ? writtenBytes(group, hitValue, e) : emitValue(group);
@@ -19119,8 +19118,8 @@ function dispatch(
     }
     if (mode !== MIXIN_VALUE_NONE) {
       const evaluated = hitValue !== undefined && !isMixinCallValue(hitValue)
-        ? withExcluded(e, hitValue, () => evalTypedSlot(hitValue, hit!.frame, e, true))
-        : evalTypedSlot(v, overlay, e, true);
+        ? withExcluded(e, hitValue, () => evalArgument(hitValue, hit!.frame, e, ARG_NONE))
+        : evalArgument(v, overlay, e, ARG_NONE);
       return snapshotEvaluatedMixinValue(evaluated, e, retain!);
     }
     return resolvePluginBoundHit(lookup!, hit, overlay, e, retain, candidateRoot);
