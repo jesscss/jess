@@ -924,7 +924,6 @@ const lessOwnAtKeyword = keywords(
 const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
-const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-_a-zA-Z0-9\u0080-\uffff\\]))/i);
 /*
  * A comparison operator in a call argument, read as the whole CSS delim run at
  * that point (`=`, `>=`, `==`): only the Less spellings (`guardOperatorText`)
@@ -932,7 +931,7 @@ const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|
  * `foo(a = b < c)` are a CSS run of component values, written as authored
  * (ledger N18). Its padding is ambient trivia, which the run reads back.
  */
-const functionConditionOperator = regex(/[<>=]+~?/);
+const functionConditionOperator = regex(/[<>=]*=~|[<>=]+/);
 
 /**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
@@ -963,6 +962,12 @@ const gluedArgumentStart = regex(/[@~|^?:.]/);
 const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
+/*
+ * Where a value in a condition-bearing position stops: a comparison operator,
+ * `and` or `or`, after the gap before it, comments included, so a comment
+ * before the operator (`(@a /* c *\/ = 1)`) does not change the reading.
+ */
+const functionConditionStop = sequence(optional(whitespace), choice(functionConditionOperator, functionConditionAnd, functionConditionOr));
 const functionConditionNot = word(
   'not',
   IDENT_BOUNDARY,
@@ -2177,7 +2182,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * substitute). A term is the `FunctionConditionTerm` shape over a math
    * operand: `not`?, an operand, an optional comparison — which, after `not`,
    * says what `not` negates only after a group (`(not (1px) > 2px)`;
-   * `(not 1px > 2px)` is reported at its `>`).
+   * `(not 1px > 2px)` is reported at its `>`). An operand is the operand run a
+   * function argument reads (`(1px 2px)`, `(a ~ b)`), and an operator is the
+   * whole delim run at that point, so `(a==b)` is one operator Less does not
+   * spell and the group the CSS run it is (ledger N18, open), whose `==` is
+   * the invalid-value-punctuation error (P48).
    *
    * Each term owns the gap after its operands, read once, so the operator and
    * the `and` / `or` after it are matched where they start. `and` and `or` are
@@ -2185,7 +2194,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * a group with neither, nor a comparison or `not`, is the ordinary math group
    * and its tree is unchanged.
    */
-  const parenConditionCompared = many(sequence(mixinGuardOperator, optional(whitespace), g.OperandRun, optional(whitespace)));
+  const parenConditionCompared = many(sequence(functionConditionOperator, optional(whitespace), g.OperandRun, optional(whitespace)));
   const parenConditionTerm = sequence(
     optional(sequence(functionConditionNotAhead, functionConditionNot, optional(whitespace))),
     g.OperandRun,
@@ -2408,12 +2417,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'), delimValue);
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
+  /**
+   * A `*` or `+` with no operand after it (`x: a *`): the delim it is in a CSS
+   * value (css-syntax-3 §4.3.1). Reached only from a piece after whitespace,
+   * where the math run before it has declined it, so `a * b` stays a product.
+   * Not `punctuationDelim`: that one is a value piece, so it may lead a value,
+   * and a value a `*` leads is the punctuation-led value P33 rejects
+   * (`LeadingSeparatorValue`). Not `productOperator` / `sumOperator`: those own
+   * the gap after them, which here separates the next piece. No `/`: a slash is
+   * a separator, never a value atom (P33), so `x: a /` still stops. Writing it
+   * as authored is an agent judgment (DESIGN-DECISIONS-NOTES § P45).
+   */
+  const danglingOperator = node(
+    'PunctuationValue',
+    regex(/[*+]/),
+    children => any(requireTerminalText(children[0]))
+  );
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
     sequence(
       peek(whitespace),
       not(nestedAtRuleValueStart),
-      g.valuePiece
+      choice(g.valuePiece, danglingOperator)
     )
   );
   /*
@@ -2439,24 +2464,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     leaf(peek(gluedArgumentStart), () => ({ kind: 'glued-value-boundary' })),
     gluedPiece
   );
-  /**
-   * An operand of a comparison or a paren group: a math run, and the component
-   * values glued after it — a delim Less gives no meaning and what follows it
-   * (`a.b`, `a~b`), the run a value reads there (ledger N18). Glued only, as in
-   * a call argument, so `=` stays the comparison. With no glued piece it is the
-   * math run itself, left unfolded for its consumer; with one, the run is a
-   * value's, so its math run is folded as a value's is (`lessMathInValue`).
-   */
-  const OperandRun = node(
-    'OperandRun',
-    noTrivia(sequence(g.MathSum, many(gluedArgumentBoundary))),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => runOperand(valuePieceReducerWithTrivia(
-      [lessMathInValue(requireMathSum(children), state), ...children.slice(1)],
-      triviaLog,
-      state
-    )),
-    { collapse: true }
-  );
   const gluedBacktickValueBoundary = noTrivia(sequence(
     BacktickJavaScript,
     optional(g.valuePiece)
@@ -2479,6 +2486,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     functionArgumentValueTriviaBoundary,
     gluedArgumentBoundary,
     gluedBacktickValueBoundary
+  );
+  /**
+   * An operand of a comparison or a paren group: a math run, and the component
+   * values after it, read as a function argument reads them — a space run
+   * (`1px 2px`), a delim Less gives no meaning and what follows it (`a.b`,
+   * `a ~ b`), the run a value reads there (ledger N18) — up to the comparison
+   * operator, `and` or `or` that ends it, so `=` stays the comparison. With
+   * nothing after it it is the math run itself, left unfolded for its consumer;
+   * with more, the run is a value's, so its math run is folded as a value's is
+   * (`lessMathInValue`).
+   */
+  const OperandRun = node(
+    'OperandRun',
+    noTrivia(sequence(g.MathSum, many(functionArgumentValueContinuation))),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => runOperand(valuePieceReducerWithTrivia(
+      [lessMathInValue(requireMathSum(children), state), ...children.slice(1)],
+      triviaLog,
+      state
+    )),
+    { collapse: true }
   );
   // Adjacent value pieces are normally separated by authored whitespace, but a
   // Less variable reference may also be glued straight onto the previous piece
@@ -3280,10 +3307,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute. The run is left
     // UNFOLDED for the term to fold: as a guard operand it follows the math
     // policy exactly as a value does, and inside a group read as an operand it
-    // is that group's math (`mixinGuardTermFrom`). With component values glued
-    // after it (`a.b`, `OperandRun`) the operand is a delim run instead, folded
-    // as a value's run is, and a comparison with such a side is the CSS run
-    // (ledger N18), never matched.
+    // is that group's math (`mixinGuardTermFrom`). With component values after
+    // it (`a.b`, `a b`, `OperandRun`) the operand is a run instead, folded as a
+    // value's run is, and a comparison with a delim-run side is the CSS run
+    // (ledger N18, open), never matched.
     choice(
       mixinGuardDefaultOperand,
       g.OperandRun

@@ -903,6 +903,38 @@ describe('public Less parse()', () => {
     });
   });
 
+  /*
+   * A paren group holding a space run, a padded delim or a `==` is balanced
+   * input, and so is a value ending in a math operator: each parses (P45). The
+   * group holds the run's components, as css's group does.
+   */
+  it.each([
+    ['a { x: (1px 2px); }', { type: 'Block', delimiter: 'paren', value: [{ type: 'Dimension', src: '1px' }, { type: 'Dimension', src: '2px' }] }],
+    ['a { x: (a ~ b); }', { type: 'Block', delimiter: 'paren', value: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '~' }, { type: 'Keyword', src: 'b' }] }],
+    ['a { x: (a==b); }', { type: 'Block', delimiter: 'paren', value: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '==' }, { type: 'Keyword', src: 'b' }] }],
+    ['a { x: a *; }', [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '*' }]]
+  ])('parses `%s`', (source, value) => {
+    const result = safeParse('/entry.less', source);
+    expect(result.errors).toEqual([]);
+    expect(result.document?.rules[0]).toMatchObject({ rules: [{ type: 'Declaration', name: 'x', value }] });
+  });
+
+  /*
+   * A comment before a paren group's operator, `and` or `or`, or after its
+   * last operand, is padding: the comparison is read as without it.
+   */
+  it.each([
+    ['a { x: (a > b /* c */); }', { g: 'cmp', op: '>' }],
+    ['a { x: (a /* c */ > b); }', { g: 'cmp', op: '>' }],
+    ['a { x: (1px /* c */ = 1px); }', { g: 'cmp', op: '=' }],
+    ['a { x: (1 > 2 /* c */ or 1 = 1); }', { g: 'or' }],
+    ['a { x: (@a >~"b"); }', { g: 'cmp', op: '>', right: { type: 'Quoted', escaped: true } }]
+  ])('reads the condition in `%s`', (source, guard) => {
+    const result = safeParse('/entry.less', source);
+    expect(result.errors).toEqual([]);
+    expect(result.document?.rules[0]).toMatchObject({ rules: [{ value: { type: 'Block', value: { type: 'Condition', guard } } }] });
+  });
+
   /* A `*` with nothing on its left is a punctuation-led value (ledger P33): reported at the `*`, and the parse carries on (P45). */
   it('parses `@t: * [.notice];` and reports its leading `*`', () => {
     const result = safeParse('/entry.less', '@t: * [.notice];\n.a { b: c; }');
@@ -1227,7 +1259,10 @@ describe('public Less parse()', () => {
       '@font-face {\n  unicode-range: U+??????, U+0???, U+0-7F, U+A5;\n}\n.range {\n  values: U+0-7F 1, U+A5;\n}\n'
     );
 
-    expect(() => parse('.range { value: U+0-7F + 1; }')).toThrow(SyntaxError);
+    /* No arithmetic over a unicode range: the `+` after it parses (P45) as a delim (DESIGN-DECISIONS-NOTES § P45, agent judgment). */
+    expect(parse('.range { value: U+0-7F + 1; }').rules[0]).toMatchObject({
+      rules: [{ value: [{ type: 'Any', src: 'U+0-7F' }, { type: 'Any', src: '+' }, { type: 'Dimension', src: '1' }] }]
+    });
   });
 
   it('retains escaped ordinary declaration names and the Less star hack, and reuses the CSS escape-aware ident in value keywords', () => {
@@ -2521,9 +2556,11 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('.math {\n  product: 6;\n  modulo: 1;\n}\n');
-    expect(() =>
-      parse('.math { product: 2 * // missing operand\n; }')
-    ).toThrow();
+
+    /* A `*` with no operand after it parses (P45) as a delim (DESIGN-DECISIONS-NOTES § P45, agent judgment). */
+    expect(parse('.math { product: 2 * // missing operand\n; }').rules[0]).toMatchObject({
+      rules: [{ name: 'product', value: [{ type: 'Dimension', src: '2' }, { type: 'Any', src: '*' }] }]
+    });
   });
 
   it('returns and evaluates deprecated Less percent-format calls through the public route', () => {

@@ -767,6 +767,26 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
   changes CST nesting, so it needs its own before/after oracle. The former `rulesetBody`
   is now `blockBody` itself: every braced body takes the `ExtendStatement` arm since
   ledger X19 was ruled (2026-10-06).
+- #60 less value sequence: three rules read the same `valuePiece` run and differ only
+  in where they stop — `ValueSequence` (a value: no stop, a glued `=` joins),
+  `ArgumentValueSequence` (`FunctionValueSequence`, a function argument: stops before
+  a comparison operator, `and` or `or`, and fails when one follows) and
+  `callArgumentSequence` (CST `ValueSequence`, a mixin argument: stops before a
+  comparison operator only). The fold is one rule whose stop comes from a context the
+  caller sets (`withCtx` + a gated arm). BLOCKED (2026-10-17, measured): parseman
+  0.54's `withCtx` replaces `ctx.state` for the subtree and every reducer gets a copy
+  of it, so the Less value reductions inside lose `mathMode`, `source`, the function
+  scope and the recovered-error sink (`document`); wrapping a function argument's value
+  in `withCtx` left an inner call with `_fnScope: null`. Needs a parseman `withCtx`
+  form that derives the subtree state from the current one (also the mechanism V35's
+  known gap and the nested `selector()` capture reports need; DESIGN-DECISIONS-NOTES
+  § P45). Parseman releases are the owner's. A second question for the fold: the
+  function-argument rule's CST type is `FunctionValueSequence` and the other two are
+  `ValueSequence`, so one rule moves every function-argument CST node unless the
+  names converge. Done meanwhile (2026-10-17): the function-argument stop
+  (`functionConditionStop`) is composed from the trivia and `functionConditionOperator`,
+  as the mixin-argument stop already was, so the two read a comment before the
+  operator alike.
 - #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
   dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
   and it is in the alpha release preflight (PR CI deliberately skips it — see
