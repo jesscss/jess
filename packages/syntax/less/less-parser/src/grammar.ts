@@ -159,7 +159,7 @@ import {
   variableValueSlot
 } from './grammar-helpers.js';
 import { removedSelectorCaptureFrom, selectorCaptureFrom } from './selector-capture.js';
-import { runOperand } from './delim-runs.js';
+import { operatorRun, runOperand } from './delim-runs.js';
 import type {
   BodyExtendFact,
   CustomValuePart,
@@ -935,8 +935,6 @@ const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|
  * (ledger N18). Its padding is ambient trivia, which the run reads back.
  */
 const functionConditionOperator = regex(/[<>=]+~?/);
-/* The comparison a mixin argument's value stops before (`.m(1 < 2)`, `.m(a = b)`). */
-const comparisonAhead = regex(/[ \t\n\r\f]*[<>=]/);
 
 /**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
@@ -1666,12 +1664,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * Two value starts Less rejects, recognized only so the diagnostic sits on
    * the token that starts them and names the cause. Each is the last arm of a
-   * value position, so valid input never reaches it, and each accepts nothing.
+   * value position, so valid input never reaches it.
    *
    * A leading `/` is a separator, and a leading `*` an operator, with nothing
    * on its left (ledger P33: a punctuation-led value is rejected, in a variable
-   * and in a property alike); a comment opener or closer is trivia and never
-   * matches. The rest of the value is read as the permissive custom-property
+   * and in a property alike); a comment opener is trivia and never
+   * matches, nor does a `*` followed by another `*` or a `/`. The rest of the value is read as the permissive custom-property
    * value — the one place a bare path is a value — and the value is kept as
    * written, reported at the token, and the parse carries on (P45).
    */
@@ -2449,7 +2447,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * values glued after it — a delim Less gives no meaning and what follows it
    * (`a.b`, `a~b`), the run a value reads there (ledger N18). Glued only, as in
    * a call argument, so `=` stays the comparison. With no glued piece it is the
-   * math run itself, left unfolded for its consumer.
+   * math run itself, left unfolded for its consumer; with one, the run is a
+   * value's, so its math run is folded as a value's is (`lessMathInValue`).
    */
   const OperandRun = node(
     'OperandRun',
@@ -3284,7 +3283,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute. The run is left
     // UNFOLDED for the term to fold: as a guard operand it follows the math
     // policy exactly as a value does, and inside a group read as an operand it
-    // is that group's math (`mixinGuardTermFrom`).
+    // is that group's math (`mixinGuardTermFrom`). With component values glued
+    // after it (`a.b`, `OperandRun`) the operand is a delim run instead, folded
+    // as a value's run is, and a comparison with such a side is the CSS run
+    // (ledger N18), never matched.
     choice(
       mixinGuardDefaultOperand,
       g.OperandRun
@@ -3565,12 +3567,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   /*
    * A mixin argument's value, read as a value is, except that it stops before a
-   * comparison and glues no `=`: a call argument, where one Less comparison
-   * compares (`.m(1 < 2)` binds `true`) and a chain is the CSS run it is
-   * (`.m(a=b=c)`, ledger N18), as in a function call's arguments.
+   * comparison operator and glues no `=`, as a call argument's does (its stop
+   * leaves out `and` / `or`, which a mixin argument reads as words).
    */
   const callArgumentContinuation = choice(
-    sequence(not(comparisonAhead), valueTriviaBoundary),
+    sequence(not(sequence(optional(whitespace), functionConditionOperator)), valueTriviaBoundary),
     gluedArgumentBoundary,
     gluedBacktickValueBoundary
   );
@@ -3581,11 +3582,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const CallArgumentValue = node(
     'CallArgumentValue',
-    choice(attempt(g.FlatMixinCall), g.ValueBlock, sequence(callArgumentSequence, functionConditionCompared)),
+    /*
+     * Each operator and the value after it are read once, forward: one Less
+     * comparison of two plain values compares (`.m(1 < 2)` binds `true`); a
+     * chain, a spelling Less has no operator for, a side that is a delim run
+     * or an operator with nothing after it is the CSS run it is (ledger N18).
+     */
+    choice(attempt(g.FlatMixinCall), g.ValueBlock, sequence(callArgumentSequence, many(sequence(functionConditionOperator, optional(callArgumentSequence))))),
     (children, _fields, _span, rawChildren, triviaLog, state) => {
       const value = children[0];
+      if (children.length % 2 === 0) {
+        return operatorRun(children.map((child, at) => at % 2 === 0 ? runOperand(requireValueSlot(child)) : requireTerminalText(child)));
+      }
       if (children.length > 1) {
-        const fact = functionConditionTermFrom([runOperand(requireValueSlot(value)), ...children.slice(1)], rawChildren, state, NO_SPAN, triviaLog);
+        const fact = functionConditionTermFrom(children.map((child, at) => at % 2 === 0 ? runOperand(requireValueSlot(child)) : child), rawChildren, state, NO_SPAN, triviaLog);
         return fact.run ?? condition(fact.guard, fact.src);
       }
       if (isMixinCall(value) || isLessValueSlotValue(value)) {
