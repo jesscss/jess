@@ -67,6 +67,17 @@ const OPAQUE_TYPES = new Set([
 /* Less's guard comparison operators (`guardOperatorText` in the Less grammar). */
 const LESS_COMPARISONS = new Set(['>', '<', '>=', '<=', '=>', '=<', '=', '=~']);
 
+/*
+ * A Less paren group's operator: the whole delim run at that point, as the
+ * grammar's `functionConditionOperator` reads it (`<`, `>` and `=`, with a
+ * `~` only after a final `=`). Only a Less spelling compares; any other
+ * (`==`, `<>`) is a delim.
+ */
+function isLessOperatorRun(text: string): boolean {
+  const run = text.endsWith('=~') ? text.slice(0, -1) : text;
+  return run !== '' && [...run].every(char => char === '<' || char === '>' || char === '=');
+}
+
 function valueAtoms(node: CssCstNode, language: JessLanguage, source: string, out: ValueAtom[]): ValueAtom[] {
   for (const child of cstChildrenOf(node)) {
     if (child._tag === 'leaf') {
@@ -77,8 +88,8 @@ function valueAtoms(node: CssCstNode, language: JessLanguage, source: string, ou
         out.push(SEMICOLON);
       } else if (text === ':') {
         out.push(COLON);
-      } else if (language === 'less' && LESS_COMPARISONS.has(text)) {
-        out.push({ kind: 'comparison', text });
+      } else if (language === 'less' && isLessOperatorRun(text)) {
+        out.push(LESS_COMPARISONS.has(text) ? { kind: 'comparison', text } : { kind: 'delim', text });
       }
       continue;
     }

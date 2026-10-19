@@ -1954,12 +1954,16 @@ describe('Less AST grammar facts', () => {
       '.math {\n  product: 2 * 3;\n  modulo: 7 % 3;\n}\n'
     );
 
-    const malformed = run(
+    /* A `*` with no operand after it parses (P45) as a delim (DESIGN-DECISIONS-NOTES § P45, agent judgment). */
+    const dangling = run(
       lessGrammar.Document,
       '.math { product: 2 * // missing operand\n; }',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
-    expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
+    expect(dangling.ok && dangling.unconsumedFrom === null).toBe(true);
+    expect(dangling.value).toMatchObject({
+      rules: [{ rules: [{ value: [{ type: 'Dimension', src: '2' }, { type: 'Any', src: '*' }] }] }]
+    });
   });
 
   it('admits comments as operand separators for both product and sum operators', () => {
@@ -5868,12 +5872,16 @@ describe('Less AST grammar facts', () => {
       '@media (min-width: 640px) {\n  .card {\n    color: red;\n  }\n}\n'
     );
 
-    const incoherent = run(
+    /* A paren group holding a space run is balanced input, a group around its components (P45). */
+    const spaceRun = run(
       lessGrammar.Document,
       '.card { value: (12px 13px); }',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
-    expect(incoherent.ok && incoherent.unconsumedFrom === null).toBe(false);
+    expect(spaceRun.ok && spaceRun.unconsumedFrom === null).toBe(true);
+    expect(spaceRun.value).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Block', delimiter: 'paren', value: [{ type: 'Dimension', src: '12px' }, { type: 'Dimension', src: '13px' }] } }] }]
+    });
   });
 
   it('evaluates the upstream namespacing-media accessor as a whole media query term', () => {

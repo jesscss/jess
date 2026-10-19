@@ -21,7 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
-import { flattenRuns, groupContent, holdsDelimRun } from './delim-runs.js';
+import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
@@ -2537,18 +2537,19 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
   const not = lead.length === 0 ? undefined : rawChildren[children.indexOf(lead[0])];
   const notGluedAt = isSpannedToken(not) ? gluedKeywordAt(not.span, left) : NO_SPAN;
   if (right !== undefined) {
-    const at = children.findIndex(child => !isMathOperand(child) && guardOperatorText(child) !== null);
+    const at = children.findIndex(isComparisonOperator);
     if (lead.length > 0 && groupLeading(left) === null) {
       reportAmbiguousNot(rawChildren[at], state);
     }
     /*
-     * The group is a paren group (ledger V35), so a `/` in an operand divides, as in `(10px/2)`.
+     * The group is a paren group (ledger V35), so a `/` in an operand that is a math run alone
+     * divides, as in `(10px/2)`; a longer run (`10px/2 3px`) folded as a value's (`OperandRun`).
      * A further operator (`(a=b=c)`) makes the operands a CSS run (ledger N18).
      */
     return functionConditionTermFrom([
       ...lead,
       ...children
-        .filter(child => isMathOperand(child) || guardOperatorText(child) !== null)
+        .filter(child => isMathOperand(child) || isComparisonOperator(child))
         .map(child => isMathOperand(child) ? lessComputation(lessMathInGroup(child, state)) : child)
     ], [], state, notGluedAt);
   }
