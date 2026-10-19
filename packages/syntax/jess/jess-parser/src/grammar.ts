@@ -3247,7 +3247,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
 
-  /*
+  /**
    * A `*`, a delim outside `$( … )` like the others (`a * b`, `2*[3]`), but its
    * own component and located: between two numbers or variables at a
    * statement value's top level it is arithmetic `.jess` writes only inside
@@ -3263,6 +3263,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     paddedDelimRun,
     children => any(requireToken(children[0]).value)
   );
+
+  /** A padded delim inside a paren group (see `groupPaddedDelimRun`). */
   const groupPaddedPunctuationDelim = node<ValueNode>(
     'PunctuationValue',
     groupPaddedDelimRun,
@@ -3281,10 +3283,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ValueTerm
   );
 
-  /*
-   * A delim glued to the group before it, and what follows it if anything
-   * does (`a=b`, `a~ b`, the closing `>` of `<length>`), or a glued `:`/`.`
-   * (see `gluedDelim`).
+  /**
+   * A delim glued to the group before it and what follows it (`a=b`, `a~ b`),
+   * or, where the run ends there (`)`, `,`, `;`, `}`), nothing: the closing
+   * `>` of `<length>`; or a glued `:`/`.` (see `gluedDelim`).
    */
   const gluedRunItem = choice(
     sequence(
@@ -3292,7 +3294,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         punctuationDelim,
         starDelim
       ),
-      optional(delimTail)
+      choice(
+        delimTail,
+        peek(regex(/[),;}]/))
+      )
     ),
     sequence(
       gluedPunctuationDelim,
@@ -3326,11 +3331,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             ),
             sequence(
               optional(valueTrivia),
-              choice(
-                paddedPunctuationDelim,
-                starDelim
-              ),
+              paddedPunctuationDelim,
               delimTail
+            ),
+
+            /*
+             * A padded `*` and its operand, unless a block follows: then the
+             * `*` opens a nested rule after a declaration with no `;`
+             * (`color: red` then `* b { … }`), as a `>` or `~` does.
+             */
+            sequence(
+              optional(valueTrivia),
+              starDelim,
+              delimTail,
+              not(sequence(
+                optional(valueTrivia),
+                literal('{')
+              ))
             )
           )
         ),
@@ -3340,7 +3357,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     children => componentRun(children, isJessValueSlotValue)
   );
 
-  /*
+  /**
    * The same run inside a paren group, where a padded `>`, `~` or `:` is a
    * delim (see `groupPaddedDelimRun`): a run css builds is a run here too, so
    * its delims are read as css's are (ledger P48).
@@ -3376,30 +3393,60 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     children => componentRun(children, isJessValueSlotValue)
   );
 
-  /*
+  /**
    * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
    * P33), as in Less. It is recognized so the error sits on the value it
-   * leads; the rest of the value is the permissive custom-property value, kept
-   * as written, and the parse carries on (P45). A comment opener never
-   * matches.
+   * leads; the rest is read as custom-property parts and kept as written, and
+   * the parse carries on (P45). A comment opener never matches. The rest stops
+   * at a `{`: a block there belongs to a nested rule (`a:hover, * { … }`), so
+   * the declaration reading fails at it as before.
    */
   const LeadingSeparatorValue = node<ValueSlot>(
     'LeadingSeparatorValue',
     sequence(
-      regex(/[/*](?![*/])/),
-      g.CustomValue
+      regex(/\/(?![*/])|\*/),
+      parser(
+        { trivia: customValueCommentTrivia },
+        many(sequence(
+          not(literal('{')),
+          g.CustomPart
+        ))
+      )
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
   );
 
-  /* A comma list of runs; an item after a comma may be led by a separator (`x: a, *[b]`). */
+  /** A comma list of runs. */
   const Value = node<ValueSlot>(
     'Value',
     sequence(
       g.ValueSpaceGroup,
       many(sequence(
         literal(','),
-        optional(regex(/[ \t\n\r\f]+/)),
+        optional(rawWhitespace),
+        g.ValueSpaceGroup
+      ))
+    ),
+    commaList
+  );
+
+  /**
+   * A declaration's or a variable's value: `Value`, where any item may be a
+   * punctuation-led value (ledger P33), first or after a comma (`x: a, *[b]`).
+   * A deliberate copy of `Value`: only a statement's value reads one, since a
+   * `var()` fallback's leading `/` is css's to accept (css-variables-1 §2).
+   * Valid input never reaches the separator arms.
+   */
+  const statementValue = node<ValueSlot>(
+    'Value',
+    sequence(
+      choice(
+        g.ValueSpaceGroup,
+        LeadingSeparatorValue
+      ),
+      many(sequence(
+        literal(','),
+        optional(rawWhitespace),
         choice(
           g.ValueSpaceGroup,
           LeadingSeparatorValue
@@ -3409,18 +3456,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     commaList
   );
 
-  /*
-   * A declaration's or a variable's value, which may be a punctuation-led value
-   * (ledger P33) as a whole; after a comma one is read by `Value` itself. Only
-   * a statement's value starts with one: a `var()` fallback's leading `/` is
-   * css's to accept (css-variables-1 §2). Valid input never reaches the arm.
-   */
-  const statementValue = choice(
-    g.Value,
-    LeadingSeparatorValue
-  );
-
-  /* A paren group's comma list of `groupSpaceGroup` runs. */
+  /** A paren group's comma list of `groupSpaceGroup` runs. */
   const groupValue = node<ValueSlot>(
     'Value',
     sequence(

@@ -39,6 +39,14 @@ describe('a value led by a separator', () => {
     expect(() => parse(source)).toThrow(expect.objectContaining({ code: 'parse/leading-separator-value' }));
   });
 
+  /* A `*` that opens a selector in a nested rule is the rule's, not a value's. */
+  it.each([
+    '.nav { a:hover, *:focus { color: red; } }',
+    '.nav { li:hover, * { color: red; } }'
+  ])('leaves a nested selector list a rule: %s', (source) => {
+    expect(parseRecovering(source)).toMatchObject({ recovered: [], document: { rules: [{ rules: [{ type: 'Ruleset' }] }] } });
+  });
+
   it('names the separator', () => {
     const [error] = parseRecovering('.x { a: / b; }').recovered;
     expect(error).toMatchObject({ message: 'A value cannot start with "/".' });
@@ -78,7 +86,8 @@ describe('arithmetic outside $( … )', () => {
   it.each([
     ['a { x: 2 * 3; }', 'a { x: 2 * 3; }'],
     ['$w: 2px; a { x: $w * 2; }', null],
-    ['$v: 1px * 2px;', null]
+    ['$v: 1px * 2px;', null],
+    ['$sizes: { gap: 2 * 4px };', null]
   ])('%s', (source, css) => {
     const { document, recovered } = parseRecovering(source);
     expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`)).toEqual(['parse/arithmetic-outside-expression *']);
@@ -86,11 +95,19 @@ describe('arithmetic outside $( … )', () => {
       expect(bare(declarationValue(document))).toEqual(bare(declarationValue(parseCss(css))));
     }
   });
+
+  /* A function's arguments are not a value's top level (P18(a)), and css writes the same bytes. */
+  it('leaves a function argument alone', () => {
+    expect(parseRecovering('a { x: foo(2 * 3); }').recovered).toEqual([]);
+  });
 });
 
-/* A padded `>` or `~` after a declaration value still opens a nested rule where no group is open. */
-it('keeps a nested rule after an unterminated declaration', () => {
-  expect(parse('.a { x: y > b { c: d } }').rules[0]).toMatchObject({
-    rules: [{ type: 'Declaration', name: 'x' }, { type: 'Ruleset' }]
+/* A padded `>`, `~` or `*` after a declaration value still opens a nested rule where no group is open. */
+it.each([
+  '.a { x: y > b { c: d } }',
+  '.a {\n  color: red\n  * b { margin: 0 }\n}'
+])('keeps a nested rule after an unterminated declaration: %j', (source) => {
+  expect(parse(source).rules[0]).toMatchObject({
+    rules: [{ type: 'Declaration' }, { type: 'Ruleset' }]
   });
 });

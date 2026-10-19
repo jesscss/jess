@@ -1017,7 +1017,8 @@ const scssFactory = (g: ScssInputRules) => {
    * have. The trailing arm is reachable ONLY from the `var(` dispatch key, so a
    * generic `foo(a,)` stays the parse error css also rejects. A fallback is a
    * value, not a keyword argument, so a `:` glued into one is css's delim
-   * (`var(--x, a:b)`, the run css builds; ledger P48 reports it).
+   * (`var(--x, a:b)`, the run css builds), which the compile then reports as
+   * invalid value punctuation (ledger P48).
    */
   const VarCall = node<FunctionCall | Reference | IfValue>(
     'Call',
@@ -1032,7 +1033,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(')')
     ),
-    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, true)
+    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
   );
 
   /*
@@ -1061,7 +1062,7 @@ const scssFactory = (g: ScssInputRules) => {
     otherwise(KeywordOrInterpolatedValue)
   );
 
-  /*
+  /**
    * `&` in a value is Sass's parent selector, the selector of the rule it is in
    * (a SassScript primary expression, as in `selector-append(&, "-b")`). Jess
    * gives it no value, so it is an error at the `&`, kept as written, and the
@@ -1353,10 +1354,6 @@ const scssFactory = (g: ScssInputRules) => {
    * cost of the overwhelmingly common case to serve the rare one. The operand
    * is parsed once and the operator tail is `optional`, so a positional
    * argument pays one failed operator match and nothing else.
-   *
-   * A comparison operator with no operand on one side compares nothing: it is
-   * the CSS delim it is, so `type(<length>)` (the `attr()` type) is the run css
-   * builds, `<`, `length`, `>` (ledger P45).
    */
   const comparisonOperator = choice(
     literal('=='),
@@ -1367,6 +1364,14 @@ const scssFactory = (g: ScssInputRules) => {
     literal('<')
   );
 
+  /**
+   * A call argument: an operand, then a comparison or a keyword argument's
+   * `:` and the operand after it. A comparison operator glued to the start,
+   * or with nothing after it, compares nothing: it is the CSS delim it is, so
+   * `type(<length>)` (the `attr()` type) is the run css builds, `<`,
+   * `length`, `>` (ledger P45). The leading arm is tried only where an
+   * operand cannot start.
+   */
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
@@ -1380,11 +1385,19 @@ const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         optional(valueTrivia),
         choice(
-          comparisonOperator,
-          literal(':')
-        ),
-        optional(valueTrivia),
-        optional(g.ValueTerm)
+          sequence(
+            comparisonOperator,
+            optional(sequence(
+              optional(valueTrivia),
+              g.ValueTerm
+            ))
+          ),
+          sequence(
+            literal(':'),
+            optional(valueTrivia),
+            g.ValueTerm
+          )
+        )
       ))
     )),
     children => scssCallArgument(children)
@@ -1409,17 +1422,25 @@ const scssFactory = (g: ScssInputRules) => {
     { collapse: true }
   );
 
-  /*
+  /**
    * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
    * P33), as in Less. It is recognized so the error sits on the value it
-   * leads; the rest of the value is the permissive custom-property value, kept
-   * as written, and the parse carries on (P45). A comment opener never matches.
+   * leads; the rest is read as custom-property parts and kept as written, and
+   * the parse carries on (P45). A comment opener never matches. The rest stops
+   * at a `{`: a block there belongs to a nested rule (`a:hover, * { … }`), so
+   * the declaration reading fails at it as before.
    */
   const LeadingSeparatorValue = node<ValueSlot>(
     'LeadingSeparatorValue',
     sequence(
-      regex(/[/*](?![*/])/),
-      g.CustomValue
+      regex(/\/(?![*/])|\*/),
+      parser(
+        { trivia: customValueCommentTrivia },
+        many(sequence(
+          not(literal('{')),
+          g.CustomPart
+        ))
+      )
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
   );
@@ -1504,11 +1525,11 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
-  /*
+  /**
    * A declaration's or a variable's value, which may be a punctuation-led value
-   * (ledger P33) as a whole; after a comma one is read by `ValuePair` itself.
-   * Only a statement's value starts with one: a `var()` fallback's leading `/`
-   * is css's to accept (css-variables-1 §2). Valid input never reaches the arm.
+   * (ledger P33) as a whole. After a comma `ValuePair` reads one in any value
+   * (a Sass list, `#{…}`); a `var()` fallback is not a `Value`, so its leading
+   * `/` stays css's (css-variables-1 §2). Valid input never reaches the arm.
    */
   const statementValue = choice(
     g.Value,

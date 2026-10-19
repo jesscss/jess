@@ -446,9 +446,9 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * colon is not a Sass named argument, and it is a parse error here today.
    */
   if (children.some(child => isToken(child) && child.value === ':')) {
-    const value = children[children.length - 1];
-    if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string' || !isScssValueSlotValue(value)) {
-      /* Not a keyword argument: the css run, which only a `var()` fallback keeps ({@link reduceScssCall}). */
+    const value = requireValueSlot(children[children.length - 1]);
+    if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
+      /* Not a keyword argument: the css run, which only a fallback keeps ({@link reduceScssCall}). */
       return callArg(argumentRun(children));
     }
     return callArg(value, left.name, false, '$');
@@ -507,13 +507,17 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
   return withValueLayout(values, layout);
 }
 
-/** A problem the grammar recovered from (P45): kept on the run's `state.diagnostics`, or raised by a raw-grammar run that keeps none. */
+/**
+ * A problem the grammar recovered from (P45), kept on the run's
+ * `state.diagnostics`. A raw-grammar run keeps none, and a reducer can run in
+ * an attempt the parser abandons (`div:hover & { … }` is tried as a
+ * declaration first), so without a sink the report is dropped, never thrown.
+ */
 function reportRecovered(error: ScssRecoveredError, state: unknown): void {
   const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
-  if (!Array.isArray(sink)) {
-    throw error;
+  if (Array.isArray(sink)) {
+    sink.push(error);
   }
-  sink.push(error);
 }
 
 /**
@@ -523,7 +527,7 @@ function reportRecovered(error: ScssRecoveredError, state: unknown): void {
 export function leadingSeparatorValue(children: readonly unknown[], span: { readonly start: number; readonly end: number }, state: unknown): ValueSlot {
   const operator = any(requireToken(children[0]).value);
   reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
-  return [operator, requireValue(children[1])];
+  return [operator, customValueFromChildren(children.slice(1))];
 }
 
 /** `&` in a value: Sass's parent selector, which Jess gives no value — kept as written, and an error at the `&` (P45). */
@@ -638,13 +642,16 @@ function isColonRun(arg: ScssCallArg): boolean {
   return isValueSlotArray(arg.value) && arg.value.some(item => !isValueSlotArray(item) && item.type === 'Any' && item.src === ':');
 }
 
+/** The calls whose arguments after the first are a fallback value (css-variables-1 §3, css-env-1, css-values-5 `attr()`). */
+const FALLBACK_CALLS = new Set(['var', 'env', 'attr']);
+
 /**
- * A call's reduction. `fallback` is set for `var()`, whose arguments after the
- * name are a fallback value, so a `:` in one is css's delim; in any other call
- * an argument spelled `name: value` is not a Sass keyword argument and is
+ * A call's reduction. In `var()`, `env()` and `attr()` the arguments after the
+ * first are a fallback value, so a `:` in one is css's delim; any other
+ * argument spelled `name: value` is not a Sass keyword argument and is
  * refused, as before.
  */
-export function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number, fallback = false): FunctionCall | Reference | IfValue {
+export function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference | IfValue {
   const lastIndex = children.length - 1;
   const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isScssCallArg(child));
   if (firstIndex === -1) {
@@ -664,7 +671,8 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
     separators.push(String(child.separator));
     args.push(child.value);
   }
-  for (let index = fallback ? 0 : args.length - 1; index >= 0; index--) {
+  const checked = FALLBACK_CALLS.has(name.toLowerCase()) ? 1 : args.length;
+  for (let index = 0; index < checked; index++) {
     if (isColonRun(args[index]!)) {
       throw new TypeError('A named argument must be spelled `$name: value`.');
     }

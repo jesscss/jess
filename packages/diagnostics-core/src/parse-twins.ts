@@ -293,12 +293,14 @@ function branchColon(arg: ValueAtom[]): ValueAtom[] {
 }
 
 /*
- * An SCSS `var()` fallback is a value: a `:` after a name there is no keyword
- * argument's (only a `$` variable names one) but css's delim, as the compiler
- * reads it (`var(--x, a:b)`).
+ * An SCSS `var()`, `env()` or `attr()` fallback is a value: a `:` after a name
+ * there is no keyword argument's (only a `$` variable names one) but css's
+ * delim, as the compiler reads it (`var(--x, a:b)`).
  */
+const FALLBACK_CALLS = new Set(['var', 'env', 'attr']);
+
 function fallbackColon(arg: ValueAtom[], name: string, language: JessLanguage): ValueAtom[] {
-  if (language !== 'scss' || name.toLowerCase() !== 'var') {
+  if (language !== 'scss' || !FALLBACK_CALLS.has(name)) {
     return arg;
   }
   for (let i = 1; i < arg.length; i++) {
@@ -389,7 +391,7 @@ export function pushParseTwinDiagnostics(
     const error = ERR.leadingSeparatorValue(lead?._tag === 'leaf' && lead.value === '/' ? '/' : '*');
     push('parse/leading-separator-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
-  if (language === 'jess' && (gt === 'Declaration' || gt === 'VariableDeclaration')) {
+  if (language === 'jess' && gt === 'Stylesheet') {
     pushBareArithmeticTwins(node, source, push);
   }
   if (language === 'scss' && gt === 'ParentSelector') {
@@ -451,30 +453,35 @@ function isArithmeticOperand(node: CssCstNode | undefined): boolean {
   return current !== undefined && ARITHMETIC_OPERAND_TYPES.has(current.grammarType);
 }
 
+/* What the compiler does not check for arithmetic: a group or a function's arguments (ledger P18(a)), and text it does not read as a run. */
+const NOT_ARITHMETIC_TYPES = new Set(['ParenValue', 'SquareValue', 'CallComponent', 'CallArgument', 'VarCall', 'CustomDeclaration']);
+
 /*
  * `.jess` arithmetic outside `$( … )` (ledger P17): the compiler's error at a
- * `*` between two numbers or variables in a statement value's top-level runs,
- * reported at the `*`. A paren group and a call are not entered, as the
- * compiler does not enter them.
+ * `*` between two numbers or variables at a value's top level (not in a
+ * group or a function's arguments), reported at the `*`. Read once, from the
+ * document root.
  */
-function pushBareArithmeticTwins(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+function pushBareArithmeticTwins(root: CssCstNode, source: string, push: ParseTwinPusher): void {
   const error = ERR.arithmeticOutsideExpression();
-  const runs = (value: CssCstNode): void => {
-    for (const child of cstChildrenOf(value).filter(isCstNode)) {
-      if (child.grammarType === 'Value') {
-        runs(child);
-      } else if (child.grammarType === 'ValueSpaceGroup') {
-        const parts = cstChildrenOf(child).filter(isCstNode);
-        parts.forEach((part, index) => {
-          if (part.grammarType === 'DeclarationAny' && source.slice(absoluteStart(part), absoluteEnd(part)) === '*'
-            && isArithmeticOperand(parts[index - 1]) && isArithmeticOperand(parts[index + 1])) {
-            push('parse/arithmetic-outside-expression', 'error', error.message, part.span, { phase: 'parse', reason: error.reason, fix: error.fix });
-          }
-        });
+  const stack: CssCstNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const parts = cstChildrenOf(node).filter(isCstNode);
+    if (node.grammarType === 'ValueSpaceGroup') {
+      parts.forEach((part, index) => {
+        if (part.grammarType === 'DeclarationAny' && source.slice(absoluteStart(part), absoluteEnd(part)) === '*'
+          && isArithmeticOperand(parts[index - 1]) && isArithmeticOperand(parts[index + 1])) {
+          push('parse/arithmetic-outside-expression', 'error', error.message, part.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+        }
+      });
+    }
+    for (const part of parts) {
+      if (!NOT_ARITHMETIC_TYPES.has(part.grammarType)) {
+        stack.push(part);
       }
     }
-  };
-  runs(node);
+  }
 }
 
 function pushSelectorCaptureTwin(

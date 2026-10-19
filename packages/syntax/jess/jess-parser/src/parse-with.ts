@@ -313,7 +313,7 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
   const recovered = recoveredInTree(document, diagnostics);
   return {
     document,
-    recovered: inSourceOrder(stars.length === 0 ? recovered : [...recovered, ...bareArithmeticIn(document)])
+    recovered: inSourceOrder(stars.length === 0 ? recovered : [...recovered, ...bareArithmeticIn(document, stars)])
   };
 }
 

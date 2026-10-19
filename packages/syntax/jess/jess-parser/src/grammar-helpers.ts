@@ -475,15 +475,16 @@ function sourceFromState(state: unknown): string | undefined {
 }
 
 /**
- * A problem the grammar recovered from (P45): kept on the run's
- * `state.diagnostics`, or raised by a raw-grammar run that keeps none.
+ * A problem the grammar recovered from (P45), kept on the run's
+ * `state.diagnostics`. A raw-grammar run keeps none, and a reducer can run in
+ * an attempt the parser abandons, so without a sink the report is dropped,
+ * never thrown.
  */
 function reportRecovered(error: JessRecoveredError, state: unknown): void {
   const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
-  if (!Array.isArray(sink)) {
-    throw error;
+  if (Array.isArray(sink)) {
+    sink.push(error);
   }
-  sink.push(error);
 }
 
 /**
@@ -509,7 +510,7 @@ function selectorCaptureFrom(children: readonly unknown[], span: Span, state: un
 function leadingSeparatorValue(children: readonly unknown[], span: Span, state: unknown): ValueSlot {
   const operator = any(requireToken(children[0]).value);
   reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
-  return [operator, requireValueNode(children[1])];
+  return [operator, customValueFromChildren(children.slice(1))];
 }
 
 /**
@@ -846,13 +847,16 @@ function isArithmeticOperand(value: ValueSlot | undefined): boolean {
 }
 
 /**
- * Each `*` between two numbers or variables in a declaration's or a
- * variable's top-level runs: arithmetic, which `.jess` writes only inside
+ * Each `*` the parse read (`stars`) that sits between two numbers or variables
+ * at a value's top level — a declaration's, a variable's, a collection
+ * entry's, a mixin argument's: arithmetic, which `.jess` writes only inside
  * `$( … )` (ledger P17), an error at the `*`, the value kept as written (P45).
- * A paren group or a call is not entered. Walks the document, so the parse
- * calls it only when it read a `*`.
+ * The boundary is P18(a)'s: a paren or square group and a function's
+ * arguments are not entered; `$( … )` builds operations, not runs. Walks the
+ * document, so the parse calls it only when it read a `*`.
  */
-function bareArithmeticIn(root: object): JessArithmeticOutsideExpressionError[] {
+function bareArithmeticIn(root: object, stars: readonly object[]): JessArithmeticOutsideExpressionError[] {
+  const read = new Set(stars);
   const errors: JessArithmeticOutsideExpressionError[] = [];
   const seen = new Set<object>();
   const stack: unknown[] = [root];
@@ -862,18 +866,15 @@ function bareArithmeticIn(root: object): JessArithmeticOutsideExpressionError[] 
       continue;
     }
     seen.add(item);
-    if ('type' in item && (item.type === 'Declaration' || item.type === 'VariableDeclaration') && 'value' in item && isJessValueSlotValue(item.value)) {
-      const value = item.value;
-      for (const run of !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value.value : [value]) {
-        if (!isValueSlotArray(run)) {
-          continue;
-        }
-        for (let index = 1; index < run.length - 1; index++) {
-          const star = run[index];
-          const span = star === undefined || isValueSlotArray(star) || star.type !== 'Any' || star.src !== '*' ? undefined : sourceSpanOf(star);
-          if (span !== undefined && isArithmeticOperand(run[index - 1]) && isArithmeticOperand(run[index + 1])) {
-            errors.push(new JessArithmeticOutsideExpressionError(span.start, span.end, star!));
-          }
+    if ('type' in item && (item.type === 'Block' || item.type === 'FunctionCall')) {
+      continue;
+    }
+    if (isValueSlotArray(item)) {
+      for (let index = 1; index < item.length - 1; index++) {
+        const star = item[index]!;
+        const span = read.has(star) ? sourceSpanOf(star) : undefined;
+        if (span !== undefined && isArithmeticOperand(item[index - 1]) && isArithmeticOperand(item[index + 1])) {
+          errors.push(new JessArithmeticOutsideExpressionError(span.start, span.end, star));
         }
       }
     }

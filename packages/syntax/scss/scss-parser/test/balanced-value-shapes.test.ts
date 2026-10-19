@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { parse as parseCss } from '@jesscss/css-parser';
+import { run } from 'parseman';
+import { scssGrammar } from '../src/grammar.js';
 import { parse, parseRecovering } from '../src/index.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -39,6 +41,14 @@ describe('a value led by a separator', () => {
     expect(() => parse(source)).toThrow(expect.objectContaining({ code: 'parse/leading-separator-value' }));
   });
 
+  /* A `*` that opens a selector in a nested rule is the rule's, not a value's. */
+  it.each([
+    '.nav { a:hover, *:focus { color: red; } }',
+    '.nav { li:hover, * { color: red; } }'
+  ])('leaves a nested selector list a rule: %s', (source) => {
+    expect(parseRecovering(source)).toMatchObject({ recovered: [], document: { rules: [{ rules: [{ type: 'Ruleset' }] }] } });
+  });
+
   it('names the separator', () => {
     const [error] = parseRecovering('.x { a: * b; }').recovered;
     expect(error).toMatchObject({ message: 'A value cannot start with "*".' });
@@ -56,9 +66,13 @@ describe('the parent selector in a value', () => {
   });
 
   it('leaves `&` in a selector a selector', () => {
-    expect(parse('.a { div:hover & { c: d; } }').rules[0]).toMatchObject({
+    const source = '.a { div:hover & { c: d; } }';
+    expect(parse(source).rules[0]).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'c' }] }]
     });
+
+    /* A run that keeps no diagnostics drops the report of an attempt it abandons. */
+    expect(run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace })).toMatchObject({ ok: true, unconsumedFrom: null });
   });
 });
 
@@ -67,7 +81,9 @@ describe('the css tree', () => {
   it.each([
     'a { x: var(--x, a:b); }',
     'a { width: attr(data-w type(<length>), 0px); }',
-    'a { width: attr(data-w type(<length>),0px); }'
+    'a { width: attr(data-w type(<length>),0px); }',
+    'a { margin: env(x, a:b); }',
+    'a { margin: attr(foo, a:b); }'
   ])('%s', (source) => {
     expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
   });
