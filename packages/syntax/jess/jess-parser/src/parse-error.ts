@@ -5,6 +5,8 @@
  * re-exported by a sibling entry without dragging that entry's imports along.
  */
 
+import type { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
+
 /** Structured failure from the public direct Jess parser. */
 export class JessParseError extends SyntaxError {
   readonly code = 'parse/syntax-error' as const;
@@ -69,5 +71,29 @@ export class JessSelectorCaptureArgumentError extends SyntaxError {
   }
 }
 
+/**
+ * A `*` between two numbers or variables in a statement value, outside
+ * `$( … )`: `.jess` computes only inside `$( … )` (ledger P17), so it is an
+ * error at the `*`, and the parse carries on (P45).
+ */
+export class JessArithmeticOutsideExpressionError extends SyntaxError {
+  readonly code = 'parse/arithmetic-outside-expression' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'A .jess value computes only inside $( … ), so outside it this `*` would be written as it is, not multiplied.';
+  readonly fix = 'Write the operation inside $( … ), for example $(2 * 3).';
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('`*` multiplies only inside $( … ).');
+    this.name = 'JessArithmeticOutsideExpressionError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
 /** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
-export type JessRecoveredError = JessSelectorCaptureArgumentError;
+export type JessRecoveredError = JessSelectorCaptureArgumentError | LeadingSeparatorValueError | JessArithmeticOutsideExpressionError;

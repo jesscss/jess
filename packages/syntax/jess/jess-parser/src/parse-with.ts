@@ -27,6 +27,7 @@ import {
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
 import type { jessGrammar } from './grammar/ast.js';
+import { bareArithmeticIn } from './grammar-helpers.js';
 import { JessParseError, type JessRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
 
@@ -249,13 +250,16 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
   /*
    * `state.source` lets the CSS base's media reducers keep a
    * `<general-enclosed>` query group as written (ledger N14);
-   * `state.diagnostics` collects what the grammar recovered from (P45).
+   * `state.diagnostics` collects what the grammar recovered from (P45), and
+   * `state.stars` each `*` delim read, so arithmetic outside `$( … )` is looked
+   * for only in a document that holds one.
    */
   const diagnostics: JessRecoveredError[] = [];
+  const stars: object[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input, diagnostics }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics, stars }, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok) {
     throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));
@@ -306,7 +310,11 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
   validateJessOptions(document, options);
-  return { document, recovered: inSourceOrder(recoveredInTree(document, diagnostics)) };
+  const recovered = recoveredInTree(document, diagnostics);
+  return {
+    document,
+    recovered: inSourceOrder(stars.length === 0 ? recovered : [...recovered, ...bareArithmeticIn(document)])
+  };
 }
 
 /** One report per item, ordered by where it is written: a reducer may run more than once. */

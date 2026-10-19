@@ -57,8 +57,8 @@ describe('a value led by a separator', () => {
 describe('the css tree', () => {
   it.each([
     'a { x: a * b; }',
-    'a { x: 2 * 3; }',
     'a { b: 2*[3]; }',
+    'a { x: (2 * 3); }',
     'a { width: attr(data-w type(<length>), 0px); }',
     'a { width: attr(data-w type(<length>),0px); }',
     'a { x: (a ~ b); }',
@@ -66,6 +66,25 @@ describe('the css tree', () => {
     'a { x: (a : b); }'
   ])('%s', (source) => {
     expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  });
+});
+
+/*
+ * Between two numbers or variables a `*` is arithmetic, which `.jess` writes
+ * only inside `$( … )` (ledger P17): the run css builds, and an error at the
+ * `*` (P45). A paren group is not that (P18).
+ */
+describe('arithmetic outside $( … )', () => {
+  it.each([
+    ['a { x: 2 * 3; }', 'a { x: 2 * 3; }'],
+    ['$w: 2px; a { x: $w * 2; }', null],
+    ['$v: 1px * 2px;', null]
+  ])('%s', (source, css) => {
+    const { document, recovered } = parseRecovering(source);
+    expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`)).toEqual(['parse/arithmetic-outside-expression *']);
+    if (css !== null) {
+      expect(bare(declarationValue(document))).toEqual(bare(declarationValue(parseCss(css))));
+    }
   });
 });
 

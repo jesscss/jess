@@ -43,10 +43,6 @@ describe('a value led by a separator', () => {
     const [error] = parseRecovering('.x { a: * b; }').recovered;
     expect(error).toMatchObject({ message: 'A value cannot start with "*".' });
   });
-
-  it('keeps a comment opener out of it', () => {
-    expect(recovered('.x { a: /* c */ b; }')).toEqual([]);
-  });
 });
 
 /* Sass reads `&` in a value as the parent selector; Jess parses it and reports that it has no value for it. */

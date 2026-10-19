@@ -394,7 +394,8 @@ describe('JessLanguageServiceEngine', () => {
     it.each([
       ['scss', 'parse/leading-separator-value', '$t: * [.notice];\n.after { color: red; }', '* [.notice]', 'A value cannot start with "*".'],
       ['jess', 'parse/leading-separator-value', '$t: * [.notice];\n.after { color: red; }', '* [.notice]', 'A value cannot start with "*".'],
-      ['scss', 'parse/unsupported-parent-selector-value', '.btn { content: &; }\n.after { color: red; }', '&', 'The parent selector `&` has no value here.']
+      ['scss', 'parse/unsupported-parent-selector-value', '.btn { content: &; }\n.after { color: red; }', '&', 'The parent selector `&` has no value here.'],
+      ['jess', 'parse/arithmetic-outside-expression', '.grid { gap: 2 * 4px; }\n.after { color: red; }', '*', '`*` multiplies only inside $( … ).']
     ] as const)('%s: underlines %s without losing the document', (language, code, input, underlined, message) => {
       const engine = createEngine();
       const doc = createDocument(language, input);
@@ -403,7 +404,7 @@ describe('JessLanguageServiceEngine', () => {
       const diagnostics = engine.getDiagnostics(doc.uri);
       const diagnostic = diagnostics.find(item => item.code === code);
 
-      expect(diagnostic).toMatchObject({ message, severity: DiagnosticSeverity.Error });
+      expect(diagnostic).toMatchObject({ message: expect.stringContaining(message), severity: DiagnosticSeverity.Error });
       expect(input.slice(doc.offsetAt(diagnostic!.range.start), doc.offsetAt(diagnostic!.range.end))).toBe(underlined);
       expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);

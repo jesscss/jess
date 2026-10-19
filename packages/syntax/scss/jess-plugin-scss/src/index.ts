@@ -12,7 +12,7 @@ import {
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
-import { parse } from '@jesscss/scss-parser';
+import { parseRecovering } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
 export type ScssPluginOptions = {
@@ -84,10 +84,11 @@ export class ScssPlugin extends AbstractPlugin {
    */
   safeParse(filePath: string, source: string): ISafeParseResult {
     try {
+      const { document, recovered } = parseRecovering(source);
       return {
-        document: parse(source),
+        document,
         dialectDefaults: this.#dialectDefaults,
-        errors: [],
+        errors: recovered.map(error => parserDiagnostic({ dialect: 'SCSS', error, filePath, source })),
         warnings: []
       };
     } catch (error) {

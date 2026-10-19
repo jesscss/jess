@@ -1045,9 +1045,15 @@ describe('Jess AST grammar facts', () => {
         ] }
       ]
     });
+
+    /* A `*` is the delim css reads, and between two numbers or variables an error at the `*` (P45), not a stop. */
+    const multiplied = parseRecovering('$w: 2px; .card { x: $w * 2; }');
+    expect(multiplied.recovered.map(error => error.code)).toEqual(['parse/arithmetic-outside-expression']);
+    expect(multiplied.document.rules[1]).toMatchObject({
+      rules: [{ value: [{ type: 'Lookup', name: 'w' }, { type: 'Any', src: '*' }, { type: 'Dimension', src: '2' }] }]
+    });
     for (const invalid of [
       '$w: 2px; .card { x: $w + 1px; }',
-      '$w: 2px; .card { x: $w * 2; }',
       '$w: 2px; .card { x: $w / 2 + 1; }',
       '$w: 2px; .card { x: $w % 2; }',
       '$w: 2px; .card { x: ^w; }',

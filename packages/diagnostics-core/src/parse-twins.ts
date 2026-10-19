@@ -228,7 +228,7 @@ function invalidValueSyntaxInCall(node: CssCstNode, language: JessLanguage, sour
     if (at < inner.length && inner[at]!.kind !== 'comma') {
       continue;
     }
-    const arg = index === 0 ? branchColon(inner.slice(from, at)) : inner.slice(from, at);
+    const arg = index === 0 ? branchColon(inner.slice(from, at)) : fallbackColon(inner.slice(from, at), name, language);
     const head = arg[0];
     if (conditions === 0 && index >= names && arg.length === 3 && isAtom(head, 'ident') && isAtom(arg[1], 'delim', '=')) {
       return nameValueIeSyntax(head.text);
@@ -276,6 +276,23 @@ function branchColon(arg: ValueAtom[]): ValueAtom[] {
     if (isAtom(arg[i], 'delim', ':')) {
       arg[i] = COLON;
       break;
+    }
+  }
+  return arg;
+}
+
+/*
+ * An SCSS `var()` fallback is a value: a `:` after a name there is no keyword
+ * argument's (only a `$` variable names one) but css's delim, as the compiler
+ * reads it (`var(--x, a:b)`).
+ */
+function fallbackColon(arg: ValueAtom[], name: string, language: JessLanguage): ValueAtom[] {
+  if (language !== 'scss' || name.toLowerCase() !== 'var') {
+    return arg;
+  }
+  for (let i = 1; i < arg.length; i++) {
+    if (arg[i]!.kind === 'colon' && arg[i - 1]!.kind === 'ident') {
+      arg[i] = { kind: 'delim', text: ':' };
     }
   }
   return arg;
@@ -351,11 +368,25 @@ export function pushParseTwinDiagnostics(
   }
 
   /*
-   * Shapes the strict Less AST rejects by name — a slash-led value (ledger
-   * P33) and an uncalled mixin reference (rejected today; ruling OPEN under
-   * P33) — are kept as nodes in the tolerant CST, so their twin is reported
-   * from the node.
+   * Shapes the strict AST rejects by name — a separator-led value (ledger P33)
+   * and a Less uncalled mixin reference (rejected today; ruling OPEN under
+   * P33), SCSS's `&` in a value — are kept as nodes in the tolerant CST, so
+   * their twin is reported from the node.
    */
+  if ((language === 'scss' || language === 'jess') && gt === 'LeadingSeparatorValue') {
+    const lead = cstChildrenOf(node)[0];
+    const error = ERR.leadingSeparatorValue(lead?._tag === 'leaf' && lead.value === '/' ? '/' : '*');
+    push('parse/leading-separator-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
+  if (language === 'jess' && (gt === 'Declaration' || gt === 'VariableDeclaration')) {
+    pushBareArithmeticTwins(node, source, push);
+  }
+  if (language === 'scss' && gt === 'ParentSelector') {
+    const error = ERR.unsupportedParentSelectorValue();
+    push('parse/unsupported-parent-selector-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
+
+  /* Less keeps its own text for a separator-led value until its parser takes the shared one. */
   if (language === 'less' && gt === 'LeadingSeparatorValue') {
     const lead = cstChildrenOf(node)[0];
     const slash = lead?._tag === 'leaf' && lead.value === '/';
@@ -396,6 +427,45 @@ export function pushParseTwinDiagnostics(
  * argument is not a selector list parses as its own CST node, and the compiler
  * fails on it; the editor underlines the argument.
  */
+/* A CST operand `$( … )` would compute with: a number or a variable. */
+const ARITHMETIC_OPERAND_TYPES = new Set(['Num', 'Dimension', 'Percentage', 'DollarValue']);
+
+/* The operand a run component holds, through its one-child `ValueTerm` / `ValueAtom` wrappers. */
+function isArithmeticOperand(node: CssCstNode | undefined): boolean {
+  let current = node;
+  while (current !== undefined && (current.grammarType === 'ValueTerm' || current.grammarType === 'ValueAtom')) {
+    const nodes = cstChildrenOf(current).filter(isCstNode);
+    current = nodes.length === 1 ? nodes[0] : undefined;
+  }
+  return current !== undefined && ARITHMETIC_OPERAND_TYPES.has(current.grammarType);
+}
+
+/*
+ * `.jess` arithmetic outside `$( … )` (ledger P17): the compiler's error at a
+ * `*` between two numbers or variables in a statement value's top-level runs,
+ * reported at the `*`. A paren group and a call are not entered, as the
+ * compiler does not enter them.
+ */
+function pushBareArithmeticTwins(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const error = ERR.arithmeticOutsideExpression();
+  const runs = (value: CssCstNode): void => {
+    for (const child of cstChildrenOf(value).filter(isCstNode)) {
+      if (child.grammarType === 'Value') {
+        runs(child);
+      } else if (child.grammarType === 'ValueSpaceGroup') {
+        const parts = cstChildrenOf(child).filter(isCstNode);
+        parts.forEach((part, index) => {
+          if (part.grammarType === 'DeclarationAny' && source.slice(absoluteStart(part), absoluteEnd(part)) === '*'
+            && isArithmeticOperand(parts[index - 1]) && isArithmeticOperand(parts[index + 1])) {
+            push('parse/arithmetic-outside-expression', 'error', error.message, part.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+          }
+        });
+      }
+    }
+  };
+  runs(node);
+}
+
 function pushSelectorCaptureTwin(
   node: CssCstNode,
   language: JessLanguage,

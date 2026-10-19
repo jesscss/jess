@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { controlBlockStatements, contentArgRaw, foldLogicalOperation, leadingSeparatorValue, parentSelectorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -1015,7 +1015,9 @@ const scssFactory = (g: ScssInputRules) => {
    * sequence is byte-for-byte `Call`, so `var(--x)` / `var(--x, red)` /
    * `var(--x, var(--y, red))` build the identical `FunctionCall` they always
    * have. The trailing arm is reachable ONLY from the `var(` dispatch key, so a
-   * generic `foo(a,)` stays the parse error css also rejects.
+   * generic `foo(a,)` stays the parse error css also rejects. A fallback is a
+   * value, not a keyword argument, so a `:` glued into one is css's delim
+   * (`var(--x, a:b)`, the run css builds; ledger P48 reports it).
    */
   const VarCall = node<FunctionCall | Reference | IfValue>(
     'Call',
@@ -1030,7 +1032,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(')')
     ),
-    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
+    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, true)
   );
 
   /*
@@ -1060,6 +1062,18 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * `&` in a value is Sass's parent selector, the selector of the rule it is in
+   * (a SassScript primary expression, as in `selector-append(&, "-b")`). Jess
+   * gives it no value, so it is an error at the `&`, kept as written, and the
+   * parse carries on (ledger P45).
+   */
+  const ParentSelector = node<ValueNode>(
+    'ParentSelector',
+    literal('&'),
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => parentSelectorValue(span, state)
+  );
+
+  /*
    * A bare `#{…}` is already owned by `InterpolatedValue`: its
    * trailing `many` matches zero chunks, so an interpolation with no following
    * identifier reduces to the identical `Interpolation` value. A standalone
@@ -1078,7 +1092,8 @@ const scssFactory = (g: ScssInputRules) => {
       IdentifierOrFunction,
       g.Map,
       g.Paren,
-      g.Square
+      g.Square,
+      ParentSelector
     ),
     children => requireValue(children[0])
   );
@@ -1338,6 +1353,10 @@ const scssFactory = (g: ScssInputRules) => {
    * cost of the overwhelmingly common case to serve the rare one. The operand
    * is parsed once and the operator tail is `optional`, so a positional
    * argument pays one failed operator match and nothing else.
+   *
+   * A comparison operator with no operand on one side compares nothing: it is
+   * the CSS delim it is, so `type(<length>)` (the `attr()` type) is the run css
+   * builds, `<`, `length`, `>` (ledger P45).
    */
   const comparisonOperator = choice(
     literal('=='),
@@ -1351,7 +1370,13 @@ const scssFactory = (g: ScssInputRules) => {
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
-      g.ValueTerm,
+      choice(
+        g.ValueTerm,
+        sequence(
+          comparisonOperator,
+          g.ValueTerm
+        )
+      ),
       optional(sequence(
         optional(valueTrivia),
         choice(
@@ -1359,7 +1384,7 @@ const scssFactory = (g: ScssInputRules) => {
           literal(':')
         ),
         optional(valueTrivia),
-        g.ValueTerm
+        optional(g.ValueTerm)
       ))
     )),
     children => scssCallArgument(children)
@@ -1383,12 +1408,31 @@ const scssFactory = (g: ScssInputRules) => {
     children => gluedRun(children),
     { collapse: true }
   );
+
+  /*
+   * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
+   * P33), as in Less. It is recognized so the error sits on the value it
+   * leads; the rest of the value is the permissive custom-property value, kept
+   * as written, and the parse carries on (P45). A comment opener never matches.
+   */
+  const LeadingSeparatorValue = node<ValueSlot>(
+    'LeadingSeparatorValue',
+    sequence(
+      regex(/[/*](?![*/])/),
+      g.CustomValue
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
+  );
+
   const ValuePair = node<ScssValuePair>(
     'ValuePair',
     noTrivia(sequence(
       literal(','),
       optional(valueTrivia),
-      valueSequence
+      choice(
+        valueSequence,
+        LeadingSeparatorValue
+      )
     )),
     (children) => {
       if (children.length !== 2 && children.length !== 3) {
@@ -1459,13 +1503,24 @@ const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
+
+  /*
+   * A declaration's or a variable's value, which may be a punctuation-led value
+   * (ledger P33) as a whole; after a comma one is read by `ValuePair` itself.
+   * Only a statement's value starts with one: a `var()` fallback's leading `/`
+   * is css's to accept (css-variables-1 §2). Valid input never reaches the arm.
+   */
+  const statementValue = choice(
+    g.Value,
+    LeadingSeparatorValue
+  );
   const VariableDeclaration = node<VariableDeclaration>(
     'VariableDeclaration',
     sequence(
       not(reservedVarHead),
       scssVarSigilName,
       literal(':'),
-      g.Value,
+      statementValue,
       optional(choice(
         literal('!default'),
         literal('!global')
@@ -1670,7 +1725,7 @@ const scssFactory = (g: ScssInputRules) => {
             propertyIdentifier
           ),
           literal(':'),
-          g.Value,
+          statementValue,
           optional(g.Important)
         )),
 

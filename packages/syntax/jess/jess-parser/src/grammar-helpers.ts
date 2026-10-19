@@ -20,8 +20,9 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
-import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
+import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
+import { JessArithmeticOutsideExpressionError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
+import { NO_SPAN, any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -501,6 +502,44 @@ function selectorCaptureFrom(children: readonly unknown[], span: Span, state: un
   return value;
 }
 
+/**
+ * A value led by a `/` or `*` (ledger P33): the separator, then the rest of the
+ * value as written, and the error at the value it leads (P45).
+ */
+function leadingSeparatorValue(children: readonly unknown[], span: Span, state: unknown): ValueSlot {
+  const operator = any(requireToken(children[0]).value);
+  reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
+  return [operator, requireValueNode(children[1])];
+}
+
+/**
+ * A call component's reduction: its run, or — when a delim opens it
+ * (`<length>`) — that delim and the run after it, glued, as one run.
+ */
+function callComponentFrom(children: readonly unknown[]): ValueSlot {
+  const run = requireValueSlot(children[children.length - 1]);
+  if (children.length === 1) {
+    return run;
+  }
+  const delim = requireValueNode(children[0]);
+  if (!Array.isArray(run)) {
+    return withValueLayout([delim, run], ['']);
+  }
+  const layout = valueLayoutOf(run);
+  return withValueLayout([delim, ...run], ['', ...run.slice(1).map((_, index) => layout?.[index] ?? ' ')]);
+}
+
+/** A comma list's reduction: its one item, or the `,` List of its items. */
+function commaList(children: readonly unknown[]): ValueSlot {
+  const values = children.filter(isJessValueSlotValue);
+  return values.length === 1
+    ? values[0]!
+    : list(
+        values,
+        ','
+      );
+}
+
 function interpolationValue(fact: ExpressionFact): Interpolation {
   if (!isInterpolation(fact.value)) {
     throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
@@ -786,6 +825,67 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
   );
 }
 
+/**
+ * A `*` delim, located, and noted on the run's `state.stars` so the parse can
+ * look for arithmetic outside `$( … )` only when a document holds a `*`
+ * ({@link bareArithmeticIn}).
+ */
+function noteStar(span: Span, state: unknown): Any {
+  const star = withSourceSpan(any('*'), span);
+  const stars: unknown = typeof state === 'object' && state !== null && 'stars' in state ? state.stars : null;
+  if (Array.isArray(stars)) {
+    stars.push(star);
+  }
+  return star;
+}
+
+/** A number or a variable: what `$( … )` would compute with. */
+function isArithmeticOperand(value: ValueSlot | undefined): boolean {
+  return value !== undefined && !isValueSlotArray(value)
+    && (value.type === 'Dimension' || value.type === 'Lookup' || value.type === 'Reference');
+}
+
+/**
+ * Each `*` between two numbers or variables in a declaration's or a
+ * variable's top-level runs: arithmetic, which `.jess` writes only inside
+ * `$( … )` (ledger P17), an error at the `*`, the value kept as written (P45).
+ * A paren group or a call is not entered. Walks the document, so the parse
+ * calls it only when it read a `*`.
+ */
+function bareArithmeticIn(root: object): JessArithmeticOutsideExpressionError[] {
+  const errors: JessArithmeticOutsideExpressionError[] = [];
+  const seen = new Set<object>();
+  const stack: unknown[] = [root];
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (typeof item !== 'object' || item === null || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    if ('type' in item && (item.type === 'Declaration' || item.type === 'VariableDeclaration') && 'value' in item && isJessValueSlotValue(item.value)) {
+      const value = item.value;
+      for (const run of !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value.value : [value]) {
+        if (!isValueSlotArray(run)) {
+          continue;
+        }
+        for (let index = 1; index < run.length - 1; index++) {
+          const star = run[index];
+          const span = star === undefined || isValueSlotArray(star) || star.type !== 'Any' || star.src !== '*' ? undefined : sourceSpanOf(star);
+          if (span !== undefined && isArithmeticOperand(run[index - 1]) && isArithmeticOperand(run[index + 1])) {
+            errors.push(new JessArithmeticOutsideExpressionError(span.start, span.end, star!));
+          }
+        }
+      }
+    }
+    for (const value of Object.values(item)) {
+      if (typeof value === 'object' && value !== null) {
+        stack.push(value);
+      }
+    }
+  }
+  return errors;
+}
+
 /*
  * Every block-bodied lambda spelling reduces the same way: an `AnonymousMixin`
  * over the body statements, carrying the declared params. The `params` field is
@@ -928,6 +1028,11 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
 
 export {
   selectorCaptureFrom,
+  leadingSeparatorValue,
+  noteStar,
+  bareArithmeticIn,
+  commaList,
+  callComponentFrom,
   requireToken,
   requireFields,
   jessCombinator,
