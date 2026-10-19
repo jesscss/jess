@@ -85,7 +85,7 @@ host that resolves to a private, loopback or link-local address is refused.
 
 A bare `@import` in a `.jess` file is always plain CSS, so it is never
 downloaded, with or without the plugin. For `.less` sources, see
-[Remote Imports](https://lesscss.org/usage/less-options#remote-imports) for exactly
+[Remote Imports](https://lesscss.org/docs/usage/less-options#remote-imports) for exactly
 which URL imports are downloaded, which stay CSS, and which are errors.
 
 ## Importing into JS components
