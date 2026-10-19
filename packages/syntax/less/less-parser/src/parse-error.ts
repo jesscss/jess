@@ -172,6 +172,52 @@ export class LessUnsupportedMixinNameError extends SyntaxError {
   }
 }
 
+/**
+ * A value led by `/` or `*` (ledger P33) is recognized so the diagnostic can sit
+ * on that token; the parse carries on (P45).
+ */
+export class LessLeadingSeparatorValueError extends SyntaxError {
+  readonly code = 'parse/leading-separator-value' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, operator: string, recoveredValue: object) {
+    super(`A Less value cannot start with "${operator}".`);
+    this.name = 'LessLeadingSeparatorValueError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = operator === '/'
+      ? 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.'
+      : 'A `*` multiplies two values, so it needs a value before it.';
+    this.fix = operator === '/'
+      ? 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+      : 'Write the value it multiplies before it, or remove it.';
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/** A mixin reference in a value that is neither called nor looked up. */
+export class LessUncalledMixinReferenceError extends SyntaxError {
+  readonly code = 'parse/uncalled-mixin-reference' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'In a value, a mixin reference must be called or looked up; on its own it has no value.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, name: string) {
+    super('A mixin reference is not a value.');
+    this.name = 'LessUncalledMixinReferenceError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`;
+  }
+}
+
 /** Ungrouped Less mixin guards are recognized so diagnostics can point at the guard. */
 export class LessUnparenthesizedMixinGuardError extends SyntaxError {
   readonly code = 'parse/unparenthesized-mixin-guard' as const;
@@ -187,6 +233,135 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
     this.endOffset = endOffset;
   }
 }
+
+/**
+ * What is wrong with one item of a mixin argument or parameter list. `named` and
+ * `rest` exist only because the list holds a `;` (ledger P46): every `,` then
+ * belongs to a comma-list value, which a name or a spread cannot be part of.
+ */
+export type LessMixinArgumentProblem = 'named' | 'rest' | 'anonymousRest' | 'value' | 'spreadPattern';
+
+const MIXIN_ARGUMENT_PROBLEMS: Record<LessMixinArgumentProblem, { message: string; reason: string; fix: string }> = {
+  named: {
+    message: 'A named argument must start its ;-separated argument.',
+    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A name can only begin an argument.',
+    fix: 'Put a ";" before the named argument.'
+  },
+  rest: {
+    message: 'A spread or rest argument cannot be part of a comma list.',
+    reason: 'This list uses ";", so ";" separates its arguments and every "," belongs to a comma-list value. A spread or rest is not a value.',
+    fix: 'Separate it from the comma list with ";".'
+  },
+  anonymousRest: {
+    message: 'A mixin call cannot pass "..." on its own.',
+    reason: 'A bare "..." declares a rest parameter in a mixin definition. A call spreads a value.',
+    fix: 'Spread a variable, for example @rest..., or remove the "...".'
+  },
+  value: {
+    message: 'A mixin call is not a value here.',
+    reason: 'A parameter default, a pattern parameter and an item of a comma-list argument must be values.',
+    fix: 'Replace the mixin call with a value, or pass it as an argument of its own.'
+  },
+  spreadPattern: {
+    message: 'A pattern parameter cannot be spread.',
+    reason: 'In a mixin definition "..." follows a parameter name (@rest...) or stands alone. A value pattern matches one argument.',
+    fix: 'Name a rest parameter, for example @rest..., or remove the "...".'
+  }
+};
+
+/** One argument or parameter of a mixin list, located at that item. */
+export class LessMixinArgumentError extends SyntaxError {
+  readonly code = 'parse/invalid-mixin-argument' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, problem: LessMixinArgumentProblem) {
+    const text = MIXIN_ARGUMENT_PROBLEMS[problem];
+    super(text.message);
+    this.name = 'LessMixinArgumentError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
+  }
+}
+
+/**
+ * `not` before a bare operand a comparison follows (`not 1 > 2`): it does not
+ * say whether `not` negates the operand or the comparison. Located at the
+ * comparison operator.
+ */
+export class LessAmbiguousNotError extends SyntaxError {
+  readonly code = 'parse/ambiguous-not' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = '`not` negates the condition or the group written right after it. After a bare operand, a comparison leaves open whether `not` negates the operand or the comparison; it is read as negating the comparison.';
+  readonly fix = 'Group what `not` negates, for example: not (1 > 2).';
+
+  constructor(offset: number, endOffset: number) {
+    super('`not` before a compared operand does not say what it negates.');
+    this.name = 'LessAmbiguousNotError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/**
+ * A Less condition keyword in another case than lowercase (`AND`, `Not`): a
+ * mixin guard, `if()` and `boolean()` read lowercase `and`, `or` and `not`
+ * (owner 2026-10-13: "B: CSS any case, Less lowercase"). Located at the
+ * keyword; the parse reads it as the keyword and carries on.
+ */
+export class LessConditionKeywordCaseError extends SyntaxError {
+  readonly code = 'parse/condition-keyword-case' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'A Less condition reads lowercase `and`, `or` and `not`; a CSS condition (`@media`, `@supports`, `@container`) reads them in any case.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, keyword: string) {
+    const lower = keyword.toLowerCase();
+    super(`Write \`${lower}\` in lowercase: a Less condition reads lowercase \`and\`, \`or\` and \`not\`.`);
+    this.name = 'LessConditionKeywordCaseError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Write \`${lower}\`.`;
+  }
+}
+
+/**
+ * A value-position `selector(…)` whose argument is not a selector list
+ * (`selector()`, `selector(1px)`, `selector(@x)`): it captures a selector list,
+ * the argument `:is()` takes (owner 2026-10-16, ledger P49). Located at the
+ * argument; the parse reads the rest of it as opaque text and carries on (P45).
+ */
+export class LessSelectorCaptureArgumentError extends SyntaxError {
+  readonly code = 'parse/selector-capture-argument' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'In a value, selector() captures a selector list, the argument :is() takes, and this argument is not one.';
+  readonly fix = 'Write a selector list, for example selector(.a, .b > .c).';
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('selector() takes a selector list.');
+    this.name = 'LessSelectorCaptureArgumentError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
+ * A problem the grammar recovered from: a located error diagnostic the parse
+ * carries on past (ledger P45).
+ */
+export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
+  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

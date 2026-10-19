@@ -6,9 +6,8 @@ Two parser representations are available:
 
 - **Canonical AST v2** — the default `parse()` entry constructs a `Stylesheet`
   directly through parser-local Parseman reductions.
-- **Explicit CST** — the `./cst` entry has **no dependency on
-  `@jesscss/core`** and parses Jess source text into a concrete syntax tree for
-  language-service/document consumers.
+- **Explicit CST** — the `./cst` entry parses Jess source text into a
+  concrete syntax tree for language-service/document consumers.
 
 > **Status:** the direct AST v2 parser is in active feature closure. `parse()`
 > either returns a complete canonical `Stylesheet` or rejects the source; it does not
@@ -17,13 +16,13 @@ Two parser representations are available:
 ## Install
 
 ```sh
-npm install @jesscss/jess-parser
+npm install @jesscss/jess-parser @jesscss/core
 ```
 
-`@jesscss/core` is an **optional** peer dependency — needed for the default
-AST v2 `parse()` entry, not for `./cst` or `./grammar`.
-Those explicit entries expose Parseman types and grammar values; Parseman ships
-as a bundled dependency, so it installs with the package automatically.
+`@jesscss/core` is a peer dependency of every entry, `./cst` included: the
+compiled grammar tables carry core's AST reductions, so install it alongside
+the parser. The CST and grammar entries expose Parseman types and grammar values;
+Parseman is a regular dependency, so it installs with the package.
 
 ## Canonical AST parsing
 
@@ -35,11 +34,10 @@ const stylesheet = parse('$brand: #3366ff;')
 stylesheet.type // 'Stylesheet'
 ```
 
-## Standalone usage (core-free)
+## CST parsing
 
 ```js
 import { parseJessCst } from '@jesscss/jess-parser/cst'
-// or: import { parseJessCst } from '@jesscss/jess-parser'
 
 const result = parseJessCst('$brand: #3366ff;')
 
@@ -63,7 +61,7 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | --- | --- | --- |
 | `@jesscss/jess-parser` (`.`) | `parse`, `JessParseError` | Parse Jess directly to canonical AST v2 `Stylesheet`; malformed input throws `JessParseError` with an offset and expected facts. |
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
-| `@jesscss/jess-parser/cst` | `parseJessCst`, `parseJessDoc`, CST types | Core-free parse of a Jess string to a CST. Compiled grammars are not re-exported from `.` — reach for a `/grammar` subpath so the main entry never loads a grammar build you did not ask for. |
+| `@jesscss/jess-parser/cst` | `parseJessCst`, `parseJessDoc`, CST types | Parse a Jess string to a CST. Compiled grammars are not re-exported from `.` — reach for a `/grammar` subpath so the main entry never loads a grammar build you did not ask for. |
 | `@jesscss/jess-parser/grammar` | `jessGrammar` | The compiled Jess AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 
 ### Line-aware entries
@@ -108,9 +106,17 @@ collects `result.errors` on either CST variant.
 Each variant also ships uncompiled under `@jesscss/jess-parser/grammar/interpreter/…`
 (`/grammar/interpreter` aliases `/grammar/interpreter/ast`): the same grammar
 source and export, built without the parseman macro, so the combinator graph
-runs on parseman's interpreter instead of a compiled table. It exists to compare
+runs on parseman's interpreter instead of a compiled table. Tests use it to compare
 the two engines; `test/interpreter-parity.test.ts` parses the fixtures with
 both and requires identical AST and CST results.
+
+Browser bundlers pick it up automatically: the package's `browser` field maps
+each `lib/grammar/<variant>` file to its interpreter twin, so a browser bundle
+carries the combinator graph instead of the compiled table, while Node keeps the
+table. The grammar is composed when the module loads, without generating code,
+so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
+`test/interpreter-parity.test.ts` loads every variant of both engines with code
+generation disallowed and counts every call to `Function` and `eval`.
 
 ## Default CST shape
 

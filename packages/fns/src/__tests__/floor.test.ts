@@ -1,13 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
+import { invoke } from './harness.js';
 import { makeDimension } from '@jesscss/core';
 import { floor } from '../shared/index.js';
-
-function invoke(fn: unknown, ...args: unknown[]): unknown {
-  if (typeof fn !== 'function') {
-    throw new TypeError('Expected a callable function.');
-  }
-  return Reflect.apply(fn, undefined, args);
-}
 
 describe('floor function typed value contract', () => {
   test('floors a canonical Dimension and preserves its unit', () => {

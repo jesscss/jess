@@ -1,9 +1,7 @@
 ---
 description: "Core AST + evaluation engine (`@jesscss/core`): tree structure, evaluation passes, extend/mixin hotspots"
 globs:
-  - "packages/core/src/tree/**"
   - "packages/core/src/ast/**"
-  - "packages/core/src/define-function.ts"
   - "packages/core/src/**/__tests__/**"
 ---
 
@@ -12,12 +10,11 @@ globs:
 ## What lives here
 
 - AST nodes and evaluation logic used by parsers, engines, and the CLI.
-- Large “tree” subsystem under `packages/core/src/tree/**` (selectors, rulesets, eval, printing, etc.).
 
 ## Hotspots
 
-- Extend algorithm: `packages/core/src/tree/util/extend.ts`
-- Tree subsystem: `packages/core/src/tree/**`
+- Extend: `packages/core/src/ast/extend/**`
+- Eval/render: `packages/core/src/ast/serialize.ts`
 
 ## Render mode: nested is the DEFAULT
 

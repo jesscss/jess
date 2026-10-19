@@ -206,9 +206,9 @@ expected failures, so the harness *asserts* they fail:
 Both are pending the numeric-precision landing. Because the map asserts the
 failure, fixing precision will trip the entry and demand its own deletion.
 
-`import-remote.less` is excluded from the alpha harness until remote URL import
-loading has an explicit network/IO allowlist. It is tracked in
-`docs/process/less-v5-release-plan.md`, not in `known-failures.json`.
+`import-remote.less` is an ordinary gate: the harness enables the opt-in
+`@jesscss/plugin-remote-import` with its transport answering from the local
+test-data checkout (`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §7).
 
 **A Less-corpus number is only meaningful together with the less.js checkout
 SHA** — the fixtures live in `~/git/oss/less.js/packages/test-data`, which this
@@ -331,6 +331,17 @@ sign-off; do not rebaseline unilaterally.
   before comparing; a short corpus yields a clean digest over a subset.
 - The `@less/test-data` symlink is location-relative; under `/tmp` it
   resolves short without erroring.
+
+## Landing order (cross-repo)
+
+- **Merged `styles.config` files (ledger C19, O19)** need the less.js fork branch
+  `lane/v5-tests-unit-config` to land in fork `alpha` with or before them. That branch
+  keeps one `tests-unit/styles.config.cjs` with `mathMode: 'parens-division'` and deletes
+  `tests-unit/styles.config.ts` (`mathMode: 'always'`). Against a corpus that still has
+  the `.ts`, the merge applies `'always'` to every `tests-unit` fixture and three cases
+  fail: `tests-unit/calc/calc.less` and `tests-unit/operations/operations-advanced.less`
+  in the Less fixture lane, and the `tests-unit/color-functions/modern-syntax.less`
+  round trip in `packages/jess/test/jess/less-jess-equivalence.test.ts`.
 
 ## Current Focus
 

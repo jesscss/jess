@@ -339,7 +339,12 @@ if every allowlisted package's entry point exists; otherwise it rebuilds.
 ### Packed clean-consumer proof
 
 `pnpm run verify:alpha:packed-consumer` packs every allowlisted package and
-installs only those tarballs into an empty temporary npm consumer. It then
+installs only those tarballs into an empty temporary npm consumer. npm hoists
+that install flat, so a package that imports something it does not declare
+still loads there; the proof therefore lexes every shipped `.js`/`.mjs`/`.cjs`
+file (static and dynamic `import`, `export … from`, `require()`) and fails on
+any bare import missing from the package's `dependencies`,
+`optionalDependencies` or `peerDependencies`. It then
 checks ESM and CJS package roots plus the packed `jess` command (files, sibling
 imports, and a malformed-input diagnostic), and the optional
 `@jesscss/plugin-js` sandbox-runtime gate. `lessc` is deliberately not a Jess

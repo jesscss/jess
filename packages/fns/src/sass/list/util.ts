@@ -11,6 +11,17 @@ import {
 /** Sass's public separator names mapped onto the core value facts. */
 export type SassListSep = ',' | ' ' | '/';
 
+/*
+ * A `;` list only comes from a CSS function body (`if(a: b; else: c)`),
+ * which no Sass list function is ever handed: it has no Sass separator name.
+ */
+function sassSeparator(sep: ReturnType<typeof groupSeparator>): SassListSep {
+  if (sep === ';') {
+    throw new TypeError(`A \`${sep}\`-separated CSS value is not a Sass list`);
+  }
+  return sep;
+}
+
 export function getSassListInfo(value: ValueGroup): {
   values: readonly ValueGroup[];
   sep: SassListSep;
@@ -18,7 +29,7 @@ export function getSassListInfo(value: ValueGroup): {
 } {
   return {
     values: groupItems(value),
-    sep: groupSeparator(value),
+    sep: sassSeparator(groupSeparator(value)),
     bracketed: isBracketedList(value)
   };
 }

@@ -215,12 +215,17 @@ A Less.js plugin should export an object that has one or more of these propertie
 
 }
 ```
-The PluginManager instance for the `install()` function provides methods for adding visitors, file managers, and post-processors.
+The PluginManager passed to `install()` still installs plugins: `addPlugin()`, `addPlugins()`, `get()`, `installedPlugins` and `pluginCache` work as in Less 4.x. Each `@plugin` script runs in its own sandbox, so there they cover the plugins that script installed, and adding a plugin from inside one of its function bodies is refused, because the functions it registers could never be called. Its methods for visitors, pre-processors, post-processors, and file managers do not, because Less 5 runs none of them: a plugin that adds or lists them (`addVisitor`/`getVisitors`/`visitor`, `addPreProcessor`/`getPreProcessors`, `addPostProcessor`/`getPostProcessors`, `addFileManager`/`getFileManagers`), reads the manager's `visitors`, `iterator`, `preProcessors`, `postProcessors`, `fileManagers` or `Loader`, or reads `less.visitors`, `less.FileManager`, or `less.environment`, is refused with an error that names the replacement:
 
-Here are some example repos showing the different plugin types. <!-- TODO: updated examples -->
- - post-processor: https://github.com/less/less-plugin-clean-css
- - visitor: https://github.com/less/less-plugin-inline-urls
- - file-manager: https://github.com/less/less-plugin-npm-import
+ - minification (e.g. [less-plugin-clean-css](https://github.com/less/less-plugin-clean-css)): use the `compress` option instead;
+ - npm import resolution (e.g. [less-plugin-npm-import](https://github.com/less/less-plugin-npm-import)): use `@jesscss/plugin-node-modules`;
+ - other post-processors (e.g. autoprefixer): run them on the compiled CSS;
+ - visitors (e.g. [less-plugin-inline-urls](https://github.com/less/less-plugin-inline-urls)): there is no visitor API; port the transform to a function plugin or a step on the compiled CSS.
+
+:::note 5.x
+The full Less 4.x `less.tree` API is not part of Less 5. Function plugins are
+still supported (see the status note at the top of this page).
+:::
 
 ## Pre-Loaded Plugins
 

@@ -5,7 +5,7 @@
     "url": "git+https://github.com/jesscss/jess.git",
     "directory": "packages/parser-shared"
   },
-  "version": "2.0.0-alpha.27",
+  "version": "2.0.0-alpha.28",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -34,6 +34,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
@@ -48,6 +49,6 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "dependencies": {
-    "parseman": "^0.51.2"
+    "parseman": "^0.54.0"
   }
 }

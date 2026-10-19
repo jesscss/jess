@@ -108,6 +108,15 @@ describe('ModuleImport evaluation', () => {
     expect(plugin.importCalls).toBe(1);
   });
 
+  it('reports a module that cannot load as import/load-failed, while preparing and while rendering', async () => {
+    const document = stylesheet([moduleImport(modulePath(tempModule('broken.js')), 'use', 'broken')]);
+    const failure = { code: 'import/load-failed', message: expect.stringContaining('Unexpected module path') };
+    const context = () => new Context({}, [new ModulePlugin(new Map())]);
+
+    await expect(Promise.resolve(prepareStaticImports(document, { context: context(), evaluator }))).rejects.toMatchObject(failure);
+    await expect(Promise.resolve(serialize(document, { context: context(), evaluator }))).rejects.toMatchObject(failure);
+  });
+
   it('binds @-use functions under a namespace and supports as *', async () => {
     const file = tempModule('math.js');
     const inc = defineFunction('inc', {
@@ -181,6 +190,23 @@ describe('ModuleImport evaluation', () => {
     await expect(Promise.resolve(serialize(document, { context, evaluator }))).resolves.toEqual({
       css: '.shadow {\n  value: local;\n}\n'
     });
+  });
+
+  /* A plain script function's NaN has no CSS spelling; it fails at the call instead of printing `NaN`. */
+  it('fails a namespaced plain function that returns NaN', async () => {
+    const file = tempModule('math.js');
+    const context = new Context({}, [new ModulePlugin(new Map([[file, { bad: () => Number.NaN }]]))]);
+    const document = stylesheet([
+      moduleImport(modulePath(file), 'use', 'math'),
+      rule('.a', [decl('value', reference(
+        declarationReference('$'),
+        [lookupStep('member', 'math'), lookupStep('member', 'bad'), { type: 'Call', args: [callArg(dimension(1))] }],
+        '$math.bad(1)'
+      ))])
+    ]);
+
+    await expect(Promise.resolve(serialize(document, { context, evaluator })))
+      .rejects.toMatchObject({ code: 'eval/invalid-function', reason: expect.stringContaining('NaN') });
   });
 
   it('fails when a selected export does not exist', async () => {

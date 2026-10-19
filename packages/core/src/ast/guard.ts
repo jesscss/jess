@@ -23,34 +23,17 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { ValueSlot } from './nodes.js';
 import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
+import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
+import type { GuardNode } from './guard-node.js';
 
-/**
- * A guard condition tree. Never serialized to CSS — evaluated to a boolean.
- *
- * `cmp` and `match` are the SAME comparison in the two positions §4.2a
- * distinguishes, and carry the identical shape so they are one hidden class:
- *
- *  - `cmp` — VALUE position (`if(@a < @b, …)`, `$( … )`, `@if`). An ASSERTION:
- *    operands with no common ground raise, because "is a less than b" has no
- *    honest answer and `false` in both directions is a lie (§4.2).
- *  - `match` — GUARD position (`when ( … )`). A MATCH TEST: no common ground
- *    means this definition does not apply to these arguments, which IS an
- *    answer. `.m(1, true) when (@a < @b)` must not fail the compile.
- *
- * Which one a comparison is, is decided by the front end at PARSE time from the
- * position it was written in (§12.0 — lower to the `.jess` you want, then read
- * off the node). Nothing at eval time inspects context or a mode to choose.
+/*
+ * The guard node and its constructor live in `guard-node.ts`, which imports nothing
+ * at runtime, so the parsers that build guards (through `@jesscss/core/ast`) do not
+ * load this evaluator and its value domain.
  */
-export type GuardNode =
-  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
-  | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
-  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode }
-  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
-  | { readonly g: 'not'; readonly inner: GuardNode }
-  | { readonly g: 'truth'; readonly value: ValueSlot }
-  | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[] }
-  | { readonly g: 'default' };
+export type { GuardNode } from './guard-node.js';
+export { inParens } from './guard-node.js';
 
 /**
  * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.
@@ -63,13 +46,19 @@ export type ValueResolver = (v: ValueSlot) => MaybePromise<string>;
 /**
  * Resolve a value node to a materialized TYPED value object.
  *
+ * `group` is the nearest group the condition puts around the operand: `true`
+ * inside parens written around a condition where they are a paren group
+ * ({@link GuardEvalDeps.whenGuard}), `false` in a type function's
+ * arguments, which those parens do not reach (V34), and `undefined` where the
+ * condition adds none.
+ *
  * A guard operand can name a value the engine cannot produce without awaiting —
  * a `@plugin` function result, say — so this is a {@link MaybePromise}. It stays
  * SYNCHRONOUS whenever the value is: the resolver returns the value itself, and
  * every consumer below checks `isThenable` before reaching for a promise. No
  * guard that could already be answered synchronously gains a microtask hop.
  */
-export type TypedResolver = (v: ValueSlot) => MaybePromise<ValueGroup>;
+export type TypedResolver = (v: ValueSlot, group?: boolean) => MaybePromise<ValueGroup>;
 
 export interface GuardEvalDeps {
   /** Typed resolver (comparison / type-fn leaves compare typed values). */
@@ -79,6 +68,17 @@ export interface GuardEvalDeps {
 
   /** True iff no non-default definition matched (the `default()` value). */
   isDefault: () => boolean;
+
+  /**
+   * The condition is a `when` guard on a mixin or ruleset, whose outermost
+   * parens around each condition are the `when` syntax, not a paren group for
+   * its math (ledger V35): under `math: parens`, `when (1 + 2 = 3)` keeps
+   * `1 + 2`, while `when ((1 + 2 = 3))` and `when ((1 + 2) = 3)` compute.
+   * Everywhere else (a function's arguments, a control statement) every paren
+   * the author wrote around a condition is a paren group: `if((1 + 2 = 3), y, n)`
+   * is `y`.
+   */
+  whenGuard: boolean;
 }
 
 /**
@@ -86,8 +86,16 @@ export interface GuardEvalDeps {
  * delegated to the TYPED value evaluator (`compare`/`typeCheck`) over
  * materialized value objects — real Less semantics by construction; logic/
  * negation/truthiness/default are owned here.
+ *
+ * The parens the author wrote around a condition (`parens`) are paren groups,
+ * so every operand in them is in one ({@link TypedResolver}), except a `when`
+ * guard's first pair on each path from the root ({@link GuardEvalDeps.whenGuard}).
+ * `outer` is what the enclosing condition hands down: `true` inside a group,
+ * `false` once a `when` guard's own pair is passed, `undefined` before any pair.
  */
-export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<boolean> {
+export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean): MaybePromise<boolean> {
+  const group = outer === true || (deps.whenGuard && outer === undefined ? node.parens > 1 : node.parens > 0);
+  const inner = group || (outer === undefined && node.parens === 0 ? undefined : false);
   switch (node.g) {
     case 'and':
     case 'or': {
@@ -105,13 +113,13 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * guard never gains a microtask hop.
        */
       const decided = node.g !== 'and';
-      const l = evalGuard(node.left, deps);
-      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps);
+      const l = evalGuard(node.left, deps, inner);
+      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps, inner);
       return isThenable(l) ? l.then(rest) : rest(l);
     }
     case 'not': {
-      const inner = evalGuard(node.inner, deps);
-      return isThenable(inner) ? inner.then(value => !value) : !inner;
+      const negated = evalGuard(node.inner, deps, inner);
+      return isThenable(negated) ? negated.then(value => !value) : !negated;
     }
     case 'truth': {
       /*
@@ -119,7 +127,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * ONE typed predicate over the materialized value — never a byte test.
        * The dialects do not arrive here: they lower to comparisons (§4.4.2).
        */
-      const value = deps.resolveTyped(node.value);
+      const value = deps.resolveTyped(node.value, group || undefined);
       return isThenable(value) ? value.then(isTruthy) : isTruthy(value);
     }
     case 'cmp':
@@ -128,17 +136,24 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       if (!ev) {
         return false;
       }
-      const left = deps.resolveTyped(node.left);
-      const right = deps.resolveTyped(node.right);
+      const left = deps.resolveTyped(node.left, group || undefined);
+      const right = deps.resolveTyped(node.right, group || undefined);
 
       /*
        * The node's own `g` picks the primitive — the assertion or the match test
        * (§4.2a). Both read the SAME ground; they differ only in what they make
        * of a pair that has none, so the two positions cannot drift apart.
+       *
+       * An operation `preserve` kept for its units (`1px + 3em`) has no
+       * value to compare, so a comparison reading one is not true — in a guard
+       * and in an `if()` alike, where the assertion would otherwise raise on a
+       * pair with no ground. The operand's warning is the consumer's
+       * (`warnConsumedKept`); `strict` raised at the operation already
+       * (orchestrator judgment under owner delegation 2026-10-06).
        */
-      const compare = node.g === 'match'
-        ? (a: ValueGroup, b: ValueGroup): boolean => ev.compareMatch(node.op, a, b, deps.modes)
-        : (a: ValueGroup, b: ValueGroup): boolean => ev.compare(node.op, a, b, deps.modes);
+      const compare = (a: ValueGroup, b: ValueGroup): boolean =>
+        !holdsKeptOperation(a) && !holdsKeptOperation(b)
+        && (node.g === 'match' ? ev.compareMatch(node.op, a, b, deps.modes) : ev.compare(node.op, a, b, deps.modes));
       return isThenable(left) || isThenable(right)
         ? Promise.all([left, right]).then(([a, b]) => compare(a, b))
         : compare(left, right);
@@ -157,7 +172,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       const settled: ValueGroup[] = [];
       let pending: Array<MaybePromise<ValueGroup>> | null = null;
       for (const arg of node.args) {
-        const value = deps.resolveTyped(arg);
+        const value = deps.resolveTyped(arg, false);
         if (pending) {
           pending.push(value);
         } else if (isThenable(value)) {

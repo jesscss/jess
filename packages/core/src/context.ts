@@ -1,29 +1,16 @@
-import type {
-  AtRule,
-  Ruleset,
-  Rules,
-  Node,
-  Any,
-  AtRuleStatement,
-  Selector,
-  Nil
-} from './tree/index.js';
-import type { ImportOptions } from './import-options.js';
-import { ExtendRootRegistry } from './tree/util/extend-roots.js';
-import { type Operator } from './util/calculate.js';
+import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
-import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
-import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
+import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
 import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
-import { extractRelevantLines, lineColAt } from './error/code-frame.js';
+import { INJECTED_TEXT_NOTE, extractRelevantLines, fileAt, lineColAt } from './error/code-frame.js';
+import { inAuthoredFile } from './error/diagnostics.js';
 import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
 import {
@@ -37,31 +24,22 @@ import {
   warnCodeMatchesAny,
   makeSuppressionSummary
 } from './warnings.js';
-import type { Call } from './tree/call.js';
-import { CallMap } from './tree/util/recursion-helper.js';
-import { BitSetLibrary } from './util/bitset.js';
-import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
-import type { PrintOptions } from './tree/util/print.js';
+
+/** Extensions of script modules and executable `@plugin` scripts. */
+const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
+const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable script execution features.';
+const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 
 /**
- * The single-pass emit visitor contract (design §6.1/§6.6). `enter` receives the
- * resolved output node and either returns void (inspect / invisibly annotate: the
- * node is emitted unchanged) or returns a new node (an output-affecting replace:
- * a fresh transient serialized in place, never mutating the shared canonical node
- * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame: the node is already
- * resolved. `exit` (optional) fires after the node's children, kept solely for the
- * `inline-urls` enter/exit proof (§6.6).
+ * Modules and plugins are code or data loaded by the runtime, so they come from
+ * local files only: a URL — written, rebased from a remote document, or located
+ * by a plugin — is refused without a request.
  */
-export type EmitVisitorEnter = (node: Node) => Node | void;
-export type EmitVisitorExit = (node: Node) => void;
-export interface EmitVisitor {
-  enter: EmitVisitorEnter;
-  exit?: EmitVisitorExit;
+function refuseRemoteModule(location: string): void {
+  if (EXTERNAL_IMPORT_SPECIFIER.test(location)) {
+    throw new Error(`Module ${location} is remote; @use and @plugin load modules from local files only.`);
+  }
 }
-
-const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
-const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
-const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
 type LoadedImportResult = {
   node: ParsedDocument | null;
@@ -73,6 +51,12 @@ type ResolvedPathResult = {
   triedPaths: string[];
   resolvedPath: string;
   friendlyPath: string;
+
+  /** The file extension that selects a plugin; a URL's comes from its path, not its query. */
+  ext: string;
+
+  /** The plugin whose `locate` returned `resolvedPath`. */
+  locator: PluginInterface;
 };
 
 type LoadedPluginModuleResult = {
@@ -123,6 +107,10 @@ export interface ContextOptions {
    */
   dynamic?: boolean;
 
+  /*
+   * The mode options (these three and the scope/import modes below) set here are
+   * global: they win over every document's own settings (DESIGN-DECISIONS C19).
+   */
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
@@ -216,8 +204,8 @@ export interface ContextOptions {
    */
   breakOnError?: boolean;
 
-  /** Output options — mirrors StylesConfig['output']; overrides any config-file setting. */
-  output?: StylesConfig['output'];
+  /** Output options; overrides any config-file setting. */
+  output?: OutputOptions;
 
   /**
    * Lazily supplies an importer plugin after path resolution proves a module
@@ -227,9 +215,19 @@ export interface ContextOptions {
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
 
   /**
+   * The settings that cover one source file, computed for its language (its
+   * `styles.config` merged under the settings passed in; global settings under
+   * its language's) — supplied by the host. Called once when the file is parsed
+   * (`language` is the parsing plugin's name); the answer reaches that plugin's
+   * `safeParse` and resolves the document's policy in place of this Context's
+   * own mode options, over its dialect's defaults (DESIGN-DECISIONS C19).
+   */
+  sourceOptions?(filePath: string, language: string): SourceSettings | undefined;
+
+  /**
    * Per-tree transient serialization data threaded from the parser (source-anchored
-   * comment/whitespace runs). Seeded onto the render {@link Context} (and per-tree
-   * {@link TreeContext}) and read back at emit time.
+   * comment/whitespace runs). Seeded onto the render {@link Context} and read
+   * back at emit time.
    */
   trivia?: TriviaMap;
 
@@ -243,10 +241,10 @@ export interface ContextOptions {
 /**
  * The flat, fully-resolved option set read on the eval fast path. Every field is
  * present (no `undefined`), so a read-site is a single property access —
- * `context.options.unitMode` — with no `?? treeContext ?? default` chain and
- * no per-read merge. Resolved once and cached on {@link Context}; recomputed only
- * when `context.treeContext` switches (see its setter), so crossing into an
- * imported file is one recompute, not a cost paid on every option read.
+ * `context.options.unitMode` — with no `?? document ?? default` chain and
+ * no per-read merge. Resolved once per document when the document is parsed
+ * (its policy), and shared by every document that resolves to the same values;
+ * entering a document swaps one pointer, so no cost is paid on an option read.
  */
 export interface ResolvedOptions {
   mathMode: MathMode;
@@ -259,8 +257,8 @@ export interface ResolvedOptions {
 }
 
 /**
- * Ultimate fallbacks — used only when neither the compile config nor the tree
- * context (plugin/language/file) supplied a value.
+ * Ultimate fallbacks — used only when neither the compile config, the source's
+ * settings nor its dialect supplied a value.
  */
 const OPTION_DEFAULTS: ResolvedOptions = {
   mathMode: 'parens-division',
@@ -282,29 +280,51 @@ type OptionInput = Partial<ResolvedOptions> & {
 };
 
 /**
- * Resolve the option set with a SINGLE precedence: an explicit compile-level
- * option wins, else the source document's input configuration, else the
- * hard default. This is the one place the precedence is defined — it replaces the
- * three divergent `??` orders that used to live scattered across the read-sites
- * (`compile ?? tree` in conditions, `tree`-only in lists, `tree ?? compile` for
- * mathMode).
+ * The settings a host scopes to one source file: the modes by their canonical
+ * names, the selector policies, plus any dialect-specific spelling its plugin
+ * reads (Less `strictUnits`).
+ */
+export type SourceOptions = Readonly<OptionInput & {
+  allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
+} & Record<string, unknown>>;
+
+/** What a host supplies for one source file ({@link ContextOptions.sourceOptions}). */
+export interface SourceSettings {
+  readonly options: SourceOptions;
+
+  /**
+   * The `styles.config` file the settings were read from, with what that file
+   * alone sets for the source's language, so a plugin can name the file in a
+   * diagnostic about a value it set.
+   */
+  readonly configFile?: { readonly path: string; readonly options: Readonly<Record<string, unknown>> };
+}
+
+/**
+ * Resolve one source's option set with a SINGLE precedence (DESIGN-DECISIONS
+ * C19): the settings that cover the source; else its dialect's own default;
+ * else the hard default. The settings a host supplies for a source are already
+ * computed for its language (its global settings under its language settings),
+ * so nothing is layered over them here. This is the one place the precedence is
+ * defined.
  */
 export function resolveOptions(
-  compile: OptionInput | undefined,
-  tree: OptionInput | undefined
+  settings: OptionInput | undefined,
+  dialect?: OptionInput
 ): Readonly<ResolvedOptions> {
   return Object.freeze({
-    mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
-    unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
-    functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
+    mathMode: settings?.mathMode ?? dialect?.mathMode ?? OPTION_DEFAULTS.mathMode,
+    unitMode: settings?.unitMode ?? dialect?.unitMode ?? OPTION_DEFAULTS.unitMode,
+    functionMode: settings?.functionMode ?? dialect?.functionMode ?? OPTION_DEFAULTS.functionMode,
 
     /* `leakyScope` is the deprecated alias of `allowLeakyScope`: the new name wins
-     * within a source, else the alias, before the next precedence tier. */
-    allowLeakyScope: compile?.allowLeakyScope ?? compile?.leakyScope
-      ?? tree?.allowLeakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.allowLeakyScope,
-    allowCallerScope: compile?.allowCallerScope ?? tree?.allowCallerScope ?? OPTION_DEFAULTS.allowCallerScope,
-    bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
-    processImports: compile?.processImports ?? tree?.processImports ?? OPTION_DEFAULTS.processImports
+     * within a tier, else the alias, before the next precedence tier. */
+    allowLeakyScope: settings?.allowLeakyScope ?? settings?.leakyScope
+      ?? dialect?.allowLeakyScope ?? dialect?.leakyScope ?? OPTION_DEFAULTS.allowLeakyScope,
+    allowCallerScope: settings?.allowCallerScope ?? dialect?.allowCallerScope ?? OPTION_DEFAULTS.allowCallerScope,
+    bubbleRootAtRules: settings?.bubbleRootAtRules ?? dialect?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
+    processImports: settings?.processImports ?? dialect?.processImports ?? OPTION_DEFAULTS.processImports
   });
 }
 
@@ -323,6 +343,18 @@ export interface DocumentContextOptions extends ContextOptions {
 
     /** Full file contents (recommended for code-frames) */
     source?: string;
+
+    /**
+     * Length of text injected ahead of the authored file in `source` (Less
+     * `banner`/`globalVars`). Source maps subtract it; absent means none.
+     */
+    sourceOffset?: number;
+
+    /**
+     * End of the authored file in `source` when text is injected after it (Less
+     * `modifyVars`). Source maps stop there; absent means the end of `source`.
+     */
+    sourceEnd?: number;
   };
 
   /**
@@ -356,11 +388,6 @@ export class DocumentContext {
     this.file = opts.file;
     this.plugin = opts.plugin;
   }
-
-  /** @internal Replace the cached pointer when a legacy TreeContext is attached. */
-  replaceResolvedOptions(options: Readonly<ResolvedOptions>): void {
-    this._options = options;
-  }
 }
 
 /** Attach canonical-document trivia without changing the public class declaration. */
@@ -379,36 +406,12 @@ export function documentTriviaOf(context: DocumentContext): TriviaMap | undefine
   })[DOCUMENT_TRIVIA];
 }
 
-/** The source facts shared by canonical documents and retained legacy trees. */
+/** The source facts of the active canonical document. */
 export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
 type DiagnosticFile = NonNullable<DocumentContextOptions['file']>;
 
 function isAsyncDocumentWork<T>(value: T | Promise<T>): value is Promise<T> {
   return value instanceof Promise;
-}
-
-export interface TreeContextOptions extends DocumentContextOptions {
-  inlineJavaScript?: boolean;
-
-  scope?: Rules;
-
-  /**
-   * Transient per-tree flag: emit a value-level source map for this tree (scalar
-   * POC). Set by the plugin when output maps are requested.
-   */
-  sourceMap?: boolean;
-
-  /** Per-tree selector key-set library shared by selectors of this tree. */
-  selectorBits?: BitSetLibrary<string>;
-
-  /** Plugin-supplied output policy carried on the tree (read via print/emit options). */
-  collapseNesting?: boolean | 'native' | 'compact';
-
-  /** Plugin-supplied allow-list of extend selector kinds. */
-  allowExtendSelectors?: ExtendSelectorKind[];
-
-  /** Plugin-supplied allow-list of Jess `$apply` selector kinds. */
-  allowApplySelectors?: ApplySelectorKind[];
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
@@ -429,65 +432,31 @@ export const generateId = (length = 8) => {
 };
 
 /**
- * Tree context is attached to each node
- * during the parsing phase / AST creation.
- *
- * Each file (and hence, tree) will get a new tree
- * context. For the most part, it is passed around
- * as an object reference.
- *
- * Additionally, it sets options that may be
- * unique to the tree, such as the math mode.
- */
-export class TreeContext extends DocumentContext {
-  /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
-  opts: Omit<TreeContextOptions, 'isModule' | 'file' | 'plugin'>;
-
-  constructor(opts: TreeContextOptions = {}) {
-    /*
-     * Resolve the file-level options once (no compile context yet — the eval
-     * Context folds that in on attach). Structural identity stays on the
-     * instance; every other unknown key is transient `opts` data.
-     */
-    super(resolveOptions(undefined, opts), opts);
-    const { isModule, file, plugin, ...rest } = opts;
-    void isModule;
-    void file;
-    void plugin;
-    delete rest.mathMode;
-    delete rest.unitMode;
-    delete rest.functionMode;
-    delete rest.allowLeakyScope;
-    delete rest.leakyScope;
-    delete rest.allowCallerScope;
-    delete rest.bubbleRootAtRules;
-    delete rest.processImports;
-    this.opts = rest;
-  }
-}
-
-/**
  * This is the context object used for evaluation.
  *
  * @note
  * Most of context represents "state" while evaluating.
  * There should only ever be one Context singleton per parse & evaluation.
  */
-/**
- * Extensions an executable `@plugin` script may carry. Used only to expand an
- * extensionless plugin specifier; the actual runtime dispatch still goes through
- * a plugin that declares the resolved extension.
- */
-const PLUGIN_SCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'];
-
 export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: Omit<ContextOptions, keyof ResolvedOptions>
     & Readonly<Pick<ContextOptions, keyof ResolvedOptions>>;
 
-  private _treeContext: TreeContext | undefined;
   private _documentContext: DocumentContext | undefined;
-  private sessionOptions: Readonly<ResolvedOptions> | undefined;
+
+  /** Each distinct resolved policy once, so documents that agree share one object. */
+  private readonly policies = new Map<string, Readonly<ResolvedOptions>>();
+
+  /** The first document parsed, which every later one is compared with ({@link mixedPolicies}). */
+  private firstDocument: DocumentContext | undefined;
+
+  /**
+   * Whether this session's documents differ in policy or value evaluator. Until
+   * one does, nothing a document wrote needs its own policy looked up, so a
+   * single-policy render pays one field read where a lookup would go.
+   */
+  mixedPolicies = false;
   private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
   private readonly pluginPathCache = new Map<string, Promise<ResolvedPathResult> | ResolvedPathResult>();
   private readonly pluginModuleCache = new Map<string, Promise<LoadedPluginModuleResult> | LoadedPluginModuleResult>();
@@ -499,7 +468,7 @@ export class Context {
    * Flat, fully-resolved options for the currently-active source context — the one
    * place to read a resolved option (`context.options.unitMode`). Every field is
    * present, so there is no `??` and no per-read merge. Context source switches
-   * keep it shared with the active tree/document context;
+   * keep it shared with the active document context;
    * consumers must not assign it directly. See {@link ResolvedOptions}.
    */
   private _options: Readonly<ResolvedOptions>;
@@ -512,47 +481,22 @@ export class Context {
   private _evaluator?: ValueEvaluator;
 
   /**
-   * Canonical AST-v2 value evaluator registered by the active dialect plugin.
-   * Its concrete registry is assembled outside core (`@jesscss/fns`), while
+   * Canonical AST-v2 value evaluator: the active document's own plugin's
+   * (`PluginInterface.valueEvaluator`), else the one registered here. Its
+   * concrete registry is assembled outside core (`@jesscss/fns`), while
    * Context owns the per-render execution state and lifetime.
    */
   get evaluator(): ValueEvaluator | undefined {
-    return this._evaluator;
+    return this._documentContext?.plugin?.valueEvaluator ?? this._evaluator;
   }
 
-  /** Register the typed value evaluator supplied by the active dialect plugin. */
+  /** Register the value evaluator for documents whose plugin supplies none. */
   registerValueEvaluator(evaluator: ValueEvaluator): void {
     this._evaluator = evaluator;
   }
 
   /** Dialect-owned function capability for canonical AST rendering. */
   pluginHost?: PluginHost;
-
-  /**
-   * The active file's tree context. Assigning it (at import entry/exit and
-   * ruleset scope changes) recomputes `options` once and shares the resulting
-   * object with the tree context, so the fast-path reads that follow are plain
-   * field accesses.
-   */
-  get treeContext(): TreeContext | undefined {
-    return this._treeContext;
-  }
-
-  set treeContext(tc: TreeContext | undefined) {
-    this._treeContext = tc;
-
-    /*
-     * Fold the compile-level options over the tree's own, once, and SHARE the
-     * result: `context.options` and `tc.options` become the same object, so eval
-     * (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
-     * hit one resolved set with nothing left to merge. Idempotent on re-entry
-     * (compile ?? already-folded === already-folded).
-     */
-    this._options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
-    if (tc) {
-      tc.replaceResolvedOptions(this._options);
-    }
-  }
 
   /** Active canonical AST source identity, independent of legacy tree state. */
   get documentContext(): SourceContext | undefined {
@@ -570,7 +514,7 @@ export class Context {
 
   /** Active source facts for resolver, diagnostics, and file-reading consumers. */
   get sourceContext(): SourceContext | undefined {
-    return this._documentContext ?? this._treeContext;
+    return this._documentContext;
   }
 
   private pluginCacheKey(plugin: PluginInterface | undefined): string {
@@ -589,7 +533,8 @@ export class Context {
     const source = this.sourceContext;
     const file = source?.file;
     const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
-    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}`;
+    const mustLoad = importOptions.mustLoad === true ? '\0must-load' : '';
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}${mustLoad}`;
   }
 
   private moduleCacheKey(importPath: string, importOptions: ImportOptions): string {
@@ -619,6 +564,19 @@ export class Context {
    * Only populated when using safe methods.
    */
   errors: ErrorDiagnostic[] = [];
+
+  /**
+   * An error-severity diagnostic fails the compile, whichever phase recorded it
+   * (owner 2026-10-16: "compiling stops on the first error", "if the diagnostic
+   * treats it as an error, then no it doesn't succeed"; ledger P47). Throws the
+   * first one recorded. Something that must not fail the build is a warning.
+   */
+  failOnRecordedError(): void {
+    const first = this.errors[0];
+    if (first !== undefined) {
+      throw makeJessErrorFromDiagnostic(first);
+    }
+  }
 
   /*
    * Warning rows deliberately stay columnar until a public result or renderer
@@ -653,8 +611,9 @@ export class Context {
       const rows: WarningDiagnostic[] = [];
       for (let index = 0; index < this._warningCodes.length; index++) {
         const source = this._warningSources[index];
-        const file = this._warningFiles[index];
+        const authored = this._warningFiles[index];
         const offset = this._warningOffsets[index]!;
+        const file = authored !== undefined && source !== undefined && offset >= 0 ? fileAt(authored, source, offset) : authored;
         const location = source !== undefined && offset >= 0
           ? lineColAt(source, offset, file)
           : undefined;
@@ -666,7 +625,7 @@ export class Context {
           message: this._warningMessages[index]!,
           reason: this._warningReasons[index]!,
           fix: this._warningFixes[index]!,
-          note: this._warningNotes[index],
+          note: this._warningNotes[index] ?? (file === authored ? undefined : INJECTED_TEXT_NOTE),
           file: file === undefined
             ? undefined
             : {
@@ -929,28 +888,6 @@ export class Context {
     }
   }
 
-  /**
-   * A feature ported from Less - we suppress any `@charset`
-   * after the first one.
-   */
-  currentCharset?: Any | AtRuleStatement;
-
-  /** Track whether charset has been emitted during toString to avoid duplicates */
-  charsetEmitted?: boolean;
-
-  /** @import rules must be at the top of CSS output */
-  topImports?: Node[];
-
-  /**
-   * This is set when entering rulesets so child nodes can look up values in
-   * their containing rule context. Current Jess source uses `$name` for live
-   * lookup and `$^name` for scoped lookup; the old `$!name` spelling is retired.
-   */
-  rulesContext?: Rules;
-
-  /** Entire context root (ultimate root) */
-  root!: Rules;
-
   /** Canonical parsed document for the AST-v2 execution route. */
   document?: Stylesheet;
 
@@ -970,133 +907,6 @@ export class Context {
    */
   private readonly documentBodyContexts = new WeakMap<object, DocumentContext>();
 
-  /** Set so that we can do ruleset selector lookup for extend */
-  treeRoot!: Rules;
-  allRoots: Rules[] = [];
-
-  /** The call that is currently being evaluated */
-  caller?: Call;
-
-  /**
-   * Spine mixin-fold sink (cutover P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3).
-   * When set by the emit-walk spine before it drives a mixin CALL's resolution,
-   * the callable terminal (`evaluateCallableCandidateOutput`) skips the
-   * `rules.eval()` output-tree build and instead hands the emit-walk driver the
-   * guard-passed BOUND SURFACE (shared body children + the wired live-cell param
-   * frame) so it can descend it INLINE to the writer emit-walk already holds — no
-   * output tree, no `mixinOutputSlot`, no `Rules.derive`. Returning `false` from
-   * the sink signals "not a spine-simple shape" so the terminal falls back to the
-   * eval path for THAT candidate (byte-identical transition; the eval terminal
-   * dies in P4). Scoped save/restore around the drive — undefined on the eval path
-   * so the terminal is unchanged there.
-   */
-  spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules, candidateIsMixin: boolean) => boolean;
-
-  /**
-   * Set by the spine root descent (`_emitRulesBody`) around the render of a
-   * document-ROOT-level mixin CALL. When the callable terminal builds that call's
-   * output tree it consults this flag: an output that drops a bare property
-   * `Declaration` at the document root is invalid ("Properties must be inside
-   * selector blocks") — the same rejection the eval path's `checkValidNodes`
-   * (`isRoot && fromCallOutput`) makes. The spine emits call output as text inline
-   * (no post-eval output tree to walk), so the check moves to the single fold/eval
-   * drive. Scoped save/restore around the root call render; unset for a call nested
-   * inside a selector container (where a folded property is legal).
-   */
-  spineRootCallEmit?: boolean;
-
-  /**
-   * LEAKY forward-propagation (spine): the SOURCE root Rules whose body is
-   * currently emitting a root-level mixin call. Its scope frame is the caller
-   * frame a leaked `@x: …` mixin-body var must inject into so a later root sibling
-   * ruleset resolves it. Captured at the root emit site (where `this === root`)
-   * because `context.root` is reassigned during the call's nested eval. Set only
-   * alongside {@link spineRootCallEmit}; undefined for a nested call.
-   */
-  spineRootCallEmitFrame?: Rules;
-
-  /**
-   * The spine descent (`renderRootViaSpine`) has already established the document
-   * root on `context.root` — no `Rules.eval` frame for the real root sits on
-   * `rulesEvalStack`. A DETACHED-RULESET body (or mixin surface) evaluated INSIDE
-   * the fold reaches `_evalPreparedRules` as the FIRST `Rules.evalNode`, so its
-   * `rulesEvalStack.length === 1` "am I the outermost root?" heuristic fires and
-   * would REASSIGN `context.root` to that nested body — clobbering the real root's
-   * built-in function registry (`findFunction`'s dead-end fallback then misses, so
-   * `length(@list)` emits raw). The eval path never trips this: it pushes the real
-   * root first, so a nested body sees stack length ≥2. This flag lets the nested
-   * eval skip the reassignment when the spine owns the root. Undefined on the eval
-   * path (zero-cost, unchanged there). Scoped save/restore around the spine descent.
-   */
-  spineOwnsRoot?: boolean;
-
-  /** Extend roots registry for managing extend scoping */
-  extendRoots!: ExtendRootRegistry;
-
-  /**
-   * Generic single-pass emit visitors (design §6). An ordered, initially-empty
-   * list of `(node) => Node | void` hooks (with an optional `exit`) fired at each
-   * resolved output node's emit moment. The list being empty is the zero-cost
-   * common case (§6.5 / §4.0-style gate): emit checks `emitVisitors === undefined`
-   * and skips all hook machinery. `node` is the resolved output node: no ctx, no
-   * frame (§6, decision table). Native Jess visitors and the less-compat bridge
-   * (registered only when at least one real Less visitor exists, not built here)
-   * coexist as plain list entries; core owns no chaining / remove / abort /
-   * per-type dispatch.
-   *
-   * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
-   */
-  emitVisitors?: EmitVisitor[];
-
-  /**
-   * The active single-pass spine `+:`/`+_:` merge plan for the body currently
-   * being emitted (design §merge). Keyed by source declaration node → its
-   * coalesced-value anchor / suppress verdict. Installed by `withSpineMergePlan`
-   * for the duration of a body descent and restored on exit, so a `$prop`
-   * Reference resolved MID-emit reads the coalesced merge value (the anchor's
-   * combined value) rather than the last merge sibling's own truncated value.
-   *
-   * Undefined (the common case) on any body with no merge-flagged declaration —
-   * the reference read fast-bails on the undefined check before touching it, so
-   * the non-merge path pays nothing.
-   */
-  spineMergePlan?: import('./tree/util/spine-merge.js').SpineMergePlan;
-
-  /**
-   * Append a generic emit visitor (design §6.5). Deterministic registration
-   * order; the pass threads each node through `enter` (`shape = enter(shape) ??
-   * shape`) and fires `exit` (if registered) after the node's children. No
-   * auto-registration — the list stays undefined (zero-cost) until a caller
-   * registers.
-   */
-  registerEmitVisitor(enter: EmitVisitorEnter, options?: { exit?: EmitVisitorExit }): void {
-    (this.emitVisitors ??= []).push({ enter, exit: options?.exit });
-  }
-
-  /**
-   * Depth-first document order of each Ruleset (assigned once per root before eval).
-   * Used so processExtends can apply extends in true source order.
-   */
-  documentOrderByRuleset?: WeakMap<Ruleset, number>;
-
-  /**
-   * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
-   */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
-
-  /**
-   * When doing any kind of lookup, the current node and resolved
-   * nodes in the search chain are added to prevent recursion errors.
-   *
-   * We use a set here because we look it up for filtering.
-   * Also used to track mixins currently being evaluated to prevent infinite recursion.
-   */
-  private _searchScope: Set<Node> | undefined;
-  get searchScope() {
-    return (this._searchScope ??= new Set());
-  }
-
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
@@ -1104,184 +914,44 @@ export class Context {
    * @todo - Make the id a hash of the (project-relative) path + contents
    */
   id = generateId();
-  ruleCounter = 1;
-
-  selectorBits = new BitSetLibrary<string>();
-
-  /**
-   * Selector key-set analysis (keySet / visibleKeySet / requiredKeySet), computed
-   * off the selector nodes. Scoped to this Context's bit library, so its cache and
-   * interned keys live and die with the compilation — no cross-run leak.
-   */
-  get selectorAnalysis(): SelectorAnalysis {
-    return selectorAnalysisFor(this.selectorBits);
-  }
-
-  /** Rules depth, used to figure out source order */
-  depth = -1;
 
   private _classMap: Map<string, string> | undefined;
   get classMap() {
     return (this._classMap ??= new Map());
   }
 
-  private _printState: PrintOptions | undefined;
-  get printState() {
-    return (this._printState ??= { context: this });
-  }
-
-  /** Frames for nested rulesets, used for selector evaluation */
-  rulesetFrames: Ruleset[] = [];
-
-  /**
-   * Spine-mode (P1 §2, ampersand-append fold) resolved-selector side-channel. Maps a
-   * SOURCE ruleset frame node to the CONCRETE selector the spine resolved for it at
-   * ruleset-enter. `Ampersand.evalNode` reads this before the raw `frame.selector` so a
-   * nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`) composes each level against the
-   * RESOLVED parent (`.a-b`), not the raw authored `&-b`. This reproduces the eval
-   * pass, which pushes the resolved OUTPUT node onto `rulesetFrames` — without mutating
-   * the shared canonical source node (the output-affecting-resolution invariant). Set +
-   * cleared per frame push/pop by `serializeSpineFrameContainer`.
-   */
-  spineResolvedFrameSelector: WeakMap<Ruleset, Selector | Nil> | undefined;
-
-  /** Unified frames array for flat rendering when collapseNesting is true */
-  frames: (Ruleset | AtRule)[] = [];
-
-  /**
-   * We push a boolean to this array when entering a calc() call
-   * and pop it when leaving. This helps us determine if operations
-   * should be performed or not.
-   *
-   * @todo - can't this just be a number?
-   */
-  calcFrames = 0;
-
-  private _callMap: CallMap | undefined;
-  get callMap() {
-    return (this._callMap ??= new CallMap());
-  }
-
-  private _callStack: Call[] | undefined;
-  get callStack() {
-    return (this._callStack ??= []);
-  }
-
-  /**
-   * Stack to track reference call chain for clearing matched keys at outermost level
-   */
-  private _referenceStack: number = 0;
-  get referenceStack() {
-    return this._referenceStack;
-  }
-
-  /**
-   * Import-evaluation scope stack.
-   *
-   * This intentionally models lexical import scope instead of global counters:
-   * - each import branch pushes its semantics on entry
-   * - each branch pops in `finally`
-   * - readers ask semantic questions (`inReferenceImportScope`) instead of
-   *   inspecting mutable depth values.
-   *
-   * Why this exists:
-   * some behaviors depend on "how we got here" (call-path scope), not only
-   * on the current node's own options. Example: suppressing top-level @import
-   * hoists while traversing a reference-only branch.
-   */
-  private _importScopeStack: Array<{ reference: boolean; multiple: boolean }> = [];
-  get importScope() {
-    return this._importScopeStack;
-  }
-
-  get inReferenceImportScope() {
-    return this._importScopeStack.some(scope => scope.reference);
-  }
-
-  get inMultipleImportScope() {
-    return this._importScopeStack.some(scope => scope.multiple);
-  }
-
-  pushImportScope(scope: { reference?: boolean; multiple?: boolean }) {
-    this._importScopeStack.push({
-      reference: scope.reference === true,
-      multiple: scope.multiple === true
-    });
-  }
-
-  popImportScope() {
-    if (this._importScopeStack.length > 0) {
-      this._importScopeStack.pop();
-    }
-  }
-
-  pushReference() {
-    this._referenceStack++;
-  }
-
-  /**
-   * Stack to track when a value comes from an important declaration.
-   * The exact source leaf is carried when available so downstream render/public
-   * surfaces can preserve it instead of synthesizing a replacement flag node.
-   */
-  private _importantSourceStack: (Any<'flag'> | true)[] = [];
-  get hasImportantSource() {
-    return this._importantSourceStack.length > 0;
-  }
-
-  pushImportantSource(source?: Any<'flag'>) {
-    this._importantSourceStack.push(source ?? true);
-  }
-
-  popImportantSource() {
-    return this._importantSourceStack.pop();
-  }
-
-  popReference() {
-    this._referenceStack--;
-  }
-
-  rulesEvalStack: Rules[] = [];
-
-  /**
-   * We push a boolean to this array when entering parens call
-   * and pop it when leaving. This helps us determine if operations
-   * should be performed or not.
-   *
-   * Sometimes we "reset" the "in parentheses" state by pushing false,
-   * such as within a function call.
-   */
-  parenFrames: boolean[] = [];
-
-  /**
-   * In a custom declaration's value. All nodes should
-   * be preserved as-is and not evaluated, except for
-   * $() expressions.
-  */
-  inCustom: boolean | undefined;
-
-  /** A flag set when evaluating conditions */
-  isDefault: boolean | undefined;
-
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
 
-    /*
-     * Seed resolved options from compile config (no tree context yet); the
-     * treeContext setter recomputes this once a file's context is active.
-     */
-    this._options = resolveOptions(opts, undefined);
+    /* The policy outside any document; entering a document swaps in its own. */
+    this._options = this.policyFor(undefined, undefined);
     this.plugins = plugins ?? [];
-    this.extendRoots = new ExtendRootRegistry();
-    if (opts.output?.compress !== undefined) {
-      this.printState.compress = opts.output.compress;
-    }
   }
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
-  evaldTrees = new Map<string, Rules>();
+
+  /**
+   * One document's policy (DESIGN-DECISIONS C19): the settings the host supplies
+   * for the source, else this Context's own mode options, over its dialect's
+   * defaults, resolved once when the document is parsed. Documents that resolve
+   * to the same values share one frozen object, so entering one is a pointer
+   * compare when nothing changes.
+   */
+  private policyFor(
+    settings: SourceOptions | undefined,
+    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
+  ): Readonly<ResolvedOptions> {
+    const resolved = resolveOptions(settings ?? this.opts, dialectDefaults);
+    const key = Object.values(resolved).join('\0');
+    const known = this.policies.get(key);
+    if (known !== undefined) {
+      return known;
+    }
+    this.policies.set(key, resolved);
+    return resolved;
+  }
 
   /** Record the parser/source identity once, when an AST document enters this session. */
   private rememberDocumentContext(
@@ -1289,26 +959,46 @@ export class Context {
     filePath: string,
     source: string | undefined,
     plugin: PluginInterface,
-    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
+    policy: Readonly<ResolvedOptions>,
+    sourceOffset?: number,
+    sourceEnd?: number
   ): void {
-    this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
-    const documentContext = new DocumentContext(this.sessionOptions, {
+    const documentContext = new DocumentContext(policy, {
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
         fullPath: filePath,
-        ...(source === undefined ? {} : { source })
+        ...(source === undefined ? {} : { source }),
+        ...(sourceOffset ? { sourceOffset } : {}),
+        ...(sourceEnd === undefined ? {} : { sourceEnd })
       },
       plugin
     });
     attachDocumentFacts(documentContext, triviaMapOf(document));
     this.documentContexts.set(document, documentContext);
+
+    /*
+     * A document's root definitions and variable values can be reached from
+     * any other document (an import splices them into the importer's frame),
+     * so each records the document it is written in, once: its math answers
+     * that document's policy wherever it is read (DESIGN-DECISIONS C19).
+     */
+    for (const statement of document.rules) {
+      if (statement.type === 'MixinDefinition' || statement.type === 'Ruleset') {
+        this.documentBodyContexts.set(statement.rules, documentContext);
+      } else if (statement.type === 'VariableDeclaration') {
+        this.documentBodyContexts.set(statement.value, documentContext);
+      }
+    }
+    const first = this.firstDocument ??= documentContext;
+    if (first.options !== policy || first.plugin?.valueEvaluator !== plugin.valueEvaluator) {
+      this.mixedPolicies = true;
+    }
   }
 
   /**
    * Run work with the source identity of a canonical AST document active.
-   * This is the AST-v2 equivalent of entering a legacy tree's TreeContext:
-   * the Context resolver, option cache, diagnostics and plugin priority all
+   * The Context resolver, option cache, diagnostics and plugin priority all
    * remain one session-owned path.
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
@@ -1326,15 +1016,28 @@ export class Context {
     if (!transform) {
       return value;
     }
+    return transform.call(document.plugin, this.urlRequest(document, value, quoted, kind)) ?? value;
+  }
+
+  /**
+   * The URL option the active document's plugin would add to an escaped `url()`
+   * body `value`, which an escaped string does not get ({@link Plugin.escapedUrlSkips}).
+   */
+  escapedUrlSkips(value: string): string | undefined {
+    const document = this.sourceContext;
+    const skips = document?.plugin?.escapedUrlSkips;
+    return document === undefined || skips === undefined ? undefined : skips.call(document.plugin, this.urlRequest(document, value, false, 'url'));
+  }
+
+  private urlRequest(document: SourceContext, value: string, quoted: boolean, kind: NonNullable<UrlTransformRequest['kind']>): UrlTransformRequest {
     const entry = this.document ? this.documentContexts.get(this.document) : undefined;
-    const request: UrlTransformRequest = {
+    return {
       value,
       quoted,
       kind,
-      ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
+      ...(document.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
       ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath })
     };
-    return transform.call(document.plugin, request) ?? value;
   }
 
   /**
@@ -1396,20 +1099,84 @@ export class Context {
     return this.documentBodyContexts.get(body) ?? this._documentContext ?? null;
   }
 
+  /** The document that recorded `body` (a root definition's body or a root variable's value), if one did. */
+  bodyOwner(body: object): DocumentContext | undefined {
+    return this.documentBodyContexts.get(body);
+  }
+
   /**
+   * The resource an import path names from the current document. A path written
+   * inside a remote document is relative to that document's URL, never a local
+   * file — `/etc/x.less` in `https://h/a.less` is `https://h/etc/x.less` — so a
+   * fetched document reaches only what its own host serves.
+   */
+  private importTarget(importPath: string): string {
+    const importer = this.sourceContext?.file?.fullPath;
+    if (importer === undefined || !EXTERNAL_IMPORT_SPECIFIER.test(importer) || EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      return importPath;
+    }
+    const target = new URL(importPath, importer);
+
+    /** A one-letter "scheme" (`C:/x.less`) is a drive path, not a relative reference. */
+    if (target.origin !== new URL(importer).origin) {
+      throw new Error(`Import "${importPath}" in ${importer} does not name a resource on its host.`);
+    }
+    return target.href;
+  }
+
+  /**
+   * Whether a plugin opts in to loading this import. Only an external specifier
+   * needs a claim; unclaimed, it stays a CSS terminal unless it `mustLoad`. A
+   * plugin refuses one by throwing, with its own reason.
+   */
+  private async isClaimed(importPath: string, mustLoad: boolean): Promise<boolean> {
+    if (!EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      return true;
+    }
+    const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
+    const { searchPaths = [] } = this.opts;
+    for (const plugin of this.plugins) {
+      if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths, mustLoad)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The source text at a located path, read by the plugin that located it; a locate-only plugin defers to the first reader. */
+  private readSource(resolvedPath: string, locator: PluginInterface): Promise<string> {
+    const reader = locator.getSource ? locator : this.plugins.find(plugin => plugin.getSource);
+    if (!reader?.getSource) {
+      throw new Error('No source getter found');
+    }
+    return reader.getSource(resolvedPath);
+  }
+
+  /**
+   * Every path a document names — `@import`, `(inline)`, `data-uri()`, `@use`,
+   * `@plugin` — is resolved here, so the remote-document rebase holds for all.
+   *
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
    */
-  private async _getPath(importPath: string) {
+  private async _getPath(importPath: string): Promise<ResolvedPathResult> {
+    importPath = this.importTarget(importPath);
     const currentDocument = this.sourceContext;
     const currentDirectory = currentDocument?.file?.path ?? process.cwd();
     const { searchPaths = [] } = this.opts;
 
     const plugins = this.plugins;
     let finalPath: string | undefined;
+    let locator: PluginInterface | undefined;
     let currentPlugin = currentDocument?.plugin;
 
-    /** First, expand imports */
-    let paths = currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
+    /**
+     * First, expand imports. Expansion is filesystem probing (`foo` → `foo.less`,
+     * `_foo.scss`, …) that `locate` settles by existence; a URL names exactly one
+     * resource, so it is never expanded.
+     */
+    let paths = EXTERNAL_IMPORT_SPECIFIER.test(importPath)
+      ? [importPath]
+      : currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
     if (paths.length === 0) {
       throw new Error(`No paths found for import "${importPath}"`);
     }
@@ -1444,19 +1211,33 @@ export class Context {
       const result = await plugin.locate(paths, currentDirectory);
       if (result) {
         finalPath = result;
+        locator = plugin;
         break;
       }
     }
 
-    if (!finalPath) {
+    if (!finalPath || !locator) {
       throw ERR.importNotFound({
         meta: { specifier: importPath, from: currentDirectory }
       });
     }
 
-    const normalizedFinalPath = finalPath.split(/[?#]/)[0]!;
-    const ext = path.extname(normalizedFinalPath);
-    const friendlyPath = path.relative(process.cwd(), normalizedFinalPath);
+    /*
+     * A file path drops its `?query`/`#fragment`. A URL keeps its query: it is
+     * part of which resource the server returns, so it is part of the identity.
+     */
+    const located = EXTERNAL_IMPORT_SPECIFIER.test(finalPath);
+    const normalizedFinalPath = finalPath.split(located ? '#' : /[?#]/)[0]!;
+
+    /*
+     * A URL's extension comes from its path, not its host or query. A URL with
+     * none is fetched as written, as Less 4.x does, and parsed in the importing
+     * document's language.
+     */
+    const ext = located
+      ? path.posix.extname(new URL(normalizedFinalPath, 'file:///').pathname) || (currentPlugin?.supportedExtensions?.[0] ?? '')
+      : path.extname(normalizedFinalPath);
+    const friendlyPath = located ? normalizedFinalPath : path.relative(process.cwd(), normalizedFinalPath);
 
     if (!ext) {
       throw new Error(`File "${friendlyPath}" not supported`);
@@ -1465,7 +1246,9 @@ export class Context {
     return {
       triedPaths: paths,
       resolvedPath: normalizedFinalPath,
-      friendlyPath
+      friendlyPath,
+      ext,
+      locator
     };
   }
 
@@ -1506,16 +1289,24 @@ export class Context {
     plugin: PluginInterface,
     filePath: string,
     source: string,
-    options?: Parameters<NonNullable<PluginInterface['safeParse']>>[2]
-  ): ISafeParseResult {
+    importOptions?: ImportOptions
+  ): { result: ISafeParseResult; settings: SourceOptions | undefined } {
     if (!plugin.safeParse) {
       throw new Error(`Plugin "${plugin.name}" does not support parsing`);
     }
-    return plugin.safeParse(filePath, source, options);
+    const supplied = this.opts.sourceOptions?.(filePath, plugin.name);
+    const settings = supplied?.options;
+    const result = plugin.safeParse(filePath, source, {
+      compilerOptions: this.opts,
+      sourceOptions: settings,
+      sourceConfigFile: supplied?.configFile,
+      importOptions
+    });
+    return { result, settings };
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext, locator } = await this._getPath(importPath);
     const { type } = importOptions;
 
     /**
@@ -1530,9 +1321,6 @@ export class Context {
       };
     }
 
-    const plugins = this.plugins;
-
-    const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const parsedSourceKey = this.parsedSourceTreeKey(plugin, resolvedPath);
     const cachedDocument = this.parsedSourceTrees.get(parsedSourceKey);
@@ -1544,16 +1332,8 @@ export class Context {
       };
     }
 
-    const sourceGetter = plugins.find(plugin => plugin.getSource);
-    if (!sourceGetter) {
-      /** If we can't actually load files, bail. */
-      throw new Error('No source getter found');
-    }
-    const source = await sourceGetter.getSource!(resolvedPath);
-    const parseResult = this.parseSource(plugin, resolvedPath, source, {
-      importOptions,
-      compilerOptions: this.opts
-    });
+    const source = await this.readSource(resolvedPath, locator);
+    const { result: parseResult, settings } = this.parseSource(plugin, resolvedPath, source, importOptions);
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -1561,11 +1341,14 @@ export class Context {
       this.warn(warning);
     }
 
-    // Check if we have errors and should break
-    if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
-      // Throw the first error as a JessError
-      const firstError = parseResult.errors[0]!;
-      throw makeJessErrorFromDiagnostic(firstError);
+    /*
+     * Stop on a parse error, whether or not the parser recovered from it and
+     * returned its document. Collecting diagnostics (`breakOnError: false`)
+     * goes on with that document, so the rest of the sheet is still checked
+     * (P45, owner 2026-10-09), and the compile fails at the end.
+     */
+    if (this.opts.breakOnError !== false) {
+      this.failOnRecordedError();
     }
 
     const document = parseResult.document;
@@ -1573,7 +1356,7 @@ export class Context {
       if (!this.document) {
         this.document = document;
       }
-      this.rememberDocumentContext(document, resolvedPath, source, plugin, parseResult.dialectDefaults);
+      this.rememberDocumentContext(document, resolvedPath, source, plugin, this.policyFor(settings, parseResult.dialectDefaults));
 
       this.parsedSourceTrees.set(parsedSourceKey, document);
       if (type === undefined) {
@@ -1645,21 +1428,43 @@ export class Context {
   }
 
   private async loadImportUncached(importPath: string, importOptions: ImportOptions = {}) {
-    if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
-      const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
-      const { searchPaths = [] } = this.opts;
-      let claimed = false;
-      for (const plugin of this.plugins) {
-        if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths)) {
-          claimed = true;
-          break;
-        }
-      }
-      if (!claimed) {
-        return undefined;
-      }
+    const target = this.importTarget(importPath);
+    const mustLoad = importOptions.mustLoad === true;
+    if (await this.isClaimed(target, mustLoad)) {
+      return this.getTree(target, importOptions);
     }
-    return this.getTree(importPath, importOptions);
+
+    /** No plugin loads it, and it has no CSS meaning, so it cannot stay a CSS `@import` either. */
+    if (mustLoad) {
+      throw new Error(
+        `No plugin loads ${target}, and this import cannot stay a CSS @import. `
+        + 'Remote imports need @jesscss/plugin-remote-import with the host on its allow list.'
+      );
+    }
+    return undefined;
+  }
+
+  /**
+   * The text of an `(inline)` import, read the way `@import` reads a source: an
+   * external specifier must be claimed (unclaimed, there is nothing to inline,
+   * so it is missing), and the plugin that located the path reads it. A file
+   * path drops its `?query`/`#fragment`; a URL keeps its query. Returns the
+   * text as the file it resolved to, which source maps name as its source.
+   */
+  async readInlineImport(importPath: string): Promise<{ name: string; path: string; fullPath: string; source: string }> {
+    const target = this.importTarget(importPath);
+    if (!(await this.isClaimed(target, true))) {
+      throw ERR.importNotFound({
+        meta: { specifier: importPath, from: this.sourceContext?.file?.path ?? process.cwd() }
+      });
+    }
+    const { resolvedPath, locator } = await this._getPath(EXTERNAL_IMPORT_SPECIFIER.test(target) ? target : target.split(/[?#]/)[0]!);
+    return {
+      name: path.basename(resolvedPath),
+      path: path.dirname(resolvedPath),
+      fullPath: resolvedPath,
+      source: await this.readSource(resolvedPath, locator)
+    };
   }
 
   /**
@@ -1676,11 +1481,18 @@ export class Context {
    * honoring search paths). Used by file-reading functions like `data-uri()`
    * and `image-size()` so they never touch raw `fs` for path resolution.
    *
-   * A `#fragment` or `?query` suffix is stripped before resolution.
+   * A `#fragment` or `?query` suffix is stripped before resolution. A path that
+   * locates to a URL is never read: as in Less 4.x, these functions read local
+   * files only, so it is missing and `data-uri()` keeps its `url()` fallback.
    */
-  async readBinary(importPath: string): Promise<Buffer> {
+  async readBinary(importPath: string): Promise<Uint8Array> {
     const cleanPath = importPath.split(/[?#]/)[0]!;
     const { resolvedPath } = await this._getPath(cleanPath);
+    if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {
+      throw ERR.importNotFound({
+        meta: { specifier: importPath, from: this.sourceContext?.file?.path ?? process.cwd() }
+      });
+    }
     return readFile(resolvedPath);
   }
 
@@ -1691,21 +1503,34 @@ export class Context {
     filePath?: string;
     type?: string;
     extension?: string;
+
+    /** See `DocumentContextOptions.file.sourceOffset`. */
+    sourceOffset?: number;
+
+    /** See `DocumentContextOptions.file.sourceEnd`. */
+    sourceEnd?: number;
   } = {}) {
-    const { filePath, type, extension } = options;
-    const virtualPath = filePath || `virtual.${extension || 'jess'}`;
+    const { filePath, type, extension, sourceOffset, sourceEnd } = options;
+
+    /* `extension` comes with or without its dot ('.less' or 'less'). */
+    const virtualPath = filePath || `virtual${extension?.startsWith('.') ? extension : `.${extension || 'jess'}`}`;
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const result = this.parseSource(plugin, virtualPath, content, {
-      compilerOptions: this.opts
-    });
+    const { result, settings } = this.parseSource(plugin, virtualPath, content);
+    if (sourceOffset || sourceEnd !== undefined) {
+      const owner = { sourceOffset, sourceEnd };
+      result.errors = result.errors.map(error => inAuthoredFile(error, content, owner));
+      result.warnings = result.warnings.map(warning => inAuthoredFile(warning, content, owner));
+    }
     this.errors.push(...result.errors);
     for (const warning of result.warnings) {
       this.warn(warning);
     }
-    if (result.errors.length > 0 && this.opts.breakOnError !== false) {
-      throw makeJessErrorFromDiagnostic(result.errors[0]!);
+
+    /* As in `getTree`: stop on a parse error unless collecting diagnostics. */
+    if (this.opts.breakOnError !== false) {
+      this.failOnRecordedError();
     }
     const document = result.document;
     if (!document) {
@@ -1722,7 +1547,15 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults);
+    this.rememberDocumentContext(
+      document,
+      virtualPath,
+      content,
+      plugin,
+      this.policyFor(settings, result.dialectDefaults),
+      sourceOffset,
+      sourceEnd
+    );
 
     return {
       node: document,
@@ -1754,8 +1587,9 @@ export class Context {
   }
 
   private async getModuleUncached(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
-    const ext = path.extname(resolvedPath);
+    refuseRemoteModule(this.importTarget(importPath));
+    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPath(importPath);
+    refuseRemoteModule(resolvedPath);
     const isJsonImport = ext === '.json';
     const isScriptModuleImport = SCRIPT_MODULE_EXTENSIONS.has(ext);
     const { type } = importOptions;
@@ -1800,7 +1634,7 @@ export class Context {
       }
       if (!plugin) {
         if (isScriptModuleImport) {
-          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
+          throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);
         }
         throw new Error(`File "${friendlyPath}" not supported`);
       }
@@ -1845,7 +1679,7 @@ export class Context {
 
   private async getPluginPathUncached(importPath: string): Promise<ResolvedPathResult> {
     const candidates = path.extname(importPath) === ''
-      ? [...PLUGIN_SCRIPT_EXTENSIONS.map(ext => importPath + ext), importPath]
+      ? [...Array.from(SCRIPT_MODULE_EXTENSIONS, ext => importPath + ext), importPath]
       : [importPath];
     const tried: string[] = [];
     let lastError: unknown;
@@ -1869,8 +1703,9 @@ export class Context {
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPluginPath(importPath);
-    const ext = path.extname(resolvedPath);
+    refuseRemoteModule(this.importTarget(importPath));
+    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
+    refuseRemoteModule(resolvedPath);
     let plugin = this.plugins.find(candidate =>
       candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
     if (!plugin) {
@@ -1883,6 +1718,9 @@ export class Context {
       }
     }
     if (!plugin?.importPlugin) {
+      if (SCRIPT_MODULE_EXTENSIONS.has(ext)) {
+        throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);
+      }
       throw new Error(`File "${friendlyPath}" is not supported as an executable plugin module.`);
     }
     const cacheKey = this.pluginModuleCacheKey(plugin, resolvedPath, options);
@@ -1927,19 +1765,5 @@ export class Context {
     }
     this.classMap.set(name, mapVal);
     return `.${mapVal}`;
-  }
-
-  shouldOperate(op: Operator, left: Node, right: Node) {
-    const mathMode = this.options.mathMode;
-    return shouldOperateWithMathFrames(
-      {
-        mathMode,
-        parenFrames: this.parenFrames,
-        calcFrames: this.calcFrames
-      },
-      op,
-      left,
-      right
-    );
   }
 }

@@ -4,10 +4,6 @@ import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } f
 
 let client: LanguageClient | undefined;
 
-function isDisposable(value: unknown): value is vscode.Disposable {
-  return typeof value === 'object' && value !== null && 'dispose' in value && typeof value.dispose === 'function';
-}
-
 export async function activate(context: vscode.ExtensionContext) {
   const enabled = vscode.workspace.getConfiguration('jess').get<boolean>('languageService.enable', true);
   if (!enabled) {
@@ -30,40 +26,26 @@ export async function activate(context: vscode.ExtensionContext) {
   };
 
   /*
-   * The client is intentionally thin: `vscode-languageclient` advertises the full
-   * set of standard client capabilities (including `textDocument/rename`,
-   * `prepareSupport`, and `textDocument/codeAction`) by default, so the rename and
-   * quick-fix providers only need to be advertised server-side (see server.ts
-   * `renameProvider`/`codeActionProvider`). No per-feature registration is required
-   * here — the capabilities are negotiated automatically on initialize.
+   * The client is intentionally thin: `vscode-languageclient` advertises the
+   * standard client capabilities by default, so each feature only needs to be
+   * advertised server-side (see server.ts). Saved files and untitled buffers are
+   * both served.
    */
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { scheme: 'file', language: 'css' },
-      { scheme: 'file', language: 'less' },
-      { scheme: 'file', language: 'scss' },
-      { scheme: 'file', language: 'jess' }
-    ],
+    documentSelector: ['css', 'less', 'scss', 'jess'].flatMap(language => [
+      { scheme: 'file', language },
+      { scheme: 'untitled', language }
+    ]),
     outputChannel,
 
-    // Keep it simple for now; we can add config sync later.
+    // The server receives these settings as `{ jess: { ... } }`.
     synchronize: {
       configurationSection: 'jess'
     }
   };
 
   client = new LanguageClient('jessLanguageService', 'Jess Language Service', serverOptions, clientOptions);
-  const started = client.start();
-  if (isDisposable(started)) {
-    context.subscriptions.push(started);
-  } else if (typeof started.then === 'function') {
-    // Some versions return a thenable (v9 returns a Promise<void>).
-    void started.then((d: unknown) => {
-      if (isDisposable(d)) {
-        context.subscriptions.push(d);
-      }
-    });
-  }
+  await client.start();
 }
 
 export async function deactivate() {

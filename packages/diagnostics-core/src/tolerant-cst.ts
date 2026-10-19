@@ -8,18 +8,33 @@ import { type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDo
 import { parseCssCst as parseCssDiagnosticCst, parseCssDoc as parseCssDiagnosticDoc } from '@jesscss/css-parser/cst/positions';
 import {
   CollectionOverlay,
+  HEX,
+  makeColorRgb,
+  makeDimension,
   makeKeyword,
   makeNull,
   makeQuoted,
   namedColor,
-  sniffLiteral,
+  parseHex,
   type Phase,
   type ValueGroup
 } from '@jesscss/core';
 import { parseJessCst as parseJessDiagnosticCst, parseJessDoc as parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst/positions';
-import { parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc } from '@jesscss/less-parser/cst/positions';
+import { LessMixinArgumentError, mixinListProblems, parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc, type MixinListItemShape } from '@jesscss/less-parser/cst/positions';
 import { parseScssCst as parseScssDiagnosticCst, parseScssDoc as parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst/positions';
 import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
+import {
+  CUSTOM_DECLARATION_TYPES,
+  CUSTOM_PROPERTY_VALUE_TYPES,
+  DECLARATION_TYPES,
+  FUNCTION_TYPES,
+  RULESET_TYPES,
+  absoluteEnd,
+  absoluteStart,
+  cstChildrenOf,
+  isCstNode
+} from './cst-node.js';
+import { pushParseTwinDiagnostics } from './parse-twins.js';
 import type {
   CollectDiagnosticsInput,
   CollectDiagnosticsResult,
@@ -293,28 +308,23 @@ const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
   ])
 };
 
-const RULESET_TYPES = new Set([
-  'Ruleset',
-  'NestedRuleset',
-  'RulesetWithExtends',
-  'NestedRulesetWithExtends'
-]);
 const MIXIN_DEFINITION_TYPES = new Set([
   'MixinDefinition',
   'MixinDefinitionRule',
   'MixinOrQualifiedRule'
 ]);
+
+/** A Less mixin argument/parameter list, and the item nodes it holds between its separator leaves. */
+const LESS_MIXIN_LIST_TYPES = new Set(['MixinInterior', 'MixinArguments']);
+const LESS_MIXIN_LIST_ITEM_TYPES = new Set(['MixinBinding', 'MixinRestParam', 'MixinArgument']);
 const ATRULE_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
   'UnknownAtRuleBlock',
   'QueryAtRuleBlock'
 ]);
-const DECLARATION_TYPES = new Set(['Declaration']);
-const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
 const DIMENSION_TYPES = new Set(['Dimension']);
 const PERCENTAGE_TYPES = new Set(['Percentage']);
-const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
@@ -323,7 +333,6 @@ const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'St
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
 const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'PseudoSelectorComplex']);
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
-const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
 
 /* The css CST node holding a query feature's name (`Property`) and value (`QueryValue`) children. */
@@ -700,16 +709,41 @@ const ROOT_VISIT_CONTEXT_BASE = {
   allowResolutionXUnit: false
 };
 
-function isCstNode(c: CssCstChild): c is CssCstNode {
-  return c._tag === 'node';
-}
-
-function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
-  return node.rules;
-}
-
 function isQuotedCstNode(node: CssCstNode): boolean {
   return node.grammarType === 'Quoted';
+}
+
+function hasLeafChild(node: CssCstNode, value: string): boolean {
+  return cstChildrenOf(node).some(child => child._tag === 'leaf' && child.value === value);
+}
+
+/**
+ * The items of a Less mixin list that its `;` makes invalid (ledger P46), asked
+ * of the grammar's own rule (`mixinListProblems`) with the list's item nodes and
+ * separator leaves, in source order.
+ */
+function lessMixinListProblems(list: CssCstNode): { readonly item: CssCstNode; readonly problem: 'named' | 'rest' }[] {
+  const items: CssCstNode[] = [];
+  const separators: string[] = [];
+  let semicolons = false;
+  for (const child of cstChildrenOf(list)) {
+    if (isCstNode(child) && LESS_MIXIN_LIST_ITEM_TYPES.has(child.grammarType)) {
+      items.push(child);
+    } else if (child._tag === 'leaf' && (child.value === ',' || child.value === ';')) {
+      separators[items.length - 1] = child.value;
+      semicolons ||= child.value === ';';
+    }
+  }
+  return mixinListProblems(items.map(lessMixinListItemShape), separators, semicolons)
+    .map(({ index, problem }) => ({ item: items[index]!, problem }));
+}
+
+/** The shape the `;` rule reads off a mixin list item node. */
+function lessMixinListItemShape(item: CssCstNode): MixinListItemShape {
+  if (item.grammarType === 'MixinRestParam' || hasLeafChild(item, '...')) {
+    return 'rest';
+  }
+  return item.grammarType === 'MixinBinding' && hasLeafChild(item, ':') ? 'named' : 'plain';
 }
 
 function forwardPreludeOf(node: CssCstNode, src: string): string | null {
@@ -751,14 +785,6 @@ function propNameOf(slice: string): string {
   const colon = slice.indexOf(':');
   const head = colon >= 0 ? slice.slice(0, colon) : slice;
   return head.trim();
-}
-
-function absoluteStart(node: CssCstNode): number {
-  return Number(node.span.start);
-}
-
-function absoluteEnd(node: CssCstNode): number {
-  return Number(node.span.end);
 }
 
 function isWhitespaceOnly(source: string, start: number, end: number): boolean {
@@ -2929,47 +2955,59 @@ type StaticCollectionKey = {
   readonly span: DiagnosticSpan;
 };
 
-function staticJessCollectionKey(source: string, entry: CssCstNode): StaticCollectionKey | null {
+/**
+ * The static key of a Jess collection entry, read from the grammar's own
+ * classification: a bare key is an `Identifier`, and a computed `[…]` key is one
+ * typed value node (`Keyword`, `Num`, `Dimension`, `Percentage`, `Color`,
+ * `Quoted`). A key only evaluation can give — a variable, an interpolated string,
+ * more than one term — has none.
+ */
+function staticJessCollectionKey(entry: CssCstNode): StaticCollectionKey | null {
   const direct = cstChildrenOf(entry);
-  const computed = direct.some(child => child._tag === 'leaf' && child.value === '[');
-  let raw: string;
-  let span: DiagnosticSpan;
-  if (computed) {
-    const key = firstChildNodeOf(entry, 'Value');
-    if (key === undefined) {
-      return null;
-    }
-    raw = source.slice(absoluteStart(key), absoluteEnd(key)).trim();
-    span = key.span;
-  } else {
+  if (!direct.some(child => child._tag === 'leaf' && child.value === '[')) {
     const key = direct.find(child => child._tag === 'leaf' && child.value !== ':' && child.value !== ';');
-    if (key?._tag !== 'leaf') {
+    return key?._tag === 'leaf' ? { value: makeKeyword(key.value), display: key.value, span: key.span } : null;
+  }
+  let atom = firstChildNodeOf(entry, 'Value');
+  for (const wrapper of ['ValueSpaceGroup', 'ValueTerm', 'ValueAtom']) {
+    const only: CssCstNode[] = atom === undefined ? [] : childNodesOf(atom);
+    atom = only.length === 1 && only[0]!.grammarType === wrapper && cstChildrenOf(atom!).length === 1 ? only[0] : undefined;
+  }
+  const typed = atom === undefined ? [] : childNodesOf(atom);
+  return typed.length === 1 ? typedCollectionKey(typed[0]!) : null;
+}
+
+/** One typed key node's value; its token texts are the values the grammar lexed. */
+function typedCollectionKey(node: CssCstNode): StaticCollectionKey | null {
+  const parts: string[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag !== 'leaf') {
       return null;
     }
-    raw = key.value;
-    span = key.span;
+    parts.push(child.value);
   }
-
-  if (hasDynamicSyntax(raw)) {
-    return null;
+  const text = parts.join('');
+  const key = (value: ValueGroup, display = text): StaticCollectionKey => ({ value, display, span: node.span });
+  switch (node.grammarType) {
+    case 'Keyword':
+      return key(text === 'null' ? makeNull(true) : makeKeyword(text));
+    case 'Num':
+      return key(makeDimension(Number(text)));
+    case 'Dimension':
+    case 'Percentage':
+      return parts.length === 2 ? key(makeDimension(Number(parts[0]), parts[1])) : null;
+    case 'Color': {
+      const { rgb, alpha } = parseHex(text);
+      return key(makeColorRgb(rgb, alpha, HEX, { src: text }));
+    }
+    case 'Quoted': {
+      /* A string keyed by its content; an escape would need decoding, so it is not static. */
+      const content = parts.length === 3 ? parts[1]! : parts.length === 2 ? '' : null;
+      return content === null || content.includes('\\') ? null : key(makeQuoted(content, parts[0]!, false), content);
+    }
+    default:
+      return null;
   }
-  if (computed && raw === 'null') {
-    return { value: makeNull(true), display: raw, span };
-  }
-  if (isCssIdentifier(raw)) {
-    return { value: makeKeyword(raw), display: raw, span };
-  }
-  const quoted = quotedStringInnerText(raw);
-  if (quoted !== null && !quoted.includes('\\')) {
-    return { value: makeQuoted(quoted, raw[0]!, false), display: quoted, span };
-  }
-  if (isValidHexColor(raw)
-    || cssNumberValue(raw) !== null
-    || cssPercentageValue(raw) !== null
-    || cssDimensionUnit(raw) !== null) {
-    return { value: sniffLiteral(raw), display: raw, span };
-  }
-  return null;
 }
 
 function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
@@ -4531,10 +4569,20 @@ function forEachExtendTarget(
   language: JessLanguage,
   fn: (target: CssCstNode, exact: boolean) => void
 ): void {
-  if (node.grammarType === 'ExtendTarget') {
-    const target = firstChildNodeMatching(node, EXTEND_TARGET_TYPES);
-    if (target !== undefined) {
-      fn(target, !isLessPartialExtendTarget(source.slice(absoluteStart(node), absoluteEnd(node))));
+  if (node.grammarType === 'ExtendPseudo') {
+    /*
+     * Owner 2026-10-09, verbatim: "`all` only applies to target right before,
+     * `!all` is supposed to apply to the entire seletor list" — so a `!all` on
+     * any target makes every target of this list partial, as the Less grammar's
+     * `ExtendPseudo` reads it.
+     */
+    const targets = cstChildrenOf(node).filter((child): child is CssCstNode => isCstNode(child) && child.grammarType === 'ExtendTarget');
+    const wholeList = targets.some(target => cstChildrenOf(target).some(child => child._tag === 'leaf' && child.value.toLowerCase() === '!all'));
+    for (const extendTarget of targets) {
+      const target = firstChildNodeMatching(extendTarget, EXTEND_TARGET_TYPES);
+      if (target !== undefined) {
+        fn(target, !wholeList && !isLessPartialExtendTarget(source.slice(absoluteStart(extendTarget), absoluteEnd(extendTarget))));
+      }
     }
     return;
   }
@@ -5451,25 +5499,21 @@ export function cstLintDiagnostics(
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
 
+    pushParseTwinDiagnostics(node, language, source, context.inDeclaration, pushDiagnostic);
+
     /*
-     * Less v5 removes executable backtick values, but the tolerant CST keeps the
-     * complete legacy construct as one node. Report from that node so editors
-     * underline exactly the removed expression and retain the rest of the tree.
-     * The compiler's strict AST entry throws the matching parser error before
-     * evaluation; this path is the non-halting editor/diagnostic twin.
+     * The strict AST raises the FIRST item a `;` makes invalid in a mixin list;
+     * this twin reports every one, each at its own item (ledger P46).
      */
-    if (language === 'less' && gt === 'BacktickJavaScript') {
-      pushDiagnostic(
-        'parse/unsupported-inline-javascript',
-        'error',
-        'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
-        node.span,
-        {
+    if (language === 'less' && LESS_MIXIN_LIST_TYPES.has(gt)) {
+      for (const { item, problem } of lessMixinListProblems(node)) {
+        const text = new LessMixinArgumentError(0, 0, problem);
+        pushDiagnostic('parse/invalid-mixin-argument', 'error', text.message, item.span, {
           phase: 'parse',
-          reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
-          fix: 'Move it to a module loaded with @use.'
-        }
-      );
+          reason: text.reason,
+          fix: text.fix
+        });
+      }
     }
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
@@ -5489,7 +5533,7 @@ export function cstLintDiagnostics(
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
       inVarCall: context.inVarCall || gt === 'VarCall',
-      inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt),
+      inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt) || gt === 'NestedPropertyDeclaration',
       queryAtRuleKind: isMediaAtRule ? 'media' : isSupportsAtRule ? 'supports' : context.queryAtRuleKind,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
@@ -5610,7 +5654,7 @@ export function cstLintDiagnostics(
           continue;
         }
         const entry = child;
-        const key = staticJessCollectionKey(source, entry);
+        const key = staticJessCollectionKey(entry);
         if (key === null) {
           continue;
         }

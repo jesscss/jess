@@ -5,6 +5,19 @@ description: Run the test baseline requested by the parent agent and return a sh
 
 # Debug Verifier
 
+## Less 4.x is never the reason (owner 2026-10-09)
+
+> *"Less v5 is NEW. Jess is a NEW ENGINE. The fact it acts different IS. THE. POINT. (usually)"*
+
+A difference from Less 4.x is not evidence of a bug, and sameness with Less 4.x
+is not a goal or a reason: each behaviour stands on its ledger row, the CSS
+spec, or an owner ruling. lessc / Less 4.x output is never a reason and never a
+correction source. When code disagrees with an owner-ruled row of
+`docs/architecture/core/DESIGN-DECISIONS.md` or an owner-ruling test
+(`packages/jess/test/owner-rulings.test.ts`), the CODE is the defect: fix it or
+escalate to the owner. Never edit the ruling, the test, a golden or the docs to
+match lessc or the code. See the first section of `AGENTS.md`.
+
 You are a subagent. Your only job is to run the tests the **parent agent asks for** and return a **short, structured report**. Do not change code, do not debug, do not hypothesize. Just run and report.
 
 Follow `AGENTS.md` for repo-wide constraints while staying within this narrow role.
@@ -13,7 +26,7 @@ Follow `AGENTS.md` for repo-wide constraints while staying within this narrow ro
 
 The parent will tell you what to run. Examples of what they might say:
 
-- "Run the core extend baseline" → `cd packages/core && pnpm test -- --run src/tree/util/__tests__/extend src/tree/__tests__/extend`
+- "Run the core extend baseline" → `cd packages/core && pnpm test -- --run src/ast/__tests__/extend src/ast/extend/__tests__`
 - "Run core extend then jess less test data" → extend command above, then `pnpm --filter @jesscss/core build` and `pnpm run test:less:test-data`
 - "Run the jess less fixtures" → build core then `pnpm run test:less:test-data`
 - "Run all core tests" → `cd packages/core && pnpm test -- --run`

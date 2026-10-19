@@ -1,0 +1,47 @@
+diff --git a/less/_root.less b/less/_root.less
+index 53ee819a1d37a32681e0e7ed53336f672f7b2d3a..d59ba5cb7087f90654b903d2f7bc049f0f8b5255 100644
+--- a/less/_root.less
++++ b/less/_root.less
+@@ -1,3 +1,6 @@
++// JESS PATCH: a custom property's value is CSS text in Less v5 (DESIGN-DECISIONS P2):
++// a bare `@var` there is written as authored and only `@{var}` inserts the value, so
++// each value below is interpolated.
+ :root {
+ 	//// Custom variable values only support SassScript inside `#{}`.
+ 	//@each $color, $value in $colors {
+@@ -8,7 +11,7 @@
+ 		@color: extract(@item, 1);
+ 		@value: extract(@item, 2);
+ 
+-		--@{color}: @value;
++		--@{color}: @{value};
+ 
+ 		#each-color-css-var((@i + 1));
+ 	} #each-color-css-var();
+@@ -21,7 +24,7 @@
+ 		@color: extract(@item, 1);
+ 		@value: extract(@item, 2);
+ 
+-		--@{color}: @value;
++		--@{color}: @{value};
+ 
+ 		#each-theme-color-css-var((@i + 1));
+ 	} #each-theme-color-css-var();
+@@ -34,7 +37,7 @@
+ 		@bp: extract(@item, 1);
+ 		@value: extract(@item, 2);
+ 
+-		--breakpoint-@{bp}: @value;
++		--breakpoint-@{bp}: @{value};
+ 
+ 		#each-breakpoint-css-var((@i + 1));
+ 	} #each-breakpoint-css-var();
+@@ -43,6 +46,6 @@
+ 	//// See https://github.com/sass/sass/issues/2383#issuecomment-336349172
+ 	//--font-family-sans-serif: #{inspect($font-family-sans-serif)};
+ 	//--font-family-monospace: #{inspect($font-family-monospace)};
+-	--font-family-sans-serif: @font-family-sans-serif;
+-	--font-family-monospace: @font-family-monospace;
++	--font-family-sans-serif: @{font-family-sans-serif};
++	--font-family-monospace: @{font-family-monospace};
+ }

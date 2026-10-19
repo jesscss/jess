@@ -3,7 +3,7 @@
  *
  * Cases from sass-spec `spec/core_functions/meta/type_of.hrx`.
  */
-import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
+import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeNull, makeQuoted, HEX } from '@jesscss/core';
 import type { UrlValue } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import { typeOf } from '../meta/type-of.js';
@@ -39,7 +39,7 @@ describe('sass:meta — type-of', () => {
   });
 
   it('§ null', () => {
-    expect(text(typeOf({ type: 'Null', bytes: '' }))).toBe('null');
+    expect(text(typeOf(makeNull(true)))).toBe('null');
   });
 
   it('§ list/empty and § list/non_empty', () => {

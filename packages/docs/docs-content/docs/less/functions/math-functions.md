@@ -62,6 +62,8 @@ Example: `round(1.67, 1)`
 
 Output: `1.7`
 
+An exact half rounds away from zero: `round(-2.5)` is `-3`, as in Less 4.x.
+
 
 ### sqrt
 

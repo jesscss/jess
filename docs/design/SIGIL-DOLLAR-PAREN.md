@@ -149,7 +149,7 @@ const directJessNonBlockValueAtom = choice(g.DirectJessDollarValue, g.DirectJess
 ```
 
 No bare-paren arm; `DirectJessValueAtom` (`:2156`) adds only `DirectJessCollection`.
-Every arm is led by `$`, `@`, `*[`, `url`/ident, quote, `#`, or a digit. So in the
+Every arm is led by `$`, `@`, `url`/ident, quote, `#`, or a digit (the selector capture is `selector(`, routed through the ident arm — ledger P49). So in the
 direct-AST grammar `width: (1 + 2)` has **no production** and is a parse error, and
 option 2 is a pure *addition* to this `choice`.
 

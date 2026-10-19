@@ -116,6 +116,17 @@ describe('Context.getModule', () => {
     );
   });
 
+  it('suggests plugin-js for a script @plugin when no script runtime is installed', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-core-plugin-js-'));
+    const pluginFile = path.join(tmpDir, 'plugin.js');
+    fs.writeFileSync(pluginFile, 'module.exports = { install() {} };', 'utf8');
+
+    const context = new Context({}, [new ResolverOnlyPlugin()]);
+    await expect(context.getPluginModule(pluginFile)).rejects.toThrow(
+      'Feature not supported. Install @jesscss/plugin-js to enable script execution features.'
+    );
+  });
+
   it('loads JSON modules directly without JavaScript execution or plugin-js', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-core-json-'));
     const jsonFile = path.join(tmpDir, 'tokens.json');

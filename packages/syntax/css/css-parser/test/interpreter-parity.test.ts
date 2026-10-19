@@ -4,10 +4,12 @@ import { parseWith, type CssAstGrammar } from '../src/parse-with.js';
 import { commentTriviaLabels } from '../src/trivia-labels.js';
 import {
   assertEnginesAgree,
+  assertNoRuntimeCodegen,
   AST_VARIANTS,
   CSS_FIXTURES,
   CST_VARIANTS,
   cstOutcome,
+  ENGINES,
   loadEnginePair,
   outcome,
   type Pins
@@ -24,7 +26,7 @@ const LIB = fileURLToPath(new URL('../lib', import.meta.url));
  * PINNED DEFECT, every variant: on these two failures the interpreter names
  * `token()` terminals by their regex source in the `expected` set where the
  * compiled table names them by label (`UnicodeRangeToken`,
- * `CustomPropertyName`), so the AST error degrades from "Expected a CSS value."
+ * `IdentToken`), so the AST error degrades from "Expected a CSS value."
  * to the generic "Expected valid CSS syntax here." Location and outcome agree.
  */
 const EXPECTED_SET_LABELS = 'interpreter reports token() terminals by regex source, not label, in `expected`';
@@ -36,6 +38,10 @@ const PINNED_ALL: Pins = new Map([
 describe('CSS grammar: macro-compiled and interpreter bundles agree', () => {
   it('has a corpus', () => {
     expect(CSS_FIXTURES.length).toBeGreaterThan(80);
+  });
+
+  it.each(ENGINES)('the %s grammar generates no code at runtime', (engine) => {
+    assertNoRuntimeCodegen(LIB, engine, '.a { b: c; }');
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {

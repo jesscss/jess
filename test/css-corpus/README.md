@@ -48,6 +48,15 @@ the only evaluated source with a usable **reject** oracle at the syntax layer.
 The registry tarball ships `lib` only, so the dependency must resolve to the
 GitHub source; the materializer fails loudly if `fixtures/` is absent.
 
+**That premise no longer holds, and the test fails on every fresh install.**
+Since the move to pnpm 10 (`b0b563a59`) the lockfile resolves the dependency to
+a git-hosted tarball, and pnpm installs a git-hosted package the way it would
+publish it — through csstree's `files` list (`data`, `dist`, `cjs`, `lib`) — so
+`fixtures/` is dropped. Only an install made before that change still carries
+the fixtures. Getting them back needs a sourcing decision (vendor `fixtures/ast`
+at the pinned commit, as `wpt-accept.json` is vendored, or fetch the pinned
+commit into `.cache/`), which is open.
+
 Two exclusions, both about csstree being a *recovering* parser:
 
 - the three `tolerant.json` files (27 cases) are csstree's error-recovery suite —

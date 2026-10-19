@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { invoke } from '../../__tests__/harness.js';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core';
 import { cos } from '../cos.js';
@@ -45,8 +46,8 @@ describe('Less sin/cos canonical cutover', () => {
     for (const [number, unit] of vectors) {
       const expectedSin = legacyTrigOracle(Math.sin, number, unit);
       const expectedCos = legacyTrigOracle(Math.cos, number, unit);
-      const actualSin = sin(makeDimension(number, unit));
-      const actualCos = cos(makeDimension(number, unit));
+      const actualSin = invoke(sin, makeDimension(number, unit));
+      const actualCos = invoke(cos, makeDimension(number, unit));
 
       expect(actualSin).toMatchObject({
         type: 'Dimension',

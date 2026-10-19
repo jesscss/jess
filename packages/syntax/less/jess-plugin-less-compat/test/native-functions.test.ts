@@ -2,13 +2,18 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Context } from '@jesscss/core';
-import { defineFunction, emitValue, makeDimension, type FnCtx, type Value } from '@jesscss/core';
-import { LessApiBridge } from '../src/less-api-bridge.js';
+import { defineFunction, emitValue, HEX, makeColorHsl, makeDimension, makeKeyword, sniffLiteral, type PluginCallCtx, type Value } from '@jesscss/core';
+import { LessApiBridge, toNativeLessValue } from '../src/less-api-bridge.js';
 import { LessCompatPlugin } from '../src/plugin.js';
 
-const fnCtx: FnCtx = {
+const fnCtx: PluginCallCtx = {
   modes: { unitMode: 'preserve' },
-  stringify: emitValue
+  stringify: emitValue,
+  lookupVariable: () => null,
+  callFunction: () => undefined,
+  currentFileInfo: { filename: '', entryPath: '' },
+  log: () => undefined,
+  markImportant: () => undefined
 };
 
 function hasNativeValue(value: unknown): value is { readonly value: readonly unknown[] } {
@@ -99,5 +104,30 @@ describe('AST-v2 native function boundary', () => {
     });
     const result = await bridge.invokeRawFunction(fn, [[child]], fnCtx);
     expect(emitValue(result!)).toBe('ok');
+  });
+
+  it('hands a plugin the real channels of a computed or named colour', () => {
+    const rgbOf = (value: unknown): unknown =>
+      typeof value === 'object' && value !== null && 'rgb' in value ? value.rgb : undefined;
+    expect(rgbOf(toNativeLessValue(makeColorHsl([45, 1, 0.5], 1, HEX)))).toEqual([255, 191.25, 0]);
+    expect(rgbOf(toNativeLessValue(makeKeyword('white')))).toEqual([255, 255, 255]);
+  });
+
+  it('gives a colour argument its CSS text as `value`', async () => {
+    const bridge = new LessApiBridge([{
+      install(_less, _manager, functions) {
+        functions.add('upper', color => String(typeof color === 'object' && color !== null && 'value' in color ? color.value : color).toUpperCase());
+      }
+    }]);
+    const upper = async (arg: Value) => emitValue((await bridge.invokeRawFunction(bridge.globalFns[0]!, [arg], fnCtx))!);
+    expect(await upper(makeKeyword('red'))).toBe('RED');
+    expect(await upper(sniffLiteral('#fff'))).toBe('#FFF');
+  });
+
+  it('hands a plugin a plain identifier as a tree.Keyword', () => {
+    const { tree } = new LessApiBridge().less;
+    const bold = toNativeLessValue(makeKeyword('bold'));
+    expect(bold).toBeInstanceOf(tree.Keyword);
+    expect(bold).toMatchObject({ type: 'Keyword', value: 'bold' });
   });
 });

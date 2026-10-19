@@ -232,9 +232,12 @@ export function isPassthrough(expr: string, expectedValue: string | null): boole
   if (expectedValue === null) {
     return false;
   }
-  // ONLY the four functions that have a same-named CSS filter can be echoed
-  // back. A constructor never can: `rgb(18, 52, 86)` also renders as
-  // `rgb(18, 52, 86)`, and that is a computed value, not a passthrough.
+
+  /*
+   * ONLY the four functions that have a same-named CSS filter can be echoed
+   * back. A constructor never can: `rgb(18, 52, 86)` also renders as
+   * `rgb(18, 52, 86)`, and that is a computed value, not a passthrough.
+   */
   if (!/^(?:color\.)?(saturate|invert|grayscale|opacity)\s*\(/.test(expr)) {
     return false;
   }
@@ -304,6 +307,7 @@ function readSingle(text: string): Value {
     return result;
   }
   if (/^-?[\d.]/.test(text) || text.startsWith('#') || namedColor(text.toLowerCase()) !== undefined) {
+    // A sass-spec fixture literal: external test data, not parser output.
     const value = sniffLiteral(text);
     if (isValueGroupArray(value)) {
       throw new Error(`literal did not materialize to a single value: ${text}`);

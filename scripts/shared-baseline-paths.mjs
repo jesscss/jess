@@ -3,10 +3,8 @@ export const FULL_BASELINE_PATH_PATTERNS = [
   /^scripts\/precommit-changed-checks\.mjs$/,
   /^scripts\/shared-baseline-paths\.mjs$/,
   /^scripts\/verify-node-copy-frontier\.mjs$/,
-  /^scripts\/verify-render-buffer-frontier\.mjs$/,
   /^scripts\/verify-materialization-frontier\.mjs$/,
   /^scripts\/verify-package-exports\.mjs$/,
-  /^scripts\/verify-node-constructor-metadata\.mjs$/,
   /^package\.json$/,
   /^pnpm-lock\.yaml$/
 ];

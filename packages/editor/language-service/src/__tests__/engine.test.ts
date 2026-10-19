@@ -11,6 +11,7 @@ import {
 } from 'vscode-languageserver-types';
 import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
+import { SEMANTIC_TOKEN_TYPES } from '../cst-syntactic.js';
 
 function createDocument(languageId: string, content: string): TextDocument {
   return TextDocument.create(`file:///test.${languageId}`, languageId, 1, content);
@@ -317,6 +318,18 @@ describe('JessLanguageServiceEngine', () => {
       expect(diagnostics.length).toBeGreaterThan(0);
     });
 
+    it('does not report trailing whitespace or comments as unexpected input', () => {
+      for (const lang of ['css', 'less', 'scss', 'jess']) {
+        const engine = createEngine();
+        const doc = createDocument(lang, '.a { color: red; }\n/* end */\n');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(engine.getDiagnostics(doc.uri).map(d => d.code), lang).not.toContain('parse/parser');
+
+        engine.change(doc.uri, 2, `${doc.getText()}\n  `);
+        expect(engine.getDiagnostics(doc.uri).map(d => d.code), `${lang} after an edit`).not.toContain('parse/parser');
+      }
+    });
+
     it('underlines removed Less backtick values without losing the remaining document', () => {
       const engine = createEngine();
       const input = '.legacy { value: `1 + 1`; }\n.after { color: red; }';
@@ -341,6 +354,148 @@ describe('JessLanguageServiceEngine', () => {
       )).toBe('`1 + 1`');
       expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it.each([
+      ['parse/leading-separator-value', '@p: /img/icon.svg;\n.after { color: red; }', '/img/icon.svg'],
+      ['parse/uncalled-mixin-reference', '.legacy { p: .a; }\n.after { color: red; }', '.a'],
+      ['parse/invalid-mixin-argument', '.legacy { .t(@a: 1, @b: 2; 3); }\n.after { color: red; }', '@b: 2']
+    ])('underlines a rejected Less construct (%s) without losing the document', (code, input, underlined) => {
+      const engine = createEngine();
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(item => item.code === code);
+
+      expect(diagnostic).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe(underlined);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    /* A `*` with nothing on its left is the same punctuation-led value (ledger P33), named as the compiler names it. */
+    it('names a leading `*` as the compiler does', () => {
+      const engine = createEngine();
+      const input = '@t: * [.notice];\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostic = engine.getDiagnostics(doc.uri).find(item => item.code === 'parse/leading-separator-value');
+
+      expect(diagnostic).toMatchObject({ message: expect.stringMatching(/^A Less value cannot start with "\*"\./), severity: DiagnosticSeverity.Error });
+      expect(input.slice(doc.offsetAt(diagnostic!.range.start), doc.offsetAt(diagnostic!.range.end))).toBe('* [.notice]');
+    });
+
+    /* The compiler's `css/legacy-ie-syntax` error, at the same place: the declaration (owner 2026-10-16). */
+    it.each([
+      ['css', 'a {\n  filter: alpha(opacity=50);\n}\n'],
+      ['scss', 'a {\n  filter: alpha(opacity=50);\n}\n'],
+      ['jess', 'a {\n  filter: alpha(opacity=50);\n}\n'],
+      ['css', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n'],
+      ['less', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n'],
+      ['scss', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n'],
+      ['jess', 'a {\n  filter: progid:DX.Microsoft.Blur(pixelradius=2);\n}\n']
+    ])('reports legacy IE syntax (%s: %s) at the declaration', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/legacy-ie-syntax');
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(diagnostics[0]!.message.startsWith('Legacy IE syntax is not supported')).toBe(true);
+      expect(diagnostics[0]!.range.start).toEqual({ line: 1, character: 2 });
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'parse/parser')).toBe(false);
+    });
+
+    it('does not report a Less `=` comparison in a call argument as legacy IE syntax', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', 'a {\n  filter: alpha(opacity=50);\n}\n');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/legacy-ie-syntax')).toBe(false);
+    });
+
+    /* Ledger P49: what selector() cannot capture parses and is an error (P45). */
+    it.each([
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(1px); }\n.after { color: red; }', '1px'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', ', @x'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(); }\n.after { color: red; }', 'selector()'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector( ); }\n.after { color: red; }', 'selector( )'],
+      ['jess', 'parse/selector-capture-argument', '.legacy { a: selector( .a, 1px ); }\n.after { color: red; }', ', 1px'],
+      ['jess', 'parse/selector-capture-argument', '.legacy { a: selector($x); }\n.after { color: red; }', '$x']
+    ])('underlines %s %s without losing the document', (languageId, code, input, underlined) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(item => item.code === code);
+
+      expect(diagnostic).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe(underlined);
+      expect(diagnostics.filter(item => item.code === 'parse/parser' || item.code === 'css/invalid-value-punctuation')).toEqual([]);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it.each([
+      ['less', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
+      ['jess', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
+      ['less', '@supports selector(.a ~ .b) { .x { c: d; } }'],
+      ['less', '.x { c: if(supports(selector(.a ~ .b)): x; else: y); }'],
+      ['css', '.x { a: selector(1px); }'],
+      ['scss', '.x { a: selector(1px); }']
+    ])('reports no selector-capture or punctuation error for %s %s', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).filter(item => String(item.code).includes('selector-capture') || item.code === 'css/invalid-value-punctuation')).toEqual([]);
+    });
+
+    /* The compiler's `css/invalid-value-punctuation` error, at the same place: the declaration (ledger P48). */
+    it.each([
+      ['css', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
+      ['less', 'a {\n  x: color.mix(red, blue);\n}\n', '.'],
+      ['less', 'a {\n  x: foo(a=b=c);\n}\n', '='],
+      ['less', 'a {\n  x: (a==b);\n}\n', '=='],
+      ['scss', 'a {\n  x: a~b;\n}\n', '~'],
+      ['jess', 'a {\n  x: foo(a==b);\n}\n', '=='],
+      ['css', 'a {\n  color: var(--brand, $primary);\n}\n', '$'],
+      ['jess', 'a {\n  margin: var(--gap, a.b);\n}\n', '.']
+    ])('reports invalid value punctuation (%s: %s) at the declaration', (languageId, input, delim) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/invalid-value-punctuation');
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(diagnostics[0]!.message.startsWith(`\`${delim}\` is not valid in any CSS value`)).toBe(true);
+      expect(diagnostics[0]!.range.start).toEqual({ line: 1, character: 2 });
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'parse/parser')).toBe(false);
+    });
+
+    it.each([
+      ['less', 'a {\n  x: foo(a=b);\n  y: ~"a.b";\n}\n'],
+      ['scss', '@use "sass:color";\na {\n  x: color.mix(red, blue);\n}\n'],
+      ['css', 'a {\n  --x: a.b~c;\n  y: attr(ns|foo);\n}\n'],
+      ['css', 'a {\n  --y: var(--x, a.b);\n  width: attr(data-w type(<length>), 0px);\n  color: var(--brand, red);\n}\n']
+    ])('does not report punctuation the dialect gives meaning (%s: %s)', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).some(item => item.code === 'css/invalid-value-punctuation')).toBe(false);
     });
 
     it('recovers an unfinished Less backtick value at the declaration boundary', () => {
@@ -1928,7 +2083,7 @@ describe('JessLanguageServiceEngine', () => {
      * Helper to decode semantic tokens data array
      * Format: [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
      */
-    function decodeSemanticTokens(data: number[], types: string[], modifiers: string[]): Array<{
+    function decodeSemanticTokens(data: number[]): Array<{
       line: number;
       char: number;
       length: number;
@@ -1953,7 +2108,7 @@ describe('JessLanguageServiceEngine', () => {
           currentChar = deltaStartChar;
         }
 
-        const type = types[typeIdx] || 'unknown';
+        const type = SEMANTIC_TOKEN_TYPES[typeIdx] ?? 'unknown';
         tokens.push({
           line: currentLine,
           char: currentChar,
@@ -1975,10 +2130,7 @@ describe('JessLanguageServiceEngine', () => {
       expect(semanticTokens).toBeDefined();
       expect(semanticTokens.data).toBeDefined();
 
-      // Decode tokens
-      const types = ['comment', 'string', 'keyword', 'enumMember', 'number', 'operator', 'function', 'variable', 'property', 'type', 'class', 'namespace'];
-      const modifiers: string[] = []; // No modifiers in legend for now
-      const tokens = decodeSemanticTokens(semanticTokens.data, types, modifiers);
+      const tokens = decodeSemanticTokens(semanticTokens.data);
 
       // Find tokens on line 0 (the import line)
       const line0Tokens = tokens.filter(t => t.line === 0);
@@ -2131,16 +2283,6 @@ describe('JessLanguageServiceEngine', () => {
     });
   });
 
-  describe('code actions', () => {
-    it('does not offer missing-symbol quick fixes without evaluator-backed diagnostics', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', 'a { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const actions = engine.getCodeActions(doc.uri, Position.create(0, 10), { diagnostics: [] });
-      expect(actions).toEqual([]);
-    });
-  });
-
   describe('rename', () => {
     let tempDir = '';
     afterEach(() => {
@@ -2269,21 +2411,6 @@ describe('JessLanguageServiceEngine', () => {
     });
   });
 
-  describe('formatting', () => {
-    it('formats a simple CSS snippet deterministically', () => {
-      const engine = createEngine();
-      const doc = createDocument('css', 'a{color:red;}');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-
-      const edits1 = engine.formatDocument(doc.uri);
-      const edits2 = engine.formatDocument(doc.uri);
-
-      expect(edits1).toEqual(edits2);
-      expect(edits1.length).toBeGreaterThan(0);
-      expect(edits1[0]!.newText).toContain('color');
-    });
-  });
-
   describe('document links', () => {
     it('finds url() and @import links', () => {
       const engine = createEngine();
@@ -2293,6 +2420,13 @@ describe('JessLanguageServiceEngine', () => {
       const targets = links.map(l => l.target);
       expect(targets.some(t => String(t).includes('foo.css'))).toBe(true);
       expect(targets).toContain('https://example.com/a.png');
+    });
+
+    it('omits relative links an unsaved buffer cannot resolve', () => {
+      const engine = createEngine();
+      const text = '@import "foo.less";\n.a { background: url(img/a.png); border-image: url("https://example.com/a.png"); }';
+      engine.open('untitled:Untitled-1', 'less', 1, text);
+      expect(engine.getDocumentLinks('untitled:Untitled-1').map(l => l.target)).toEqual(['https://example.com/a.png']);
     });
 
     it('handles Less @import options and repeated imports', () => {

@@ -11,6 +11,18 @@ the common ancestor out **once** and wraps each multi-branch side in a single
 `:is(...)` — instead of repeating the whole prefix or cartesian-expanding it into
 one row per combination.
 
+:::info Mode
+The child-list folds below are the **`collapseNesting: 'compact'`** style. The default
+flatten style, **`'native'`** (what `collapseNesting: true` means), folds a child list
+only where every folded branch is a single compound of the same specificity, with no
+pseudo-element, namespace prefix or `:scope`, and only standard pseudo-classes that
+take no argument (besides `:is()`, `:not()`, `:has()` and `:where()`); other branches
+stay distributed. It
+reproduces native nesting's specificity, matching and invalid-selector behaviour, not
+its exact bytes. See the Less
+[Selector Compaction](https://lesscss.org/docs/advanced/selector-compaction) page.
+:::
+
 ## The rule
 
 Joining a `&`-less descendant onto its ancestor emits the ancestor once, then wraps
@@ -79,23 +91,26 @@ Nesting collapse carries that group score into the join (flattened output):
 ```
 
 `:is(.a, #b)` scores `(1,0,0)`, so the whole selector scores **`(1,1,0)`** — the
-`.a .c` match now carries ID-level weight it would not have on its own. Extend's
-partial-match grafting behaves the same way: `.a > .c` extended by `#b` renders
-`.a > :is(.c, #b)`, also **`(1,1,0)`**.
+`.a .c` match now carries ID-level weight it would not have on its own. Extend's own
+`:is()` groups never do this: in every output mode they hold only alternatives of the
+same specificity, so `.a > .c` extended by `#b` renders `.a > .c, .a > #b`, each row
+keeping its own score.
 
 **Migration note vs. less.js 4.x.** 4.x expanded these into a comma-separated cascade,
-each row keeping its **own** specificity; 5.x/Jess groups them into one `:is()` scored
-at the maximum:
+each row keeping its **own** specificity; 5.x/Jess groups the multi-parent header into
+one `:is()` scored at the maximum:
 
-| Source | 4.x output (per-row specificity) | 5.x output (group specificity) |
+| Source | 4.x output (per-row specificity) | 5.x output |
 |---|---|---|
 | `.a, #b { .c {} }` | `.a .c` `(0,2,0)`, `#b .c` `(1,1,0)` | `:is(.a, #b) .c` — both `(1,1,0)` |
-| `.a > .c {}` + `#b:extend(.c all)` | `.a > .c` `(0,2,0)`, `.a > #b` `(1,1,0)` | `.a > :is(.c, #b)` — both `(1,1,0)` |
+| `.a > .c {}` + `#b:extend(.c all)` | `.a > .c` `(0,2,0)`, `.a > #b` `(1,1,0)` | `.a > .c`, `.a > #b` — per-row, as 4.x |
 
 When the grouped branches share specificity (the common all-classes case, `:is(.a, .b)`)
 nothing changes — the shift is observable only when branches of **different**
 specificity are grouped, where the lower-specificity branch inherits the group's higher
 score and can flip a close cascade 4.x resolved per-row. The nesting-collapse grouping
-is the flattened-output form (`collapseNesting: true`); the 5.x-default nested output
-keeps the multi-parent header a plain comma list, so this applies to flattened output.
-Extend's `:is()` grafting appears in **both** nested and flattened output.
+is the flattened-output form: the multi-parent `:is()` appears in every flattened style,
+while a mixed-specificity child list is grouped only by `'compact'`. The 5.x-default
+nested output keeps the multi-parent header a plain comma list.
+Extend's `:is()` grafting appears in **both** nested and flattened output, and keeps
+the `'native'` specificity guard in every mode, `'compact'` included.

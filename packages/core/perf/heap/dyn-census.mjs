@@ -101,7 +101,7 @@ for (let i = 0; i < nodes.length; i += NF) {
   e.bytes += self;
 }
 
-// Tree node class names of interest (constructors in packages/core/src/tree).
+// Tree node class names of interest (constructors of the deleted legacy engine).
 const TREE = new Set([
   'Ruleset', 'Rules', 'Declaration', 'DeclarationCustom', 'VarDeclaration', 'Dimension',
   'CompoundSelector', 'ComplexSelector', 'SelectorList', 'Color', 'Ampersand',

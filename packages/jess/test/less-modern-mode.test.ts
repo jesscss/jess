@@ -66,6 +66,44 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('a {\n  color: #cc0000;\n  padding: -5px;\n}\n');
   });
 
+  /*
+   * A call made through a namespace can never be a CSS function, so when it
+   * cannot produce a value there is nothing to write out as-is: it is an eval
+   * error under every functionMode (jess#280), named where it was written. The
+   * namespace is a stylesheet binding and never reaches the CSS.
+   */
+  describe('a failed namespaced call', () => {
+    const failing = '@use "#less";\na {\n  color: @less.darken(rgb(10 20 30), 10%);\n}\n';
+
+    it.each(['preserve', 'error'] as const)('is an eval error under functionMode %s', async (functionMode) => {
+      const rendered = compiler().renderString(failing, { extension: '.less', config: { compile: { functionMode } } });
+      await expect(rendered).rejects.toThrow(expect.objectContaining({
+        code: 'eval/invalid-function',
+        line: 3,
+        column: 10
+      }));
+    });
+
+    it('is an eval error in .jess, named where it was written', async () => {
+      await expect(compiler().renderString('@-use "#less";\na {\n  color: $less.darken(rgb(10 20 30), 10%);\n}\n', { extension: '.jess' }))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function', line: 3, column: 10 }));
+    });
+
+    /* Ruling J1 extended: a bare imported function is no CSS function either. */
+    it.each(['preserve', 'error'] as const)('is an eval error through a bare imported binding under functionMode %s', async (functionMode) => {
+      const rendered = compiler().renderString('@-from "#less" import (darken);\na {\n  color: $darken(rgb(10 20 30), 10%);\n}\n', {
+        extension: '.jess',
+        config: { compile: { functionMode } }
+      });
+      await expect(rendered).rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function', line: 3, column: 10 }));
+    });
+
+    it('is an eval error for a declined argument shape that a CSS call would keep', async () => {
+      await expect(less('@use "#less";\na { w: @less.min(1px, 1em); }'))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+    });
+  });
+
   it.each(['#less', '@jesscss/fns/less'])('modern: `@use "%s"` binds `less` and computes', async (specifier) => {
     await expect(less(`@use "${specifier}";\na { color: @less.darken(red, 10%); padding: min(-5px, 1px); }`))
       .resolves.toBe('a {\n  color: #cc0000;\n  padding: min(-5px, 1px);\n}\n');
@@ -135,13 +173,12 @@ describe('Less modern mode (P36)', () => {
     });
 
     /*
-     * The unknown-call path drops a keyword argument's name (#279). Until that
-     * is fixed these calls lose it exactly as `darken(@color: …)` does, no
-     * better and no worse. `each()` has no keyword spelling to compare.
+     * An unimported call is written as written, so its keyword arguments keep
+     * their names (#279). `each()` has no keyword spelling to compare.
      */
-    it('modern: a keyword argument fares exactly as it does on darken() (#279)', async () => {
+    it('modern: an unimported call keeps its keyword arguments (#279)', async () => {
       await expect(less('@use "#less";\n@a: 2;\n@c: red;\nx { a: darken(@color: @c, 10%); b: if(@k: @a, 2px); c: boolean(@k: @a); }'))
-        .resolves.toBe('x {\n  a: darken(red, 10%);\n  b: if(2, 2px);\n  c: boolean(2);\n}\n');
+        .resolves.toBe('x {\n  a: darken(@color: red, 10%);\n  b: if(@k: 2, 2px);\n  c: boolean(@k: 2);\n}\n');
     });
   });
 
@@ -150,12 +187,16 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('@media screen and round(1.5) {\n  a {\n    b: c;\n  }\n}\n');
   });
 
+  /*
+   * A `@compose` nested in a block still puts its document in modern mode as it is
+   * parsed (`less-parser/test/module-mode.test.ts`), but rendering it is an error:
+   * `@compose` is document-root only (owner 2026-10-09; `less-modules.test.ts`).
+   */
   it.each([
     ['@use', '@use "#less";'],
     ['@-use', '@-use "#less";'],
     ['@compose', '@compose "./theme.less";'],
-    ['@-compose', '@-compose "./theme.less";'],
-    ['a nested @compose', '.wrap { @compose "./theme.less"; }']
+    ['@-compose', '@-compose "./theme.less";']
   ])('%s switches the document to modern mode', async (_label, directive) => {
     const directory = project(
       ['theme.less', '@gap: 1px;'],

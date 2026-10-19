@@ -13,17 +13,17 @@ import {
   cloneSeg,
   cloneSimple,
   collectBranchAtoms,
-  compoundText,
   descendantBranch,
   isOrPlainSimpleTokens,
   mkBranch,
   multisetEqual,
   multisetSubset,
+  opaqueCompound,
   simpleTexts,
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, SelectorPart, Simple } from './ir.js';
-import { wouldConflict } from './conflict.js';
+import { mergeCompound, NO_SIMPLES, wouldConflict } from './conflict.js';
 import { recordAstExtendProfile } from './plan.js';
 
 /**
@@ -42,13 +42,15 @@ export function applyInstruction(
   extenderHidden = false,
 
   /*
-   * The plain-text simple tokens of the ENCLOSING compound(s) this list sits inside — non-empty
-   * only when the fixpoint re-enters an instruction into an `:is()` graft (`div:is(<list>)`
-   * threads `['div']`). The element/id conflict guard unions it so a wrap decided INSIDE a
-   * graft still sees the full outer compound context (an extender that would form
-   * `div ∧ span` is rejected even when `span` is re-tried transitively through the graft).
+   * The plain-text simple tokens around the `:is()` graft this list sits inside — non-empty
+   * only when the fixpoint re-enters an instruction into a graft (`div:is(<list>).k` threads
+   * `['div']` before and `['.k']` after). A member of the list is written with the simples
+   * before the graft joining its FIRST compound and those after it its LAST (the Less 4.x
+   * placement, ledger X3), so the element/id guard checks each side there (an extender that
+   * would form `div ∧ span` is rejected even when `span` is re-tried through the graft).
    */
-  outerSurrounding: readonly string[] = []
+  outerBefore: readonly string[] = NO_TEXT,
+  outerAfter: readonly string[] = NO_TEXT
 ): Branch[] | null {
   const out: Branch[] = [];
   const appends: Branch[] = [];
@@ -56,16 +58,15 @@ export function applyInstruction(
   let exactSelfExtender: boolean | undefined;
 
   /*
-   * When this list sits INSIDE an `:is()` graft (`outerSurrounding` non-empty), a
-   * whole-branch append adds a NEW `:is()` arm that distributes over the enclosing
-   * compound — so an extender forming an invalid two-type / two-id compound with
-   * `outerSurrounding` must be dropped here as well (the append path, unlike the
-   * sub-wrap, has no matched compound of its own to reason about). At the top level
-   * (`outerSurrounding` empty) an append is a rule-level comma sibling that can never
+   * When this list sits INSIDE an `:is()` graft, a whole-branch append adds a NEW arm
+   * that distributes over the enclosing compound — so an extender forming an invalid
+   * two-type / two-id compound with the simples around the graft must be dropped here as
+   * well (the append path, unlike the sub-wrap, has no matched compound of its own to
+   * reason about). At the top level an append is a rule-level comma sibling that can never
    * conflict, so the input array is used verbatim — byte-identical, no allocation.
    */
-  const appendExtenders = outerSurrounding.length > 0
-    ? nonConflictingExtenders(outerSurrounding, extenders)
+  const appendExtenders = outerBefore.length > 0 || outerAfter.length > 0
+    ? nonConflictingExtenders(outerBefore, outerAfter, extenders)
     : extenders;
 
   for (const b of list) {
@@ -116,15 +117,15 @@ export function applyInstruction(
      */
     if (partial && !extenderKeys.has(bKey) && branchSharesAtom(b, targetAtoms)) {
       /*
-       * `all` whole-branch SUBSET match: a multi-segment target whose every segment
-       * compound-subsets the aligned branch segment across the WHOLE span (each
-       * pattern compound ⊆ its branch compound, combinators aligned — e.g.
-       * `.a > .c` vs `.a.b > .c.d`). The matched span is the entire selector, so it
-       * degenerates to a plain comma-append (`.a.b > .c.d, .x`), NOT an
-       * `:is()`-wrap of the whole branch — the sub-span `:is()` wrap is reserved for
-       * matches with surrounding combinator context (see `substituteMultiCompound`).
+       * `all` whole-branch match: a multi-segment target whose every segment matches the
+       * aligned branch compound across the WHOLE span with nothing left over (the
+       * leading combinator aside). The matched span is the entire selector, so it
+       * degenerates to a plain comma-append, NOT an `:is()`-wrap of the whole branch.
+       * A compound with simples beyond the target's (`.a.b > .c.d` for `.a > .c`) is a
+       * span substitution instead, which keeps those simples on the extender
+       * (`substituteMultiCompound`).
        */
-      if (branchWholeMatch(b, target, true)) {
+      if (branchWholeMatch(b, target, true) && sameCompoundSizes(b, target)) {
         out.push(b);
         for (const e of appendExtenders) {
           pushExtender(appends, e, chainHidden);
@@ -158,7 +159,8 @@ export function applyInstruction(
           partial,
           extenderKeys,
           targetAtoms,
-          outerSurrounding,
+          outerBefore,
+          outerAfter,
           retainMatched,
           exactSelfExtender === true
         );
@@ -191,6 +193,19 @@ export function applyInstruction(
     }
   }
   return changed ? out : null;
+}
+
+/** True when `b` and `target` have compounds of the same sizes, segment by segment. */
+function sameCompoundSizes(b: Branch, target: Branch): boolean {
+  if (b.segments.length !== target.segments.length) {
+    return false;
+  }
+  for (let k = 0; k < b.segments.length; k++) {
+    if (b.segments[k]!.compound.value.length !== target.segments[k]!.compound.value.length) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -677,7 +692,8 @@ function rewriteBranchPartial(
   partial: boolean,
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
-  outerSurrounding: readonly string[],
+  outerBefore: readonly string[],
+  outerAfter: readonly string[],
   retainMatched: boolean,
   promoteIdentical: boolean
 ): Branch | null {
@@ -692,7 +708,8 @@ function rewriteBranchPartial(
     partial,
     extenderKeys,
     targetAtoms,
-    outerSurrounding
+    outerBefore,
+    outerAfter
   );
 
   // (2) span substitution against the (possibly graft-updated) branch.
@@ -702,7 +719,8 @@ function rewriteBranchPartial(
       work,
       target.segments[0]!.compound,
       extenders,
-      outerSurrounding,
+      outerBefore,
+      outerAfter,
       retainMatched
     );
   } else {
@@ -717,12 +735,13 @@ function rewriteBranchPartial(
 }
 
 /** Recurse an instruction into every `:is()` graft simple in the branch. A graft
- * `:is(<inner>)` distributes back over its compound's BARE text value, so those
- * value (unioned with the inherited `outerSurrounding`) become the outer conflict
- * context threaded into the inner apply — keeping the element/id guard aware of the
- * full enclosing compound one level down. When a hidden reference seed produces a
- * visible rewrite, discard only the hidden arms from that rewritten graft; the
- * caller retains the untouched hidden seed separately for chaining. */
+ * `:is(<inner>)` distributes back over its compound's BARE text value: the simples before
+ * it join an inner member's first compound and those after it its last, so they (plus the
+ * outer context, where this branch's own first or last compound holds the graft) are the
+ * conflict context threaded into the inner apply — keeping the element/id guard aware of
+ * the full enclosing compound one level down. When a hidden reference seed produces a
+ * visible rewrite, discard only the hidden arms from that rewritten graft; the caller
+ * retains the untouched hidden seed separately for chaining. */
 function recurseIntoGrafts(
   b: Branch,
   target: Branch,
@@ -730,48 +749,31 @@ function recurseIntoGrafts(
   partial: boolean,
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
-  outerSurrounding: readonly string[]
+  outerBefore: readonly string[],
+  outerAfter: readonly string[]
 ): Branch {
-  if (b.hidden !== true) {
-    return mkBranch(b.segments.map((seg) => {
-      let graftOuter = outerSurrounding;
-      for (const s of seg.compound.value) {
-        if (s.t === 'text') {
-          graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
-        }
-      }
-      return {
-        combinator: seg.combinator,
-        compound: {
-          value: seg.compound.value.map((s): Simple => {
-            if (s.t !== 'is') {
-              return s;
-            }
-            const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
-            return inner === null ? s : { t: 'is', branches: inner };
-          })
-        }
-      };
-    }));
-  }
-
-  return mkBranch(b.segments.map((seg) => {
-    let graftOuter = outerSurrounding;
-    for (const s of seg.compound.value) {
-      if (s.t === 'text') {
-        graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
-      }
-    }
+  const last = b.segments.length - 1;
+  const hidden = b.hidden === true;
+  return mkBranch(b.segments.map((seg, k) => {
+    const simples = seg.compound.value;
     const value: Simple[] = [];
-    for (let index = 0; index < seg.compound.value.length; index++) {
-      const s = seg.compound.value[index]!;
+    for (let index = 0; index < simples.length; index++) {
+      const s = simples[index]!;
       if (s.t !== 'is') {
         value.push(s);
         continue;
       }
-      const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
+      const inner = applyInstruction(
+        s.branches, target, extenders, partial, extenderKeys, targetAtoms, false,
+        sideText(simples, 0, index, k === 0 ? outerBefore : NO_TEXT, true),
+        sideText(simples, index + 1, simples.length, k === last ? outerAfter : NO_TEXT, false)
+      );
       if (inner === null) {
         value.push(s);
+        continue;
+      }
+      if (!hidden) {
+        value.push({ t: 'is', branches: inner, fold: s.fold });
         continue;
       }
       let visibleCount = 0;
@@ -788,24 +790,55 @@ function recurseIntoGrafts(
           value.push(visibleValue[simple]!);
         }
       } else if (visibleCount > 0) {
-        value.push({ t: 'is', branches: inner });
+        value.push({ t: 'is', branches: inner, fold: s.fold });
       }
     }
-    return {
-      combinator: seg.combinator,
-      compound: {
-        value
-      }
-    };
+    return { combinator: seg.combinator, compound: { value } };
   }));
+}
+
+const NO_TEXT: readonly string[] = [];
+
+/**
+ * The plain-text simples of `simples[from..to)` that `skip` does not hold, with the outer
+ * context on the far side: `outer` precedes them on the side before a slot (`leading`)
+ * and follows them on the side after it. Returns `outer` itself when the range adds
+ * nothing, so a lone graft or match allocates no array.
+ */
+function sideText(
+  simples: readonly Simple[],
+  from: number,
+  to: number,
+  outer: readonly string[],
+  leading: boolean,
+  skip?: ReadonlySet<string>
+): readonly string[] {
+  let out: string[] | null = null;
+  for (let index = from; index < to; index++) {
+    const s = simples[index]!;
+    if (s.t === 'text' && skip?.has(s.text) !== true) {
+      (out ??= leading ? [...outer] : []).push(s.text);
+    }
+  }
+  if (out === null) {
+    return outer;
+  }
+  if (!leading) {
+    for (const text of outer) {
+      out.push(text);
+    }
+  }
+  return out;
 }
 
 /**
  * ELEMENT/ID CONFLICT GUARD. The matched compound is about to be wrapped as
- * `<surrounding>:is(<matched>, <extenders…>)`; on serialization each extender
- * distributes back over `surrounding`, so an extender whose TERMINAL compound would
- * place a SECOND distinct element type or a SECOND distinct id alongside `surrounding`
- * forms invalid CSS and must NOT be wrapped. Returns the extenders that survive.
+ * `<before>:is(<matched>, <extenders…>)<after>`. `before` and `after` describe the same
+ * element as the matched simple (owner 2026-10-09: same element ⇒ same compound), the
+ * one an extender's LAST compound names (ledger X3), so an extender whose last compound
+ * there would hold a SECOND distinct element type or a SECOND distinct id matches no
+ * element and must NOT be wrapped. Returns the extenders that survive. The authored
+ * simples are valid on their own.
  *
  * The rejection is PER EXTENDER, not all-or-nothing: a folded group can pair a benign
  * extender (`.b`) with a conflicting one (`span`), and only the conflicting one is
@@ -813,12 +846,13 @@ function recurseIntoGrafts(
  * granularity. When nothing conflicts the input array is returned as-is (no
  * allocation on the common path). See `./conflict.ts`.
  */
-function nonConflictingExtenders(surrounding: readonly string[], extenders: Branch[]): Branch[] {
+function nonConflictingExtenders(before: readonly string[], after: readonly string[], extenders: Branch[]): Branch[] {
   let kept: Branch[] | null = null;
   for (let i = 0; i < extenders.length; i++) {
     const e = extenders[i]!;
-    const lastSeg = e.segments[e.segments.length - 1];
-    if (lastSeg && wouldConflict(surrounding, textSimpleTokens(lastSeg.compound))) {
+    const n = e.segments.length;
+    const last = n > 0 ? textSimpleTokens(e.segments[n - 1]!.compound) : NO_TEXT;
+    if (wouldConflict(after.length === 0 ? before : before.length === 0 ? after : [...before, ...after], last)) {
       // First conflict: materialize the survivors seen so far, then skip this one.
       kept ??= extenders.slice(0, i);
     } else if (kept !== null) {
@@ -828,42 +862,46 @@ function nonConflictingExtenders(surrounding: readonly string[], extenders: Bran
   return kept ?? extenders;
 }
 
-/** The matched compound's value left OUTSIDE the `:is()` wrap (bare text value not
- * pulled in by `needSet`), unioned with the enclosing-graft `outerSurrounding`. This is
- * the full compound context an extender must not conflict with. */
-function surroundingOf(compound: Compound, needSet: Set<string>, outerSurrounding: readonly string[]): string[] {
-  const out: string[] = outerSurrounding.length > 0 ? [...outerSurrounding] : [];
-  for (const s of compound.value) {
-    if (s.t === 'text' && !needSet.has(s.text)) {
-      out.push(s.text);
-    }
-  }
-  return out;
-}
-
 /** Substitute a single-compound target inside every matching compound. */
 function substituteSingleCompound(
   b: Branch,
   targetCompound: Compound,
   extenders: Branch[],
-  outerSurrounding: readonly string[],
+  outerBefore: readonly string[],
+  outerAfter: readonly string[],
   retainMatched: boolean
 ): Branch {
   const need = textSimpleTokens(targetCompound);
   const needSet = new Set(need);
   let matched = false;
-  const segments = b.segments.map((seg) => {
+  const last = b.segments.length - 1;
+  const segments = b.segments.map((seg, k) => {
     const have = textSimpleTokens(seg.compound);
     if (!multisetSubset(need, have)) {
       return seg;
     }
 
     /*
-     * Drop any extender whose wrap would form an invalid two-type / two-id compound
-     * with the surrounding context (graft-inherited outer context included). If none
-     * survive, leave this segment — and, if nothing else changes, the branch — as authored.
+     * Drop any extender whose wrap would form an invalid two-type / two-id compound with
+     * the simples left on either side of the slot the group takes (the first matched
+     * atom), the graft-inherited outer context included where this is the branch's first
+     * or last compound. If none survive, leave this segment — and, if nothing else
+     * changes, the branch — as authored.
      */
-    const kept = nonConflictingExtenders(surroundingOf(seg.compound, needSet, outerSurrounding), extenders);
+    const simples = seg.compound.value;
+    let slot = 0;
+    while (slot < simples.length) {
+      const s = simples[slot]!;
+      if (s.t === 'text' && needSet.has(s.text)) {
+        break;
+      }
+      slot++;
+    }
+    const kept = nonConflictingExtenders(
+      sideText(simples, 0, slot, k === 0 ? outerBefore : NO_TEXT, true, needSet),
+      sideText(simples, slot + 1, simples.length, k === last ? outerAfter : NO_TEXT, false, needSet),
+      extenders
+    );
     if (kept.length === 0) {
       return seg;
     }
@@ -902,7 +940,7 @@ function collapseMatchedAtoms(
   extenders: Branch[],
   retainMatched: boolean
 ): Compound {
-  const matchedBranch = descendantBranch([{ t: 'text', text: compoundText(targetCompound) }]);
+  const matchedBranch = descendantBranch([opaqueCompound(targetCompound)]);
   const out: Simple[] = [];
   let placed = false;
   for (const s of compound.value) {
@@ -924,6 +962,14 @@ function collapseMatchedAtoms(
  * Substitute a multi-compound (P>1) target span in place. Finds a contiguous
  * segment run whose compounds each superset the target compounds and whose
  * internal combinators align; collapses the span into one `:is(span, ext)`.
+ *
+ * The span keeps its authored compounds as the matched member. The simples its first
+ * compound has beyond the target join each extender's first compound, and those its
+ * last compound has join the extender's last (the Less 4.x replacement:
+ * `.header .header-nav:before` + `.footer .footer-nav:extend(.header .header-nav all)`
+ * gives `.footer .footer-nav:before`); an extender they would give two element types or
+ * two ids is dropped. An inner compound of the span must hold exactly the target's
+ * simples, since an extra simple there has no place on the extender.
  */
 function substituteMultiCompound(
   b: Branch,
@@ -938,7 +984,8 @@ function substituteMultiCompound(
     for (let k = 0; k < P; k++) {
       const ts = target.segments[k]!;
       const bs = segments[start + k]!;
-      if (!multisetSubset(textSimpleTokens(ts.compound), textSimpleTokens(bs.compound))) {
+      if (!multisetSubset(textSimpleTokens(ts.compound), textSimpleTokens(bs.compound))
+        || (k > 0 && k < P - 1 && bs.compound.value.length !== ts.compound.value.length)) {
         ok = false;
         break;
       }
@@ -950,6 +997,23 @@ function substituteMultiCompound(
     if (!ok) {
       continue;
     }
+    const before = extraSimples(segments[start]!.compound, target.segments[0]!.compound);
+    const after = extraSimples(segments[start + P - 1]!.compound, target.segments[P - 1]!.compound);
+    let placed = extenders;
+    if (before.length > 0 || after.length > 0) {
+      placed = [];
+      const beforeText = textSimpleTokens({ value: before });
+      const afterText = textSimpleTokens({ value: after });
+      for (const e of extenders) {
+        const p = placeAroundExtender(e, before, after, beforeText, afterText);
+        if (p !== null) {
+          placed.push(p);
+        }
+      }
+      if (placed.length === 0) {
+        return b;
+      }
+    }
 
     // Build the matched span text (segments start..start+P-1, internal combinators).
     const spanSegs: SelectorPart[] = [];
@@ -960,7 +1024,7 @@ function substituteMultiCompound(
     const isSeg: SelectorPart = {
       combinator: start === 0 ? ' ' : segments[start]!.combinator,
       compound: {
-        value: isOrPlainSimpleTokens(retainMatched ? [mkBranch(spanSegs), ...extenders] : extenders)
+        value: isOrPlainSimpleTokens(retainMatched ? [mkBranch(spanSegs), ...placed] : placed)
       }
     };
     const outSegs: SelectorPart[] = [];
@@ -974,4 +1038,60 @@ function substituteMultiCompound(
     return mkBranch(outSegs);
   }
   return b;
+}
+
+/** The simples of `base` beyond the plain-text simples `target` names (one each). */
+function extraSimples(base: Compound, target: Compound): Simple[] {
+  const need = textSimpleTokens(target);
+  const out: Simple[] = [];
+  for (const s of base.value) {
+    const at = s.t === 'text' ? need.indexOf(s.text) : -1;
+    if (at === -1) {
+      out.push(cloneSimple(s));
+    } else {
+      need[at] = need[need.length - 1]!;
+      need.length--;
+    }
+  }
+  return out;
+}
+
+/** Extender `e` with `before` joined to its first compound and `after` to its last, or
+ * null when either would hold two element types or two ids. Keeps `e`'s provenance.
+ * `beforeText`/`afterText` are the two sides' text simples, read once per match. */
+function placeAroundExtender(
+  e: Branch,
+  before: readonly Simple[],
+  after: readonly Simple[],
+  beforeText: readonly string[],
+  afterText: readonly string[]
+): Branch | null {
+  const n = e.segments.length;
+  const first = e.segments[0]!;
+  const last = e.segments[n - 1]!;
+  const firstText = textSimpleTokens(first.compound);
+  if (wouldConflict(beforeText, firstText)
+    || wouldConflict(afterText, n === 1 ? firstText : textSimpleTokens(last.compound))) {
+    return null;
+  }
+  const head = mergeCompound(before, first.compound.value, n === 1 ? after : NO_SIMPLES);
+  const tail = n === 1 ? head : mergeCompound(NO_SIMPLES, last.compound.value, after);
+  if (head === null || tail === null) {
+    return null;
+  }
+  const segments: SelectorPart[] = [{ combinator: first.combinator, compound: { value: head } }];
+  for (let k = 1; k < n - 1; k++) {
+    segments.push(cloneSeg(e.segments[k]!));
+  }
+  if (n > 1) {
+    segments.push({ combinator: last.combinator, compound: { value: tail } });
+  }
+  const out = mkBranch(segments);
+  if (e.ext) {
+    out.ext = true;
+  }
+  if (e.hidden) {
+    out.hidden = true;
+  }
+  return out;
 }

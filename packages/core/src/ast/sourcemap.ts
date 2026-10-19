@@ -24,9 +24,15 @@ import type { Position } from './serialize.js';
  *   3. per-position source-file identity: `Position.source`, stamped at each push
  *      from the active source owner, so imported files map to themselves.
  *
- * Mirrors Less 4.x `SourceMapOutput`/`SourceMapBuilder` shape: one mapping per
- * emitted chunk, `normalizeFilename` (basepath strip + rootpath prefix), and
- * `sourcesContent` under `outputSourceFiles`.
+ * Granularity: one mapping at the start of each emitted node (selector header,
+ * declaration, computed value, at-rule, statement), and one per line of an
+ * `(inline)` import. A composed selector header maps whole to its owning rule;
+ * Less 4.x maps each part to the rule that wrote it. `sources` are normalized as Less
+ * `normalizeFilename` does (basepath strip, then rootpath prefix);
+ * `outputSourceFiles` embeds the content of each source a mapping names. Text a
+ * host injected ahead of or after the entry file (`DocumentContextOptions.file`
+ * `sourceOffset` / `sourceEnd`) has no authored position: it is left unmapped
+ * and not embedded. These three choices are ledger row O12.
  */
 export interface AstSourceMapOptions {
   /** Recorded as the map's `file` (the generated output filename). */
@@ -68,16 +74,26 @@ function lineColFromIndex(lineStarts: number[], offset: number): { line: number;
   return { line: low + 1, column: offset - lineStarts[low]! };
 }
 
-/** Less `normalizeFilename`: basepath removal, then rootpath prefix. */
-function normalizeFilename(filename: string, rootpath: string, basepath: string | undefined): string {
-  let path = filename.replace(/\\/g, '/');
-  if (basepath !== undefined && basepath !== '' && path.indexOf(basepath) === 0) {
-    path = path.substring(basepath.length);
-    if (path.charAt(0) === '/' || path.charAt(0) === '\\') {
-      path = path.substring(1);
-    }
+/**
+ * Less `removeBasepath`: strip a `/`-separated `basepath` prefix and the one
+ * separator after it. Less applies it to every `source` and to the
+ * `sourceMappingURL` annotation (`source-map-builder.js`).
+ *
+ * ponytail: plain string prefix, exactly Less's `path.indexOf(basepath) === 0`,
+ * so basepath `/a/sub` also strips `/a/subx/m.css.map` to `x/m.css.map`. Check
+ * for a `/` boundary after the prefix if that ever bites.
+ */
+export function removeSourceMapBasepath(path: string, basepath: string | undefined): string {
+  if (basepath === undefined || basepath === '' || path.indexOf(basepath) !== 0) {
+    return path;
   }
-  return rootpath + path;
+  const rest = path.substring(basepath.length);
+  return rest.charAt(0) === '/' || rest.charAt(0) === '\\' ? rest.substring(1) : rest;
+}
+
+/** Less `normalizeFilename`: basepath removal, then rootpath prefix (already `/`-terminated). */
+function normalizeFilename(filename: string, rootpath: string, basepath: string | undefined): string {
+  return rootpath + removeSourceMapBasepath(filename.replace(/\\/g, '/'), basepath);
 }
 
 /**
@@ -92,7 +108,10 @@ export function buildAstSourceMap(
   options: AstSourceMapOptions = {}
 ): EncodedSourceMap {
   const genLineStarts = buildLineStarts(css);
-  const rootpath = options.sourceMapRootpath ?? '';
+  let rootpath = options.sourceMapRootpath?.replace(/\\/g, '/') ?? '';
+  if (rootpath !== '' && !rootpath.endsWith('/')) {
+    rootpath += '/';
+  }
   const basepath = options.sourceMapBasepath?.replace(/\\/g, '/');
   const map = new GenMapping({ file: options.outputFilename });
   const contentAdded = new Set<string>();
@@ -103,8 +122,10 @@ export function buildAstSourceMap(
      * content chunk; emitting it would map the first output byte to the ENTRY
      * file's start even when that byte is spliced-in imported content, shadowing
      * the correct per-chunk mapping. Less 4.x emits no such anchor — skip it.
+     * A chunk blanked after the walk (a dropped or hidden block) emitted
+     * nothing, so it gets no mapping either.
      */
-    if (position.type === 'Stylesheet') {
+    if (position.type === 'Stylesheet' || position.start === position.end) {
       continue;
     }
     const file = position.source;
@@ -113,11 +134,17 @@ export function buildAstSourceMap(
     if (filename === undefined || sourceText === undefined) {
       continue;
     }
-    const sourceOffset = sourceStartOf(position.node);
-    if (sourceOffset === NO_SPAN) {
+    const sourceOffset = position.sourceStart ?? sourceStartOf(position.node);
+    const injected = file?.sourceOffset ?? 0;
+    const authoredEnd = file?.sourceEnd ?? sourceText.length;
+
+    /* Nodes from text injected around the file (Less `globalVars`, `modifyVars`) have no authored home. */
+    if (sourceOffset === NO_SPAN || sourceOffset < injected || sourceOffset >= authoredEnd) {
       continue;
     }
     const generated = lineColFromIndex(genLineStarts, position.start);
+
+    /* Counted in the file as authored: `lineColAt` skips the injected text. */
     const original = lineColAt(sourceText, sourceOffset, file);
     const source = normalizeFilename(filename, rootpath, basepath);
     maybeAddMapping(map, {
@@ -127,7 +154,7 @@ export function buildAstSourceMap(
     });
     if (options.outputSourceFiles === true && !contentAdded.has(source)) {
       contentAdded.add(source);
-      setSourceContent(map, source, sourceText);
+      setSourceContent(map, source, sourceText.slice(injected, authoredEnd));
     }
   }
 

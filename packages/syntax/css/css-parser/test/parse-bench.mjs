@@ -52,6 +52,13 @@ const warmup = Number(process.argv[3] ?? 8);
 const timed = Number(process.argv[4] ?? 25);
 const only = process.env.BENCH_CASES ? new Set(process.env.BENCH_CASES.split(',')) : null;
 
+/**
+ * Optional surface filter (`ast` or `cst`). Marginal instruction counts
+ * (`docs/perf/BENCHMARKS.md`) cannot separate two surfaces timed in one
+ * process, so a per-surface count runs one at a time.
+ */
+const surfaces = process.env.BENCH_SURFACES ? new Set(process.env.BENCH_SURFACES.split(',')) : null;
+
 const out = {};
 for (const [name, files] of Object.entries(CASES)) {
   if (only && !only.has(name)) {
@@ -69,6 +76,9 @@ for (const [name, files] of Object.entries(CASES)) {
   const bytes = sources.reduce((n, s) => n + Buffer.byteLength(s), 0);
 
   for (const [surface, fn] of [['ast', parse], ['cst', parseCssCst]]) {
+    if (surfaces && !surfaces.has(surface)) {
+      continue;
+    }
     const once = () => {
       for (const s of sources) {
         try {

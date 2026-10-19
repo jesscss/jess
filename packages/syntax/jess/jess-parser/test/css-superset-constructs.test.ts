@@ -61,7 +61,8 @@ describe('CSS construct space — Jess grammar', () => {
    * so `@page wide:left` never emits the `wide :left` a spaced list would.
    */
   it('reduces a bare @page pseudo-page to one verbatim Any header atom', () => {
-    const result = run(jessGrammar.Stylesheet, '@page :first { margin: 1cm; }', { trivia: jessGrammar.whitespace });
+    const source = '@page :first { margin: 1cm; }';
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -71,7 +72,8 @@ describe('CSS construct space — Jess grammar', () => {
   });
 
   it('reduces a named @page pseudo-page to one verbatim Any header atom', () => {
-    const result = run(jessGrammar.Stylesheet, '@page wide:left { margin: 1cm; }', { trivia: jessGrammar.whitespace });
+    const source = '@page wide:left { margin: 1cm; }';
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({

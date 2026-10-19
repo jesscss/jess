@@ -60,6 +60,7 @@ points you at the source; then you read the source. Treat a subagent's
 - [process/less-v5-release-plan.md](process/less-v5-release-plan.md): release STRATEGY + the two-track **operating model** (§Operating model): release cadence and roadmap run in parallel; ship alphas as user-facing work lands.
 - [process/releasing-alpha.md](process/releasing-alpha.md): release MECHANICS — branch/version policy, cut the snapshot from `dev`, publish order, one-command flow.
 - [state/less-v5-alpha-readiness.md](state/less-v5-alpha-readiness.md): the current-alpha readiness gate.
+- [design/REMOTE-IMPORTS-NETWORK-POLICY.md](design/REMOTE-IMPORTS-NETWORK-POLICY.md): METHOD OF RECORD for remote (network) `@import` — the opt-in `@jesscss/plugin-remote-import`, its allow-list / https / redirect / private-address / size-and-time policy, the owner rulings it applies, and the Deno `--allow-net` denial proof.
 
 ## Keeping this map honest
 

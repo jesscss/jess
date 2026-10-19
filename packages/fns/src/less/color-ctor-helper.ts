@@ -2,7 +2,7 @@
  * Shared kernels for the COLOR-CONSTRUCTOR fns (`rgb`/`hsl`/`hsv`/… + their
  * `*a` aliases). Boundary-clean re-implementations of the legacy `@jesscss/core`
  * conversion plugins (`percentOf` / `normalizeHue` / `alphaToNumber`) over the
- * value-domain `Dimension` — NO `../conversions` import (that reaches `../tree`).
+ * value-domain `Dimension`.
  *
  * HARD MODULE BOUNDARY: value domain only.
  */

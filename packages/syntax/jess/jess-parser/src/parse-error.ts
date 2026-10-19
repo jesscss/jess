@@ -43,3 +43,31 @@ export class JessParseError extends SyntaxError {
     this.fix = options.fix;
   }
 }
+
+/**
+ * A value-position `selector(…)` whose argument is not a selector list
+ * (`selector()`, `selector(1px)`, `selector($x)`): it captures a selector list,
+ * the argument `:is()` takes (owner 2026-10-16, ledger P49). Located at the
+ * argument; the parse reads the rest of it as opaque text and carries on (P45).
+ */
+export class JessSelectorCaptureArgumentError extends SyntaxError {
+  readonly code = 'parse/selector-capture-argument' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'In a value, selector() captures a selector list, the argument :is() takes, and this argument is not one.';
+  readonly fix = 'Write a selector list, for example selector(.a, .b > .c).';
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('selector() takes a selector list.');
+    this.name = 'JessSelectorCaptureArgumentError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
+export type JessRecoveredError = JessSelectorCaptureArgumentError;

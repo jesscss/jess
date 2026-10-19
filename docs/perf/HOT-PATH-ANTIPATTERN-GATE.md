@@ -1,7 +1,8 @@
 # Hot-path antipattern gate
 
-**Status: built, seeded, NOT enabled.** Nothing runs this automatically.
-Turning it on is the owner's call; the checklist is at the bottom.
+**Status: enabled in CI.** The "Build · lint · types · tests · gates" job in
+`.github/workflows/ci.yml` runs the rule unit tests and `pnpm verify:hot-path`.
+The open follow-ups are at the bottom.
 
 ## What problem this closes
 
@@ -44,8 +45,8 @@ corpus spanned -11.8% to +26.4%). A rescan either happens or it does not.
 
 ```
 pnpm audit:hot-path          # report every finding, never fails
-pnpm verify:hot-path         # compare against the named set; exit 1 on a NEW site
-pnpm verify:hot-path:clean   # also fail on a stale entry
+pnpm verify:hot-path         # compare against the named set; exit 1 on a new site or a stale entry
+node scripts/verify-hot-path-antipatterns.mjs --write-inventory   # prune stale entries (deletion-only)
 pnpm test:hot-path-rules     # the rules' own unit tests
 ```
 
@@ -99,14 +100,32 @@ since neither half of that trade is visible to any output-comparing gate.
 Entries are **content-addressed**: `file + rule + sha1(normalized snippet) +
 ordinal`. Inserting a line above a site does not invalidate its entry; editing
 the site's own text does, which is correct — a rewritten site deserves a fresh
-look. `--write-inventory` is **deletion-only** (matching
-`verify-parser-runtime-boundary.mjs`); `--seed` is the explicit reviewed
-override.
+look.
 
-The seeded set is **117 sites**. Sites in `serialize.ts` and `provenance.ts`
+The set **only shrinks**, like the other guard baselines
+(`verify-parser-runtime-boundary.mjs`, the structure baseline in
+`check-guardrails.mjs`):
+
+- a finding that is not in the set fails the check (`NEW … site`);
+- an entry whose site no longer exists also fails the check (`STALE …
+  entry`). Fixing a site therefore means pruning its entry in the same commit,
+  with `--write-inventory`. That mode is **deletion-only**: it refuses to write
+  if any new finding exists;
+- `--write-inventory --seed` rewrites the set from the current findings. It is
+  the explicit reviewed override, and the diff of the JSON is the review.
+
+The set was re-seeded at **152 sites** on 2026-10-15, when the check was wired
+into CI (it had drifted to 99 unrecorded findings and 42 entries for sites that
+were gone or rewritten). Sites in `serialize.ts` and `provenance.ts`
 carry an `owner` field marking in-flight rewrites, so a reader does not mistake
 a listed site for an accepted one. That field is descriptive only and changes
 no comparison outcome.
+
+An accepted site is a **named exception** instead: an `EXCEPTIONS` entry in
+`scripts/verify-hot-path-antipatterns.mjs` with the file, rule, snippet and
+reason. It is matched by content, like an inventory site, so it holds whether
+or not the detector currently reaches the site. An excepted finding never
+enters the comparison or the inventory; `--report` lists it with its reason.
 
 ## What this does NOT catch
 
@@ -135,10 +154,9 @@ Stated plainly, because a gate that overstates its coverage is worse than none.
 4. **Source text passed under an unrecognized name.** `no-source-text-rescan` is
    name-based and is exactly as good as the repo's naming.
 
-5. **`packages/core/src/tree/**`.** Deliberately out of scope: ~67k lines of
-   legacy slated for deletion in the AST-v2 cutover. Pinning hundreds of sites
-   in dying code buys nothing and would have to be maintained as that code is
-   removed. Findings there belong in an audit, not this gate.
+5. **The legacy `packages/core/src/tree/` engine** was deliberately out of
+   scope while it existed (~67k lines slated for deletion in the AST-v2
+   cutover). It has since been deleted, so nothing is excluded on this count.
 
 6. **Purity.** `no-loop-invariant-accessor` cannot prove a zero-arg accessor is
    side-effect-free. It excludes an explicit denylist of stateful zero-arg calls
@@ -165,31 +183,19 @@ Stated plainly, because a gate that overstates its coverage is worse than none.
    `src/` trees, so it does **not** lint `scripts/**`, where the oracle OOM
    actually happened. The rule prevents the class from entering the hot path; it
    does not police the tooling. Extending the scope is an owner decision with a
-   real inventory cost, and is listed in the enablement checklist below.
+   real inventory cost, and is listed in the open follow-ups below.
 
-## Enablement checklist
+## Open follow-ups
 
-Do these in order. Do not skip step 2 — a gate that is red on an untouched
-checkout is not a gate; it teaches people to reach for `--no-verify` on the
-gates that matter.
+The check is wired into CI (not into `pnpm lint`, which must stay fast and
+non-heuristic). A false positive of one of the two advisory loop rules is
+handled the way any finding is: fix the rule if the fix is simple and proven by
+`pnpm test:hot-path-rules`, or name an exception with its reason. These remain:
 
-1. **Let the two in-flight rewrites land** (`serialize.ts` comment/trivia
-   replay, `provenance.ts` side maps). They own 90 of the 117 seeded sites.
-2. **Re-seed and confirm green on a clean tree:**
-   `pnpm verify:hot-path --write-inventory` (deletion-only; it will refuse if
-   anything new appeared), then `pnpm verify:hot-path` — must print
-   `0 new` and exit 0 with no local modifications.
-3. **Bake the two advisory rules for false positives.** `pnpm audit:hot-path`
-   on real PR diffs for a sprint; the same <5% false-positive bar the
-   `scripts/eslint-rules/index.mjs` rules carry. If `no-rescan-in-loop` or
-   `no-loop-invariant-accessor` exceeds it, keep them report-only and gate on
-   the three decidable rules alone.
-4. **Wire it.** Add `pnpm verify:hot-path` to `scripts/verify-pr.mjs` (not to
-   `pnpm lint` — that pass must stay fast and non-heuristic).
-5. **Add the catalogue row.** `docs/perf/V8-ARCHITECTURE.md` "Regression-fixture
+1. **Add the catalogue row.** `docs/perf/V8-ARCHITECTURE.md` "Regression-fixture
    catalogue" gets an R8 row naming this incident, with this file as its
    detector, per that doc's own "extending enforcement" instruction.
-6. **Decide the scope of `no-json-stringify-on-tree`.** It seeds **zero** sites:
+2. **Decide the scope of `no-json-stringify-on-tree`.** It seeds **zero** sites:
    the only `JSON.stringify` anywhere in the hot-path scope is
    `packages/syntax/less/less-parser/src/grammar.ts:1527`, which quotes a
    `value: string` parameter into a `TypeError` message and correctly does not
@@ -198,11 +204,10 @@ gates that matter.
 
    The open question is whether to widen it. The site that motivated the rule
    lives in `scripts/**`, which this pass does not lint at all. Widening to
-   `scripts/**` means accepting a fresh inventory there; widening to
-   `packages/core/src/tree/**` conflicts with item 5 above. Both are the owner's
-   call, and neither blocks gating the rule at its current scope.
+   `scripts/**` means accepting a fresh inventory there. That is the owner's
+   call, and it does not block gating the rule at its current scope.
 
-7. **Decide on the strong-globals knob.** `no-node-keyed-side-map` has an
+3. **Decide on the strong-globals knob.** `no-node-keyed-side-map` has an
    `includeStrongGlobals` option (off) that also flags module-global `Map`/`Set`
    used for per-node bookkeeping — those leak for the process lifetime rather
    than merely costing ephemeron marking. Turning it on is a separate,

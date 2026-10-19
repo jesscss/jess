@@ -6,9 +6,14 @@
  * Why: HRX parsing + directory walking is expensive, and we want a stable
  * intermediate format we can reuse across multiple test suites.
  *
+ * Run by the workspace root's `postinstall`, and on demand with
+ * `pnpm --filter @jesscss/scss-parser sass-spec:cache`. It is workspace-only
+ * setup: `scripts/` is not published, so a lifecycle script in this package's
+ * own manifest would make `npm install @jesscss/scss-parser` fail.
+ *
  * Output (gitignored):
- *   packages/scss-parser/.cache/sass-spec/manifest.json
- *   packages/scss-parser/.cache/sass-spec/inputs/<id>.scss
+ *   packages/syntax/scss/scss-parser/.cache/sass-spec/manifest.json
+ *   packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/<id>.scss
  */
 const fs = require('node:fs');
 const path = require('node:path');

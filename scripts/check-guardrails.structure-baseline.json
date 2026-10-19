@@ -1,0 +1,404 @@
+{
+  "packages/compiler/src/index.ts": {
+    "statements": 546
+  },
+  "packages/compiler/src/index.ts#Compiler.resolveEffectiveConfig": {
+    "statements": 51
+  },
+  "packages/core/src/ast/css-grammar-helpers.ts": {
+    "statements": 735
+  },
+  "packages/core/src/ast/emit-jess.ts": {
+    "statements": 531
+  },
+  "packages/core/src/ast/emit-jess.ts#JessPrinter.node": {
+    "statements": 51
+  },
+  "packages/core/src/ast/evaluator.ts#recoverCallFailure": {
+    "params": 6
+  },
+  "packages/core/src/ast/evaluator.ts#recoverAsyncCall": {
+    "params": 6
+  },
+  "packages/core/src/ast/evaluator.ts#buildEvaluator.call": {
+    "params": 9
+  },
+  "packages/core/src/ast/extend/compose.ts#substituteAmp": {
+    "statements": 61
+  },
+  "packages/core/src/ast/extend/emit.ts": {
+    "statements": 714
+  },
+  "packages/core/src/ast/extend/emit.ts#nestingFold": {
+    "statements": 50
+  },
+  "packages/core/src/ast/extend/emit.ts#splitArms": {
+    "statements": 54
+  },
+  "packages/core/src/ast/extend/emit.ts#computeExtends": {
+    "statements": 285
+  },
+  "packages/core/src/ast/extend/match.ts#applyInstruction": {
+    "params": 9
+  },
+  "packages/core/src/ast/extend/match.ts#rewriteBranchPartial": {
+    "params": 10
+  },
+  "packages/core/src/ast/extend/match.ts#recurseIntoGrafts": {
+    "params": 8
+  },
+  "packages/core/src/ast/extend/match.ts#sideText": {
+    "params": 6
+  },
+  "packages/core/src/ast/extend/match.ts#substituteSingleCompound": {
+    "params": 6
+  },
+  "packages/core/src/ast/extend/plan.ts#collectPlan": {
+    "statements": 58
+  },
+  "packages/core/src/ast/mixin-dispatch.ts#bindArgs": {
+    "statements": 53
+  },
+  "packages/core/src/ast/mixin-dispatch.ts#selectDefinitions": {
+    "statements": 116,
+    "params": 8
+  },
+  "packages/core/src/ast/provenance.ts#createTriviaMapFromParseman": {
+    "statements": 49
+  },
+  "packages/core/src/ast/serialize.ts": {
+    "statements": 9506
+  },
+  "packages/core/src/ast/serialize.ts#importIsNoOp": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#activateBodyDependencies": {
+    "statements": 46
+  },
+  "packages/core/src/ast/serialize.ts#cellsForParams": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#orderedMixinsForStatements": {
+    "statements": 57
+  },
+  "packages/core/src/ast/serialize.ts#publishImportedDocumentFacts": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#findPathInScope": {
+    "statements": 52
+  },
+  "packages/core/src/ast/serialize.ts#evalTyped": {
+    "statements": 74
+  },
+  "packages/core/src/ast/serialize.ts#evalValue": {
+    "statements": 149
+  },
+  "packages/core/src/ast/serialize.ts#evalCollectionEntries": {
+    "statements": 59
+  },
+  "packages/core/src/ast/serialize.ts#evalCollectionEntries.run": {
+    "statements": 47
+  },
+  "packages/core/src/ast/serialize.ts#resolveReferenceResult": {
+    "statements": 212
+  },
+  "packages/core/src/ast/serialize.ts#snapshotPreparedMixinValue": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#resolvePluginBoundHit": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#capturePreparedBodyPluginBindings": {
+    "statements": 52,
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#boundSourceTracker": {
+    "statements": 113
+  },
+  "packages/core/src/ast/serialize.ts#dispatchCall": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#writtenBlockBody": {
+    "statements": 86
+  },
+  "packages/core/src/ast/serialize.ts#orderKeywordArgs": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#resolveTokenAmp": {
+    "params": 8
+  },
+  "packages/core/src/ast/serialize.ts#resolveCompoundAmp": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#placeParent": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#resolveTermAmp": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#recordPseudoElementBranches": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#putValue": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#customPropertyValueWithTrivia": {
+    "statements": 50
+  },
+  "packages/core/src/ast/serialize.ts#emitTopLevelBlockCommentsBetween": {
+    "statements": 66
+  },
+  "packages/core/src/ast/serialize.ts#evaluatedLeaf": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#evaluateLeafStatement": {
+    "params": 9
+  },
+  "packages/core/src/ast/serialize.ts#planImportedStaticExtend": {
+    "params": 10
+  },
+  "packages/core/src/ast/serialize.ts#planImportedFacts": {
+    "statements": 204,
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#planImportedFacts.planImported": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#planImportedFacts.visit": {
+    "statements": 147,
+    "params": 13
+  },
+  "packages/core/src/ast/serialize.ts#planImportedFacts.visit.visitImport": {
+    "statements": 86
+  },
+  "packages/core/src/ast/serialize.ts#serialize": {
+    "statements": 58
+  },
+  "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
+    "statements": 188
+  },
+  "packages/core/src/ast/serialize.ts#emitDocumentStatements.emit~2": {
+    "statements": 89
+  },
+  "packages/core/src/ast/serialize.ts#openDynamicPath": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#recordDynamicExtendFacts": {
+    "params": 8
+  },
+  "packages/core/src/ast/serialize.ts#recordNestedDynExtendSlot": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#foldDynamicExtends": {
+    "statements": 60
+  },
+  "packages/core/src/ast/serialize.ts#flattenResolved": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#flattenWithHeader": {
+    "statements": 68,
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#walkBody": {
+    "statements": 314
+  },
+  "packages/core/src/ast/serialize.ts#walkBody.run": {
+    "statements": 258
+  },
+  "packages/core/src/ast/serialize.ts#expandCall": {
+    "statements": 78,
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#expandCall.runDispatch": {
+    "statements": 66
+  },
+  "packages/core/src/ast/serialize.ts#expandCall.runDispatch.run": {
+    "statements": 48
+  },
+  "packages/core/src/ast/serialize.ts#referenceCallFrame": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#forItems": {
+    "statements": 52
+  },
+  "packages/core/src/ast/serialize.ts#dispatch": {
+    "statements": 72,
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#pushTypedSpread": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#pushTypedSpreadItem": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#flushBlock": {
+    "statements": 61,
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#flushBlock.emit": {
+    "statements": 49
+  },
+  "packages/core/src/ast/serialize.ts#dedupGroup": {
+    "statements": 59
+  },
+  "packages/core/src/ast/serialize.ts#appendMixedMergeMemberRun": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#emitMixedMergeMembers": {
+    "params": 7
+  },
+  "packages/core/src/ast/serialize.ts#putDeclarationValue": {
+    "params": 8
+  },
+  "packages/core/src/ast/serialize.ts#emitLeafOwned": {
+    "statements": 64
+  },
+  "packages/core/src/ast/serialize.ts#emitImportPrelude": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#publishComposedModule": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#activateComposeEdge": {
+    "params": 8
+  },
+  "packages/core/src/ast/serialize.ts#expandStyleImport": {
+    "statements": 118,
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#evalQueryPreludeParts": {
+    "statements": 63
+  },
+  "packages/core/src/ast/serialize.ts#expandAtRuleBlock": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#writeCollapsedAtRuleBlock": {
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#emitAtRuleBody": {
+    "statements": 76
+  },
+  "packages/core/src/ast/serialize.ts#emitBubbleBody": {
+    "statements": 284,
+    "params": 6
+  },
+  "packages/core/src/ast/serialize.ts#emitBubbleBody.run": {
+    "statements": 228
+  },
+  "packages/core/src/ast/serialize.ts#openBlock": {
+    "params": 12
+  },
+  "packages/core/src/ast/serialize.ts#writeNestedRule": {
+    "statements": 98
+  },
+  "packages/core/src/ast/serialize.ts#writeNestedAtRuleBlock": {
+    "params": 7
+  },
+  "packages/core/src/ast/traversal.ts#walkValueSlot": {
+    "params": 6
+  },
+  "packages/core/src/ast/traversal.ts#walkCallValue": {
+    "params": 6
+  },
+  "packages/core/src/ast/traversal.ts#walkCallArg": {
+    "params": 6
+  },
+  "packages/core/src/ast/traversal.ts#walkGuard": {
+    "params": 6
+  },
+  "packages/core/src/ast/traversal.ts#walkNode": {
+    "statements": 111,
+    "params": 6
+  },
+  "packages/core/src/ast/value-collection.ts#CollectionOverlay.testPairOuter": {
+    "params": 6
+  },
+  "packages/core/src/ast/value-collection.ts#CollectionOverlay.scanPairBucket": {
+    "params": 6
+  },
+  "packages/core/src/ast/value-collection.ts#CollectionOverlay.indexOf": {
+    "statements": 101
+  },
+  "packages/core/src/ast/value-factory.ts#makeCompoundDimension": {
+    "params": 6
+  },
+  "packages/core/src/ast/value-guards.ts#compareNodes": {
+    "statements": 53
+  },
+  "packages/core/src/context.ts#Context.appendWarning": {
+    "params": 14
+  },
+  "packages/core/src/context.ts#Context.rememberDocumentContext": {
+    "params": 7
+  },
+  "packages/core/src/error/diagnostics.ts#delimiterConflictSummary": {
+    "statements": 63
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts": {
+    "statements": 3467
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#animationNameReferences": {
+    "statements": 81
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#dimensionUnitSpan": {
+    "statements": 50
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#staticSelectorSpecificity": {
+    "statements": 55
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#splitFontFamilyValue": {
+    "statements": 46
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#fontShorthandFamilyStart": {
+    "statements": 61
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#cstLintDiagnostics": {
+    "statements": 585,
+    "params": 7
+  },
+  "packages/diagnostics-core/src/tolerant-cst.ts#cstLintDiagnostics.visit": {
+    "statements": 515
+  },
+  "packages/editor/language-service/src/cst-analysis.ts#cstDocumentSymbols": {
+    "statements": 51
+  },
+  "packages/editor/language-service/src/cst-syntactic.ts#cstSemanticTokens": {
+    "statements": 101
+  },
+  "packages/editor/language-service/src/engine.ts": {
+    "statements": 1354
+  },
+  "packages/editor/language-service/src/engine.ts#createEngine": {
+    "statements": 839
+  },
+  "packages/editor/language-service/src/engine.ts#createEngine.applyContiguousEdit": {
+    "params": 6
+  },
+  "packages/editor/language-service/src/engine.ts#createEngine.getCompletions": {
+    "statements": 190
+  },
+  "packages/editor/language-service/src/engine.ts#createEngine.getDiagnostics": {
+    "statements": 55
+  },
+  "packages/editor/language-service/src/engine.ts#createEngine.getDocumentLinks": {
+    "statements": 86
+  },
+  "packages/jess-plugin-js/src/index.ts#JsPlugin.startWorker": {
+    "statements": 60
+  },
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
+    "statements": 1277
+  },
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts#callWithLayout": {
+    "params": 6
+  },
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts#functionCallFromChildren": {
+    "params": 6
+  },
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts#argumentFunctionFromChildren": {
+    "params": 6
+  },
+  "packages/syntax/less/less-parser/src/grammar-helpers.ts#mathRunFrom": {
+    "params": 6
+  }
+}

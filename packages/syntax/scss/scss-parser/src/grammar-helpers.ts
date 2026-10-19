@@ -16,11 +16,14 @@
  * parameterised by.
  */
 
-import { appendCustomValueParts as appendCustomValuePartsIn, cssBaseMathOutsideParens, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { ScssImportPostludeError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
-export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
+
+/** One space-list boundary; `glued` is the operand written straight after a delim (`a=b`'s `b`). */
+export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string; readonly glued: ValueNode | null };
 
 /** One authored call argument. The AST's own {@link CallArg}, not a local
  *  look-alike: a `$name:` argument is the SAME node whether the callee is a
@@ -67,12 +70,6 @@ export function scssSourceText(value: unknown): string {
     return value.src;
   }
   return requireToken(value).value;
-}
-
-/** Map query/media-prelude children to value nodes, coercing bare keyword tokens
- *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
-export function keywordizeValues(children: readonly unknown[]): ValueNode[] {
-  return children.map(child => isScssValue(child) ? child : keyword(requireToken(child).value));
 }
 
 /** Concatenate the authored spelling of every child. The canonical opaque
@@ -124,6 +121,74 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
 
 export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
+}
+
+/**
+ * An `:nth-*()` pseudo from its glued opener (`:nth-child(`) and reduced
+ * argument: structured when the argument is an `An+B`, the opaque raw text it
+ * always was otherwise.
+ */
+export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
+  if (isNthArgument(arg)) {
+    return pseudoSelector(opener.slice(0, -1), arg.of, null, null, arg.nth);
+  }
+  if (typeof arg !== 'string') {
+    throw new TypeError('SCSS nth pseudo lost its argument.');
+  }
+  return simpleSelector(`${opener}${arg.trim()})`);
+}
+
+/**
+ * `@import "a", "b";` — one at-rule that is several imports (Sass spec
+ * `at-rules/import.md`, `ImportRule ::= '@import' ImportArgument (',' ImportArgument)*`).
+ * Each argument is its own statement, so the list is carried to the enclosing
+ * body as one fact and spread there in source order.
+ */
+export interface ScssImportListFact {
+  readonly kind: 'scss-import-list';
+  readonly statements: ReadonlyArray<StyleImport | AtRuleStatement>;
+}
+
+export function isScssImportListFact(value: unknown): value is ScssImportListFact {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'scss-import-list';
+}
+
+/**
+ * `ImportStatement`'s reduction: one import per target. The targets are the
+ * run after the at-keyword; a postlude is never a quoted string, `url()` or
+ * interpolation (`#{$media}` is rejected there), so the first value after the
+ * run is the last target's tail.
+ */
+export function scssImportStatementFrom(
+  children: readonly unknown[],
+  span: { readonly start: number; readonly end: number }
+): StyleImport | AtRuleStatement | ScssImportListFact {
+  let end = 1;
+  while (isScssImportTarget(children[end])) {
+    end += 1;
+  }
+  if (end === 1) {
+    throw new TypeError('SCSS @import requires a typed target.');
+  }
+  const tail = children.slice(end).find(isScssValue) ?? null;
+  const imports: Array<StyleImport | AtRuleStatement> = [];
+  for (let index = 1; index < end; index += 1) {
+    const target = children[index];
+    if (!isScssImportTarget(target)) {
+      continue;
+    }
+    const postlude = index === end - 1 ? tail : null;
+    const spelling = importTargetSpelling(target);
+    if (!sassImportUrlIsPlainCss(spelling) && importIsCompileTime('@import', target, null, null, spelling)) {
+      if (postlude !== null) {
+        throw new ScssImportPostludeError(span.start, span.end);
+      }
+      imports.push(withSourceSpan(styleImport('@import', target, { mode: 'import' }), span));
+    } else {
+      imports.push(atRuleStatement('@import', postlude === null ? target : spaced([target, postlude])));
+    }
+  }
+  return imports.length === 1 ? imports[0]! : { kind: 'scss-import-list', statements: imports };
 }
 
 export function isVarRef(value: unknown): value is Lookup {
@@ -348,6 +413,124 @@ export const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
  * optional trivia arms would shift. */
 export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
 
+/**
+ * `CallArgument`'s reduction: the operand alone, a keyword argument, or a
+ * comparison. A comparison one of whose sides is a run holding a delim SCSS
+ * gives no meaning (`a = b < c`) is not read: the whole argument is that css
+ * run, written as authored (ledger N18).
+ */
+export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
+  const left = requireValueSlot(children[0]);
+  if (children.length === 1) {
+    return callArg(left);
+  }
+
+  /*
+   * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
+   * `@include m($x: 1)` already spells, so it is the same {@link CallArg}
+   * and the function's own parameter names bind it. It shares the operand
+   * with the comparison arm rather than opening a second left-factored
+   * lane: the operator tail is parsed ONCE and its spelling decides which
+   * reading applies, so a positional argument pays nothing.
+   *
+   * Only a `$`-sigil variable can be a keyword. A bare identifier before a
+   * colon is not a Sass named argument, and it is a parse error here today.
+   */
+  if (children.some(child => isToken(child) && child.value === ':')) {
+    if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
+      throw new TypeError('A named argument must be spelled `$name: value`.');
+    }
+    return callArg(requireValueSlot(children[children.length - 1]), left.name, false, '$');
+  }
+  const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
+  const operator = requireToken(children[at]).value;
+  const right = requireValueSlot(children[children.length - 1]);
+  if (holdsDelim(left) || holdsDelim(right)) {
+    const values: ValueSlot[] = [];
+    const layout: string[] = [];
+    appendRun(values, layout, left, '');
+    appendRun(values, layout, any(operator), at > 1 ? requireToken(children[at - 1]).value : '');
+    appendRun(values, layout, right, at + 2 < children.length ? requireToken(children[at + 1]).value : '');
+    return callArg(withValueLayout(values, layout));
+  }
+
+  /*
+   * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
+   * operator (§5.1) — the SAME lowering `IfComparison` performs, because a
+   * comparison must not mean one thing in a guard and another in an
+   * argument. `!=` is that comparison under `not`.
+   */
+  const comparison = {
+    g: 'cmp' as const,
+    op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
+    left: requireValue(left),
+    right: requireValue(right),
+    implied: false,
+    parens: 0
+  };
+  return callArg(expression(condition(
+    operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
+    `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
+  )));
+}
+
+/** A space list holding a delim component — the `Any` a `PunctuationValue` builds. */
+function holdsDelim(value: ValueSlot): boolean {
+  return isValueSlotArray(value) && value.some(item => !isValueSlotArray(item) && item.type === 'Any');
+}
+
+/**
+ * Append one component to a run after `separator`, splicing a space list in
+ * with its own layout so the run is css's flat one.
+ */
+function appendRun(values: ValueSlot[], layout: string[], value: ValueSlot, separator: string): void {
+  if (values.length > 0) {
+    layout.push(separator);
+  }
+  if (!isValueSlotArray(value)) {
+    values.push(value);
+    return;
+  }
+  const inner = valueLayoutOf(value);
+  value.forEach((item, index) => {
+    if (index > 0) {
+      layout.push(inner?.[index - 1] ?? ' ');
+    }
+    values.push(item);
+  });
+}
+
+/** `valueSequence`'s reduction: space lists joined by a glued `:` (`progid:DX.M`). */
+export function gluedRun(children: readonly unknown[]): ValueSlot {
+  const values: ValueSlot[] = [];
+  const layout: string[] = [];
+  for (const child of children) {
+    appendRun(values, layout, requireValueSlot(child), '');
+  }
+  return withValueLayout(values, layout);
+}
+
+/**
+ * `ValueTail`'s reduction: a delim glued to what precedes it, padding then a
+ * component, or a slash group. The operand written straight after a delim
+ * rides along as `glued` (`a=b`'s `b`).
+ */
+export function scssValueTail(children: readonly unknown[]): ScssValueTail {
+  const [first, second, third] = children;
+  if (isScssValue(first)) {
+    return { kind: 'space', value: first, separator: '', glued: isScssValue(second) ? second : null };
+  }
+  if (isScssValue(second)) {
+    return { kind: 'space', value: second, separator: isToken(first) ? first.value : ' ', glued: isScssValue(third) ? third : null };
+  }
+  const value = children[children.length - 1];
+  if (!isScssValue(value)) {
+    throw new TypeError('SCSS slash list lost its value.');
+  }
+  const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
+  return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}`, glued: null };
+}
+
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
  *  whose single LookupStep carries the key. A `$var` key selects the
  *  variable-namespace lookup; every other key is a value-equality member lookup
@@ -461,7 +644,7 @@ export function mapKeyValue(node: ValueNode): ValueSlot {
  * `.less` is unaffected — `when (@x)` still lowers to `$if($x == true)`.
  */
 export function scssTruth(value: ValueSlot): GuardNode {
-  return { g: 'truth', value };
+  return { g: 'truth', value, parens: 0 };
 }
 
 /**
@@ -469,8 +652,8 @@ export function scssTruth(value: ValueSlot): GuardNode {
  * falsy". Under §4.4.6 that is exactly jess's `not($x)`, so it is the truth node
  * under a `not` wrapper and cannot drift from the positive form.
  */
-export function scssNegation(value: ValueSlot): GuardNode {
-  return { g: 'not', inner: scssTruth(value) };
+export function scssNegation(value: ValueSlot, word: string): GuardNode {
+  return { g: 'not', inner: scssTruth(value), word, gluedAt: NO_SPAN, parens: 0 };
 }
 
 /**
@@ -590,6 +773,11 @@ export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
       items.push(child.value);
       grouped.push(false);
       separators.push(child.separator);
+      if (child.glued !== null) {
+        items.push(child.glued);
+        grouped.push(false);
+        separators.push('');
+      }
     }
   }
   return items.length === 1
@@ -605,7 +793,8 @@ export function isScssValueTail(value: unknown): value is ScssValueTail {
     && 'value' in value
     && isScssValue(value.value)
     && 'separator' in value
-    && typeof value.separator === 'string';
+    && typeof value.separator === 'string'
+    && 'glued' in value;
 }
 
 export function isVarDeclaration(value: unknown): value is VariableDeclaration {
@@ -658,6 +847,10 @@ export function statements(children: readonly unknown[], allowDeclarations = fal
     if (child === null) {
       continue;
     }
+    if (isScssImportListFact(child)) {
+      result.push(...child.statements);
+      continue;
+    }
     if (!isStatementChild(
       child,
       allowDeclarations
@@ -672,7 +865,9 @@ export function statements(children: readonly unknown[], allowDeclarations = fal
 export function statementChildren(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
-    if (isStatementChild(
+    if (isScssImportListFact(child)) {
+      result.push(...child.statements);
+    } else if (isStatementChild(
       child,
       allowDeclarations
     )) {

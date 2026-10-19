@@ -120,9 +120,11 @@ if (root) {
       if (spec.error !== undefined) {
         runnableError.push(record);
       } else if (spec.output !== undefined) {
-        // A case that echoes its own call is a CSS-filter passthrough: Sass
-        // leaves it verbatim, and the body must DECLINE it (which is what makes
-        // jess re-emit it). Assert the decline, not a value.
+        /*
+         * A case that echoes its own call is a CSS-filter passthrough: Sass
+         * leaves it verbatim, and the body must DECLINE it (which is what makes
+         * jess re-emit it). Assert the decline, not a value.
+         */
         (isPassthrough(expr, soleOutputValue(spec.output)) ? runnableError : runnableValue).push(record);
       } else {
         skipped.push({ id: spec.id, reason: 'case has neither output.css nor error' });
@@ -146,8 +148,10 @@ function invoke(fn: Fn, args: string): Value {
 
 describe.skipIf(!root)('sass:color — sass-spec conformance', () => {
   it('covers the corpus with a recorded runnable/unrunnable split', () => {
-    // Guards against coverage silently eroding: if a case moves between buckets
-    // this fails and the new grouping has to be looked at, not assumed benign.
+    /*
+     * Guards against coverage silently eroding: if a case moves between buckets
+     * this fails and the new grouping has to be looked at, not assumed benign.
+     */
     const byReason = new Map<string, number>();
     for (const s of skipped) {
       byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
@@ -169,8 +173,10 @@ describe.skipIf(!root)('sass:color — sass-spec conformance', () => {
         expect(expected).not.toBeNull();
         const actual = invoke(fn, args);
 
-        // `ie-hex-str` is a STRING result whose whole contract is the byte
-        // spelling (upper case, `#AARRGGBB`) — compare it verbatim.
+        /*
+         * `ie-hex-str` is a STRING result whose whole contract is the byte
+         * spelling (upper case, `#AARRGGBB`) — compare it verbatim.
+         */
         if (spec.fn === 'ie_hex_str') {
           expect(ieHexString(invokeColorArg(args))).toBe(expected);
           return;
@@ -179,9 +185,12 @@ describe.skipIf(!root)('sass:color — sass-spec conformance', () => {
         const want = readValue(expected!);
         if (isColor(actual) && isColor(want)) {
           const cmp = compareColors(actual, want);
-          // A `rounding-only` difference is dart-sass's 8-bit legacy colour
-          // model. The owner ruling keeps full precision internally, so such a
-          // case is surfaced by name rather than conformed to.
+
+          /*
+           * A `rounding-only` difference is dart-sass's 8-bit legacy colour
+           * model. The owner ruling keeps full precision internally, so such a
+           * case is surfaced by name rather than conformed to.
+           */
           expect(`${cmp.kind}${cmp.detail ? `: ${cmp.detail}` : ''}`).toBe('match');
           return;
         }

@@ -11,6 +11,13 @@ import { lessCstPositionsGrammar } from '../grammar/cst/positions.js';
 
 export { commentTriviaLabels } from '../trivia-labels.js';
 
+/*
+ * The `;` rule a tolerant CST reader asks about a mixin list, and the problem's
+ * located error: one definition, shared with the grammar (ledger P46).
+ */
+export { mixinListProblems, type MixinListItemShape, type MixinListProblem } from '../mixin-list.js';
+export { LessMixinArgumentError } from '../parse-error.js';
+
 /** Parse Less to a CST whose spans carry line and column facts. */
 export function parseLessCst(
   input: string,

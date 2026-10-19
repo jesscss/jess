@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { node } from '../../__tests__/harness.js';
 import {
   makeDimension,
   makeKeyword,
   makeQuoted,
-  type Dimension,
   type Keyword,
   type Quoted
 } from '@jesscss/core';
@@ -15,30 +15,22 @@ import strSlice from '../str-slice.js';
 const quoted = (value: string, quoteChar = '"'): Quoted => makeQuoted(value, quoteChar, false);
 const unquoted = (text: string): Keyword => makeKeyword(text);
 
-function expectDimension(value: unknown): Dimension {
-  if (!value || typeof value !== 'object' || !('type' in value) || value.type !== 'Dimension') {
-    throw new TypeError('Expected a Dimension result.');
-  }
-  return value as Dimension;
-}
-
 describe('Sass remaining string functions', () => {
   describe('unique-id()', () => {
     it('returns a unique unquoted string', () => {
-      const result = uniqueId();
-      expect(result.type).toBe('Keyword');
-      expect((result as Keyword).text).toMatch(/^u[0-9a-z]{6}$/);
+      const result = node(uniqueId(), 'Keyword');
+      expect(result.text).toMatch(/^u[0-9a-z]{6}$/);
     });
 
     it('returns different IDs on subsequent calls', () => {
       const id1 = uniqueId();
       const id2 = uniqueId();
-      expect((id1 as Keyword).text).not.toBe((id2 as Keyword).text);
+      expect(node(id1, 'Keyword').text).not.toBe(node(id2, 'Keyword').text);
     });
 
     it('starts with "u"', () => {
       const result = uniqueId();
-      expect((result as Keyword).text).toMatch(/^u/);
+      expect(node(result, 'Keyword').text).toMatch(/^u/);
     });
   });
 
@@ -91,14 +83,14 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello');
       const substring = unquoted('ll');
       const result = strIndex(str, substring);
-      expect(expectDimension(result).number).toBe(3);
+      expect(node(result, 'Dimension').number).toBe(3);
     });
 
     it('returns 1 for first character', () => {
       const str = unquoted('Hello');
       const substring = unquoted('H');
       const result = strIndex(str, substring);
-      expect(expectDimension(result).number).toBe(1);
+      expect(node(result, 'Dimension').number).toBe(1);
     });
 
     it('returns Null when substring is not found', () => {
@@ -112,7 +104,7 @@ describe('Sass remaining string functions', () => {
       const str = unquoted('Hello Hello');
       const substring = unquoted('ll');
       const result = strIndex(str, substring);
-      expect(expectDimension(result).number).toBe(3);
+      expect(node(result, 'Dimension').number).toBe(3);
     });
   });
 

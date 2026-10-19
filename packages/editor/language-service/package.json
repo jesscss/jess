@@ -23,6 +23,7 @@
   ],
   "dependencies": {
     "@csstools/selector-specificity": "^6.0.0",
+    "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/diagnostics-core": "workspace:*",
     "@jesscss/jess-parser": "workspace:*",

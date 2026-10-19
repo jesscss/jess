@@ -35,15 +35,12 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
   variable space; an interpolated `Quoted` key → property space).
 
 ### Syntax contradictions — ADJUDICATED by the user 2026-07-05
-1. **Selector capture is `*[…]` — NO `$` sigil** (canonical = core's
-   `SelectorCapture.writeSyntax`). Do NOT add a `$` to core; the parser accepts
-   bare `*[.notice]`. The docs (which show `$*[…]`) are WRONG and get the `$`
-   dropped in the docs-update task. The `$extend`/dynamic-property forms that reuse
-   capture reconcile to bare `*[…]` too.
+1. **Selector capture has NO `$` sigil.** Since 2026-10-16 (owner, ledger P49)
+   it is spelled `selector(<selector-list>)` — the `selector(` function token
+   dispatches to the `:is()` selector-list production.
 2. **`$apply` — `$|…` is INVALID; drop the `$|`-glued shorthand entirely.** The
    class-merge surface is `$apply <selector-list>` (space after `$apply`), incl.
-   comma-lists: `$apply .a, .b`. Lower it to whatever the earlier
-   "`$apply` ≈ `$ > *[.foo]`" description implies, but the SURFACE is never `$|…`.
+   comma-lists: `$apply .a, .b`. The SURFACE is never `$|…`.
 3. **`@-use` and `@-from` are DISTINCT constructs, not interchangeable aliases.**
    "Sugar" only meant both can import namespaces. Keep two separate grammar rules;
    they map to different core imports (namespace vs ESM-style). Both support
@@ -60,11 +57,11 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   (single-expr normalised to a `result:` decl — the CSS `@function` return
   descriptor) — corpus 08 (`0ecdbba1f`).
 - `$extend` statement (`.sel`, `!exact`, `ns|sel`, comma list, `$type` variable
-  target, `*[.sel]` capture target) — corpus 09 (`bddeb55ac` + capture commit).
+  target, `selector(.sel)` capture target) — corpus 09 (`bddeb55ac` + capture commit).
   Literal targets wrapped in a `BasicSelector` (a bare string crashes
   `Extend.writeSyntax`); node targets (Reference/SelectorCapture) used directly.
-- Selector capture `*[.notice]` / `*[.a, .b]` / `*[.foo .bar]` — corpus 10. Core
-  `SelectorCapture` wrapping a coerced Selector node; renders `*[…]`, NO `$`
+- Selector capture `selector(.notice)` / `selector(.a, .b)` / `selector(.foo .bar)` — corpus 10. Core
+  `SelectorCapture` wrapping a coerced Selector node; renders `selector(…)`, NO `$`
   (adjudication #1). Inner: lone → BasicSelector, list → SelectorList, complex →
   ComplexSelector. Read from `children` (the comma-list array collapses to `""` in
   `spannedComponents`, so rawChildren is unusable for it).
@@ -75,7 +72,7 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   the applied-selector list; each target coerced to a real Selector (lone →
   BasicSelector). One selector and a comma list are both just an `Apply` with 1 or
   N selectors; round-trips `$apply .a, .b;` structurally. (Superseded the earlier
-  `$ > *[.sel]()` mixin-Call lowering from `4ea1ad41e`.)
+  mixin-Call lowering from `4ea1ad41e`.)
 
 - Jess `@-` at-rules — corpus 12. `@-compose`/`@-export`/`@-import` → StyleImport;
   `@-use`/`@-from` → JsImport (distinct `source`, adjudication #3). Round-trips:
@@ -86,8 +83,8 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   Base forms only; `@-compose` modifiers `(reference)`/`(export)` +
   `set`/`with` blocks are NOT yet built (follow-up).
 
-- Canonical Docusaurus docs updated to the settled syntax (`60b7b35f6`): `$*[…]`→
-  `*[…]` in 08-interpolation, `$|…` removed / `$apply .rounded` in 05-mixins +
+- Canonical Docusaurus docs updated to the settled syntax (`60b7b35f6`): the
+  capture's `$` dropped in 08-interpolation, `$|…` removed / `$apply .rounded` in 05-mixins +
   `$ >` in 10-namespaces, mixin arg/param examples `;`→`,` in 05-mixins.
 
 ## `$apply` / `Apply` eval semantics (DONE)
@@ -106,29 +103,6 @@ semantics: apply ONLY plain `Ruleset`s, whole-selector match, merge-ALL; paramet
   `createCallableRulesSurface` wholesale; did NOT reuse `evaluateCallableCollection`
   (it bakes in args/candidate-matching/guards — out of scope for ruleset-only apply).
 - Tests: `core/src/tree/__tests__/apply.test.ts` (8 eval tests). Core 2745/0.
-
-## `*[.foo]()` bracket-capture CALL is ruleset-only (DONE)
-Correction to an earlier N/A: the bracket-capture CALL `*[.foo]()` IS made
-ruleset-only, and it's a DIFFERENT construct from the dot mixin-ruleset call
-`*.foo()` — so the change is surgical and leaves `*.foo()` untouched:
-- `*[.foo]()` — a `Call` whose name is a `Reference` whose KEY is a `SelectorCapture`
-  (`cap.parent === reference`; `isInsideSelectorCapture(reference)` is FALSE — the
-  capture is a child, not an ancestor). Now resolves RULESET-only (same as `$apply`):
-  a same-named `.foo` Mixin is excluded.
-- `*.foo()` — a `Reference` with a STRING key + `options.type === 'mixin-ruleset'`,
-  no capture. UNCHANGED (matches both mixin + ruleset).
-Implementation:
-- `rulesetsOnly` threaded through `findMixin`'s string-key path +
-  `collectCallableBucketResults` / `collectCallableBucketRemainderResults` /
-  `findMixinsFastForUncoveredCallable` (mirrors the `includeRulesets` guard;
-  `CallableFindOptions.rulesetsOnly`).
-- Gate: new `isSelectorCaptureKeyReference(referenceNode)` (key is a SelectorCapture)
-  in `performMixinRulesLookup` / `performMixinRulesetRulesLookup`; when true, drop the
-  `'Mixin'` filter (so rulesets are allowed) and pass `rulesetsOnly: true`.
-- The BARE `*[…]` value (not called) is still a pure selector resolver — it does no
-  lookup, so it's unaffected (SelectorCapture tests ×6 stay green).
-- Tests: `selector-capture-call.test.ts` (4) incl. a bracket-vs-dot divergence test.
-  Core 2749/0; `$apply` unchanged.
 
 ## Variable assignment operators (`?:` / `:=`) — DONE (parse + serialize)
 - **`$foo?:` conditional / default-assignment** — Jess's equivalent of SCSS
@@ -253,7 +227,7 @@ rediscovered.
   production is the outlier. Worked around by moving the comment above the block
   in `docs/jess/02-Language/10-namespaces-and-maps.mdx`.
 - **`$extend $type;` does not parse.** The documented selector-capture flow
-  (`$type: *[.notice]; .danger { $extend $type; }`) errors at the `$extend`
+  (`$type: selector(.notice); .danger { $extend $type; }`) errors at the `$extend`
   statement. `$extend .notice;` with a literal selector is fine, so the gap is
   the variable-valued target. Example 4 in
   `docs/jess/02-Language/08-interpolation.mdx` teaches the failing form.

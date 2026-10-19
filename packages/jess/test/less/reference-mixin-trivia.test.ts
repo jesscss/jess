@@ -182,6 +182,43 @@ describe('reference mixin trivia', () => {
     }
   );
 
+  /*
+   * A leaf that a reference-imported mixin authored keeps its inline comment in
+   * its own document's trivia, so it is written correctly only once that document
+   * is re-entered: in a plain body (collapsed and nested flushes), in a merge group
+   * whose members all come from the one imported document, and in a directive body
+   * that writes its leaves one by one.
+   */
+  it.each([
+    ['plain body', '.consumer {\n  .library();\n}\n',
+      '.consumer {\n  color: green /* carried inline */;\n  /* carried from the selected body */\n}\n'],
+    ['merge group', '@import (reference) "nested/merge-library.less";\n.consumer {\n  .merged();\n}\n',
+      '.consumer {\n'
+      + '  box-shadow: url("nested/merge-one.png") /* carried from the first merge member */, url("nested/merge-two.png") /* carried from the merge anchor */;\n'
+      + '  /* carried after the merge */\n'
+      + '}\n'],
+    ['directive body', '@media screen {\n  .library();\n}\n',
+      '@media screen {\n  color: green /* carried inline */;\n  /* carried from the selected body */\n}\n']
+  ].flatMap(([position, body, css]) => [true, false].map(collapseNesting => ({ position, body, css, collapseNesting }))))(
+    'writes imported leaves in their own document in a $position (collapseNesting=$collapseNesting)',
+    async ({ body, css, collapseNesting }) => {
+      const compiler = new Compiler({
+        output: { collapseNesting },
+        compile: { plugins: [lessPlugin({ rewriteUrls: 'all' })] }
+      });
+
+      const result = await compiler.renderToResult({
+        source: '@import (reference) "library.less";\n' + body,
+        filePath: path.join(fixtureDir, 'consumer.less'),
+        language: 'less',
+        extension: '.less'
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(result.css).toBe(css);
+    }
+  );
+
   it('keeps delayed plugin capabilities in the imported source and restores the caller', async () => {
     const compiler = new Compiler({
       compile: {
@@ -221,29 +258,48 @@ describe('reference mixin trivia', () => {
     );
   }, 30000);
 
+  /*
+   * With `functionMode: 'error'` the rejection is an error, and an error fails
+   * the compile (owner 2026-10-16: "if the diagnostic treats it as an error,
+   * then no it doesn't succeed"); with the default `'preserve'` it is a
+   * warning and the sheet is written, the caller's trivia after it included.
+   */
   it('restores caller provenance after a delayed imported plugin rejection', async () => {
-    const compiler = new Compiler({
+    const compilerIn = (functionMode: 'error' | 'preserve') => new Compiler({
       compile: {
         plugins: [
           lessPlugin({ rewriteUrls: 'all' }),
           jsPlugin({ jsReadRoot: fixtureDir, runtimeApi: 'less' }),
           lessCompatPlugin()
         ],
-        functionMode: 'error'
+        functionMode
       },
       output: { collapseNesting: true }
     });
+    const atTheImportedCall = {
+      code: 'plugin/function-threw',
+      filePath: path.join(fixtureDir, 'nested/async-library.less'),
+      line: 12
+    };
 
-    const result = await compiler.renderToResult(rejectFixture, {
+    const failed = await compilerIn('error').renderToResult(rejectFixture, {
       breakOnError: false,
       suppressWarnings: true
     });
-
-    const failure = result.errors.find(error => error.code === 'plugin/function-threw');
+    const failure = failed.errors.find(error => error.code === 'plugin/function-threw');
     expect(failure?.reason).toContain('IMPORTED_ASSET_FAILURE');
-    expect(failure?.filePath).toBe(path.join(fixtureDir, 'nested/async-library.less'));
-    expect(failure?.line).toBe(12);
-    expect(result.css).toContain(
+    expect(failure).toMatchObject(atTheImportedCall);
+    expect(failed.css).toBe('');
+
+    const written = await compilerIn('preserve').renderToResult(rejectFixture, {
+      breakOnError: false,
+      suppressWarnings: true
+    });
+    expect(written.errors).toEqual([]);
+    const warning = written.warnings.find(entry => entry.code === 'plugin/function-threw');
+    expect(warning?.reason).toContain('IMPORTED_ASSET_FAILURE');
+    expect(warning).toMatchObject(atTheImportedCall);
+    expect(written.css).toContain(
       '.after {\n'
       + '  image: url("after.png");\n'
       + '  /* caller after rejection */\n'

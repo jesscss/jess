@@ -7,9 +7,8 @@
  * relation is the classification this port acts on. That is what this file pins.
  */
 import { describe, expect, it } from 'vitest';
-import { makeColorHsl, makeList, HSL } from '@jesscss/core';
+import { makeColorHsl, makeList, HSL, isValueGroupArray } from '@jesscss/core';
 import type { Dimension, Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
-import { isValueGroupArray } from '@jesscss/core';
 import { hue } from '../color/hue.js';
 import { saturation } from '../color/saturation.js';
 import { lightness } from '../color/lightness.js';
@@ -46,9 +45,12 @@ describe('sass:color hsl channel readers vs Less', () => {
     expect(call(lessSaturation, green)).toMatchObject({ number: 50, unit: '%' });
     expect(call(lightness, green)).toMatchObject({ number: 50, unit: '%' });
     expect(call(lessLightness, green)).toMatchObject({ number: 50, unit: '%' });
-    // Sass's are `color.saturation`/`color.lightness`, which carry a `$space`
-    // parameter Less has no concept of, so they remain separate bodies even
-    // while today's numbers coincide.
+
+    /*
+     * Sass's are `color.saturation`/`color.lightness`, which carry a `$space`
+     * parameter Less has no concept of, so they remain separate bodies even
+     * while today's numbers coincide.
+     */
     expect(saturation).not.toBe(lessSaturation);
     expect(lightness).not.toBe(lessLightness);
   });

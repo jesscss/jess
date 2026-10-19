@@ -3,32 +3,158 @@
   "policy": "Every entry is a KNOWN hot-path antipattern site, not an exemption. The gate is satisfied by shrinking this set; it never grows without a reviewed edit. The final state is sites: [].",
   "sites": [
     {
-      "file": "packages/core/src/ast/extend/compose.ts",
+      "file": "packages/core/src/ast/compress.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "4b22a94dc5173bbe",
+      "fingerprint": "3f7af11d61f76fb3",
       "ordinal": 0,
-      "snippet": "s.text.split('&')"
+      "snippet": "v.src.charCodeAt(0)"
     },
     {
-      "file": "packages/core/src/ast/extend/compose.ts",
+      "file": "packages/core/src/ast/css-grammar-helpers.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "4b22a94dc5173bbe",
+      "fingerprint": "36816c4465e12cea",
+      "ordinal": 0,
+      "snippet": "source.charCodeAt(at)"
+    },
+    {
+      "file": "packages/core/src/ast/css-grammar-helpers.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7b510b60215cda51",
+      "ordinal": 0,
+      "snippet": "source.charCodeAt(at + 1)"
+    },
+    {
+      "file": "packages/core/src/ast/css-grammar-helpers.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "36816c4465e12cea",
       "ordinal": 1,
-      "snippet": "s.text.split('&')"
+      "snippet": "source.charCodeAt(at)"
+    },
+    {
+      "file": "packages/core/src/ast/css-grammar-helpers.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "429b57de976edfd8",
+      "ordinal": 0,
+      "snippet": "source.slice(start, triviaLog[entry + 1])"
+    },
+    {
+      "file": "packages/core/src/ast/css-grammar-helpers.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "cdc492ee050d8bae",
+      "ordinal": 0,
+      "snippet": "state.source.slice(span.start, span.end)"
+    },
+    {
+      "file": "packages/core/src/ast/css-grammar-helpers.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "4387bbf59d47554c",
+      "ordinal": 0,
+      "snippet": "node.raw.slice(1)"
+    },
+    {
+      "file": "packages/core/src/ast/emit-jess.ts",
+      "rule": "no-speculative-allocation-predicate",
+      "fingerprint": "6053139b9b500b41",
+      "ordinal": 0,
+      "snippet": "['@import', '@layer', '@charset']"
+    },
+    {
+      "file": "packages/core/src/ast/emit-jess.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9d2ef96b27ba5ea2",
+      "ordinal": 0,
+      "snippet": "run.src.slice(run.start, run.end)"
+    },
+    {
+      "file": "packages/core/src/ast/emit-jess.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "29a434c348476b69",
+      "ordinal": 0,
+      "snippet": "src.slice(start, end)"
+    },
+    {
+      "file": "packages/core/src/ast/emit-jess.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "39354101fe826a36",
+      "ordinal": 0,
+      "snippet": "text.slice(1)"
     },
     {
       "file": "packages/core/src/ast/extend/compose.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "4b22a94dc5173bbe",
+      "fingerprint": "cda64f446129abe8",
+      "ordinal": 0,
+      "snippet": "s.text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "ecd9ef009f3fc791",
+      "ordinal": 0,
+      "snippet": "s.text.slice(1)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "39354101fe826a36",
+      "ordinal": 0,
+      "snippet": "text.slice(1)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "39354101fe826a36",
+      "ordinal": 1,
+      "snippet": "text.slice(1)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "0ce1c00a793aa5e9",
+      "ordinal": 0,
+      "snippet": "parentBranches.some(irEndsWithPseudoElement)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "cda64f446129abe8",
+      "ordinal": 1,
+      "snippet": "s.text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "cda64f446129abe8",
       "ordinal": 2,
-      "snippet": "s.text.split('&')"
+      "snippet": "s.text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "e0533847ddaec0fc",
+      "ordinal": 0,
+      "snippet": "s.text.indexOf('&', 1)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/compose.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "ecd9ef009f3fc791",
+      "ordinal": 1,
+      "snippet": "s.text.slice(1)"
     },
     {
       "file": "packages/core/src/ast/extend/conflict.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "9a857e0c6c27698d",
+      "fingerprint": "842e61e4f9081b66",
       "ordinal": 0,
-      "snippet": "text.charCodeAt(0)"
+      "snippet": "text.charCodeAt(at)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/conflict.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "842e61e4f9081b66",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(at)"
     },
     {
       "file": "packages/core/src/ast/extend/emit.ts",
@@ -43,6 +169,153 @@
       "fingerprint": "d34c54f28c059097",
       "ordinal": 0,
       "snippet": "identity.some(b => branchText(b) === branchText(inst.target))"
+    },
+    {
+      "file": "packages/core/src/ast/extend/emit.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "bf7c22d08aa3b2f9",
+      "ordinal": 1,
+      "snippet": "raw.some(b => branchWholeMatches(b, inst.target, inst.partial))"
+    },
+    {
+      "file": "packages/core/src/ast/extend/ir.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/ir.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7b81f8b772b71d6a",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(i)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/ir.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "3be0976f9961df60",
+      "ordinal": 0,
+      "snippet": "text.slice(i, i + 2)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/ir.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "02ce751f44d68061",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(next)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/ir.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "02ce751f44d68061",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(next)"
+    },
+    {
+      "file": "packages/core/src/ast/extend/match.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "ba4c99fe26c3ea3f",
+      "ordinal": 0,
+      "snippet": "need.indexOf(s.text)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7b81f8b772b71d6a",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(i)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "a048aa23f60ce380",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(i + 1)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "a048aa23f60ce380",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(i + 1)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "f22c1fd0713fb08b",
+      "ordinal": 0,
+      "snippet": "text.indexOf('|')"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "59079da5bf2fd4e5",
+      "ordinal": 0,
+      "snippet": "text.indexOf('=')"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "5211c0c2f02eed4f",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(end)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "2d6b2d28b962f07d",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(end - 1)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "57d97496c88baf33",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(bar + 1)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "5211c0c2f02eed4f",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(end)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "722d108585fce322",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(1)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 2,
+      "snippet": "text.charCodeAt(0)"
+    },
+    {
+      "file": "packages/core/src/ast/is-grouping.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "722d108585fce322",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(1)"
     },
     {
       "file": "packages/core/src/ast/literal-tag.ts",
@@ -81,24 +354,45 @@
     },
     {
       "file": "packages/core/src/ast/mixin-dispatch.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "d396d372074e6f7a",
-      "ordinal": 0,
-      "snippet": "named.keys()"
-    },
-    {
-      "file": "packages/core/src/ast/mixin-dispatch.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "476c7905bc8980f2",
       "ordinal": 0,
       "snippet": "fixedParams.some(p => p.name === key)"
     },
     {
+      "file": "packages/core/src/ast/nodes.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "b322dce3fb8689a9",
+      "ordinal": 0,
+      "snippet": "text.indexOf(PLACEHOLDER_SIGIL)"
+    },
+    {
+      "file": "packages/core/src/ast/nodes.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "e0fa0d99be08ec14",
+      "ordinal": 0,
+      "snippet": "text.indexOf(PLACEHOLDER_SIGIL, at + 2)"
+    },
+    {
+      "file": "packages/core/src/ast/nodes.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "d282995024fa8ce2",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(at - 1)"
+    },
+    {
+      "file": "packages/core/src/ast/nodes.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(0)"
+    },
+    {
       "file": "packages/core/src/ast/provenance.ts",
       "rule": "no-node-keyed-side-map",
-      "fingerprint": "89ff29b6d014688d",
+      "fingerprint": "853b3352e94e4c14",
       "ordinal": 0,
-      "snippet": "new WeakMap<object, ValueLayout>()",
+      "snippet": "new WeakMap<object, StoredValueLayout>()",
       "owner": "provenance side-map rewrite in flight"
     },
     {
@@ -107,22 +401,6 @@
       "fingerprint": "5a289ee4adaffb77",
       "ordinal": 0,
       "snippet": "src.charCodeAt(i)",
-      "owner": "provenance side-map rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/provenance.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "ac01fd73b5601c1e",
-      "ordinal": 0,
-      "snippet": "after.values()",
-      "owner": "provenance side-map rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/provenance.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "3cb29d8ec379303f",
-      "ordinal": 0,
-      "snippet": "index.gaps()",
       "owner": "provenance side-map rewrite in flight"
     },
     {
@@ -135,10 +413,10 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "3d2030ec2448e9d1",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "6211e3d7b054dcc4",
       "ordinal": 0,
-      "snippet": "text.match(/[#.][\\w-]+|&[\\w-]*|[\\w-]+/gu)",
+      "snippet": "new WeakMap<Readonly<ResolvedOptions>, readonly [EvalModes, EvalModes]>()",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -147,7 +425,7 @@
       "fingerprint": "9a857e0c6c27698d",
       "ordinal": 0,
       "snippet": "text.charCodeAt(0)",
-      "owner": "mixin-match leaf tokenizer: bounded scan of ONE parser leaf, replacing the selectorAtoms regex round-trip (P1.1)"
+      "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
@@ -155,7 +433,23 @@
       "fingerprint": "7b81f8b772b71d6a",
       "ordinal": 0,
       "snippet": "text.charCodeAt(i)",
-      "owner": "mixin-match leaf tokenizer: bounded scan of ONE parser leaf, replacing the selectorAtoms regex round-trip (P1.1)"
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "3d2030ec2448e9d1",
+      "ordinal": 0,
+      "snippet": "text.match(/[#.][\\w-]+|&[\\w-]*|[\\w-]+/gu)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "9021a485739ced8b",
+      "ordinal": 0,
+      "snippet": "new WeakMap<If, boolean>()",
+      "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
@@ -168,25 +462,121 @@
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "e42bdb34176164c6",
+      "fingerprint": "b2dc9f6aec37bf26",
       "ordinal": 0,
-      "snippet": "source.indexOf(node.operator, searchStart)",
+      "snippet": "source.indexOf(sides.operator, searchStart)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "485b0c633b67edc7",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "4422403d28e4b6ff",
       "ordinal": 0,
-      "snippet": "frame.declIndex?.byName.keys()",
+      "snippet": "new WeakSet<Value>()",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "a3b628f84b68dcd7",
+      "ordinal": 0,
+      "snippet": "new WeakSet<Any>()",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "8277f4d85827d4ea",
+      "fingerprint": "0a0d5401e21cc046",
       "ordinal": 0,
-      "snippet": "text.split('&')",
+      "snippet": "node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "f060d2c675736141",
+      "ordinal": 0,
+      "snippet": "node.raw.indexOf(base.name)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "bc9f264ef5c5e392",
+      "ordinal": 0,
+      "snippet": "new WeakMap<EvalModes, EvalModes>()",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "4194fde10645db5e",
+      "ordinal": 0,
+      "snippet": "params.indexOf(argName)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7b81f8b772b71d6a",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(i)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "5211c0c2f02eed4f",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(end)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "5211c0c2f02eed4f",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(end)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "d7262b8c16b235d9",
+      "ordinal": 0,
+      "snippet": "text.slice(i, end)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "39354101fe826a36",
+      "ordinal": 0,
+      "snippet": "text.slice(1)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "d2db8984baec9503",
+      "ordinal": 0,
+      "snippet": "sim.text.charCodeAt(0)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7b81f8b772b71d6a",
+      "ordinal": 2,
+      "snippet": "text.charCodeAt(i)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "027173109dbea880",
+      "ordinal": 0,
+      "snippet": "c.text.indexOf('&', 1)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -239,66 +629,26 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "e4af6a254550d9e2",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7eb746f81c190ffa",
       "ordinal": 0,
-      "snippet": "run.src.indexOf('/*', pos)",
+      "snippet": "source.charCodeAt(textStart - 1)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "e4af6a254550d9e2",
+      "fingerprint": "7285f272268cdced",
       "ordinal": 0,
-      "snippet": "run.src.indexOf('/*', pos)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "4b7842b2b75eab52",
-      "ordinal": 0,
-      "snippet": "run.src.indexOf('*/', start + 2)",
+      "snippet": "source.charCodeAt(textEnd)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "4b7842b2b75eab52",
+      "fingerprint": "38a5153551ef8c9f",
       "ordinal": 0,
-      "snippet": "run.src.indexOf('*/', start + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "64eaa6ff9518b5c8",
-      "ordinal": 0,
-      "snippet": "run.src.charCodeAt(textStart - 1)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "7830f80b7b84e70b",
-      "ordinal": 0,
-      "snippet": "run.src.charCodeAt(textEnd)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "02b6eadd9e9787eb",
-      "ordinal": 0,
-      "snippet": "run.src.slice(textStart, textEnd)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "5e26f759d6474895",
-      "ordinal": 0,
-      "snippet": "excludedSpans.some(span => runStart >= span.start && runEnd <= span.end)",
+      "snippet": "source.slice(textStart, textEnd)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -328,9 +678,17 @@
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "4f7645592440c5a2",
+      "fingerprint": "07e0398ef48e2d3f",
       "ordinal": 0,
-      "snippet": "source.slice(end - 2, end)",
+      "snippet": "source.charCodeAt(end - 2)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "3d4c1d55a4fbf5ea",
+      "ordinal": 1,
+      "snippet": "source.charCodeAt(end - 1)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -407,6 +765,30 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "07d784bb3ce11a99",
+      "ordinal": 0,
+      "snippet": "source.indexOf(opener, cursor)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "07d784bb3ce11a99",
+      "ordinal": 0,
+      "snippet": "source.indexOf(opener, cursor)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7ebd1ee41c4827db",
+      "ordinal": 0,
+      "snippet": "source.indexOf('}', open + 2)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "5e298b111ee4df7d",
       "ordinal": 0,
@@ -415,58 +797,10 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "bbd6a248f6ecdc8e",
-      "ordinal": 0,
-      "snippet": "source.indexOf('@{', cursor)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "bbd6a248f6ecdc8e",
+      "fingerprint": "79468aa31c530f6a",
       "ordinal": 0,
-      "snippet": "source.indexOf('@{', cursor)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "4a362fd706c12ee3",
-      "ordinal": 0,
-      "snippet": "source.indexOf('${', cursor)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "4a362fd706c12ee3",
-      "ordinal": 0,
-      "snippet": "source.indexOf('${', cursor)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "7ebd1ee41c4827db",
-      "ordinal": 0,
-      "snippet": "source.indexOf('}', open + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "7ebd1ee41c4827db",
-      "ordinal": 0,
-      "snippet": "source.indexOf('}', open + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "297183940876942c",
-      "ordinal": 0,
-      "snippet": "source.slice(chunkStart, open)",
+      "snippet": "source.slice(chunkStart, hole.start)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -491,6 +825,30 @@
       "fingerprint": "29c5a9e3183f1ac5",
       "ordinal": 2,
       "snippet": "src.slice(table.commentStart[c]!, table.commentEnd[c]!)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "e938adc4a43c0b44",
+      "ordinal": 0,
+      "snippet": "src.charCodeAt(textStart - 1)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "60b1d6a36dab34da",
+      "ordinal": 0,
+      "snippet": "src.charCodeAt(textEnd)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "ceda4c9fc5caf6e0",
+      "ordinal": 0,
+      "snippet": "src.slice(textStart, textEnd)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -535,6 +893,14 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "50da42f8dbfd0bd8",
+      "ordinal": 1,
+      "snippet": "source.slice(index, commentEnd)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "621aae949d3278e1",
       "ordinal": 2,
@@ -567,10 +933,50 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-node-keyed-side-map",
-      "fingerprint": "d003e963b6f7353c",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "68f268feda865b9f",
       "ordinal": 0,
-      "snippet": "new WeakMap<Leaf[], string[]>()",
+      "snippet": "pseudos.indexOf(tokens[i]!)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 1,
+      "snippet": "text.charCodeAt(0)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "ca62f74526bd7a5a",
+      "ordinal": 0,
+      "snippet": "prev.text.charCodeAt(0)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "ca62f74526bd7a5a",
+      "ordinal": 1,
+      "snippet": "prev.text.charCodeAt(0)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "a4a83fcafd3faf3b",
+      "ordinal": 0,
+      "snippet": "rule.selector.selectors.indexOf(inst.subject.selectors[0]!)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "722d108585fce322",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(1)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -583,42 +989,18 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "a49a6a584170a5ae",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "371f11dac8fec0e4",
       "ordinal": 0,
-      "snippet": "bindings.values()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "c536a80fe95ee933",
-      "ordinal": 0,
-      "snippet": "extra.values()",
+      "snippet": "text.indexOf('\\n', at)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "036807c34d9ec6d8",
+      "fingerprint": "c7bf708902ccb5fa",
       "ordinal": 0,
-      "snippet": "text.slice(start, end)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "a49a6a584170a5ae",
-      "ordinal": 1,
-      "snippet": "bindings.values()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "a49a6a584170a5ae",
-      "ordinal": 2,
-      "snippet": "bindings.values()",
+      "snippet": "text.slice(at, next)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -638,14 +1020,42 @@
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
-      "file": "packages/core/src/ast/value-guards.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "18cce522ae4f7060",
+      "file": "packages/core/src/ast/sourcemap.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "0c918b2ed34577be",
       "ordinal": 0,
-      "snippet": "b.entries.find(candidate => compareGroups(candidate.key, entry.key, equalityMode) === 0)"
+      "snippet": "source.charCodeAt(offset)"
     },
     {
-      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "file": "packages/core/src/ast/sourcemap.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "fd6143095636c7ae",
+      "ordinal": 0,
+      "snippet": "sourceText.slice(injected, authoredEnd)"
+    },
+    {
+      "file": "packages/core/src/ast/value-operate.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "1194ac044eb73853",
+      "ordinal": 0,
+      "snippet": "new WeakMap<Value, Value>()"
+    },
+    {
+      "file": "packages/core/src/ast/value-operate.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "d1eb8fc25775a38f",
+      "ordinal": 0,
+      "snippet": "new WeakMap<Value, string>()"
+    },
+    {
+      "file": "packages/core/src/ast/value-operate.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "d1eb8fc25775a38f",
+      "ordinal": 1,
+      "snippet": "new WeakMap<Value, string>()"
+    },
+    {
+      "file": "packages/syntax/jess/jess-parser/src/grammar-helpers.ts",
       "rule": "no-speculative-allocation-predicate",
       "fingerprint": "97ff02257e854e79",
       "ordinal": 0,
@@ -661,51 +1071,30 @@
     {
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
       "rule": "no-source-text-rescan",
+      "fingerprint": "03693b35201a83a0",
+      "ordinal": 0,
+      "snippet": "source.slice(span.start, span.end - 1)"
+    },
+    {
+      "file": "packages/syntax/jess/jess-parser/src/grammar.ts",
+      "rule": "no-source-text-rescan",
       "fingerprint": "9ea90666e75def2f",
       "ordinal": 0,
       "snippet": "raw.slice(scoped ? 2 : 1)"
     },
     {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "717d4d0e7c265937",
-      "ordinal": 0,
-      "snippet": "source.slice(lessTriviaEntryStart(triviaLog, index), lessTriviaEntryEnd(triviaLog, index))"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "6450c7975a3b1fd7",
-      "ordinal": 0,
-      "snippet": "text.slice(0, 1)"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "6450c7975a3b1fd7",
-      "ordinal": 1,
-      "snippet": "text.slice(0, 1)"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "file": "packages/syntax/less/less-parser/src/grammar-helpers.ts",
       "rule": "no-speculative-allocation-predicate",
       "fingerprint": "16f637e94df40a5e",
       "ordinal": 0,
       "snippet": "children.slice(previousValue + 1, index)"
     },
     {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "96cd42d95fbd7a53",
+      "file": "packages/syntax/less/less-parser/src/grammar-helpers.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "5e298b111ee4df7d",
       "ordinal": 0,
-      "snippet": "['>', '<', '>=', '<=', '=>', '=<', '=', '=~']"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "02b88a58ce75aca4",
-      "ordinal": 0,
-      "snippet": "children.map(guardOperatorText)"
+      "snippet": "source.slice(span.start, span.end)"
     },
     {
       "file": "packages/syntax/less/less-parser/src/grammar.ts",
@@ -722,18 +1111,39 @@
       "snippet": "children.slice(1)"
     },
     {
-      "file": "packages/syntax/less/less-parser/src/grammar.ts",
+      "file": "packages/syntax/scss/scss-parser/src/grammar-helpers.ts",
       "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "02b88a58ce75aca4",
-      "ordinal": 1,
-      "snippet": "children.map(guardOperatorText)"
+      "fingerprint": "d9b3ae33a1f6d0c1",
+      "ordinal": 0,
+      "snippet": "children.slice(end)"
     },
     {
       "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "f79aa51f0c395b8c",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "065368fc9a3944b5",
       "ordinal": 0,
-      "snippet": "children.slice(targetIndex + 1)"
+      "snippet": "src.slice(1, -1)"
+    },
+    {
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "ad53345b0c0ac4e8",
+      "ordinal": 0,
+      "snippet": "raw.indexOf('.')"
+    },
+    {
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "66253cb462918005",
+      "ordinal": 0,
+      "snippet": "raw.slice( 0, dot )"
+    },
+    {
+      "file": "packages/syntax/scss/scss-parser/src/grammar.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "63a6d10460d013c7",
+      "ordinal": 0,
+      "snippet": "raw.slice(dot + 2)"
     }
   ]
 }

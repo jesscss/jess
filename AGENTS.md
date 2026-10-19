@@ -1,5 +1,37 @@
 # Agent Guidelines
 
+## Read this first — Less 4.x is never the reason
+
+> **Owner, 2026-10-09:** *"Less v5 is NEW. Jess is a NEW ENGINE. The fact it acts different IS. THE. POINT. (usually)"*
+
+A difference from Less 4.x is not evidence of a bug, and sameness with Less 4.x
+is not a goal or a reason: each behaviour stands on its ledger row
+(`docs/architecture/core/DESIGN-DECISIONS.md`), the CSS spec, or an owner ruling.
+
+- lessc / Less 4.x / less.js output is **never a reason and never a correction
+  source**. Do not run lessc to decide what jess should emit.
+- When lessc differs from a ledger row or an owner ruling, **the ruling wins**.
+  Never edit the ruling, its conformance test
+  (`packages/jess/test/owner-rulings.test.ts`), a `.css` golden or the docs to
+  match lessc, or to match the code: when code disagrees with a ruling, the code
+  is the defect.
+- A genuine conflict (the ruling looks wrong, or there is no ruling) goes to the
+  owner. Mark it `UNRESOLVED` and escalate; do not decide it.
+- **Well-formed input never stops the pipeline** (ledger **P45**, owner
+  2026-10-09). Every parser accepts every well-formed shape (CSS Syntax 3); what
+  a dialect rejects or cannot give meaning to is a diagnostic at its span, and
+  parsing and evaluation continue. A new hard rejection of well-formed input is a
+  defect.
+
+Enforced by `pnpm check:guardrails` (CI and pre-push): Less 4.x-as-reason
+phrasing fails; owner-ruled ledger rows and the conformance tests are
+hash-locked in `docs/architecture/core/owner-rulings.lock.json`, regenerated
+(`pnpm rulings:lock`) only with the owner's explicit approval; and
+`packages/jess/test/migration-docs.test.ts` executes the migration guides'
+examples.
+
+---
+
 This file is the stable cross-tool contract for working in this repo. **It is
 the front door.** It assumes you have the repository, a shell, and nothing else
 — no conversation history, no memory of prior sessions, no access to the owner.
@@ -121,10 +153,6 @@ Two things to know before you plan anything:
   rulesets still need to render; implement that as a trivia-backed
   empty/renderability check, not by keeping `Comment` children in grammar
   bodies.
-
-A **separate, parallel track** is the deletion of `packages/core/src/tree/` —
-inventory in [`docs/architecture/core/TREE-CUTOVER-SURFACE.md`](docs/architecture/core/TREE-CUTOVER-SURFACE.md).
-It neither blocks nor is blocked by the grammar work.
 
 ## The Failure Class This Repo Pays For
 
@@ -514,8 +542,8 @@ instead.
   the specific failure — that is the one legitimate reason not to finish.
 - **On hot paths the reference class is a compiler, not an application.** Hot
   paths are `packages/core/src/ast/**` (`serialize.ts`, `provenance.ts`,
-  `extend/**`), `packages/syntax/*/*-parser/src/**`, `packages/parser-shared/**`,
-  and `packages/core/src/tree/**`. Idiomatic general-purpose JavaScript is not
+  `extend/**`), `packages/syntax/*/*-parser/src/**`, and `packages/parser-shared/**`.
+  Idiomatic general-purpose JavaScript is not
   the bar: restarting a scan at index 0 inside a per-item loop over ordered
   data, allocating an array or string only to test `.length` or emptiness,
   per-node `WeakMap` side tables, and per-entry objects holding two integers are

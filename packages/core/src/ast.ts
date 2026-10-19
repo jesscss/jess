@@ -9,6 +9,7 @@ export * from './ast/nodes.js';
 export * from './ast/traversal.js';
 export * from './ast/at-rule.js';
 export * from './ast/math-functions.js';
+export { delimiterClose, delimiterOpen, sepGlue } from './ast/value-eval.js';
 export {
   NO_SPAN,
   bodySpanOf,
@@ -17,6 +18,7 @@ export {
   createTriviaMapFromRootIndex,
   generalEnclosedSourceOf,
   isGeneralEnclosedTemplate,
+  isGluedConditionKeyword,
   hasAmbientFunctions,
   sourceEndOf,
   sourceStartOf,
@@ -25,6 +27,7 @@ export {
   valueBoundaryTriviaOf,
   valueLayoutOf,
   withBodySpan,
+  withGluedKeywordSpan,
   withSourceSpan,
   withTriviaMap,
   withValueBoundaryTrivia,
@@ -43,23 +46,36 @@ export {
   isSpannedToken,
   isToken,
   keywordOrNull,
+  recoveredInTree,
+  scannedLeaf,
+  selectorCaptureOf,
   semanticGapText,
   withBlockBody
 } from './ast/grammar-helpers.js';
-export type { SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
+export type { SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
 export {
   appendCustomValueParts,
   appendInterpolationLiteral,
   authoredSeparators,
   authoredText,
   blockStatements,
+  branchRest,
+  fallbackCall,
+  ifTestCall,
+  withFirstBranchCondition,
   branchSegments,
   chainedQueryComparison,
   queryConditionChain,
   queryFeatureBlock,
   generalEnclosedGroup,
+  authoredSource,
   queryFeatureContents,
+  enclosedCall,
+  styleFeature,
+  supportsDeclaration,
+  generalEnclosedArgument,
   queryValueRatio,
+  attributeSelectorFrom,
   complexSegments,
   cssRelativeCombinator,
   customValueFromChildren,
@@ -84,6 +100,7 @@ export {
   isImportTarget,
   isInterpolation,
   isKeyword,
+  isList,
   isMathOperator,
   isMixinCall,
   isMixinDefinition,
@@ -108,9 +125,19 @@ export {
   isValueSlotOf,
   isValueSlotValue,
   isWhile,
+  anPlusBFrom,
+  commaListWithComments,
+  directionKeyword,
+  isAnPlusB,
+  isNthArgument,
   keyframeSelectorList,
+  languageRangeList,
+  nthArgument,
+  requireStructuredPseudo,
+  structuredPseudoFrom,
   unknownBodyText,
   optionalValue,
+  parenGroupBlock,
   queryComparisonOperators,
   requireForBinding,
   requireGuardNodeOf,
@@ -124,13 +151,19 @@ export {
   selectorCombinator,
   selectorTermFromTokens,
   semanticTextWithTriviaGaps,
+  semicolonGroupedCall,
   sourceText,
   STRUCTURED_PSEUDOS,
   tokenText,
+  triviaTextAt,
   valueChildren,
   valueSlot,
   valueSlotChildren,
-  withAuthoredSeparators
+  withAuthoredSeparators,
+  withTriviaGaps
 } from './ast/css-grammar-helpers.js';
-export type { GuardNode } from './ast/guard.js';
+export { componentRun } from './ast/component-run.js';
+export type { GuardNode } from './ast/guard-node.js';
+export { inParens } from './ast/guard-node.js';
 export type { CallArg } from './ast/mixin-dispatch.js';
+export type { BareVariableRejection, NthArgument } from './ast/css-grammar-helpers.js';

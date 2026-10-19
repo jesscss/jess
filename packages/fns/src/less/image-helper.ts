@@ -20,7 +20,7 @@ export function readImageDimensions(value: ValueGroup, ctx: FnCtx): MaybePromise
     if (!contents) {
       throw new Error(`image file not found: ${filePath}`);
     }
-    return getImageDimensions(Buffer.from(contents));
+    return getImageDimensions(contents);
   };
   return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);
 }

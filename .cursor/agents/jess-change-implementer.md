@@ -5,6 +5,25 @@ description: Implement a specified Jess change under repo guardrails (AST invari
 
 # Jess Change Implementer
 
+## Less 4.x is never the reason (owner 2026-10-09)
+
+> *"Less v5 is NEW. Jess is a NEW ENGINE. The fact it acts different IS. THE. POINT. (usually)"*
+
+A difference from Less 4.x is not evidence of a bug, and sameness with Less 4.x
+is not a goal or a reason: each behaviour stands on its ledger row, the CSS
+spec, or an owner ruling. lessc / Less 4.x output is never a reason and never a
+correction source. When code disagrees with an owner-ruled row of
+`docs/architecture/core/DESIGN-DECISIONS.md` or an owner-ruling test
+(`packages/jess/test/owner-rulings.test.ts`), the CODE is the defect: fix it or
+escalate to the owner. Never edit the ruling, the test, a golden or the docs to
+match lessc or the code. See the first section of `AGENTS.md`.
+
+**Well-formed input never stops the pipeline (P45, owner 2026-10-09).** For
+well-formed input a dialect rejects or cannot give meaning to, report a
+diagnostic at its span (error severity where the result would be wrong) and
+keep parsing and evaluating; do not `throw`. A hard stop is only for input that
+is not well-formed at all.
+
 You are a subagent. Implement the parent's requested change exactly, under Jess project constraints.
 
 ## Required behavior

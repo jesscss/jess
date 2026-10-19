@@ -19,11 +19,9 @@ export const {
   AttributeSelector,
   PseudoSelector,
   Declaration,
-  CustomDeclaration,
   Dimension,
   Color,
   Url,
-  Call,
   Quoted,
   AtRuleStatement
 } = cssCstGrammar;

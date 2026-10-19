@@ -46,11 +46,12 @@ a hard gate, never the gate.
   regenerated artifacts (grammar codegen); (2) a **compose-integrity check that FAILS on any grammar
   `compose()` "missing rule" / "falling back to runtime" warning**. Both are deterministic, zero-flakiness,
   and would have caught this before merge. (This is exactly the incident→detector learning loop below.)
-- **Wire the six gates the repo ALREADY has into `pull_request` CI** (currently only in the manual
-  `release:alpha:check`): `verify:aggressive-cutting-review`, `verify:node-copy-frontier`,
-  `verify:materialization-frontier`, `verify:render-buffer-frontier`, `verify:binding-lookup-hot-paths`,
-  `audit:node-creation`; plus run `pnpm lint` + `pnpm ci` (no workflow runs them today). **This realizes
-  most of the enforcement with near-zero new code and is step 0.**
+- **Wire the gates the repo ALREADY has into `pull_request` CI** (step 0: most of the enforcement with
+  near-zero new code). `verify:aggressive-cutting-review`, `verify:node-copy-frontier`,
+  `verify:materialization-frontier` and `pnpm lint` now run in `.github/workflows/ci.yml`.
+  `verify:node-constructor-metadata`, `verify:render-buffer-frontier`, `verify:binding-lookup-hot-paths`
+  and `audit:node-creation` read only the legacy `packages/core/src/tree/` engine and were retired when
+  it was deleted; `verify:node-copy-frontier` remains.
 
 ### B. Checklist-driven, evidence-citing reviewer (defends intent — can't be fooled by indirection)
 - The `perf-architecture-reviewer`'s real authority is the **`docs/perf/V8-ARCHITECTURE.md` checklist**,

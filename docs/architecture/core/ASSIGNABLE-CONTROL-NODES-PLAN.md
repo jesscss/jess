@@ -1,6 +1,7 @@
 # Assignable control nodes — mixins / `each` / `$for` / `$if` as value-returning nodes
 
 Status: DESIGN ONLY (owner-decision input). No production code changed.
+Spelling: the selector capture is written `selector(…)` throughout (ledger P49).
 Worktree: `/Users/matthew/git/worktrees/jess-trivia-cleanup`, branch `feat/selector-list-cast-distribute` (off dev).
 Parseman: `/Users/matthew/git/oss/parser-thing` @ v0.23.0 (symlinked).
 
@@ -34,12 +35,12 @@ A comma-list VALUE interpolated into a selector position now errors
 explicit. The chosen explicit shape (no new builtin) is:
 
 ```
-each(apple satsuma, @($item) > *[ .fruit-$[item] ])   →   .fruit-apple, .fruit-satsuma
+each(apple satsuma, @($item) > selector(.fruit-$[item]))   →   .fruit-apple, .fruit-satsuma
 ```
 
 - `each` = the general map (list + lambda),
 - `@($item) > <expr>` = a value-returning anonymous mixin (jess `AnonMixin`),
-- `*[ … ]` = `SelectorCapture` ("this value is a selector"),
+- `selector( … )` = `SelectorCapture` ("this value is a selector"),
 - the resulting list of captured selectors casts to a `SelectorList` in selector position.
 
 This needs THREE things: (1) `each`/`For` gains a VALUE-COLLECTING mode; (2) a value-list
@@ -89,7 +90,7 @@ This needs THREE things: (1) `each`/`For` gains a VALUE-COLLECTING mode; (2) a v
   function directly via `@-from` / `@-use`; `each` in a `.jess` file IS the Less `each` (which
   already lowers to `For`). The generic `g.Call` route (`grammar.ts:426-429`) is correct — the
   call resolves to the imported Less `each`; only the ARGUMENT is jess-flavored (a jess
-  AnonMixin lambda `@($item) > *[…]`). So there is NO jess `each`→`For` lowering to build, no
+  AnonMixin lambda `@($item) > selector(…)`). So there is NO jess `each`→`For` lowering to build, no
   jess `each` builtin to register, and no grammar/builder change for `each` in Phase 0.
   - **What this leaves:** the value-collecting behavior belongs entirely in the shared **`For`**
     node (below) + the value-returning lambda (the `result:` reader). The `each` name already
@@ -160,8 +161,8 @@ This needs THREE things: (1) `each`/`For` gains a VALUE-COLLECTING mode; (2) a v
 
 - `SelectorCapture` wraps a `SelectorLike` payload (a bare string, a `Selector` node, or a
   `SelectorListItem[]`). `evalNode`/`resolve` lift it to a `Selector` node and eval it
-  (`selector-capture.ts:104-126`). So `*[ .fruit-apple ]` evaluated yields a `Selector` (a
-  `BasicSelector`/compound), and `*[ .a, .b ]` yields a `SelectorList`. This is exactly the
+  (`selector-capture.ts:104-126`). So `selector(.fruit-apple)` evaluated yields a `Selector` (a
+  `BasicSelector`/compound), and `selector(.a, .b)` yields a `SelectorList`. This is exactly the
   "value that IS a selector" carrier the map needs.
 - `SelectorList` (`packages/core/src/tree/selector-list.ts:47`) is `Selector<SelectorListItem[]>`
   where `SelectorListItem = Selector | string`. `SelectorList.create(items)` +
@@ -228,7 +229,7 @@ function" — exactly mirroring less's existing `args[1] instanceof N.Mixin` gat
 
 ---
 
-## The immediate feature carved out (Phase 0) — ship `each(list, @($item) > *[…])` → SelectorList
+## The immediate feature carved out (Phase 0) — ship `each(list, @($item) > selector(…))` → SelectorList
 
 This slice does NOT require the full function-return primitive to be perfect — it only needs
 the value-lambda to yield the value of its single `result: <expr>` where `<expr>` is a
@@ -236,7 +237,7 @@ the value-lambda to yield the value of its single `result: <expr>` where `<expr>
 
 1. **jess `each` — nothing to build.** `each` in `.jess` is the imported Less `each` (via
    `@-from`/`@-use`), which already lowers to `For`. No jess grammar/builder change, no jess
-   builtin. The only jess-flavored part is the ARGUMENT — the AnonMixin lambda `@($item) > *[…]`,
+   builtin. The only jess-flavored part is the ARGUMENT — the AnonMixin lambda `@($item) > selector(…)`,
    which already parses. So Phase 0 touches ONLY the shared `For` node (§2) + the value-lambda
    `result:` reader + the `toSelectorList` cast (§3). (Ensure the Less `each` callback path
    passes an `isFunction`-marked `Mixin` through when the callback is a value-lambda, so §2's
@@ -269,7 +270,7 @@ the value-lambda to yield the value of its single `result: <expr>` where `<expr>
    `toSelectorList` in `packages/core/src/tree/selector-list.ts`.
 
 **Sequencing (red-first):**
-- P0.a — Write failing tests: `each(apple satsuma, @($item) > *[ .fruit-$[item] ])` in both a
+- P0.a — Write failing tests: `each(apple satsuma, @($item) > selector(.fruit-$[item]))` in both a
   selector slot (`.fruit-apple, .fruit-satsuma`) and assigned to a `$var` then interpolated.
   Add a still-erroring test for a genuine comma-list VALUE glued into an identifier
   (guard must stay).
@@ -350,7 +351,7 @@ loop-collection branch (a bounded, local read of the iteration surface's `result
 
 ## Phasing
 
-**Phase 0 — the immediate map feature (SHIP FIRST).** `each(list, @($item) > *[…])` →
+**Phase 0 — the immediate map feature (SHIP FIRST).** `each(list, @($item) > selector(…))` →
 `SelectorList`. Value-collecting `For` (narrow `result` read) + `toSelectorList` cast + guard
 narrowing. (No jess `each` work — `each` is the imported Less `each`; only the shared `For` +
 value-lambda reader + cast change.) Critical files: `packages/core/src/tree/control.ts`,

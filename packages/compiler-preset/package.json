@@ -10,7 +10,7 @@
     "access": "public"
   },
   "description": "Jess compiler preset shared by product entrypoints",
-  "version": "2.0.0-alpha.27",
+  "version": "2.0.0-alpha.28",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -36,6 +36,7 @@
   "dependencies": {
     "@jesscss/compiler": "workspace:*",
     "@jesscss/core": "workspace:*",
+    "@jesscss/css-parser": "workspace:*",
     "@jesscss/plugin-jess": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",

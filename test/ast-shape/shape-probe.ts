@@ -161,12 +161,6 @@ export const SHAPE_DEBT_ALLOWLIST: Readonly<Record<string, readonly string[]>> =
   // unconditionally by every factory, so they are part of the signature but add
   // no divergence — verified: each arm below carries the identical slot tail.
 
-  // TODO(shape-debt): MixinDefinition omits `guard` for unguarded definitions.
-  MixinDefinition: [
-    'type,name,params,rules,_s,_e,_bs,_be',
-    'type,name,params,rules,guard,_s,_e,_bs,_be'
-  ],
-
   // TODO(shape-debt): Ruleset omits `extendInstructions` unless the rule carries
   // an inline `:extend()` / `&:extend()`. `rule()` in ast/nodes.ts has TWO
   // independent conditional spreads (`extendInstructions`, `guard`), so it can

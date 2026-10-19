@@ -211,6 +211,9 @@ Concerns crammed in:
    (176–328). A data table.
 3. **Parser-error adaptation** — `recognitionToken`, `isLexerError`, `errorMessage`,
    `lexerTokenText`, `getErrorFromParser` (349–890). Chevrotain/lexer adapter.
+   **Deleted:** no parser uses Chevrotain, so `getErrorFromParser`, its helpers and the raw
+   `errors`/`lexerErrors` diagnostic fields it filled are gone, and so is core's
+   `chevrotain` devDependency.
 4. **Terminal-fancy rendering** — `osc8`/`oscLink`/`supportsLinks`/`linkFor` OSC-8 hyperlink
    machinery + `trail`/`prettyLabel` path formatting (371–416). Terminal-fanciness.
 5. **Code-frame rendering** — `buildLineStarts`, `extractRelevantLines`, `ensureLineStarts`,
@@ -220,8 +223,8 @@ Concerns crammed in:
    builder tables, `toDiagnostic` (683–915).
 
 **Lean target (already scoped on the `trim/jess-error` branch):** split into
-`jess-error-codes.ts` (types + TEMPLATES + overrides), `jess-error-parser.ts` (parser/lexer
-adaptation), `code-frame.ts` (line-starts + frame rendering + OSC-8 links), and a slim
+`jess-error-codes.ts` (types + TEMPLATES + overrides), `code-frame.ts` (line-starts + frame
+rendering + OSC-8 links), and a slim
 `jess-error.ts` (class + factories). The dev commit `b353224bc` already removed the dead
 `emit()`/`resetDedupe()`/`_seen` dedupe set from here.
 

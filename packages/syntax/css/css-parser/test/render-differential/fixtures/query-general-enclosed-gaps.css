@@ -1,0 +1,16 @@
+/*
+ * KNOWN GAPS (jess#306 item 5). Valid css-contain-3 queries that a top-level
+ * @container rejects: a function-first bound compared with a function, a
+ * unicode range, url(), var() or calc(). An @container feature must fail
+ * without committing so a nested group can reach its Enclosed fallback, and a
+ * top-level feature has no fallback, so these fail the prelude, as on dev.
+ * This file rejects until @container reads <general-enclosed> as structure;
+ * when it parses, the differential shows it.
+ */
+@container (foo(x) < bar(y)) { a { b: c; } }
+@container (calc(1px) < calc(2px)) { a { b: c; } }
+@container (foo(x) < u+0-7f) { a { b: c; } }
+@container (foo(x) < url(a)) { a { b: c; } }
+@container (foo(x) < var(--y)) { a { b: c; } }
+@container (a) and (foo(x) < bar(y)) { a { b: c; } }
+@container (1px < foo(x)) { a { b: c; } }

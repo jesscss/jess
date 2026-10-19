@@ -9,8 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-async function render(source: string): Promise<string> {
-  return new Compiler({ output: { collapseNesting: true } }).renderString(source, {
+async function render(source: string, collapseNesting = true): Promise<string> {
+  return new Compiler({ output: { collapseNesting } }).renderString(source, {
     language: 'less',
     filePath: '/virtual/extend-contract.less'
   });
@@ -132,10 +132,98 @@ describe('public direct-AST extend contracts', () => {
     ].join('\n'));
   });
 
-  it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {
-    await expect(render([
-      '@list-quoted: ~\'apple, satsuma, banana, pear\';',
-      '@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }'
-    ].join('\n'))).rejects.toMatchObject({ code: 'selector/comma-list-interpolation' });
+  /*
+   * An attribute selector keeps its authored whitespace (ledger O7), but the
+   * whitespace is not part of which selector it is: `[ b ]` and `[b]` match
+   * each other, while `[a=y i]` (a value and its flag) is not `[a=yi]`.
+   */
+  it.each([
+    ['[ b ] { c: d; }\n.x:extend([b]) {}', '[ b ],\n.x {\n  c: d;\n}\n'],
+    ['[b] { c: d; }\n.x:extend([ b ]) {}', '[b],\n.x {\n  c: d;\n}\n'],
+    ['a[href="x" i] { c: d; }\n.x:extend(a[href="x"i]) {}', 'a[href="x" i],\n.x {\n  c: d;\n}\n'],
+    ['[ b ].k { c: d; }\n.x:extend([b] all) {}', ':is([ b ], .x).k {\n  c: d;\n}\n'],
+    ['[a=y i] { c: d; }\n.x:extend([a=yi]) {}', '[a=y i] {\n  c: d;\n}\n']
+  ])('matches an attribute selector whatever its authored whitespace: %j', async (source, expected) => {
+    expect(await render(source)).toBe(expected);
+  });
+
+  /*
+   * A rule reached through a mixin call extends and is extended where it lands: inside
+   * the `@media` the call lands in (EXTEND-SEMANTICS §8, jess#360), and as its composed
+   * selector parts, so a compound target can meet it (jess#361). That holds for a ruleset
+   * called as a mixin and for a detached ruleset's call too (EXTEND-SEMANTICS §6).
+   */
+  it.each([
+    [
+      '.sm { b: 2; }\n@media print {\n  .m() { .x { &:extend(.sm); } }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n'
+    ],
+    [
+      '.m() { .x { &:extend(.sm); } }\n.sm { b: 2; }\n@media print {\n  .sm { c: 3; }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n@media print {\n  .sm,\n  .x {\n    c: 3;\n  }\n}\n'
+    ],
+    [
+      '.m() { .p { &.q, &.r { a: 1; } } }\n.m();\n.x:extend(.p.q) {}',
+      '.p.q,\n.p.r,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '.b { .m(); }\n.m() { .p { .q { a: 1; } } }\n.x:extend(.b .p .q) {}',
+      '.b .p .q,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '.a { .p { a: 1; } }\n.z { .a(); }\n.x:extend(.z .p) {}',
+      '.a .p {\n  a: 1;\n}\n.z .p,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '@dr: { .p { a: 1; } };\n.w { @dr(); }\n.x:extend(.w .p) {}',
+      '.w .p,\n.x {\n  a: 1;\n}\n'
+    ]
+  ])('places a mixin-body rule where the call lands: %j', async (source, expected) => {
+    expect(await render(source)).toBe(expected);
+  });
+
+  /*
+   * Nested output (the v5 default): a mixin-body extender folds in as its selector composed
+   * under the rules the call lands in, once per call.
+   */
+  it.each([
+    [
+      '.sm { b: 2; }\n@media print {\n  .m() { .x { &:extend(.sm); } }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n'
+    ],
+    [
+      '.sm { b: 2; }\n.m() { .x { &:extend(.sm); } }\n.a { .m(); }\n.b { .m(); }',
+      '.sm,\n.a .x,\n.b .x {\n  b: 2;\n}\n'
+    ]
+  ])('places a mixin-body extender where the call lands in nested output: %j', async (source, expected) => {
+    expect(await render(source, false)).toBe(expected);
+  });
+
+  /*
+   * Escaped text is written as written (owner 2026-10-09: "everywhere that is text should
+   * print AS WRITTEN"; "in Less, we promise ~\"\" as a 'dump whatever you want as-is'"),
+   * its commas included, and well-formed input never stops the pipeline (P45): a `&`
+   * glued after a selector references the text where it stands.
+   */
+  it('writes an escaped comma-list parent as written where a glued `&` references it', async () => {
+    const quoted = '@list-quoted: ~\'apple, satsuma, banana, pear\';\n@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }';
+    expect(await render(quoted)).toBe('.fruit-quoted-apple, satsuma, banana, pear {\n  content: "Quoted";\n}\n');
+    expect(await render('@g: ~".a, .b"; @{g} { .x& { c: 1; } &:hover { c: 2; } .c { c: 3; } }'))
+      .toBe('.x.a, .b {\n  c: 1;\n}\n.a, .b:hover {\n  c: 2;\n}\n.a, .b .c {\n  c: 3;\n}\n');
+    expect(await render('@g: ~".a, .b"; @{g}, .z { .x& { c: 1; } }')).toBe('.x.a, .b,\n.x.z {\n  c: 1;\n}\n');
+  });
+
+  /*
+   * An `:nth-*()` argument is a structured `An+B`, compared by its form (ledger
+   * X6: `odd` is not `2n+1`) and spelled unspaced (F2), so the whitespace an
+   * author put around its sign does not decide a match.
+   */
+  it('matches an :nth-*() target by its An+B form, not its authored whitespace', async () => {
+    expect(await render('.x:nth-child(2n + 1) { c: d; }\n.b:extend(.x:nth-child(2n+1)) {}')).toBe(
+      '.x:nth-child(2n+1),\n.b {\n  c: d;\n}\n'
+    );
+    expect(await render('.x:nth-child(odd) { c: d; }\n.b:extend(.x:nth-child(2n+1)) {}')).toBe(
+      '.x:nth-child(odd) {\n  c: d;\n}\n'
+    );
   });
 });

@@ -9,7 +9,7 @@
 import type {
   Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
-import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
+import { colorRgb, colorSourceRgb, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 
 /** A writable view of a value object, so a constructor can stamp `bytes` in place. */
@@ -46,9 +46,8 @@ export const colorHslClamped = (c: Color): [number, number, number] => {
 export const colorRgbRounded = colorRgb;
 
 /**
- * A color's RAW (unrounded, unclamped) rgb — derived from the hsl source when that
- * is authoritative, else the stored rgb. Mirrors legacy `Color.get _rgb()`; the
- * hsv reader fns consume this.
+ * A color's RAW (unrounded, unclamped) rgb. Mirrors legacy `Color.get _rgb()`;
+ * the hsv reader fns consume this.
  */
 export const colorRawRgb = colorSourceRgb;
 
@@ -85,6 +84,13 @@ export function makeCompoundDimension(
   return n;
 }
 
+/** `d` with `preserved` as its authored spelling (see {@link Dimension.preserved}); the value is unchanged. */
+export function makeSpelledDimension(d: Dimension, preserved: string): Dimension {
+  const n: Mutable<Dimension> = { ...d, preserved, bytes: '' };
+  n.bytes = serializeDimension(n);
+  return n;
+}
+
 /** Build a color from an RGB source. `src` (verbatim spelling) is optional. */
 export function makeColorRgb(
   rgb: readonly [number, number, number],
@@ -109,7 +115,11 @@ export function makeColorRgb(
   return c;
 }
 
-/** Build a color from an HSL source (the hsl op result path). rgb stays derived. */
+/**
+ * Build a color from an HSL source (the hsl op result path). `hsl` stays the
+ * source of truth; `rgb` is derived from it once here, so every reader of the
+ * value sees the real channels.
+ */
 export function makeColorHsl(
   hsl: readonly [number, number, number],
   alpha: number,
@@ -117,7 +127,7 @@ export function makeColorHsl(
   modernSyntax?: boolean,
   opts?: { hueUnit?: string; alphaPct?: number }
 ): Color {
-  const c: Mutable<Color> = { type: 'Color', rgb: [0, 0, 0], alpha, hsl, format, bytes: '' };
+  const c: Mutable<Color> = { type: 'Color', rgb: hslToRgb(hsl[0], hsl[1], hsl[2]), alpha, hsl, format, bytes: '' };
   if (modernSyntax) {
     c.modernSyntax = true;
   }
@@ -137,9 +147,10 @@ export function makeQuoted(value: string, quote: string, escaped: boolean): Quot
   return q;
 }
 
-export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text });
+export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text, groups: 0 });
 
-export const makeAny = (bytes: string): Any => ({ type: 'Any', bytes });
+/** Opaque text; `escapedQuote` is set only for an escaped string (see {@link Any.escapedQuote}). */
+export const makeAny = (bytes: string, escapedQuote = '', groups = 0): Any => ({ type: 'Any', bytes, escapedQuote, groups });
 
 /** Project an evaluated AST `Url` into the typed value domain. */
 export const makeUrlValue = (bytes: string): UrlValue => ({ type: 'Url', bytes });

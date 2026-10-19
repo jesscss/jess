@@ -29,7 +29,7 @@ export default defineConfig([
       'cst/positions': './src/cst/positions.ts'
     },
     external: COMPOSE_EXTERNAL,
-    plugins: [parseman.rolldown()]
+    plugins: [parseman.rolldown({})]
   }),
-  ...grammarVariantBuilds({ external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown()] })
+  ...grammarVariantBuilds({ external: COMPOSE_EXTERNAL, plugins: [parseman.rolldown({})] })
 ]);

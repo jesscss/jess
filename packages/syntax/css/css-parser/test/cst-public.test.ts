@@ -76,7 +76,7 @@ function expectNoModeLabels(tree: CstNode) {
 }
 
 describe('@jesscss/css-parser/cst', () => {
-  it('parses CSS through the public core-free CST entry', () => {
+  it('parses CSS through the public CST entry', () => {
     const result = parseCssCst('a { color: red; }');
 
     expect(result.errors).toHaveLength(0);
@@ -134,7 +134,7 @@ describe('@jesscss/css-parser/cst', () => {
     expectNoModeLabels(collapsed.tree);
   });
 
-  it('keeps CSS static escaped strings as a sigil plus a normal Quoted CST node', () => {
+  it('keeps a `~` before a string as a delimiter plus a normal Quoted CST node', () => {
     const result = parseCssCst('.asset { theme: ~"dark"; }');
 
     expect(result.errors).toHaveLength(0);
@@ -200,7 +200,9 @@ describe('@jesscss/css-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(nodesByGrammarType(result.tree, 'QueryNonOnlyKeyword')).toHaveLength(2);
+
+    // `screen` is the one keyword term; `and` is the clause's connective leaf.
+    expect(nodesByGrammarType(result.tree, 'QueryNonOnlyKeyword')).toHaveLength(1);
     expect(nodesByGrammarType(result.tree, 'QueryFunction')).toHaveLength(1);
     expect(nodesByGrammarType(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
     expect(queryFunction?.rules[0]).toMatchObject({
@@ -371,11 +373,13 @@ const CSS_DOC_CORPUS: string[] = [
   ':root { --x: 10px; } a { width: var(--x); }',
   '/* leading */\na { /* inner */ color: red; } /* trailing */',
   'a/**/{ color: red; }',
-  '@import "x.css";\n@font-face { font-family: F; src: url(f.woff2); }'
+  '@import "x.css";\n@font-face { font-family: F; src: url(f.woff2); }',
+  'a { color: red; }\n\n  ',
+  'a { color: red; }\n/* c */\n'
 ];
 
 describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
-  it('parseCssDoc().tree (absolutized) equals parseCssCst().tree across a corpus', () => {
+  it('parseCssDoc() matches parseCssCst() (tree and leftover input) across a corpus', () => {
     for (const input of CSS_DOC_CORPUS) {
       const oneShot = parseCssCst(input);
       const doc = parseCssDoc(input);
@@ -386,6 +390,9 @@ describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expect(doc.unconsumedFrom, `leftover for: ${JSON.stringify(input)}`).toBe(oneShot.unconsumedFrom);
+      expect(doc.edit(input.length, input.length, '\n').unconsumedFrom, `leftover after an edit: ${JSON.stringify(input)}`)
+        .toBe(parseCssCst(`${input}\n`).unconsumedFrom);
       expectNoModeLabels(oneShot.tree);
       expectNoModeLabels(abs);
     }

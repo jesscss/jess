@@ -135,9 +135,9 @@ function loadCsstree() {
   const fixtures = path.join(dir, 'fixtures', 'ast');
   if (!fs.existsSync(fixtures)) {
     fail(
-      `css-tree is installed but carries no fixtures at ${fixtures}. The registry `
-      + 'tarball ships `lib` only — the dependency must resolve to the GitHub '
-      + 'source (`github:csstree/csstree#v3.2.1`).'
+      `css-tree is installed but carries no fixtures at ${fixtures}. The GitHub `
+      + 'source (`github:csstree/csstree#v3.2.1`) installs through csstree\'s `files` '
+      + 'list, which leaves `fixtures/` out — see test/css-corpus/README.md.'
     );
   }
 

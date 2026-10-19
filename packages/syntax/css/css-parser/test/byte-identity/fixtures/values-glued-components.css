@@ -1,0 +1,8 @@
+a {
+  b: foo(b, c = d = 2);
+  c: foo(a=b=c);
+  d: foo(bar(x=y=1));
+  e: x=y;
+  f: a~b;
+  g: a:b.c foo(a b=c d);
+}

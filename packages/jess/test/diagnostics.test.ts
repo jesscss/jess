@@ -5,25 +5,68 @@ import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
-import { JessError } from '@jesscss/core';
+import { JessError, toDiagnostic } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 describe('Diagnostic Output', () => {
-  it('should output errors using CodeDebug', async () => {
-    const compiler = new Compiler();
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
+  /*
+   * A library call never prints what it throws: the caller receives the error
+   * and reports it, once. A parse error is both recorded and thrown, and an
+   * undefined variable is only thrown; neither is printed by the call.
+   */
+  it.each([
+    ['compile', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['render', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['renderString', 'a parse error', '.invalid {\n  color: red;\n  missing brace', 'parse/syntax-error'],
+    ['render', 'an undefined variable', '.a {\n  color: @missing;\n}\n', 'resolve/name-not-found'],
+    ['renderString', 'an undefined variable', '.a {\n  color: @missing;\n}\n', 'resolve/name-not-found']
+  ] as const)('%s throws %s without printing it', async (method, _name, source, code) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-thrown-'));
     try {
-      await compiler.compile('test/fixtures/invalid.less');
-    } catch (e) {
-      // Expected to throw
+      const file = path.join(directory, 'entry.less');
+      fs.writeFileSync(file, source);
+      const compiler = new Compiler();
+      let thrown: unknown;
+      const printed = await captureAsync(async () => {
+        try {
+          if (method === 'compile') {
+            await compiler.compile(file);
+          } else if (method === 'render') {
+            await compiler.render(file);
+          } else {
+            await compiler.renderString(source, { filePath: file, extension: '.less' });
+          }
+        } catch (error) {
+          thrown = error;
+        }
+      });
+
+      expect(thrown).toBeInstanceOf(JessError);
+      expect((thrown as JessError).code).toBe(code);
+      expect(printed.err).toBe('');
+      expect(printed.out).toBe('');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
     }
+  });
 
-    // Check that stderr was written to (diagnostics should have been output)
-    expect(stderrSpy).toHaveBeenCalled();
+  it('still prints the warnings a failed render collected', async () => {
+    let thrown: unknown;
+    const printed = await captureAsync(async () => {
+      try {
+        await new Compiler().renderString('.b { width: 1px + 3em; }\n.a { color: @missing; }\n', {
+          filePath: '/proj/src/styles.less',
+          extension: '.less'
+        });
+      } catch (error) {
+        thrown = error;
+      }
+    });
 
-    stderrSpy.mockRestore();
+    expect((thrown as JessError).code).toBe('resolve/name-not-found');
+    expect(printed.err).toContain('eval/unexpressible-unit');
+    expect(printed.err).not.toContain('resolve/name-not-found');
   });
 
   it('should format diagnostics correctly', () => {
@@ -108,6 +151,26 @@ describe('Eval error source location', () => {
     expect(err.lines?.[2]).toContain('@nope');
   });
 
+  it('points a failed .jess member read or namespaced call at the reference, not 1:1', async () => {
+    for (const [value, column] of [['$ns.fn(1)', 6], ['$ns.b', 6], ['$($ns.fn(1) + 1)', 8]] as const) {
+      const result = await new Compiler().renderToResult(
+        { source: `.a {\n  w: ${value};\n}`, filePath: '/proj/member.jess' },
+        { suppressWarnings: true }
+      );
+      expect(result.errors, value).toHaveLength(1);
+      const err = result.errors[0]!;
+      expect(err.phase, value).toBe('resolve');
+      expect([err.line, err.column], value).toEqual([2, column]);
+    }
+
+    /* A statement-position `$fn();` reads its name's span off the parsed token. */
+    const call = await new Compiler().renderToResult(
+      { source: '.a {\n  $fn();\n}', filePath: '/proj/call.jess' },
+      { suppressWarnings: true }
+    );
+    expect(call.errors.map(err => [err.phase, err.line, err.column])).toEqual([['resolve', 2, 3]]);
+  });
+
   it('keeps an undefined-variable diagnostic precise through the public file route', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-ast-diagnostic-'));
     const filePath = path.join(dir, 'undef.less');
@@ -148,6 +211,42 @@ describe('Eval error source location', () => {
     expect(err.lines?.[2]).toContain('$missing-width');
   });
 
+  /*
+   * An import statement and a `url()` carry their source span, so a missing or
+   * cyclic import and a skipped URL option point at the statement or the
+   * `url()`, in every dialect that writes one.
+   */
+  it('points import and url() diagnostics at the statement, not 1:1', async () => {
+    /* Render `main.<ext>` (plus any further files) and report each diagnostic's code and place. */
+    const located = async (ext: string, source: string, more: Array<[string, string]> = [], options = {}) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-diagnostic-'));
+      for (const [name, text] of [[`main.${ext}`, source] as [string, string], ...more]) {
+        fs.writeFileSync(path.join(dir, name), text);
+      }
+      try {
+        const result = await new Compiler(options).renderToResult(path.join(dir, `main.${ext}`), { quiet: true });
+        return [...result.errors, ...result.warnings]
+          .map(d => `${d.code} ${path.basename(d.filePath ?? '')}:${d.line}:${d.column}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const missing = 'import/not-found main';
+    expect(await located('less', '.a { b: 1; }\n\n@import "missing.less";\n')).toEqual([`${missing}.less:3:1`]);
+    expect(await located('less', '.a { b: 1; }\n\n  @import url("missing.less");\n')).toEqual([`${missing}.less:3:3`]);
+    expect(await located('less', '.a { b: 1; }\n\n@import "missing.less" screen;\n')).toEqual([`${missing}.less:3:1`]);
+    expect(await located('less', '.a { b: 1; }\n\n@use "./missing.js";\n')).toEqual([`${missing}.less:3:1`]);
+    expect(await located('less', '.a { b: 1; }\n@import (multiple) "c1.less";\n', [['c1.less', '.c1 { a: 1; }\n\n@import (multiple) "main.less";\n']]))
+      .toEqual(['import/cycle main.less:2:1']);
+    expect(await located('less', '.a { b: 1; }\n\n.x { a: url(~"e.png"); }\n', [], { language: { less: { urlArgs: 'v=1' } } }))
+      .toEqual(['eval/url-option-skipped main.less:3:9']);
+    expect(await located('scss', '.a { b: 1; }\n\n@import "missing";\n')).toEqual([`${missing}.scss:3:1`]);
+    expect(await located('scss', '\n\n@use "missing";\n')).toEqual([`${missing}.scss:3:1`]);
+    expect(await located('scss', '\n\n@forward "missing";\n')).toEqual([`${missing}.scss:3:1`]);
+    expect(await located('jess', '.a { b: 1; }\n\n@-import "missing.jess";\n')).toEqual([`${missing}.jess:3:1`]);
+    expect(await located('jess', '\n\n@-compose "missing.jess";\n')).toEqual([`${missing}.jess:3:1`]);
+  });
+
   it('points a missing namespace member at the accessor chain', async () => {
     const source = [
       '#namespace {',
@@ -171,6 +270,66 @@ describe('Eval error source location', () => {
     expect(err.column).toBe(10);
     expect(err.reason).toContain('@missing');
     expect(err.lines?.[5]).toContain('#namespace[@missing]');
+  });
+});
+
+/*
+ * Less `banner` and `globalVars` are written ahead of the entry file before it
+ * is parsed. A diagnostic still reports the line and column in the file as the
+ * author wrote it, and frames that file's lines (DESIGN-DECISIONS O16,
+ * orchestrator judgment under owner delegation 2026-10-06).
+ */
+describe('Diagnostic positions under injected source', () => {
+  const injected = (extra: Record<string, unknown> = {}) => new Compiler({
+    compile: { plugins: [lessPlugin()] },
+    language: { less: { banner: '/* one */\n/* two */', globalVars: { a: '1px', b: 'red' }, ...extra } }
+  });
+
+  it('reports a parse error, an eval error and a warning in the authored file', async () => {
+    const parse = await injected().renderToResult({ source: '.a {\n  b: 1;\n}\n!broken', filePath: '/proj/p.less' }, {});
+    expect(parse.errors.map(e => [e.phase, e.line, e.column])).toEqual([['parse', 4, 1]]);
+    expect(parse.errors[0]!.lines?.[4]).toBe('!broken');
+    expect(parse.errors[0]!.lines?.[3]).toBe('}');
+
+    const evaluated = await injected().renderToResult({ source: '.a {\n  width: @nope;\n}', filePath: '/proj/e.less' }, { suppressWarnings: true });
+    expect(evaluated.errors.map(e => [e.line, e.column])).toEqual([[2, 10]]);
+    expect(evaluated.errors[0]!.lines).toEqual({ 1: '.a {', 2: '  width: @nope;', 3: '}' });
+
+    const warned = await injected().renderToResult({ source: '.a { w: @a; }\n.b { width: 1px + 3em; }', filePath: '/proj/w.less' }, {});
+    const warning = warned.warnings.find(w => w.code === 'eval/unexpressible-unit')!;
+    expect([warning.line, warning.column]).toEqual([2, 17]);
+  });
+
+  /*
+   * Text the compiler added around the file has no line in it: a diagnostic
+   * there is counted in the text as prepared and says where it is, never at a
+   * line before 1 or past the file's end (DESIGN-DECISIONS O16).
+   */
+  it('reports a diagnostic in injected text where it is, and says so', async () => {
+    const less = (options: Record<string, unknown>) => new Compiler({
+      compile: { plugins: [lessPlugin()] },
+      language: { less: options }
+    });
+    const ahead = await less({ globalVars: { a: '@nope', b: 'red' } })
+      .renderToResult({ source: '.x { c: @a; }', filePath: '/proj/g.less' }, { suppressWarnings: true });
+    expect(ahead.errors.map(e => [e.code, e.line, e.column])).toEqual([['resolve/name-not-found', 1, 5]]);
+    expect(ahead.errors[0]!.lines).toEqual({ 1: '@a: @nope;', 2: '@b: red;' });
+    expect(ahead.errors[0]!.note).toContain('globalVars');
+
+    const parse = await less({ globalVars: { a: '(' } })
+      .renderToResult({ source: '.x { c: @a; }', filePath: '/proj/p.less' }, { suppressWarnings: true });
+    expect(parse.errors.map(e => e.line >= 1)).toEqual([true]);
+    expect(parse.errors[0]!.note).toContain('globalVars');
+
+    const after = await less({ modifyVars: { a: '@nope' } })
+      .renderToResult({ source: '.x { c: @a; }\n.y { d: 1; }', filePath: '/proj/m.less' }, { suppressWarnings: true });
+    expect(after.errors.map(e => [e.code, e.line, e.column])).toEqual([['resolve/name-not-found', 3, 5]]);
+    expect(after.errors[0]!.lines?.[3]).toBe('@a: @nope;');
+    expect(after.errors[0]!.note).toContain('modifyVars');
+
+    const authored = await less({ globalVars: { a: '1px' } })
+      .renderToResult({ source: '.x { c: @nope; }', filePath: '/proj/a.less' }, { suppressWarnings: true });
+    expect(authored.errors.map(e => [e.line, e.column, e.note])).toEqual([[1, 9, undefined]]);
   });
 });
 
@@ -208,7 +367,7 @@ describe('Public parser diagnostic provenance', () => {
     const filePath = '/proj/charset.less';
     const captured = await captureAsync(() => new Compiler().renderToResult(
       { source, filePath, extension: '.less' },
-      { breakOnError: false }
+      { breakOnError: false, colors: true }
     ));
 
     expect(captured.value.errors).toHaveLength(1);
@@ -388,22 +547,25 @@ function err(
 
 describe('Diagnostic display tiers', () => {
   it('defaults: a warning renders as a single line with an OSC-8 link, no frame', () => {
-    const { out } = capture(() =>
+    const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'used foo', { sourceLine: 'WARN_SRC' })], {
-        breakOnError: false
+        breakOnError: false,
+        colors: true
       })
     );
-    expect(out).toContain(OSC8);
-    expect(out).toContain('eval/deprecated');
-    expect(out).toContain('used foo');
-    expect(out).not.toContain('WARN_SRC'); // no code frame
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain(OSC8);
+    expect(stderr).toContain('eval/deprecated');
+    expect(stderr).toContain('used foo');
+    expect(stderr).not.toContain('WARN_SRC'); // no code frame
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(out).toBe(''); // stdout stays free for CSS
   });
 
   it('defaults: an error renders as a code frame', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
-        breakOnError: false
+        breakOnError: false,
+        colors: true
       })
     );
     expect(stderr.match(/parse\/syntax-error/g)).toHaveLength(1);
@@ -417,9 +579,9 @@ describe('Diagnostic display tiers', () => {
     });
   });
 
-  it('renderString reports a collected parser diagnostic without a plain duplicate error', async () => {
+  it('a caller formats the parser diagnostic renderString throws as one frame', async () => {
     let thrown: unknown;
-    const { err: stderr } = await captureAsync(async () => {
+    const printed = await captureAsync(async () => {
       try {
         await new Compiler().renderString('@charset "@{encoding}";', {
           filePath: '/proj/src/styles.less',
@@ -431,6 +593,10 @@ describe('Diagnostic display tiers', () => {
     });
 
     expect(thrown).toBeInstanceOf(JessError);
+    expect(printed.err).toBe('');
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([toDiagnostic(thrown as JessError)], [], { colors: true })
+    );
     expect(stderr.match(/parse\/dynamic-charset/g)).toHaveLength(1);
     expect(stderr).toContain('Interpolation is not valid in @charset.');
     expect(stderr).not.toContain('LessDynamicCharsetError:');
@@ -462,30 +628,60 @@ describe('Diagnostic display tiers', () => {
     expect(stderr).toMatch(/╰─/u);
   });
 
+  /*
+   * Without a `colors` option, color and hyperlinks follow the stream the
+   * diagnostics are written to: on for a terminal, off for a pipe or file, and
+   * off while NO_COLOR is set.
+   */
+  it.each([
+    [false, undefined, false],
+    [true, undefined, true],
+    [true, '1', false]
+  ])('colors default: stderr a terminal %s, NO_COLOR %s -> colored %s', (isTTY, noColor, colored) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    Object.defineProperty(process.stderr, 'isTTY', { value: isTTY, configurable: true });
+    vi.stubEnv('NO_COLOR', noColor);
+    try {
+      const { err: stderr } = capture(() =>
+        outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'TTY_SRC' })], [], { breakOnError: false })
+      );
+      expect(stderr).toContain('TTY_SRC');
+      expect(ANSI_SGR.test(stderr) || stderr.includes(OSC8)).toBe(colored);
+    } finally {
+      vi.unstubAllEnvs();
+      if (descriptor === undefined) {
+        Reflect.deleteProperty(process.stderr, 'isTTY');
+      } else {
+        Object.defineProperty(process.stderr, 'isTTY', descriptor);
+      }
+    }
+  });
+
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {
     const warnings = [
       warn('extend/not-found', 'a missing', { filePath: '/proj/a.less' }),
       warn('extend/not-found', 'b missing', { filePath: '/proj/b.less' })
     ];
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], warnings, { breakOnError: false, warnings: 'summary' })
     );
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
-    expect(out).toContain('extend/not-found');
-    expect(out).toContain('2×');
-    expect(out).toContain('a.less');
-    expect(out).toContain('b.less');
-    expect(out).not.toContain(OSC8);
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain('extend/not-found');
+    expect(stderr).toContain('2×');
+    expect(stderr).toContain('a.less');
+    expect(stderr).toContain('b.less');
+    expect(stderr).not.toContain(OSC8);
   });
 
   it('warnings: { display: \'frame\' } frames warnings', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'W_FRAME_SRC' })], {
         breakOnError: false,
-        warnings: { display: 'frame' }
+        warnings: { display: 'frame' },
+        colors: true
       })
     );
-    expectLinecraftFrame(out, {
+    expectLinecraftFrame(stderr, {
       code: 'eval/deprecated',
       phase: 'eval',
       filePath: '/proj/src/styles.less',
@@ -499,7 +695,8 @@ describe('Diagnostic display tiers', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
         breakOnError: false,
-        errors: 'line'
+        errors: 'line',
+        colors: true
       })
     );
     expect(stderr).toContain(OSC8);
@@ -508,7 +705,7 @@ describe('Diagnostic display tiers', () => {
   });
 
   it('category override promotes a chosen code to frame even as a warning', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics(
         [],
         [warn('selector/comma-list-interpolation', 'list in selector', { sourceLine: 'OVERRIDE_SRC' })],
@@ -517,7 +714,7 @@ describe('Diagnostic display tiers', () => {
     );
 
     // Default warning tier is line, but this code is pinned to frame.
-    expect(out).toContain('OVERRIDE_SRC');
+    expect(stderr).toContain('OVERRIDE_SRC');
   });
 
   it('first-vs-repeat: first frame-tier site frames, later sites drop to line', () => {
@@ -525,12 +722,12 @@ describe('Diagnostic display tiers', () => {
       warn('eval/deprecated', 'first', { line: 3, sourceLine: 'FIRST_SRC' }),
       warn('eval/deprecated', 'second', { line: 9, sourceLine: 'SECOND_SRC' })
     ];
-    const { out } = capture(() =>
-      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' } })
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' }, colors: true })
     );
-    expect(out).toContain('FIRST_SRC'); // first site framed
-    expect(out).not.toContain('SECOND_SRC'); // second site demoted to line
-    expect(out).toContain(OSC8); // ...which carries a link
+    expect(stderr).toContain('FIRST_SRC'); // first site framed
+    expect(stderr).not.toContain('SECOND_SRC'); // second site demoted to line
+    expect(stderr).toContain(OSC8); // ...which carries a link
   });
 
   it('no-location diagnostic renders a one-liner with no link and no frame', () => {
@@ -543,32 +740,33 @@ describe('Diagnostic display tiers', () => {
       line: 0,
       column: 0
     };
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [noLoc], { breakOnError: false })
     );
-    expect(out).toContain('extend/not-found');
-    expect(out).toContain('199 warnings suppressed');
-    expect(out).not.toContain(OSC8);
-    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(stderr).toContain('extend/not-found');
+    expect(stderr).toContain('199 warnings suppressed');
+    expect(stderr).not.toContain(OSC8);
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
   });
 
   it('verbose promotes: a default-line warning becomes a frame', () => {
-    const { out } = capture(() =>
+    const { err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'VERBOSE_SRC' })], {
         breakOnError: false,
         verbose: true
       })
     );
-    expect(out).toContain('VERBOSE_SRC');
+    expect(stderr).toContain('VERBOSE_SRC');
   });
 
   it('back-compat: suppressWarnings silences warning output', () => {
-    const { out } = capture(() =>
+    const { out, err: stderr } = capture(() =>
       outputDiagnostics([], [warn('eval/deprecated', 'x')], {
         breakOnError: false,
         suppressWarnings: true
       })
     );
+    expect(stderr).toBe('');
     expect(out).toBe('');
   });
 });

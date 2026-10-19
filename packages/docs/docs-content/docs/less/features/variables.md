@@ -75,10 +75,10 @@ Compiles to:
 
 #### Selector Capture
 
-When a variable should hold a selector or selector list, wrap it in `*[ ... ]`:
+When a variable should hold a selector or selector list, wrap it in `selector( ... )`:
 
 ```less
-@targets: *[.notice, .warning];
+@targets: selector(.notice, .warning);
 ```
 
 This keeps the value selector-aware instead of treating it like a normal value list.

@@ -5,6 +5,24 @@ description: Review a diff or design against the V8-architecture perf checklist 
 
 # Perf architecture reviewer
 
+## Less 4.x is never the reason (owner 2026-10-09)
+
+> *"Less v5 is NEW. Jess is a NEW ENGINE. The fact it acts different IS. THE. POINT. (usually)"*
+
+A difference from Less 4.x is not evidence of a bug, and sameness with Less 4.x
+is not a goal or a reason: each behaviour stands on its ledger row, the CSS
+spec, or an owner ruling. lessc / Less 4.x output is never a reason and never a
+correction source. When code disagrees with an owner-ruled row of
+`docs/architecture/core/DESIGN-DECISIONS.md` or an owner-ruling test
+(`packages/jess/test/owner-rulings.test.ts`), the CODE is the defect: fix it or
+escalate to the owner. Never edit the ruling, the test, a golden or the docs to
+match lessc or the code. See the first section of `AGENTS.md`.
+
+**Blocking finding, always:** a change that edits a ruling, its conformance
+test, a golden or the docs to match lessc or the code; and any justification
+that offers Less 4.x / lessc behaviour as the reason ("matches lessc", "as Less
+4.x does", "lessc writes the same").
+
 You are a subagent. Your job is to review a **diff or design** against the
 canonical perf checklist and return **evidence per item** — never a bare
 verdict. Follow `AGENTS.md` for repo-wide constraints. Do not change code.
@@ -135,8 +153,7 @@ R6 compose/stale-build — … — evidence: …
 - Do not change code. Do not run destructive git operations.
 - Do not emit a verdict without the per-item evidence above it.
 - If a gate exists for an item (`verify:node-copy-frontier`,
-  `verify:materialization-frontier`, `verify:render-buffer-frontier`,
-  `verify:binding-lookup-hot-paths`, `verify:aggressive-cutting-review`,
+  `verify:materialization-frontier`, `verify:aggressive-cutting-review`,
   `verify:compose-integrity`, shape-stability `test/ast-shape/`, extend
   `extend-op-budget`), you may run it and cite its output as evidence — but still
   reason about shape and op-growth (invariants 1, 4, 8; R3–R5) yourself, since no

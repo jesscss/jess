@@ -9,7 +9,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.27",
+  "version": "2.0.0-alpha.28",
   "description": "The Jess Core Library",
   "main": "lib/index.cjs",
   "module": "lib/index.js",
@@ -51,12 +51,8 @@
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
     "big.js": "^7.0.1",
-    "bitset": "~5.2.3",
     "chalk": "^4.1.2",
-    "color-name": "~2.0.0",
-    "combinate": "^1.1.11",
-    "data-structure-typed": "~2.0.0",
-    "lodash-es": "^4.17.21"
+    "color-name": "~2.0.0"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test --run",
@@ -80,8 +76,6 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@types/big.js": "^6.2.2",
-    "@types/lodash-es": "^4.17.8",
-    "chevrotain": "^11.0.3",
     "rollup-plugin-circular-dependencies": "~1.1.2",
     "rollup-plugin-visualizer": "~6.0.3",
     "vite-plugin-circular-dependency": "~0.5.0",

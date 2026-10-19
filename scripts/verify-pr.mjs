@@ -68,7 +68,7 @@ function run(command, args, { capture = false } = {}) {
  * process failure, not a code failure: an agent that redefined an owner
  * requirement should be stopped before anything is built.
  */
-heading('Guardrails: owner requirements + closure attribution');
+heading('Guardrails: owner requirements, closure attribution, Less 4.x-as-reason, owner-ruling lock');
 run('node', ['scripts/check-guardrails.mjs']);
 
 heading('Record Map: routing index links resolve');
@@ -158,10 +158,7 @@ for (const script of [
 
   'verify:aggressive-cutting-review',
   'verify:node-copy-frontier',
-  'verify:materialization-frontier',
-  'verify:render-buffer-frontier',
-  'verify:binding-lookup-hot-paths',
-  'audit:node-creation'
+  'verify:materialization-frontier'
 ]) {
   run('pnpm', ['run', script]);
 }

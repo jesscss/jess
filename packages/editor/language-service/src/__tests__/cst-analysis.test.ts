@@ -4,7 +4,8 @@ import { SymbolKind } from 'vscode-languageserver-types';
 import { parseCssDoc } from '@jesscss/css-parser/cst';
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
-import { cstDocumentSymbols, buildCstIndex } from '../cst-analysis.js';
+import { buildCstIndex } from '@jesscss/diagnostics-core';
+import { cstDocumentSymbols } from '../cst-analysis.js';
 
 function symbolsOf(text: string) {
   const doc = TextDocument.create('file:///t.css', 'css', 1, text);

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "ask": [
+      "Edit(/docs/OWNER-REQUIREMENTS.md)",
+      "Edit(/docs/architecture/core/owner-rulings.lock.json)",
+      "Edit(/packages/jess/test/owner-rulings.test.ts)",
+      "Edit(/scripts/check-guardrails.mjs)",
+      "Edit(/scripts/check-guardrails.reference-baseline.json)",
+      "Edit(/scripts/rulings-lock.mjs)",
+      "Edit(/scripts/check-guardrails.parser-rejections.json)",
+      "Edit(//**/docs/OWNER-REQUIREMENTS.md)",
+      "Edit(//**/docs/architecture/core/owner-rulings.lock.json)",
+      "Edit(//**/packages/jess/test/owner-rulings.test.ts)",
+      "Bash(pnpm rulings:lock)",
+      "Bash(pnpm rulings:lock *)",
+      "Bash(pnpm run rulings:lock)",
+      "Bash(pnpm run rulings:lock *)",
+      "Bash(node scripts/rulings-lock.mjs)",
+      "Bash(node scripts/rulings-lock.mjs *)"
+    ]
+  }
+}

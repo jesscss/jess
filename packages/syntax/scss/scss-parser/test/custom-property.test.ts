@@ -129,4 +129,56 @@ describe('SCSS custom properties', () => {
       + '}\n'
     );
   });
+
+  /*
+   * Ledger F12: a comment at either edge of a custom-property value is kept in
+   * the value, in place, and a comment-only value is not the empty value; only
+   * the edge whitespace is dropped (css-syntax-3 §5.5.6). Asserted in all four
+   * dialects.
+   */
+  it.each([
+    ['a{--var:/* 1 */}', 'a {\n  --var: /* 1 */;\n}\n'],
+    ['a { --x: /* lead */ red; }', 'a {\n  --x: /* lead */ red;\n}\n'],
+    ['a { --x: red /* trail */ ; }', 'a {\n  --x: red /* trail */;\n}\n'],
+    ['a { --x:/*g*/red/*h*/; }', 'a {\n  --x: /*g*/red/*h*/;\n}\n'],
+    ['a { --x:   red   ; }', 'a {\n  --x: red;\n}\n'],
+    ['a { --x: /* c */ red /* d */ !important; }', 'a {\n  --x: /* c */ red /* d */ !important;\n}\n']
+  ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
+    expect(serialize(parse(source)).css).toBe(expected);
+  });
+
+  /*
+   * CSS has no `//` comment, and a custom-property value is CSS
+   * `<declaration-value>` in every dialect: a `//` after the `:` is value text,
+   * not a comment that hides the `;` after it.
+   */
+  it('reads a `//` that opens a custom-property value as value text', () => {
+    expect(parse('a { --x: //b; c: d; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--x', value: { type: 'Any', src: '//b' } },
+        { type: 'Declaration', name: 'c' }
+      ] }]
+    });
+    expect(serialize(parse('a {\n  --x: // b\n    red;\n}')).css).toBe('a {\n  --x: // b\n    red;\n}\n');
+  });
+
+  /*
+   * The other side of that reading: a `//` "comment" that opens a value is now
+   * value text, so a quote in it opens a string that the line ends unclosed (a
+   * bad string, css-syntax-3 §4.3.5). dart-sass rejects this too.
+   */
+  it('rejects an unclosed quote in a `//` that opens a custom-property value', () => {
+    expect(() => parse('a {\n  --x: // don\'t\n    red;\n}')).toThrow();
+  });
+
+  /*
+   * PINNED DEFECT — a `//` in a `var()` fallback of an ordinary declaration. The
+   * fallback is a SassScript argument there, where `//` is a silent comment:
+   * dart-sass 1.101.7 compiles `var(--x, // b` + newline + `red)` to
+   * `var(--x, red)`. SCSS rejects it, because its `var()` (inherited from the css
+   * base) skips only whitespace and block comments.
+   */
+  it('PINNED DEFECT — rejects a line comment in a var() fallback', () => {
+    expect(() => parse('a {\n  color: var(--x, // b\n    red);\n}')).toThrow();
+  });
 });

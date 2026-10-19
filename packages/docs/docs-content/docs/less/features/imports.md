@@ -126,7 +126,25 @@ outputs
 
 ### once
 
-The default behavior of `@import` statements. It means the file is imported only once and subsequent import statements for that file will be ignored.
+The default behavior of `@import` statements. It means the file is imported only once where its output would land, and subsequent import statements for that file that would write the same output there will be ignored. Where the output lands is the chain of selectors and at-rule preludes around the import, starting from the root of the stylesheet; a mixin call imports where it is called, a ruleset whose selector is a bare `&` (`& { … }` or `& when (…) { … }`) imports where its parent does, and an imported file's root belongs to the place of the `@import` that brought it in. A copy placed somewhere else does not count, so the file is not hidden where you import it again:
+
+```less
+@media print {
+  @import "./foo.less"; // foo.less inside @media print
+}
+@import "./foo.less";   // foo.less again, at the root
+```
+
+Two imports whose output would land in the same place give one copy:
+
+```less
+.a { @import "./foo.less"; }
+.a { @import "./foo.less"; } // ignored: foo.less is already written under .a
+```
+
+Less 4 ignored every later import of a file anywhere in the compilation, so the root import above rendered nothing.
+
+An import of a file that is still being imported around it is always ignored, so a file that imports itself, directly or through other files, stops there.
 
 Released [v1.4.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)
 
@@ -168,8 +186,24 @@ Outputs
 }
 ```
 
+A `(multiple)` import of a file that is still being imported around it would add copies without end, so it stops the compile with an `import/cycle` error in the file that writes it. Any other import of such a file is ignored, as above.
+
 ### optional
 
 Use `@import (optional)` to allow importing of a file only when it exists. Without the `optional` keyword Less throws a FileError and stops compiling when importing a file that can not be found. 
 
 Released [v2.3.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)
+
+## Remote URLs
+
+In Less 5, an `@import` of an `https://`, `http://` or `//` URL is left in the output as a plain CSS `@import` — nothing is downloaded — unless you opt in to remote imports for specific hosts with the `@jesscss/plugin-remote-import` plugin. See [Remote Imports](../usage/less-options.md#remote-imports) for how to turn it on and the rules it enforces.
+
+```less
+// Without the plugin, all three stay as-is in the output.
+// With the plugin allowing cdn.example.com:
+@import "https://cdn.example.com/theme.less";      // downloaded and imported
+@import url("https://fonts.googleapis.com/css?family=Open+Sans"); // stays as-is
+@import "https://other.example.com/theme.less";    // error: not on the allow list
+```
+
+The allow list says which hosts are downloaded and imported, not which you may link to. With the plugin configured, a URL that Less treats as CSS (a `.css` file, or one marked `(css)`) is never downloaded. A URL without a file extension on a host that isn't allowed — a Google Fonts stylesheet, say — stays a plain CSS `@import`, media query included. Anything else that has to be imported but can't be downloaded — a `.less` URL on another host, or an `(inline)`, `(reference)` or `(less)` import — is an error. Without the plugin, an `(inline)`, `(reference)` or `(less)` import of a URL is an error too, since nothing is downloaded and it can't stay CSS.

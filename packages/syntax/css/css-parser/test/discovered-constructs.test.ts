@@ -114,14 +114,21 @@ describe('CSS constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('normalises the attribute modifier to its tight spelling', () => {
-    /*
-     * Divergence found by cross-dialect probe: CSS, SCSS and Jess all emit
-     * `[href="x"i]`; Less keeps the authored space. Pinned on both sides so
-     * whichever way it is unified, one of the two fails loudly.
-     */
-    expect(selectorTextsOf('a[href="x" i]{c:d}')).toMatchObject({
-      selector: { selectors: [{ value: [{ text: 'a' }, { text: '[href="x"i]' }] }] }
+  /*
+   * Ledger O7 (owner ruling): an attribute selector keeps its authored
+   * whitespace in all four dialects. The same table is pinned in the Less
+   * suite; a gap is one space, whatever whitespace or comment filled it.
+   */
+  it.each([
+    ['a[href="x" i]{c:d}', '[href="x" i]'],
+    ['a[href="x"i]{c:d}', '[href="x"i]'],
+    ['a[ href = "x" i ]{c:d}', '[ href = "x" i ]'],
+    ['a[data-x=y i]{c:d}', '[data-x=y i]'],
+    ['a[href  =\n"x"]{c:d}', '[href = "x"]'],
+    ['a[href/* c */="x"]{c:d}', '[href ="x"]']
+  ])('keeps the authored whitespace inside an attribute selector (%s)', (source, attribute) => {
+    expect(selectorTextsOf(source)).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { text: attribute }] }] }
     });
   });
 

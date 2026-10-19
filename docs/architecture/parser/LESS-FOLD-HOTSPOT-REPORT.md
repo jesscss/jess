@@ -196,7 +196,7 @@ Preferred local vocabulary by region:
   `QueryValue`, `QueryFeature*`, `MediaQuery*`, `Container*`, `AtRuleBlock`,
   `AtRuleStatement`.
 - Selectors/extents: `PseudoSelector`, `AttributeSelector`, `AttributeName`,
-  `AttributeMatch`, `NamespaceTypeSelector`, `InterpolatedAttributeSelector`,
+  `NamespaceTypeSelector`, `InterpolatedAttributeSelector`,
   `CompoundSelector`, `ComplexSelector`, `SelectorList`, `ExtendTarget`,
   `InlineExtendTail`, `SelectorBranch`, `Ruleset`. A static spelling belongs in
   the ordinary semantic owner; keep an interpolation-specific rule only when

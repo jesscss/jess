@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "outDir": "./lib",
-    "rootDir": "./src",
+    "rootDir": "../../../..",
     "skipLibCheck": true
   },
   "include": ["src/**/*", "test/**/*", "vitest.config.ts"],

@@ -10,4 +10,9 @@ a {
 b {
   color: green;
 }
+@media screen /* before a query-list comma */, /* after it */ print {
+  c {
+    color: blue;
+  }
+}
 /* trailing */

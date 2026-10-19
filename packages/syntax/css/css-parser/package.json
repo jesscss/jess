@@ -9,13 +9,23 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.27",
+  "version": "2.0.0-alpha.28",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
-  "description": "Jess CSS base parser",
+  "description": "CSS parser for Jess, and the base the Less, SCSS and Jess parsers compose onto",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
+  "browser": {
+    "./lib/grammar/ast.js": "./lib/grammar/interpreter/ast.js",
+    "./lib/grammar/ast.cjs": "./lib/grammar/interpreter/ast.cjs",
+    "./lib/grammar/ast/positions.js": "./lib/grammar/interpreter/ast/positions.js",
+    "./lib/grammar/ast/positions.cjs": "./lib/grammar/interpreter/ast/positions.cjs",
+    "./lib/grammar/cst.js": "./lib/grammar/interpreter/cst.js",
+    "./lib/grammar/cst.cjs": "./lib/grammar/interpreter/cst.cjs",
+    "./lib/grammar/cst/positions.js": "./lib/grammar/interpreter/cst/positions.js",
+    "./lib/grammar/cst/positions.cjs": "./lib/grammar/interpreter/cst/positions.cjs"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -107,6 +117,7 @@
   "files": [
     "lib"
   ],
+  "sideEffects": false,
   "scripts": {
     "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
     "ci": "pnpm build && pnpm test",
@@ -127,21 +138,14 @@
   },
   "dependencies": {
     "@jesscss/parser-shared": "workspace:*",
-    "parseman": "^0.51.2"
+    "parseman": "^0.54.0"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
-  "peerDependenciesMeta": {
-    "@jesscss/core": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/shared": "workspace:*",
-    "postcss": "8.5.23",
-    "tsx": "~4.21.0"
+    "postcss": "8.5.23"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

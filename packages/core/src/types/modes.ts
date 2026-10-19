@@ -1,9 +1,11 @@
 /**
- * Math processing modes.
+ * Math processing modes. The runtime list is what option validation checks
+ * values against.
  *
  * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
  */
-export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
+export const MATH_MODES = ['always', 'parens-division', 'parens', 'strict'] as const;
+export type MathMode = typeof MATH_MODES[number];
 
 /**
  * Unit conversion modes.
@@ -14,7 +16,8 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
  *
  * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
  */
-export type UnitMode = 'loose' | 'preserve' | 'strict';
+export const UNIT_MODES = ['loose', 'preserve', 'strict'] as const;
+export type UnitMode = typeof UNIT_MODES[number];
 
 /**
  * Function-call resolution modes — compiler input to the shared evaluator.
@@ -48,4 +51,5 @@ export type FunctionMode = 'preserve' | 'error';
  *
  * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
  */
-export type ModuleMode = 'auto' | 'modern';
+export const MODULE_MODES = ['auto', 'modern'] as const;
+export type ModuleMode = typeof MODULE_MODES[number];

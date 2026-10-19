@@ -66,6 +66,7 @@ const FILES = [
   'packages/syntax/css/css-parser/src/trivia-labels.ts',
   'packages/syntax/less/less-parser/src/cst.ts',
   'packages/syntax/less/less-parser/src/cst/positions.ts',
+  'packages/syntax/less/less-parser/src/delim-runs.ts',
   'packages/syntax/less/less-parser/src/grammar-helpers.ts',
   'packages/syntax/less/less-parser/src/grammar.ts',
   'packages/syntax/less/less-parser/src/grammar/ast.ts',
@@ -73,11 +74,15 @@ const FILES = [
   'packages/syntax/less/less-parser/src/grammar/cst.ts',
   'packages/syntax/less/less-parser/src/grammar/cst/positions.ts',
   'packages/syntax/less/less-parser/src/index.ts',
+  'packages/syntax/less/less-parser/src/mixin-list.ts',
+  'packages/syntax/less/less-parser/src/mixin-reference-source.ts',
   'packages/syntax/less/less-parser/src/parse-error.ts',
   'packages/syntax/less/less-parser/src/parse-state.ts',
   'packages/syntax/less/less-parser/src/parse-with.ts',
   'packages/syntax/less/less-parser/src/positions.ts',
+  'packages/syntax/less/less-parser/src/selector-capture.ts',
   'packages/syntax/less/less-parser/src/trivia-labels.ts',
+  'packages/syntax/less/less-parser/src/trivia-layout.ts',
   'packages/syntax/less/less-parser/tsdown.config.ts'
 ];
 const snapDir = mkdtempSync(join(tmpdir(), 'less-ab-'));

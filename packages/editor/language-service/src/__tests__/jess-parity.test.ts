@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { DocumentSymbol } from 'vscode-languageserver-types';
 import { createEngine } from '../engine.js';
+import { SEMANTIC_TOKEN_TYPES } from '../cst-syntactic.js';
 
 // Every language-service feature must work on .jess, not just css/less/scss.
 function engineWith(text: string) {
@@ -147,12 +148,12 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     }
 
     /*
-     * Legend: operator=5, variable=7. The `$foo` reference on line 1 must be TWO
-     * tokens: a 1-char operator (`$`) then a 3-char variable (`foo`).
+     * The `$foo` reference on line 1 must be TWO tokens: a 1-char operator (`$`)
+     * then a 3-char variable (`foo`).
      */
     const ref = toks.filter(t => t.line === 1);
-    const dollar = ref.find(t => t.len === 1 && t.type === 5);
-    const name = ref.find(t => t.len === 3 && t.type === 7);
+    const dollar = ref.find(t => t.len === 1 && t.type === SEMANTIC_TOKEN_TYPES.indexOf('operator'));
+    const name = ref.find(t => t.len === 3 && t.type === SEMANTIC_TOKEN_TYPES.indexOf('variable'));
     expect(dollar).toBeDefined();
     expect(name).toBeDefined();
     expect(name!.ch).toBe(dollar!.ch + 1);

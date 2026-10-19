@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention -- entry keys are output paths, not identifiers. */
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({

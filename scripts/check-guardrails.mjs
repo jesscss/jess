@@ -15,7 +15,7 @@
  * A rule written in a document does not stop that: the next agent can edit the
  * document exactly as the last one edited the spec. So the rule is also a gate.
  *
- * TWO ASSERTIONS, both mechanical:
+ * SEVEN ASSERTIONS, all mechanical:
  *
  *   1. `docs/OWNER-REQUIREMENTS.md` is byte-frozen against a hash recorded in
  *      this file. Any edit fails the build. Updating the hash is the owner's
@@ -25,16 +25,62 @@
  *      appears in `docs/`, `.cursor/rules/`, `CLAUDE.md` or `AGENTS.md` without
  *      an explicit attribution marker saying WHO closed it.
  *
+ *   3. Less 4.x / lessc / less.js behaviour is never offered as the REASON for a
+ *      behaviour ("as lessc does", "matches Less 4.x", "lessc 4.9.1 writes the
+ *      same", "Oracle: lessc 4.x"), in docs, code comments or test titles.
+ *      Existing violations are baselined in
+ *      `scripts/check-guardrails.reference-baseline.json`; the baseline may only
+ *      shrink.
+ *
+ *   4. Owner rulings are locked: every owner-ruled row of the decision ledger
+ *      and every test in `packages/jess/test/owner-rulings.test.ts` matches its
+ *      hash in `docs/architecture/core/owner-rulings.lock.json`. Updating the
+ *      lock (`pnpm rulings:lock`) is an owner-approved act.
+ *
+ *   5. Parser rejections only shrink (ledger P45): every author-facing `throw`
+ *      in a parser package is baselined in
+ *      `scripts/check-guardrails.parser-rejections.json`; a new one fails unless
+ *      it is marked `NOT-WELL-FORMED:`.
+ *
+ *   6. Structure only shrinks: a file over 530 statements, or a function over
+ *      45 statements or 5 parameters, is baselined in
+ *      `scripts/check-guardrails.structure-baseline.json` at its size today and
+ *      may only shrink; new code stays under the caps. Size is counted in
+ *      statements, not lines, so reformatting can neither pass nor fail it.
+ *
+ *   7. One owner per predicate: open-coded copies of a shared rule (a CSS name
+ *      code point, a quote or comment scanner, a `:is(` join, …) outside the
+ *      module that should own it are inventoried in
+ *      `scripts/check-guardrails.duplicate-predicates.json`; the inventory may
+ *      only shrink.
+ *
  * This gate deliberately does NOT try to judge whether a closure is correct. It
  * forces the author to say, in writing and in the same block, whose authority
  * the closure rests on. An agent that types `OWNER-RULED:` over its own opinion
  * is lying, not slipping.
+ *
+ * Flags:
+ *   --list-reference-reasons     print every assertion-3 hit (baselined or not)
+ *                                as JSON, with its current file:line, and exit.
+ *   --list-structure             print every assertion-6 offender (baselined or
+ *                                not) in the baseline's JSON format, and exit.
+ *   --list-predicates            print every assertion-7 site (baselined or not)
+ *                                in the inventory's JSON format, and exit.
+ *   --prune-baselines            drop entries that no longer occur from the
+ *                                assertion-3, -5 and -7 baselines, and lower each
+ *                                assertion-6 ceiling to its current value. It
+ *                                never adds an entry or raises a ceiling.
+ *   --require-structure          fail, rather than skip, assertion 6 when the
+ *                                TypeScript parser is not installed.
  */
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compareRulingsLock, LOCK, LEDGER, RULING_TESTS } from './rulings-lock.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -247,21 +293,844 @@ if (closureHits.length > 0) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Assertion 3 — Less 4.x / lessc behaviour is never a reason.
+ * ------------------------------------------------------------------ */
+
+/*
+ * WHY THIS EXISTS. Agents ran lessc 4.x, saw different output, and "fixed"
+ * jess to match — reversing owner rulings (ledger E1/E5/E6) — then pinned tests
+ * and wrote user docs describing the reversed behaviour. Less v5 is a breaking
+ * release: a difference from 4.x is not evidence of a bug, and sameness with
+ * 4.x is not a reason (owner 2026-10-09).
+ *
+ * What is flagged is AGREEMENT phrasing that offers the reference in support of
+ * a behaviour. CONTRAST phrasing — "where Less 4.x wrote X", "lessc 4.9.1
+ * rejects it", "unlike 4.x", "Less 4.x instead …" — is not matched, so
+ * migration notes and divergence records pass.
+ *
+ * Patterns run over BLOCKS: a markdown paragraph, list item or table row; one
+ * comment block (prefixes stripped, lines joined); one test title. A phrase
+ * broken across comment lines is still seen.
+ */
+const REF_VER = String.raw`(?:\s+v?[0-9]+(?:\.[0-9x]+)*)?`;
+const REF_VERSIONED = String.raw`(?:lessc${REF_VER}|less\.js${REF_VER}|less@[0-9][0-9.x]*|less[ -]?4(?:\.[0-9x]+)*|4\.x)`;
+const REF_NAME = String.raw`(?:${REF_VERSIONED}|real less(?:\.js)?)`;
+
+/* Not an identifier such as `lessCompat` / `LessCst`. */
+const REF = REF_NAME + String.raw`(?![\w-]*[a-wyz])`;
+const TICK = String.raw`\`?`;
+const REFERENCE_PATTERNS = [
+  // "as lessc does", "as in Less 4.x", "like lessc", "as in css and lessc 4.9.1", "as the `x` golden and lessc 4.x"
+  String.raw`(?<!\b(?:such|not) )\b(?:as|like|same as)\s+(?:in\s+)?(?:(?:the\s+)?[\w\`-]+(?:\s+[\w\`-]+)?\s+and\s+)?${TICK}${REF}(?!\s+(?:wrote|did not|does not|doesn't|didn't|instead))`,
+
+  // "matching lessc 4.x", "matches Less 4.x", "mirrors less@4", "byte-identical to less@4", "parity with 4.x"
+  String.raw`\b(?:matching|matches|matched|mirrors?|mirroring|(?:byte-)?identical to|parity with)\s+(?:the\s+)?(?:legacy jess\s*\/\s*)?(?:eval\s*\/\s*)?${TICK}${REF}(?!\s+(?:perf|speed)|\s+\`[^\`]+\`\s+fixture)`,
+
+  // "(Less 4.x parity)", "(lessc 4.9.1 behaviour)", "Less 4.x-parity", "Less 4.x/v5 parity", "(less@4.6.3)", "(Less 4.x: …)"
+  String.raw`\(${REF}(?:\/v5)?\s+(?:parity|behaviou?r)\)|${REF_VERSIONED}-parity\b|${REF_VERSIONED}\/v5 parity|\((?:lessc\s+|less@)\d[\d.x]*\)|\(${REF}:\s`,
+
+  // corroboration: "lessc 4.9.1 also writes", "agrees", "drops it too", "gives the same output", "copies the Extend"
+  String.raw`${REF}(?:'s)?\s+(?:also\b(?!\s+(?:\w+ed|let|had|wrote|took|gave|made|kept)\b)|agrees(?! with neither)|[^.\n;]{0,80}?\btoo\b(?!\s+(?:large|many|few|small|long|big|much|late|early))|(?:\w+\s+){0,4}the same\b(?!\s+(?:defect|bug))|copies the)`,
+
+  // test oracles: "Oracle: lessc 4.x", "Every expectation … is lessc 4.9.1 output", "captured from npx less@4.6.3"
+  String.raw`\boracles?:?\s+${TICK}${REF}|\bexpectations?\b[^.\n]{0,60}?\b(?:is|are|captured from)\s+(?:\`?npx\s+)?${TICK}${REF}|\bis\s+${TICK}${REF}(?:'s)?\s+output\b|\b(?:both )?oracles agree\b|\bevery other expectation is ${REF}`,
+
+  // "restoring lessc 4.x", "the way Less 4.x expands", "the Less 4.x expanded form", "This mirrors less.js", "and so does Less 5", …
+  String.raw`\brestor(?:e|es|ing|ed)\s+(?:the\s+)?${TICK}${REF}|\bthe way\s+${TICK}${REF}\b[^\n]{0,60}?\b(?:does|writes|expands|derives)\b|(?<!\bis the )\b${REF}\s+expanded form\b|\band\s+${REF}\s+writes it\b|\bthis mirrors\s+${REF}|\band so does (?:less 5|v5|jess)\b|\bbyte-for-byte (?:what|as)\s+${REF}|\b${REF}\b[^.]{0,120}?\bdivergence from the oracle\b|\bmust also error\b|\berror where ${REF} errors\b|\b${REF} output oracles?\b|\b${REF} defaults:|\ba legitimate reference\b`,
+
+  // the reference made the contract: "Matching lessc on valid input is the contract"
+  String.raw`\bmatching ${REF} on\b[^.\n]{0,40}\bis the contract`
+].map(source => new RegExp(source, 'gi'));
+const REF_RE = new RegExp(REF, 'i');
+
+/*
+ * A block is exempt when it says, in writing, that the reference is not the
+ * reason:
+ *   OWNER-RULED: YYYY-MM-DD   the owner's own ruling adopted this behaviour.
+ *   UNRESOLVED                no ruling yet; escalated to the owner.
+ *   REFERENCE-OBSERVATION:    a measurement kept for the record, not a reason.
+ */
+const REFERENCE_MARKERS = /OWNER-RULED:\s*\d{4}-\d{2}-\d{2}|\bUNRESOLVED\b|REFERENCE-OBSERVATION:/;
+
+/* A sentence that disclaims the reference, or is about speed/`loose` mode (V18) or the legacy plugin ABI (A12). */
+const REFERENCE_DISCLAIM = /observation only|for the record|not (?:an? )?authority|is not intent|not as a ruling|agrees with neither|matches neither|\bloose\b|\b(?:a|jess|real) (?:bug|gap)\b|→ jess bug|is a bug|perf\b|speed|\blegacy (?:@?plugin|ABI)\b|\bterminology\b|\bjustified as\b|\bexcept where (?:v5|less 5|jess)\b/i;
+const REFERENCE_SCAN_ROOTS = ['docs', 'packages', '.cursor/rules', '.cursor/agents', 'CLAUDE.md', 'AGENTS.md'];
+const REFERENCE_SKIP = [
+  /(^|\/)archive\//, // frozen history
+  /^packages\/syntax\/less\/jess-plugin-less-compat\//, // the 4.x plugin API IS the contract (A9, A12, C15)
+  /^packages\/jess-plugin-js\//, // legacy @plugin ABI sandbox (A12)
+  /^docs\/releases\//,
+  /(^|\/)(node_modules|lib|dist)\//
+];
+const REFERENCE_EXT = /\.(md|mdc|mdx|ts|mts|cts|mjs|js)$/;
+const REFERENCE_BASELINE = 'scripts/check-guardrails.reference-baseline.json';
+
+/*
+ * The files git sees (tracked, plus untracked and not ignored): generated
+ * output such as `lib/`, `*.d.ts` or `packages/jess/temp/` is never scanned, so
+ * a local build cannot make the result differ from CI's.
+ */
+const gitFiles = [...new Set(execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+  cwd: root,
+  encoding: 'utf8',
+  maxBuffer: 1 << 28
+}).split('\0'))];
+
+function referenceFiles() {
+  return gitFiles.filter(rel => REFERENCE_EXT.test(rel)
+    && REFERENCE_SCAN_ROOTS.some(r => rel === r || rel.startsWith(`${r}/`))
+    && !REFERENCE_SKIP.some(re => re.test(rel))
+    && existsSync(join(root, rel)));
+}
+
+/* Markdown: paragraph / list item / table row. Code: one comment block, or one test-title line. */
+function referenceBlocks(rel, lines) {
+  const markdown = /\.(md|mdc|mdx)$/.test(rel);
+  const out = [];
+  let cur = null;
+  const flush = () => {
+    if (cur) {
+      out.push(cur);
+    }
+    cur = null;
+  };
+  lines.forEach((line, i) => {
+    let text;
+    if (markdown) {
+      const tableRow = /^\s*\|/.test(line);
+      if (line.trim() === '' || tableRow || /^\s*(?:[-*]|\d+\.)\s/.test(line)) {
+        flush();
+      }
+      if (line.trim() === '') {
+        return;
+      }
+      if (tableRow) {
+        out.push([{ i, text: line }]);
+        return;
+      }
+      text = line;
+    } else {
+      if (/\b(?:it|test|describe)(?:\.\w+)?\(\s*['"`]/.test(line)) {
+        flush();
+        out.push([{ i, text: line }]);
+        return;
+      }
+      const code = line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '');
+      if (!/^\s*(?:\/\*+|\*|\/\/)/.test(line) && !/\/\*|\/\//.test(code)) {
+        flush();
+        return;
+      }
+      text = line.replace(/^\s*(?:\/\*+|\*\/?|\/\/)\s?/, '');
+    }
+    cur ??= [];
+    cur.push({ i, text });
+  });
+  flush();
+  return out;
+}
+
+/* A short quoted phrase quotes the forbidden wording ("Matches less.js" is never a justification). */
+function insideShortQuote(s, idx) {
+  const before = s.slice(0, idx);
+  const open = Math.max(before.lastIndexOf('"'), before.lastIndexOf('“'));
+  if (open < 0 || (before.match(/["“”]/g) ?? []).length % 2 === 0) {
+    return false;
+  }
+  const close = s.slice(idx).search(/["”]/);
+  return idx - open < 40 && close >= 0 && close < 60;
+}
+
+const normalizeSentence = s => s.replace(/\s+/g, ' ').trim();
+
+function scanReferenceReasons() {
+  const hits = [];
+  for (const rel of referenceFiles()) {
+    const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+    for (const parts of referenceBlocks(rel, lines)) {
+      let text = '';
+      const offsets = [];
+      for (const p of parts) {
+        offsets.push([text.length, p.i]);
+        text += `${p.text} `;
+      }
+      if (REFERENCE_MARKERS.test(text)) {
+        continue;
+      }
+      const lineAt = k => offsets.reduce((ln, [o, i]) => (o <= k ? i : ln), parts[0].i);
+      const seen = new Set();
+      REFERENCE_PATTERNS.forEach((re, pattern) => {
+        re.lastIndex = 0;
+        for (let m = re.exec(text); m; m = re.exec(text)) {
+          /* In user docs, "as in Less 4.x" tells a migrating reader nothing changed: continuity, not a reason. */
+          if (insideShortQuote(text, m.index) || (pattern === 0 && rel.startsWith('packages/docs/docs-content/'))) {
+            continue;
+          }
+          const start = text.lastIndexOf('. ', m.index) + 1;
+          const endRaw = text.indexOf('. ', m.index + m[0].length);
+          const sentence = normalizeSentence(text.slice(start, endRaw < 0 ? text.length : endRaw + 1));
+          if (REFERENCE_DISCLAIM.test(sentence) || seen.has(sentence)) {
+            continue;
+          }
+          seen.add(sentence);
+          const line = lineAt(m.index + Math.max(0, m[0].search(REF_RE))) + 1;
+          hits.push({ file: rel, line, pattern, match: m[0], sentence });
+        }
+      });
+    }
+  }
+  return hits;
+}
+
+const referenceHits = scanReferenceReasons();
+const listReferenceReasons = process.argv.includes('--list-reference-reasons');
+const pruneBaselines = process.argv.includes('--prune-baselines');
+
+/*
+ * A shrink-only baseline: file → entries (a multiset; line numbers are
+ * deliberately not part of the key). Returns the hits it does not hold and the
+ * entries no hit matched. `--prune-baselines` drops the stale entries; nothing
+ * ever adds one.
+ */
+function ratchet(hits, baselineRel) {
+  const path = join(root, baselineRel);
+  const baseline = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+  const remaining = new Map(Object.entries(baseline).map(([file, entries]) => [file, [...entries]]));
+  const fresh = [];
+  for (const hit of hits) {
+    const left = remaining.get(hit.file);
+    const at = left ? left.indexOf(hit.sentence) : -1;
+    if (at >= 0) {
+      left.splice(at, 1);
+    } else {
+      fresh.push(hit);
+    }
+  }
+  const stale = [...remaining].flatMap(([file, entries]) => entries.map(sentence => ({ file, sentence })));
+  if (!pruneBaselines || stale.length === 0) {
+    return { fresh, stale };
+  }
+  const pruned = {};
+  for (const [file, entries] of Object.entries(baseline)) {
+    const dropped = [...(remaining.get(file) ?? [])];
+    const out = entries.filter((e) => {
+      const at = dropped.indexOf(e);
+      if (at < 0) {
+        return true;
+      }
+      dropped.splice(at, 1);
+      return false;
+    });
+    if (out.length > 0) {
+      pruned[file] = out;
+    }
+  }
+  writeFileSync(path, `${JSON.stringify(pruned, null, 2)}\n`);
+  console.log(`Pruned ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} from ${baselineRel}.`);
+  return { fresh, stale: [] };
+}
+
+const reference = ratchet(referenceHits, REFERENCE_BASELINE);
+const newReferenceHits = reference.fresh;
+const staleBaseline = reference.stale;
+
+const REFERENCE_REASON_MESSAGE = [
+  '  Less 4.x / lessc behaviour is not a reason. Less v5 is a breaking release — cite the',
+  '  ledger row, CSS spec section, or dated owner ruling that makes this intentional, or mark',
+  '  it UNRESOLVED and escalate to the owner.',
+  '',
+  '  Never "fix" jess, a test, a golden or a doc to match lessc. When lessc differs from a',
+  '  ledger row or owner ruling, the ruling wins (docs/architecture/core/DESIGN-DECISIONS.md',
+  '  E1/E5/E6). Contrast is fine: "Less 4.x wrote X; Less 5 writes Y because <row/spec>".',
+  '',
+  '  Block markers (same paragraph, comment block, table row or test title):',
+  '    OWNER-RULED: YYYY-MM-DD   the owner ruled this behaviour. Date required.',
+  '    UNRESOLVED                no ruling yet; escalated to the owner.',
+  '    REFERENCE-OBSERVATION:    a measurement kept for the record, not a reason.'
+];
+
+if (newReferenceHits.length > 0) {
+  failures.push(
+    [
+      `${newReferenceHits.length} new line(s) use Less 4.x / lessc behaviour as a reason.`,
+      '',
+      ...REFERENCE_REASON_MESSAGE,
+      '',
+      ...newReferenceHits.map(h => `    ${h.file}:${h.line}  "${h.match}"\n      ${h.sentence.slice(0, 240)}`)
+    ].join('\n')
+  );
+}
+
+if (staleBaseline.length > 0) {
+  failures.push(
+    [
+      `${staleBaseline.length} baselined reference-reason entr${staleBaseline.length === 1 ? 'y no longer occurs' : 'ies no longer occur'}.`,
+      '',
+      `  Good — remove ${staleBaseline.length === 1 ? 'it' : 'them'} from ${REFERENCE_BASELINE} so the baseline only`,
+      '  shrinks: `node scripts/check-guardrails.mjs --prune-baselines`.',
+      '  (A reworded sentence that still uses lessc as a reason shows up above as new.)',
+      '',
+      ...staleBaseline.map(s => `    ${s.file}\n      ${s.sentence.slice(0, 240)}`)
+    ].join('\n')
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Assertion 4 — owner rulings change only with the owner's approval.
+ * ------------------------------------------------------------------ */
+
+/*
+ * The ledger row and its conformance test are the ruling. An agent that made
+ * the code match lessc and then "corrected" the row, the test or the golden to
+ * match the code has reversed an owner ruling silently. A change to either now
+ * fails until the lock changes with it, and the lock diff names the ruling.
+ * Detection of owner-ruled rows and the hashing rules: scripts/rulings-lock.mjs.
+ */
+const rulings = compareRulingsLock();
+if (!rulings.lock) {
+  failures.push(`${LOCK} is MISSING. Restore it from git history; regenerating it is an owner-approved act.`);
+} else if (rulings.ledger.length + rulings.tests.length > 0) {
+  const ids = [...new Set([...rulings.ledger, ...rulings.tests].map(c => c.id))];
+  failures.push(
+    [
+      `This change edits OWNER RULING ${ids.join(', ')}. Owner rulings change only with the owner's explicit approval.`,
+      '',
+      ...rulings.ledger.map(c => `    ${c.id}: ${LEDGER} row ${c.what}`),
+      ...rulings.tests.map(c => `    ${c.id}: ${RULING_TESTS} test ${c.what}${c.key === c.id ? '' : `\n      ${c.key}`}`),
+      '',
+      '  When code disagrees with an owner ruling, the CODE is the defect: fix the code, or',
+      '  escalate to the owner. Never edit the ruling, its conformance test, the golden or',
+      '  the docs to match the code or lessc. Less 4.x output is never a reason.',
+      '',
+      '  Implementation notes do not go in an owner row: put them in',
+      '  docs/architecture/core/DESIGN-DECISIONS-NOTES.md under the row id.',
+      '',
+      '  Only if the owner explicitly approved THIS change: run `pnpm rulings:lock` (it prints',
+      `  which rulings changed) and commit ${LOCK} with it.`
+    ].join('\n')
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Assertion 5 — well-formed input never stops the pipeline (P45).
+ * ------------------------------------------------------------------ */
+
+/*
+ * Ledger P45 (owner 2026-10-09): every parser accepts every well-formed shape;
+ * what a dialect rejects is a diagnostic, and parsing continues. A grammar that
+ * stops recognizing a shape is caught by the conformance tests and the review
+ * (GRAMMAR-REVIEW-STANDARD item 17), not here. What this catches cheaply is the
+ * other route: a new author-facing `throw` in a parser package. Invariant
+ * throws (`TypeError`, `Error`, `RangeError`: "the grammar produced an
+ * impossible shape") are not counted. The baselined sites may only shrink.
+ */
+const PARSER_SOURCE = /^packages\/(?:syntax\/[^/]+\/[^/]+-parser|parser-shared)\/src\/.+(?<!\.d)\.ts$/;
+const THROW_SITE = /\bthrow\s+(?:new\s+)?([A-Za-z_$][\w$]*)\s*\(/;
+const INVARIANT_THROW = new Set(['TypeError', 'Error', 'RangeError']);
+const NOT_WELL_FORMED = /NOT-WELL-FORMED:/;
+const PARSER_REJECTION_BASELINE = 'scripts/check-guardrails.parser-rejections.json';
+
+const rejectionHits = [];
+for (const rel of gitFiles.filter(f => PARSER_SOURCE.test(f) && existsSync(join(root, f)))) {
+  const lines = readFileSync(join(root, rel), 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    const m = THROW_SITE.exec(line);
+    if (!m || INVARIANT_THROW.has(m[1]) || /^\s*(?:\*|\/\/)/.test(line)
+      || NOT_WELL_FORMED.test(line) || NOT_WELL_FORMED.test(lines[i - 1] ?? '')) {
+      return;
+    }
+    rejectionHits.push({ file: rel, line: i + 1, sentence: normalizeSentence(line) });
+  });
+}
+const rejections = ratchet(rejectionHits, PARSER_REJECTION_BASELINE);
+
+if (rejections.fresh.length > 0) {
+  failures.push(
+    [
+      `${rejections.fresh.length} new author-facing throw(s) in a parser package.`,
+      '',
+      '  Ledger P45 (owner 2026-10-09): every parser accepts every WELL-FORMED shape (CSS',
+      '  Syntax 3: it tokenizes, blocks and functions balance, structurally valid position).',
+      '  What a dialect rejects or cannot give meaning to is a DIAGNOSTIC at its span, and',
+      '  parsing and evaluation continue. A hard stop on well-formed input is a defect.',
+      '',
+      '  Report a diagnostic instead of throwing. Only if the input this refuses is not',
+      '  well-formed at all, say why on the throw line or the line above:',
+      '    // NOT-WELL-FORMED: <why, per CSS Syntax 3>',
+      '',
+      ...rejections.fresh.map(h => `    ${h.file}:${h.line}\n      ${h.sentence}`)
+    ].join('\n')
+  );
+}
+
+if (rejections.stale.length > 0) {
+  failures.push(
+    [
+      `${rejections.stale.length} baselined parser throw site(s) no longer occur.`,
+      '',
+      `  Good — remove ${rejections.stale.length === 1 ? 'it' : 'them'} from ${PARSER_REJECTION_BASELINE} so the count only shrinks:`,
+      '  `node scripts/check-guardrails.mjs --prune-baselines`.',
+      '',
+      ...rejections.stale.map(s => `    ${s.file}\n      ${s.sentence}`)
+    ].join('\n')
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Assertion 6 — structure only shrinks.
+ * ------------------------------------------------------------------ */
+
+/*
+ * A file over 530 statements, or a function over 45 statements or 5
+ * parameters, is where unrelated concerns pile up and copies of one rule drift
+ * apart. New code stays under the caps. Every existing offender is baselined at
+ * its size today and may only shrink; a ceiling above the current value fails
+ * until it is lowered (`--prune-baselines`), so the room a refactor frees cannot
+ * be spent again.
+ *
+ * SIZE IS COUNTED IN STATEMENTS, NOT LINES. A line count rewards cramming code
+ * onto fewer lines and charges for comments and blank lines; a refactor once
+ * joined lines to stay under a file's line ceiling. A statement is any
+ * TypeScript `Statement` node except a `{ }` block or an empty `;`, counted
+ * recursively — nested blocks and nested function bodies included — so joining
+ * or splitting lines never changes it. A file counts all its statements; a
+ * function counts the statements in its body. (A count of all AST nodes would
+ * ignore layout too, but it also grows with every type annotation.)
+ *
+ * The caps restate the old caps of 1,500 lines per file and 100 per function
+ * in statements, calibrated on this codebase when the unit changed: the median
+ * file has 2.8 lines per statement and the median function 2.1, so 1,500 lines
+ * ≈ 530 statements and 100 lines ≈ 47. Ranking agrees: 24 files exceed 530
+ * statements where 23 exceeded 1,500 lines, and 158 functions exceed 45
+ * statements where 159 exceeded 100 lines; the function cap takes the lower 45.
+ *
+ * Keys are names, never line numbers: `<file>` and `<file>#<Class.function>`.
+ * A nested function is named through its host (`walkBody.run`); a name repeated
+ * in one scope gets `~2`, `~3`, … in source order. An entry records only the
+ * metrics over the cap. Renaming an offender is a reviewed edit of its key.
+ *
+ * A function is a declaration, method, constructor or accessor with a body, or
+ * an arrow or function expression bound to a name (`const f = () => …`,
+ * `f: function () …`). A `this` parameter is not counted.
+ *
+ * Scope: tracked TypeScript under every `packages/**\/src/` — the shipped
+ * source of every package — minus tests (`__tests__/`, `*.test.ts`,
+ * `*.spec.ts`), declaration files, the documentation sites (`packages/docs/`,
+ * not shipped), and the four dialect `grammar.ts` files, which are reviewed
+ * `const` by `const` under docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md.
+ * Build output (`lib/`, `dist/`) is git-ignored and never listed.
+ *
+ * Measured with the TypeScript 6 parser, which needs `pnpm install`. Without it
+ * (the no-install CI job) the assertion is reported as skipped; the CI job that
+ * installs runs it with `--require-structure`.
+ */
+const STRUCTURE_BASELINE = 'scripts/check-guardrails.structure-baseline.json';
+const STRUCTURE_SOURCE = /^packages\/(?!docs\/)(?:[^/]+\/)*src\/.+(?<!\.d)\.ts$/;
+const STRUCTURE_SKIP = /(?:^|\/)__tests__\/|\.(?:test|spec)\.ts$|^packages\/syntax\/[^/]+\/[^/]+-parser\/src\/grammar\.ts$/;
+const FILE_CAP = { statements: 530 };
+const FUNCTION_CAP = { statements: 45, params: 5 };
+const capOf = key => (key.includes('#') ? FUNCTION_CAP : FILE_CAP);
+
+const listStructure = process.argv.includes('--list-structure');
+const requireStructure = process.argv.includes('--require-structure');
+
+let ts = null;
+try {
+  ts = createRequire(import.meta.url)('@typescript/typescript6/lib/typescript.js');
+} catch {
+  /* Not installed: assertion 6 is skipped, or fails under --require-structure. */
+}
+
+function functionName(node) {
+  if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node))
+    && node.body && node.name) {
+    return node.name.getText();
+  }
+  if (ts.isConstructorDeclaration(node) && node.body) {
+    return 'constructor';
+  }
+  if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node))
+    && (ts.isVariableDeclaration(node.parent) || ts.isPropertyAssignment(node.parent) || ts.isPropertyDeclaration(node.parent))
+    && ts.isIdentifier(node.parent.name)) {
+    return node.parent.name.text;
+  }
+  return null;
+}
+
+/* The statements under `node`, at any depth; `{ }` blocks and empty `;` are not statements of their own. */
+function statementsIn(node) {
+  let count = 0;
+  const visit = (child) => {
+    if (ts.isStatement(child) && !ts.isBlock(child) && child.kind !== ts.SyntaxKind.EmptyStatement) {
+      count++;
+    }
+    ts.forEachChild(child, visit);
+  };
+  ts.forEachChild(node, visit);
+  return count;
+}
+
+/* Every metric of `rel`: the file's statements and each named function's statements and parameters. */
+function measureStructure(rel, text, into) {
+  const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true);
+  into.set(rel, { statements: statementsIn(sf) });
+  const seen = new Map();
+  const visit = (node, scope) => {
+    const name = functionName(node);
+    if (name === null) {
+      const inner = ts.isClassLike(node) && node.name ? [...scope, node.name.text] : scope;
+      ts.forEachChild(node, child => visit(child, inner));
+      return;
+    }
+    const path = [...scope, name].join('.');
+    const nth = (seen.get(path) ?? 0) + 1;
+    seen.set(path, nth);
+    into.set(`${rel}#${nth === 1 ? path : `${path}~${nth}`}`, {
+      statements: statementsIn(node.body),
+      params: node.parameters.filter(p => !(ts.isIdentifier(p.name) && p.name.text === 'this')).length
+    });
+    ts.forEachChild(node, child => visit(child, [...scope, name]));
+  };
+  visit(sf, []);
+  return into;
+}
+
+/* The over-cap metrics of a measurement, in the baseline's format. */
+function overCaps(measured) {
+  const out = {};
+  for (const [key, value] of measured) {
+    const over = Object.fromEntries(Object.entries(capOf(key)).filter(([m, cap]) => value[m] > cap).map(([m]) => [m, value[m]]));
+    if (Object.keys(over).length > 0) {
+      out[key] = over;
+    }
+  }
+  return out;
+}
+
+/*
+ * `grown`: a metric over both its cap and its ceiling (a new offender has no
+ * ceiling). `slack`: a ceiling above both the cap and the current value — the
+ * entry shrank, went under the cap, or no longer exists.
+ */
+function compareStructure(measured, baseline) {
+  const grown = [];
+  const slack = [];
+  for (const [key, value] of measured) {
+    for (const [metric, cap] of Object.entries(capOf(key))) {
+      const ceiling = baseline[key]?.[metric];
+      if (value[metric] > Math.max(cap, ceiling ?? 0)) {
+        grown.push({ key, metric, value: value[metric], ceiling: ceiling ?? cap, fresh: ceiling === undefined });
+      }
+    }
+  }
+  for (const [key, ceilings] of Object.entries(baseline)) {
+    for (const [metric, ceiling] of Object.entries(ceilings)) {
+      const value = measured.get(key)?.[metric];
+      if (ceiling > Math.max(capOf(key)[metric], value ?? 0)) {
+        slack.push({ key, metric, value: value ?? null, ceiling });
+      }
+    }
+  }
+  return { grown, slack };
+}
+
+/* Lower every ceiling to its current value; drop what is gone or under the cap. Never raises or adds. */
+function pruneStructure(measured, baseline) {
+  const out = {};
+  for (const [key, ceilings] of Object.entries(baseline)) {
+    const kept = {};
+    for (const [metric, ceiling] of Object.entries(ceilings)) {
+      const value = measured.get(key)?.[metric];
+      if (value !== undefined && value > capOf(key)[metric]) {
+        kept[metric] = Math.min(ceiling, value);
+      }
+    }
+    if (Object.keys(kept).length > 0) {
+      out[key] = kept;
+    }
+  }
+  return out;
+}
+
+/*
+ * Negative control, run every time before the result is trusted: a temp copy
+ * of a real source file with a planted function of one statement over the cap
+ * and 6 parameters must fail both function caps, laid out one statement per
+ * line, joined onto one line, or split across several lines per statement —
+ * and all three layouts must measure the same. A baselined offender one
+ * statement larger must fail.
+ */
+function structureSelfTest(sample, baseline) {
+  const calls = Array.from({ length: FUNCTION_CAP.statements + 1 }, (_, i) => `probe(${i});`);
+  const layouts = [calls.join('\n  '), calls.join(' '), calls.map(c => c.replace('(', '(\n    ').replace(');', '\n  );')).join('\n  ')];
+  const source = readFileSync(join(root, sample), 'utf8');
+  const key = `${sample}#plantedStructureProbe`;
+  const measures = layouts.map(body =>
+    measureStructure(sample, `${source}\nfunction plantedStructureProbe(a, b, c, d, e, f) {\n  ${body}\n}\n`, new Map()));
+  const caught = measures.every(m =>
+    compareStructure(m, baseline).grown.filter(g => g.key === key).map(g => g.metric).sort().join() === 'params,statements');
+  const sameMeasure = measures.every(m =>
+    JSON.stringify([m.get(sample), m.get(key)]) === JSON.stringify([measures[0].get(sample), measures[0].get(key)]));
+  const [offender, ceilings] = Object.entries(baseline).find(([, c]) => c.statements !== undefined) ?? [];
+  const grownOffender = offender === undefined
+    || compareStructure(new Map([[offender, { statements: ceilings.statements + 1, params: ceilings.params ?? 0 }]]), { [offender]: ceilings })
+      .grown.some(g => g.key === offender && g.metric === 'statements');
+  return caught && sameMeasure && grownOffender;
+}
+
+const structure = { skipped: !ts, files: 0, functions: 0 };
+if (ts) {
+  const measured = new Map();
+  const files = gitFiles.filter(f => STRUCTURE_SOURCE.test(f) && !STRUCTURE_SKIP.test(f) && existsSync(join(root, f)));
+  for (const rel of files) {
+    measureStructure(rel, readFileSync(join(root, rel), 'utf8'), measured);
+  }
+  const baselinePath = join(root, STRUCTURE_BASELINE);
+  const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : {};
+  if (listStructure) {
+    console.log(JSON.stringify(overCaps(measured), null, 2));
+  }
+  if (!structureSelfTest(files[0], baseline)) {
+    failures.push('Assertion 6 self-test failed: a planted oversized function was not caught, or reformatting it changed its measure. The structure scan is blind; fix it before trusting its result.');
+  }
+  let { grown, slack } = compareStructure(measured, baseline);
+  let kept = baseline;
+  if (pruneBaselines && slack.length > 0) {
+    kept = pruneStructure(measured, baseline);
+    writeFileSync(baselinePath, `${JSON.stringify(kept, null, 2)}\n`);
+    console.log(`Lowered ${slack.length} ceiling${slack.length === 1 ? '' : 's'} in ${STRUCTURE_BASELINE}.`);
+    slack = [];
+  }
+  const keys = Object.keys(kept);
+  structure.files = keys.filter(k => !k.includes('#')).length;
+  structure.functions = keys.length - structure.files;
+  if (grown.length > 0) {
+    failures.push(
+      [
+        `${grown.length} structure limit(s) exceeded.`,
+        '',
+        `  New code stays under ${FILE_CAP.statements} statements per file, ${FUNCTION_CAP.statements} statements and ${FUNCTION_CAP.params}`,
+        `  parameters per function. An offender in ${STRUCTURE_BASELINE} may only shrink.`,
+        '  Split the file or function, or pass a record instead of more parameters. A renamed',
+        '  offender is a reviewed edit of its baseline key, never a raised ceiling.',
+        '',
+        ...grown.map(g => `    ${g.key}  ${g.metric} ${g.value} > ${g.fresh ? 'cap' : 'ceiling'} ${g.ceiling}`)
+      ].join('\n')
+    );
+  }
+  if (slack.length > 0) {
+    failures.push(
+      [
+        `${slack.length} structure ceiling(s) above the current value.`,
+        '',
+        `  Good — lower ${slack.length === 1 ? 'it' : 'them'} in ${STRUCTURE_BASELINE} so the freed room cannot be`,
+        '  spent again: `node scripts/check-guardrails.mjs --prune-baselines`.',
+        '  (A renamed offender shows up here and above as new: rename its key instead.)',
+        '',
+        ...slack.map(s => `    ${s.key}  ${s.metric} ceiling ${s.ceiling}, now ${s.value ?? 'gone'}`)
+      ].join('\n')
+    );
+  }
+} else if (requireStructure) {
+  failures.push('Assertion 6 needs the TypeScript parser (`@typescript/typescript6`): run `pnpm install` first.');
+}
+
+/* ------------------------------------------------------------------ *
+ * Assertion 7 — one owner per predicate.
+ * ------------------------------------------------------------------ */
+
+/*
+ * A rule written out again at a second site drifts from the first: one copy of
+ * the CSS name-code-point test accepts `\`, another does not; one string
+ * scanner honours escapes, another does not. Each shape below is a rule that
+ * belongs to ONE module (`owner`; null where the fact should come from the
+ * parser and no copy is wanted). Every open-coded copy elsewhere is inventoried
+ * in `scripts/check-guardrails.duplicate-predicates.json` by its text, never its
+ * line number, and the inventory may only shrink. An owner module may not exist
+ * yet; until it does, nothing is exempt.
+ *
+ * Scope: `packages/core/src/ast/` (tests excluded), the live evaluation and
+ * output engine where the owner modules go. The other packages that test the
+ * same characters (the diagnostics-core and language-service lexers) have their
+ * own tokenizers and no dependency they could share these owners through.
+ *
+ * Patterns run over one code line at a time; comment lines are skipped.
+ */
+const PREDICATE_BASELINE = 'scripts/check-guardrails.duplicate-predicates.json';
+const PREDICATE_SOURCE = /^packages\/core\/src\/ast\/(?!(?:.*\/)?__tests__\/).+(?<!\.d|\.test|\.spec)\.ts$/;
+const CSS_SYNTAX = 'packages/core/src/ast/css-syntax.ts';
+const PREDICATES = [
+  {
+    rule: 'name-code-point', // CSS Syntax 3 §4.2: `_` as a name code point, or `[\w-]` over name text
+    owner: CSS_SYNTAX,
+    re: /=== (?:0x5[Ff]|95)\b|\[\\w-\]|\[-\\w\]/,
+    example: 'return c === 0x5F || c >= 0x80; // plantedPredicateProbe'
+  },
+  {
+    rule: 'quote-scan', // a `"` and a `'` test on one line: a hand-rolled string scanner
+    owner: CSS_SYNTAX,
+    re: /^(?=.*=== (?:'"'|0x22\b|34\b))(?=.*=== (?:'\\''|"'"|0x27\b|39\b|SINGLE_QUOTE\b))/,
+    example: 'if (c === \'"\' || c === \'\\\'\') { plantedPredicateProbe(); }'
+  },
+  {
+    rule: 'comment-scan',
+    owner: CSS_SYNTAX,
+    re: /\.indexOf\('\*\/'/,
+    example: 'const close = plantedPredicateProbe.indexOf(\'*/\', i + 2);'
+  },
+  {
+    rule: 'custom-property-bytes', // the parser knows a custom property; bytes are not re-read
+    owner: null,
+    re: /\.startsWith\('--'\)/,
+    example: 'if (plantedPredicateProbe.startsWith(\'--\')) {'
+  },
+  {
+    rule: 'dialect-sniff', // the dialect is the document's, not a guess from a plugin's extensions
+    owner: null,
+    re: /supportedExtensions\??\.includes\(['"]/,
+    example: 'const less = plantedPredicateProbe.supportedExtensions?.includes(\'.less\');'
+  },
+  {
+    rule: 'is-text', // `:is(…)` text joined by hand
+    owner: 'packages/core/src/ast/selector-text.ts',
+    re: /`:is\(\$\{|' ?:is\('/,
+    example: 'return `:is(${plantedPredicateProbe.join(\', \')})`;'
+  },
+  {
+    rule: 'context-spread', // a whole evaluation context copied to change one field
+    owner: null,
+    re: /\{ \.\.\.e[,} ]/,
+    example: 'const inner = { ...e, plantedPredicateProbe: true };'
+  },
+  {
+    rule: 'frame-literal',
+    owner: 'packages/core/src/ast/serialize/core/frame.ts',
+    re: /: Frame = \{/,
+    example: 'const plantedPredicateProbe: Frame = {'
+  },
+  {
+    rule: 'emit-literal',
+    owner: 'packages/core/src/ast/serialize/core/session.ts',
+    re: /: Emit = \{/,
+    example: 'const plantedPredicateProbe: Emit = {'
+  },
+  {
+    rule: 'mixin-definition-literal',
+    owner: 'packages/core/src/ast/nodes.ts',
+    re: /\btype: 'MixinDefinition',/,
+    example: 'const plantedPredicateProbe = { type: \'MixinDefinition\', name: \'\' };'
+  },
+  {
+    rule: 'import-option-split', // import options re-split from a joined string
+    owner: null,
+    re: /\bimportHasOption\(/,
+    example: 'if (importHasOption(plantedPredicateProbe, \'reference\')) {'
+  }
+];
+const COMMENT_LINE = /^\s*(?:\*|\/\/|\/\*)/;
+
+function scanPredicates(rel, text) {
+  const hits = [];
+  const rules = PREDICATES.filter(p => p.owner !== rel);
+  for (const line of text.split('\n')) {
+    if (COMMENT_LINE.test(line)) {
+      continue;
+    }
+    for (const { rule, re } of rules) {
+      if (re.test(line)) {
+        hits.push({ file: rel, rule, sentence: `${rule}: ${normalizeSentence(line)}` });
+      }
+    }
+  }
+  return hits;
+}
+
+const predicateFiles = gitFiles.filter(f => PREDICATE_SOURCE.test(f) && existsSync(join(root, f)));
+const predicateHits = predicateFiles.flatMap(rel => scanPredicates(rel, readFileSync(join(root, rel), 'utf8')));
+const listPredicates = process.argv.includes('--list-predicates');
+if (listPredicates) {
+  const inventory = {};
+  for (const h of predicateHits) {
+    (inventory[h.file] ??= []).push(h.sentence);
+  }
+  console.log(JSON.stringify(inventory, null, 2));
+}
+
+/*
+ * Negative control: each rule's example, planted in a temp copy of a real
+ * source file, is caught as that rule, and is not caught in its owner module.
+ */
+const predicateSample = predicateFiles.find(f => !PREDICATES.some(p => p.owner === f));
+const blindRules = predicateSample === undefined
+  ? ['(no source file in scope)']
+  : PREDICATES.filter(({ rule, owner, example }) => {
+      const copy = `${readFileSync(join(root, predicateSample), 'utf8')}\n${example}\n`;
+      const caught = scanPredicates(predicateSample, copy).some(h => h.rule === rule && h.sentence.includes('plantedPredicateProbe'));
+      const exempt = owner === null || !scanPredicates(owner, example).some(h => h.rule === rule);
+      return !caught || !exempt;
+    }).map(p => p.rule);
+if (blindRules.length > 0) {
+  failures.push(`Assertion 7 self-test failed for ${blindRules.join(', ')}: a planted copy was not caught (or its owner was not exempt). Fix the pattern before trusting the inventory.`);
+}
+
+const predicates = ratchet(predicateHits, PREDICATE_BASELINE);
+
+if (predicates.fresh.length > 0) {
+  failures.push(
+    [
+      `${predicates.fresh.length} new open-coded copy(ies) of a rule that has one owner.`,
+      '',
+      '  Call the owner module instead of writing the rule again (the owner of each rule is',
+      `  named in scripts/check-guardrails.mjs, assertion 7). Where no owner exists yet, the fact`,
+      '  belongs to the parser or the node: read it there. The inventory only shrinks.',
+      '',
+      ...predicates.fresh.map(h => `    ${h.file}\n      ${h.sentence}`)
+    ].join('\n')
+  );
+}
+
+if (predicates.stale.length > 0) {
+  failures.push(
+    [
+      `${predicates.stale.length} inventoried predicate cop${predicates.stale.length === 1 ? 'y no longer occurs' : 'ies no longer occur'}.`,
+      '',
+      `  Good — remove ${predicates.stale.length === 1 ? 'it' : 'them'} from ${PREDICATE_BASELINE} so the inventory only shrinks:`,
+      '  `node scripts/check-guardrails.mjs --prune-baselines`.',
+      '  (A rewritten copy shows up above as new.)',
+      '',
+      ...predicates.stale.map(s => `    ${s.file}\n      ${s.sentence}`)
+    ].join('\n')
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
-if (failures.length > 0) {
+/* exitCode, not exit(): a piped stdout/stderr is asynchronous on macOS and exit() truncates it. */
+if (listReferenceReasons) {
+  console.log(JSON.stringify(referenceHits, null, 1));
+} else if (listStructure || listPredicates) {
+  /* Printed above. */
+} else if (failures.length > 0) {
   console.error('\ncheck:guardrails FAILED\n');
   for (const f of failures) {
     console.error(f);
     console.error('');
   }
   console.error(
-    'Rule: docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md, "An agent may not\n'
-    + 'redefine, narrow, or close an owner requirement". Requirements: docs/OWNER-REQUIREMENTS.md.\n'
+    'Rules: AGENTS.md, first two sections; docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md, "An agent\n'
+    + 'may not redefine, narrow, or close an owner requirement". Requirements: docs/OWNER-REQUIREMENTS.md.\n'
+    + 'Owner rulings: docs/architecture/core/DESIGN-DECISIONS.md, locked in owner-rulings.lock.json.\n'
   );
-  process.exit(1);
+  process.exitCode = 1;
+} else {
+  console.log(
+    `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives; `
+    + `no new Less 4.x-as-reason lines (${referenceHits.length} baselined); `
+    + `${Object.keys(rulings.current.ledger).length} owner-ruled rows and ${Object.keys(rulings.current.tests).length - 1} ruling tests match ${LOCK}; `
+    + `no new parser throw (${rejectionHits.length} baselined); `
+    + (structure.skipped
+      ? 'structure SKIPPED (TypeScript parser not installed; run with --require-structure after `pnpm install`); '
+      : `no structure growth (${structure.files} files and ${structure.functions} functions baselined); `)
+    + `no new predicate copy (${predicateHits.length} baselined).`
+  );
 }
-
-console.log(
-  `check:guardrails OK — ${OWNER_REQUIREMENTS} matches its recorded hash; no unattributed closure directives.`
-);

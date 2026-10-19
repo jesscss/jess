@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeCollection, makeDimension, makeKeyword, makeList, serializeValue, type ValueGroup } from '@jesscss/core';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { sync } from '../../__tests__/harness.js';
 import * as sassGlobals from '../index.js';
 import { sassFns } from '../registry.js';
 import * as listModule from '../list/index.js';
@@ -28,14 +30,7 @@ const map = makeCollection([
 ]);
 const commaList = makeList([makeDimension(1), makeDimension(2)], ',');
 
-function sync(value: unknown): ValueGroup {
-  if (value instanceof Promise) {
-    throw new TypeError('Expected a synchronous Sass result.');
-  }
-  return value as ValueGroup;
-}
-
-const bytes = (value: unknown): string => serializeValue(sync(value));
+const bytes = (value: MaybePromise<ValueGroup>): string => serializeValue(sync(value));
 
 describe('sass globals — renamed map members', () => {
   it('registers the `map-` prefixed global names', () => {

@@ -36,7 +36,6 @@ const REPO_ROOT = resolve(import.meta.dirname, '..', '..');
 function isHotPath(relPath) {
   const p = relPath.split(sep).join('/');
   return p.startsWith('packages/core/src/ast/')
-    || p.startsWith('packages/core/src/tree/')
     || /^packages\/syntax\/[^/]+\/[^/]+-parser\/src\//.test(p)
     || p.startsWith('packages/parser-shared/src/');
 }

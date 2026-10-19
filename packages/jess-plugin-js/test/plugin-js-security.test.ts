@@ -3,8 +3,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
+import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
 import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
+import { trustedFnsRealPath } from '../src/trust.js';
+import { registered } from './registered.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -86,10 +88,16 @@ describe('@jesscss/plugin-js security', () => {
     await expect(mod.fetchExample()).resolves.toBe('DENIED');
   });
 
-  it('allows module execution from node_modules outside jsReadRoot', async () => {
-    const root = makeTmpDir('jess-js-root-');
-    const outside = makeTmpDir('jess-js-out-');
-    const modulePath = path.join(outside, 'node_modules', 'pkg', 'index.js');
+  it('allows module execution from a node_modules on jsReadRoot ancestor chain', async () => {
+    /*
+     * jsReadRoot is a subdirectory; the package lives in the project's own
+     * node_modules one level up — an ancestor-chain node_modules, as pnpm/npm
+     * layouts produce — so it is readable.
+     */
+    const project = makeTmpDir('jess-js-proj-');
+    const root = path.join(project, 'src');
+    fs.mkdirSync(root, { recursive: true });
+    const modulePath = path.join(project, 'node_modules', 'pkg', 'index.js');
     fs.mkdirSync(path.dirname(modulePath), { recursive: true });
     fs.writeFileSync(
       modulePath,
@@ -103,21 +111,315 @@ describe('@jesscss/plugin-js security', () => {
     await expect(mod.plus(2, 3)).resolves.toBe(5);
   });
 
-  it('runs an installed @jesscss/fns package in-process when deno command is unavailable', async () => {
+  /*
+   * A sandboxed script must not read files under an unrelated `node_modules`
+   * elsewhere on the machine. The allowance is anchored to jsReadRoot's ancestor
+   * chain; a sibling project's `node_modules` is NOT on it, and a read there (or
+   * an import of a module there) is denied — no network needed to notice it, the
+   * returned value would otherwise cross the bridge into compiler output.
+   */
+  it('denies reads and imports under a node_modules outside the jsReadRoot ancestor chain', async () => {
+    const base = makeTmpDir('jess-js-base-');
+    const root = path.join(base, 'project');
+    fs.mkdirSync(root, { recursive: true });
+    const siblingNm = path.join(base, 'sibling', 'node_modules');
+    fs.mkdirSync(siblingNm, { recursive: true });
+    const leakFile = path.join(siblingNm, 'leak.json');
+    fs.writeFileSync(leakFile, JSON.stringify({ stolen: 'NODE_MODULES-SUBSTRING-BYPASS' }), 'utf8');
+
+    const probePath = path.join(root, 'probe.ts');
+    fs.writeFileSync(
+      probePath,
+      [
+        'export function readRaw(p) {',
+        '  try {',
+        '    return Deno.readTextFileSync(p);',
+        '  } catch {',
+        '    return "DENIED";',
+        '  }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(probePath);
+    await expect(mod.readRaw(leakFile)).resolves.toBe('DENIED');
+
+    // Importing a module that merely sits under some node_modules is also denied.
+    const outsidePkg = path.join(siblingNm, 'pkg', 'index.js');
+    fs.mkdirSync(path.dirname(outsidePkg), { recursive: true });
+    fs.writeFileSync(outsidePkg, 'export const value = 1;', 'utf8');
+    await expect(plugin.import(outsidePkg)).rejects.toThrow(/outside jsReadRoot/);
+  });
+
+  /*
+   * A plugin the stylesheet names (`@plugin "x"`, `@use` of a JS module) is resolved by
+   * package resolution, which can land outside jsReadRoot's ancestor chain: a corpus
+   * checked out beside the project, its plugin installed in the project's
+   * node_modules. The author asked for that package, so its own root — the nearest
+   * package directory in a node_modules above the resolved realpath — is readable,
+   * and only it.
+   */
+  it('loads a named plugin from the package it resolved into, outside jsReadRoot', async () => {
+    const corpus = makeTmpDir('jess-js-corpus-');
+    const project = makeTmpDir('jess-js-proj-');
+    const pkgRoot = path.join(project, 'node_modules', 'named-plugin');
+    fs.mkdirSync(path.join(pkgRoot, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(pkgRoot, 'package.json'), JSON.stringify({ name: 'named-plugin', type: 'module' }), 'utf8');
+    fs.writeFileSync(path.join(pkgRoot, 'lib', 'helper.js'), 'export const base = 40;', 'utf8');
+    fs.writeFileSync(path.join(pkgRoot, 'data.json'), JSON.stringify({ extra: 2 }), 'utf8');
+    const modulePath = path.join(pkgRoot, 'index.js');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'import { base } from "./lib/helper.js";',
+        'export function value() { return base + JSON.parse(Deno.readTextFileSync(new URL("./data.json", import.meta.url))).extra; }'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: corpus }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.value()).resolves.toBe(42);
+  });
+
+  it('keeps a sibling package the stylesheet did not name denied', async () => {
+    const corpus = makeTmpDir('jess-js-corpus-');
+    const project = makeTmpDir('jess-js-proj-');
+    const nm = path.join(project, 'node_modules');
+    const pkgRoot = path.join(nm, 'named-plugin');
+    const sibling = path.join(nm, 'other-package');
+    fs.mkdirSync(pkgRoot, { recursive: true });
+    fs.mkdirSync(sibling, { recursive: true });
+    fs.writeFileSync(path.join(pkgRoot, 'package.json'), JSON.stringify({ name: 'named-plugin' }), 'utf8');
+    fs.writeFileSync(path.join(sibling, 'package.json'), JSON.stringify({ name: 'other-package' }), 'utf8');
+    const secret = path.join(sibling, 'secret.json');
+    fs.writeFileSync(secret, JSON.stringify({ stolen: true }), 'utf8');
+    const loose = path.join(nm, 'leak.json');
+    fs.writeFileSync(loose, JSON.stringify({ stolen: true }), 'utf8');
+    const modulePath = path.join(pkgRoot, 'index.js');
+    fs.writeFileSync(
+      modulePath,
+      'export function readRaw(p) { try { return Deno.readTextFileSync(p); } catch { return "DENIED"; } }',
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: corpus }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.readRaw(secret)).resolves.toBe('DENIED');
+    await expect(mod.readRaw(loose)).resolves.toBe('DENIED');
+    await expect(mod.readRaw(path.join(sibling, 'package.json'))).resolves.toBe('DENIED');
+  });
+
+  /*
+   * A package.json name is something any script author can write, so a package
+   * that merely CALLS itself @jesscss/fns must run in the sandbox like any other
+   * script, never in the compiler's Node process.
+   */
+  it('sandboxes a package that only claims the name @jesscss/fns', async () => {
     const root = makeTmpDir('jess-js-root-');
+    const outside = makeTmpDir('jess-js-out-');
+    const outsideFile = path.join(outside, 'secret.txt');
+    fs.writeFileSync(outsideFile, 'secret', 'utf8');
     const packageDir = path.join(root, 'node_modules', '@jesscss', 'fns');
     const modulePath = path.join(packageDir, 'lib', 'index.js');
     fs.mkdirSync(path.dirname(modulePath), { recursive: true });
     fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: '@jesscss/fns', type: 'module' }), 'utf8');
-    fs.writeFileSync(modulePath, 'export const fnValue = 7;', 'utf8');
-    const plugin = jsPlugin({
-      jsReadRoot: root,
-      denoCommand: '__definitely_missing_deno__'
-    }) as JsPlugin;
+    fs.writeFileSync(
+      modulePath,
+      [
+        'import * as fs from "node:fs";',
+        'export function runtime() { return typeof Deno === "undefined" ? "node" : "deno"; }',
+        'export function readOutside(p) {',
+        '  try {',
+        '    return fs.readFileSync(p, "utf8");',
+        '  } catch {',
+        '    return "DENIED";',
+        '  }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+
+    const withoutDeno = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(withoutDeno);
+    await expect(withoutDeno.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
+
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
     const mod = await plugin.import(modulePath);
-    expect(mod.fnValue).toBe(7);
+    await expect(mod.runtime()).resolves.toBe('deno');
+    await expect(mod.readOutside(outsideFile)).resolves.toBe('DENIED');
   });
+
+  it('sandboxes a symlink spelled @jesscss/fns that points away from the real package', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const other = path.join(root, 'other');
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(path.join(other, 'package.json'), JSON.stringify({ name: '@jesscss/fns', type: 'module' }), 'utf8');
+    fs.writeFileSync(path.join(other, 'index.js'), 'export const value = 1;', 'utf8');
+    const link = path.join(root, 'node_modules', '@jesscss', 'fns');
+    fs.mkdirSync(path.dirname(link), { recursive: true });
+    fs.symlinkSync(other, link, 'dir');
+    const plugin = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(plugin);
+    await expect(plugin.import(path.join(link, 'index.js'))).rejects.toThrow(/Deno runtime is required/);
+  });
+
+  it('resolves the trusted fns import to its canonical realpath (check and load agree)', () => {
+    const realFns = path.dirname(fileURLToPath(new URL('../../fns/package.json', import.meta.url)));
+    const realFile = fs.realpathSync.native(path.join(realFns, 'src', 'util', 'mime.ts'));
+    const root = makeTmpDir('jess-js-root-');
+    const link = path.join(root, 'fns-link');
+    fs.symlinkSync(realFns, link, 'dir');
+
+    /*
+     * A symlink INTO fns resolves to the real file inside the package — and the
+     * returned path is that realpath, not the lexical symlink path, so import()
+     * loads the exact file whose trust was checked.
+     */
+    const viaLink = path.join(link, 'src', 'util', 'mime.ts');
+    expect(trustedFnsRealPath(viaLink)).toBe(realFile);
+    expect(fs.realpathSync.native(viaLink)).toBe(realFile);
+
+    // A symlink spelled like fns but pointing outside resolves to undefined.
+    const impostor = makeTmpDir('jess-js-impostor-');
+    fs.writeFileSync(path.join(impostor, 'evil.js'), 'export const x = 1;', 'utf8');
+    const evilLink = path.join(root, 'evil-link');
+    fs.symlinkSync(impostor, evilLink, 'dir');
+    expect(trustedFnsRealPath(path.join(evilLink, 'evil.js'))).toBeUndefined();
+  });
+
+  it('runs the real @jesscss/fns in-process when reached through a symlink', async () => {
+    const realFns = path.dirname(fileURLToPath(new URL('../../fns/package.json', import.meta.url)));
+    const root = makeTmpDir('jess-js-root-');
+    const link = path.join(root, 'fns-link');
+    fs.symlinkSync(realFns, link, 'dir');
+    const plugin = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(path.join(link, 'src', 'util', 'mime.ts'));
+    expect(mod.lookupMime).toEqual(expect.any(Function));
+  });
+
+  it('kills the worker when a request times out, so a runaway script stops burning CPU', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'runaway.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'export function spin() {',
+        '  try { Deno.addSignalListener("SIGTERM", () => {}); } catch { /* ignore */ }',
+        '  while (true) { /* never returns */ }',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root, requestTimeoutMs: 500 }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    const pid = plugin['worker']?.pid;
+    expect(typeof pid).toBe('number');
+
+    await expect(mod.spin()).rejects.toThrow(/Timed out waiting for Deno worker response/);
+
+    // The worker is gone: once it exits, `process.kill(pid, 0)` throws ESRCH.
+    const workerExited = async () => {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        try {
+          process.kill(pid!, 0);
+        } catch {
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return false;
+    };
+    expect(await workerExited()).toBe(true);
+  }, 15000);
+
+  it('SIGKILLs the worker on dispose even when the script traps SIGTERM', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'trap.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        /* Trap SIGTERM (no permission needed) and keep the loop alive, so a graceful signal would leave the worker running. */
+        'try { Deno.addSignalListener("SIGTERM", () => {}); } catch { /* ignore */ }',
+        'setInterval(() => {}, 1000);',
+        'export function ok() { return 1; }'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.ok()).resolves.toBe(1);
+    const pid = plugin['worker']?.pid;
+    expect(typeof pid).toBe('number');
+
+    plugin.dispose();
+
+    const workerExited = async () => {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        try {
+          process.kill(pid!, 0);
+        } catch {
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return false;
+    };
+    expect(await workerExited()).toBe(true);
+  }, 15000);
+
+  it('self-heals after a script exits the worker (one script must not brick the plugin)', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const boomPath = path.join(root, 'boom.ts');
+    fs.writeFileSync(
+      boomPath,
+      'export function ok() { return 1; }\nexport function boom() { Deno.exit(7); }',
+      'utf8'
+    );
+    const goodPath = path.join(root, 'good.ts');
+    fs.writeFileSync(goodPath, 'export const value = 5;', 'utf8');
+
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+
+    const mod = await plugin.import(boomPath);
+    await expect(mod.ok()).resolves.toBe(1);
+    await expect(mod.boom()).rejects.toThrow(/exited unexpectedly/);
+
+    // Before the fix the plugin latched to `failed` here and rejected forever.
+    const good = await plugin.import(goodPath);
+    expect(good.value).toBe(5);
+  }, 15000);
+
+  it('stops restarting a worker that dies on every start (bounded)', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const crashPath = path.join(root, 'crash.ts');
+
+    // Top-level exit: the worker dies while loading the module, every time.
+    fs.writeFileSync(crashPath, 'Deno.exit(7);\nexport const x = 1;', 'utf8');
+
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await expect(plugin.import(crashPath)).rejects.toThrow(/exited unexpectedly/);
+    }
+
+    /*
+     * The bound engaged: the plugin latched to `failed` instead of
+     * spin-restarting, so even a healthy module is now rejected.
+     */
+    expect(plugin['runtimeState'].status).toBe('failed');
+    const goodPath = path.join(root, 'good.ts');
+    fs.writeFileSync(goodPath, 'export const value = 5;', 'utf8');
+    await expect(plugin.import(goodPath)).rejects.toThrow(/exited unexpectedly/);
+  }, 20000);
 
   it('runs the workspace @jesscss/fns package in-process when deno command is unavailable', async () => {
     const modulePath = fileURLToPath(new URL('../../fns/src/util/mime.ts', import.meta.url));
@@ -319,7 +621,56 @@ describe('@jesscss/plugin-js security', () => {
     const helperValueWithPrimitivesResult = await mod.helperValueWithPrimitives();
     expect(helperValueWithPrimitivesResult.type).toBe('List');
     expect(helperValueWithPrimitivesResult.sep).toBe('/');
-    expect(helperValueWithPrimitivesResult.value.map(item => item.bytes)).toEqual(['raw', '2', 'true']);
+    expect(helperValueWithPrimitivesResult.value.map((item: { bytes: string }) => item.bytes)).toEqual(['raw', '2', 'true']);
+  });
+
+  it('bridges an escaped string as an escaped tree.Quoted, both ways, and raw text as tree.Anonymous', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'escaped.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'const tree = (globalThis as any).less.tree;',
+        'export function describe(value: any) {',
+        '  return value instanceof tree.Quoted',
+        '    ? `Quoted(${value.quote}${value.value}${value.quote}, escaped=${value.escaped})`',
+        '    : `${value.type}(${value.value})`;',
+        '}',
+        'export function escaped() {',
+        '  return new tree.Quoted(\'"\', "text", true);',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.describe(makeAny('x', '\''))).resolves.toBe('Quoted(\'x\', escaped=true)');
+    await expect(mod.describe(makeAny('z'))).resolves.toBe('Anonymous(z)');
+    expect(await mod.escaped()).toEqual(makeAny('text', '"'));
+  });
+
+  it('exposes each tree constructor as a lowercase less.* factory, as Less 4.x does', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'factories.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'const less = (globalThis as any).less;',
+        'export function keyword() { return less.keyword("kw"); }',
+        'export function expression() { return less.expression([less.dimension(1, "px"), less.keyword("solid")]); }',
+        'export function atrule() { return less.atrule("@charset", "\\"utf-8\\""); }'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    expect((await mod.keyword()).bytes).toBe('kw');
+    expect((await mod.expression()).map((item: { bytes: string }) => item.bytes)).toEqual(['1px', 'solid']);
+
+    /* An at-rule is no value, so it is the A12 tree-API non-goal, refused like the hooks. */
+    await expect(mod.atrule()).rejects.toMatchObject({ code: 'plugin/unsupported-feature', message: expect.stringContaining('tree.AtRule') });
   });
 
   it('loads legacy Less @plugin wrapper files in Deno with injected variables', async () => {
@@ -349,11 +700,8 @@ describe('@jesscss/plugin-js security', () => {
     const loaded = await plugin.importLessPlugin(modulePath);
     expect(Object.keys(loaded.functions).sort()).toEqual(['probeprocess', 'triple']);
 
-    const dimensionResult = await loaded.functions.triple(makeDimension(2, 'px'));
-    expect(dimensionResult.type).toBe('Dimension');
-    expect(dimensionResult.number).toBe(6);
-    expect(dimensionResult.unit).toBe('px');
-    await expect(loaded.functions.probeprocess()).resolves.toBe('DENIED');
+    await expect(registered(loaded, 'triple')(makeDimension(2, 'px'))).resolves.toMatchObject({ type: 'Dimension', number: 6, unit: 'px' });
+    await expect(registered(loaded, 'probeprocess')()).resolves.toBe('DENIED');
   });
 
   it('keeps executable Plugin options instance-local in the Deno runtime', async () => {
@@ -377,8 +725,8 @@ describe('@jesscss/plugin-js security', () => {
 
     const first = await runtime.importPlugin(modulePath, 'first=value');
     const second = await runtime.importPlugin(modulePath, 'second=value');
-    await expect(first.functions['plugin-option']()).resolves.toBe('first=value');
-    await expect(second.functions['plugin-option']()).resolves.toBe('second=value');
+    await expect(registered(first, 'plugin-option')()).resolves.toBe('first=value');
+    await expect(registered(second, 'plugin-option')()).resolves.toBe('second=value');
   });
 
   it('does not treat arbitrary "#less/#sass" filesystem paths as pass-through', async () => {
@@ -523,8 +871,10 @@ describe('@jesscss/plugin-js security', () => {
     expect(cleaned.NODE_OPTIONS).toBeUndefined();
     expect(cleaned.NODE_INSPECT_RESUME_ON_START).toBeUndefined();
     expect(cleaned.VSCODE_INSPECTOR_OPTIONS).toBeUndefined();
+
     // Stripped because its value references js-debug even though the key is benign.
     expect(cleaned.SOME_TOOL_PATH).toBeUndefined();
+
     // The original env object is not mutated.
     expect(poisoned.NODE_OPTIONS).toBe('--require /path/to/ms-vscode.js-debug/bootloader.js');
   });
@@ -536,6 +886,7 @@ describe('@jesscss/plugin-js security', () => {
 
     const savedNodeOptions = process.env.NODE_OPTIONS;
     const savedInspectorOptions = process.env.VSCODE_INSPECTOR_OPTIONS;
+
     // Simulate VS Code / Cursor "Auto Attach" poisoning the parent environment.
     process.env.NODE_OPTIONS =
       '--require /nonexistent/ms-vscode.js-debug/bootloader.js';

@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-09T17:30:04.526Z",
+  "generated": "2026-10-05T21:29:48.102Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 115,
+    "pass": 116,
     "blockerCounts": [
       {
         "name": "trailing comma in a parenthesized list",
@@ -13,14 +13,14 @@
         "files": 8
       },
       {
-        "name": "keyword argument ($name: v) in a function-call argument list",
-        "primary": 3,
-        "files": 16
-      },
-      {
         "name": "interpolation inside a pseudo-class argument list",
         "primary": 3,
         "files": 5
+      },
+      {
+        "name": "keyword argument ($name: v) in a function-call argument list",
+        "primary": 2,
+        "files": 15
       },
       {
         "name": "comparison (== / !=) inside a function-call argument list",
@@ -118,14 +118,7 @@
       },
       {
         "file": "docs/assets/scss/_docs-footer.scss",
-        "outcome": "fail",
-        "at": "39:0",
-        "source": ".footer-nav-left {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Unexpected SCSS input after a complete stylesheet."
+        "outcome": "pass"
       },
       {
         "file": "docs/assets/scss/content/_install.scss",
@@ -282,7 +275,7 @@
           "@at-root with a selector prelude"
         ],
         "primaryBlocker": "@at-root with a selector prelude",
-        "detail": "SCSS parser error. Expected: \"(\", \"{\"."
+        "detail": "SCSS parser error. Expected: /\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\//, keyword, \"$\", \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", \"*\", Identifier, \"--\", CustomPropertyToken, \":\", \"*\", /(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/, \"#{\", \"*\", Identifier, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, \"(\", \"{\"."
       },
       {
         "file": "scss/components/_orbit.scss",

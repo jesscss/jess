@@ -165,13 +165,13 @@ export type FunctionArgs<P extends readonly ParamSpec[]> =
         : [ParamInput<Head>, ...FunctionArgs<Tail>]
     : [];
 
+/** A named record may leave out an optional or defaulted slot, and a rest slot (it binds zero items). */
+type IsRecordOptional<P extends ParamSpec> = P['rest'] extends true ? true : IsOptional<P>;
 type RequiredRecord<P extends readonly ParamSpec[]> = {
-  [Item in P[number] as IsOptional<Item> extends true ? never : Item['name'] & string]: Item['rest'] extends true
-    ? readonly ParamInput<Item>[]
-    : ParamInput<Item>;
+  [Item in P[number] as IsRecordOptional<Item> extends true ? never : Item['name'] & string]: ParamInput<Item>;
 };
 type OptionalRecord<P extends readonly ParamSpec[]> = {
-  [Item in P[number] as IsOptional<Item> extends true ? Item['name'] & string : never]?: Item['rest'] extends true
+  [Item in P[number] as IsRecordOptional<Item> extends true ? Item['name'] & string : never]?: Item['rest'] extends true
     ? readonly ParamInput<Item>[]
     : ParamInput<Item>;
 };

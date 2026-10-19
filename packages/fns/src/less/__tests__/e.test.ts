@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { invoke } from '../../__tests__/harness.js';
 import { makeKeyword, makeQuoted } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { e } from '../e.js';
 
 describe('e()', () => {
-  it('returns raw anonymous bytes for quoted and unquoted values', () => {
-    const quoted = makeQuoted('hello');
+  it('returns an escaped string, written with ", for quoted and unquoted values', () => {
+    const quoted = makeQuoted('hello', '"', false);
     const ident = makeKeyword('world');
 
-    expect(e(quoted)).toMatchObject({ type: 'Any', bytes: 'hello' });
-    expect(e(ident)).toMatchObject({ type: 'Any', bytes: 'world' });
+    expect(invoke(e, quoted)).toEqual({ type: 'Any', bytes: 'hello', escapedQuote: '"', groups: 0 });
+    expect(invoke(e, ident)).toEqual({ type: 'Any', bytes: 'world', escapedQuote: '"', groups: 0 });
   });
 
   it('uses the canonical implementation registered for Less', () => {

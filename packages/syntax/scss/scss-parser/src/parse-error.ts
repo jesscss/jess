@@ -45,10 +45,16 @@ export class ScssParseError extends SyntaxError {
       endColumn?: number;
     } = {}
   ) {
-    super(options.message ?? expectedMessage(expected));
+    /*
+     * An expected SET: two rules can fail on the same opener (a string is
+     * `LiteralQuoted` or `InterpolatedQuoted`, both opening on a quote), and
+     * each names it once.
+     */
+    const unique = [...new Set(expected)];
+    super(options.message ?? expectedMessage(unique));
     this.name = 'ScssParseError';
     this.offset = offset;
-    this.expected = expected;
+    this.expected = unique;
     this.line = options.line;
     this.column = options.column;
     this.endLine = options.endLine;

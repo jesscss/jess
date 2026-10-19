@@ -11,9 +11,9 @@ import { makeLessRegistry } from '@jesscss/fns';
 const evaluator = buildEvaluator(makeLessRegistry());
 
 /*
- * This file exercises the `'compact'` fold specifically — same-combinator
- * descendant runs group into `:is(…)` and leading-combinator branches hoist
- * out. `'native'` (the default) distributes instead; that is covered by
+ * This file exercises the `'compact'` fold specifically — descendant branches
+ * group into `:is(…)` and leading-combinator branches hoist out. `'native'` (the
+ * default) groups only equal-specificity branches; that is covered by
  * packages/jess/test/less/collapse-nesting-mode.test.ts.
  */
 const flat = (document: Stylesheet): string | undefined =>

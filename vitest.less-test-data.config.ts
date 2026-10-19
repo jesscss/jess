@@ -195,7 +195,7 @@ export default defineConfig({
    * source. Parseman grammar source is therefore valid only when the same macro
    * transform used by the normal Vitest config is active.
    */
-  plugins: [parseman.vite()],
+  plugins: [parseman.vite({})],
   resolve: {
     /*
      * Parseman grammars are macro-compiled package output. The Less integration

@@ -420,7 +420,8 @@ export type ValueAxis =
   | 'custom-property'
   | 'var'
   | 'space-run'
-  | 'operator';
+  | 'operator'
+  | 'function-body';
 
 /** The ladder the atom sits in: a bare value, or a math-function argument. */
 export type ValuePosition = 'bare' | 'math-argument';
@@ -442,7 +443,8 @@ export const VALUE_AXES = [
   'custom-property',
   'var',
   'space-run',
-  'operator'
+  'operator',
+  'function-body'
 ] as const satisfies readonly ValueAxis[];
 
 export const VALUE_PROBES: readonly ValueProbe[] = [
@@ -516,5 +518,43 @@ export const VALUE_PROBES: readonly ValueProbe[] = [
   { id: 'inert % in min()', axis: 'operator', position: 'math-argument', source: 'a { b: min(10px%3) }' },
   { id: 'slash in min()', axis: 'operator', position: 'math-argument', source: 'a { b: min(4px / 2) }' },
   { id: 'keyword slash in min()', axis: 'operator', position: 'math-argument', source: 'a { b: min(a / b) }' },
-  { id: 'calc() addition', axis: 'operator', position: 'math-argument', source: 'a { b: calc(1px + 2px) }' }
+  { id: 'calc() addition', axis: 'operator', position: 'math-argument', source: 'a { b: calc(1px + 2px) }' },
+
+  // ------------------------------------------------------------ function body
+  /*
+   * An unknown function's contents are component values up to the matching `)`
+   * (css-syntax-3 §5.4.9), so `;` and `:` nested in one are ordinary tokens.
+   * css-values-5 §8.3 `if()` separates its branches with `;` and pairs a
+   * condition with its value with `:`; §3.1.1 lets a free-form argument be
+   * wrapped in `{}`; css-mixins-1 calls a dashed ident glued to `(` a function.
+   * All of it is valid CSS.
+   */
+  {
+    id: 'if() with style() and else branches',
+    axis: 'function-body',
+    position: 'bare',
+    source: 'a { b: if(style(--scheme: dark): white; else: black) }'
+  },
+  {
+    id: 'if() with media() and supports() branches',
+    axis: 'function-body',
+    position: 'bare',
+    source: 'a { b: if(media(width > 600px): 10px; supports(display: grid): 5px; else: 0) }'
+  },
+  { id: 'if() with a lone else branch', axis: 'function-body', position: 'bare', source: 'a { b: if(else: 1px) }' },
+  {
+    id: 'if() in calc()',
+    axis: 'function-body',
+    position: 'math-argument',
+    source: 'a { b: calc(if(media(print): 10px; else: 0px) + 1px) }'
+  },
+  { id: 'unknown function with a nested ;', axis: 'function-body', position: 'bare', source: 'a { b: foo(a; b) }' },
+  { id: '{}-wrapped function argument', axis: 'function-body', position: 'bare', source: 'a { b: foo({ a, b }, c) }' },
+  { id: 'dashed function', axis: 'function-body', position: 'bare', source: 'a { b: --foo(1px, 2px) }' },
+  {
+    id: 'dashed function with a {}-wrapped argument',
+    axis: 'function-body',
+    position: 'bare',
+    source: 'a { b: --max-plus-x({ 1px, 7px, 2px }, 3px) }'
+  }
 ];

@@ -75,8 +75,9 @@ its own compile point.
   between the `:` and the value because `activeTrivia` was `undefined` at its compile
   point. (The grammar's "measured, not reasoned / deferred-trivia-commit boundaries"
   note is a MISDIAGNOSIS; the real cause is compile-time `activeTrivia`.)
-- Empirical: dropping `SelectorCapture`'s wrapper makes `*[ .notice ]` (interior
-  trivia) fail while glued `*[.notice]` still parses — the regression fixed in
+- Empirical: dropping `SelectorCapture`'s wrapper makes a selector capture with
+  interior trivia (`selector( .notice )`, ledger P49)
+  fail while the glued capture still parses — the regression fixed in
   `be826ec02`.
 
 ---

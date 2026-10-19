@@ -10,6 +10,12 @@ should cover those categories while presenting richer TypeScript-style
 completion and hover details where the shared Jess diagnostics and CST facts can
 do better.
 
+## Not provided
+
+- **Formatting.** The server offers neither document nor range formatting. A
+  formatter has to print from the parse tree; rewriting the source text breaks
+  comments, strings and selectors.
+
 ## Tracking
 
 See `../../../docs/architecture/lint-roadmap.md` for the shared diagnostics plan.

@@ -24,6 +24,7 @@
     "bootstrap": "^5.3.8",
     "cross-env": "~7.0.3",
     "css-tree": "github:csstree/csstree#v3.2.1",
+    "es-module-lexer": "~2.3.2",
     "eslint": "^9.31.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "~63.2.2",
@@ -39,7 +40,7 @@
     "lint-staged": "13.2.1",
     "lite-server": "^2.6.1",
     "normalize.css": "^8.0.1",
-    "parseman": "^0.51.2",
+    "parseman": "^0.54.0",
     "puppeteer": "^19.10.1",
     "rollup": "^3.20.7",
     "shx": "^0.3.4",
@@ -56,6 +57,7 @@
   "scripts": {
     "ci": "pnpm run -r ci && pnpm run verify:core-public-types && pnpm run lint",
     "prepare": "husky install",
+    "postinstall": "node packages/syntax/scss/scss-parser/scripts/materialize-sass-spec-cache.cjs",
     "precommit:staged": "node scripts/precommit-staged-lint.mjs",
     "precommit:lint": "node scripts/precommit-staged-lint.mjs",
     "verify:pr": "node scripts/verify-pr.mjs",
@@ -65,6 +67,7 @@
     "check:reducer-purity": "node scripts/probe/parseman-compose-reducer-census.mjs --check",
     "check:compose-fused": "node scripts/probe/compose-fused-check.mjs",
     "check:guardrails": "node scripts/check-guardrails.mjs",
+    "rulings:lock": "node scripts/rulings-lock.mjs",
     "check:record-map": "node scripts/check-record-map.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "test:grammar-variant-graph": "node --test scripts/__tests__/grammar-variant-graph.test.mjs",
@@ -104,7 +107,6 @@
     "verify:jess-api": "pnpm --filter jess verify:api",
     "verify:less-alpha": "pnpm -r --workspace-concurrency=1 --filter='!jess-docs' --filter='!@jesscss/docs-less' --filter='!@jesscss/docs-content' build && pnpm run verify:less-alpha:checks",
     "verify:less-alpha:checks": "pnpm run verify:package-exports && pnpm run verify:jess-api && pnpm run test:jess-release && pnpm run test:less:test-data:unit && pnpm run test:less:test-data:config",
-    "verify:node-constructor-metadata": "node scripts/verify-node-constructor-metadata.mjs",
     "verify:agents": "node scripts/verify-agent-definitions.mjs",
     "verify:config-syntax": "node scripts/verify-config-syntax.mjs",
     "verify:parser-runtime-boundary": "node scripts/verify-parser-runtime-boundary.mjs",
@@ -114,7 +116,6 @@
     "test:lint-scope": "node --test scripts/__tests__/lint-scope.test.mjs",
     "audit:hot-path": "node scripts/verify-hot-path-antipatterns.mjs --report",
     "verify:hot-path": "node scripts/verify-hot-path-antipatterns.mjs",
-    "verify:hot-path:clean": "node scripts/verify-hot-path-antipatterns.mjs --require-clean",
     "test:hot-path-rules": "node --test scripts/eslint-rules/__tests__/hot-path-rules.test.mjs",
     "verify:shape-stability": "vitest run test/ast-shape",
     "audit:shape-stability": "cross-env SHAPE_DISCOVER=true vitest run test/ast-shape",
@@ -133,17 +134,15 @@
     "perf:baseline:propose": "cross-env PERF_GATE=report node scripts/perf-gate/index.mjs --force-tier=full --rounds=70 --propose",
     "perf:gate:test": "node --test scripts/__tests__/perf-gate.test.mjs",
     "compare:less:builds": "node scripts/compare-less-builds.mjs",
+    "test:compare-builds": "node --test scripts/__tests__/compare-less-builds.test.mjs",
     "prove:less:benchmark:no-deno": "node scripts/prove-less-benchmark-no-deno.mjs",
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
-    "verify:render-buffer-frontier": "node scripts/verify-render-buffer-frontier.mjs",
     "verify:materialization-frontier": "node scripts/verify-materialization-frontier.mjs",
     "verify:aggressive-cutting-review": "node scripts/verify-aggressive-cutting-review.mjs",
-    "audit:node-creation": "node scripts/audit-node-creation-hotspots.mjs",
     "measure:less:hotpath": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs",
     "measure:less:hotpath:record": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs --save --compare-latest",
     "prototype:binding-frame-layout": "node scripts/prototype-binding-frame-layout.mjs",
     "prototype:binding-handle-reuse": "node scripts/prototype-binding-handle-reuse.mjs",
-    "verify:binding-lookup-hot-paths": "node scripts/verify-binding-lookup-hot-paths.mjs",
     "verify:diagnostic-cold-path": "node scripts/verify-diagnostic-cold-path.mjs",
     "verify:surface-parity": "node scripts/verify-surface-parity.mjs",
     "verify:baseline": "node scripts/verify-baseline.mjs",
@@ -192,7 +191,8 @@
   "pnpm": {
     "patchedDependencies": {
       "superstruct@1.0.3": "patches/superstruct@1.0.3.patch",
-      "bootstrap-less-port@2.5.1": "patches/bootstrap-less-port@2.5.1.patch"
+      "bootstrap-less-port@2.5.1": "patches/bootstrap-less-port@2.5.1.patch",
+      "bootstrap-less-port@0.3.0": "patches/bootstrap-less-port@0.3.0.patch"
     },
     "overrides": {
       "chevrotain": "^12.0.0"

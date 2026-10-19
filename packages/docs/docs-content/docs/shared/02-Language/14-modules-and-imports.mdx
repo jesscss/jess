@@ -51,7 +51,10 @@ The dash applies only to Less's own at-rules; CSS at-rules such as `@media` or
   which asks for a CSS import: `@-import (css) "print.css" print;` outputs
   `@import "print.css" print;`.
 
-Use `@compose` for a stylesheet dependency with isolated scope.
+Use `@compose` for a stylesheet dependency with isolated scope. A `@compose` is
+written at the top level of a stylesheet: inside a ruleset, an at-rule block, a
+mixin, a guard or a loop it is an error (`compose/not-top-level`), and so is one in
+a sheet you `@import` into such a block. `@import` and `@use` may be nested.
 
 ```less title="theme.less"
 @primary: #3366ff;

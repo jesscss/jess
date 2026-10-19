@@ -9,12 +9,20 @@
  */
 import type { Stylesheet } from '@jesscss/core/ast';
 import { jessPositionsGrammar } from './grammar/ast/positions.js';
-import { parseWith, type JessParseOptions } from './parse-with.js';
+import { parseRecoveringWith, parseWith, type JessParsed, type JessParseOptions } from './parse-with.js';
 
-export type { JessParseOptions } from './parse-with.js';
-export { JessParseError } from './parse-error.js';
+export type { JessParseOptions, JessParsed } from './parse-with.js';
+export { JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
 
 /** Parse Jess into the canonical AST v2 document with line/column facts. */
 export function parse(input: string, options: JessParseOptions = {}): Stylesheet {
   return parseWith(jessPositionsGrammar, input, options);
+}
+
+/**
+ * Parse Jess, keeping the located errors the grammar recovered from (ledger
+ * P45) beside the document instead of raising the first.
+ */
+export function parseRecovering(input: string, options: JessParseOptions = {}): JessParsed {
+  return parseRecoveringWith(jessPositionsGrammar, input, options);
 }

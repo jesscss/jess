@@ -5,7 +5,8 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
-import { JessParseError, parse } from '../src/index.js';
+import { JessParseError, parse, parseRecovering } from '../src/index.js';
+import { parse as parseCss } from '@jesscss/css-parser';
 import { jessGrammar } from '../src/grammar.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -178,14 +179,20 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('reads the logical operators case-insensitively in every ladder, as SCSS does', () => {
+    /* A guard keeps the keyword as the author spelled it (ledger J20); that is its only difference. */
+    const anyCase = (tree: unknown): unknown => JSON.parse(JSON.stringify(bare(tree), (key, value: unknown) =>
+      key === 'word' && typeof value === 'string' ? value.toLowerCase() : value));
     for (const lower of [
       '$if ((($a=true) and not($b)) or false) { .c { d: e; } }',
       'm($v) when (($v = true) and not(false)) { color: red; } n() when (false or true) { color: red; }',
       'a { b: $(not(true)); c: $(true and false); d: $(true or false); }'
     ]) {
       const upper = lower.replace(/\b(and|or|not)\b/g, word => word.toUpperCase());
-      expect(bare(parse(upper))).toEqual(bare(parse(lower)));
+      expect(anyCase(parse(upper))).toEqual(anyCase(parse(lower)));
     }
+    expect(parse('$if (($a=true) AND NOT($b)) { .c { d: e; } }').rules[0]).toMatchObject({
+      branches: [{ guard: { g: 'and', word: 'AND', right: { g: 'not', word: 'NOT' } } }]
+    });
   });
 
   it('ends a keyword only where the identifier ends: an escape continues it', () => {
@@ -730,9 +737,8 @@ describe('Jess AST grammar facts', () => {
     );
 
     /*
-     * The static reduction must not claim an escaped string that carries
-     * interpolation: dropping the quotes makes that value exactly the
-     * Interpolation of its content parts, with no `Quoted` wrapper.
+     * An escaped string that carries interpolation is the same escaped
+     * `Quoted`, its content template in `interp` (owner 2026-10-06, ledger V3).
      */
     expect(parse('$theme: dark; .asset { value: ~"${theme}"; }')).toMatchObject({
       rules: [
@@ -740,22 +746,29 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [{
           type: 'Declaration',
           name: 'value',
-          value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
+          value: {
+            type: 'Quoted',
+            src: '~"${theme}"',
+            value: '${theme}',
+            quote: '"',
+            escaped: true,
+            interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
+          }
         }] }
       ]
     });
   });
 
   // Documented at docs/jess/02-Language/08-interpolation.mdx ("Any plain output").
-  it('constructs escaped Jess strings that carry interpolation as unwrapped Interpolation values', () => {
+  it('constructs escaped Jess strings that carry interpolation as escaped Quoted templates', () => {
     const source = '$color-name: "red"; $w: 4px; .container { color: ~"${color-name}"; tone: ~\'$($w * 2)\'; }';
     expect(parse(source)).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'color-name' },
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [
-          { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } },
-          { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } }
+          { name: 'color', value: { type: 'Quoted', escaped: true, quote: '"', interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } } },
+          { name: 'tone', value: { type: 'Quoted', escaped: true, quote: '\'', interp: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } } }
         ] }
       ]
     });
@@ -1037,7 +1050,6 @@ describe('Jess AST grammar facts', () => {
       '$w: 2px; .card { x: $w * 2; }',
       '$w: 2px; .card { x: $w / 2 + 1; }',
       '$w: 2px; .card { x: $w % 2; }',
-      '$w: 2px; .card { x: $w = 2px; }',
       '$w: 2px; .card { x: ^w; }',
       '$w: 2px; .card { x: ^w + 1px; }'
     ]) {
@@ -1045,6 +1057,16 @@ describe('Jess AST grammar facts', () => {
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+
+    /*
+     * `=` is not a `.jess` operator outside `$( … )`: it is CSS's `=` delim
+     * between component values (ledger N18), written as authored.
+     */
+    expect(parse('$w: 2px; .card { x: $w = 2px; }')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
+        { value: [{ type: 'Lookup', kind: 'var', name: 'w' }, { type: 'Any', src: '=' }, { type: 'Dimension', src: '2px' }] }
+      ] }]
+    });
   });
 
   it('keeps declaration-entry lookup and operators inside explicit Jess expressions', () => {
@@ -1078,8 +1100,8 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('parses a static selector list between *[…] delimiters and rejects dynamic selector content', () => {
-    const source = '$targets: *[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)];';
+  it('parses a static selector list inside selector() and rejects dynamic selector content', () => {
+    const source = '$targets: selector(.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2));';
     const cst = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -1096,7 +1118,7 @@ describe('Jess AST grammar facts', () => {
         value: {
           type: 'SelectorCapture',
           branches: ['.notice', 'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)', '.tail:nth-child(-n+2)'],
-          src: '*[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)]'
+          src: 'selector(.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2))'
         }
       }]
     });
@@ -1104,11 +1126,43 @@ describe('Jess AST grammar facts', () => {
       rules: [{ value: { type: 'SelectorCapture', branches: ['.notice', 'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)', '.tail:nth-child(-n+2)'] } }]
     });
 
-    for (const invalid of ['$targets: * [.notice];', '$targets: *[$[selector]];', '$targets: *[.card-$[tone]];', '$targets: *[.card:not($[tone])];', '$targets: *[.card:nth-child(2n+1of .item)];']) {
-      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    expect(parse('$s: selector( .a > .b ~ .c + .d , input[type=text], a:hover::before, &.x, & + & );')).toMatchObject({
+      rules: [{ value: { type: 'SelectorCapture', branches: ['.a > .b ~ .c + .d', 'input[type=text]', 'a:hover::before', '&.x', '& + &'] } }]
+    });
+    expect(parse('$s: SELECTOR(apple, satsuma);')).toMatchObject({
+      rules: [{ value: { type: 'SelectorCapture', branches: ['apple', 'satsuma'], src: 'selector(apple, satsuma)' } }]
+    });
+    expect(parse('$s: selector(a), selector(b);')).toMatchObject({
+      rules: [{ value: { type: 'List', value: [{ type: 'SelectorCapture', branches: ['a'] }, { type: 'SelectorCapture', branches: ['b'] }] } }]
+    });
+  });
+
+  it('reads what selector() cannot capture, then reports it at its span (P45)', () => {
+    for (const [source, code, at] of [
+      ['$t: selector($[selector]);', 'parse/selector-capture-argument', '$[selector]'],
+      ['$t: selector(.card-$[tone]);', 'parse/selector-capture-argument', '$[tone]'],
+      ['$t: selector(1px);', 'parse/selector-capture-argument', '1px'],
+      ['$t: selector($x);', 'parse/selector-capture-argument', '$x'],
+      ['$t: selector( .a, "b" );', 'parse/selector-capture-argument', ', "b"'],
+      ['$t: selector();', 'parse/selector-capture-argument', 'selector()'],
+      ['$t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
+      ['$t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y']
+    ] as const) {
+      const { document, recovered } = parseRecovering(source);
+      expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`), source).toEqual([`${code} ${at}`]);
+      expect(document.rules[0], source).toMatchObject({ value: { type: 'Any' } });
+      expect(() => parse(source), source).toThrow(SyntaxError);
     }
+  });
+
+  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
+  it.fails.each(['$t: * [.notice];', 'a { b: 2*[3]; }', '$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+    expect(parseRecovering(source).document).toBeDefined();
+  });
+
+  it('keeps selector() inside an @supports prelude the CSS feature test', () => {
+    const source = '@supports selector(.a ~ .b) { .x { c: d; } }';
+    expect(JSON.stringify(parse(source))).not.toContain('SelectorCapture');
   });
 
   it('keeps static selector-list structure aligned with ordinary selectors', () => {
@@ -1290,7 +1344,7 @@ describe('Jess AST grammar facts', () => {
      */
     for (const [source, text] of [
       ['.x:totally-made-up(1) { color: red; }', ':totally-made-up(1)'],
-      ['.x:lang("en-US") { color: red; }', ':lang("en-US")'],
+      ['.x:totally-made-up("en-US") { color: red; }', ':totally-made-up("en-US")'],
 
       /*
        * The scan is delimiter-aware: a `)` inside a string or a bracket group is
@@ -1333,19 +1387,31 @@ describe('Jess AST grammar facts', () => {
      * Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
      * around the `+`/`-` sign, and CSS permits insignificant whitespace
      * surrounding any functional pseudo's argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; surrounding paren whitespace is normalized away exactly
-     * as the canonical CSS grammar and the other dialects do.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning: the An+B emits unspaced (ledger F2) and surrounding paren
+     * whitespace is normalized away, exactly as the canonical CSS grammar and
+     * the other dialects do.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
+      ['a:lang( en , "fr" ):dir( rtl ) { color: red; }', 'a:lang(en, "fr"):dir(rtl) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:not( .b ) { color: red; }', 'a:not(.b) {\n  color: red;\n}\n']
     ] as const) {
       expect(serialize(parse(source)).css, source).toEqual(expected);
     }
+  });
+
+  /*
+   * A `:lang()` range is an `<ident>` or a CSS `<string>`. A .jess escaped string
+   * (`~"en"`) is neither, so it is rejected there, as in css, less and scss
+   * (ledger G39).
+   */
+  it('rejects an escaped string as a :lang() range', () => {
+    expect(() => parse(':lang(~"en") { a: b; }')).toThrow();
+    expect(serialize(parse(':lang("en") { a: b; }')).css).toBe(':lang("en") {\n  a: b;\n}\n');
   });
 
   it('restricts `<An+B> of S` to the nth-child index, rejecting it on nth-of-type (Selectors-4 §6.6.2)', () => {
@@ -1433,7 +1499,7 @@ describe('Jess AST grammar facts', () => {
       '.card { @media screen { color: blue; } }',
       '.card { @media screen { @supports (display: grid) { display: grid; } } }'
     ]) {
-      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
     }
     const source = [
@@ -1448,7 +1514,7 @@ describe('Jess AST grammar facts', () => {
       '}'
     ].join('\n');
     const cst = parseJessCst(source);
-    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -1481,7 +1547,7 @@ describe('Jess AST grammar facts', () => {
     });
 
     const compilerBeforeLiteral = '@-import "legacy.less"; @import url(theme.css);';
-    const compilerBeforeLiteralDirect = run(jessGrammar.Stylesheet, compilerBeforeLiteral, { trivia: jessGrammar.whitespace });
+    const compilerBeforeLiteralDirect = run(jessGrammar.Stylesheet, compilerBeforeLiteral, { trivia: jessGrammar.whitespace, state: { source: compilerBeforeLiteral } });
     expect(compilerBeforeLiteralDirect.ok).toBe(true);
     expect(compilerBeforeLiteralDirect.unconsumedFrom).toBeNull();
     expect(parse(compilerBeforeLiteral)).toMatchObject({
@@ -1506,7 +1572,7 @@ describe('Jess AST grammar facts', () => {
       '@import url($path);',
       '@import "theme.css" $media;'
     ]) {
-      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace, state: { source: invalid } });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -1769,12 +1835,17 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse('@container sidebar (30rem < width < 80rem) { .card { color: blue; } }'))).toEqual({
       css: '@container sidebar (30rem < width < 80rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     });
-    for (const rejected of [
-      '@media (width >= $limit) { .card { color: blue; } }',
-      '@media (width < 80rem < 100rem) { .card { color: blue; } }'
-    ]) {
-      expect(() => parse(rejected), rejected).toThrow(SyntaxError);
-    }
+
+    /*
+     * `@media` reads the CSS base's media query list, so a group that is no
+     * `<mf-range>` is `<general-enclosed>` (media-queries-4 §3.1): valid CSS,
+     * emitted as written. Its component values are header terms, so a bare
+     * `$limit` — no `.jess` form in a prelude, where `${…}` is the only one
+     * (ledger P13/P16) — is still rejected.
+     */
+    const generalEnclosed = '@media (width < 80rem < 100rem) {\n  .card {\n    color: blue;\n  }\n}\n';
+    expect(serialize(parse(generalEnclosed)).css).toBe(generalEnclosed);
+    expect(() => parse('@media (width >= $limit) { .card { color: blue; } }')).toThrow(SyntaxError);
 
     /*
      * css-contain-3 §3.3 `<style-query>`: a typed container-header function, the
@@ -2219,7 +2290,7 @@ describe('Jess AST grammar facts', () => {
     expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
-        { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'tone', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'accent', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'hex', value: { type: 'Color', src: '#0a1B2c' }, write: { mode: 'declare' } },
@@ -2355,7 +2426,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'path', raw: '@path' }, unquote: true }] } } },
           { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } },
-          { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Interpolation' } } }
+          { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Quoted', src: '"assets/${file}.svg"', interp: { type: 'Interpolation', parts: [{ lit: 'assets/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } } }
         ] }
       ]
     });
@@ -2441,7 +2512,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Ruleset',
       rules: [{
         type: 'Declaration', name: 'image',
-        value: { type: 'Url', value: { type: 'Interpolation' } }
+        value: { type: 'Url', value: { type: 'Quoted', src: '"${file}/$(.path).svg"', interp: { type: 'Interpolation' } } }
       }]
     });
     for (const [source, urlText] of [
@@ -2518,7 +2589,7 @@ describe('Jess AST grammar facts', () => {
           type: 'SelectorList',
           selectors: [
             { type: 'SimpleSelector', text: '[role]' },
-            { type: 'SimpleSelector', text: '[data-kind="primary"i]' },
+            { type: 'SimpleSelector', text: '[data-kind="primary" i]' },
             { type: 'SimpleSelector', text: '[lang|=en]' }
           ]
         }
@@ -2746,11 +2817,16 @@ describe('Jess AST grammar facts', () => {
       ]
     };
 
+    /* A complex extender cannot join an `:is()` group after a combinator, so each
+     * is written in place (ledger X3, owner 2026-10-05), the `.scope` it shares
+     * with the target written once (PINNED-DEFECTS DF8). */
     expect(serialize(document).css).toBe(
       '.scope {\n'
       + '  tone: quoted;\n'
       + '}\n'
-      + '.scope :is(.target, .scope .bare-bare, .scope .quoted-quoted) {\n'
+      + '.scope .target,\n'
+      + '.scope .bare-bare,\n'
+      + '.scope .quoted-quoted {\n'
       + '  color: blue;\n'
       + '}\n'
     );
@@ -2776,7 +2852,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"tone-${tone}-$(1 + 2)"', interp: { type: 'Interpolation' } } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
       ]
     });
   });
@@ -3720,6 +3796,37 @@ describe('Jess AST grammar facts', () => {
   });
 });
 
+describe('`$( … )` arithmetic', () => {
+  /** The value inside the one `$( … )` of `.a { k: $( … ); }`. */
+  const computed = (source: string) => {
+    const ruleset = parse(source).rules[0];
+    const declaration = ruleset?.type === 'Ruleset' ? ruleset.rules[0] : undefined;
+    const value = declaration?.type === 'Declaration' ? declaration.value : undefined;
+    const part = value !== undefined && !Array.isArray(value) && value.type === 'Interpolation' ? value.parts[0] : undefined;
+    const inner = part !== undefined && 'ref' in part && part.ref.type === 'Expression' ? part.ref.value : undefined;
+    if (inner === undefined || Array.isArray(inner)) {
+      throw new TypeError('expected one value inside $( … )');
+    }
+    return inner;
+  };
+  const text = (source: string, node: object) => source.slice(sourceSpanOf(node)!.start, sourceSpanOf(node)!.end);
+
+  it('spans each operation of a run, so a unit diagnostic points at it', () => {
+    const source = '.a { k: $(1 + 2px + 3em); }';
+    const outer = computed(source);
+    if (outer.type !== 'Operation') {
+      throw new TypeError('expected an operation inside $( … )');
+    }
+    expect(text(source, outer)).toBe('1 + 2px + 3em');
+    expect(text(source, outer.left)).toBe('1 + 2px');
+  });
+
+  it('spans a comparison, so a unit diagnostic points at it', () => {
+    const source = '.a { k: $(1em > 1px); }';
+    expect(text(source, computed(source))).toBe('1em > 1px');
+  });
+});
+
 /*
  * A keyword ends at the css-syntax-3 §4.3.11 ident-continue boundary, which
  * includes every non-ASCII ident character. `$applyé` is a name of its own, and
@@ -3857,5 +3964,34 @@ describe('@layer statement in the document prologue', () => {
 
   it('still refuses a CSS @import after an ordinary rule', () => {
     expect(() => parse('a { color: red }\n@import "a.css";')).toThrow(JessParseError);
+  });
+});
+
+/*
+ * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
+ * builds, and `selector(…)` inside `supports()` stays CSS's feature test, not a
+ * capture (ledger P49). OPEN for the owner: `.jess` has no branch list in an
+ * ordinary call, so a branch list stops the parse.
+ */
+describe('CSS if()', () => {
+  const declarationValue = (document: Stylesheet): unknown => {
+    const rule = document.rules[0];
+    return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
+  };
+
+  it.fails.each([
+    'if(media(width >= 600px): 1px; else: 2px)',
+    'if(supports(display: grid): grid; else: block)',
+    'if(style(--theme: dark): white; else: black)',
+    'if(supports(selector(.a ~ .b)): a; else: b)',
+    'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
+    'if(media(print) and supports(display: grid): a; else: b)'
+  ])('builds the css tree for %s', (value) => {
+    const source = `a { x: ${value}; }`;
+    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  });
+
+  it.fails('keeps selector() inside supports() the CSS feature test', () => {
+    expect(JSON.stringify(parse('a { x: if(supports(selector(.a ~ .b)): a; else: b); }'))).not.toContain('SelectorCapture');
   });
 });
