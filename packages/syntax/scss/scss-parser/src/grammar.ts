@@ -1366,38 +1366,27 @@ const scssFactory = (g: ScssInputRules) => {
 
   /**
    * A call argument: an operand, then a comparison or a keyword argument's
-   * `:` and the operand after it. A comparison operator glued to the start,
-   * or with nothing after it, compares nothing: it is the CSS delim it is, so
-   * `type(<length>)` (the `attr()` type) is the run css builds, `<`,
-   * `length`, `>` (ledger P45). The leading arm is tried only where an
-   * operand cannot start.
+   * `:` and the operand after it. A comparison operator with no operand on
+   * one side compares nothing — glued before the first operand, or last
+   * before the `)` or `,` that ends the argument: it is the CSS delim it is,
+   * so `type(<length>)` (the `attr()` type) is the run css builds, `<`,
+   * `length`, `>` (ledger P45). Both are terminals: a choice whose arms are
+   * the value rules costs the interpreter build an exponential analysis.
    */
   const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
-      choice(
-        g.ValueTerm,
-        sequence(
-          comparisonOperator,
-          g.ValueTerm
-        )
-      ),
+      optional(regex(/[<>]=?/)),
+      g.ValueTerm,
+      optional(regex(/[<>]=?(?=[ \t\n\r\f]*[),])/)),
       optional(sequence(
         optional(valueTrivia),
         choice(
-          sequence(
-            comparisonOperator,
-            optional(sequence(
-              optional(valueTrivia),
-              g.ValueTerm
-            ))
-          ),
-          sequence(
-            literal(':'),
-            optional(valueTrivia),
-            g.ValueTerm
-          )
-        )
+          comparisonOperator,
+          literal(':')
+        ),
+        optional(valueTrivia),
+        g.ValueTerm
       ))
     )),
     children => scssCallArgument(children)
@@ -1427,8 +1416,7 @@ const scssFactory = (g: ScssInputRules) => {
    * P33), as in Less. It is recognized so the error sits on the value it
    * leads; the rest is read as custom-property parts and kept as written, and
    * the parse carries on (P45). A comment opener never matches. The rest stops
-   * at a `{`: a block there belongs to a nested rule (`a:hover, * { … }`), so
-   * the declaration reading fails at it as before.
+   * at a `{`: a block there belongs to a nested rule (`a:hover, * { … }`).
    */
   const LeadingSeparatorValue = node<ValueSlot>(
     'LeadingSeparatorValue',
@@ -1451,7 +1439,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal(','),
       optional(valueTrivia),
       choice(
-        valueSequence,
+        field('value', valueSequence),
         LeadingSeparatorValue
       )
     )),
@@ -1527,12 +1515,21 @@ const scssFactory = (g: ScssInputRules) => {
 
   /**
    * A declaration's or a variable's value, which may be a punctuation-led value
-   * (ledger P33) as a whole. After a comma `ValuePair` reads one in any value
-   * (a Sass list, `#{…}`); a `var()` fallback is not a `Value`, so its leading
-   * `/` stays css's (css-variables-1 §2). Valid input never reaches the arm.
+   * (ledger P33); after a comma `ValuePair` reads one in any value (a Sass
+   * list, `#{…}`). A `var()` fallback is not a `Value`, so its leading `/`
+   * stays css's (css-variables-1 §2). Valid input never reaches the arm.
+   *
+   * The `field` around the value arm here and in `ValuePair` carries no
+   * semantics; it is a parseman workaround. Linking the interpreter grammar
+   * asks of every choice arm whether a failed attempt leaves state to roll
+   * back (`failureNeedsRollback`), and that walk keeps no memo for a subtree
+   * it cut at a cycle, so over the recursive value rules it is exponential: a
+   * choice with a bare value arm cost the interpreter build ~44G instructions,
+   * on a base of ~128G. A field is a writer the walk stops at, so the answer
+   * is found at once and kept. Delete the fields when parseman memoizes it.
    */
   const statementValue = choice(
-    g.Value,
+    field('value', g.Value),
     LeadingSeparatorValue
   );
   const VariableDeclaration = node<VariableDeclaration>(

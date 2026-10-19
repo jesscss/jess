@@ -521,8 +521,8 @@ function reportRecovered(error: ScssRecoveredError, state: unknown): void {
 }
 
 /**
- * A value led by a `/` or `*` (ledger P33): the separator, then the rest of the
- * value as written, and the error at the value it leads (P45).
+ * A value led by a `/` or `*` (ledger P33): the separator, then the rest of
+ * the value as written, and the error at the value it leads (P45).
  */
 export function leadingSeparatorValue(children: readonly unknown[], span: { readonly start: number; readonly end: number }, state: unknown): ValueSlot {
   const operator = any(requireToken(children[0]).value);
