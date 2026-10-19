@@ -57,6 +57,39 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * in-object slots, which measured +2% on every Less parse.
    */
   readonly document?: LessDocumentFacts;
+
+  /**
+   * Where the value run a call argument reads stops, set by the argument: a
+   * function argument stops before a comparison operator, `and` or `or`
+   * (`condition`); a mixin argument before a comparison operator only
+   * (`comparison`). The `ValueSequence` the argument reads takes it over as
+   * {@link valueStop} and clears it.
+   */
+  readonly argumentStop?: ValueStop;
+
+  /**
+   * The stop of the value run being read, read between its pieces. A
+   * `ValueSequence` entered without an {@link argumentStop} goes back to
+   * {@link outsideValueStop}, so a value nested inside a piece — `~(…)`,
+   * `%(…)`, a detached ruleset in a mixin argument — reads with its own stop,
+   * never its parent's.
+   */
+  readonly valueStop?: ValueStop;
+
+  /** The state outside every argument stop: what a value run nested inside a piece reads under. */
+  readonly outsideValueStop?: LessParseState;
+}
+
+/** Where a call argument's value run stops ({@link LessParseState.valueStop}). */
+export type ValueStop = 'condition' | 'comparison';
+
+/** The stop of the value run being read ({@link LessParseState.valueStop}), for the grammar's gates. */
+export function valueStopOf(state: unknown): ValueStop | undefined {
+  if (typeof state !== 'object' || state === null || !('valueStop' in state)) {
+    return undefined;
+  }
+  const stop = state.valueStop;
+  return stop === 'condition' || stop === 'comparison' ? stop : undefined;
 }
 
 /**
