@@ -1,8 +1,22 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { builtinModules } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 import path from 'node:path';
-import { initSync as initModuleLexer, parse as parseModule } from 'es-module-lexer';
+
+/*
+ * Loaded on first use: the alpha cut runs these helpers right after importing
+ * dev's tree, before `pnpm install` brings in dev's dependencies, and only the
+ * publish-set check needs the lexer.
+ */
+const require = createRequire(import.meta.url);
+let moduleLexer;
+function lexer() {
+  if (moduleLexer === undefined) {
+    moduleLexer = require('es-module-lexer');
+    moduleLexer.initSync();
+  }
+  return moduleLexer;
+}
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 const WORKSPACE_SCAN_SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', '.cache']);
@@ -93,7 +107,7 @@ export function getRuntimeWorkspaceDeps(manifest) {
 const REQUIRE_CALL = /\b(?:__)?require\(\s*(['"`])([^'"`$\s]+)\1\s*\)/gu;
 
 function bareSpecifiers(source) {
-  const [imports] = parseModule(source);
+  const [imports] = lexer().parse(source);
   return [
     ...imports.flatMap(({ n }) => n === undefined ? [] : [n]),
     ...[...source.matchAll(REQUIRE_CALL)].map(match => match[2])
@@ -109,7 +123,6 @@ function bareSpecifiers(source) {
  * nothing; a strict install fails on them.
  */
 export function findUndeclaredRuntimeImports(packageDir, manifest) {
-  initModuleLexer();
   const declared = new Set([
     manifest.name,
     ...RUNTIME_DEP_FIELDS.flatMap(field => Object.keys(manifest[field] ?? {}))
