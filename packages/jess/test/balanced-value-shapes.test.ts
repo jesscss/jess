@@ -52,13 +52,3 @@ it.each([
     ['parse/arithmetic-outside-expression', line, column, '`*` multiplies only inside $( … ).']
   ]);
 });
-
-/* Sass reads `&` in a value as the parent selector; Jess has no value for it, so it is an error there. */
-it.each([
-  '.btn {\n  content: &;\n}\n',
-  '.btn {\n  content: selector-append(&, "-b");\n}\n'
-])('scss: the parent selector in a value fails the compile: %j', async (source) => {
-  const result = await compile('scss', source);
-  expect(result.css).toBe('');
-  expect(result.errors.map(error => [error.code, error.line])).toEqual([['parse/unsupported-parent-selector-value', 2]]);
-});

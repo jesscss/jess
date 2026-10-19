@@ -832,7 +832,7 @@ class JessPrinter {
     }
   }
 
-  /** `VariableReference`: `$name` (live) / `$^name` (scoped). */
+  /** `VariableReference`: `$name` (live) / `$^name` (scoped); the parent selector `&`. */
   lookup(node: Lookup, at: At): string {
     if (at === At.Prelude) {
       return gap('Lookup', 'a variable inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
@@ -841,9 +841,11 @@ class JessPrinter {
       return gap('Lookup', 'Less `$prop` property accessor: `.jess` `$.prop` reads the entry surface, a different lookup');
     }
     if (node.kind !== 'var' || typeof node.name !== 'string') {
-      return gap('Lookup', typeof node.name === 'string'
-        ? `\`${node.kind}\` lookup outside a reference chain`
-        : 'indirect `@@name`: `.jess` `$[$n]` reads the live store only');
+      return node.kind === 'parent'
+        ? '&'
+        : gap('Lookup', typeof node.name === 'string'
+            ? `\`${node.kind}\` lookup outside a reference chain`
+            : 'indirect `@@name`: `.jess` `$[$n]` reads the live store only');
     }
     return `$${node.scope === 'scoped' ? '^' : ''}${node.name}`;
   }
@@ -1044,8 +1046,10 @@ class JessPrinter {
         continue;
       }
       const ref = part.ref;
-      if (ref.type === 'Expression' && where === 'string') {
-        out += this.expression(ref, At.Value);
+
+      /* A string splices an expression as `$( … )`, SCSS `#{&}` included. */
+      if (where === 'string' && (ref.type === 'Expression' || (ref.type === 'Lookup' && ref.kind === 'parent'))) {
+        out += ref.type === 'Expression' ? this.expression(ref, At.Value) : '$(&)';
         continue;
       }
       if (ref.type !== 'Lookup' || ref.kind !== 'var' || typeof ref.name !== 'string') {
