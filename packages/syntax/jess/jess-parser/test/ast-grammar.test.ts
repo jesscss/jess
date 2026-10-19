@@ -1045,9 +1045,15 @@ describe('Jess AST grammar facts', () => {
         ] }
       ]
     });
+
+    /* A `*` is the delim css reads, and between two numbers or variables an error at the `*` (P45), not a stop. */
+    const multiplied = parseRecovering('$w: 2px; .card { x: $w * 2; }');
+    expect(multiplied.recovered.map(error => error.code)).toEqual(['parse/arithmetic-outside-expression']);
+    expect(multiplied.document.rules[1]).toMatchObject({
+      rules: [{ value: [{ type: 'Lookup', name: 'w' }, { type: 'Any', src: '*' }, { type: 'Dimension', src: '2' }] }]
+    });
     for (const invalid of [
       '$w: 2px; .card { x: $w + 1px; }',
-      '$w: 2px; .card { x: $w * 2; }',
       '$w: 2px; .card { x: $w / 2 + 1; }',
       '$w: 2px; .card { x: $w % 2; }',
       '$w: 2px; .card { x: ^w; }',
@@ -1155,8 +1161,13 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  /* Once P45 residuals: a delim-led value and a `*` delim (balanced-value-shapes.test.ts). */
+  it.each(['$t: * [.notice];', 'a { b: 2*[3]; }'])('parses `%s`', (source) => {
+    expect(parseRecovering(source).document).toBeDefined();
+  });
+
   /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
-  it.fails.each(['$t: * [.notice];', 'a { b: 2*[3]; }', '$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+  it.fails.each(['$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
     expect(parseRecovering(source).document).toBeDefined();
   });
 

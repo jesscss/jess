@@ -469,16 +469,15 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).toThrow(/requires a quoted module path/);
   });
 
-  it('PINNED DEFECT — rejects a parent selector in value position', () => {
+  it('PINNED DEFECT — reports a parent selector in value position', () => {
     /*
-     * `#{&}` (the whole `spec/libsass/base-level-parent/` family) is blocked
-     * by the interpolation BODY, not by its position: `a { b: & }` fails
-     * identically, and `#{$x}` in the same selector slot now parses. `&` as a
-     * VALUE has no node — Sass evaluates it to the parent selector — so this
-     * needs a model decision, not a grammar arm.
+     * `&` in a value is Sass's parent selector. It parses (ledger P45), but
+     * Jess gives it no value — that needs a model decision — so it is an error
+     * at the `&`, in a declaration and in an interpolation body alike (the
+     * whole `spec/libsass/base-level-parent/` `#{&}` family).
      */
-    expect(() => parse('a { b: & }')).toThrow();
-    expect(() => parse('#{&} { c: d }')).toThrow();
+    expect(() => parse('a { b: & }')).toThrow(expect.objectContaining({ code: 'parse/unsupported-parent-selector-value' }));
+    expect(() => parse('#{&} { c: d }')).toThrow(expect.objectContaining({ code: 'parse/unsupported-parent-selector-value' }));
   });
 
   /*

@@ -18,7 +18,8 @@
 
 import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { ScssImportPostludeError } from './parse-error.js';
+import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
+import { ScssImportPostludeError, ScssParentSelectorValueError, type ScssRecoveredError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 
@@ -420,10 +421,18 @@ export const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
  * run, written as authored (ledger N18).
  */
 export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
-  const left = requireValueSlot(children[0]);
   if (children.length === 1) {
-    return callArg(left);
+    return callArg(requireValueSlot(children[0]));
   }
+
+  /*
+   * A comparison operator with no operand on one side compares nothing, so it
+   * is the CSS delim it is (`type(<length>)`): the argument is the run.
+   */
+  if (isComparisonToken(children[0]) || isComparisonToken(children[children.length - 1])) {
+    return callArg(argumentRun(children));
+  }
+  const left = requireValueSlot(children[0]);
 
   /*
    * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
@@ -437,21 +446,18 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * colon is not a Sass named argument, and it is a parse error here today.
    */
   if (children.some(child => isToken(child) && child.value === ':')) {
+    const value = requireValueSlot(children[children.length - 1]);
     if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
-      throw new TypeError('A named argument must be spelled `$name: value`.');
+      /* Not a keyword argument: the css run, which only a fallback keeps ({@link reduceScssCall}). */
+      return callArg(argumentRun(children));
     }
-    return callArg(requireValueSlot(children[children.length - 1]), left.name, false, '$');
+    return callArg(value, left.name, false, '$');
   }
   const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
   const operator = requireToken(children[at]).value;
   const right = requireValueSlot(children[children.length - 1]);
   if (holdsDelim(left) || holdsDelim(right)) {
-    const values: ValueSlot[] = [];
-    const layout: string[] = [];
-    appendRun(values, layout, left, '');
-    appendRun(values, layout, any(operator), at > 1 ? requireToken(children[at - 1]).value : '');
-    appendRun(values, layout, right, at + 2 < children.length ? requireToken(children[at + 1]).value : '');
-    return callArg(withValueLayout(values, layout));
+    return callArg(argumentRun(children));
   }
 
   /*
@@ -472,6 +478,63 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
     operator === '!=' ? { g: 'not', inner: comparison, word: 'not', gluedAt: NO_SPAN, parens: 0 } : comparison,
     `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
   )));
+}
+
+function isComparisonToken(child: unknown): boolean {
+  return isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value);
+}
+
+/**
+ * A call argument read as the css run of its components: each operator a
+ * delim, each operand spliced in, with the padding written before it.
+ */
+function argumentRun(children: readonly unknown[]): ValueSlot {
+  const values: ValueSlot[] = [];
+  const layout: string[] = [];
+  let gap = '';
+  for (const child of children) {
+    if (isToken(child) && !isScssValue(child)) {
+      if (!COMPARISON_OPERATORS.has(child.value) && child.value !== ':') {
+        gap = child.value;
+        continue;
+      }
+      appendRun(values, layout, any(child.value), gap);
+    } else {
+      appendRun(values, layout, requireValueSlot(child), gap);
+    }
+    gap = '';
+  }
+  return withValueLayout(values, layout);
+}
+
+/**
+ * A problem the grammar recovered from (P45), kept on the run's
+ * `state.diagnostics`. A raw-grammar run keeps none, and a reducer can run in
+ * an attempt the parser abandons (`div:hover & { … }` is tried as a
+ * declaration first), so without a sink the report is dropped, never thrown.
+ */
+function reportRecovered(error: ScssRecoveredError, state: unknown): void {
+  const sink: unknown = typeof state === 'object' && state !== null && 'diagnostics' in state ? state.diagnostics : null;
+  if (Array.isArray(sink)) {
+    sink.push(error);
+  }
+}
+
+/**
+ * A value led by a `/` or `*` (ledger P33): the separator, then the rest of
+ * the value as written, and the error at the value it leads (P45).
+ */
+export function leadingSeparatorValue(children: readonly unknown[], span: { readonly start: number; readonly end: number }, state: unknown): ValueSlot {
+  const operator = any(requireToken(children[0]).value);
+  reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
+  return [operator, customValueFromChildren(children.slice(1))];
+}
+
+/** `&` in a value: Sass's parent selector, which Jess gives no value — kept as written, and an error at the `&` (P45). */
+export function parentSelectorValue(span: { readonly start: number; readonly end: number }, state: unknown): ValueNode {
+  const value = any('&');
+  reportRecovered(new ScssParentSelectorValueError(span.start, span.end, value), state);
+  return value;
 }
 
 /** A space list holding a delim component — the `Any` a `PunctuationValue` builds. */
@@ -574,6 +637,20 @@ export function lowerSassIf(args: readonly ScssCallArg[]): IfValue | undefined {
   ]);
 }
 
+/** A call argument that is a run holding a `:` delim: a `:` that is not a keyword argument's. */
+function isColonRun(arg: ScssCallArg): boolean {
+  return isValueSlotArray(arg.value) && arg.value.some(item => !isValueSlotArray(item) && item.type === 'Any' && item.src === ':');
+}
+
+/** The calls whose arguments after the first are a fallback value (css-variables-1 §3, css-env-1, css-values-5 `attr()`). */
+const FALLBACK_CALLS = new Set(['var', 'env', 'attr']);
+
+/**
+ * A call's reduction. In `var()`, `env()` and `attr()` the arguments after the
+ * first are a fallback value, so a `:` in one is css's delim; any other
+ * argument spelled `name: value` is not a Sass keyword argument and is
+ * refused, as before.
+ */
 export function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference | IfValue {
   const lastIndex = children.length - 1;
   const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isScssCallArg(child));
@@ -593,6 +670,12 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
     }
     separators.push(String(child.separator));
     args.push(child.value);
+  }
+  const checked = FALLBACK_CALLS.has(name.toLowerCase()) ? 1 : args.length;
+  for (let index = 0; index < checked; index++) {
+    if (isColonRun(args[index]!)) {
+      throw new TypeError('A named argument must be spelled `$name: value`.');
+    }
   }
   const call = funcCall(
     name,
