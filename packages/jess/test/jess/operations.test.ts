@@ -264,7 +264,8 @@ describe('OPERATIONS §4.7 — `.jess` units are strict by default; an explicit 
    */
 
   it('`.jess` has no arithmetic spelling OUTSIDE `$( … )` — ledger P13(d), enforced by the GRAMMAR', async () => {
-    await expect(valueIn('1px * 2px', 'preserve')).rejects.toMatchObject({ code: 'parse/syntax-error' });
+    /* Parsed, then an error at the `*` (ledger P45), not a stop. */
+    await expect(valueIn('1px * 2px', 'preserve')).rejects.toMatchObject({ code: 'parse/arithmetic-outside-expression' });
     await expect(valueIn('1 + 2', 'preserve')).rejects.toMatchObject({ code: 'parse/syntax-error' });
   });
 

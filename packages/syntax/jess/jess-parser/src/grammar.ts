@@ -105,7 +105,11 @@ import {
   reduceSelectorList,
   dollarValueFromChildren,
   foldCalcOperation,
-  selectorCaptureFrom
+  selectorCaptureFrom,
+  leadingSeparatorValue,
+  noteStar,
+  commaList,
+  callComponentFrom
 } from './grammar-helpers.js';
 import type {
   ExpressionFact,
@@ -787,7 +791,8 @@ const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
  * meaning outside `$( … )`: `alpha(opacity=50)`, `x: a~b`, `foo(a==b)`. It is
  * the css `punctuationValueCharacter` run less the characters `.jess` reads
  * itself: `$` (its execution forms), `@`, `&`, `%`, the `+ - * /` separators
- * and signs, and `:` and `.` (see `gluedDelim`).
+ * and signs (a `*` is its own delim, `starDelim`), and `:` and `.` (see
+ * `gluedDelim`). It may also open a call component (`<length>`).
  */
 const delimRun = regex(/[=<>|~^?]+/);
 
@@ -797,6 +802,13 @@ const delimRun = regex(/[=<>|~^?]+/);
  * stays a declaration and a nested rule (`x: y` + `> b { … }`).
  */
 const paddedDelimRun = regex(/[=<|^?][=<>|~^?]*/);
+
+/**
+ * The same run after whitespace inside a paren group, where no nested rule,
+ * collection entry or named argument can start, so a `>`, `~` or `:` there is
+ * a delim like the rest (`(a ~ b)`, `(3px > 2px)`, `(a : b)`).
+ */
+const groupPaddedDelimRun = regex(/[=<>|~^?:][=<>|~^?]*/);
 
 /**
  * `:` and `.` join a run only glued on both sides, inside one authored
@@ -2441,24 +2453,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
   );
 
+  /**
+   * A delim `.jess` gives no meaning, as the component css builds for it: the
+   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
+   * override of `PunctuationValue` itself would narrow every css rule that
+   * reaches the css value atom.
+   */
+  const punctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    delimRun,
+    children => any(requireToken(children[0]).value)
+  );
+
   /*
    * A call component is one space group; a modern CSS component's slash
    * (`rgb(15 23 42 / .22)`) is the same direct-neighbour slash group a value
    * uses (P33): `[15, 23, 42 / .22]`. `/` stays unavailable as unwrapped Jess
    * arithmetic, and a dangling separator still has no right operand. A delim
    * run (`alpha(opacity=50)`, `foo(a==b)`) is the group's own: comparison stays
-   * inside `$( … )`.
+   * inside `$( … )`. A delim may open a component, as css reads one
+   * (`type(<length>)`, the `attr()` type), except a `*`, which has no left
+   * operand there.
    */
   const CallComponent = node<ValueSlot>(
     'CallComponent',
-    g.ValueSpaceGroup,
-    (children) => {
-      const value = children.find((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
-      if (value === undefined) {
-        throw new TypeError('Jess call component produced unexpected children.');
-      }
-      return value;
-    }
+    choice(
+      g.ValueSpaceGroup,
+      noTrivia(sequence(
+        punctuationDelim,
+        g.ValueSpaceGroup
+      ))
+    ),
+    callComponentFrom
   );
 
   /*
@@ -3128,50 +3154,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * `( … )` in value position — an ordinary css-syntax-3 §5.4.7 simple block, and
-   * CSS, Less and SCSS all accept it (`b: (c)`, `b: (1 + 2)`). Jess accepts it too
-   * (P18(a)): the parens make a plain component-value block, NOT the `$( … )` math
-   * boundary — it is inert and never evaluated. The structured arm parses the
-   * interior as an ordinary Jess `Value`, so `(c)` yields `block(Keyword c)`
-   * byte-for-byte with the base; the raw arm is the §5.4.7 fallback for the one
-   * residual Jess's value model omits — a bare infix operator between numbers
-   * (`(1 + 2)`), which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects)
-   * but which is valid CSS inside a block. The `not` guard preserves Jess's
-   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
-   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
-   * the conservative existing behaviour rather than minting an empty `Any` block
-   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
-   * separate open question, not settled here).
-   */
-  const ParenValue = node<ValueNode>(
-    'ParenValue',
-    choice(
-      noTrivia(sequence(
-        literal('('),
-        optional(valueTrivia),
-        g.Value,
-        optional(valueTrivia),
-        literal(')')
-      )),
-      noTrivia(sequence(
-        literal('('),
-        not(sequence(
-          optional(valueTrivia),
-          literal(')')
-        )),
-        rawParenInner,
-        literal(')')
-      ))
-    ),
-    (children) => {
-      const slot = children.find(isJessValueSlotValue);
-      return slot === undefined
-        ? block(any(requireToken(children[1]).value), 'paren')
-        : block(slot, 'paren');
-    }
-  );
-
-  /*
    * `[a]` in value position — CSS `<line-names>`, and the same bytes Sass spells
    * as a bracketed list. Mirrors the CSS base's `SquareValue` so `.jess` stays a
    * superset; named for the delimiter rather than for grid, because the shape has
@@ -3266,19 +3248,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /**
-   * A delim `.jess` gives no meaning, as the component css builds for it: the
-   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
-   * override of `PunctuationValue` itself would narrow every css rule that
-   * reaches the css value atom.
+   * A `*`, a delim outside `$( … )` like the others (`a * b`, `2*[3]`), but its
+   * own component and located: between two numbers or variables at a
+   * statement value's top level it is arithmetic `.jess` writes only inside
+   * `$( … )` (ledger P17), an error at the `*` (P45).
    */
-  const punctuationDelim = node<ValueNode>(
+  const starDelim = node<ValueNode>(
     'PunctuationValue',
-    delimRun,
-    children => any(requireToken(children[0]).value)
+    literal('*'),
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => noteStar(span, state)
   );
   const paddedPunctuationDelim = node<ValueNode>(
     'PunctuationValue',
     paddedDelimRun,
+    children => any(requireToken(children[0]).value)
+  );
+
+  /** A padded delim inside a paren group (see `groupPaddedDelimRun`). */
+  const groupPaddedPunctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    groupPaddedDelimRun,
     children => any(requireToken(children[0]).value)
   );
   const gluedPunctuationDelim = node<ValueNode>(
@@ -3294,14 +3283,36 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ValueTerm
   );
 
+  /**
+   * A delim glued to the group before it and what follows it (`a=b`, `a~ b`),
+   * or, where the run ends there (`)`, `,`, `;`, `}`), nothing: the closing
+   * `>` of `<length>`; or a glued `:`/`.` (see `gluedDelim`).
+   */
+  const gluedRunItem = choice(
+    sequence(
+      choice(
+        punctuationDelim,
+        starDelim
+      ),
+      choice(
+        delimTail,
+        peek(regex(/[),;}]/))
+      )
+    ),
+    sequence(
+      gluedPunctuationDelim,
+      not(literal('{')),
+      g.ValueTerm
+    )
+  );
+
   /*
    * The authored space-adjacency run of slash groups: whitespace then a group
-   * or a padded delim (`a = b`, `foo(a /* c *\/ = b)`), a delim glued to the
-   * group before it (`a=b`, `a~ b`), or a glued `:`/`.` (see `gluedDelim`). The
-   * whitespace is read once, then the next component decides; only a comment
-   * reaches the padded delim's leading padding. A brace block may only be a
-   * value's FIRST atom (see `nonBlockValueAtom`), so a continuation term may
-   * not open one.
+   * or a padded delim (`a = b`, `foo(a /* c *\/ = b)`), or a glued item (see
+   * `gluedRunItem`). The whitespace is read once, then the next component
+   * decides; only a comment reaches the padded delim's leading padding. A
+   * brace block may only be a value's FIRST atom (see `nonBlockValueAtom`), so
+   * a continuation term may not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
@@ -3322,40 +3333,185 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
               optional(valueTrivia),
               paddedPunctuationDelim,
               delimTail
+            ),
+
+            /*
+             * A padded `*` and its operand, unless a block follows: then the
+             * `*` opens a nested rule after a declaration with no `;`
+             * (`color: red` then `* b { … }`), as a `>` or `~` does.
+             */
+            sequence(
+              optional(valueTrivia),
+              starDelim,
+              delimTail,
+              not(sequence(
+                optional(valueTrivia),
+                literal('{')
+              ))
             )
           )
         ),
-        sequence(
-          punctuationDelim,
-          delimTail
-        ),
-        sequence(
-          gluedPunctuationDelim,
-          not(literal('{')),
-          g.ValueTerm
-        )
+        gluedRunItem
       ))
     )),
     children => componentRun(children, isJessValueSlotValue)
   );
+
+  /**
+   * The same run inside a paren group, where a padded `>`, `~` or `:` is a
+   * delim (see `groupPaddedDelimRun`): a run css builds is a run here too, so
+   * its delims are read as css's are (ledger P48).
+   */
+  const groupSpaceGroup = node<ValueSlot>(
+    'ValueSpaceGroup',
+    noTrivia(sequence(
+      g.ValueTerm,
+      many(choice(
+        sequence(
+          field(
+            'separator',
+            regex(/[ \t\n\r\f]+/)
+          ),
+          choice(
+            sequence(
+              not(literal('{')),
+              g.ValueTerm
+            ),
+            sequence(
+              optional(valueTrivia),
+              choice(
+                groupPaddedPunctuationDelim,
+                starDelim
+              ),
+              delimTail
+            )
+          )
+        ),
+        gluedRunItem
+      ))
+    )),
+    children => componentRun(children, isJessValueSlotValue)
+  );
+
+  /**
+   * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
+   * P33), as in Less. It is recognized so the error sits on the value it
+   * leads; the rest is read as custom-property parts and kept as written, and
+   * the parse carries on (P45). A comment opener never matches. The rest stops
+   * at a `{`: a block there belongs to a nested rule (`a:hover, * { … }`), so
+   * the declaration reading fails at it as before.
+   */
+  const LeadingSeparatorValue = node<ValueSlot>(
+    'LeadingSeparatorValue',
+    sequence(
+      regex(/\/(?![*/])|\*/),
+      parser(
+        { trivia: customValueCommentTrivia },
+        many(sequence(
+          not(literal('{')),
+          g.CustomPart
+        ))
+      )
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
+  );
+
+  /** A comma list of runs. */
   const Value = node<ValueSlot>(
     'Value',
     sequence(
       g.ValueSpaceGroup,
       many(sequence(
         literal(','),
-        optional(regex(/[ \t\n\r\f]+/)),
+        optional(rawWhitespace),
         g.ValueSpaceGroup
       ))
     ),
+    commaList
+  );
+
+  /**
+   * A declaration's or a variable's value: `Value`, where any item may be a
+   * punctuation-led value (ledger P33), first or after a comma (`x: a, *[b]`).
+   * A deliberate copy of `Value`: only a statement's value reads one, since a
+   * `var()` fallback's leading `/` is css's to accept (css-variables-1 §2).
+   * Valid input never reaches the separator arms.
+   */
+  const statementValue = node<ValueSlot>(
+    'Value',
+    sequence(
+      choice(
+        g.ValueSpaceGroup,
+        LeadingSeparatorValue
+      ),
+      many(sequence(
+        literal(','),
+        optional(rawWhitespace),
+        choice(
+          g.ValueSpaceGroup,
+          LeadingSeparatorValue
+        )
+      ))
+    ),
+    commaList
+  );
+
+  /** A paren group's comma list of `groupSpaceGroup` runs. */
+  const groupValue = node<ValueSlot>(
+    'Value',
+    sequence(
+      groupSpaceGroup,
+      many(sequence(
+        literal(','),
+        optional(regex(/[ \t\n\r\f]+/)),
+        groupSpaceGroup
+      ))
+    ),
+    commaList
+  );
+
+  /*
+   * `( … )` in value position — an ordinary css-syntax-3 §5.4.7 simple block, and
+   * CSS, Less and SCSS all accept it (`b: (c)`, `b: (1 + 2)`). Jess accepts it too
+   * (P18(a)): the parens make a plain component-value block, NOT the `$( … )` math
+   * boundary — it is inert and never evaluated. The structured arm parses the
+   * interior as a Jess value (`groupValue`, where a padded `>`, `~` or `:` is a
+   * delim, as in css), so `(c)` yields `block(Keyword c)` and `(a ~ b)` the run
+   * css builds; the raw arm is the §5.4.7 fallback for the one residual Jess's
+   * value model omits — a bare infix `+` or `-` between numbers (`(1 + 2)`),
+   * which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects) but which
+   * is valid CSS inside a block. The `not` guard preserves Jess's
+   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
+   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
+   * the conservative existing behaviour rather than minting an empty `Any` block
+   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
+   * separate open question, not settled here).
+   */
+  const ParenValue = node<ValueNode>(
+    'ParenValue',
+    choice(
+      noTrivia(sequence(
+        literal('('),
+        optional(valueTrivia),
+        groupValue,
+        optional(valueTrivia),
+        literal(')')
+      )),
+      noTrivia(sequence(
+        literal('('),
+        not(sequence(
+          optional(valueTrivia),
+          literal(')')
+        )),
+        rawParenInner,
+        literal(')')
+      ))
+    ),
     (children) => {
-      const values = children.filter(isJessValueSlotValue);
-      return values.length === 1
-        ? values[0]!
-        : list(
-            values,
-            ','
-          );
+      const slot = children.find(isJessValueSlotValue);
+      return slot === undefined
+        ? block(any(requireToken(children[1]).value), 'paren')
+        : block(slot, 'paren');
     }
   );
 
@@ -4709,7 +4865,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'VariableDeclaration',
     sequence(
       assignHead,
-      g.Value,
+      statementValue,
       optional(literal(';'))
     ),
     reduceVarDeclaration
@@ -4934,7 +5090,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             g.Identifier
           ),
           literal(':'),
-          g.Value,
+          statementValue,
 
           /*
            * The CSS base's declaration-vs-nested-rule decision, unchanged:

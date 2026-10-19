@@ -5,6 +5,8 @@
  * re-exported by a sibling entry without dragging that entry's imports along.
  */
 
+import type { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
+
 /*
  * The one at-rule-specific message this module gives. The `@charset` prelude is
  * a `<string>` and nothing else (css-syntax-3 §3.2), so a refusal there has a
@@ -89,3 +91,30 @@ export class ScssImportPostludeError extends SyntaxError {
     this.endOffset = endOffset;
   }
 }
+
+/**
+ * `&` in a value: Sass reads it as the selector of the rule it is in, and Jess
+ * gives it no value, so the declaration would be written wrong. Located at the
+ * `&`; the parse keeps it as written and carries on (ledger P45).
+ */
+export class ScssParentSelectorValueError extends SyntaxError {
+  readonly code = 'parse/unsupported-parent-selector-value' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'Sass reads `&` in a value as the selector of the rule it is in, and Jess does not compute that value, so the declaration would be written wrong.';
+  readonly fix = 'Write the selector itself, or use `&` in a selector.';
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('The parent selector `&` has no value here.');
+    this.name = 'ScssParentSelectorValueError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
+export type ScssRecoveredError = LeadingSeparatorValueError | ScssParentSelectorValueError;

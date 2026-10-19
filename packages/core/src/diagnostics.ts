@@ -14,6 +14,7 @@
  */
 export {
   ERR,
+  LeadingSeparatorValueError,
   WARN,
   makeJessError,
   makeJessErrorFromDiagnostic,

@@ -30,6 +30,8 @@ export type JessErrorCode =
   | 'parse/ambiguous-not'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
+  | 'parse/unsupported-parent-selector-value'
+  | 'parse/arithmetic-outside-expression'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'compose/not-top-level'
@@ -82,6 +84,24 @@ export type JessErrorCode =
  * Use `${placeholders}` for meta fields.
  */
 type Template = { summary: string; reason: string; fix: string };
+
+/**
+ * The text of `parse/leading-separator-value` (ledger P33): a value led by a
+ * `/` or `*` with nothing on its left, in every dialect that reads one.
+ */
+export function leadingSeparatorValueText(operator: string): Template {
+  return operator === '/'
+    ? {
+        summary: 'A value cannot start with "/".',
+        reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
+        fix: 'Write the path as url(/path) or as a string.'
+      }
+    : {
+        summary: `A value cannot start with "${operator}".`,
+        reason: `A \`${operator}\` goes between two values, so it needs a value before it.`,
+        fix: 'Write the value it goes after, or remove it.'
+      };
+}
 
 const TEMPLATES = new Map<JessErrorCode, Template>([
   // Parse/Lex
@@ -175,12 +195,21 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       fix: 'Wrap the guard condition, for example: when (default()).'
     }
   ],
+  ['parse/leading-separator-value', leadingSeparatorValueText('/')],
   [
-    'parse/leading-separator-value',
+    'parse/arithmetic-outside-expression',
     {
-      summary: 'A Less value cannot start with "/"',
-      reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
-      fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+      summary: '`*` multiplies only inside $( … ).',
+      reason: 'A .jess value computes only inside $( … ), so outside it this `*` would be written as it is, not multiplied.',
+      fix: 'Write the operation inside $( … ), for example $(2 * 3).'
+    }
+  ],
+  [
+    'parse/unsupported-parent-selector-value',
+    {
+      summary: 'The parent selector `&` has no value here.',
+      reason: 'Sass reads `&` in a value as the selector of the rule it is in, and Jess does not compute that value, so the declaration would be written wrong.',
+      fix: 'Write the selector itself, or use `&` in a selector.'
     }
   ],
   [

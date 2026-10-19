@@ -126,7 +126,10 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(x, a:b)', ':'],
     ['a<b', '<'],
     ['a>b', '>'],
-    ['foo(a<b<c)', '<']
+    ['foo(a<b<c)', '<'],
+    ['(a ~ b)', '~'],
+    ['(3px > 2px and 3px < 5px)', '>'],
+    ['(a : b)', ':']
   ]
 };
 
@@ -284,6 +287,7 @@ describe('a var(), env() or attr() fallback is a value', () => {
     /* Less reads a `var()` fallback written directly as one text node, not a run (a parser shape gap, pinned below). */
     ...(['css', 'scss', 'jess'] as const).flatMap(dialect => ['var(--gap, a.b)', 'var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)']
       .map(value => [dialect, `a {\n  margin: ${value};\n}\n`, '.'] as const)),
+    ...(['css', 'scss', 'jess'] as const).map(dialect => [dialect, 'a {\n  margin: var(--x, a:b);\n}\n', ':'] as const),
     ...['attr(foo, a.b)', 'env(x, a.b)'].map(value => ['less', `a {\n  margin: ${value};\n}\n`, '.'] as const),
     ['less', '@gap: a.b;\na {\n  margin: var(--gap, @gap);\n}\n', '.']
   ] as const)('%s: %s fails the compile', async (dialect, source, delim) => {
@@ -301,7 +305,10 @@ describe('a var(), env() or attr() fallback is a value', () => {
   });
 
   it.each([
-    ['css', 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
+    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => [
+      [dialect, 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
+      [dialect, 'a {\n  width: attr(data-w type(<length>),0px);\n}\n', 'width: attr(data-w type(<length>), 0px);']
+    ] as const),
     ...DIALECTS.flatMap(dialect => [
       [dialect, 'a {\n  --y: var(--x, a.b);\n}\n', '--y: var(--x, a.b);'],
       [dialect, 'a {\n  color: var(--brand, red);\n}\n', 'color: var(--brand, red);']
