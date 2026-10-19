@@ -50,6 +50,44 @@ namespace is inferred from the file name; `as *` composes it without a namespace
 See [Modules & imports](/docs/language/modules-and-imports) for namespaces,
 `with { … }` configuration, and the `(reference)` / `(mutable)` / `(export)` flags.
 
+### Remote imports
+
+Jess never downloads anything on its own. Downloading stylesheets over https
+needs the `@jesscss/plugin-remote-import` plugin, which fetches only from the
+hosts you list:
+
+```bash
+npm install --save-dev @jesscss/plugin-remote-import
+```
+
+```js
+// styles.config.mjs
+import { remoteImportPlugin } from '@jesscss/plugin-remote-import';
+
+export default {
+  compile: {
+    plugins: [
+      remoteImportPlugin({ allow: ['cdn.example.com'] }) // exact host names
+    ]
+  }
+};
+```
+
+The `jess` CLI takes the hosts directly, and also needs the plugin installed
+next to `jess`:
+
+```bash
+jess input.less --allow-remote-imports cdn.example.com
+```
+
+Hosts are matched exactly by name: no wildcards, ports or IP addresses, and a
+host that resolves to a private, loopback or link-local address is refused.
+
+A bare `@import` in a `.jess` file is always plain CSS, so it is never
+downloaded, with or without the plugin. For `.less` sources, see
+[Remote Imports](https://lesscss.org/usage/less-options#remote-imports) for exactly
+which URL imports are downloaded, which stay CSS, and which are errors.
+
 ## Importing into JS components
 
 ### Using with React
