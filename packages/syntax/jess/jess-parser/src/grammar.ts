@@ -2572,7 +2572,35 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )
   );
 
-  /*
+  /**
+   * A call's arguments are `;` groups of comma arguments (css-values-5 §8.3;
+   * inside a function a `;` is an ordinary token). A group's first component
+   * followed by a `:` is a branch, `condition: value` (ledger P38), as css
+   * reads one: a `:` glued on both sides is the delim run's own (`foo(a:b)`,
+   * ledger N18), so the branch colon is one the run stopped at. `$name:` is a
+   * named argument (`genericCallFrom`). The branch value is not a condition.
+   * Not css's `BranchRest` composed: a `.jess` argument is a `CallComponent`
+   * run, whose glued `:` css's `branchLead` would stop at.
+   */
+  const branchValue = sequence(
+    noTrivia(sequence(
+      optional(valueTrivia),
+      literal(':'),
+      optional(valueTrivia)
+    )),
+    optional(withCtx(state => leaveIfTest(state), g.CallComponent))
+  );
+  const argumentSemicolon = noTrivia(sequence(
+    literal(';'),
+    optional(valueTrivia)
+  ));
+  const callArgumentGroup = sequence(
+    g.CallComponent,
+    optional(branchValue),
+    many(g.CallArgument)
+  );
+
+  /**
    * A direct call owns its argument boundaries and recursive call shape. Its
    * components retain the existing Jess value-term contract, including
    * variable-led expressions (documented function arguments); the new slash
@@ -2583,42 +2611,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * permits the comma without a following value, so it routes before the
    * generic continuation instead of relaxing every function call.
    */
-  /*
-   * A call's arguments are `;` groups of comma arguments (css-values-5 §8.3;
-   * inside a function a `;` is an ordinary token). A group's first component
-   * followed by a `:` is a branch, `condition: value` (ledger P38), as css
-   * reads one: a `:` glued on both sides is the delim run's own (`foo(a:b)`,
-   * ledger N18), so the branch colon is one the run stopped at. `$name:` is a
-   * named argument (`genericCallFrom`). The branch value is not a condition.
-   */
-  const branchValue = sequence(
-    noTrivia(sequence(
-      optional(valueTrivia),
-      literal(':'),
-      optional(valueTrivia)
-    )),
-    optional(withCtx(state => leaveIfTest(state), g.CallComponent))
-  );
-  const callArgumentGroup = sequence(
-    g.CallComponent,
-    optional(branchValue),
-    many(g.CallArgument)
-  );
   const GenericCall = node<FunctionCall | IfValue>(
     'Call',
     sequence(
       routed(),
       optional(valueTrivia),
       optional(callArgumentGroup),
-      many(sequence(
-        noTrivia(sequence(
-          optional(valueTrivia),
-          literal(';'),
-          optional(valueTrivia)
-        )),
-        optional(callArgumentGroup)
-      )),
       optional(valueTrivia),
+      many(sequence(
+        argumentSemicolon,
+        optional(sequence(
+          callArgumentGroup,
+          optional(valueTrivia)
+        ))
+      )),
       literal(')')
     ),
     children => genericCallFrom(children)

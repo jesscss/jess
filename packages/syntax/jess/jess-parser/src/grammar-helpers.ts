@@ -1093,15 +1093,34 @@ function ifCondition(value: ValueSlot): GuardNode {
     if (items.length === 2 && negation !== undefined && negation.toLowerCase() === 'not') {
       return { g: 'not', inner: ifCondition(items[1]!), word: negation, gluedAt: NO_SPAN, parens: 0 };
     }
-    const keyword = word(items[1]);
-    const op = keyword?.toLowerCase();
-    if ((op === 'and' || op === 'or') && items.length % 2 === 1
-      && items.every((item, index) => (index % 2 === 1) === (word(item)?.toLowerCase() === op))) {
-      let result = ifCondition(items[0]!);
-      for (let index = 2; index < items.length; index += 2) {
-        result = { g: op, left: result, right: ifCondition(items[index]!), word: word(items[index - 1])!, gluedAt: NO_SPAN, parens: 0 };
+    const keyword = (index: number): 'and' | 'or' | undefined => {
+      const lower = word(items[index])?.toLowerCase();
+      return lower === 'and' || lower === 'or' ? lower : undefined;
+    };
+    if (items.length > 1 && items.length % 2 === 1 && items.every((_, index) => (index % 2 === 1) === (keyword(index) !== undefined))) {
+      /*
+       * Operands joined by `and`/`or`, `and` binding tighter, as SCSS's Sass
+       * expression reads the same run, so both dialects build one tree
+       * (css-values-5 allows no mixing without parens; it is written as is).
+       */
+      const disjuncts: Array<{ readonly word: string; readonly operand: GuardNode }> = [];
+      let conjunction = ifCondition(items[0]!);
+      let joiner = '';
+      for (let index = 1; index < items.length; index += 2) {
+        const right = ifCondition(items[index + 1]!);
+        if (keyword(index) === 'and') {
+          conjunction = { g: 'and', left: conjunction, right, word: word(items[index])!, gluedAt: NO_SPAN, parens: 0 };
+        } else {
+          disjuncts.push({ word: joiner, operand: conjunction });
+          joiner = word(items[index])!;
+          conjunction = right;
+        }
       }
-      return result;
+      disjuncts.push({ word: joiner, operand: conjunction });
+      return disjuncts.slice(1).reduce<GuardNode>(
+        (left, next) => ({ g: 'or', left, right: next.operand, word: next.word, gluedAt: NO_SPAN, parens: 0 }),
+        disjuncts[0]!.operand
+      );
     }
   } else if (value.type === 'Interpolation' && value.parts.length === 1) {
     /* `$( … )` in value position is the template of that one expression. */

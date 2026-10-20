@@ -927,19 +927,25 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
-  /*
+  /**
    * A call's arguments are `;` groups of comma-separated arguments: a group may
    * be a branch, `condition: value` (ledger P38), and CSS `if()` is a list of
    * them (css-values-5 §8.3). Inside a function a `;` is an ordinary token, not
    * a declaration terminator. A group may be empty (`if()` allows a trailing
    * `;`). The call's reducer reads the `;` among its children.
+   *
+   * Not css's `BranchRest`/`branchLead` composed, as Less composes them: an
+   * SCSS argument's `:` is read once by `CallArgument` for a `$name:` keyword
+   * argument and a branch alike, and a comparison shares that operand, so the
+   * branch is that argument's reduction (`scssCallArgument`), not a slot css
+   * could own. Folding the keyword lane into css's branch slot is the step that
+   * would let SCSS compose it.
    */
   const argumentGroup = sequence(
     g.CallArgument,
     many(g.ArgumentPair)
   );
   const argumentSemicolon = noTrivia(sequence(
-    optional(valueTrivia),
     literal(';'),
     optional(valueTrivia)
   ));
@@ -949,11 +955,14 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       optional(valueTrivia),
       optional(argumentGroup),
+      optional(valueTrivia),
       many(sequence(
         argumentSemicolon,
-        optional(argumentGroup)
+        optional(sequence(
+          argumentGroup,
+          optional(valueTrivia)
+        ))
       )),
-      optional(valueTrivia),
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
@@ -976,6 +985,38 @@ const scssFactory = (g: ScssInputRules) => {
       literal(')')
     )),
     children => customValueFromChildren(children)
+  );
+
+  /**
+   * `if()`: `Call` whose `;` groups each lead with a condition (css-values-5
+   * §8.3). Only that first argument is read with the parse-state flag that
+   * makes `media(`, `supports(` and `style(` CSS tests; a comma argument after
+   * it and a branch's value (`CallArgument`) are not conditions. It repeats
+   * `Call`'s frame so that no other call pays for the flag: clearing it for
+   * every comma argument instead measured +0.6% marginal instructions on
+   * sass-spec.
+   */
+  const ifArgumentGroup = sequence(
+    withCtx(state => enterIfTest(state), g.CallArgument),
+    many(g.ArgumentPair)
+  );
+  const IfCall = node<FunctionCall | Reference | IfValue>(
+    'Call',
+    sequence(
+      routed(),
+      optional(valueTrivia),
+      optional(ifArgumentGroup),
+      optional(valueTrivia),
+      many(sequence(
+        argumentSemicolon,
+        optional(sequence(
+          ifArgumentGroup,
+          optional(valueTrivia)
+        ))
+      )),
+      literal(')')
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
   );
   const callOrCssTest = choice(
     {
@@ -1093,15 +1134,12 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('url(', UrlFunction),
     caseInsensitive('var(', VarCall),
 
-    /*
-     * An `if()` call's conditions are CSS `if()` conditions, where these three
-     * names are CSS tests; a comma argument and a branch's value are not
-     * conditions (`ArgumentPair`, `CallArgument`).
-     */
-    caseInsensitive('if(', withCtx(state => enterIfTest(state), Call)),
-    caseInsensitive('media(', callOrCssTest),
-    caseInsensitive('supports(', callOrCssTest),
-    caseInsensitive('style(', callOrCssTest),
+    /* An `if()` call's conditions are CSS `if()` conditions, where these three names are CSS tests. */
+    caseInsensitive('if(', IfCall),
+
+    /* `sass(…)` holds a Sass expression, not a condition (Dart Sass reads it so); its calls are calls. */
+    when('sass(', withCtx(state => leaveIfTest(state), Call)),
+    caseInsensitive(['media(', 'supports(', 'style('], callOrCssTest),
 
     /*
      * A trailing escaped paren is a value keyword, not a call: `\(` and `a\(` are
@@ -1525,7 +1563,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(','),
       optional(valueTrivia),
-      withCtx(state => leaveIfTest(state), g.CallArgument)
+      g.CallArgument
     )),
     (children) => {
       const value = children[children.length - 1];
