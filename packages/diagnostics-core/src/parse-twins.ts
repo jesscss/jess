@@ -492,16 +492,40 @@ function pushSelectorCaptureTwin(
   if (node.grammarType !== 'SelectorCapture') {
     return;
   }
-  const parts = cstChildrenOf(node).filter(isCstNode);
-  const rest = parts.find(part => part.grammarType === 'InvalidSelectorCaptureArgument');
-  if (parts.length > 0 && rest === undefined) {
+  const problem = firstSelectorCaptureProblem(node, source);
+  if (problem === undefined && cstChildrenOf(node).some(isCstNode)) {
     return;
   }
 
-  /* The rest the selector list could not read, as the compiler reports it; the whole call when the argument holds nothing. */
+  /*
+   * The first argument the capture, or a selector pseudo in it, could not read
+   * as a selector list, as the compiler reports it; the whole call when the
+   * argument holds nothing, the whole pseudo when its argument does.
+   */
   const error = ERR.selectorCaptureArgument();
-  const at = rest === undefined
+  const at = problem === undefined
     ? node.span
-    : { ...rest.span, end: absoluteStart(rest) + source.slice(absoluteStart(rest), absoluteEnd(rest)).trimEnd().length };
+    : problem.grammarType === 'InvalidSelectorCaptureArgument'
+      ? { ...problem.span, end: absoluteStart(problem) + source.slice(absoluteStart(problem), absoluteEnd(problem)).trimEnd().length }
+      : problem.span;
   push('parse/selector-capture-argument', 'error', error.message, at, { phase: 'parse', reason: error.reason, fix: error.fix });
+}
+
+/*
+ * In source order, the first rest a capture's selector list could not read,
+ * or the first selector pseudo in it whose parens hold no node (`:is()`, or
+ * a comment alone, which only a capture reads; a bare `:hover` has no parens).
+ */
+function firstSelectorCaptureProblem(capture: CssCstNode, source: string): CssCstNode | undefined {
+  const stack = cstChildrenOf(capture).filter(isCstNode).reverse();
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    const children = cstChildrenOf(node).filter(isCstNode);
+    if (node.grammarType === 'InvalidSelectorCaptureArgument' || (
+      node.grammarType === 'PseudoSelector' && children.length === 0 && source.charAt(absoluteEnd(node) - 1) === ')'
+    )) {
+      return node;
+    }
+    stack.push(...children.reverse());
+  }
+  return undefined;
 }
