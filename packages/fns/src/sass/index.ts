@@ -109,6 +109,9 @@ export { default as zip } from './list/zip.js';
 // Global Map Functions (Deprecated - use map.* module instead)
 export { mapGet, mapMerge, mapRemove, mapKeys, mapValues, mapHasKey } from './map/globals.js';
 
+// Global Selector Functions (Deprecated - use selector.* module instead)
+export { selectorParse } from './selector/globals.js';
+
 /*
  * Note: Module-specific functions are exported from their respective module files:
  * - import * as color from '@jesscss/fns/sass/color';
@@ -116,4 +119,5 @@ export { mapGet, mapMerge, mapRemove, mapKeys, mapValues, mapHasKey } from './ma
  * - import * as string from '@jesscss/fns/sass/string';
  * - import * as list from '@jesscss/fns/sass/list';
  * - import * as map from '@jesscss/fns/sass/map';
+ * - import * as selector from '@jesscss/fns/sass/selector';
  */

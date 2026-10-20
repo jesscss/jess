@@ -80,6 +80,7 @@ export type {
   ParamSpec,
   FnCtx,
   FnIo,
+  SelectorParse,
   FnRecord,
   PartialFnRecord,
   FunctionArgs,
@@ -137,6 +138,7 @@ export {
   sniffLiteral,
   coerceNamedColorKeyword,
   namedColor,
+  selectorValue,
   createFnRegistry,
   defineFunction,
   FunctionDeclined

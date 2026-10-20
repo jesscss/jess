@@ -15,7 +15,7 @@
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { emitValue, isValueGroupArray, itemBoundary, joinGroup, readText, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
 import { valueLayoutOf } from './provenance.js';
-import type { Fn, FnIo } from './functions/types.js';
+import type { Fn, FnIo, SelectorParse } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js';
@@ -120,7 +120,11 @@ const stringify = (v: ValueGroup): string =>
  * `makeSassRegistry()` in `@jesscss/fns`), so registration stays outside core.
  * Core imports no fn bodies here.
  */
-export function buildEvaluator(registry: FnRegistry, options: { readonly sassCalculations?: boolean } = {}): ValueEvaluator {
+export function buildEvaluator(
+  registry: FnRegistry,
+  options: { readonly sassCalculations?: boolean; readonly parseSelector?: SelectorParse } = {}
+): ValueEvaluator {
+  const { parseSelector } = options;
   const call = (
     name: string,
     args: ValueGroup,
@@ -141,14 +145,14 @@ export function buildEvaluator(registry: FnRegistry, options: { readonly sassCal
     const scoped = scopedFn ?? scope?.lookup(name);
     if (scoped) {
       try {
-        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, written, authored);
+        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io, parseSelector }), name, args, modes, written, authored);
       } catch (err) {
         return recoverCallFailure(err, name, args, modes, written, authored);
       }
     }
     if (ambient && registry.has(name)) {
       try {
-        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, written, authored);
+        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io, parseSelector }), name, args, modes, written, authored);
       } catch (err) {
         /*
          * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
