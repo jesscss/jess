@@ -1438,7 +1438,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal(','),
       optional(valueTrivia),
       choice(
-        field('value', valueSequence),
+        valueSequence,
         LeadingSeparatorValue
       )
     )),
@@ -1517,18 +1517,9 @@ const scssFactory = (g: ScssInputRules) => {
    * (ledger P33); after a comma `ValuePair` reads one in any value (a Sass
    * list, `#{…}`). A `var()` fallback is not a `Value`, so its leading `/`
    * stays css's (css-variables-1 §2). Valid input never reaches the arm.
-   *
-   * The `field` around the value arm here and in `ValuePair` carries no
-   * semantics; it is a parseman workaround. Linking the interpreter grammar
-   * asks of every choice arm whether a failed attempt leaves state to roll
-   * back (`failureNeedsRollback`), and that walk keeps no memo for a subtree
-   * it cut at a cycle, so over the recursive value rules it is exponential: a
-   * choice with a bare value arm cost the interpreter build ~44G instructions,
-   * on a base of ~128G. A field is a writer the walk stops at, so the answer
-   * is found at once and kept. Delete the fields when parseman memoizes it.
    */
   const statementValue = choice(
-    field('value', g.Value),
+    g.Value,
     LeadingSeparatorValue
   );
   const VariableDeclaration = node<VariableDeclaration>(
