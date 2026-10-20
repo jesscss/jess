@@ -480,6 +480,30 @@ export function npmViewVersions(pkgName) {
 }
 
 /**
+ * Classify one `npm trust github <pkg>` attempt for `release:alpha:trust`:
+ *   - 'needs-first-publish' : the package is not on npm yet, so it has no settings
+ *                             page to attach a trusted publisher to; it must be
+ *                             published once by hand first (trust is not attempted)
+ *   - 'registered'          : npm accepted the configuration
+ *   - 'already-registered'  : npm answered E409 (the configuration already exists),
+ *                             which is success for an idempotent re-run
+ *   - 'failed'              : anything else
+ * `output` is the command's stderr, where npm prints its error code.
+ */
+export function classifyTrustResult({ published, status, output = '' }) {
+  if (!published) {
+    return 'needs-first-publish';
+  }
+  if (status === 0) {
+    return 'registered';
+  }
+  if (/\bE409\b|already exists/i.test(output)) {
+    return 'already-registered';
+  }
+  return 'failed';
+}
+
+/**
  * Resolve the single lockstep alpha version to publish for the whole allowlist,
  * intent-first and registry-guarded. Rule (owner-agreed):
  *
@@ -491,13 +515,23 @@ export function npmViewVersions(pkgName) {
  *   3. Intent-first  : publishedMax === null OR intended > publishedMax
  *                      → use intended as-is (honors a deliberate forward jump,
  *                      e.g. a new minor even if its alpha-number is lower).
- *   4. Registry-guard: otherwise (intended <= publishedMax) →
+ *   4. Resume        : intended === publishedMax but some allowlisted package
+ *                      does not have it yet → a previous publish of this exact
+ *                      manifest stopped part-way. Resolve to intended so the
+ *                      re-run finishes that version (publish-alpha skips the
+ *                      packages already published) instead of abandoning it as
+ *                      a partial set on npm. Disabled with `resumePartial:
+ *                      false` by callers that change the code being released
+ *                      (a dev->alpha refresh must never reuse a version that
+ *                      already carries the previous code).
+ *   5. Registry-guard: otherwise (intended <= publishedMax) →
  *                      resolved = nextAlphaAfter(publishedMax), then keep
  *                      incrementing while resolved is already published for ANY
  *                      allowlisted package (guarantees a clean fresh publish).
  *
- * The resolved version is ALWAYS fresh (unpublished) for every allowlisted
- * package, so publish-alpha never has to skip or backward-retag.
+ * Outside a resume, the resolved version is fresh (unpublished) for every
+ * allowlisted package. A resume never moves a dist-tag backward: nothing is
+ * published above the resumed version.
  *
  * `viewVersions` is injectable for testing; defaults to a real npm query.
  */
@@ -505,7 +539,8 @@ export function resolveAlphaPublishVersion({
   rootDir = process.cwd(),
   allowlistPath,
   plan,
-  viewVersions = npmViewVersions
+  viewVersions = npmViewVersions,
+  resumePartial = true
 } = {}) {
   allowlistPath ??= path.join(rootDir, 'scripts', 'release', 'alpha-allowlist.json');
   plan ??= getAlphaReleasePlan({ rootDir, allowlistPath });
@@ -549,6 +584,10 @@ export function resolveAlphaPublishVersion({
      * after what is actually published — the alpha stream is always published+1. */
     resolved = intended;
     reason = 'intended-ahead';
+  } else if (resumePartial && intended === publishedMax
+    && plan.allowlist.some(name => !publishedByPackage.get(name).includes(intended))) {
+    resolved = intended;
+    reason = 'resume-partial';
   } else {
     resolved = nextAlphaAfter(publishedMax);
     while (publishedAll.has(resolved)) {

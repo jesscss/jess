@@ -102,8 +102,30 @@ If you want Actions to publish instead of local CLI, run:
 
 The recommended default remains `pnpm run release:alpha` from CLI.
 
+The workflow publishes through npm trusted publishing. Register it for every
+allowlisted package with `pnpm run release:alpha:trust`; re-running it is safe,
+since packages that already have the publisher are reported as already
+registered.
+
+A package that has never been published cannot be registered. Publish it once by
+hand from the `alpha` branch, then run the trust command:
+
+```bash
+pnpm --filter <pkg> publish --tag alpha --no-git-checks
+pnpm run release:alpha:trust
+```
+
+That first publish also points the new package's `latest` dist-tag at the alpha,
+while the other packages keep `latest` on their earlier versions. To realign,
+move `latest` for each package with `npm dist-tag add <pkg>@<version> latest`
+(the repository
+[runbook](https://github.com/matthew-dean/jess/blob/dev/docs/process/releasing-alpha.md)
+has a one-line loop over the publish set).
+
 ## Recovery strategy
 
-- If one package fails during publish, fix root cause and rerun `release:alpha:publish`.
+- If one package fails during publish, fix root cause and rerun `release:alpha:publish`
+  (or re-dispatch the workflow). The re-run finishes the same version, skipping
+  the packages already published, rather than moving on to the next alpha.
 - Avoid unpublish unless absolutely necessary and allowed by npm policy.
 - Prefer releasing a new `-alpha.N+1` with fixes.

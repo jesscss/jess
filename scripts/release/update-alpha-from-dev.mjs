@@ -218,8 +218,9 @@ function main() {
    * branch) and clears the publish-time clobber guard without a separate manual
    * `increment-alpha` step. It is drift-free: the resolver keys off what is
    * actually published, so a cut that never publishes resolves the same number
-   * next time rather than climbing the manifest. */
-  const publishVersion = resolveAlphaPublishVersion({ rootDir }).resolved;
+   * next time rather than climbing the manifest. A refresh carries new code, so
+   * it never resumes a partially published version (`resumePartial: false`). */
+  const publishVersion = resolveAlphaPublishVersion({ rootDir, resumePartial: false }).resolved;
   const applied = applyLockstepVersion(rootDir, publishVersion);
   console.log(`Set alpha manifest to publish version ${publishVersion} `
     + `(npm 'alpha' + 1) across ${applied.changed.length} manifest(s).`);
