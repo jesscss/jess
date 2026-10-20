@@ -942,7 +942,12 @@ describe('Less AST grammar facts', () => {
       ['@t: selector(.a, "b");', 'parse/selector-capture-argument', ', "b"'],
       ['@t: selector();', 'parse/selector-capture-argument', 'selector()'],
       ['@t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
-      ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y']
+      ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
+      ['@t: selector(.a:is(1px));', 'parse/selector-capture-argument', '1px'],
+      ['@t: selector(.a:not(@{t}));', 'parse/selector-capture-argument', '@{t}'],
+      ['@t: selector(.a:is(.b 1px));', 'parse/selector-capture-argument', '1px'],
+      ['@t: selector(.a:is());', 'parse/selector-capture-argument', ':is()'],
+      ['@t: selector(:nth-child(2n of .a:is(1px) 5px));', 'parse/selector-capture-argument', ':nth-child(2n of .a:is(1px) 5px)']
     ] as const) {
       const diagnostics: LessRecoveredError[] = [];
       const result = run(lessGrammar.Document, source, {
