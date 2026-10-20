@@ -10,7 +10,7 @@ import {
   type SafeParseOptions,
   type ValueEvaluator
 } from '@jesscss/core';
-import { parseRecovering, type JessParseOptions } from '@jesscss/jess-parser';
+import { parseRecovering, parseSelector, type JessParseOptions } from '@jesscss/jess-parser';
 
 /**
  * The selector policies for one document: the settings the host scopes to it
@@ -50,8 +50,10 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  * verbatim, the same bytes `.jess` produced with no evaluator at all. A
  * `@-use`/`@-compose` function is resolved lexically (`scopedFn`), never from
  * this table, so the module route is served without a global namespace.
+ * `selector.parse()` (`#sass/selector`) reads a string as `selector(…)` reads its
+ * argument.
  */
-const jessValueEvaluator = buildEvaluator(createFnRegistry());
+const jessValueEvaluator = buildEvaluator(createFnRegistry(), { parseSelector });
 
 /**
  * `.jess` arithmetic is strict about units by default: `$(1px + 3em)` and

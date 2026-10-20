@@ -49,6 +49,7 @@ export {
   recoveredInTree,
   scannedLeaf,
   selectorCaptureOf,
+  selectorStringComponents,
   semanticGapText,
   withBlockBody
 } from './ast/grammar-helpers.js';

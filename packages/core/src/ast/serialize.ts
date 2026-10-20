@@ -78,7 +78,7 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
-import { hasTopLevelComma, interleave, selectorListValue } from './selector-text.js';
+import { hasTopLevelComma, interleave, selectorListValue, selectorValue } from './selector-text.js';
 import type {
   Any,
   Apply,
@@ -5813,12 +5813,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Keyword':
     case 'Comment':
 
-    /*
-     * A selector CAPTURE `selector(…)` reaching a plain VALUE position (never its intended
-     * use — it belongs in a selector interpolation) emits its canonical `src`.
-     */
+    /* A selector capture is the selector list `&` is (ledgers P49, P50). */
     case 'SelectorCapture':
-      return literal(node.type === 'Comment' ? node.text : node.src);
+      return node.type === 'SelectorCapture' ? selectorValue(node.components) : literal(node.type === 'Comment' ? node.text : node.src);
     case 'Dimension':
       /*
        * Typed materialization owns Less's numeric spelling canonicalization

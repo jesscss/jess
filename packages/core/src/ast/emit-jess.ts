@@ -46,6 +46,7 @@ import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { renderCombinator } from './node.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
+import { MEMBER_CALL, moduleImportText, selectorParseLiteral } from './emit-jess-module.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
@@ -183,6 +184,9 @@ class JessPrinter {
 
   /** Set while a property's value prints: a value written to the output, not one a callable reads. */
   #propertyValue = false;
+
+  /** The call names of Sass's `selector.parse()` through each `sass:selector` namespace. */
+  readonly #selectorParse = new Set<string>();
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
@@ -343,20 +347,8 @@ class JessPrinter {
         return `${indent}$while (${this.guard(node.guard, true, false)}) ${this.block(node.rules, 'nested', node, indent)}\n`;
       case 'Apply':
         return `${indent}$apply ${node.selectors.map(term => this.selectorTerm(term)).join(', ')};\n`;
-      case 'ModuleImport': {
-        // `ModuleImport`: `@-use "p" [as ns]` / `@-from "p" import …`.
-        const path = node.path.src;
-        if (node.mode === 'use') {
-          return `${indent}@-use ${path}${node.namespace === null ? '' : ` as ${node.namespace}`};\n`;
-        }
-        const names = node.imports.map(s => (s.alias === null ? s.name : `${s.name} as ${s.alias}`)).join(', ');
-        const what = node.namespace !== null
-          ? `* as ${node.namespace}`
-          : node.defaultImport !== null
-            ? `${node.defaultImport}${names === '' ? '' : `, (${names})`}`
-            : `(${names})`;
-        return `${indent}@-from ${path} import ${what};\n`;
-      }
+      case 'ModuleImport':
+        return `${indent}${moduleImportText(node, this.#selectorParse)}\n`;
       case 'Plugin':
         return gap('Plugin', '`@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from`');
       case 'FunctionCall':
@@ -917,7 +909,16 @@ class JessPrinter {
     if (at === At.Expr) {
       return gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
     }
-    if (!IDENT.test(node.name)) {
+
+    /* The global `selector-parse` is Sass's only when the source dialect's functions have it. */
+    const selectorText = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
+      ? selectorParseLiteral(node)
+      : null;
+    if (selectorText !== null) {
+      return `selector(${selectorText})`;
+    }
+    const member = MEMBER_CALL.test(node.name);
+    if (!member && !IDENT.test(node.name)) {
       return gap('FunctionCall', 'a function name that is not an identifier (Less `%()`)');
     }
     const lower = node.name.toLowerCase();
@@ -936,7 +937,7 @@ class JessPrinter {
     const inner = at === At.Prelude ? At.Prelude : At.Math;
     const alpha = colorAlphaSlash(node);
     if (alpha !== null) {
-      const name = exported === undefined ? node.name : `$${node.name}`;
+      const name = exported === undefined && !member ? node.name : `$${node.name}`;
       return `${name}(${this.colorChannels(node.args[0]!.value, alpha, inner)})`;
     }
     const args = node.args.map((arg) => {
@@ -949,7 +950,7 @@ class JessPrinter {
       }
       return this.value(value, inner);
     });
-    const name = exported === undefined ? node.name : `$${node.name}`;
+    const name = exported === undefined && !member ? node.name : `$${node.name}`;
     return `${name}(${args.join(', ')})`;
   }
 

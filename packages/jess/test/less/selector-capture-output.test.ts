@@ -167,10 +167,6 @@ describe('selector() capture', () => {
     await expect(render('.m() when (selector(.a)) { ok: 1; }\n.x { .m(); }\n.y { z: 1; }', false)).resolves.toBe('.y {\n  z: 1;\n}\n');
   });
 
-  it('prints its canonical selector() spelling in a plain value position', async () => {
-    await expect(render('@s: selector( .a>.b ,satsuma );\n.x { v: @s; }', false)).resolves.toBe('.x {\n  v: selector(.a > .b, satsuma);\n}\n');
-  });
-
   /*
    * What selector() cannot capture parses (P45) and is then an error at its
    * span (ledger P49).
@@ -209,10 +205,10 @@ describe('selector() capture', () => {
     expect(result.errors).toEqual([]);
   });
 
-  /* A capture in a calc() operand or a var() name is an operand like any other: written as authored, no crash. */
-  it('writes a capture read as a calc() operand or a var() name as authored', async () => {
-    await expect(render('.x { a: calc(selector(.a) + 1px); b: var(selector(.c)); }', false)).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n  b: var(selector(.c));\n}\n');
-    await expect(render('.x { a: calc(selector(.a) + 1px); }', false, 'jess')).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n}\n');
+  /* A capture in a calc() operand or a var() name is an operand like any other: its value, the selector list, is written. */
+  it('writes the selectors of a capture read as a calc() operand or a var() name', async () => {
+    await expect(render('.x { a: calc(selector(.a) + 1px); b: var(selector(.c)); }', false)).resolves.toBe('.x {\n  a: calc(.a + 1px);\n  b: var(.c);\n}\n');
+    await expect(render('.x { a: calc(selector(.a) + 1px); }', false, 'jess')).resolves.toBe('.x {\n  a: calc(.a + 1px);\n}\n');
   });
 
   /* A comma list of captures is the list of their branches, as one capture of them is. */
