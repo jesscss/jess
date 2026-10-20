@@ -774,7 +774,7 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
   from the current one, so `mathMode`, `source`, `document` and the function scope
   survive. A call argument sets `LessParseState.valueStop` (`condition` for a function
   argument, `comparison` for a mixin argument) and reads the run node itself
-  (`valueRun`); the run reads the stop between pieces (`valueRunEndAhead` at the
+  (`ValueRun`); the run reads the stop between pieces (`valueRunEndAhead` at the
   trivia gap, `gluedValueBoundary` at a glued `=`). Every other caller reads the rule
   `ValueSequence`, which clears a stop it is entered under, so a run nested inside a
   piece (`foo(~(a=b) c)`) never reads its parent's. The function argument's "fails when

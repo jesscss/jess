@@ -239,6 +239,7 @@ type LessRules = {
   MathValue: Combinator<ValueNode>;
   EscapedParen: Combinator<ValueNode>;
   Paren: Combinator<ValueNode>;
+  ValueRun: Combinator<ValueSlot>;
   ValueSequence: Combinator<ValueSlot>;
   ValueList: Combinator<ValueSlot>;
   VariableValue: Combinator<ValueSlot>;
@@ -1865,6 +1866,49 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // out of it. `@name:` must open no other operator, keeping `::` out.
   const keywordArgumentKey = regex(/@[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*:(?!:))/);
   const keywordArgumentOperator = regex(/[ \t\n\r\f]*:[ \t\n\r\f]*/);
+  /**
+   * A function argument's value run (`ValueRun`), stopping where a Less
+   * condition would go on, and failing when one follows so the argument is
+   * read as a FunctionCondition. Function bodies use their own argument
+   * delimiters, but comments *inside* an argument are still lexical trivia;
+   * the enclosing argument list owns comma, semicolon, close, and their trivia.
+   */
+  const conditionArgumentValue = withCtx(
+    (state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }),
+    noTrivia(sequence(g.ValueRun, not(functionConditionStop)))
+  );
+  const FunctionKeywordArgument = node(
+    'FunctionKeywordArgument',
+    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, conditionArgumentValue)),
+    (children, fields) => {
+      const value = children.find(isLessValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Less function keyword argument lost its value.');
+      }
+      return callArg(value, staticText(requireField(fields, 'key').value).slice(1), false, '@');
+    }
+  );
+  const FunctionArgument = node(
+    'FunctionArgument',
+    choice(
+      sequence(functionConditionNotAhead, g.FunctionCondition),
+      g.FunctionKeywordArgument,
+      g.FunctionScalarArgument,
+      conditionArgumentValue,
+      g.FunctionCondition
+    ),
+    (children) => {
+      const named = children.find(isLessCallArg);
+      if (named !== undefined) {
+        return named;
+      }
+      const value = children.find(isLessValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Less function argument lost its value.');
+      }
+      return value;
+    }
+  );
   // Generic Less function calls carry one flat positional argument vector.
   // Unlike mixin arguments, commas and semicolons do not create nested groups
   // here: either delimiter separates the next typed argument, and evaluation
@@ -2526,62 +2570,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * argument is a FunctionCondition instead); a mixin argument stops before a
    * comparison operator only, reading `and` / `or` as words.
    *
-   * A call argument reads the run itself (`valueRun`). Every other caller
+   * A call argument reads the run itself (`ValueRun`). Every other caller
    * reads `ValueSequence`, which clears a stop it was entered under, so a run
    * nested inside a piece of an argument's run (`foo(~(a=b) c)`) never reads
    * its parent's stop.
    */
-  const valueRun = node(
+  const ValueRun = node(
     'ValueSequence',
     noTrivia(sequence(g.valuePiece, many(valueContinuation))),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
   const ValueSequence = withCtx(
     (state: LessParseState | undefined) => state?.valueStop === undefined ? state : { ...state, valueStop: undefined },
-    valueRun
-  );
-  /**
-   * A function argument's value run (`ValueSequence`), stopping where a Less
-   * condition would go on, and failing when one follows so the argument is
-   * read as a FunctionCondition. Function bodies use their own argument
-   * delimiters, but comments *inside* an argument are still lexical trivia;
-   * the enclosing argument list owns comma, semicolon, close, and their trivia.
-   */
-  const conditionArgumentValue = withCtx(
-    (state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }),
-    noTrivia(sequence(valueRun, not(functionConditionStop)))
-  );
-  const FunctionKeywordArgument = node(
-    'FunctionKeywordArgument',
-    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, conditionArgumentValue)),
-    (children, fields) => {
-      const value = children.find(isLessValueSlotValue);
-      if (value === undefined) {
-        throw new TypeError('Less function keyword argument lost its value.');
-      }
-      return callArg(value, staticText(requireField(fields, 'key').value).slice(1), false, '@');
-    }
-  );
-  const FunctionArgument = node(
-    'FunctionArgument',
-    choice(
-      sequence(functionConditionNotAhead, g.FunctionCondition),
-      g.FunctionKeywordArgument,
-      g.FunctionScalarArgument,
-      conditionArgumentValue,
-      g.FunctionCondition
-    ),
-    (children) => {
-      const named = children.find(isLessCallArg);
-      if (named !== undefined) {
-        return named;
-      }
-      const value = children.find(isLessValueSlotValue);
-      if (value === undefined) {
-        throw new TypeError('Less function argument lost its value.');
-      }
-      return value;
-    }
+    g.ValueRun
   );
   const ValueList = node(
     'ValueList',
@@ -3632,7 +3633,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
      */
     choice(attempt(g.FlatMixinCall), g.ValueBlock, withCtx(
       (state: LessParseState | undefined) => ({ ...state, valueStop: 'comparison' as const }),
-      sequence(valueRun, many(sequence(functionConditionOperator, optional(valueRun))))
+      sequence(g.ValueRun, many(sequence(functionConditionOperator, optional(g.ValueRun))))
     )),
     (children, _fields, _span, rawChildren, triviaLog, state) => {
       const value = children[0];
@@ -5714,6 +5715,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     MathValue,
     EscapedParen,
     Paren,
+    ValueRun,
     ValueSequence,
     ValueList,
     VariableValue,
