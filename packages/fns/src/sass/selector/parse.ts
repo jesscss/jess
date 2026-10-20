@@ -1,5 +1,5 @@
 import type { FnCtx, ValueGroup } from '@jesscss/core';
-import { defineFunction, groupItems, isValueGroupArray, selectorListValue } from '@jesscss/core';
+import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@jesscss/core';
 
 /**
  * The text Sass reads a `$selector` argument as: a string, a space list of
@@ -53,7 +53,7 @@ export function parseSelectorValue(args: ValueGroup, ctx: FnCtx): ValueGroup {
   if (ctx.parseSelector === undefined) {
     throw new TypeError('selector.parse() needs a selector parser, which this stylesheet dialect does not provide.');
   }
-  return selectorListValue(ctx.parseSelector(text));
+  return selectorValue(ctx.parseSelector(text));
 }
 
 const parse = defineFunction('parse', {

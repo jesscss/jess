@@ -47,9 +47,14 @@ export function interleave(lists: readonly (readonly string[])[]): string[] {
  * combinators; `null` for no branch.
  */
 export function selectorListValue(branches: readonly string[] | null): ValueGroup {
+  return selectorValue(branches === null ? null : branches.map(selectorComponents));
+}
+
+/** {@link selectorListValue} over branches already split into their compound selectors and combinators. */
+export function selectorValue(branches: readonly (readonly string[])[] | null): ValueGroup {
   return branches === null || branches.length === 0
     ? makeNull(true)
-    : makeList(branches.map(branch => selectorComponents(branch).map(makeKeyword)), ',');
+    : makeList(branches.map(components => components.map(makeKeyword)), ',');
 }
 
 /**

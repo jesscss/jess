@@ -26,9 +26,9 @@ export function parseRecovering(input: string): ScssParsed {
 
 /**
  * Read a selector string as Sass's `selector.parse()` does, with this
- * grammar's `SelectorList`: each branch's canonical text. Throws when the text
- * is not a selector list.
+ * grammar's `SelectorList`: each branch's compound selectors and combinators.
+ * Throws when the text is not a selector list.
  */
-export function parseSelector(text: string): string[] {
+export function parseSelector(text: string): string[][] {
   return parseSelectorWith(scssGrammar, text);
 }

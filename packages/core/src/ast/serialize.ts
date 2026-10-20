@@ -5616,14 +5616,15 @@ const reachedGroup = (v: ValueGroup, e: Lane, call = false): ValueGroup => !isVa
  * never a nested `calc()`. An escaped string written in it is text, which
  * carries its group ({@link textGroup}); raw bytes keep the parens as written.
  */
-function writtenGroup(v: EvalValue): Value {
+function writtenGroup(v: EvalValue, compress = false): Value {
+  const emit = compress ? emitCompressed : emitValue;
   if (isLiteral(v) || isValueGroupArray(v)) {
-    return makeKeyword(`(${emitValue(v)})`);
+    return makeKeyword(`(${emit(v)})`);
   }
   if (keptMathOf(v) !== undefined) {
     return groupAsWritten(v);
   }
-  return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emitValue(v)})`);
+  return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emit(v)})`);
 }
 
 /**
@@ -6048,7 +6049,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
             ? literal(`(${v})`)
             : v;
         }
-        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e, computation.type === 'FunctionCall');
+        return computation === null ? writtenGroup(v, e.compress === true) : keepAuthoredGroup(v, e, computation.type === 'FunctionCall');
       });
     }
     case 'Expression': {
@@ -7134,8 +7135,13 @@ function resolveReferenceResult(
   ) {
     const namespaceStep = node.steps[0]!;
     if (namespaceStep.type === 'LookupStep' && typeof namespaceStep.name === 'string') {
-      const binding = moduleNamespaceBinding(frame, namespaceStep.name, e);
-      if (binding !== undefined) {
+      const binding = resolveVarRef(frame, namespaceStep.name, 'live', e)
+        ?? resolveVarRef(frame, namespaceStep.name, 'scoped', e);
+      if (
+        binding !== undefined
+        && !isValueSlotArray(binding.value)
+        && e.s.moduleReferenceValues.get(binding.value) === null
+      ) {
         value = binding.value;
         valueFrame = binding.frame;
         evaluated = binding.evaluated;
@@ -8872,16 +8878,6 @@ function evalCall(
   const selected = e.s.scopedFunctionNames?.has(lname)
     ? lookupScopedFn(frame, lname, e.s)
     : undefined;
-
-  /*
-   * An SCSS call through a `@use`d module's namespace (`selector.append()`) that names
-   * no member of it resolves to nothing, an eval error (ledger R3), as `.jess`
-   * `$ns.missing()` is.
-   */
-  if (selected === undefined && e.s.moduleReferenceValues !== undefined && lname.includes('.')
-    && moduleNamespaceBinding(frame, node.name.slice(0, node.name.indexOf('.')), e) !== undefined) {
-    throw ERR.nameNotFound({ node, ...callSiteLocation(node, e.s), meta: { symbol: node.name } });
-  }
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
   /*
@@ -8923,14 +8919,6 @@ function evalCall(
    * registry (P17). The parser attached its document's scope to the node.
    */
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
-}
-
-/** The binding `name` resolves to when it is a module's namespace (`@use "sass:map"` binds `map`). */
-function moduleNamespaceBinding(frame: Frame | null, name: string, e: Lane): BindingHit | undefined {
-  const binding = resolveVarRef(frame, name, 'live', e) ?? resolveVarRef(frame, name, 'scoped', e);
-  return binding !== undefined && !isValueSlotArray(binding.value) && e.s.moduleReferenceValues?.get(binding.value) === null
-    ? binding
-    : undefined;
 }
 
 /** One `functionMode: 'error'` copy per render's modes, for imported calls (ruling J1). */

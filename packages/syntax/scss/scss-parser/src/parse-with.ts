@@ -12,7 +12,7 @@ import {
   createTriviaMapFromParseman,
   isSelectorList,
   recoveredInTree,
-  selectorBranchCanonical,
+  selectorBranchComponents,
   selectorBranchHasAmpersand,
   selectorBranchHasInterp,
   withSourceSpan,
@@ -192,12 +192,13 @@ function inSourceOrder(diagnostics: readonly ScssRecoveredError[]): readonly Scs
 
 /**
  * `text` read by the grammar's own `SelectorList` production, as Sass's
- * `selector.parse()` reads a selector string: each branch's canonical text. A
+ * `selector.parse()` reads a selector string: each branch's compound selectors and
+ * combinators. A
  * string that is not a whole selector list, or that holds `&`, throws with Dart
  * Sass's message. The selectors a stylesheet writes and the ones a string holds
  * are read by the one production.
  */
-export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string[] {
+export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string[][] {
   const entry = grammar.SelectorList;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -216,5 +217,5 @@ export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string
   if (branches.some(selectorBranchHasAmpersand)) {
     throw new TypeError('$selector: Parent selectors aren\'t allowed here.');
   }
-  return branches.map(selectorBranchCanonical);
+  return branches.map(selectorBranchComponents);
 }

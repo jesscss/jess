@@ -84,10 +84,11 @@ export interface FnCtx {
 }
 
 /**
- * Reads `text` as a selector list: each branch's canonical text, in order. Throws
- * an error whose message says why when `text` is not a selector list.
+ * Reads `text` as a selector list: per branch, in order, its compound selectors and
+ * combinators. Throws an error whose message says why when `text` is not a
+ * selector list.
  */
-export type SelectorParse = (text: string) => readonly string[];
+export type SelectorParse = (text: string) => readonly (readonly string[])[];
 
 /**
  * The per-render file-read capability handed to the IO built-ins. The host owns

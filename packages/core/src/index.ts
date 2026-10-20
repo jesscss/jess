@@ -138,7 +138,7 @@ export {
   sniffLiteral,
   coerceNamedColorKeyword,
   namedColor,
-  selectorListValue,
+  selectorValue,
   createFnRegistry,
   defineFunction,
   FunctionDeclined

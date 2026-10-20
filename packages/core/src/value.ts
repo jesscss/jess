@@ -86,7 +86,7 @@ export { groupOf, unify, unitFactor } from './ast/value-units.js';
 export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
 // --- selector values (`&`, `selector.parse()`) ---
-export { selectorListValue } from './ast/selector-text.js';
+export { selectorValue } from './ast/selector-text.js';
 
 // --- color name table ---
 export { namedColor } from './ast/color-names.js';

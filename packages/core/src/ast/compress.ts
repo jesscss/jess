@@ -12,7 +12,7 @@ import { parseHex } from './literal-tag.js';
 import { shortestColorName } from './color-names.js';
 import { colorRgb, HEX, serializeColor } from './color.js';
 import { formatNumber } from './format-number.js';
-import { isValueGroupArray, joinGroup, sepGlue, writtenText, type EvalValue } from './value-eval.js';
+import { delimiterClose, delimiterOpen, isValueGroupArray, joinGroup, sepGlue, writtenText, type EvalValue } from './value-eval.js';
 
 const hx = (v: number): string => {
   const h = (v & 255).toString(16);
@@ -128,6 +128,10 @@ export function emitCompressed(v: EvalValue): string {
     }
     case 'List':
       return joinGroup(v.value, sepGlue(v.sep, true), emitCompressed);
+
+    /* The group's own value compressed, as it is written bare (`[a, b]` → `[a,b]`). */
+    case 'Block':
+      return `${v.escaped ? '~' : ''}${delimiterOpen(v.delimiter)}${emitCompressed(v.value)}${delimiterClose(v.delimiter)}`;
     case 'Any':
       return writtenText(v);
     default:
