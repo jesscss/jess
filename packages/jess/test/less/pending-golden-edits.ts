@@ -15,8 +15,6 @@
  *   `  .d:is(.a, .b, .c)&:hover,\n  baz-cap {` (O8(a), an owner-delegated judgment of
  *   2026-10-04); and the quoted case's `foo: bar` → `foo: baz`, which the source
  *   writes (a golden typo).
- * - `tests-unit/functions/functions.less`: `  length-1: 1;` → `  length-1: 3;`, a
- *   `$name` accessor reading `~(1, 2, 3)` as the three-item list (ledger V26, OPEN).
  */
 const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>();
 
