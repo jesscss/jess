@@ -25,6 +25,21 @@ export function hasTopLevelComma(text: string): boolean {
   return false;
 }
 
+/** `lists` read across: the first item of each, then the second of each, and on. */
+export function interleave(lists: readonly (readonly string[])[]): string[] {
+  const out: string[] = [];
+  for (let i = 0, more = true; more; i++) {
+    more = false;
+    for (const items of lists) {
+      if (i < items.length) {
+        out.push(items[i]!);
+        more = true;
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Composed branches as the value Sass gives `&` (owner 2026-10-19: "in .scss,
  * in these cases, i think do what sass does"): a comma list holding, per branch,

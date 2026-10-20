@@ -21,6 +21,7 @@ const render = async (source: string, extension: '.scss' | '.jess' = '.scss'): P
 const cases: ReadonlyArray<readonly [string, string, string]> = [
   ['the rule it is in', '.a { x: &; }', '.a {\n  x: .a;\n}\n'],
   ['every branch of a nested selector list', '.a, .b { .c { x: &; } }', ':is(.a, .b) .c {\n  x: .a .c, .b .c;\n}\n'],
+  ['each parent in turn, never the `:is()` the header compacts to', '.btn, .link { &:hover, &:focus { content: "#{&}"; } }', ':is(.btn, .link):hover,\n:is(.btn, .link):focus {\n  content: ".btn:hover, .btn:focus, .link:hover, .link:focus";\n}\n'],
   ['a BEM element, interpolated into a string', '.card { &__title { content: "#{&}"; } }', '.card__title {\n  content: ".card__title";\n}\n'],
   ['a descendant rule, interpolated into a string', '.list { .item { content: "#{&}"; } }', '.list .item {\n  content: ".list .item";\n}\n'],
   ['a mixin argument', '@mixin label($s) { content: "#{$s}"; } .q, .r { @include label(&); }', '.q,\n.r {\n  content: ".q, .r";\n}\n'],

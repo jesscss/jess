@@ -78,7 +78,7 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
-import { hasTopLevelComma, selectorListValue } from './selector-text.js';
+import { hasTopLevelComma, interleave, selectorListValue } from './selector-text.js';
 import type {
   Any,
   Apply,
@@ -500,8 +500,7 @@ function importContextKey(scope: Frame): object | string {
  * these cases, i think do what sass does"); {@link selectorListValue} is the value. The
  * rule is the one the output lands in, the chain {@link importContextKey} walks: a mixin
  * call, a content block and a loop iteration are in the rule they are placed in, a
- * bare-`&` rule is its parent. Each rule's selector composes onto the one around it as
- * the collapsed writer composes it.
+ * bare-`&` rule is its parent.
  */
 function parentSelectorBranches(frame: Frame | null, e: Lane): MaybePromise<string[] | null> {
   if (frame === null) {
@@ -523,7 +522,15 @@ function parentSelectorBranches(frame: Frame | null, e: Lane): MaybePromise<stri
 
     /* A parentless `&` is empty at the root, as {@link flattenResolved} reads it. */
     ? mapMaybe(rootStrings(of.selector, outer, e), own => own.filter(branch => branch !== ''))
-    : compose(parents, of.selector, outer, e));
+
+    /*
+     * Each branch as Sass resolves it, never as the writer compacts it (`:is()`, a
+     * pseudo-element's hold): every `&` stands for each parent in turn
+     * ({@link joinAmpersand}), a branch with none follows each parent, and the
+     * branches' lists interleave parent by parent.
+     */
+    : combineAll(of.selector.selectors.map(branch => mapMaybe(resolveSelectorBranch(branch, outer, e), text =>
+        selectorBranchHasAmpersand(branch) ? joinAmpersand(text, parents) : parents.map(parent => `${parent} ${text}`))), interleave));
 }
 
 /**
@@ -16185,15 +16192,15 @@ function flattenResolved(
   });
 }
 
-/** Establish one ordinary visible ruleset activation for either writer. */
-function activateRuleFrame(rule: Ruleset, frame: Frame, e: Lane): Frame {
+/** Establish one ordinary visible ruleset activation for either writer; `sourceOwner`, when given, is the document its body is written in. */
+function activateRuleFrame(rule: Ruleset, frame: Frame, e: Lane, sourceOwner?: object | null): Frame {
   const priorPlacement = frame.rulePlacements?.get(rule);
   let childFrame: Frame;
   if (priorPlacement?.parent === frame) {
     childFrame = priorPlacement;
   } else {
     childFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
-    childFrame.sourceOwner = sourceOwnerForBody(rule.rules, frame, e);
+    childFrame.sourceOwner = sourceOwner === undefined ? sourceOwnerForBody(rule.rules, frame, e) : sourceOwner;
     childFrame.outputOf = rule;
 
     /*
@@ -18226,10 +18233,8 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
      */
     let placement = callFrame.rulePlacements?.get(statement);
     if (placement?.parent !== callFrame) {
-      placement = activateRuleFrame(statement, callFrame, e);
-
       /* The rule sits in the called body, so it is that body's document's source. */
-      placement.sourceOwner = callFrame.sourceOwner;
+      placement = activateRuleFrame(statement, callFrame, e, callFrame.sourceOwner ?? null);
     }
     (activationOf(frame).publishedRules ??= []).push({ rule: statement, frame: placement });
   }
