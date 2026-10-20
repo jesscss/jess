@@ -185,7 +185,63 @@ describe('resolveAlphaPublishVersion', () => {
     expect(res.reason).toBe('nothing-published');
   });
 
-  it('never resolves to an already-published version (core safety property)', () => {
+  it('(e) manifest version published for only part of the set → resumes it, does not bump', () => {
+    /* A publish of alpha.28 stopped after @scope/a; the re-run must finish
+     * alpha.28 rather than abandon it as a partial set and publish alpha.29. */
+    const plan = makePlan(allowlist, '2.0.0-alpha.28');
+    const viewVersions = viewFrom({
+      ['@scope/a']: ['2.0.0-alpha.27', '2.0.0-alpha.28'],
+      ['@scope/b']: ['2.0.0-alpha.27']
+    });
+    const res = resolveAlphaPublishVersion({ plan, viewVersions });
+    expect(res.publishedMax).toBe('2.0.0-alpha.28');
+    expect(res.resolved).toBe('2.0.0-alpha.28');
+    expect(res.reason).toBe('resume-partial');
+  });
+
+  it('(e2) a never-published package in the set also resumes the partial version', () => {
+    const plan = makePlan(allowlist, '2.0.0-alpha.28');
+    const viewVersions = viewFrom({
+      ['@scope/a']: ['2.0.0-alpha.28'],
+      ['@scope/b']: []
+    });
+    expect(resolveAlphaPublishVersion({ plan, viewVersions }).resolved).toBe('2.0.0-alpha.28');
+  });
+
+  it('(e3) resumePartial: false (a dev->alpha refresh) bumps past the partial version', () => {
+    const plan = makePlan(allowlist, '2.0.0-alpha.28');
+    const viewVersions = viewFrom({
+      ['@scope/a']: ['2.0.0-alpha.28'],
+      ['@scope/b']: ['2.0.0-alpha.27']
+    });
+    const res = resolveAlphaPublishVersion({ plan, viewVersions, resumePartial: false });
+    expect(res.resolved).toBe('2.0.0-alpha.29');
+    expect(res.reason).toBe('registry-guarded-increment');
+  });
+
+  it('(f) manifest version published for EVERY package → bumps (no resume)', () => {
+    const plan = makePlan(allowlist, '2.0.0-alpha.28');
+    const viewVersions = viewFrom({
+      ['@scope/a']: ['2.0.0-alpha.28'],
+      ['@scope/b']: ['2.0.0-alpha.28']
+    });
+    const res = resolveAlphaPublishVersion({ plan, viewVersions });
+    expect(res.resolved).toBe('2.0.0-alpha.29');
+    expect(res.reason).toBe('registry-guarded-increment');
+  });
+
+  it('(g) partial version below a higher published version → bumps (never resumes backward)', () => {
+    const plan = makePlan(allowlist, '2.0.0-alpha.28');
+    const viewVersions = viewFrom({
+      ['@scope/a']: ['2.0.0-alpha.28', '2.0.0-alpha.29'],
+      ['@scope/b']: ['2.0.0-alpha.27', '2.0.0-alpha.29']
+    });
+    const res = resolveAlphaPublishVersion({ plan, viewVersions });
+    expect(res.resolved).toBe('2.0.0-alpha.30');
+    expect(res.reason).toBe('registry-guarded-increment');
+  });
+
+  it('never resolves to an already-published version outside a resume (core safety property)', () => {
     const plan = makePlan(allowlist, '2.0.0-alpha.3');
     const viewVersions = viewFrom({
       ['@scope/a']: ['2.0.0-alpha.3', '2.0.0-alpha.4', '2.0.0-alpha.6'],
