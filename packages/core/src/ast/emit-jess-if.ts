@@ -60,7 +60,9 @@ function condition(node: GuardNode, p: IfSpeller): string {
 /** A CSS test's authored text, which `.jess` reads as a custom property's value: a `$name` in it is text, and `${name}` interpolates. */
 function cssTest(value: ValueSlot, p: IfSpeller): string {
   if (!Array.isArray(value) && 'type' in value && value.type === 'Any') {
-    return value.src.includes('${') || value.src.includes('$[') ? p.gap('Any', 'a CSS test holding `${`/`$[`, which `.jess` reads as interpolation') : value.src;
+    return value.src.includes('${') || value.src.includes('$[') || value.src.includes('$(')
+      ? p.gap('Any', 'a CSS test holding `${`, `$[` or `$(`, which `.jess` reads as a `$` form')
+      : value.src;
   }
   if (!Array.isArray(value) && 'type' in value && value.type === 'Interpolation') {
     return p.template(value);
