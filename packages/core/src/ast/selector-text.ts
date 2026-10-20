@@ -4,8 +4,8 @@
  */
 
 import { isQuote, stringEnd } from './css-syntax.js';
-import { keyword, list, NULL_NODE, spaced } from './nodes.js';
-import type { ValueNode } from './nodes.js';
+import { makeKeyword, makeList, makeNull } from './value-factory.js';
+import type { ValueGroup } from './value-eval.js';
 
 /** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
 export function hasTopLevelComma(text: string): boolean {
@@ -41,14 +41,20 @@ export function interleave(lists: readonly (readonly string[])[]): string[] {
 }
 
 /**
- * Composed branches as the value Sass gives `&` (owner 2026-10-19: "in .scss,
- * in these cases, i think do what sass does"): a comma list holding, per branch,
- * a space list of its compound selectors and combinators; `null` for no branch.
+ * Composed branches as the value Sass gives `&` and `selector.parse()` (owner
+ * 2026-10-19: "in .scss, in these cases, i think do what sass does"): a comma
+ * list holding, per branch, a space list of its compound selectors and
+ * combinators; `null` for no branch.
  */
-export function selectorListValue(branches: readonly string[] | null): ValueNode {
+export function selectorListValue(branches: readonly string[] | null): ValueGroup {
+  return selectorValue(branches === null ? null : branches.map(selectorComponents));
+}
+
+/** {@link selectorListValue} over branches already split into their compound selectors and combinators. */
+export function selectorValue(branches: readonly (readonly string[])[] | null): ValueGroup {
   return branches === null || branches.length === 0
-    ? NULL_NODE
-    : list(branches.map(branch => spaced(selectorComponents(branch).map(keyword))), ',');
+    ? makeNull(true)
+    : makeList(branches.map(components => components.map(makeKeyword)), ',');
 }
 
 /**

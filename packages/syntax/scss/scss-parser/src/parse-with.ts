@@ -10,7 +10,11 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
+  isSelectorList,
   recoveredInTree,
+  selectorBranchComponents,
+  selectorBranchHasAmpersand,
+  selectorBranchHasInterp,
   withSourceSpan,
   withTriviaMap,
   type Stylesheet
@@ -185,4 +189,34 @@ function inSourceOrder(diagnostics: readonly ScssRecoveredError[]): readonly Scs
     byItem.set(`${error.offset}:${error.endOffset}:${error.message}`, error);
   }
   return [...byItem.values()].sort((a, b) => a.offset - b.offset);
+}
+
+/**
+ * `text` read by the grammar's own `SelectorList` production, as Sass's
+ * `selector.parse()` reads a selector string: each branch's compound selectors and
+ * combinators. A
+ * string that is not a whole selector list, or that holds `&`, throws with Dart
+ * Sass's message. The selectors a stylesheet writes and the ones a string holds
+ * are read by the one production.
+ */
+export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string[][] {
+  const entry = grammar.SelectorList;
+  const trivia = grammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('SCSS AST grammar is missing its selector-list entry.');
+  }
+  const source = text.trim();
+  const diagnostics: ScssRecoveredError[] = [];
+  const result = run(entry, source, { trivia, state: { source, diagnostics } });
+  if (!result.ok || result.unconsumedFrom !== null || result.errors.length > 0 || diagnostics.length > 0 || !isSelectorList(result.value)) {
+    throw new TypeError('$selector: expected selector.');
+  }
+  const branches = result.value.selectors;
+  if (branches.some(selectorBranchHasInterp)) {
+    throw new TypeError('$selector: expected selector.');
+  }
+  if (branches.some(selectorBranchHasAmpersand)) {
+    throw new TypeError('$selector: Parent selectors aren\'t allowed here.');
+  }
+  return branches.map(selectorBranchComponents);
 }

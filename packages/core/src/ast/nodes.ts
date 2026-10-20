@@ -1095,6 +1095,25 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
       ? relativeCanonical(branch)
       : selectorTermCanonical(branch);
 
+/**
+ * A branch's compound selectors and combinators, each in its canonical spelling, the
+ * descendant combinator left out (`.a > .b .c` is `.a`, `>`, `.b`, `.c`): the parts
+ * {@link selectorBranchCanonical} joins.
+ */
+export const selectorBranchComponents = (branch: SelectorBranch): string[] => {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [selectorTermCanonical(branch)];
+  }
+  const out: string[] = [];
+  for (const part of branch.value) {
+    const text = typeof part === 'string' ? renderCombinator(part).trim() : selectorTermCanonical(part);
+    if (text !== '') {
+      out.push(text);
+    }
+  }
+  return out;
+};
+
 /** A non-selector pseudo argument's spelling: `An+B` unspaced, a `:lang()` list `, `-joined. */
 export const pseudoArgumentText = (arg: PseudoArgument): string => {
   if (arg.type !== 'List') {
