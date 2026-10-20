@@ -1020,9 +1020,9 @@ class JessPrinter {
         return parens(this.cssTest(node.value));
       case 'and':
       case 'or':
-        return parens(`${this.ifCondition(node.left)} ${node.g} ${this.ifCondition(node.right)}`);
+        return parens(`${this.ifCondition(node.left)} ${node.word} ${this.ifCondition(node.right)}`);
       case 'not':
-        return parens(`not ${this.ifCondition(node.inner)}`);
+        return parens(`${node.word} ${this.ifCondition(node.inner)}`);
       default:
         return gap('GuardNode', `a \`${node.g}\` condition holding a CSS test`);
     }

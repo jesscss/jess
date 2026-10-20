@@ -213,8 +213,9 @@ const inConditionParens = (parens: number, bytes: string): string =>
  * its first false one, `or` drops its false operands and is true at its first
  * true one, and neither reads past the operand that decides it; `not` of what
  * is left is written `not`. A CSS test is written as `cssTest` writes it.
- * Keywords are written in lower case, and an `and`/`or` left with one operand
- * is that operand, without the parens written around it.
+ * Keywords are written as authored (ledger J20); an `and`/`or` left with one
+ * operand once a compile-time part is dropped is that operand, without the
+ * parens written around it, as Dart Sass writes it.
  */
 export function partialGuard(
   node: GuardNode,
@@ -236,7 +237,7 @@ export function partialGuard(
         if (typeof value === 'boolean') {
           return !value;
         }
-        const bare = `not ${value.text}`;
+        const bare = `${node.word} ${value.text}`;
         return { text: inConditionParens(node.parens, bare), bare };
       };
       return isThenable(inner) ? inner.then(negated) : negated(inner);
@@ -265,7 +266,7 @@ export function partialGuard(
           if (left.length === 0) {
             return !decides;
           }
-          const bare = left.length === 1 ? left[0]!.bare : left.map(condition => condition.text).join(` ${node.g} `);
+          const bare = left.length === 1 ? left[0]!.bare : left.map(condition => condition.text).join(` ${node.word} `);
           return { text: inConditionParens(node.parens, bare), bare };
         }
         const decided = partialGuard(operand, deps, cssTest);

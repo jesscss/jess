@@ -7926,7 +7926,9 @@ function pickIfValue<T>(
      * is left of their conditions. Only the value of a branch that is taken or
      * kept is evaluated. No branch left is no value.
      */
-    const cssTest = (value: ValueSlot): MaybePromise<string> => mapMaybe(evalValueSlot(value, frame, e), v => emitValueC(v, e));
+    /* [P47/P48] A condition is not a CSS value, so what it reaches is not checked, as {@link writtenCondition} reads one. */
+    const tests = e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e;
+    const cssTest = (value: ValueSlot): MaybePromise<string> => mapMaybe(evalValueSlot(value, frame, tests), v => emitValueC(v, tests));
     const kept: Array<{ readonly condition: string; readonly value: ValueSlot }> = [];
     const keep = (index: number): MaybePromise<T> => {
       const branch = node.branches[index];
@@ -7934,7 +7936,7 @@ function pickIfValue<T>(
         return kept.length === 0
           ? use(undefined, e)
           : combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
-              write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join('; ')})`));
+              write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join(sepGlue(';', e.compress === true))})`));
       }
       const guard = branch.guard;
       const decided = guard === null ? true : withUnitErrors(node, e, () => partialGuard(guard, deps, cssTest));

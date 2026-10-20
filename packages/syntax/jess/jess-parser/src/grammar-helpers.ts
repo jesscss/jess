@@ -1199,7 +1199,7 @@ function genericCallFrom(children: readonly unknown[]): FunctionCall | IfValue {
     }
     return call;
   }
-  const lowered = name.toLowerCase() === 'if' ? lowerCssIf(groups) : undefined;
+  const lowered = name.toLowerCase() === 'if' ? lowerCssIf(groups.map(gluedBranch)) : undefined;
   if (lowered !== undefined) {
     return lowered;
   }
@@ -1215,6 +1215,26 @@ function genericCallFrom(children: readonly unknown[]): FunctionCall | IfValue {
     return groupValue([lead, ...group.args], group.separators);
   });
   return funcCall(name, [items.length === 1 ? items[0]! : list(items, ';')]);
+}
+
+/**
+ * In `if()`, a group whose first component is a run holding a glued `:` delim
+ * (`if(media(print):1px;else:2px)`, minified CSS) is the branch css reads
+ * there: the run before that parsed `:` is the condition, after it the value
+ * (css-values-5 §8.3's condition has no top-level colon). Elsewhere the glued
+ * `:` stays the run's (`foo(a:b)`, ledger N18).
+ */
+function gluedBranch(group: CallGroup): CallGroup {
+  const lead = group.lead;
+  if (group.branch !== undefined || lead === undefined || !isValueSlotArray(lead)) {
+    return group;
+  }
+  const colon = lead.findIndex((item, index) => index > 0 && !isValueSlotArray(item) && item.type === 'Any' && item.src === ':');
+  if (colon < 0) {
+    return group;
+  }
+  const part = (items: readonly ValueSlot[]): ValueSlot => (items.length === 1 ? items[0]! : [...items]);
+  return { ...group, lead: part(lead.slice(0, colon)), branch: colon === lead.length - 1 ? [] : part(lead.slice(colon + 1)) };
 }
 
 const asRun = (value: ValueSlot): ValueSlot[] => (isValueSlotArray(value) ? [...value] : [value]);
