@@ -36,9 +36,9 @@ import {
   selectorTermOf,
   selist
 } from './nodes.js';
-import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withSourceSpan, withValueLayout } from './provenance.js';
 import { walkAuthoredValue } from './traversal.js';
-import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
+import { forgivenSelectorItemsOfState, isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
   AnPlusB,
   AnonymousMixin,
@@ -1165,6 +1165,42 @@ export function authoredSource(span: AstSourceSpan, state: unknown, what: string
     throw new TypeError(`${what} needs the parse input in its parse state to keep its authored spelling.`);
   }
   return state.source.slice(span.start, span.end);
+}
+
+/**
+ * One item of a `:is()` / `:where()` argument, a `<forgiving-selector-list>`
+ * (Selectors 4 §16.1): the selector it parsed as, or, when it is not a
+ * selector, the item kept as written (owner 2026-10-20: *"it should parse
+ * then... sure warning is ok"*). A browser drops such an item and keeps the
+ * rest, so `.card:is(.active, 1px)` matches as `.card:is(.active)`. The item is
+ * recorded on the run's `state.document.forgivenSelectorItems` for the compiler's
+ * `css/forgiving-selector-item` warning; an empty one (`:is()`) is valid and
+ * is not.
+ */
+export function forgivingSelectorItem(children: readonly unknown[], span: AstSourceSpan, state: unknown): SelectorBranch {
+  const only = children.length === 1 ? children[0] : undefined;
+  const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string' ? state.source : undefined;
+
+  /* A selector item keeps where it is written too, so a capture can report an interpolation in it there. */
+  if (isSelectorBranch(only)) {
+    return source === undefined ? only : withSourceSpan(only, trimmedSpan(span, source));
+  }
+  if (source === undefined) {
+    throw new TypeError('A forgiving selector-list item needs the parse input in its parse state to keep its authored spelling.');
+  }
+  const at = trimmedSpan(span, source);
+  const item = withSourceSpan(simpleSelector(source.slice(at.start, at.end)), at);
+  if (at.end > at.start) {
+    forgivenSelectorItemsOfState(state)?.push({ item, recoveredValue: item });
+  }
+  return item;
+}
+
+/* A span without the whitespace at its edges. */
+function trimmedSpan(span: AstSourceSpan, source: string): AstSourceSpan {
+  const written = source.slice(span.start, span.end);
+  const start = span.start + written.length - written.trimStart().length;
+  return { start, end: start + written.trim().length };
 }
 
 /**

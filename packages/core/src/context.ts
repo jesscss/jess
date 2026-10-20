@@ -9,6 +9,7 @@ import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
 import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
+import { forgivenSelectorItemsOf } from './ast/grammar-helpers.js';
 import { INJECTED_TEXT_NOTE, extractRelevantLines, fileAt, lineColAt } from './error/code-frame.js';
 import { inAuthoredFile } from './error/diagnostics.js';
 import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
@@ -976,6 +977,16 @@ export class Context {
     });
     attachDocumentFacts(documentContext, triviaMapOf(document));
     this.documentContexts.set(document, documentContext);
+
+    /* Each `:is()` / `:where()` item the parse kept because it is not a selector warns where it is written. */
+    const forgiven = forgivenSelectorItemsOf(document);
+    if (forgiven.length > 0) {
+      void this.withSourceOwner(documentContext, () => {
+        for (const item of forgiven) {
+          this.warnAtNode('css/forgiving-selector-item', 'parse', item, { item: item.text });
+        }
+      });
+    }
 
     /*
      * A document's root definitions and variable values can be reached from

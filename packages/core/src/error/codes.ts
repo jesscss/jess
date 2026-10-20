@@ -75,6 +75,7 @@ export type JessErrorCode =
   | 'selector/parentless-ampersand'
   | 'selector/comma-list-interpolation'
   | 'css/glued-condition-keyword'
+  | 'css/forgiving-selector-item'
   | 'css/legacy-ie-syntax'
   | 'css/invalid-value-punctuation';
 
@@ -492,6 +493,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${keyword}(` is read by CSS as a function, so this condition never matches — write `${keyword} (` if you meant the keyword',
       reason: 'An identifier glued to "(" is one function token (CSS Syntax 3 §4.3.4), so `${keyword}(` is an unknown function, not the `${keyword}` keyword, and a condition holding it matches nothing (Media Queries 4 §3.2). It is written as authored.',
       fix: 'Write `${keyword} (`, with a space, if you meant the keyword.'
+    }
+  ],
+  [
+    'css/forgiving-selector-item',
+    {
+      summary: '`${item}` is not a selector; browsers ignore it here',
+      reason: '`:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1): an item that is not a selector is dropped and the others still match. It is written as authored.',
+      fix: 'Remove `${item}`, or write the selector you meant.'
     }
   ],
   [

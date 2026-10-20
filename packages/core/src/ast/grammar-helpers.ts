@@ -15,8 +15,8 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
-import { keyword, NULL_NODE, selectorBranchCanonical, selectorCapture } from './nodes.js';
-import { withBodySpan } from './provenance.js';
+import { keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchHasInterp, selectorCapture } from './nodes.js';
+import { NO_SPAN, sourceEndOf, sourceStartOf, withBodySpan } from './provenance.js';
 import type {
   ComplexSelector,
   ForBinding,
@@ -25,7 +25,8 @@ import type {
   Null,
   SelectorBranch,
   SelectorCapture,
-  SelectorList
+  SelectorList,
+  SimpleSelector
 } from './nodes.js';
 
 /** The `{ start, end }` offset pair parseman hands a reduction. */
@@ -204,11 +205,25 @@ export interface SelectorCaptureProblem {
   readonly written: string;
 }
 
-/** The capture a `selector(` reduction built, or the problem to report. */
-export function selectorCaptureOf(children: readonly unknown[], span: SourceSpan): SelectorCapture | SelectorCaptureProblem {
+/**
+ * The capture a `selector(` reduction built, or the problem to report. A
+ * capture holds its list as text, so it cannot hold an interpolation, which a
+ * `:is()` / `:where()` item reads (`selector(.a:is(@{x}))`): that is reported
+ * at the item, the call written as in the run's input (`state`).
+ */
+export function selectorCaptureOf(children: readonly unknown[], span: SourceSpan, state?: unknown): SelectorCapture | SelectorCaptureProblem {
   const selector = children.find(isSelectorListChild);
   const rest = writtenTokenBetween(children);
   const list = selector?.selectors.map(selectorBranchCanonical).join(', ');
+  if (selector !== undefined && selector.selectors.some(selectorBranchHasInterp)) {
+    const item = interpolatedItemIn(selector);
+    const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string' ? state.source : undefined;
+    return {
+      start: item === undefined ? span.start : sourceStartOf(item),
+      end: item === undefined ? span.end : sourceEndOf(item),
+      written: source?.slice(span.start, span.end) ?? `selector(${list})`
+    };
+  }
   if (list !== undefined && rest === undefined) {
     return selectorCapture(selector!.selectors.map(selectorBranchCanonical), `selector(${list})`);
   }
@@ -249,4 +264,104 @@ export function recoveredInTree<E extends object>(root: object, errors: readonly
     }
   }
   return errors.filter(error => !('recoveredValue' in error) || (typeof error.recoveredValue === 'object' && error.recoveredValue !== null && seen.has(error.recoveredValue)));
+}
+
+/**
+ * A `:is()` / `:where()` item a parse kept as written because it is not a
+ * selector (`forgivingSelectorItem`), recorded on the run's
+ * `state.document.forgivenSelectorItems` for the compiler's
+ * `css/forgiving-selector-item` warning.
+ */
+export interface ForgivenSelectorItem {
+  readonly item: SimpleSelector;
+
+  /**
+   * The node whose presence in the accepted tree keeps the item
+   * ({@link recoveredInTree}): the item, or the `selector(…)` capture that
+   * keeps its list as text ({@link selectorCaptureOf}).
+   */
+  recoveredValue: object;
+}
+
+const forgivenItems = new WeakMap<object, readonly SimpleSelector[]>();
+
+/**
+ * Keep on a parsed document the forgiven items its run recorded that are in
+ * the accepted tree ({@link recoveredInTree}), once each.
+ */
+export function withForgivenSelectorItems<T extends object>(document: T, recorded: readonly ForgivenSelectorItem[]): T {
+  if (recorded.length > 0) {
+    forgivenItems.set(document, [...new Set(recoveredInTree(document, recorded).map(entry => entry.item))]);
+  }
+  return document;
+}
+
+/*
+ * The first `:is()` / `:where()` item in a list that reads an interpolation,
+ * found through the pseudos that hold it; `undefined` when it has no span.
+ */
+function interpolatedItemIn(list: SelectorList): SelectorBranch | undefined {
+  for (const branch of list.selectors) {
+    if (!selectorBranchHasInterp(branch)) {
+      continue;
+    }
+    const terms = branch.type === 'ComplexSelector' || branch.type === 'RelativeSelector' ? branch.value : [branch];
+    for (const term of terms) {
+      const tokens = typeof term === 'string' ? [] : term.type === 'CompoundSelector' ? term.value : [term];
+      for (const token of tokens) {
+        if (token.type === 'PseudoSelector' && token.args !== null && pseudoHasInterp(token)) {
+          return interpolatedItemIn(token.args) ?? (sourceStartOf(branch) === NO_SPAN ? undefined : branch);
+        }
+      }
+    }
+    if (sourceStartOf(branch) !== NO_SPAN) {
+      return branch;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Where a run collects its forgiven items: `state.document`, the one object a
+ * run's reducers share and write (parseman hands a reducer a shallow copy of
+ * the state, so only a reference carries a write back).
+ */
+export function forgivenSelectorItemsOfState(state: unknown): ForgivenSelectorItem[] | undefined {
+  const document = typeof state === 'object' && state !== null && 'document' in state ? state.document : undefined;
+  return typeof document === 'object' && document !== null && 'forgivenSelectorItems' in document && Array.isArray(document.forgivenSelectorItems)
+    ? document.forgivenSelectorItems
+    : undefined;
+}
+
+/**
+ * Point each forgiven item recorded inside a `selector(…)` capture's list (the
+ * reduction's `children`) at the capture, which keeps the list only as text,
+ * so the capture's presence in the tree keeps them ({@link recoveredInTree}).
+ */
+export function adoptForgivenSelectorItems(children: readonly unknown[], capture: SelectorCapture, state: unknown): SelectorCapture {
+  const recorded = forgivenSelectorItemsOfState(state);
+  const list = children.find(isSelectorListChild);
+  if (recorded === undefined || recorded.length === 0 || list === undefined) {
+    return capture;
+  }
+  const inList = new Set<unknown>();
+  const stack: unknown[] = [list];
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (typeof item === 'object' && item !== null && !inList.has(item)) {
+      inList.add(item);
+      stack.push(...Object.values(item));
+    }
+  }
+  for (const entry of recorded) {
+    if (inList.has(entry.recoveredValue)) {
+      entry.recoveredValue = capture;
+    }
+  }
+  return capture;
+}
+
+/** The forgiven `:is()` / `:where()` items of a parsed document ({@link withForgivenSelectorItems}). */
+export function forgivenSelectorItemsOf(document: object): readonly SimpleSelector[] {
+  return forgivenItems.get(document) ?? [];
 }

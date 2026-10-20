@@ -7,7 +7,7 @@
  * third module keeps that a straight line rather than a cycle.
  */
 import type { MathMode } from '@jesscss/core';
-import type { BareVariableRejection, FunctionScope, SelectorCaptureProblem } from '@jesscss/core/ast';
+import type { BareVariableRejection, ForgivenSelectorItem, FunctionScope, SelectorCaptureProblem } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, type LessRecoveredError } from './parse-error.js';
 
 /** What the reducers of one Less parse share and write ({@link LessParseState.document}). */
@@ -26,6 +26,9 @@ export interface LessDocumentFacts {
    * 2026-10-09). A run without it (the raw grammar) raises the problem instead.
    */
   readonly diagnostics: LessRecoveredError[];
+
+  /** Each `:is()` / `:where()` item that is not a selector, for the compiler's warning (`forgivingSelectorItem`). */
+  readonly forgivenSelectorItems?: ForgivenSelectorItem[];
 }
 
 export interface LessParseState extends Partial<BareVariableRejection> {

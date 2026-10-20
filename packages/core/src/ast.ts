@@ -38,7 +38,9 @@ export {
 } from './ast/provenance.js';
 export type { AstSourceSpan, FunctionScope, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueBoundaryTrivia, ValueLayout } from './ast/provenance.js';
 export {
+  adoptForgivenSelectorItems,
   bodySpanFromRaw,
+  forgivenSelectorItemsOf,
   isComplexSelector,
   isForBinding,
   isModuleImport,
@@ -50,9 +52,10 @@ export {
   scannedLeaf,
   selectorCaptureOf,
   semanticGapText,
-  withBlockBody
+  withBlockBody,
+  withForgivenSelectorItems
 } from './ast/grammar-helpers.js';
-export type { SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
+export type { ForgivenSelectorItem, SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
 export {
   appendCustomValueParts,
   appendInterpolationLiteral,
@@ -128,6 +131,7 @@ export {
   anPlusBFrom,
   commaListWithComments,
   directionKeyword,
+  forgivingSelectorItem,
   isAnPlusB,
   isNthArgument,
   keyframeSelectorList,

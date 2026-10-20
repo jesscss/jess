@@ -469,17 +469,16 @@ describe('CSS canonical-AST grammar', () => {
   it('makes selector-argument pseudos selector-only and rejects paren-less nth names (cross-dialect divergence unification)', () => {
     /*
      * Two tracked css/jess/less divergences close here (design §7). (1) The
-     * selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+     * selector-argument pseudos (`:not`/`:has`/`:matches`) take a
      * selector-ONLY argument with no general-any fallback, so a non-selector
      * argument such as `:not(2n+1)` rejects the whole pseudo (less/jess already
-     * reject). (2) A bare, paren-less nth name is not a keyword pseudo — it must
-     * reach the structured nth arms with an immediate `(` or be rejected, matching
-     * Less's identifier-boundary guard.
+     * reject). `:is()` and `:where()` take a forgiving selector list instead
+     * (`forgiving-selector-list.test.ts`). (2) A bare, paren-less nth name is
+     * not a keyword pseudo — it must reach the structured nth arms with an
+     * immediate `(` or be rejected, matching Less's identifier-boundary guard.
      */
     for (const source of [
       '.x:not(2n+1) { color: red; }',
-      '.x:is(2n+1) { color: red; }',
-      '.x:where(2n+1) { color: red; }',
       '.x:has(2n+1) { color: red; }',
       '.x:matches(2n+1) { color: red; }',
       '.x:nth-child { color: red; }',
@@ -672,7 +671,6 @@ describe('CSS canonical-AST grammar', () => {
     for (const source of [
       '[data=] { color: red; }',
       '[data="x" ii] { color: red; }',
-      ':is(.card, ) { color: red; }',
       ':has(.card { color: red; }'
     ]) {
       const cst = parseCssCst(source);

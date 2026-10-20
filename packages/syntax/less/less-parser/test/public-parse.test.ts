@@ -9,6 +9,7 @@ import {
   valueLayoutOf
 } from '../../../../core/src/ast/provenance.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
+import { forgivenSelectorItemsOf } from '@jesscss/core/ast';
 import {
   LessAmbiguousNotError,
   LessBareVariableInterpolationError,
@@ -951,7 +952,7 @@ describe('public Less parse()', () => {
    */
   it.each([
     ['@t: selector(.a:not(@{t}));\n.g { h: i; }', 'selector(.a:not(@{t}))', 21],
-    ['@t: selector(.a:is(1px));\n.g { h: i; }', 'selector(.a:is(1px))', 20]
+    ['@t: selector(.a:is(@{t}));\n.g { h: i; }', 'selector(.a:is(@{t}))', 20]
   ])('parses `%s` and reports the pseudo argument', (source, written, column) => {
     const result = safeParse('/entry.less', source);
     expect(result.document?.rules).toHaveLength(2);
@@ -971,12 +972,25 @@ describe('public Less parse()', () => {
   });
 
   /*
-   * P45 residuals outside selector(), balanced input that still stops the
-   * parse (ledger P49 NOTES): a selector pseudo whose argument is not a
-   * selector list, and an interpolated pseudo argument inside a pseudo argument.
+   * `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1;
+   * owner 2026-10-20): an item that is not a selector is kept as written, and
+   * the document records it for the compiler's warning, in a capture too. An
+   * item is a Less selector, so it reads an interpolated pseudo argument.
    */
-  it.fails.each(['.a:is(1px) {}', '.x:is(.a:not(@{t})) {}'])('parses `%s`', (source) => {
-    expect(safeParse('/entry.less', source).document).toBeDefined();
+  it.each([
+    ['.a:is(1px) {}', ['1px']],
+    ['@t: selector(.a:is(1px));', ['1px']],
+    ['.x:is(.a:not(@{t})) {}', []]
+  ])('parses `%s`', (source, forgiven) => {
+    const result = safeParse('/entry.less', source);
+    expect(result.errors).toEqual([]);
+    expect(forgivenSelectorItemsOf(result.document!).map(item => item.text)).toEqual(forgiven);
+  });
+
+  it('captures a forgiving list as written', () => {
+    expect(safeParse('/entry.less', '@t: selector(.a:is(1px));').document?.rules[0]).toMatchObject({
+      value: { type: 'SelectorCapture', src: 'selector(.a:is(1px))' }
+    });
   });
 
   /*

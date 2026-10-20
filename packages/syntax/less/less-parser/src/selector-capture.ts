@@ -5,7 +5,7 @@
  * recovered-error channel (P45).
  */
 import type { Span } from 'parseman';
-import { any, selectorCaptureOf, simpleSelector } from '@jesscss/core/ast';
+import { adoptForgivenSelectorItems, any, selectorCaptureOf, simpleSelector } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, SelectorCaptureProblem, SimpleToken } from '@jesscss/core/ast';
 import { isLessSelectorList, requireToken, staticSelectorPseudoFrom } from './grammar-helpers.js';
 import { LessSelectorCaptureArgumentError } from './parse-error.js';
@@ -20,10 +20,10 @@ import { reportRecovered, selectorCaptureOfState } from './parse-state.js';
  * first in the source, so it is the one reported.
  */
 export function selectorCaptureFrom(children: readonly unknown[], span: Span, state: unknown): SelectorCapture | Any {
-  const found = selectorCaptureOf(children, span);
+  const found = selectorCaptureOf(children, span, state);
   const nested = problemBefore(selectorCaptureOfState(state)?.problem, found);
   if ('type' in found) {
-    return nested === undefined ? found : recovered(found.src, nested, state);
+    return nested === undefined ? adoptForgivenSelectorItems(children, found, state) : recovered(found.src, nested, state);
   }
   return recovered(found.written, nested ?? found, state);
 }
@@ -55,7 +55,7 @@ function recovered(written: string, at: SelectorCaptureProblem, state: unknown):
  * keeps it as written and records it for the capture to report (P45).
  */
 export function capturedPseudoFrom(children: readonly unknown[], span: Span, state: unknown): SimpleToken {
-  const found = selectorCaptureOf(children, span);
+  const found = selectorCaptureOf(children, span, state);
   if ('type' in found) {
     return staticSelectorPseudoFrom(requireToken(children[0]).value.slice(0, -1), children.find(isLessSelectorList));
   }

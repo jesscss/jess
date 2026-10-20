@@ -14,6 +14,7 @@ import {
   recoveredInTree,
   simpleSelectorIsPlaceholder,
   withSourceSpan,
+  withForgivenSelectorItems,
   withTriviaMap,
   type Apply,
   type Ruleset,
@@ -23,6 +24,7 @@ import {
   type SimpleSelector,
   type SimpleToken,
   type Statement,
+  type ForgivenSelectorItem,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
@@ -256,10 +258,11 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
    */
   const diagnostics: JessRecoveredError[] = [];
   const stars: object[] = [];
+  const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input, diagnostics, stars }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics, stars, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok) {
     throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));
@@ -305,10 +308,10 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
       ...positionAt(input, result.span.end)
     });
   }
-  const document = withTriviaMap(
+  const document = withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
-  );
+  ), forgivenSelectorItems);
   validateJessOptions(document, options);
   const recovered = recoveredInTree(document, diagnostics);
   return {

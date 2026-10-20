@@ -393,6 +393,8 @@ type SharedSyntax = {
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
+  // Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list.
+  ForgivingSelectorList: Combinator<SelectorList>;
   // Inherited from the CSS base: the media query list (`@media`, an import postlude).
   QueryPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base: an only-clause or a chain of media terms.
@@ -4935,6 +4937,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )
   );
   /*
+   * `:is()` / `:where()`: the CSS base's forgiving selector list, whose items
+   * are Less selectors, interpolation and all; one that is not a selector is
+   * kept as written, in a capture too.
+   */
+  const forgivingPseudoRouted = node(
+    'PseudoSelector',
+    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(g.ForgivingSelectorList, literal(')')))),
+    children => staticSelectorPseudoFrom(
+      requireToken(children[0]).value.slice(0, -1),
+      children[1]
+    )
+  );
+  /*
    * Inside a capture, a selector pseudo reads its argument as the capture
    * does, so a non-selector or interpolated argument (`selector(.a:is(1px))`)
    * is recovered where it stands and reported by the capture (P45).
@@ -4992,8 +5007,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const pseudo = dispatch(
     pseudoOpen,
+    caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
+      [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
       choice(pseudoSelectorRouted, interpolatedArgumentPseudoRouted)
     ),
     caseOf(':lang(', choice(langPseudoRouted, interpolatedArgumentPseudoRouted)),
@@ -5010,8 +5026,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // selector surface.
   const staticPseudoDispatch = dispatch(
     pseudoOpen,
+    caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
+      [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
       choice(
         { gate: state => selectorCaptureOfState(state) !== undefined, combinator: capturedPseudoRouted },
         pseudoSelectorRouted

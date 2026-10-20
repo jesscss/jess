@@ -226,6 +226,7 @@ type JessRules = {
   PseudoSelectorList: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
   ComplexSelector: Combinator<SelectorBranch>;
+  RelativeSelector: Combinator<SelectorBranch>;
   NestedSelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
@@ -322,6 +323,9 @@ type SharedSyntax = {
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
   TypedOfTypePseudoArgument: Combinator<NthArgument>;
+
+  /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
+  ForgivingSelectorList: Combinator<SelectorList>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -2182,7 +2186,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           )
         ),
         caseInsensitiveWhen(
-          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          ['is(', 'where('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            parser(
+              { trivia: whitespace },
+              g.ForgivingSelectorList
+            ),
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
             optional(rawWhitespace),
@@ -6287,6 +6304,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelectorList,
     SelectorCapture,
     ComplexSelector,
+    RelativeSelector,
     NestedSelectorList,
     Ruleset,
     NestedRuleset,

@@ -64,6 +64,7 @@ import {
   isSelectorBranch,
   anPlusBFrom,
   directionKeyword,
+  forgivingSelectorItem,
   isAnPlusB,
   isNthArgument,
   isSelectorList,
@@ -229,6 +230,9 @@ type GrammarRuleName =
   | 'Property'
   | 'PseudoArgument'
   | 'PseudoSelector'
+  | 'RelativeSelector'
+  | 'ForgivingSelectorItem'
+  | 'ForgivingSelectorList'
   | 'QueryClause'
   | 'QueryFeature'
   | 'QueryFunction'
@@ -1389,6 +1393,48 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * `:is()` and `:where()` take a `<forgiving-selector-list>` (Selectors 4
+   * §4.2, §4.4, §16.1): an item that is not a selector is dropped by a browser
+   * and the others still match, so `.card:is(.active, 1px)` is
+   * `.card:is(.active)` and `.a:is(1px)` / `.a:is()` are valid selectors that
+   * match nothing. Each comma-separated item is read once, at the current
+   * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
+   * the item up to its `,` or `)` — balanced, so a nested group is part of it.
+   * An item with a rest, or none at all, is kept as written
+   * (`forgivingSelectorItem`, which records it for the compiler's
+   * `css/forgiving-selector-item` warning). Trivia is the caller's: each
+   * dialect's pseudo reads this list under its own selector trivia.
+   */
+  const forgivingSelectorRest = sequence(
+    not(choice(literal(','), literal(')'))),
+    scanTo(
+      choice(literal(','), literal(')')),
+      {
+        skip: [
+          balanced('(', ')'),
+          balanced('[', ']')
+        ]
+      }
+    )
+  );
+  const ForgivingSelectorItem = node(
+    'ForgivingSelectorItem',
+    sequence(
+      optional(g.RelativeSelector),
+      optional(forgivingSelectorRest)
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => forgivingSelectorItem(children, span, state)
+  );
+  const ForgivingSelectorList = node(
+    'ForgivingSelectorList',
+    oneOrMoreSep(
+      g.ForgivingSelectorItem,
+      literal(',')
+    ),
+    children => selist(...selectorBranches(children))
+  );
+
+  /*
    * Pseudo selectors share one identifier/function opener after `:`/`::`.
    * Route that opener once, so known function pseudos commit to their structured
    * argument grammar while unknown glued functions keep the generic raw argument
@@ -1421,7 +1467,18 @@ const cssFactory = (g: GrammarSelf) => {
           )
         ),
         cssCase(
-          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          ['is(', 'where('],
+          sequence(
+            routed(),
+            parser(
+              { trivia: interstitialTrivia },
+              g.ForgivingSelectorList
+            ),
+            literal(')')
+          )
+        ),
+        cssCase(
+          ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
             SelectorOnlyPseudoArgument,
@@ -5158,6 +5215,9 @@ const cssFactory = (g: GrammarSelf) => {
     NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
+    RelativeSelector,
+    ForgivingSelectorItem,
+    ForgivingSelectorList,
     PseudoArgument,
     OfTypePseudoArgument,
     AnPlusB,

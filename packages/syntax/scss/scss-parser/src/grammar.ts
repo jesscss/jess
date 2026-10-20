@@ -191,6 +191,9 @@ type ScssSharedSyntax = {
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
 
+  /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
+  ForgivingSelectorList: Combinator<SelectorList>;
+
   /*
    * Converged to the CSS base (inherited via compose): same token rule
    * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -4548,6 +4551,25 @@ const scssFactory = (g: ScssInputRules) => {
       requireSelectorList(children.find(isSelectorList))
     )
   );
+
+  /* `:is()` / `:where()`: the CSS base's forgiving selector list, over SCSS's own `RelativeSelector`. */
+  const ForgivingPseudo = node<SimpleToken>(
+    'StructuredPseudo',
+    sequence(
+      routed(),
+      optional(space),
+      parser(
+        { trivia: whitespace },
+        g.ForgivingSelectorList
+      ),
+      optional(space),
+      literal(')')
+    ),
+    children => pseudoSelector(
+      scssPseudoName(requireToken(children[0]).value),
+      requireSelectorList(children.find(isSelectorList))
+    )
+  );
   const GlobalLocalPseudo = node<SimpleSelector>(
     'GlobalLocalPseudo',
 
@@ -4586,7 +4608,8 @@ const scssFactory = (g: ScssInputRules) => {
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
     caseInsensitive([':nth-of-type(', ':nth-last-of-type(', ':nth-col(', ':nth-last-col('], NthTypePseudo),
-    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
+    caseInsensitive([':is(', ':where('], ForgivingPseudo),
+    caseInsensitive([':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
     caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
     caseInsensitive(':lang(', LangPseudo),
     caseInsensitive(':dir(', DirPseudo),
