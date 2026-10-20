@@ -199,6 +199,11 @@ describe('owner rulings (Less 5)', () => {
     await expect(render('@supports selector(.a ~ .b) { .x { c: d; } }')).resolves.toBe('@supports selector(.a ~ .b) {\n  .x {\n    c: d;\n  }\n}\n');
   });
 
+  it('P49 (owner 2026-10-20): a selector() capture is the selector list & and selector.parse() are', async () => {
+    await expect(render('@s: selector(.a, .b > .c);\n.x { n: length(@s); v: @s; }')).resolves.toBe('.x {\n  n: 2;\n  v: .a, .b > .c;\n}\n');
+    await expect(compile('$s: selector(.a, .b);\n.a, .b { own: &; captured: $s; }', '.jess')).resolves.toBe('.a,\n.b {\n  own: .a, .b;\n  captured: .a, .b;\n}\n');
+  });
+
   it('X3 (owner 2026-10-05): an all extend groups equal-specificity extenders into an :is() at the match', async () => {
     await expect(render('.a .c { color: red; }\n.d:extend(.c all) {}\n#e:extend(.c all) {}'))
       .resolves.toBe('.a :is(.c, .d),\n.a #e {\n  color: red;\n}\n');
