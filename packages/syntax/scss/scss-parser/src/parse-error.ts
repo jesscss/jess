@@ -92,29 +92,5 @@ export class ScssImportPostludeError extends SyntaxError {
   }
 }
 
-/**
- * `&` in a value: Sass reads it as the selector of the rule it is in, and Jess
- * gives it no value, so the declaration would be written wrong. Located at the
- * `&`; the parse keeps it as written and carries on (ledger P45).
- */
-export class ScssParentSelectorValueError extends SyntaxError {
-  readonly code = 'parse/unsupported-parent-selector-value' as const;
-  readonly offset: number;
-  readonly endOffset: number;
-  readonly reason = 'Sass reads `&` in a value as the selector of the rule it is in, and Jess does not compute that value, so the declaration would be written wrong.';
-  readonly fix = 'Write the selector itself, or use `&` in a selector.';
-
-  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
-  readonly recoveredValue: object;
-
-  constructor(offset: number, endOffset: number, recoveredValue: object) {
-    super('The parent selector `&` has no value here.');
-    this.name = 'ScssParentSelectorValueError';
-    this.offset = offset;
-    this.endOffset = endOffset;
-    this.recoveredValue = recoveredValue;
-  }
-}
-
 /** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
-export type ScssRecoveredError = LeadingSeparatorValueError | ScssParentSelectorValueError;
+export type ScssRecoveredError = LeadingSeparatorValueError;

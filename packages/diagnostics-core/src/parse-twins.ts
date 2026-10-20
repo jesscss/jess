@@ -383,8 +383,8 @@ export function pushParseTwinDiagnostics(
   /*
    * Shapes the strict AST rejects by name — a separator-led value (ledger P33)
    * and a Less uncalled mixin reference (rejected today; ruling OPEN under
-   * P33), SCSS's `&` in a value — are kept as nodes in the tolerant CST, so
-   * their twin is reported from the node.
+   * P33) — are kept as nodes in the tolerant CST, so their twin is reported
+   * from the node.
    */
   if ((language === 'scss' || language === 'jess') && gt === 'LeadingSeparatorValue') {
     const lead = cstChildrenOf(node)[0];
@@ -393,10 +393,6 @@ export function pushParseTwinDiagnostics(
   }
   if (language === 'jess' && gt === 'Stylesheet') {
     pushBareArithmeticTwins(node, source, push);
-  }
-  if (language === 'scss' && gt === 'ParentSelector') {
-    const error = ERR.unsupportedParentSelectorValue();
-    push('parse/unsupported-parent-selector-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
 
   /* Less keeps its own text for a separator-led value until its parser takes the shared one. */

@@ -69,7 +69,6 @@
     "import-option-split: if (importHasOption(options, 'inline')) {",
     "emit-literal: const e: Emit = {",
     "import-option-split: && importHasOption(importRequestOptions(node.options), 'inline')) {",
-    "quote-scan: if (c === '\"' || c === '\\'') {",
     "custom-property-bytes: if (!name.startsWith('--')) {",
     "custom-property-bytes: return name.startsWith('--');",
     "custom-property-bytes: return head !== undefined && 'lit' in head && head.lit.startsWith('--');",

@@ -19,7 +19,7 @@
 import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
-import { ScssImportPostludeError, ScssParentSelectorValueError, type ScssRecoveredError } from './parse-error.js';
+import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 
@@ -295,7 +295,8 @@ export function isScssValue(value: unknown): value is ValueNode {
     case 'Quoted':
       return isQuoted(value);
     case 'Lookup':
-      return isVarRef(value);
+      /* `$name`, or `&`, the parent selector. */
+      return isVarRef(value) || ('kind' in value && value.kind === 'parent');
     case 'Color':
       return isColor(value);
     case 'Dimension':
@@ -528,13 +529,6 @@ export function leadingSeparatorValue(children: readonly unknown[], span: { read
   const operator = any(requireToken(children[0]).value);
   reportRecovered(new LeadingSeparatorValueError(span.start, span.end, operator.src, operator), state);
   return [operator, customValueFromChildren(children.slice(1))];
-}
-
-/** `&` in a value: Sass's parent selector, which Jess gives no value — kept as written, and an error at the `&` (P45). */
-export function parentSelectorValue(span: { readonly start: number; readonly end: number }, state: unknown): ValueNode {
-  const value = any('&');
-  reportRecovered(new ScssParentSelectorValueError(span.start, span.end, value), state);
-  return value;
 }
 
 /** A space list holding a delim component — the `Any` a `PunctuationValue` builds. */

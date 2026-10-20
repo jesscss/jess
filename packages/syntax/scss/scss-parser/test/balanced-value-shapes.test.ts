@@ -55,14 +55,20 @@ describe('a value led by a separator', () => {
   });
 });
 
-/* Sass reads `&` in a value as the parent selector; Jess parses it and reports that it has no value for it. */
+/* Sass reads `&` in a value as the parent selector: the lookup the evaluator answers (owner 2026-10-19). */
 describe('the parent selector in a value', () => {
-  it.each([
-    ['.btn { content: &; }\n.after { color: red; }', '&'],
-    ['.btn { content: selector-append(&, "-b"); }\n.after { color: red; }', '&']
-  ])('%s', (source, at) => {
-    expect(recovered(source)).toEqual([`parse/unsupported-parent-selector-value ${at}`]);
-    expect(parseRecovering(source).document.rules).toHaveLength(2);
+  const parent = { type: 'Lookup', kind: 'parent', raw: '&' };
+
+  it('in a declaration', () => {
+    const source = '.btn { content: &; }\n.after { color: red; }';
+    expect(recovered(source)).toEqual([]);
+    expect(declarationValue(parse(source))).toMatchObject(parent);
+  });
+
+  it('as a call argument', () => {
+    const source = '.btn { content: selector-append(&, "-b"); }\n.after { color: red; }';
+    expect(recovered(source)).toEqual([]);
+    expect(declarationValue(parse(source))).toMatchObject({ type: 'FunctionCall', args: [{ value: parent }, {}] });
   });
 
   it('leaves `&` in a selector a selector', () => {
@@ -71,7 +77,7 @@ describe('the parent selector in a value', () => {
       rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'c' }] }]
     });
 
-    /* A run that keeps no diagnostics drops the report of an attempt it abandons. */
+    /* The raw grammar reads it the same. */
     expect(run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace })).toMatchObject({ ok: true, unconsumedFrom: null });
   });
 });

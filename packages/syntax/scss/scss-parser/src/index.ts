@@ -3,7 +3,7 @@ import { scssGrammar } from './grammar/ast.js';
 import { parseRecoveringWith, parseWith, type ScssParsed } from './parse-with.js';
 
 export type { ScssParsed } from './parse-with.js';
-export { ScssImportPostludeError, ScssParentSelectorValueError, ScssParseError, type ScssRecoveredError } from './parse-error.js';
+export { ScssImportPostludeError, ScssParseError, type ScssRecoveredError } from './parse-error.js';
 
 /**
  * Parse SCSS directly into the canonical AST v2 document.

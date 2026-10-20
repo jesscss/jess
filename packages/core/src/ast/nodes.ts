@@ -196,7 +196,7 @@ export type VariableLookup = 'live' | 'scoped';
  * ABSENT on `DotLookup`, which is why "what is being looked up" there looked
  * like a semantic problem instead of a missing slot.
  */
-export type LookupKind = 'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member';
+export type LookupKind = 'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member' | 'parent';
 
 /**
  * A reference: WHERE you look (`scope`), WHAT kind of thing you look for
@@ -225,6 +225,8 @@ export interface Lookup extends SpanSlots {
    *   ruleset chain, carrying the source declaration's `!important`.
    * `entry` — the current declaration-entry surface; `name` is empty, and dot
    *   steps on it resolve against both CSS property and variable declarations.
+   * `parent` — `&` in a SCSS or `.jess` value: the selector of the style rule the
+   *   value is evaluated in, or `null` outside any rule; `name` is empty.
    */
   readonly kind: LookupKind;
 
@@ -1871,6 +1873,10 @@ export const variableReference = (name: string | ValueNode, lookup: VariableLook
 /** The current declaration-entry surface — {@link Lookup} of kind `entry`. */
 export const declarationReference = (raw: string = '$'): Lookup =>
   ({ type: 'Lookup', scope: 'scoped', kind: 'entry', name: '', raw, _s: NO_SPAN, _e: NO_SPAN });
+
+/** `&` in a value — {@link Lookup} of kind `parent`. */
+export const parentSelectorReference = (): Lookup =>
+  ({ type: 'Lookup', scope: 'scoped', kind: 'parent', name: '', raw: '&', _s: NO_SPAN, _e: NO_SPAN });
 
 /** One lookup step in a {@link Reference} chain (dot or bracket — one node). */
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>

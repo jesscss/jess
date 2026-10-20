@@ -1025,15 +1025,6 @@ export const ERR = {
     });
   },
 
-  /** SCSS `&` in a value, the parent selector, which Jess gives no value (P45: parsed, then an error). */
-  unsupportedParentSelectorValue(args: Common = {}) {
-    return makeJessError({
-      code: 'parse/unsupported-parent-selector-value',
-      phase: 'parse',
-      ...args
-    });
-  },
-
   /**
    * A delim no CSS value accepts — `.`, `~`, `=`, `|`, `^` or `?` — parsed as
    * balanced CSS and is then an error (owner 2026-10-16: "the point of parsing

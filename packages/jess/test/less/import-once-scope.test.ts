@@ -99,6 +99,10 @@ describe('import-once scope', () => {
     await expect(renderFiles([['main.less', '.m() { @import "t.less"; } .a { .m(); .m(); }'], t]))
       .resolves.toBe('.a .t {\n  a: 1;\n}');
 
+    // A rule a mixin places is the output context it writes, the same for every call into one rule.
+    await expect(renderFiles([['main.less', '.m() { .a { @import "t.less"; } } .x { .m(); } .x { .m(); }'], t]))
+      .resolves.toBe('.x .a .t {\n  a: 1;\n}');
+
     // Calls from two rulesets are two scopes.
     await expect(renderFiles([['main.less', '.m() { @import "t.less"; } .x { .m(); } .y { .m(); }'], t]))
       .resolves.toBe('.x .t {\n  a: 1;\n}\n.y .t {\n  a: 1;\n}');
