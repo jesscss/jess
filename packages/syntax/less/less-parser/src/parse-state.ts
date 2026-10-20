@@ -54,9 +54,36 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * parseman hands each state-reading reducer a shallow copy of the state and
    * only a reference carries a write back. One member, not two: the copy is
    * made per reducer call, and a fifth state member outgrows the copy's
-   * in-object slots, which measured +2% on every Less parse.
+   * in-object slots, which measured +2% on every Less parse. The one fifth
+   * member there is, {@link valueStop}, exists only on the states derived
+   * inside a call argument's or an operand's value run, so the document-level
+   * state keeps four; it cost +0.1% AST and +1% CST in marginal instructions
+   * per `benchmark.less` parse (2026-10-19), the CST share being the snapshot
+   * a CST node takes of the state it was parsed under.
    */
   readonly document?: LessDocumentFacts;
+
+  /**
+   * Where a value run stops, set by what reads it and read between the run's
+   * pieces: a function argument's run and an operand run stop before a
+   * comparison operator, `and` or `or` (`condition`); a mixin argument's run
+   * before a comparison operator only (`comparison`). A `ValueSequence` entered under a
+   * stop clears it, so a value nested inside one of the run's pieces reads with
+   * its own stop, never its parent's.
+   */
+  readonly valueStop?: ValueStop;
+}
+
+/** Where a call argument's value run stops ({@link LessParseState.valueStop}). */
+export type ValueStop = 'condition' | 'comparison';
+
+/** The stop of the value run being read ({@link LessParseState.valueStop}), for the grammar's gates. */
+export function valueStopOf(state: unknown): ValueStop | undefined {
+  if (typeof state !== 'object' || state === null || !('valueStop' in state)) {
+    return undefined;
+  }
+  const stop = state.valueStop;
+  return stop === 'condition' || stop === 'comparison' ? stop : undefined;
 }
 
 /**

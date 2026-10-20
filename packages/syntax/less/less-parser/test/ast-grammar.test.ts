@@ -104,6 +104,13 @@ function findCstNodes(
   ];
 }
 
+/** The value runs read as function arguments: a `ValueSequence` directly under a `FunctionArgument`. */
+function functionArgumentValueSequences(node: LessCstChild): Extract<LessCstChild, { _tag: 'node' }>[] {
+  return findCstNodes(node, 'FunctionArgument').flatMap(argument => argument.rules.filter(
+    (child): child is Extract<LessCstChild, { _tag: 'node' }> => child._tag === 'node' && child.grammarType === 'ValueSequence'
+  ));
+}
+
 function cstLeafValues(node: LessCstChild): string[] {
   if (node._tag === 'leaf') {
     return [node.value];
@@ -6467,7 +6474,7 @@ describe('Less AST grammar facts', () => {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
     expect(cstIssueCount(cst)).toBe(0);
-    expect(findCstNodes(cst.tree, 'FunctionValueSequence')).toHaveLength(3);
+    expect(functionArgumentValueSequences(cst.tree)).toHaveLength(3);
     expect(findCstNodes(cst.tree, 'FunctionCondition')).toHaveLength(0);
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
@@ -6506,6 +6513,54 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads a value nested inside a call argument with its own stop, not the argument\'s', () => {
+    /*
+     * A call argument's value run stops before `=` (its comparison); a value
+     * run nested inside one of its pieces — here the list inside `~(…)` — has
+     * no stop, so a glued `=` joins it exactly as it does in a declaration.
+     */
+    const parsed = (source: string) => {
+      const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return result.value;
+    };
+    const escaped = { type: 'Block', escaped: true, value: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '=' }, { type: 'Keyword', src: 'b' }] };
+    expect(parsed('.a { x: foo(~(a=b) c, d); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'foo', args: [{ value: [escaped, { type: 'Keyword', src: 'c' }] }, { value: { type: 'Keyword', src: 'd' } }] } }] }]
+    });
+    expect(parsed('.a { .m(~(a=b) c); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: [escaped, { type: 'Keyword', src: 'c' }] }] }] }]
+    });
+  });
+
+  it('reads `and` / `or` in a mixin argument as words, and stops its run only at a comparison', () => {
+    const args = (source: string) => {
+      const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return result.value;
+    };
+    const word = (src: string) => ({ type: 'Keyword', src });
+    expect(args('.a { .m(a and b); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: [word('a'), word('and'), word('b')] }] }] }]
+    });
+
+    // A glued `=` is the comparison too, never a delim joined into the run.
+    expect(args('.a { .m(a=b); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: {
+        type: 'Condition',
+        guard: { g: 'cmp', op: '=', left: word('a'), right: word('b') }
+      } }] }] }]
+    });
+    expect(args('.a { .m(a = b and c); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: {
+        type: 'Condition',
+        guard: { g: 'cmp', op: '=', left: word('a'), right: { type: 'Sequence', parts: [word('b'), word('and'), word('c')] } }
+      } }] }] }]
+    });
+  });
+
   it('keeps typed function value sequences at every authored argument boundary', () => {
     const delimiters = [',', ';', ')'] as const;
     const trivia = ['', '\n', '/* boundary */', '// boundary\n'] as const;
@@ -6529,7 +6584,7 @@ describe('Less AST grammar facts', () => {
         }
 
         expect(cstIssueCount(cst), source).toBe(0);
-        expect(findCstNodes(cst.tree, 'FunctionValueSequence'), source).toHaveLength(1);
+        expect(functionArgumentValueSequences(cst.tree), source).toHaveLength(1);
         expect(findCstNodes(cst.tree, 'FunctionCondition'), source).toHaveLength(0);
         expect(result.ok, source).toBe(true);
         expect(result.unconsumedFrom, source).toBeNull();

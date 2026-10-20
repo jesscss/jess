@@ -404,7 +404,7 @@ Buckets: **C** = CONVERGE→INHERIT (firm), **C?** = CONVERGE? NEEDS-ORACLE-PROO
 | PreservedDivision | 3642 | **O** | — | Less parens-division slash-group → `spaced()` + `withValueLayout` |
 | valuePiece | 3725 | **O** | valueAtom:2229 | routes into math tower + literal `/ - %` |
 | ValueSequence | 3775 | **O** | ValueSequence:2246 | glued `@`-var boundary + math pieces + custom reducer |
-| ArgumentValueSequence | 3789 | A | — | fn-arg value term w/ `functionConditionStop` guard |
+| conditionArgumentValue | 3789 | A | — | fn-arg value term w/ `functionConditionStop` guard |
 | ValueList | 3798 | **O** | ValueList:2273 | MixinReference accessor arm + reference short-circuit |
 | VariableValue | 3821 | A | — | `@name:` decl value layout (leading trivia, trailing comma) |
 | ImportantValue | 3837 | A | — | wraps ValueList in `important()` so refs hoist priority |
