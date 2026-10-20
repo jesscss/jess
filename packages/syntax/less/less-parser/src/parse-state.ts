@@ -59,25 +59,14 @@ export interface LessParseState extends Partial<BareVariableRejection> {
   readonly document?: LessDocumentFacts;
 
   /**
-   * Where the value run a call argument reads stops, set by the argument: a
-   * function argument stops before a comparison operator, `and` or `or`
-   * (`condition`); a mixin argument before a comparison operator only
-   * (`comparison`). The `ValueSequence` the argument reads takes it over as
-   * {@link valueStop} and clears it.
-   */
-  readonly argumentStop?: ValueStop;
-
-  /**
-   * The stop of the value run being read, read between its pieces. A
-   * `ValueSequence` entered without an {@link argumentStop} goes back to
-   * {@link outsideValueStop}, so a value nested inside a piece — `~(…)`,
-   * `%(…)`, a detached ruleset in a mixin argument — reads with its own stop,
-   * never its parent's.
+   * Where the value run a call argument reads stops, set by the argument and
+   * read between the run's pieces: a function argument stops before a
+   * comparison operator, `and` or `or` (`condition`); a mixin argument before a
+   * comparison operator only (`comparison`). A `ValueSequence` entered under a
+   * stop clears it, so a value nested inside one of the run's pieces reads with
+   * its own stop, never its parent's.
    */
   readonly valueStop?: ValueStop;
-
-  /** The state outside every argument stop: what a value run nested inside a piece reads under. */
-  readonly outsideValueStop?: LessParseState;
 }
 
 /** Where a call argument's value run stops ({@link LessParseState.valueStop}). */

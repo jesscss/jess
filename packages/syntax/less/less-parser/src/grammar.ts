@@ -1865,49 +1865,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // out of it. `@name:` must open no other operator, keeping `::` out.
   const keywordArgumentKey = regex(/@[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*:(?!:))/);
   const keywordArgumentOperator = regex(/[ \t\n\r\f]*:[ \t\n\r\f]*/);
-  /**
-   * A function argument's value run (`ValueSequence`), stopping where a Less
-   * condition would go on, and failing when one follows so the argument is
-   * read as a FunctionCondition. Function bodies use their own argument
-   * delimiters, but comments *inside* an argument are still lexical trivia;
-   * the enclosing argument list owns comma, semicolon, close, and their trivia.
-   */
-  const conditionArgumentValue = withCtx(
-    (state: LessParseState | undefined) => ({ ...state, argumentStop: 'condition' as const, outsideValueStop: state?.valueStop === undefined ? state : state.outsideValueStop }),
-    noTrivia(sequence(g.ValueSequence, not(functionConditionStop)))
-  );
-  const FunctionKeywordArgument = node(
-    'FunctionKeywordArgument',
-    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, conditionArgumentValue)),
-    (children, fields) => {
-      const value = children.find(isLessValueSlotValue);
-      if (value === undefined) {
-        throw new TypeError('Less function keyword argument lost its value.');
-      }
-      return callArg(value, staticText(requireField(fields, 'key').value).slice(1), false, '@');
-    }
-  );
-  const FunctionArgument = node(
-    'FunctionArgument',
-    choice(
-      sequence(functionConditionNotAhead, g.FunctionCondition),
-      g.FunctionKeywordArgument,
-      g.FunctionScalarArgument,
-      conditionArgumentValue,
-      g.FunctionCondition
-    ),
-    (children) => {
-      const named = children.find(isLessCallArg);
-      if (named !== undefined) {
-        return named;
-      }
-      const value = children.find(isLessValueSlotValue);
-      if (value === undefined) {
-        throw new TypeError('Less function argument lost its value.');
-      }
-      return value;
-    }
-  );
   // Generic Less function calls carry one flat positional argument vector.
   // Unlike mixin arguments, commas and semicolons do not create nested groups
   // here: either delimiter separates the next typed argument, and evaluation
@@ -2563,24 +2520,68 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * One value run, wherever it is read; only where it stops differs. A value
    * has no stop, and a glued `=` joins it (`a=b`). A call argument reads the
-   * same run up to its comparison, which it asks for as
-   * `LessParseState.argumentStop`: a function argument stops before a
+   * same run up to its comparison, which it sets as `LessParseState.valueStop`,
+   * read between the run's pieces: a function argument stops before a
    * comparison operator, `and` or `or` (and fails when one follows, so the
    * argument is a FunctionCondition instead); a mixin argument stops before a
-   * comparison operator only. On entry the run takes the request over as its
-   * `valueStop`, read between its pieces; a run entered without one goes back
-   * to the state outside every stop, so a run nested inside a piece (`~(…)`,
-   * `%(…)`, a detached ruleset in a mixin argument) never reads its parent's.
+   * comparison operator only, reading `and` / `or` as words.
+   *
+   * A call argument reads the run itself (`valueRun`). Every other caller
+   * reads `ValueSequence`, which clears a stop it was entered under, so a run
+   * nested inside a piece of an argument's run (`foo(~(a=b) c)`) never reads
+   * its parent's stop.
    */
+  const valueRun = node(
+    'ValueSequence',
+    noTrivia(sequence(g.valuePiece, many(valueContinuation))),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
+  );
   const ValueSequence = withCtx(
-    (state: LessParseState | undefined) => state?.argumentStop !== undefined
-      ? { ...state, argumentStop: undefined, valueStop: state.argumentStop }
-      : state?.valueStop !== undefined ? state.outsideValueStop : state,
-    node(
-      'ValueSequence',
-      noTrivia(sequence(g.valuePiece, many(valueContinuation))),
-      (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
-    )
+    (state: LessParseState | undefined) => state?.valueStop === undefined ? state : { ...state, valueStop: undefined },
+    valueRun
+  );
+  /**
+   * A function argument's value run (`ValueSequence`), stopping where a Less
+   * condition would go on, and failing when one follows so the argument is
+   * read as a FunctionCondition. Function bodies use their own argument
+   * delimiters, but comments *inside* an argument are still lexical trivia;
+   * the enclosing argument list owns comma, semicolon, close, and their trivia.
+   */
+  const conditionArgumentValue = withCtx(
+    (state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }),
+    noTrivia(sequence(valueRun, not(functionConditionStop)))
+  );
+  const FunctionKeywordArgument = node(
+    'FunctionKeywordArgument',
+    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, conditionArgumentValue)),
+    (children, fields) => {
+      const value = children.find(isLessValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Less function keyword argument lost its value.');
+      }
+      return callArg(value, staticText(requireField(fields, 'key').value).slice(1), false, '@');
+    }
+  );
+  const FunctionArgument = node(
+    'FunctionArgument',
+    choice(
+      sequence(functionConditionNotAhead, g.FunctionCondition),
+      g.FunctionKeywordArgument,
+      g.FunctionScalarArgument,
+      conditionArgumentValue,
+      g.FunctionCondition
+    ),
+    (children) => {
+      const named = children.find(isLessCallArg);
+      if (named !== undefined) {
+        return named;
+      }
+      const value = children.find(isLessValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Less function argument lost its value.');
+      }
+      return value;
+    }
   );
   const ValueList = node(
     'ValueList',
@@ -3630,8 +3631,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
      * reads `and` / `or` as words).
      */
     choice(attempt(g.FlatMixinCall), g.ValueBlock, withCtx(
-      (state: LessParseState | undefined) => ({ ...state, argumentStop: 'comparison' as const, outsideValueStop: state?.valueStop === undefined ? state : state.outsideValueStop }),
-      sequence(g.ValueSequence, many(sequence(functionConditionOperator, optional(g.ValueSequence))))
+      (state: LessParseState | undefined) => ({ ...state, valueStop: 'comparison' as const }),
+      sequence(valueRun, many(sequence(functionConditionOperator, optional(valueRun))))
     )),
     (children, _fields, _span, rawChildren, triviaLog, state) => {
       const value = children[0];

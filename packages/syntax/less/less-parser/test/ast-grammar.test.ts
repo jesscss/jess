@@ -6534,6 +6534,25 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads `and` / `or` in a mixin argument as words, and stops its run only at a comparison', () => {
+    const args = (source: string) => {
+      const result = run(lessGrammar.Document, source, { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return result.value;
+    };
+    const word = (src: string) => ({ type: 'Keyword', src });
+    expect(args('.a { .m(a and b); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: [word('a'), word('and'), word('b')] }] }] }]
+    });
+    expect(args('.a { .m(a = b and c); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: {
+        type: 'Condition',
+        guard: { g: 'cmp', op: '=', left: word('a'), right: { type: 'Sequence', parts: [word('b'), word('and'), word('c')] } }
+      } }] }] }]
+    });
+  });
+
   it('keeps typed function value sequences at every authored argument boundary', () => {
     const delimiters = [',', ';', ')'] as const;
     const trivia = ['', '\n', '/* boundary */', '// boundary\n'] as const;

@@ -767,23 +767,24 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
   changes CST nesting, so it needs its own before/after oracle. The former `rulesetBody`
   is now `blockBody` itself: every braced body takes the `ExtendStatement` arm since
   ledger X19 was ruled (2026-10-06).
-- #60 less value sequence — **LANDED 2026-10-19** (parseman `^0.55.0`). The three
+- #60 less value sequence — **LANDED 2026-10-19** (parseman `^0.55.1`). The three
   near-copies (`ValueSequence`, `ArgumentValueSequence` / CST `FunctionValueSequence`,
-  `callArgumentSequence`) are one `ValueSequence` whose stop comes from the context the
+  `callArgumentSequence`) are one value-run node whose stop comes from the context the
   caller sets. parseman 0.55's `withCtx(state => next, c)` derives the subtree state
   from the current one, so `mathMode`, `source`, `document` and the function scope
-  survive. A call argument asks for its stop (`LessParseState.argumentStop`:
-  `condition` for a function argument, `comparison` for a mixin argument); the run
-  takes it over on entry as `valueStop`, read between pieces by `valueRunEndAhead`
-  (trivia gap) and `gluedValueBoundary` (glued `=`); a run entered without a request
-  goes back to `outsideValueStop`, so a run nested inside a piece (`~(…)`) never reads
-  its parent's stop. The function argument's "fails when a condition follows" is its
-  own `not(functionConditionStop)` at the argument (`conditionArgumentValue`). One CST
-  name: `FunctionValueSequence` → `ValueSequence`. Oracle vs the pre-fold build: zero
+  survive. A call argument sets `LessParseState.valueStop` (`condition` for a function
+  argument, `comparison` for a mixin argument) and reads the run node itself
+  (`valueRun`); the run reads the stop between pieces (`valueRunEndAhead` at the
+  trivia gap, `gluedValueBoundary` at a glued `=`). Every other caller reads the rule
+  `ValueSequence`, which clears a stop it is entered under, so a run nested inside a
+  piece (`foo(~(a=b) c)`) never reads its parent's. The function argument's "fails when
+  a condition follows" is its own `not(functionConditionStop)` (`conditionArgumentValue`).
+  One CST name: `FunctionValueSequence` → `ValueSequence`. Oracle vs the dev build: zero
   AST movers over 791 files; 69 CST movers, every one the rename (103 nodes) plus a
-  `state` snapshot carrying the stop on the 4216 CST nodes read inside a call
-  argument's run (was `null`). Not done here: the nested `selector()` capture context
-  (`selector(.a:is(1px))`, V35) — the same mechanism, separate lane.
+  `state` snapshot carrying the stop on the 4252 CST nodes read inside a call argument's
+  run (was `null`) — that snapshot is the measured CST cost (+0.8% marginal
+  instructions on benchmark.less; AST +0.1%). Not done here: the nested `selector()`
+  capture context (`selector(.a:is(1px))`, V35) — the same mechanism, separate lane.
 - #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
   dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
   and it is in the alpha release preflight (PR CI deliberately skips it — see
