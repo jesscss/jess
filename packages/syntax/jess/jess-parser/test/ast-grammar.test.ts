@@ -3979,10 +3979,12 @@ describe('@layer statement in the document prologue', () => {
 });
 
 /*
- * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
- * builds, and `selector(…)` inside `supports()` stays CSS's feature test, not a
- * capture (ledger P49). OPEN for the owner: `.jess` has no branch list in an
- * ordinary call, so a branch list stops the parse.
+ * CSS `if()` (css-values-5 §8.3, ledger P38) is the value-position conditional
+ * SCSS builds for it (owner 2026-10-19: "parse to the equivalent structure that
+ * would be intepreted the same way in .jess"): a CSS test is a `css` condition
+ * the browser answers, written as authored; `$( … )` is a truth test decided at
+ * compile time; `else` is the branch with no condition. `selector(…)` inside
+ * `supports()` stays CSS's feature test, not a capture (ledger P49).
  */
 describe('CSS if()', () => {
   const declarationValue = (document: Stylesheet): unknown => {
@@ -3990,19 +3992,40 @@ describe('CSS if()', () => {
     return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
   };
 
-  it.fails.each([
+  it.each([
     'if(media(width >= 600px): 1px; else: 2px)',
     'if(supports(display: grid): grid; else: block)',
     'if(style(--theme: dark): white; else: black)',
     'if(supports(selector(.a ~ .b)): a; else: b)',
     'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
     'if(media(print) and supports(display: grid): a; else: b)'
-  ])('builds the css tree for %s', (value) => {
-    const source = `a { x: ${value}; }`;
-    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  ])('builds an IfValue for %s', (value) => {
+    expect(declarationValue(parse(`a { x: ${value}; }`))).toMatchObject({ type: 'IfValue', _asCall: null });
   });
 
-  it.fails('keeps selector() inside supports() the CSS feature test', () => {
+  it('reads a test as its authored text and `$( … )` as a truth test', () => {
+    expect(bare(declarationValue(parse('a { x: if(media(width >= $w) and $($a): 1px; else: 2px); }')))).toMatchObject({
+      type: 'IfValue',
+      branches: [
+        {
+          guard: {
+            g: 'and',
+            left: { g: 'css', value: { type: 'Any', src: 'media(width >= $w)' }, parens: 0 },
+            right: { g: 'truth', value: { type: 'Expression' }, parens: 0 },
+            parens: 0
+          },
+          value: { type: 'Dimension', src: '1px' }
+        },
+        { guard: null, value: { type: 'Dimension', src: '2px' } }
+      ]
+    });
+  });
+
+  it('keeps selector() inside supports() the CSS feature test', () => {
     expect(JSON.stringify(parse('a { x: if(supports(selector(.a ~ .b)): a; else: b); }'))).not.toContain('SelectorCapture');
+  });
+
+  it('reads `$name:` in a call as a named argument', () => {
+    expect(declarationValue(parse('a { x: foo($a: 1px); }'))).toMatchObject({ type: 'FunctionCall', name: 'foo', args: [{ name: 'a' }] });
   });
 });
