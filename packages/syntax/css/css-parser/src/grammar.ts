@@ -1371,11 +1371,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`, and
-   * the shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is
-   * a compound selector) take a selector-ONLY argument: a (relative) selector
+   * The selector-argument pseudos (`:not`/`:has`/`:matches`, and the
+   * shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is a
+   * compound selector) take a selector-ONLY argument: a (relative) selector
    * list with no general-any text fallback, so `:not(2n+1)` fails the selector
-   * and rejects the whole pseudo. The
+   * and rejects the whole pseudo (`:is()` and `:where()` forgive instead,
+   * `ForgivingSelectorList` below). The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
    * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.

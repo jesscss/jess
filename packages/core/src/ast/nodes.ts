@@ -1630,6 +1630,13 @@ export interface ModuleImport extends SpanSlots {
 export interface Stylesheet extends SpanSlots, TriviaSlot {
   readonly type: 'Stylesheet';
   readonly rules: Statement[];
+
+  /**
+   * Each `:is()` / `:where()` item the parse kept as written because it is not
+   * a selector, for the compiler's `css/forgiving-selector-item` warning
+   * (`withForgivenSelectorItems`).
+   */
+  _forgiven?: readonly SimpleSelector[];
 }
 
 /*

@@ -179,7 +179,7 @@ describe('selector() capture', () => {
     ['less', '.x { a: selector(1px); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
     ['less', '.x { a: selector(@v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
     ['less', '.x { a: selector(); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 9]],
-    ['less', '.x { a: selector(.a:is(1px)); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 24]],
+    ['less', '.x { a: selector(.a:is(@{t})); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 24]],
     ['less', '.x { a: selector(.a:not(@{t})); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 25]],
     ['jess', '.x { a: selector($v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]]
   ] as const)('parses %s `%s`, then reports its error', async (language, source, code, [line, column]) => {
@@ -191,7 +191,7 @@ describe('selector() capture', () => {
   /* An error-severity diagnostic fails the compile (owner 2026-10-16), a recovered parse error too. */
   it.each([
     ['less', '.x { a: selector(1px); }'],
-    ['less', '.x { a: selector(.a:is(1px)); }'],
+    ['less', '.x { a: selector(.a:is(@{t})); }'],
     ['jess', '.x { a: selector(1px); }']
   ] as const)('fails the %s compile of `%s`', async (language, source) => {
     await expect(render(source, false, language)).rejects.toThrow(/selector\(\) takes a selector list/u);

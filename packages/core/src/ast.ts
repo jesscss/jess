@@ -38,9 +38,7 @@ export {
 } from './ast/provenance.js';
 export type { AstSourceSpan, FunctionScope, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueBoundaryTrivia, ValueLayout } from './ast/provenance.js';
 export {
-  adoptForgivenSelectorItems,
   bodySpanFromRaw,
-  forgivenSelectorItemsOf,
   isComplexSelector,
   isForBinding,
   isModuleImport,
@@ -52,10 +50,9 @@ export {
   scannedLeaf,
   selectorCaptureOf,
   semanticGapText,
-  withBlockBody,
-  withForgivenSelectorItems
+  withBlockBody
 } from './ast/grammar-helpers.js';
-export type { ForgivenSelectorItem, SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
+export type { SelectorCaptureProblem, SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
 export {
   appendCustomValueParts,
   appendInterpolationLiteral,
@@ -131,7 +128,6 @@ export {
   anPlusBFrom,
   commaListWithComments,
   directionKeyword,
-  forgivingSelectorItem,
   isAnPlusB,
   isNthArgument,
   keyframeSelectorList,
@@ -166,6 +162,8 @@ export {
   withAuthoredSeparators,
   withTriviaGaps
 } from './ast/css-grammar-helpers.js';
+export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorItem, withForgivenSelectorItems } from './ast/forgiving-selector.js';
+export type { ForgivenSelectorItem } from './ast/forgiving-selector.js';
 export { componentRun } from './ast/component-run.js';
 export type { GuardNode } from './ast/guard-node.js';
 export { inParens } from './ast/guard-node.js';

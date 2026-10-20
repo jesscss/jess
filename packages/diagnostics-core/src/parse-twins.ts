@@ -1,4 +1,4 @@
-import { ERR, PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, nameArguments, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
+import { ERR, PROGID_IE_SYNTAX, makeJessError, invalidValuePunctuation, invalidValueSyntaxError, nameArguments, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
 import type { CssCstNode } from '@jesscss/css-parser/cst-host';
 import {
   CUSTOM_DECLARATION_TYPES,
@@ -16,7 +16,7 @@ import type { JessLanguage } from './types.js';
 /** Reports one parse-phase diagnostic at a CST span. */
 type ParseTwinPusher = (
   code: string,
-  severity: 'error',
+  severity: 'error' | 'warning',
   message: string,
   span: CssCstNode['span'],
   details: { readonly phase: 'parse'; readonly reason: string; readonly fix: string }
@@ -345,6 +345,7 @@ export function pushParseTwinDiagnostics(
 ): void {
   const gt = node.grammarType;
   pushSelectorCaptureTwin(node, language, source, push);
+  pushForgivenSelectorItemTwin(node, source, push);
 
   /*
    * Less v5 removes executable backtick values, but the tolerant CST keeps the
@@ -432,6 +433,31 @@ export function pushParseTwinDiagnostics(
 }
 
 /*
+ * A `:is()` / `:where()` item that is not a selector (Selectors 4 §16.1, owner
+ * 2026-10-20), in every dialect: the compiler keeps it as written and warns
+ * (`forgivingSelectorItem`, `@jesscss/core`); the editor underlines the item.
+ * A selector item holds a selector node; a kept one holds none.
+ */
+function pushForgivenSelectorItemTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  if (node.grammarType !== 'ForgivingSelectorItem' || cstChildrenOf(node).some(isCstNode)) {
+    return;
+  }
+  const at = trimmedSpan(node, source);
+  if (at.end === at.start) {
+    return;
+  }
+  const warning = makeJessError({ severity: 'warn', code: 'css/forgiving-selector-item', phase: 'parse', meta: { item: source.slice(at.start, at.end) } });
+  push('css/forgiving-selector-item', 'warning', warning.message, at, { phase: 'parse', reason: warning.reason, fix: warning.fix });
+}
+
+/* A CST node's span without the whitespace at its edges. */
+function trimmedSpan(node: CssCstNode, source: string): { start: number; end: number } {
+  const written = source.slice(absoluteStart(node), absoluteEnd(node));
+  const start = absoluteStart(node) + written.length - written.trimStart().length;
+  return { start, end: start + written.trim().length };
+}
+
+/*
  * Selector capture (ledger P49), `.less` and `.jess` only: a `selector(…)` whose
  * argument is not a selector list parses as its own CST node, and the compiler
  * fails on it; the editor underlines the argument.
@@ -507,7 +533,7 @@ function pushSelectorCaptureTwin(
     ? node.span
     : problem.grammarType === 'InvalidSelectorCaptureArgument'
       ? { ...problem.span, end: absoluteStart(problem) + source.slice(absoluteStart(problem), absoluteEnd(problem)).trimEnd().length }
-      : problem.span;
+      : problem.grammarType === 'ForgivingSelectorItem' ? trimmedSpan(problem, source) : problem.span;
   push('parse/selector-capture-argument', 'error', error.message, at, { phase: 'parse', reason: error.reason, fix: error.fix });
 }
 
@@ -525,7 +551,27 @@ function firstSelectorCaptureProblem(capture: CssCstNode, source: string): CssCs
     )) {
       return node;
     }
+    if (node.grammarType === 'ForgivingSelectorItem' && holdsInterpolation(node)) {
+      return innermostInterpolatedItem(node);
+    }
     stack.push(...children.reverse());
   }
   return undefined;
+}
+
+/* Whether a CST subtree reads an interpolation, which a capture cannot hold. */
+function holdsInterpolation(node: CssCstNode): boolean {
+  return cstChildrenOf(node).some(child => isCstNode(child) && (child.grammarType.includes('Interpolat') || child.grammarType === 'DollarBrace' || holdsInterpolation(child)));
+}
+
+/* The innermost `:is()` / `:where()` item holding the interpolation, as the compiler reports it. */
+function innermostInterpolatedItem(item: CssCstNode): CssCstNode {
+  const stack = cstChildrenOf(item).filter(isCstNode);
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    if (node.grammarType === 'ForgivingSelectorItem' && holdsInterpolation(node)) {
+      return innermostInterpolatedItem(node);
+    }
+    stack.push(...cstChildrenOf(node).filter(isCstNode));
+  }
+  return item;
 }
