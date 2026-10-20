@@ -43,35 +43,97 @@ $both: selector(.card, .panel);    // a selector list is fine
 
 <AudienceGate include={['sass']}>
 
-Sass captures a selector by parsing a string through the `sass:selector` module —
-`selector.parse()` — which Jess lifts into the same captured-selector value:
-
-```scss
-@use 'sass:selector';
-
-$card: selector.parse('.card');
-$both: selector.parse('.card, .panel');
-```
+Sass has no selector-capture syntax of its own. In `.scss`, `&` in a value is the
+parent selector, as in Sass (`.a, .b { .c { x: &; } }` gives `x: .a .c, .b .c`).
+Sass's `sass:selector` module (`selector.parse()`, `selector.append()`, …) is not
+supported yet.
 
 </AudienceGate>
+
+## Why `selector()`
+
+CSS already has a `selector()` function, and it already means "this argument is a
+selector": `@supports selector(:has(a))` tests whether the browser supports a selector,
+and so does `supports(selector(…))` inside CSS `if()`. Selector capture reuses that name
+instead of inventing new syntax, so there is no special sigil to learn and nothing a
+CSS parser doesn't already recognise.
+
+Jess extends it in two ways:
+
+- **In an ordinary value it captures.** CSS only uses `selector()` inside a support
+  condition, where it is a test. Anywhere else in a value, Jess reads it as a captured
+  selector you can keep.
+- **It takes a selector list.** CSS's `selector()` takes a single complex selector.
+  Jess accepts a comma-separated list, the same argument `:is()` and `:where()` take,
+  so `selector(.card, .panel)` is one value holding both branches.
+
+Inside a support condition nothing changes: `@supports selector(.a > .b)` and
+`if(supports(selector(.a)): …)` are still CSS's feature test, in every syntax.
 
 ## What it's for
 
 Once a selector is a value you can:
 
-- **Reuse it** — store a selector once and reference it in several places.
-- **Operate on it** — pass it to selector-aware functions (append, nest, unify,
-  replace…) that build new selectors from existing ones.
-- **Compute selectors** — assemble a selector from parts and apply the result.
+- **Reuse it** — store a selector once and use it as a selector in several places
+  (see below).
+- **Pass it around** — hand it to a mixin, or compare it in a guard
+  (`when (@s = selector(.a))`).
+
+Selector functions that build new selectors from a captured one (append, nest, unify,
+replace) are not available yet.
 
 The captured value round-trips — `selector(.card, .panel)` serializes back to
 `selector(.card, .panel)` — and behaves the same wherever a selector value is expected. The
 concept is identical across syntaxes; only the spelling differs.
 
-`selector()` captures only in an ordinary value. Inside a support condition it is still
-CSS's feature test — `@supports selector(.a > .b)` and `if(supports(selector(.a)): …)`
-test whether the browser supports the selector — and in plain CSS and SCSS a
-value-position `selector()` is an ordinary function call.
+## Using a captured selector in another selector
+
+Interpolate the variable where a selector goes. Every captured branch is used, and
+the nesting works as if you had written the list there:
+
+<AudienceGate include={['less']}>
+
+```less
+@cards: selector(.card, .panel);
+
+.page {
+  @{cards} {
+    padding: 1rem;
+  }
+}
+```
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+```less
+$cards: selector(.card, .panel);
+
+.page {
+  ${cards} {
+    padding: 1rem;
+  }
+}
+```
+
+</AudienceGate>
+
+With nested output (the default) that writes the branches under `.page`:
+
+```css
+.page {
+  .card,
+  .panel {
+    padding: 1rem;
+  }
+}
+```
+
+With `collapseNesting` the same source writes `.page :is(.card, .panel) { padding: 1rem; }`.
+
+A `&` inside the capture stays a parent reference, resolved where the selector is
+used: `selector(&.active, & + .item)` interpolated inside `.tab` refers to `.tab`.
 
 <AudienceGate include={['less', 'jess']}>
 
