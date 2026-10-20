@@ -31,6 +31,7 @@ export type JessErrorCode =
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
   | 'parse/arithmetic-outside-expression'
+  | 'parse/deprecated-if-function'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'compose/not-top-level'
@@ -209,6 +210,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'A mixin reference is not a value',
       reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
       fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
+    }
+  ],
+  [
+    'parse/deprecated-if-function',
+    {
+      summary: 'Sass\'s if($condition, $if-true, $if-false) is deprecated in favor of CSS if()',
+      reason: 'Dart Sass deprecates its if() function (deprecation "if-function"): CSS if() (css-values-5 §8.3) takes its place, with a sass() condition for one decided when the stylesheet compiles.',
+      fix: 'Write if(sass($condition): $if-true; else: $if-false).'
     }
   ],
   [

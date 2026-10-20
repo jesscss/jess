@@ -103,10 +103,6 @@ const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
   + 'head).';
 
 /* OPEN for the owner (ledger P38, P45). */
-const CSS_IF_DEFECT =
-  'css-values-5 §8.3 if() is a branch list; SCSS reads if( as Sass if() and '
-  + '.jess has no branch list in an ordinary call, so both stop at the first `:`.';
-
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
   {
@@ -663,29 +659,21 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: 'if() with media() branches',
     group: 'value',
     source: 'a { width: if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'if() with a supports() condition',
     group: 'value',
     source: 'a { display: if(supports(display: grid): grid; else: block) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'if() with a style() condition',
     group: 'value',
     source: 'a { color: if(style(--theme: dark): white; else: black) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'if() with a supports(selector()) condition',
     group: 'value',
     source: 'a { color: if(supports(selector(:has(a))): red; else: blue) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'calc() nested in calc()',
