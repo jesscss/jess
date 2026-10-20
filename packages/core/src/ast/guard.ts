@@ -20,7 +20,7 @@
  */
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { ValueSlot } from './nodes.js';
+import type { IfValueBranch, ValueSlot } from './nodes.js';
 import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
 import { holdsKeptOperation } from './value-operate.js';
@@ -287,6 +287,50 @@ export function partialGuard(
       break;
   }
   return evalGuard(node, deps);
+}
+
+/** A branch of a CSS `if()` that compile time could not decide away, with what is left of its condition. */
+export interface KeptBranch {
+  readonly condition: string;
+  readonly value: ValueSlot;
+}
+
+/**
+ * [P38] The branches of an `if()` holding a CSS test (`media()`, `supports()`,
+ * `style()`, …), which only the browser can answer (css-values-5 §8.3). Each
+ * condition is decided as far as compile time can, in order ({@link
+ * partialGuard}), as Dart Sass decides a CSS `if()` with `sass()` conditions
+ * (owner 2026-10-19: "do what sass does"): a branch decided false is dropped;
+ * one decided true before any branch is kept is `take`n as the value, and
+ * after one is kept it is kept as `else`; the rest are kept with what is left
+ * of their conditions and `write`n as a CSS `if()`. No condition after a taken
+ * branch is read. No branch left is `take(undefined)`, no value.
+ */
+export function pickCssIfBranches<T>(
+  branches: readonly IfValueBranch[],
+  decide: (guard: GuardNode) => MaybePromise<boolean | CssCondition>,
+  take: (value: ValueSlot | undefined) => MaybePromise<T>,
+  write: (kept: readonly KeptBranch[]) => MaybePromise<T>
+): MaybePromise<T> {
+  const kept: KeptBranch[] = [];
+  const step = (index: number): MaybePromise<T> => {
+    const branch = branches[index];
+    if (branch === undefined) {
+      return kept.length === 0 ? take(undefined) : write(kept);
+    }
+    const decided = branch.guard === null ? true : decide(branch.guard);
+    const next = (condition: boolean | CssCondition): MaybePromise<T> => {
+      if (condition === true && kept.length === 0) {
+        return take(branch.value);
+      }
+      if (condition !== false) {
+        kept.push({ condition: condition === true ? 'else' : condition.text, value: branch.value });
+      }
+      return step(index + 1);
+    };
+    return isThenable(decided) ? decided.then(next) : next(decided);
+  };
+  return step(0);
 }
 
 /** Whether a VALUE node references `default()` — a `default()` call anywhere in the

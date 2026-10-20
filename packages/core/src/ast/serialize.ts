@@ -190,7 +190,7 @@ import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBoo
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -7914,44 +7914,6 @@ function pickIfValue<T>(
   write: (bytes: string) => T
 ): MaybePromise<T> {
   const deps = guardDeps(frame, e);
-  if (node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard))) {
-    /*
-     * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`,
-     * …), which only the browser can answer (css-values-5 §8.3). Each condition
-     * is decided as far as compile time can, in order ({@link partialGuard}),
-     * as Dart Sass decides a CSS `if()` with `sass()` conditions (owner
-     * 2026-10-19: "do what sass does"): a branch decided false is dropped; one
-     * decided true before any branch is kept is the value, and after one is
-     * kept it is written `else`; the rest are written as a CSS `if()` with what
-     * is left of their conditions. Only the value of a branch that is taken or
-     * kept is evaluated. No branch left is no value.
-     */
-    /* [P47/P48] A condition is not a CSS value, so what it reaches is not checked, as {@link writtenCondition} reads one. */
-    const tests = e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e;
-    const cssTest = (value: ValueSlot): MaybePromise<string> => mapMaybe(evalValueSlot(value, frame, tests), v => emitValueC(v, tests));
-    const kept: Array<{ readonly condition: string; readonly value: ValueSlot }> = [];
-    const keep = (index: number): MaybePromise<T> => {
-      const branch = node.branches[index];
-      if (branch === undefined) {
-        return kept.length === 0
-          ? use(undefined, e)
-          : combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
-              write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join(sepGlue(';', e.compress === true))})`));
-      }
-      const guard = branch.guard;
-      const decided = guard === null ? true : withUnitErrors(node, e, () => partialGuard(guard, deps, cssTest));
-      return mapMaybe(decided, (condition) => {
-        if (condition === true && kept.length === 0) {
-          return use(branch.value, e);
-        }
-        if (condition !== false) {
-          kept.push({ condition: condition === true ? 'else' : condition.text, value: branch.value });
-        }
-        return keep(index + 1);
-      });
-    };
-    return keep(0);
-  }
   const step = (index: number): MaybePromise<ValueSlot | undefined> => {
     const branch = node.branches[index];
     if (branch === undefined) {
@@ -7966,7 +7928,27 @@ function pickIfValue<T>(
       taken => taken ? branch.value : step(index + 1)
     );
   };
-  return mapMaybe(step(0), taken => use(taken, e));
+
+  /*
+   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …)
+   * is decided as far as compile time can, branch by branch, and what is left
+   * is written as a CSS `if()` ({@link pickCssIfBranches}). Its conditions are
+   * not CSS values, so what they reach is not checked [P47/P48], as {@link
+   * writtenCondition} reads one; only a taken or kept branch's value is
+   * evaluated.
+   */
+  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard))
+    ? pickCssIfBranches(
+        node.branches,
+        guard => withUnitErrors(node, e, () => partialGuard(guard, deps, value => mapMaybe(
+          evalValueSlot(value, frame, e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e),
+          v => emitValueC(v, e)
+        ))),
+        taken => use(taken, e),
+        kept => combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
+          write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join(sepGlue(';', e.compress === true))})`))
+      )
+    : mapMaybe(step(0), taken => use(taken, e));
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */
