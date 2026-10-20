@@ -16,9 +16,9 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
+import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Branch, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -50,7 +50,7 @@ export const requireForBinding = (value: unknown): ForBinding => requireForBindi
 export const requireGuardNode = (value: unknown): GuardNode => requireGuardNodeOf(value, isScssValue, DIALECT);
 export const isScssValueSlotValue = (value: unknown): value is ValueSlot => isValueSlotOf(value, isScssValue);
 export const interpolationFromTemplateChildren = (children: readonly unknown[]): Interpolation => interpolationFromTemplateChildrenIn(children, DIALECT);
-export const customValueFromChildren = (children: readonly unknown[]): ValueNode => customValueFromChildrenIn(children, DIALECT);
+export const customValueFromChildren = (children: readonly unknown[]): Any | Interpolation => customValueFromChildrenIn(children, DIALECT);
 export const appendCustomValueParts = (children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void => appendCustomValuePartsIn(children, parts, seen, DIALECT);
 
 export const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
@@ -330,6 +330,8 @@ export function isScssValue(value: unknown): value is ValueNode {
       return 'rules' in value && Array.isArray(value.rules);
     case 'IfValue':
       return 'branches' in value && Array.isArray(value.branches) && value.branches.length > 0;
+    case 'Branch':
+      return 'condition' in value && 'value' in value && isScssValueSlotValue(value.condition) && isScssValueSlotValue(value.value);
     case 'Condition':
       return 'guard' in value && isGuardNodeOf(value.guard, isScssValue) && 'src' in value && typeof value.src === 'string';
     default:
@@ -443,14 +445,14 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * lane: the operator tail is parsed ONCE and its spelling decides which
    * reading applies, so a positional argument pays nothing.
    *
-   * Only a `$`-sigil variable can be a keyword. A bare identifier before a
-   * colon is not a Sass named argument, and it is a parse error here today.
+   * Only a `$`-sigil variable can be a keyword. Any other operand before a
+   * colon is a branch's condition (ledger P38, `if(media(print): 1px)`), which
+   * {@link reduceScssCall} keeps where a branch may stand.
    */
   if (children.some(child => isToken(child) && child.value === ':')) {
     const value = requireValueSlot(children[children.length - 1]);
     if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
-      /* Not a keyword argument: the css run, which only a fallback keeps ({@link reduceScssCall}). */
-      return callArg(argumentRun(children));
+      return callArg(branch(left, value));
     }
     return callArg(value, left.name, false, '$');
   }
@@ -506,6 +508,25 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
     gap = '';
   }
   return withValueLayout(values, layout);
+}
+
+/**
+ * Whether the parse is reading a CSS `if()` condition, where `media()`,
+ * `supports()` and `style()` are CSS tests whose arguments are kept as written
+ * (css-values-5 §8.3) rather than Sass function calls.
+ */
+export function isIfTest(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;
+}
+
+/** The parse state inside an `if()` call: its conditions are read as CSS `if()` conditions. */
+export function enterIfTest(state: unknown): object {
+  return typeof state === 'object' && state !== null ? { ...state, ifTest: true } : { ifTest: true };
+}
+
+/** The parse state of a value inside an `if()` call that is not a condition: the state it had outside, unchanged when it was not set. */
+export function leaveIfTest(state: unknown): unknown {
+  return isIfTest(state) && typeof state === 'object' && state !== null ? { ...state, ifTest: false } : state;
 }
 
 /**
@@ -631,45 +652,182 @@ export function lowerSassIf(args: readonly ScssCallArg[]): IfValue | undefined {
   ]);
 }
 
-/** A call argument that is a run holding a `:` delim: a `:` that is not a keyword argument's. */
-function isColonRun(arg: ScssCallArg): boolean {
-  return isValueSlotArray(arg.value) && arg.value.some(item => !isValueSlotArray(item) && item.type === 'Any' && item.src === ':');
+/** A call argument built as a branch, `condition: value` (see {@link scssCallArgument}). */
+function isBranchArgument(arg: ScssCallArg | undefined): arg is ScssCallArg & { readonly value: Branch } {
+  return arg !== undefined && arg.name === undefined && !isValueSlotArray(arg.value) && arg.value.type === 'Branch';
 }
 
-/** The calls whose arguments after the first are a fallback value (css-variables-1 §3, css-env-1, css-values-5 `attr()`). */
-const FALLBACK_CALLS = new Set(['var', 'env', 'attr']);
+/**
+ * A branch where no branch may stand — after a call's first argument, or in a
+ * `;` group of a call whose first group is not one — is the css run it is: its
+ * condition, the `:` delim and its value (`var(--x, a:b)`, `foo(x, a:b)`), which
+ * the compile reports as invalid value punctuation (ledger P48).
+ */
+function unbranched(arg: ScssCallArg): ScssCallArg {
+  if (!isBranchArgument(arg)) {
+    return arg;
+  }
+  const values: ValueSlot[] = [];
+  const layout: string[] = [];
+  appendRun(values, layout, arg.value.condition, '');
+  appendRun(values, layout, any(':'), '');
+  appendRun(values, layout, arg.value.value, '');
+  return callArg(withValueLayout(values, layout));
+}
+
+/** One `;` group of a call's arguments: the comma-separated arguments and the separators between them. */
+interface ArgumentGroup {
+  readonly args: ScssCallArg[];
+  readonly separators: string[];
+}
+
+/** A group's arguments as one value: its one argument, or the comma list of them with their authored separators. */
+function groupValue(values: readonly ValueSlot[], separators: readonly string[]): ValueSlot {
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  return withValueLayout(list([...values], ','), [...separators]);
+}
 
 /**
- * A call's reduction. In `var()`, `env()` and `attr()` the arguments after the
- * first are a fallback value, so a `:` in one is css's delim; any other
- * argument spelled `name: value` is not a Sass keyword argument and is
- * refused, as before.
+ * A call whose arguments are a branch list (ledger P38): each `;` group a
+ * `Branch` when its first argument is one, its value the group's comma list,
+ * otherwise the group's comma list. The list is the call's one argument, or the
+ * branch itself when there is one; css builds the same.
  */
-export function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference | IfValue {
-  const lastIndex = children.length - 1;
-  const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isScssCallArg(child));
-  if (firstIndex === -1) {
-    return funcCall(
-      name,
-      []
-    );
-  }
-  const first = requireScssCallArg(children[firstIndex]);
-  const args: ScssCallArg[] = [first];
-  const separators: string[] = [];
-  for (let index = firstIndex + 1; index < lastIndex; index += 1) {
-    const child = children[index];
-    if (!isScssArgumentPair(child)) {
+function branchListCall(name: string, groups: readonly ArgumentGroup[]): FunctionCall {
+  const branched = isBranchArgument(groups[0]?.args[0]);
+  const items = groups.map((group): ValueSlot => {
+    const [lead, ...rest] = group.args;
+    if (lead === undefined) {
+      return [];
+    }
+    if (branched && isBranchArgument(lead)) {
+      return branch(lead.value.condition, groupValue([lead.value.value, ...rest.map(arg => unbranched(arg).value)], group.separators));
+    }
+    return groupValue(group.args.map(arg => unbranched(arg).value), group.separators);
+  });
+  return funcCall(name, [items.length === 1 ? items[0]! : list(items, ';')]);
+}
+
+/**
+ * CSS `if()` (css-values-5 §8.3, ledger P38) as the value-position conditional
+ * Sass's `if()` builds too (owner 2026-10-19: "in .scss, in these cases, i
+ * think do what sass does, and parse to the equivalent structure that would be
+ * intepreted the same way in .jess"). Each `;` group is a branch: `else` has no
+ * condition, any other condition is {@link ifCondition}'s. A group that is not
+ * a branch (`if(a: 1; b)`) leaves the call the branch list css writes.
+ */
+function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
+  const branches: IfValueBranch[] = [];
+  for (const [index, group] of groups.entries()) {
+    const [lead, ...rest] = group.args;
+    if (lead === undefined && index === groups.length - 1 && index > 0) {
       continue;
     }
-    separators.push(String(child.separator));
-    args.push(child.value);
-  }
-  const checked = FALLBACK_CALLS.has(name.toLowerCase()) ? 1 : args.length;
-  for (let index = 0; index < checked; index++) {
-    if (isColonRun(args[index]!)) {
-      throw new TypeError('A named argument must be spelled `$name: value`.');
+    if (!isBranchArgument(lead)) {
+      return undefined;
     }
+    const { condition, value } = lead.value;
+    branches.push({
+      guard: isElse(condition) ? null : ifCondition(condition),
+      value: groupValue([value, ...rest.map(arg => unbranched(arg).value)], group.separators)
+    });
+  }
+  const [first, ...others] = branches;
+  return first === undefined ? undefined : ifValue([first, ...others]);
+}
+
+function isElse(condition: ValueSlot): boolean {
+  return !isValueSlotArray(condition) && condition.type === 'Keyword' && condition.src.length === 4 && condition.src.toLowerCase() === 'else';
+}
+
+/**
+ * A CSS `if()` condition (css-values-5 §8.3 `<if-condition>`), read as Dart
+ * Sass reads it: `sass(…)` is SassScript, decided when the stylesheet compiles
+ * (Sass's truth test, {@link scssTruth}, or the comparison written in it);
+ * `and`, `or`, `not` and a paren group are the condition's own; anything else —
+ * a `media()`, `supports()` or `style()` test, whose arguments the grammar kept
+ * as written, or any other function — is a CSS test the browser answers. The
+ * operand was read as a Sass expression because the `:` after it is what makes
+ * it a condition, so this maps that reading onto the condition's.
+ */
+function ifCondition(value: ValueSlot): GuardNode {
+  if (!isValueSlotArray(value)) {
+    switch (value.type) {
+      case 'FunctionCall': {
+        const [arg] = value.args;
+        if (value.name === 'sass' && value.args.length === 1 && arg !== undefined && arg.name === undefined && !arg.spread) {
+          return sassCondition(arg.value);
+        }
+        break;
+      }
+      case 'Operation':
+        if (value.operator === 'and' || value.operator === 'or') {
+          return { g: value.operator, left: ifCondition(value.left), right: ifCondition(value.right), word: value.operator, gluedAt: NO_SPAN, parens: 0 };
+        }
+        break;
+      case 'Expression': {
+        const negated = value.value;
+        if (value._asCall === null && !isValueSlotArray(negated) && negated.type === 'Condition' && negated.guard.g === 'not' && negated.guard.inner.g === 'truth') {
+          return { g: 'not', inner: ifCondition(negated.guard.inner.value), word: negated.guard.word, gluedAt: NO_SPAN, parens: 0 };
+        }
+        break;
+      }
+      case 'Block':
+        if (value.delimiter === 'paren' && value.escaped !== true) {
+          return inParens(ifCondition(value.value));
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return { g: 'css', value, parens: 0 };
+}
+
+/** A `sass()` condition: the comparison or negation written in it, or its value's truth. */
+function sassCondition(value: ValueSlot): GuardNode {
+  if (!isValueSlotArray(value) && value.type === 'Expression' && value._asCall === null) {
+    const inner = value.value;
+    if (!isValueSlotArray(inner) && inner.type === 'Condition') {
+      return inner.guard;
+    }
+  }
+  return scssTruth(value);
+}
+
+/**
+ * A call's reduction. `if()` with a branch list is CSS `if()` ({@link
+ * lowerCssIf}); any other call with one is css's branch list. Otherwise the
+ * arguments are positional or `$name:` keyword arguments, `map-get($m, k)` is
+ * the accessor read, and `if($condition, $if-true, $if-false)` is Sass's
+ * `if()`, which Dart Sass deprecates: it is evaluated, with a warning at the
+ * call.
+ */
+export function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number, span?: { readonly start: number; readonly end: number }, state?: unknown): FunctionCall | Reference | IfValue {
+  const lastIndex = children.length - 1;
+  const groups: ArgumentGroup[] = [{ args: [], separators: [] }];
+  for (let index = minArgumentIndex + 1; index < lastIndex; index += 1) {
+    const child = children[index];
+    const group = groups[groups.length - 1]!;
+    if (isScssCallArg(child)) {
+      group.args.push(child);
+    } else if (isScssArgumentPair(child)) {
+      group.separators.push(String(child.separator));
+      group.args.push(child.value);
+    } else if (isToken(child) && child.value === ';') {
+      groups.push({ args: [], separators: [] });
+    }
+  }
+  const lowerName = name.toLowerCase();
+  if (groups.length > 1 || isBranchArgument(groups[0]!.args[0])) {
+    return (lowerName === 'if' ? lowerCssIf(groups) : undefined) ?? branchListCall(name, groups);
+  }
+  const args = groups[0]!.args.map(unbranched);
+  const separators = groups[0]!.separators;
+  if (lowerName === 'if' && span !== undefined) {
+    reportRecovered(new DeprecatedIfFunctionWarning(span.start, span.end), state);
   }
   const call = funcCall(
     name,
@@ -681,13 +839,13 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
       args[1]!.value
     );
   }
-  if (call.name.toLowerCase() === 'if') {
+  if (lowerName === 'if') {
     const lowered = lowerSassIf(args);
     if (lowered !== undefined) {
       return lowered;
     }
   }
-  if (separators.length === args.length - 1) {
+  if (args.length > 0 && separators.length === args.length - 1) {
     withValueLayout(
       call.args,
       separators

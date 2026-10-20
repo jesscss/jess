@@ -5,7 +5,7 @@
  * re-exported by a sibling entry without dragging that entry's imports along.
  */
 
-import type { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
+import type { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 
 /*
  * The one at-rule-specific message this module gives. The `@charset` prelude is
@@ -92,5 +92,5 @@ export class ScssImportPostludeError extends SyntaxError {
   }
 }
 
-/** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
-export type ScssRecoveredError = LeadingSeparatorValueError;
+/** A problem the grammar recovered from: a located diagnostic the parse carries on past (ledger P45); a warning carries `severity: 'warn'`. */
+export type ScssRecoveredError = LeadingSeparatorValueError | DeprecatedIfFunctionWarning;

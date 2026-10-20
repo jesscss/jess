@@ -36,13 +36,14 @@
  */
 import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, CollectionItem, ComplexSelector, CompoundSelector,
-  Declaration, Expression, ExtendInstruction, FunctionCall, Interpolation, Lookup, LookupStep, MixinCall,
+  Declaration, Expression, ExtendInstruction, FunctionCall, IfValue, Interpolation, Lookup, LookupStep, MixinCall,
   MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
-import type { GuardNode } from './guard.js';
+import type { GuardNode } from './guard-node.js';
+import { jessBranch, jessIf } from './emit-jess-if.js';
 import { renderCombinator } from './node.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
@@ -767,10 +768,7 @@ class JessPrinter {
         if (valueLayoutOf(node)?.some(sep => !/^[ \t]*[,/][ \t]*$/u.test(sep)) === true) {
           return gap('List', 'a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout');
         }
-        if (node.sep === ';') {
-          return gap('List', 'a `;` list from a CSS function body (`if()`): `.jess` call arguments have no `;` separator');
-        }
-        const glue = node.sep === ',' ? ', ' : ' / ';
+        const glue = node.sep === ',' ? ', ' : node.sep === ';' ? '; ' : ' / ';
         return node.value.map(item => this.value(item, at, indent)).join(glue);
       }
       case 'Sequence':
@@ -804,7 +802,7 @@ class JessPrinter {
       case 'Block':
         return this.paren(node, at);
       case 'Branch':
-        return gap('Branch', 'a `condition: value` branch argument (ledger P38): `.jess` call arguments have no branch form (jess#297)');
+        return jessBranch(this.value(node.condition, At.Value, indent), this.value(node.value, At.Value, indent));
       case 'Expression':
         return this.expression(node, at);
       case 'Condition':
@@ -813,7 +811,13 @@ class JessPrinter {
         }
         return this.guard(node.guard, true, false);
       case 'IfValue':
-        return gap('IfValue', 'value-position `$if … $else`: documented on the node, but no `.jess` production builds it');
+        return jessIf(node, {
+          value: slot => this.value(slot, At.Value, indent),
+          expression: expr => this.expression(expr, At.Value),
+          guard: guard => this.guard(guard, true, false),
+          template: interp => this.template(interp, 'string'),
+          gap
+        });
       case 'Interpolation':
         return this.valueInterpolation(node, at);
       case 'AnonymousMixin':
@@ -1150,6 +1154,8 @@ class JessPrinter {
         return `not (${this.guard(node.inner, true, mixin)})`;
       case 'truth':
         return this.value(node.value, At.Expr);
+      case 'css':
+        return gap('GuardNode', 'a CSS `if()` test outside an `if()`');
       case 'default':
         return mixin ? 'default()' : gap('GuardNode', '`default()` outside a mixin guard');
       case 'call': {

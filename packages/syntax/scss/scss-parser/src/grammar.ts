@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, withCtx } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { controlBlockStatements, contentArgRaw, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -926,19 +926,104 @@ const scssFactory = (g: ScssInputRules) => {
       return url(isScssValue(body) ? body : any(requireToken(body).value));
     }
   );
+
+  /**
+   * A call's arguments are `;` groups of comma-separated arguments: a group may
+   * be a branch, `condition: value` (ledger P38), and CSS `if()` is a list of
+   * them (css-values-5 §8.3). Inside a function a `;` is an ordinary token, not
+   * a declaration terminator. A group may be empty (`if()` allows a trailing
+   * `;`). The call's reducer reads the `;` among its children.
+   *
+   * Not css's `BranchRest`/`branchLead` composed, as Less composes them: an
+   * SCSS argument's `:` is read once by `CallArgument` for a `$name:` keyword
+   * argument and a branch alike, and a comparison shares that operand, so the
+   * branch is that argument's reduction (`scssCallArgument`), not a slot css
+   * could own. Folding the keyword lane into css's branch slot is the step that
+   * would let SCSS compose it.
+   */
+  const argumentGroup = sequence(
+    g.CallArgument,
+    many(g.ArgumentPair)
+  );
+  const argumentSemicolon = noTrivia(sequence(
+    literal(';'),
+    optional(valueTrivia)
+  ));
   const Call = node<FunctionCall | Reference | IfValue>(
     'Call',
     sequence(
       routed(),
       optional(valueTrivia),
-      optional(sequence(
-        g.CallArgument,
-        many(g.ArgumentPair)
-      )),
+      optional(argumentGroup),
       optional(valueTrivia),
+      many(sequence(
+        argumentSemicolon,
+        optional(sequence(
+          argumentGroup,
+          optional(valueTrivia)
+        ))
+      )),
       literal(')')
     ),
-    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
+    (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
+  );
+
+  /**
+   * A CSS `if()` test (css-values-5 §8.3): `media()`, `supports()` or
+   * `style()` in an `if()` condition, whose argument is a media query, a
+   * supports condition or a style query. Dart Sass reads it as written,
+   * interpolating only `#{…}`, so a `$name` in it is text; this reads it as a
+   * custom property's value is read (`CustomInnerPart`), and the test is that
+   * text: an `Any`, or an `Interpolation` around a `#{…}`. Outside an `if()`
+   * condition the same names are function calls (`IdentifierOrFunction`).
+   */
+  const CssTest = node<ValueNode>(
+    'CssTest',
+    noTrivia(sequence(
+      routed(),
+      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
+      literal(')')
+    )),
+    children => customValueFromChildren(children)
+  );
+
+  /**
+   * `if()`: `Call` whose `;` groups each lead with a condition (css-values-5
+   * §8.3). Only that first argument is read with the parse-state flag that
+   * makes `media(`, `supports(` and `style(` CSS tests; a comma argument after
+   * it and a branch's value (`CallArgument`) are not conditions. It repeats
+   * `Call`'s frame so that no other call pays for the flag: clearing it for
+   * every comma argument instead measured +0.6% marginal instructions on
+   * sass-spec.
+   */
+  const ifArgumentGroup = sequence(
+    withCtx(state => enterIfTest(state), g.CallArgument),
+    many(g.ArgumentPair)
+  );
+  const IfCall = node<FunctionCall | Reference | IfValue>(
+    'Call',
+    sequence(
+      routed(),
+      optional(valueTrivia),
+      optional(ifArgumentGroup),
+      optional(valueTrivia),
+      many(sequence(
+        argumentSemicolon,
+        optional(sequence(
+          ifArgumentGroup,
+          optional(valueTrivia)
+        ))
+      )),
+      literal(')')
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
+  );
+  const callOrCssTest = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: CssTest
+    },
+    Call
   );
   const KeywordOrInterpolatedValue = node<ValueNode>(
     'KeywordOrInterpolatedValue',
@@ -1048,6 +1133,13 @@ const scssFactory = (g: ScssInputRules) => {
     identOrFunction,
     caseInsensitive('url(', UrlFunction),
     caseInsensitive('var(', VarCall),
+
+    /* An `if()` call's conditions are CSS `if()` conditions, where these three names are CSS tests. */
+    caseInsensitive('if(', IfCall),
+
+    /* `sass(…)` holds a Sass expression, not a condition (Dart Sass reads it so); its calls are calls. */
+    when('sass(', withCtx(state => leaveIfTest(state), Call)),
+    caseInsensitive(['media(', 'supports(', 'style('], callOrCssTest),
 
     /*
      * A trailing escaped paren is a value keyword, not a call: `\(` and `a\(` are
@@ -1385,7 +1477,7 @@ const scssFactory = (g: ScssInputRules) => {
           literal(':')
         ),
         optional(valueTrivia),
-        g.ValueTerm
+        withCtx(state => leaveIfTest(state), g.ValueTerm)
       ))
     )),
     children => scssCallArgument(children)
@@ -1438,7 +1530,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal(','),
       optional(valueTrivia),
       choice(
-        field('value', valueSequence),
+        valueSequence,
         LeadingSeparatorValue
       )
     )),
@@ -1517,18 +1609,9 @@ const scssFactory = (g: ScssInputRules) => {
    * (ledger P33); after a comma `ValuePair` reads one in any value (a Sass
    * list, `#{…}`). A `var()` fallback is not a `Value`, so its leading `/`
    * stays css's (css-variables-1 §2). Valid input never reaches the arm.
-   *
-   * The `field` around the value arm here and in `ValuePair` carries no
-   * semantics; it is a parseman workaround. Linking the interpreter grammar
-   * asks of every choice arm whether a failed attempt leaves state to roll
-   * back (`failureNeedsRollback`), and that walk keeps no memo for a subtree
-   * it cut at a cycle, so over the recursive value rules it is exponential: a
-   * choice with a bare value arm cost the interpreter build ~44G instructions,
-   * on a base of ~128G. A field is a writer the walk stops at, so the answer
-   * is found at once and kept. Delete the fields when parseman memoizes it.
    */
   const statementValue = choice(
-    field('value', g.Value),
+    g.Value,
     LeadingSeparatorValue
   );
   const VariableDeclaration = node<VariableDeclaration>(

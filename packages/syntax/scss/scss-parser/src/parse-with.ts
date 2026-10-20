@@ -75,11 +75,12 @@ export interface ScssParsed {
   readonly recovered: readonly ScssRecoveredError[];
 }
 
-/** The document, or the first problem the grammar recovered from, raised. */
+/** The document, or the first error the grammar recovered from, raised; a warning does not stop it. */
 export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
   const { document, recovered } = parseRecoveringWith(grammar, input);
-  if (recovered[0] !== undefined) {
-    throw recovered[0];
+  const error = recovered.find(problem => !('severity' in problem));
+  if (error !== undefined) {
+    throw error;
   }
   return document;
 }

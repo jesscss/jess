@@ -354,31 +354,20 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     'if(media(width < 600px): a; media(width < 900px): b; else: c)',
     'if(style(--a: 1): red; else: blue)'
   ];
-  for (const dialect of ['css', 'less'] as const) {
+  for (const dialect of DIALECTS) {
     it.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
       expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
     });
   }
 
-  /*
-   * OPEN for the owner (P38, P45): SCSS and `.jess` stop at CSS if(). SCSS reads
-   * `if(` as Sass's if(), and a condition's `and` / `not` with Sass meaning;
-   * `.jess` has no branch list in an ordinary call.
-   */
-  for (const dialect of ['scss', 'jess'] as const) {
-    it.fails.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
-      expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
-    });
-  }
-
   const IF_AND = 'if(media(print) and supports(display: grid): a; else: b)';
-  it('css: a CSS if() condition joined by `and`', async () => {
-    expect(await clean('css', sheet(IF_AND))).toContain(`x: ${IF_AND};`);
+  it.each(['css', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
+    expect(await clean(dialect, sheet(IF_AND))).toContain(`x: ${IF_AND};`);
   });
 
   /* Less reads `and` between two tests as its own condition (`if(false: a; else: b)`). */
-  it.fails.each(['less', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
-    expect(await clean(dialect, sheet(IF_AND))).toContain(`x: ${IF_AND};`);
+  it.fails('less: a CSS if() condition joined by `and`', async () => {
+    expect(await clean('less', sheet(IF_AND))).toContain(`x: ${IF_AND};`);
   });
 
   /* A call argument whose first item is followed by a `:` is a branch (ledger P38): the colon is its structure. */
