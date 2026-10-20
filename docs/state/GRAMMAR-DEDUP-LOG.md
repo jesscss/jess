@@ -777,13 +777,15 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
   (`ValueRun`); the run reads the stop between pieces (`valueRunEndAhead` at the
   trivia gap, `gluedValueBoundary` at a glued `=`). Every other caller reads the rule
   `ValueSequence`, which clears a stop it is entered under, so a run nested inside a
-  piece (`foo(~(a=b) c)`) never reads its parent's. The function argument's "fails when
+  piece (`foo(~(a=b) c)`) never reads its parent's. An operand run (`OperandRun`) reads
+  the same continuation under a `condition` stop, which retired its own copy of it
+  (`functionArgumentValueContinuation` and three consts under it). The function argument's "fails when
   a condition follows" is its own `not(functionConditionStop)` (`conditionArgumentValue`).
   One CST name: `FunctionValueSequence` → `ValueSequence`. Oracle vs the dev build: zero
-  AST movers over 791 files; 69 CST movers, every one the rename (103 nodes) plus a
-  `state` snapshot carrying the stop on the 4252 CST nodes read inside a call argument's
-  run (was `null`) — that snapshot is the measured CST cost (+0.8% marginal
-  instructions on benchmark.less; AST +0.1%). Not done here: the nested `selector()`
+  AST movers over 791 files; 73 CST movers, every one the rename (103 nodes) plus a
+  `state` snapshot carrying the stop on the 4279 CST nodes read inside a call argument's
+  or an operand's run (was `null`) — that snapshot is the measured CST cost (+0.8% marginal
+  instructions on benchmark.less; AST +0.15%, null −0.2%). Not done here: the nested `selector()`
   capture context (`selector(.a:is(1px))`, V35) — the same mechanism, separate lane.
 - #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
   dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)

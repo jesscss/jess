@@ -6545,6 +6545,14 @@ describe('Less AST grammar facts', () => {
     expect(args('.a { .m(a and b); }')).toMatchObject({
       rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: [word('a'), word('and'), word('b')] }] }] }]
     });
+
+    // A glued `=` is the comparison too, never a delim joined into the run.
+    expect(args('.a { .m(a=b); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: {
+        type: 'Condition',
+        guard: { g: 'cmp', op: '=', left: word('a'), right: word('b') }
+      } }] }] }]
+    });
     expect(args('.a { .m(a = b and c); }')).toMatchObject({
       rules: [{ rules: [{ type: 'MixinCall', name: '.m', args: [{ value: {
         type: 'Condition',

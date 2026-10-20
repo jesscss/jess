@@ -939,8 +939,8 @@ const functionConditionOperator = regex(/[<>=]*=~|[<>=]+/);
  * `punctuationValueCharacter` run less the characters Less reads itself: `@`,
  * `$`, `#`, `&`, `!`, `%`, `<`, `>`, the math operators, and `:` and `.` (see
  * `gluedDelim`). A `~` that opens an escape (`~"…"`, `~(…)`) is the escape: the
- * value piece is tried first. In a call argument `=` is a comparison
- * (`functionConditionStop` decides first).
+ * value piece is tried first. In a call argument `=` is a comparison (the
+ * value run's stop decides first: `valueRunEndAhead`, `gluedValueBoundary`).
  */
 const delimRun = regex(/[=~|^?]+/);
 
@@ -956,10 +956,9 @@ const gluedDelim = regex(/:|\.(?![0-9])/);
  * What may open a piece glued to the one before it (`gluedValueBoundary`): a
  * Less variable's `@`, a `delimRun`, or a `gluedDelim`. In a call argument `=`
  * is a comparison, so a value run with a stop reads no glued `=`
- * (`gluedValueBoundary`), and an operand run's set leaves it out.
+ * (`gluedValueBoundary`).
  */
 const gluedValueStart = regex(/[@=~|^?:.]/);
-const gluedArgumentStart = regex(/[@~|^?:.]/);
 const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
@@ -2445,7 +2444,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     regex(/[*+]/),
     children => any(requireTerminalText(children[0]))
   );
-  /*
+  /**
    * What ends a value run at the gap before its next piece: a nested at-rule
    * header, or the run's stop (`LessParseState.valueStop`) — a comparison
    * operator, and in a function argument `and` or `or` too. The arms dispatch
@@ -2487,13 +2486,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(gluedPunctuationDelim, g.valuePiece),
     sequence(not(gluedPunctuationStart), g.valuePiece)
   );
-  const gluedArgumentBoundary = sequence(
-    leaf(peek(gluedArgumentStart), () => ({ kind: 'glued-value-boundary' })),
-    gluedPiece
-  );
-  // A value run's glued piece: `=` opens one too, unless the run has a stop
-  // (`LessParseState.valueStop`), where it is the comparison. The gate runs
-  // only once a glued opener is there.
+  /**
+   * A value run's glued piece. `=` opens one too, except in a run with a stop
+   * (`LessParseState.valueStop`), where `=` is the comparison: the lookahead
+   * after the opener refuses an `=` there. It runs only once an opener is
+   * there, and its gate only at an `=`.
+   */
   const gluedValueBoundary = sequence(
     leaf(peek(gluedValueStart), () => ({ kind: 'glued-value-boundary' })),
     not(choice({ gate: state => valueStopOf(state) !== undefined, combinator: literal('=') })),
@@ -2508,30 +2506,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     gluedValueBoundary,
     gluedBacktickValueBoundary
   );
-  // An operand run always stops before a comparison operator, `and` or `or`,
-  // wherever it is read: a paren group, a guard, a function condition.
-  const functionArgumentValueTriviaBoundary = sequence(
-    not(functionConditionStop),
-    valueTriviaBoundary
-  );
-  const functionArgumentValueContinuation = choice(
-    functionArgumentValueTriviaBoundary,
-    gluedArgumentBoundary,
-    gluedBacktickValueBoundary
-  );
   /**
    * An operand of a comparison or a paren group: a math run, and the component
    * values after it, read as a function argument reads them — a space run
    * (`1px 2px`), a delim Less gives no meaning and what follows it (`a.b`,
    * `a ~ b`), the run a value reads there (ledger N18) — up to the comparison
-   * operator, `and` or `or` that ends it, so `=` stays the comparison. With
+   * operator, `and` or `or` that ends it, so `=` stays the comparison — the
+   * `condition` stop a function argument's run has, wherever the operand is
+   * read (a paren group, a guard, a function condition). With
    * nothing after it it is the math run itself, left unfolded for its consumer;
    * with more, the run is a value's, so its math run is folded as a value's is
    * (`lessMathInValue`).
    */
   const OperandRun = node(
     'OperandRun',
-    noTrivia(sequence(g.MathSum, many(functionArgumentValueContinuation))),
+    noTrivia(sequence(
+      g.MathSum,
+      withCtx((state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }), many(valueContinuation))
+    )),
     (children, _fields, _span, _rawChildren, triviaLog, state) => runOperand(valuePieceReducerWithTrivia(
       [lessMathInValue(requireMathSum(children), state), ...children.slice(1)],
       triviaLog,
@@ -2561,7 +2553,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // nothing on ordinary values: it fails on its first character unless the next
   // non-space character is `@`, and even then stops at the declaration's own
   // terminator a few characters later.
-  /*
+  /**
    * One value run, wherever it is read; only where it stops differs. A value
    * has no stop, and a glued `=` joins it (`a=b`). A call argument reads the
    * same run up to its comparison, which it sets as `LessParseState.valueStop`,
@@ -2580,6 +2572,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(g.valuePiece, many(valueContinuation))),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
+  /**
+   * The value run every caller but a call argument reads: `ValueRun`, with any
+   * stop it is entered under cleared (see `ValueRun`).
+   */
   const ValueSequence = withCtx(
     (state: LessParseState | undefined) => state?.valueStop === undefined ? state : { ...state, valueStop: undefined },
     g.ValueRun
@@ -3631,10 +3627,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
      * Its value run stops before a comparison operator and glues no `=` (it
      * reads `and` / `or` as words).
      */
-    choice(attempt(g.FlatMixinCall), g.ValueBlock, withCtx(
-      (state: LessParseState | undefined) => ({ ...state, valueStop: 'comparison' as const }),
-      sequence(g.ValueRun, many(sequence(functionConditionOperator, optional(g.ValueRun))))
-    )),
+    choice(
+      attempt(g.FlatMixinCall),
+      g.ValueBlock,
+      withCtx(
+        (state: LessParseState | undefined) => ({ ...state, valueStop: 'comparison' as const }),
+        sequence(g.ValueRun, many(sequence(functionConditionOperator, optional(g.ValueRun))))
+      )
+    ),
     (children, _fields, _span, rawChildren, triviaLog, state) => {
       const value = children[0];
       if (children.length % 2 === 0) {
