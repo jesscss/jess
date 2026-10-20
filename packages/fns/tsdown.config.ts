@@ -12,6 +12,7 @@ export default defineConfig({
     'sass/color/index': './src/sass/color/index.ts',
     'sass/list/index': './src/sass/list/index.ts',
     'sass/map/index': './src/sass/map/index.ts',
+    'sass/selector/index': './src/sass/selector/index.ts',
     'sass/math/index': './src/sass/math/index.ts',
     'sass/string/index': './src/sass/string/index.ts',
     'shared/index': './src/shared/index.ts'

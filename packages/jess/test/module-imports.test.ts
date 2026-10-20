@@ -71,6 +71,28 @@ describe('public module imports', () => {
     )).resolves.toBe('.entry {\n  value: 2;\n}\n');
   });
 
+  /*
+   * A namespace member is called by the function's own name (`map.has-key`), never
+   * its JavaScript export key (`hasKey`). The SCSS expectation is Dart Sass 1.101.7's.
+   */
+  it('calls a namespace member by the function\'s own name', async () => {
+    const compiler = new Compiler();
+    compiler['createJsPluginProxy'] = () => undefined;
+
+    await expect(compiler.renderString(
+      '@use "sass:map";\n@use "sass:list";\n$theme: (primary: blue);\n.entry { has: map.has-key($theme, primary); bracketed: list.is-bracketed([a b]); }',
+      { filePath: 'entry.scss', extension: '.scss' }
+    )).resolves.toBe('.entry {\n  has: true;\n  bracketed: true;\n}\n');
+    await expect(compiler.renderString(
+      '@use "#less";\n.entry { unit: @less.get-unit(5px); }',
+      { filePath: 'entry.less', extension: '.less' }
+    )).resolves.toBe('.entry {\n  unit: px;\n}\n');
+    await expect(compiler.renderString(
+      '@-use "#less";\n.entry { unit: $less.get-unit(5px); }',
+      { filePath: 'entry.jess', extension: '.jess' }
+    )).resolves.toBe('.entry {\n  unit: px;\n}\n');
+  });
+
   it('runs the @jesscss/fns package specifier in-process through plugin-js without Deno', async () => {
     const js = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
     const context = new Context({}, [new NodeModulesPlugin({ basePath: process.cwd() }), js]);

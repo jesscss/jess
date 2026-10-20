@@ -57,6 +57,11 @@
       "import": "./lib/sass/map/index.js",
       "require": "./lib/sass/map/index.cjs"
     },
+    "./sass/selector": {
+      "types": "./lib/sass/selector/index.d.ts",
+      "import": "./lib/sass/selector/index.js",
+      "require": "./lib/sass/selector/index.cjs"
+    },
     "./sass/math": {
       "types": "./lib/sass/math/index.d.ts",
       "import": "./lib/sass/math/index.js",

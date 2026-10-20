@@ -199,6 +199,19 @@ This document catalogs all built-in Sass functions from dart-sass, categorized b
 - `map-values($map)` - Deprecated
 - `map-has-key($map, $key, $keys...)` - Deprecated
 
+## Selector Module Functions
+
+### Implemented
+- `selector.parse($selector)` - The selector a string holds, as the value `&` is (a comma list of space lists). Reads the string with the stylesheet dialect's own selector-list production, which the plugin hands to the function as `FnCtx.parseSelector`.
+
+### Not implemented
+- `selector.append($selectors...)`, `selector.nest($selectors...)` - Need `&`-joining over parsed selectors (core's `&` composition is not exposed to functions)
+- `selector.extend($selector, $extendee, $extender)`, `selector.replace($selector, $original, $replacement)`, `selector.unify($selector1, $selector2)`, `selector.is-superselector($super, $sub)` - Need the extend engine's selector matching over parsed selectors
+- `selector.simple-selectors($selector)` - Needs a compound's simple selectors, which the parse hook does not return
+
+### Global Selector Functions (Deprecated)
+- `selector-parse($selector)` - Deprecated
+
 ## Conversion Complexity Summary
 
 ### Simple (Direct Conversion)
@@ -245,8 +258,9 @@ This document catalogs all built-in Sass functions from dart-sass, categorized b
 - **String Module**: ~10 functions
 - **List Module**: ~10 functions
 - **Map Module**: ~10 functions
+- **Selector Module**: 8 functions
 
-**Grand Total**: ~105 functions
+**Grand Total**: ~113 functions
 
 ## Conversion Priority
 

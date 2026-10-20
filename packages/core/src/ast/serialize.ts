@@ -189,6 +189,7 @@ import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAs
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
@@ -1453,89 +1454,6 @@ function scopedFunctionNames(fns: ReadonlyMap<string, Fn> | null): Set<string> |
   return fns === null ? undefined : new Set(fns.keys());
 }
 
-function isModuleFn(value: unknown): value is Fn {
-  return typeof value === 'function'
-    && 'params' in value
-    && Array.isArray(value.params);
-}
-
-type ModuleCallable = (...args: unknown[]) => unknown;
-
-function isModuleCallable(value: unknown): value is ModuleCallable {
-  return typeof value === 'function';
-}
-
-function moduleFunctionResult(value: unknown, name: string): ValueGroup {
-  if (isValueGroup(value)) {
-    return value;
-  }
-  if (typeof value === 'number') {
-    return makeDimension(value);
-  }
-  if (typeof value === 'string') {
-    // A JS module function's plain string never passed through a parser; its text is its only fact.
-    return sniffLiteral(value);
-  }
-  if (typeof value === 'boolean') {
-    return makeBool(value);
-  }
-  if (value === null || value === undefined) {
-    return NULL;
-  }
-  throw new TypeError(`Module function "${name}" returned an unsupported value.`);
-}
-
-function bindModuleFunction(value: ModuleCallable | Fn, name: string): Fn {
-  if (isModuleFn(value)) {
-    return defineFunction(name, {
-      params: value.params,
-      variadic: true,
-      body: (args, context) => value(args, context)
-    });
-  }
-  return defineFunction(name, {
-    params: [],
-    variadic: true,
-    body: args => mapMaybe(
-      value(...groupItems(args)),
-      result => moduleFunctionResult(result, name)
-    )
-  });
-}
-
-function moduleAstValue(value: unknown, name: string, seen: Set<object> | null = null): ValueSlot {
-  if (value === null) {
-    return NULL_NODE;
-  }
-  if (typeof value === 'string') {
-    return keyword(value);
-  }
-  if (typeof value === 'number') {
-    return dimension(value);
-  }
-  if (typeof value === 'boolean') {
-    return keyword(value ? 'true' : 'false');
-  }
-  if (typeof value === 'object') {
-    if (seen?.has(value)) {
-      throw new TypeError(`Module export "${name}" is cyclic.`);
-    }
-    seen ??= new Set();
-    seen.add(value);
-    if (Array.isArray(value)) {
-      const result = list(value.map((item, index) => moduleAstValue(item, `${name}[${index}]`, seen)));
-      seen.delete(value);
-      return result;
-    }
-    const entries = Object.entries(value).map(([key, member]) =>
-      collectionEntry(keyword(key), moduleAstValue(member, `${name}.${key}`, seen))
-    );
-    seen.delete(value);
-    return collection(entries);
-  }
-  throw new TypeError(`Module export "${name}" is not a supported stylesheet value.`);
-}
-
 function addModuleFunction(frame: Frame, fn: Fn, e: Lane): void {
   (activationOf(frame).moduleFns ??= new Map()).set(fn.name.toLowerCase(), fn);
   if (e.s.context?.sourceContext?.plugin?.supportedExtensions?.includes('.scss') === true) {
@@ -1600,7 +1518,7 @@ function bindModuleNamespace(
   const values: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(module)) {
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${name}`), e);
+      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`), e);
     } else {
       values[name] = value;
     }
@@ -5140,7 +5058,7 @@ function evalTyped(
       }
       if (node.kind !== 'var') {
         return node.kind === 'parent'
-          ? mapMaybe(parentSelectorBranches(frame, e), branches => evalTypedSlot(selectorListValue(branches), frame, e, projectMixinValues, argument))
+          ? mapMaybe(parentSelectorBranches(frame, e), selectorListValue)
           : mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
@@ -6004,7 +5922,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
       if (node.kind === 'entry' || node.kind === 'parent') {
         return node.kind === 'entry'
           ? literal(node.raw)
-          : mapMaybe(parentSelectorBranches(frame, e), branches => evalValue(selectorListValue(branches), frame, e));
+          : mapMaybe(parentSelectorBranches(frame, e), selectorListValue);
       }
 
       const hit = resolvePropAccessor(node, frame, e);
