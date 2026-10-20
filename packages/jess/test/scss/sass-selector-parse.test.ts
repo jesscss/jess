@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
+import { parse as parseLess } from '@jesscss/less-parser';
 import { parse as parseScss } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 
@@ -90,14 +91,21 @@ describe('scss: `selector.parse()` reads a selector string', () => {
 describe('scss → jess: `selector.parse()`', () => {
   const [interpolated, ...rest] = cases;
 
+  /* The converter's fact that `selector-parse` is a Sass built-in (`#sass` exports it as `selectorParse`). */
+  const functions = { from: '#sass', names: new Map([['selector-parse', 'selectorParse']]) };
+
   it.each(rest)('%s', async (_name, source) => {
-    const jess = emitJess(parseScss(source));
+    const jess = emitJess(parseScss(source), { functions });
     await expect(render(jess, '.jess')).resolves.toBe(await render(source));
   });
 
   it('lowers a literal to the selector() capture and any other argument to the module call', () => {
-    expect(emitJess(parseScss('@use "sass:selector" as sel; $t: ".b"; .a { x: sel.parse(".nav > a, .b"); y: sel.parse($t); z: selector-parse(".c"); }')))
+    expect(emitJess(parseScss('@use "sass:selector" as sel; $t: ".b"; .a { x: sel.parse(".nav > a, .b"); y: sel.parse($t); z: selector-parse(".c"); }'), { functions }))
       .toBe('@-use "#sass/selector" as sel;\n$t: ".b";\n.a {\n  x: selector(.nav > a, .b);\n  y: $sel.parse($t);\n  z: selector(.c);\n}\n');
+  });
+
+  it('leaves a Less call named selector-parse a call', () => {
+    expect(emitJess(parseLess('.x { v: selector-parse(".a, .b"); }'))).toBe('.x {\n  v: selector-parse(".a, .b");\n}\n');
   });
 
   /*

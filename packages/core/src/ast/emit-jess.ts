@@ -184,8 +184,8 @@ class JessPrinter {
   /** Set while a property's value prints: a value written to the output, not one a callable reads. */
   #propertyValue = false;
 
-  /** The call names of Sass's `selector.parse()`: the global one and each `sass:selector` namespace's. */
-  readonly #selectorParse = new Set(['selector-parse']);
+  /** The call names of Sass's `selector.parse()` through each `sass:selector` namespace. */
+  readonly #selectorParse = new Set<string>();
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
@@ -905,7 +905,11 @@ class JessPrinter {
     if (at === At.Expr) {
       return gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
     }
-    const selectorText = this.#selectorParse.has(node.name) ? selectorParseLiteral(node) : null;
+
+    /* The global `selector-parse` is Sass's only when the source dialect's functions have it. */
+    const selectorText = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
+      ? selectorParseLiteral(node)
+      : null;
     if (selectorText !== null) {
       return `selector(${selectorText})`;
     }

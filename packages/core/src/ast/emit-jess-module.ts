@@ -28,8 +28,10 @@ export function moduleImportText(node: ModuleImport, selectorParse: Set<string>)
 /**
  * The selector list a `selector.parse("…")` call's one plain string holds, which
  * `.jess` writes as the capture `selector(…)`, the same value (ledger P49); `null`
- * for any other argument, and for a string holding `&`, which the capture reads as
- * a parent selector where `selector.parse()` rejects it.
+ * for any other argument, and for a string holding `&` or `%`, which the capture
+ * reads as a parent selector, or does not read (a placeholder), where
+ * `selector.parse()` rejects or reads it. A `null` keeps the call, which computes
+ * the same value.
  */
 export function selectorParseLiteral(node: FunctionCall): string | null {
   const arg = node.args.length === 1 ? node.args[0]! : undefined;
@@ -38,5 +40,5 @@ export function selectorParseLiteral(node: FunctionCall): string | null {
     return null;
   }
   const text = value.value.trim();
-  return text === '' || text.includes('&') ? null : text;
+  return text === '' || /[&%]/u.test(text) ? null : text;
 }
