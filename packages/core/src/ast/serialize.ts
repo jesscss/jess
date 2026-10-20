@@ -190,7 +190,7 @@ import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBoo
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, hasCssTest, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -7915,7 +7915,40 @@ function pickIfValue<T>(
 ): MaybePromise<T> {
   const deps = guardDeps(frame, e);
   if (node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard))) {
-    return pickCssIf(node, frame, e, deps, use, write);
+    /*
+     * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`,
+     * …), which only the browser can answer (css-values-5 §8.3). Each condition
+     * is decided as far as compile time can, in order ({@link partialGuard}),
+     * as Dart Sass decides a CSS `if()` with `sass()` conditions (owner
+     * 2026-10-19: "do what sass does"): a branch decided false is dropped; one
+     * decided true before any branch is kept is the value, and after one is
+     * kept it is written `else`; the rest are written as a CSS `if()` with what
+     * is left of their conditions. Only the value of a branch that is taken or
+     * kept is evaluated. No branch left is no value.
+     */
+    const cssTest = (value: ValueSlot): MaybePromise<string> => mapMaybe(evalValueSlot(value, frame, e), v => emitValueC(v, e));
+    const kept: Array<{ readonly condition: string; readonly value: ValueSlot }> = [];
+    const keep = (index: number): MaybePromise<T> => {
+      const branch = node.branches[index];
+      if (branch === undefined) {
+        return kept.length === 0
+          ? use(undefined, e)
+          : combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
+              write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join('; ')})`));
+      }
+      const guard = branch.guard;
+      const decided = guard === null ? true : withUnitErrors(node, e, () => partialGuard(guard, deps, cssTest));
+      return mapMaybe(decided, (condition) => {
+        if (condition === true && kept.length === 0) {
+          return use(branch.value, e);
+        }
+        if (condition !== false) {
+          kept.push({ condition: condition === true ? 'else' : condition.text, value: branch.value });
+        }
+        return keep(index + 1);
+      });
+    };
+    return keep(0);
   }
   const step = (index: number): MaybePromise<ValueSlot | undefined> => {
     const branch = node.branches[index];
@@ -7932,129 +7965,6 @@ function pickIfValue<T>(
     );
   };
   return mapMaybe(step(0), taken => use(taken, e));
-}
-
-/**
- * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …),
- * which only the browser can answer (css-values-5 §8.3). Each condition is
- * decided as far as compile time can, in order, as Dart Sass decides a CSS
- * `if()` with `sass()` conditions (owner 2026-10-19: "do what sass does"): a
- * branch decided false is dropped; one decided true before any branch is kept
- * is the value, and after one is kept it is written `else`; the rest are
- * written as a CSS `if()` with what is left of their conditions. Only the value
- * of a branch that is taken or kept is evaluated. No branch left is no value.
- */
-function pickCssIf<T>(
-  node: IfValue,
-  frame: Frame | null,
-  e: Lane,
-  deps: GuardEvalDeps,
-  use: (taken: ValueSlot | undefined, e: Lane) => MaybePromise<T>,
-  write: (bytes: string) => T
-): MaybePromise<T> {
-  const kept: Array<{ readonly condition: string; readonly value: ValueSlot }> = [];
-  const written = (): MaybePromise<T> => combineAll(
-    kept.map(branch => evalValueSlot(branch.value, frame, e)),
-    values => write(`if(${kept.map((branch, index) => `${branch.condition}: ${emitValueC(values[index]!, e)}`).join('; ')})`)
-  );
-  const step = (index: number): MaybePromise<T> => {
-    const branch = node.branches[index];
-    if (branch === undefined) {
-      return kept.length === 0 ? use(undefined, e) : written();
-    }
-    const decided = branch.guard === null ? true : partialCondition(node, branch.guard, frame, e, deps);
-    return mapMaybe(decided, (condition) => {
-      if (condition === true && kept.length === 0) {
-        return use(branch.value, e);
-      }
-      if (condition !== false) {
-        kept.push({ condition: condition === true ? 'else' : condition.text, value: branch.value });
-      }
-      return step(index + 1);
-    });
-  };
-  return step(0);
-}
-
-/** What is left of a condition compile time cannot decide: as written, and without the parens written around it. */
-interface CssCondition {
-  readonly text: string;
-  readonly bare: string;
-}
-
-const inConditionParens = (parens: number, bytes: string): string =>
-  parens === 0 ? bytes : `${'('.repeat(parens)}${bytes}${')'.repeat(parens)}`;
-
-/**
- * A condition decided as far as compile time can (Dart Sass's partial
- * evaluation of a CSS `if()` condition): a subtree with no CSS test is decided;
- * `and` drops its true operands and is false at its first false one, `or` drops
- * its false operands and is true at its first true one, and neither reads past
- * the operand that decides it. What is left is written, keywords in lower case;
- * an `and`/`or` left with one operand is that operand, without the parens
- * written around it.
- */
-function partialCondition(node: IfValue, guard: GuardNode, frame: Frame | null, e: Lane, deps: GuardEvalDeps): MaybePromise<boolean | CssCondition> {
-  switch (guard.g) {
-    case 'css':
-      return mapMaybe(evalValueSlot(guard.value, frame, e), (value) => {
-        const bare = emitValueC(value, e);
-        return { text: inConditionParens(guard.parens, bare), bare };
-      });
-    case 'not':
-      if (!hasCssTest(guard.inner)) {
-        break;
-      }
-      return mapMaybe(partialCondition(node, guard.inner, frame, e, deps), (inner) => {
-        if (typeof inner === 'boolean') {
-          return !inner;
-        }
-        const bare = `not ${inner.text}`;
-        return { text: inConditionParens(guard.parens, bare), bare };
-      });
-    case 'and':
-    case 'or': {
-      if (!hasCssTest(guard)) {
-        break;
-      }
-      const decides = guard.g === 'or';
-      const operands: GuardNode[] = [];
-      const flatten = (operand: GuardNode): void => {
-        if (operand.g === guard.g && operand.parens === 0) {
-          flatten(operand.left);
-          flatten(operand.right);
-        } else {
-          operands.push(operand);
-        }
-      };
-      flatten(guard.left);
-      flatten(guard.right);
-      const left: CssCondition[] = [];
-      const step = (index: number): MaybePromise<boolean | CssCondition> => {
-        const operand = operands[index];
-        if (operand === undefined) {
-          if (left.length === 0) {
-            return !decides;
-          }
-          const bare = left.length === 1 ? left[0]!.bare : left.map(condition => condition.text).join(` ${guard.g} `);
-          return { text: inConditionParens(guard.parens, bare), bare };
-        }
-        return mapMaybe(partialCondition(node, operand, frame, e, deps), (decided) => {
-          if (decided === decides) {
-            return decides;
-          }
-          if (typeof decided !== 'boolean') {
-            left.push(decided);
-          }
-          return step(index + 1);
-        });
-      };
-      return step(0);
-    }
-    default:
-      break;
-  }
-  return withUnitErrors(node, e, () => evalGuard(guard, deps));
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */

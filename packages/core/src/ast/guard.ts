@@ -25,7 +25,7 @@ import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-ev
 import { makeList } from './value-factory.js';
 import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
-import type { GuardNode } from './guard-node.js';
+import { hasCssTest, type GuardNode } from './guard-node.js';
 
 /*
  * The guard node and its constructor live in `guard-node.ts`, which imports nothing
@@ -195,6 +195,97 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
     case 'css':
       return false;
   }
+}
+
+/** What is left of a CSS `if()` condition compile time cannot decide: as written, and without the parens written around it. */
+export interface CssCondition {
+  readonly text: string;
+  readonly bare: string;
+}
+
+const inConditionParens = (parens: number, bytes: string): string =>
+  parens === 0 ? bytes : `${'('.repeat(parens)}${bytes}${')'.repeat(parens)}`;
+
+/**
+ * A CSS `if()` condition decided as far as compile time can (ledger P38; Dart
+ * Sass's reading of a condition holding `sass()`): a part with no CSS test is
+ * decided ({@link evalGuard}); `and` drops its true operands and is false at
+ * its first false one, `or` drops its false operands and is true at its first
+ * true one, and neither reads past the operand that decides it; `not` of what
+ * is left is written `not`. A CSS test is written as `cssTest` writes it.
+ * Keywords are written in lower case, and an `and`/`or` left with one operand
+ * is that operand, without the parens written around it.
+ */
+export function partialGuard(
+  node: GuardNode,
+  deps: GuardEvalDeps,
+  cssTest: (value: ValueSlot) => MaybePromise<string>
+): MaybePromise<boolean | CssCondition> {
+  switch (node.g) {
+    case 'css': {
+      const bare = cssTest(node.value);
+      const left = (text: string): CssCondition => ({ text: inConditionParens(node.parens, text), bare: text });
+      return isThenable(bare) ? bare.then(left) : left(bare);
+    }
+    case 'not': {
+      if (!hasCssTest(node.inner)) {
+        break;
+      }
+      const inner = partialGuard(node.inner, deps, cssTest);
+      const negated = (value: boolean | CssCondition): boolean | CssCondition => {
+        if (typeof value === 'boolean') {
+          return !value;
+        }
+        const bare = `not ${value.text}`;
+        return { text: inConditionParens(node.parens, bare), bare };
+      };
+      return isThenable(inner) ? inner.then(negated) : negated(inner);
+    }
+    case 'and':
+    case 'or': {
+      if (!hasCssTest(node)) {
+        break;
+      }
+      const decides = node.g === 'or';
+      const operands: GuardNode[] = [];
+      const flatten = (operand: GuardNode): void => {
+        if (operand.g === node.g && operand.parens === 0) {
+          flatten(operand.left);
+          flatten(operand.right);
+        } else {
+          operands.push(operand);
+        }
+      };
+      flatten(node.left);
+      flatten(node.right);
+      const left: CssCondition[] = [];
+      const step = (index: number): MaybePromise<boolean | CssCondition> => {
+        const operand = operands[index];
+        if (operand === undefined) {
+          if (left.length === 0) {
+            return !decides;
+          }
+          const bare = left.length === 1 ? left[0]!.bare : left.map(condition => condition.text).join(` ${node.g} `);
+          return { text: inConditionParens(node.parens, bare), bare };
+        }
+        const decided = partialGuard(operand, deps, cssTest);
+        const next = (value: boolean | CssCondition): MaybePromise<boolean | CssCondition> => {
+          if (value === decides) {
+            return decides;
+          }
+          if (typeof value !== 'boolean') {
+            left.push(value);
+          }
+          return step(index + 1);
+        };
+        return isThenable(decided) ? decided.then(next) : next(decided);
+      };
+      return step(0);
+    }
+    default:
+      break;
+  }
+  return evalGuard(node, deps);
 }
 
 /** Whether a VALUE node references `default()` — a `default()` call anywhere in the
