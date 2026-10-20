@@ -43,15 +43,25 @@ $both: selector(.card, .panel);    // a selector list is fine
 
 <AudienceGate include={['sass']}>
 
-Sass captures a selector by parsing a string through the `sass:selector` module —
-`selector.parse()` — which Jess lifts into the same captured-selector value:
+Sass reads a selector string with `selector.parse()` from the `sass:selector` module (or the
+deprecated global `selector-parse()`). The result is the same value `&` is: a comma list of
+selectors, each a space list of its compound selectors and combinators.
 
 ```scss
 @use 'sass:selector';
+@use 'sass:list';
 
-$card: selector.parse('.card');
 $both: selector.parse('.card, .panel');
+
+#{$both} { padding: 1rem; }               // .card, .panel { padding: 1rem; }
+.debug { count: list.length($both); }     // count: 2
 ```
+
+The string can come from a variable or a mixin argument. Through the module, a string that is
+not a selector list, or that holds `&`, is an error that stops the compile, as in Dart Sass;
+the global `selector-parse()` follows `functionMode`, so by default such a call is written out
+as authored. The other `sass:selector` functions (`append`, `nest`, `extend`, `replace`,
+`unify`, `is-superselector`, `simple-selectors`) are not supported yet.
 
 </AudienceGate>
 

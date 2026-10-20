@@ -72,12 +72,22 @@ export type ParamSpec = ParamTypeSpec | LegacyParamKindSpec;
  *    NOT the whole legacy `Context`. Absent on the idle path (a render with no IO
  *    host wired); an IO fn that finds it absent degrades gracefully (verbatim /
  *    `url()` fallback) rather than throwing.
+ *  - `parseSelector`: the OPTIONAL selector-list read a selector-valued fn
+ *    (`selector.parse()`) needs. Injected by the dialect plugin from its own
+ *    parser's selector-list production, so a fn body never imports a parser.
  */
 export interface FnCtx {
   readonly modes: EvalModes;
   readonly stringify: (v: ValueGroup) => string;
   readonly io?: FnIo;
+  readonly parseSelector?: SelectorParse;
 }
+
+/**
+ * Reads `text` as a selector list: each branch's canonical text, in order. Throws
+ * an error whose message says why when `text` is not a selector list.
+ */
+export type SelectorParse = (text: string) => readonly string[];
 
 /**
  * The per-render file-read capability handed to the IO built-ins. The host owns

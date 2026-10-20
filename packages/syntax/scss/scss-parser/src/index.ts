@@ -1,6 +1,6 @@
 import type { Stylesheet } from '@jesscss/core/ast';
 import { scssGrammar } from './grammar/ast.js';
-import { parseRecoveringWith, parseWith, type ScssParsed } from './parse-with.js';
+import { parseRecoveringWith, parseSelectorWith, parseWith, type ScssParsed } from './parse-with.js';
 
 export type { ScssParsed } from './parse-with.js';
 export { ScssImportPostludeError, ScssParseError, type ScssRecoveredError } from './parse-error.js';
@@ -22,4 +22,13 @@ export function parse(input: string): Stylesheet {
  */
 export function parseRecovering(input: string): ScssParsed {
   return parseRecoveringWith(scssGrammar, input);
+}
+
+/**
+ * Read a selector string as Sass's `selector.parse()` does, with this
+ * grammar's `SelectorList`: each branch's canonical text. Throws when the text
+ * is not a selector list.
+ */
+export function parseSelector(text: string): string[] {
+  return parseSelectorWith(scssGrammar, text);
 }

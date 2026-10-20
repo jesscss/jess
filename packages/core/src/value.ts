@@ -85,6 +85,9 @@ export { groupOf, unify, unitFactor } from './ast/value-units.js';
 // --- literal materialize / sniff ---
 export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
+// --- selector values (`&`, `selector.parse()`) ---
+export { selectorListValue } from './ast/selector-text.js';
+
 // --- color name table ---
 export { namedColor } from './ast/color-names.js';
 
@@ -96,6 +99,7 @@ export type {
   ParamSpec,
   FnCtx,
   FnIo,
+  SelectorParse,
   FnRecord,
   PartialFnRecord,
   FunctionArgs,
