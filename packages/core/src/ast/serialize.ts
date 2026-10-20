@@ -5616,15 +5616,14 @@ const reachedGroup = (v: ValueGroup, e: Lane, call = false): ValueGroup => !isVa
  * never a nested `calc()`. An escaped string written in it is text, which
  * carries its group ({@link textGroup}); raw bytes keep the parens as written.
  */
-function writtenGroup(v: EvalValue, compress = false): Value {
-  const emit = compress ? emitCompressed : emitValue;
+function writtenGroup(v: EvalValue): Value {
   if (isLiteral(v) || isValueGroupArray(v)) {
-    return makeKeyword(`(${emit(v)})`);
+    return makeKeyword(`(${emitValue(v)})`);
   }
   if (keptMathOf(v) !== undefined) {
     return groupAsWritten(v);
   }
-  return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emit(v)})`);
+  return v.type === 'Any' && v.escapedQuote !== '' ? textGroup(v) : makeKeyword(`(${emitValue(v)})`);
 }
 
 /**
@@ -6049,7 +6048,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
             ? literal(`(${v})`)
             : v;
         }
-        return computation === null ? writtenGroup(v, e.compress === true) : keepAuthoredGroup(v, e, computation.type === 'FunctionCall');
+        return computation === null ? writtenGroup(v) : keepAuthoredGroup(v, e, computation.type === 'FunctionCall');
       });
     }
     case 'Expression': {
