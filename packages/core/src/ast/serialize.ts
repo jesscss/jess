@@ -8872,8 +8872,15 @@ function evalCall(
   const selected = e.s.scopedFunctionNames?.has(lname)
     ? lookupScopedFn(frame, lname, e.s)
     : undefined;
-  if (selected === undefined && e.s.moduleReferenceValues !== undefined && lname.includes('.')) {
-    missingModuleMember(node, frame, e);
+
+  /*
+   * An SCSS call through a `@use`d module's namespace (`selector.append()`) that names
+   * no member of it resolves to nothing, an eval error (ledger R3), as `.jess`
+   * `$ns.missing()` is.
+   */
+  if (selected === undefined && e.s.moduleReferenceValues !== undefined && lname.includes('.')
+    && moduleNamespaceBinding(frame, node.name.slice(0, node.name.indexOf('.')), e) !== undefined) {
+    throw ERR.nameNotFound({ node, ...callSiteLocation(node, e.s), meta: { symbol: node.name } });
   }
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
@@ -8916,17 +8923,6 @@ function evalCall(
    * registry (P17). The parser attached its document's scope to the node.
    */
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
-}
-
-/**
- * An SCSS call through a `@use`d module's namespace (`selector.append()`) that names
- * no member of it resolves to nothing, an eval error, as `.jess` `$ns.missing()` is
- * (ledger R3: a resolve failure is an eval error).
- */
-function missingModuleMember(node: FunctionCall, frame: Frame | null, e: Lane): void {
-  if (moduleNamespaceBinding(frame, node.name.slice(0, node.name.indexOf('.')), e) !== undefined) {
-    throw ERR.nameNotFound({ node, ...callSiteLocation(node, e.s), meta: { symbol: node.name } });
-  }
 }
 
 /** The binding `name` resolves to when it is a module's namespace (`@use "sass:map"` binds `map`). */
