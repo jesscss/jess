@@ -62,6 +62,42 @@ describe('a value led by a separator', () => {
  * a delim outside `$( … )`, `type(<length>)` is a run of delims and an
  * identifier, and a paren group holds the run its padded `>`, `~` or `:` is in.
  */
+/*
+ * `&` in a value or an expression is the parent selector, as in SCSS (owner
+ * 2026-10-19: "& should also be accepted as a value in .jess IMO").
+ */
+describe('the parent selector in a value', () => {
+  const parent = { type: 'Lookup', kind: 'parent', raw: '&' };
+  const body = (source: string): unknown => {
+    const rule = parse(source).rules[0];
+    return rule !== undefined && 'rules' in rule ? rule.rules[0] : undefined;
+  };
+
+  it('in a declaration', () => {
+    expect(declarationValue(parse('.a { x: &; }'))).toMatchObject(parent);
+  });
+
+  it('spliced into a string', () => {
+    expect(declarationValue(parse('.a { content: "$(&)"; }'))).toMatchObject({
+      type: 'Quoted',
+      interp: { parts: [{ ref: { type: 'Expression', value: parent } }] }
+    });
+  });
+
+  it('as a mixin argument', () => {
+    expect(body('.a { $ > label(&); }')).toMatchObject({ type: 'MixinCall', args: [{ value: parent }] });
+  });
+
+  it('in a condition', () => {
+    expect(body('.a { $if (&) { y: z; } }')).toMatchObject({ type: 'If', branches: [{ guard: { g: 'truth', value: parent } }] });
+  });
+
+  /* A value can hold `&`, so a selector that ends in one is a nested rule, not the declaration `div: hover`. */
+  it('leaves `&` after a pseudo-class a nested rule', () => {
+    expect(body('.a { div:hover & { c: d; } }')).toMatchObject({ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'c' }] });
+  });
+});
+
 describe('the css tree', () => {
   it.each([
     'a { x: a * b; }',

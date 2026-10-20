@@ -12,7 +12,7 @@ import { scssPositionsGrammar } from './grammar/ast/positions.js';
 import { parseRecoveringWith, parseWith, type ScssParsed } from './parse-with.js';
 
 export type { ScssParsed } from './parse-with.js';
-export { ScssImportPostludeError, ScssParentSelectorValueError, ScssParseError, type ScssRecoveredError } from './parse-error.js';
+export { ScssImportPostludeError, ScssParseError, type ScssRecoveredError } from './parse-error.js';
 
 /** Parse SCSS into the canonical AST v2 document with line/column facts. */
 export function parse(input: string): Stylesheet {

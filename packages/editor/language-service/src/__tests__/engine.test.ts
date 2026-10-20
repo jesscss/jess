@@ -390,11 +390,10 @@ describe('JessLanguageServiceEngine', () => {
       expect(input.slice(doc.offsetAt(diagnostic!.range.start), doc.offsetAt(diagnostic!.range.end))).toBe('* [.notice]');
     });
 
-    /* SCSS and `.jess` read a punctuation-led value as Less does, and SCSS's `&` in a value is its own error; each as the compiler names it. */
+    /* SCSS and `.jess` read a punctuation-led value as Less does; each as the compiler names it. */
     it.each([
       ['scss', 'parse/leading-separator-value', '$t: * [.notice];\n.after { color: red; }', '* [.notice]', 'A value cannot start with "*".'],
       ['jess', 'parse/leading-separator-value', '$t: * [.notice];\n.after { color: red; }', '* [.notice]', 'A value cannot start with "*".'],
-      ['scss', 'parse/unsupported-parent-selector-value', '.btn { content: &; }\n.after { color: red; }', '&', 'The parent selector `&` has no value here.'],
       ['jess', 'parse/arithmetic-outside-expression', '.grid { gap: 2 * 4px; }\n.after { color: red; }', '*', '`*` multiplies only inside $( … ).']
     ] as const)('%s: underlines %s without losing the document', (language, code, input, underlined, message) => {
       const engine = createEngine();

@@ -30,7 +30,6 @@ export type JessErrorCode =
   | 'parse/ambiguous-not'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
-  | 'parse/unsupported-parent-selector-value'
   | 'parse/arithmetic-outside-expression'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
@@ -202,14 +201,6 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`*` multiplies only inside $( … ).',
       reason: 'A .jess value computes only inside $( … ), so outside it this `*` would be written as it is, not multiplied.',
       fix: 'Write the operation inside $( … ), for example $(2 * 3).'
-    }
-  ],
-  [
-    'parse/unsupported-parent-selector-value',
-    {
-      summary: 'The parent selector `&` has no value here.',
-      reason: 'Sass reads `&` in a value as the selector of the rule it is in, and Jess does not compute that value, so the declaration would be written wrong.',
-      fix: 'Write the selector itself, or use `&` in a selector.'
     }
   ],
   [

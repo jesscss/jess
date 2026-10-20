@@ -78,6 +78,7 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
+import { hasTopLevelComma, interleave, selectorListValue } from './selector-text.js';
 import type {
   Any,
   Apply,
@@ -491,6 +492,45 @@ function importContextKey(scope: Frame): object | string {
     }
   }
   return scope.importContext = outer + '\n' + part;
+}
+
+/**
+ * `&` in a value ({@link Lookup} kind `parent`): the composed branches of the style rule
+ * the value is evaluated in, or null outside any rule (owner 2026-10-19: "in .scss, in
+ * these cases, i think do what sass does"); {@link selectorListValue} is the value. The
+ * rule is the one the output lands in, the chain {@link importContextKey} walks: a mixin
+ * call, a content block and a loop iteration are in the rule they are placed in, a
+ * bare-`&` rule is its parent.
+ */
+function parentSelectorBranches(frame: Frame | null, e: Lane): MaybePromise<string[] | null> {
+  if (frame === null) {
+    return null;
+  }
+
+  /* A function's body runs for its caller, so its `&` is the caller's. */
+  const scope = importScopeOf(frame.importScope === undefined && frame.callerFallback === true && frame.fallback ? frame.fallback : frame);
+  const outer = scope.parent;
+  if (outer === null) {
+    return null;
+  }
+  const parents = parentSelectorBranches(outer, e);
+  const of = scope.outputOf;
+  if (of?.type !== 'Ruleset') {
+    return parents;
+  }
+  return mapMaybe(parents, parents => parents === null || parents.length === 0
+
+    /* A parentless `&` is empty at the root, as {@link flattenResolved} reads it. */
+    ? mapMaybe(rootStrings(of.selector, outer, e), own => own.filter(branch => branch !== ''))
+
+    /*
+     * Each branch as Sass resolves it, never as the writer compacts it (`:is()`, a
+     * pseudo-element's hold): every `&` stands for each parent in turn
+     * ({@link joinAmpersand}), a branch with none follows each parent, and the
+     * branches' lists interleave parent by parent.
+     */
+    : combineAll(of.selector.selectors.map(branch => mapMaybe(resolveSelectorBranch(branch, outer, e), text =>
+        selectorBranchHasAmpersand(branch) ? joinAmpersand(text, parents) : parents.map(parent => `${parent} ${text}`))), interleave));
 }
 
 /**
@@ -5099,7 +5139,9 @@ function evalTyped(
           : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument));
       }
       if (node.kind !== 'var') {
-        return mapMaybe(evalValue(node, frame, e), v => force(v));
+        return node.kind === 'parent'
+          ? mapMaybe(parentSelectorBranches(frame, e), branches => evalTypedSlot(selectorListValue(branches), frame, e, projectMixinValues, argument))
+          : mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -5943,9 +5985,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * `PropertyReference`, `var` was `VariableReference`, and a `var` whose
        * `name` is a NODE is what `VarIndirect` (`@@x`) used to be.
        */
-      if (node.kind === 'entry') {
-        return literal(node.raw);
-      }
       if (node.kind === 'var') {
         return mapMaybe(lookupName(node, frame, e), (nm) => {
           const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -5959,6 +5998,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
             ? reachedEvaluated(e, hit.evaluated)
             : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
         });
+      }
+
+      /* `$` keeps its spelling; `&` is the selector of the rule it is in ({@link parentSelectorBranches}). */
+      if (node.kind === 'entry' || node.kind === 'parent') {
+        return node.kind === 'entry'
+          ? literal(node.raw)
+          : mapMaybe(parentSelectorBranches(frame, e), branches => evalValue(selectorListValue(branches), frame, e));
       }
 
       const hit = resolvePropAccessor(node, frame, e);
@@ -16146,15 +16192,15 @@ function flattenResolved(
   });
 }
 
-/** Establish one ordinary visible ruleset activation for either writer. */
-function activateRuleFrame(rule: Ruleset, frame: Frame, e: Lane): Frame {
+/** Establish one ordinary visible ruleset activation for either writer; `sourceOwner`, when given, is the document its body is written in. */
+function activateRuleFrame(rule: Ruleset, frame: Frame, e: Lane, sourceOwner?: object | null): Frame {
   const priorPlacement = frame.rulePlacements?.get(rule);
   let childFrame: Frame;
   if (priorPlacement?.parent === frame) {
     childFrame = priorPlacement;
   } else {
     childFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
-    childFrame.sourceOwner = sourceOwnerForBody(rule.rules, frame, e);
+    childFrame.sourceOwner = sourceOwner === undefined ? sourceOwnerForBody(rule.rules, frame, e) : sourceOwner;
     childFrame.outputOf = rule;
 
     /*
@@ -17814,7 +17860,7 @@ function expandCall(
               leakBodyVars(frame, def.rules, callFrame, e);
               publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
               if (def.ruleMixin !== true) {
-                publishExplicitRulesets(frame, def.rules, callFrame);
+                publishExplicitRulesets(frame, def.rules, callFrame, e);
               }
               return run(index + 1);
             });
@@ -17841,7 +17887,7 @@ function expandCall(
            */
           publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
           if (def.ruleMixin !== true) {
-            publishExplicitRulesets(frame, def.rules, callFrame);
+            publishExplicitRulesets(frame, def.rules, callFrame, e);
           }
         }
       };
@@ -18173,7 +18219,7 @@ function publishOrderedMixins(frame: Frame, index: OrderedMixinIndex | null, hom
  * frame, retaining its call bindings and any ordered imports. Ruleset-mixins do
  * not use this path: they already participate in ordinary ruleset dispatch.
  */
-function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Frame): void {
+function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Frame, e: Lane): void {
   for (const statement of rules) {
     if (statement.type !== 'Ruleset') {
       continue;
@@ -18187,11 +18233,8 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
      */
     let placement = callFrame.rulePlacements?.get(statement);
     if (placement?.parent !== callFrame) {
-      placement = makeFrame(callFrame, statement.rules, collectMixins(statement.rules), collectDeclIndex(statement.rules), null);
-
       /* The rule sits in the called body, so it is that body's document's source. */
-      placement.sourceOwner = callFrame.sourceOwner;
-      (callFrame.rulePlacements ??= new Map()).set(statement, placement);
+      placement = activateRuleFrame(statement, callFrame, e, callFrame.sourceOwner ?? null);
     }
     (activationOf(frame).publishedRules ??= []).push({ rule: statement, frame: placement });
   }
@@ -18481,31 +18524,6 @@ interface EvaluatedForItems {
 }
 
 type ForItems = ForItem[] | EvaluatedForItems | CollectionOverlay<ValueCollectionEntry> | ValueCollection;
-
-/** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
-function hasTopLevelComma(text: string): boolean {
-  let depth = 0;
-  let quote = '';
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
-    if (quote !== '') {
-      if (c === quote) {
-        quote = '';
-      }
-      continue;
-    }
-    if (c === '"' || c === '\'') {
-      quote = c;
-    } else if (c === '(' || c === '[' || c === '{') {
-      depth++;
-    } else if (c === ')' || c === ']' || c === '}') {
-      depth--;
-    } else if (depth === 0 && c === ',') {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * If the iterable resolves to an executable detached ruleset, return its
