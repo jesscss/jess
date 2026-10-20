@@ -4011,7 +4011,7 @@ describe('CSS if()', () => {
           guard: {
             g: 'and',
             left: { g: 'css', value: { type: 'Any', src: 'media(width >= $w)' }, parens: 0 },
-            right: { g: 'truth', value: { type: 'Expression' }, parens: 0 },
+            right: { g: 'truth', value: { type: 'Lookup', name: 'a' }, parens: 0 },
             parens: 0
           },
           value: { type: 'Dimension', src: '1px' }

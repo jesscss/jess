@@ -2853,7 +2853,7 @@ describe('CSS if()', () => {
           guard: {
             g: 'and',
             left: { g: 'css', value: { type: 'Any', src: 'media(width >= $w)' }, parens: 0 },
-            right: { g: 'truth', value: { type: 'Lookup', kind: 'var', name: 'a', mode: 'live' }, parens: 0 },
+            right: { g: 'truth', value: { type: 'Lookup', kind: 'var', name: 'a', raw: '@a', scope: 'live' }, parens: 0 },
             word: 'and',
             gluedAt: -1,
             parens: 0

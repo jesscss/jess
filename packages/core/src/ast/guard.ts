@@ -33,7 +33,7 @@ import type { GuardNode } from './guard-node.js';
  * load this evaluator and its value domain.
  */
 export type { GuardNode } from './guard-node.js';
-export { inParens } from './guard-node.js';
+export { hasCssTest, inParens } from './guard-node.js';
 
 /**
  * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.
@@ -187,6 +187,13 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
     }
     case 'default':
       return deps.isDefault();
+
+    /*
+     * A CSS `if()` test is the browser's to answer: an `IfValue` holding one is
+     * written as a CSS `if()` and never reaches here (`hasCssTest`).
+     */
+    case 'css':
+      return false;
   }
 }
 

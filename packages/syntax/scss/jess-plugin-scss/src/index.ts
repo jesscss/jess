@@ -88,8 +88,8 @@ export class ScssPlugin extends AbstractPlugin {
       return {
         document,
         dialectDefaults: this.#dialectDefaults,
-        errors: recovered.map(error => parserDiagnostic({ dialect: 'SCSS', error, filePath, source })),
-        warnings: []
+        errors: recovered.filter(problem => !('severity' in problem)).map(error => parserDiagnostic({ dialect: 'SCSS', error, filePath, source })),
+        warnings: recovered.filter(problem => 'severity' in problem).map(warning => parserDiagnostic({ dialect: 'SCSS', error: warning, filePath, source }))
       };
     } catch (error) {
       return {

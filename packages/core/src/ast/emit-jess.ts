@@ -36,13 +36,13 @@
  */
 import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, CollectionItem, ComplexSelector, CompoundSelector,
-  Declaration, Expression, ExtendInstruction, FunctionCall, Interpolation, Lookup, LookupStep, MixinCall,
+  Declaration, Expression, ExtendInstruction, FunctionCall, IfValue, Interpolation, Lookup, LookupStep, MixinCall,
   MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
-import type { GuardNode } from './guard.js';
+import { hasCssTest, type GuardNode } from './guard-node.js';
 import { renderCombinator } from './node.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
@@ -767,10 +767,7 @@ class JessPrinter {
         if (valueLayoutOf(node)?.some(sep => !/^[ \t]*[,/][ \t]*$/u.test(sep)) === true) {
           return gap('List', 'a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout');
         }
-        if (node.sep === ';') {
-          return gap('List', 'a `;` list from a CSS function body (`if()`): `.jess` call arguments have no `;` separator');
-        }
-        const glue = node.sep === ',' ? ', ' : ' / ';
+        const glue = node.sep === ',' ? ', ' : node.sep === ';' ? '; ' : ' / ';
         return node.value.map(item => this.value(item, at, indent)).join(glue);
       }
       case 'Sequence':
@@ -803,8 +800,11 @@ class JessPrinter {
         return this.call(node, at);
       case 'Block':
         return this.paren(node, at);
-      case 'Branch':
-        return gap('Branch', 'a `condition: value` branch argument (ledger P38): `.jess` call arguments have no branch form (jess#297)');
+      case 'Branch': {
+        /* `CallBranch`: `condition: value`, the colon the branch's own (ledger P38). */
+        const value = this.value(node.value, At.Value, indent);
+        return `${this.value(node.condition, At.Value, indent)}:${value === '' ? '' : ` ${value}`}`;
+      }
       case 'Expression':
         return this.expression(node, at);
       case 'Condition':
@@ -813,7 +813,7 @@ class JessPrinter {
         }
         return this.guard(node.guard, true, false);
       case 'IfValue':
-        return gap('IfValue', 'value-position `$if … $else`: documented on the node, but no `.jess` production builds it');
+        return this.ifValue(node, indent);
       case 'Interpolation':
         return this.valueInterpolation(node, at);
       case 'AnonymousMixin':
@@ -985,6 +985,64 @@ class JessPrinter {
   }
 
   /**
+   * `IfValue`, as `.jess`'s CSS `if()` (ledger P38): a branch list whose
+   * compile-time conditions are `$( … )`, whose CSS tests are written as
+   * authored, and whose unconditioned branch is `else`. Sass's
+   * `if($condition, $if-true, $if-false)` is the same node, so it is spelled
+   * `if($($condition): $if-true; else: $if-false)`. A Less `if()` keeps the call
+   * it was lowered from (ledger P36), which this spelling does not.
+   */
+  ifValue(node: IfValue, indent: string): string {
+    if (node._asCall !== null) {
+      return gap('IfValue', 'a Less `if()` lowered from a call (ledger P36): its call has no `.jess` spelling here');
+    }
+    const branches = node.branches.map(branch =>
+      `${branch.guard === null ? 'else' : this.ifCondition(branch.guard)}: ${this.value(branch.value, At.Value, indent)}`);
+    return `if(${branches.join('; ')})`;
+  }
+
+  /**
+   * An `if()` condition: a part with no CSS test is decided at compile time,
+   * so it is one `$( … )`; a CSS test is its authored text, and `and`, `or`
+   * and `not` join them as CSS does.
+   */
+  ifCondition(node: GuardNode): string {
+    const parens = (s: string): string => `${'('.repeat(node.parens)}${s}${')'.repeat(node.parens)}`;
+    if (!hasCssTest(node)) {
+      /* A truth test of a `$( … )` is that expression (Sass's `if($a == 1, …)`). */
+      if (node.g === 'truth' && !isSlotArray(node.value) && node.value.type === 'Expression') {
+        return parens(this.expression(node.value, At.Value));
+      }
+      return parens(`$(${this.guard({ ...node, parens: 0 }, true, false)})`);
+    }
+    switch (node.g) {
+      case 'css':
+        return parens(this.cssTest(node.value));
+      case 'and':
+      case 'or':
+        return parens(`${this.ifCondition(node.left)} ${node.g} ${this.ifCondition(node.right)}`);
+      case 'not':
+        return parens(`not ${this.ifCondition(node.inner)}`);
+      default:
+        return gap('GuardNode', `a \`${node.g}\` condition holding a CSS test`);
+    }
+  }
+
+  /**
+   * A CSS test's authored text, which `.jess` reads as a custom property's
+   * value is read: a `$name` in it is text, and `${name}` interpolates.
+   */
+  cssTest(value: ValueSlot): string {
+    if (!isSlotArray(value) && value.type === 'Any') {
+      return /\$[{[]/u.test(value.src) ? gap('Any', 'a CSS test holding `${`/`$[`, which `.jess` reads as interpolation') : value.src;
+    }
+    if (!isSlotArray(value) && value.type === 'Interpolation') {
+      return this.template(value, 'string');
+    }
+    return this.value(value, At.Value);
+  }
+
+  /**
    * `Expression`: `$( … )`, the only `.jess` math boundary. A Less paren group
    * is the boundary AND the author's parens, which the value keeps where its
    * math is kept as written (J16), so it prints as `$(( … ))`.
@@ -1150,6 +1208,8 @@ class JessPrinter {
         return `not (${this.guard(node.inner, true, mixin)})`;
       case 'truth':
         return this.value(node.value, At.Expr);
+      case 'css':
+        return gap('GuardNode', 'a CSS `if()` test outside an `if()`');
       case 'default':
         return mixin ? 'default()' : gap('GuardNode', '`default()` outside a mixin guard');
       case 'call': {

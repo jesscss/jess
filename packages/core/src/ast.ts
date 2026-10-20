@@ -164,6 +164,6 @@ export {
 } from './ast/css-grammar-helpers.js';
 export { componentRun } from './ast/component-run.js';
 export type { GuardNode } from './ast/guard-node.js';
-export { inParens } from './ast/guard-node.js';
+export { hasCssTest, inParens } from './ast/guard-node.js';
 export type { CallArg } from './ast/mixin-dispatch.js';
 export type { BareVariableRejection, NthArgument } from './ast/css-grammar-helpers.js';

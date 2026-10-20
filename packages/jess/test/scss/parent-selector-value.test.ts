@@ -31,19 +31,19 @@ const cases: ReadonlyArray<readonly [string, string, string]> = [
   ['each rule an @each places', '@each $tone in info, warn { .alert-#{$tone} { content: "#{&}"; } }', '.alert-info {\n  content: ".alert-info";\n}\n.alert-warn {\n  content: ".alert-warn";\n}\n'],
   ['the rule around an @media', '.panel { @media (min-width: 640px) { content: "#{&}"; } }', '@media (min-width: 640px) {\n  .panel {\n    content: ".panel";\n  }\n}\n'],
   ['the rule a variable is assigned in', '.menu { $root: &; .entry { content: "#{$root}"; } }', '.menu .entry {\n  content: ".menu";\n}\n'],
-  ['an @if that tells a rule from the root', '@mixin theme { @if & { color: red; } @else { :root { color: red; } } } @include theme; .t { @include theme; }', ':root {\n  color: red;\n}\n.t {\n  color: red;\n}\n']
+  ['an @if that tells a rule from the root', '@mixin theme { @if & { color: red; } @else { :root { color: red; } } } @include theme; .t { @include theme; }', ':root {\n  color: red;\n}\n.t {\n  color: red;\n}\n'],
+  ['a truthy condition inside a rule', '.f { x: if(&, yes, no); }', '.f {\n  x: yes;\n}\n'],
+  ['null outside any rule', '$sel: &; .a { content: if($sel, nested, root); }', '.a {\n  content: root;\n}\n']
 ];
 
 /*
  * These read `&` as Dart Sass does too, but their `.jess` spelling waits on
- * lowerings outside `&`: Sass's global list functions, a `#{…}` in a selector
- * (`.jess` `${…}` takes a variable name) and Sass's `if()`.
+ * lowerings outside `&`: Sass's global list functions and a `#{…}` in a
+ * selector (`.jess` `${…}` takes a variable name).
  */
 const unlowered: ReadonlyArray<readonly [string, string, string]> = [
   ['a list the list functions read', '.s, .t .u { a: length(&); b: nth(&, 1); c: nth(nth(&, 2), 2); }', '.s,\n.t .u {\n  a: 2;\n  b: .s;\n  c: .u;\n}\n'],
-  ['a selector interpolation in a nested rule', '.a { #{&}__b { c: d; } }', '.a .a__b {\n  c: d;\n}\n'],
-  ['a truthy condition inside a rule', '.f { x: if(&, yes, no); }', '.f {\n  x: yes;\n}\n'],
-  ['null outside any rule', '$sel: &; .a { content: if($sel, nested, root); }', '.a {\n  content: root;\n}\n']
+  ['a selector interpolation in a nested rule', '.a { #{&}__b { c: d; } }', '.a .a__b {\n  c: d;\n}\n']
 ];
 
 describe('scss: `&` in a value is the parent selector', () => {

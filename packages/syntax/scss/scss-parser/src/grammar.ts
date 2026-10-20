@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, withCtx } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { controlBlockStatements, contentArgRaw, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -926,19 +926,63 @@ const scssFactory = (g: ScssInputRules) => {
       return url(isScssValue(body) ? body : any(requireToken(body).value));
     }
   );
+
+  /*
+   * A call's arguments are `;` groups of comma-separated arguments: a group may
+   * be a branch, `condition: value` (ledger P38), and CSS `if()` is a list of
+   * them (css-values-5 §8.3). Inside a function a `;` is an ordinary token, not
+   * a declaration terminator. A group may be empty (`if()` allows a trailing
+   * `;`). The call's reducer reads the `;` among its children.
+   */
+  const argumentGroup = sequence(
+    g.CallArgument,
+    many(g.ArgumentPair)
+  );
+  const argumentSemicolon = noTrivia(sequence(
+    optional(valueTrivia),
+    literal(';'),
+    optional(valueTrivia)
+  ));
   const Call = node<FunctionCall | Reference | IfValue>(
     'Call',
     sequence(
       routed(),
       optional(valueTrivia),
-      optional(sequence(
-        g.CallArgument,
-        many(g.ArgumentPair)
+      optional(argumentGroup),
+      many(sequence(
+        argumentSemicolon,
+        optional(argumentGroup)
       )),
       optional(valueTrivia),
       literal(')')
     ),
-    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
+    (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
+  );
+
+  /**
+   * A CSS `if()` test (css-values-5 §8.3): `media()`, `supports()` or
+   * `style()` in an `if()` condition, whose argument is a media query, a
+   * supports condition or a style query. Dart Sass reads it as written,
+   * interpolating only `#{…}`, so a `$name` in it is text; this reads it as a
+   * custom property's value is read (`CustomInnerPart`), and the test is that
+   * text: an `Any`, or an `Interpolation` around a `#{…}`. Outside an `if()`
+   * condition the same names are function calls (`IdentifierOrFunction`).
+   */
+  const CssTest = node<ValueNode>(
+    'CssTest',
+    noTrivia(sequence(
+      routed(),
+      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
+      literal(')')
+    )),
+    children => customValueFromChildren(children)
+  );
+  const callOrCssTest = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: CssTest
+    },
+    Call
   );
   const KeywordOrInterpolatedValue = node<ValueNode>(
     'KeywordOrInterpolatedValue',
@@ -1048,6 +1092,16 @@ const scssFactory = (g: ScssInputRules) => {
     identOrFunction,
     caseInsensitive('url(', UrlFunction),
     caseInsensitive('var(', VarCall),
+
+    /*
+     * An `if()` call's conditions are CSS `if()` conditions, where these three
+     * names are CSS tests; a comma argument and a branch's value are not
+     * conditions (`ArgumentPair`, `CallArgument`).
+     */
+    caseInsensitive('if(', withCtx(state => enterIfTest(state), Call)),
+    caseInsensitive('media(', callOrCssTest),
+    caseInsensitive('supports(', callOrCssTest),
+    caseInsensitive('style(', callOrCssTest),
 
     /*
      * A trailing escaped paren is a value keyword, not a call: `\(` and `a\(` are
@@ -1385,7 +1439,7 @@ const scssFactory = (g: ScssInputRules) => {
           literal(':')
         ),
         optional(valueTrivia),
-        g.ValueTerm
+        withCtx(state => leaveIfTest(state), g.ValueTerm)
       ))
     )),
     children => scssCallArgument(children)
@@ -1471,7 +1525,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(','),
       optional(valueTrivia),
-      g.CallArgument
+      withCtx(state => leaveIfTest(state), g.CallArgument)
     )),
     (children) => {
       const value = children[children.length - 1];

@@ -25,13 +25,13 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, withCtx, word } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, any, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
-import type { Any, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import type { Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -109,7 +109,11 @@ import {
   leadingSeparatorValue,
   noteStar,
   commaList,
-  callComponentFrom
+  callComponentFrom,
+  isIfTest,
+  enterIfTest,
+  leaveIfTest,
+  genericCallFrom
 } from './grammar-helpers.js';
 import type {
   ExpressionFact,
@@ -181,7 +185,7 @@ type JessRules = {
   CalcSequence: Combinator<ValueSlot>;
   calcFunctionArguments: Combinator<ValueSlot>;
   MathFunction: Combinator<FunctionCall>;
-  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url | SelectorCapture | Any]>;
+  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url | SelectorCapture | Any | Interpolation | IfValue]>;
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
@@ -2514,7 +2518,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(','),
         optional(valueTrivia)
       )),
-      g.CallComponent
+      withCtx(state => leaveIfTest(state), g.CallComponent)
     ),
     (children) => {
       let separator = '';
@@ -2579,36 +2583,70 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * permits the comma without a following value, so it routes before the
    * generic continuation instead of relaxing every function call.
    */
-  const GenericCall = node<FunctionCall>(
+  /*
+   * A call's arguments are `;` groups of comma arguments (css-values-5 §8.3;
+   * inside a function a `;` is an ordinary token). A group's first component
+   * followed by a `:` is a branch, `condition: value` (ledger P38), as css
+   * reads one: a `:` glued on both sides is the delim run's own (`foo(a:b)`,
+   * ledger N18), so the branch colon is one the run stopped at. `$name:` is a
+   * named argument (`genericCallFrom`). The branch value is not a condition.
+   */
+  const branchValue = sequence(
+    noTrivia(sequence(
+      optional(valueTrivia),
+      literal(':'),
+      optional(valueTrivia)
+    )),
+    optional(withCtx(state => leaveIfTest(state), g.CallComponent))
+  );
+  const callArgumentGroup = sequence(
+    g.CallComponent,
+    optional(branchValue),
+    many(g.CallArgument)
+  );
+  const GenericCall = node<FunctionCall | IfValue>(
     'Call',
     sequence(
       routed(),
       optional(valueTrivia),
-      optional(sequence(
-        g.CallComponent,
-        many(g.CallArgument)
+      optional(callArgumentGroup),
+      many(sequence(
+        noTrivia(sequence(
+          optional(valueTrivia),
+          literal(';'),
+          optional(valueTrivia)
+        )),
+        optional(callArgumentGroup)
       )),
       optional(valueTrivia),
       literal(')')
     ),
-    (children) => {
-      const args: ValueSlot[] = [];
-      const separators: string[] = [];
-      for (let index = 1; index < children.length - 1; index++) {
-        const child = children[index];
-        if (isJessValueSlotValue(child)) {
-          args.push(child);
-        } else if (isJessCallArgument(child)) {
-          separators.push(child.separator);
-          args.push(child.value);
-        }
-      }
-      const call = funcCall(jessFunctionOpenName(children[0]), args);
-      if (separators.length > 0) {
-        withValueLayout(call.args, separators);
-      }
-      return call;
-    }
+    children => genericCallFrom(children)
+  );
+
+  /**
+   * A CSS `if()` test (css-values-5 §8.3): `media()`, `supports()` or
+   * `style()` in an `if()` condition, whose argument is a media query, a
+   * supports condition or a style query. It is read as a custom property's
+   * value is read (`CustomInnerPart`): a `$name` in it is text and `${name}`
+   * interpolates, as SCSS reads its tests, so the test is that text. Outside an
+   * `if()` condition the same names are function calls.
+   */
+  const CssTest = node<Any | Interpolation>(
+    'CssTest',
+    noTrivia(sequence(
+      routed(),
+      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
+      literal(')')
+    )),
+    children => customValueFromChildren(children)
+  );
+  const callOrCssTest = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: CssTest
+    },
+    GenericCall
   );
   const UrlFunction = node<Url>(
     'Url',
@@ -2788,6 +2826,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     caseInsensitiveWhen(
       'selector(',
       g.SelectorCapture
+    ),
+
+    /*
+     * An `if()` call's conditions are CSS `if()` conditions, where these three
+     * names are CSS tests; a comma argument and a branch's value are not
+     * conditions (`CallArgument`, `branchValue`).
+     */
+    caseInsensitiveWhen(
+      'if(',
+      withCtx(state => enterIfTest(state), GenericCall)
+    ),
+    caseInsensitiveWhen(
+      ['media(', 'supports(', 'style('],
+      callOrCssTest
     ),
 
     /*
