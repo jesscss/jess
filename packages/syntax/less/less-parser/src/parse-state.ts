@@ -7,7 +7,7 @@
  * third module keeps that a straight line rather than a cycle.
  */
 import type { MathMode } from '@jesscss/core';
-import type { BareVariableRejection, FunctionScope } from '@jesscss/core/ast';
+import type { BareVariableRejection, FunctionScope, SelectorCaptureProblem } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, type LessRecoveredError } from './parse-error.js';
 
 /** What the reducers of one Less parse share and write ({@link LessParseState.document}). */
@@ -72,6 +72,26 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * its own stop, never its parent's.
    */
   readonly valueStop?: ValueStop;
+
+  /**
+   * Set on the state derived inside a `selector(…)` capture (ledger P49), so a
+   * selector pseudo in its argument reads a non-selector argument and records
+   * it here for the capture to report (P45). Like {@link valueStop}, it exists
+   * only on derived states, so the document-level state keeps four members.
+   */
+  readonly selectorCapture?: SelectorCaptureFacts;
+}
+
+/** What a selector pseudo inside a capture records for it ({@link LessParseState.selectorCapture}). */
+export interface SelectorCaptureFacts {
+  /** The first argument a pseudo in the capture could not read as a selector list. */
+  problem?: SelectorCaptureProblem;
+}
+
+/** The capture being read ({@link LessParseState.selectorCapture}), or `undefined` outside one. */
+export function selectorCaptureOfState(state: unknown): SelectorCaptureFacts | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.selectorCapture;
 }
 
 /** Where a call argument's value run stops ({@link LessParseState.valueStop}). */
