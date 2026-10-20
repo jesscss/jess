@@ -221,7 +221,9 @@ if (plan.errors.length > 0) {
 /*
  * Resolve the ONE lockstep version to publish. For the alpha tag this is
  * intent-first + registry-guarded (never the raw, possibly-stale manifest
- * version), guaranteeing a fresh version for every allowlisted package. For a
+ * version): a fresh version for every allowlisted package, or the manifest
+ * version itself when a previous run published only part of the set (the loop
+ * below then skips the packages already published). For a
  * non-alpha tag we publish the manifest version as-is (stable releases from
  * `main`), keeping the existing behavior.
  */
@@ -352,7 +354,7 @@ try {
       /*
        * Never move the dist-tag BACKWARD (to a lower semver than where it
        * currently points). With the resolver this branch should not trigger for
-       * alpha (resolved is always fresh), but the guard protects any path that
+       * alpha (resolved is fresh, or a resume with nothing published above it), but the guard protects any path that
        * would otherwise silently regress the tag.
        */
       if (taggedVersion && compareSemver(version, taggedVersion) < 0) {
