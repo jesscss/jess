@@ -60,12 +60,25 @@ describe('scss: `selector.parse()` reads a selector string', () => {
     await expect(render(source)).resolves.toBe(expected);
   });
 
-  /* Dart Sass: "Error: $selector: Parent selectors aren't allowed here." / "Error: $selector: expected selector." */
-  it.each([
+  /*
+   * Dart Sass stops the compile here ("Error: $selector: Parent selectors aren't allowed
+   * here." / "Error: $selector: expected selector."). A function that cannot compute is
+   * written out as authored by default (owner 2026-10-16: "if a function as-is cannot
+   * compute, the default in Less v5 is to preserve … just like Sass"), and fails the
+   * compile, with Dart Sass's message, under `functionMode: 'error'`.
+   */
+  const invalid = [
     ['a parent selector', '@use "sass:selector"; .r { x: selector.parse("&:hover"); }', 'Parent selectors aren\'t allowed here.'],
     ['a variable left in a plain string', '@use "sass:selector"; .r { x: selector.parse("$sel"); }', 'expected selector.']
-  ])('fails the compile for %s', async (_name, source, message) => {
-    await expect(render(source)).rejects.toMatchObject({ reason: expect.stringContaining(message) });
+  ] as const;
+
+  it.each(invalid)('writes the call as authored for %s', async (_name, source) => {
+    await expect(render(source)).resolves.toBe(`.r {\n  x: ${source.slice(source.indexOf('selector.parse('), source.indexOf(');') + 1)};\n}\n`);
+  });
+
+  it.each(invalid)('fails the compile for %s under functionMode: error', async (_name, source, message) => {
+    await expect(new Compiler({ compile: { functionMode: 'error' } }).renderString(source, { extension: '.scss' }))
+      .rejects.toMatchObject({ reason: expect.stringContaining(message) });
   });
 });
 

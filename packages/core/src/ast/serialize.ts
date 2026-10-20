@@ -7134,13 +7134,8 @@ function resolveReferenceResult(
   ) {
     const namespaceStep = node.steps[0]!;
     if (namespaceStep.type === 'LookupStep' && typeof namespaceStep.name === 'string') {
-      const binding = resolveVarRef(frame, namespaceStep.name, 'live', e)
-        ?? resolveVarRef(frame, namespaceStep.name, 'scoped', e);
-      if (
-        binding !== undefined
-        && !isValueSlotArray(binding.value)
-        && e.s.moduleReferenceValues.get(binding.value) === null
-      ) {
+      const binding = moduleNamespaceBinding(frame, namespaceStep.name, e);
+      if (binding !== undefined) {
         value = binding.value;
         valueFrame = binding.frame;
         evaluated = binding.evaluated;
@@ -8919,23 +8914,27 @@ function evalCall(
    * built-ins: the registry is out of scope and an unimported name takes the
    * evaluator's unknown-call path, the one `.jess` reaches through its empty
    * registry (P17). The parser attached its document's scope to the node.
-   * A function an SCSS `@use` brought in (`selector.parse()`) is a module
-   * member, never a CSS function, so its failure is an error (ruling J1).
    */
-  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node), selected !== undefined && e.s.moduleFns?.has(selected) === true);
+  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
 }
 
 /**
  * An SCSS call through a `@use`d module's namespace (`selector.append()`) that names
- * no member of it resolves to nothing, an eval error (ruling J1), as `.jess`
- * `$ns.missing()` is: a namespaced call is never a CSS function.
+ * no member of it resolves to nothing, an eval error, as `.jess` `$ns.missing()` is
+ * (ledger R3: a resolve failure is an eval error).
  */
 function missingModuleMember(node: FunctionCall, frame: Frame | null, e: Lane): void {
-  const namespace = node.name.slice(0, node.name.indexOf('.'));
-  const binding = resolveVarRef(frame, namespace, 'live', e) ?? resolveVarRef(frame, namespace, 'scoped', e);
-  if (binding !== undefined && !isValueSlotArray(binding.value) && e.s.moduleReferenceValues!.get(binding.value) === null) {
+  if (moduleNamespaceBinding(frame, node.name.slice(0, node.name.indexOf('.')), e) !== undefined) {
     throw ERR.nameNotFound({ node, ...callSiteLocation(node, e.s), meta: { symbol: node.name } });
   }
+}
+
+/** The binding `name` resolves to when it is a module's namespace (`@use "sass:map"` binds `map`). */
+function moduleNamespaceBinding(frame: Frame | null, name: string, e: Lane): BindingHit | undefined {
+  const binding = resolveVarRef(frame, name, 'live', e) ?? resolveVarRef(frame, name, 'scoped', e);
+  return binding !== undefined && !isValueSlotArray(binding.value) && e.s.moduleReferenceValues?.get(binding.value) === null
+    ? binding
+    : undefined;
 }
 
 /** One `functionMode: 'error'` copy per render's modes, for imported calls (ruling J1). */

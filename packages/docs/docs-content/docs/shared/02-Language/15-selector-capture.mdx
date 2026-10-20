@@ -57,10 +57,10 @@ $both: selector.parse('.card, .panel');
 .debug { count: list.length($both); }     // count: 2
 ```
 
-The string can come from a variable or a mixin argument. Through the module, a string that is
-not a selector list, or that holds `&`, is an error that stops the compile, as in Dart Sass;
-the global `selector-parse()` follows `functionMode`, so by default such a call is written out
-as authored. The other `sass:selector` functions (`append`, `nest`, `extend`, `replace`,
+The string can come from a variable or a mixin argument. A string that is not a selector
+list, or that holds `&`, follows `functionMode` like any function that cannot compute: by
+default the call is written out as authored, and with `functionMode: 'error'` the compile
+stops with Dart Sass's message (Dart Sass always stops). The other `sass:selector` functions (`append`, `nest`, `extend`, `replace`,
 `unify`, `is-superselector`, `simple-selectors`) are not supported yet.
 
 </AudienceGate>
