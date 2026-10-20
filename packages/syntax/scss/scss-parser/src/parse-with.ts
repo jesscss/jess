@@ -10,11 +10,8 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
-  isSelectorList,
   recoveredInTree,
-  selectorBranchComponents,
-  selectorBranchHasAmpersand,
-  selectorBranchHasInterp,
+  selectorStringComponents,
   withSourceSpan,
   withTriviaMap,
   type Stylesheet
@@ -207,15 +204,5 @@ export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string
   const source = text.trim();
   const diagnostics: ScssRecoveredError[] = [];
   const result = run(entry, source, { trivia, state: { source, diagnostics } });
-  if (!result.ok || result.unconsumedFrom !== null || result.errors.length > 0 || diagnostics.length > 0 || !isSelectorList(result.value)) {
-    throw new TypeError('$selector: expected selector.');
-  }
-  const branches = result.value.selectors;
-  if (branches.some(selectorBranchHasInterp)) {
-    throw new TypeError('$selector: expected selector.');
-  }
-  if (branches.some(selectorBranchHasAmpersand)) {
-    throw new TypeError('$selector: Parent selectors aren\'t allowed here.');
-  }
-  return branches.map(selectorBranchComponents);
+  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
 }

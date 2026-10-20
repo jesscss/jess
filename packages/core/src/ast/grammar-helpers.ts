@@ -15,7 +15,7 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
-import { keyword, NULL_NODE, selectorBranchCanonical, selectorCapture } from './nodes.js';
+import { keyword, NULL_NODE, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
 import { withBodySpan } from './provenance.js';
 import type {
   ComplexSelector,
@@ -183,6 +183,23 @@ function isSelectorListChild(child: unknown): child is SelectorList {
   return typeof child === 'object' && child !== null && 'type' in child && child.type === 'SelectorList';
 }
 
+/**
+ * What a dialect's selector-list production read a selector string into, as Sass's
+ * `selector.parse()` takes it (`read` is `undefined` when the string was not a whole
+ * selector list): each selector's compound selectors and combinators. Throws Dart
+ * Sass's message for a string that is not a selector list, or that holds `&`.
+ */
+export function selectorStringComponents(read: unknown): string[][] {
+  const branches = isSelectorListChild(read) ? read.selectors : undefined;
+  if (branches === undefined || branches.some(selectorBranchHasInterp)) {
+    throw new TypeError('$selector: expected selector.');
+  }
+  if (branches.some(selectorBranchHasAmpersand)) {
+    throw new TypeError('$selector: Parent selectors aren\'t allowed here.');
+  }
+  return branches.map(selectorBranchComponents);
+}
+
 /** The one leaf a scan matched, with its span: the opaque rest of a recovered construct. */
 export function scannedLeaf(children: readonly unknown[]): SpannedToken & Token {
   const leaf = children[0];
@@ -208,9 +225,10 @@ export interface SelectorCaptureProblem {
 export function selectorCaptureOf(children: readonly unknown[], span: SourceSpan): SelectorCapture | SelectorCaptureProblem {
   const selector = children.find(isSelectorListChild);
   const rest = writtenTokenBetween(children);
-  const list = selector?.selectors.map(selectorBranchCanonical).join(', ');
-  if (list !== undefined && rest === undefined) {
-    return selectorCapture(selector!.selectors.map(selectorBranchCanonical), `selector(${list})`);
+  const branches = selector?.selectors.map(selectorBranchCanonical);
+  const list = branches?.join(', ');
+  if (branches !== undefined && rest === undefined) {
+    return selectorCapture(branches, selector!.selectors.map(selectorBranchComponents), `selector(${list})`);
   }
   const open = children[0];
   const opener = isToken(open) ? open.value : 'selector(';

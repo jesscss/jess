@@ -83,14 +83,31 @@ describe('scss: `selector.parse()` reads a selector string', () => {
 });
 
 /*
- * `.scss → .jess → .css` is not yet `.scss → .css` here: a call through a Sass
- * module namespace (`selector.parse`, as `math.abs`) has no `.jess` spelling, and
- * the global `selector-parse()` lowers to a plain `.jess` call, which `.jess`
- * writes as it is.
+ * `.scss → .jess → .css` is `.scss → .css`: a literal selector string lowers to the
+ * `.jess` capture `selector(…)`, which is the same value (ledger P49), and any other
+ * argument to the same function through its `.jess` module namespace.
  */
 describe('scss → jess: `selector.parse()`', () => {
-  it.fails.each(cases)('%s', async (_name, source) => {
+  const [interpolated, ...rest] = cases;
+
+  it.each(rest)('%s', async (_name, source) => {
     const jess = emitJess(parseScss(source));
     await expect(render(jess, '.jess')).resolves.toBe(await render(source));
+  });
+
+  it('lowers a literal to the selector() capture and any other argument to the module call', () => {
+    expect(emitJess(parseScss('@use "sass:selector" as sel; $t: ".b"; .a { x: sel.parse(".nav > a, .b"); y: sel.parse($t); z: selector-parse(".c"); }')))
+      .toBe('@-use "#sass/selector" as sel;\n$t: ".b";\n.a {\n  x: selector(.nav > a, .b);\n  y: $sel.parse($t);\n  z: selector(.c);\n}\n');
+  });
+
+  /*
+   * Open (ledger P49 NOTES, 2026-10-20): the capture interpolated into a selector is
+   * written one selector per line, as a selector list header is; the same list
+   * computed by `selector.parse()` (or `&`) and interpolated is spliced as text, on
+   * one line.
+   */
+  it.fails(interpolated[0], async () => {
+    const jess = emitJess(parseScss(interpolated[1]));
+    await expect(render(jess, '.jess')).resolves.toBe(await render(interpolated[1]));
   });
 });

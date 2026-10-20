@@ -31,8 +31,8 @@ same one `:is()` takes:
 
 <AudienceGate include={['jess']}>
 
-Write it with `selector( … )` in value position (no `$` sigil — it serializes back as
-`selector(…)`). Its argument is a selector list, the same one `:is()` takes:
+Write it with `selector( … )` in value position (no `$` sigil). Its argument is a
+selector list, the same one `:is()` takes:
 
 ```less
 $card: selector(.card);
@@ -84,7 +84,7 @@ Jess extends it in two ways:
   selector you can keep.
 - **It takes a selector list.** CSS's `selector()` takes a single complex selector.
   Jess accepts a comma-separated list, the same argument `:is()` and `:where()` take,
-  so `selector(.card, .panel)` is one value holding both branches.
+  so `selector(.card, .panel)` is one value holding both selectors.
 
 Inside a support condition nothing changes: `@supports selector(.a > .b)` and
 `if(supports(selector(.a)): …)` are still CSS's feature test, in every syntax.
@@ -97,13 +97,65 @@ Once a selector is a value you can:
   (see below).
 - **Pass it around** — hand it to a mixin, or compare it in a guard
   (`when (@s = selector(.a))`).
+- **Take it apart** — it is a list with one item per selector (see below).
 
 Selector functions that build new selectors from a captured one (append, nest, unify,
 replace) are not available yet.
 
-The captured value round-trips — `selector(.card, .panel)` serializes back to
-`selector(.card, .panel)` — and behaves the same wherever a selector value is expected. The
-concept is identical across syntaxes; only the spelling differs.
+## A selector list value
+
+The captured value is the same value `&` is in a `.jess` or `.scss` value, and the
+same value Sass's `selector.parse()` returns: a comma list with one item per
+selector, each item a space list of its compound selectors and combinators. So
+`selector(.card, .panel > h2)` has two items, and its second is `.panel`, `>`, `h2`.
+
+<AudienceGate include={['less']}>
+
+```less
+@cards: selector(.card, .panel > h2);
+
+.debug {
+  count: length(@cards);       // count: 2
+  second: extract(@cards, 2);  // second: .panel > h2
+  all: @cards;                 // all: .card, .panel > h2
+}
+
+each(@cards, {
+  @{value} { padding: 1rem; } // one rule per selector
+});
+```
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+```less
+@-use "#sass/list";
+
+$cards: selector(.card, .panel > h2);
+
+.debug {
+  count: $list.length($cards);     // count: 2
+  second: $list.nth($cards, 2);    // second: .panel > h2
+  all: $cards;                     // all: .card, .panel > h2
+}
+
+$for ($card of $cards) {
+  ${card} { padding: 1rem; }       // one rule per selector
+}
+```
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+When a `.scss` file is converted to `.jess`, `selector.parse('.card, .panel')` with a
+plain string becomes `selector(.card, .panel)`, and any other argument keeps the call
+through the module (`$selector.parse($cards)`).
+
+</AudienceGate>
+
+Written in a plain value, it is the selector list, `.card, .panel > h2`, as `&` is.
 
 ## Using a captured selector in another selector
 
