@@ -446,6 +446,9 @@ describe('JessLanguageServiceEngine', () => {
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', ', @x'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(); }\n.after { color: red; }', 'selector()'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector( ); }\n.after { color: red; }', 'selector( )'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:is(1px)); }\n.after { color: red; }', '1px'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:not(@{t})); }\n.after { color: red; }', '@{t}'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:is()); }\n.after { color: red; }', ':is()'],
       ['jess', 'parse/selector-capture-argument', '.legacy { a: selector( .a, 1px ); }\n.after { color: red; }', ', 1px'],
       ['jess', 'parse/selector-capture-argument', '.legacy { a: selector($x); }\n.after { color: red; }', '$x']
     ])('underlines %s %s without losing the document', (languageId, code, input, underlined) => {
@@ -468,6 +471,8 @@ describe('JessLanguageServiceEngine', () => {
     it.each([
       ['less', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
       ['jess', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
+      ['less', '.x { a: selector(.a:hover, .b::before, .c:nth-child(2n), .d:is(.e), :root, .f:lang(en)); }'],
+      ['jess', '.x { a: selector(.a:hover, .b::before, .c:nth-child(2n), .d:is(.e), :root); }'],
       ['less', '@supports selector(.a ~ .b) { .x { c: d; } }'],
       ['less', '.x { c: if(supports(selector(.a ~ .b)): x; else: y); }'],
       ['css', '.x { a: selector(1px); }'],

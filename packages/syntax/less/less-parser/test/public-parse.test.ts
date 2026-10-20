@@ -945,12 +945,46 @@ describe('public Less parse()', () => {
   });
 
   /*
-   * P45 residuals, balanced input that still stops the parse; they predate
-   * selector() (ledger P49 NOTES). Inside a pseudo argument the pseudo dispatch
-   * commits to the static selector-list arm, which reads no interpolation and
-   * no non-selector argument.
+   * Inside selector(), a selector pseudo whose own argument is not a selector
+   * list (an interpolation, a non-selector) is the capture's error at that
+   * argument, and the parse carries on (P45, ledger P49).
    */
-  it.fails.each(['@t: selector(.a:not(@{t}));', '@t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+  it.each([
+    ['@t: selector(.a:not(@{t}));\n.g { h: i; }', 'selector(.a:not(@{t}))', 21],
+    ['@t: selector(.a:is(1px));\n.g { h: i; }', 'selector(.a:is(1px))', 20]
+  ])('parses `%s` and reports the pseudo argument', (source, written, column) => {
+    const result = safeParse('/entry.less', source);
+    expect(result.document?.rules).toHaveLength(2);
+    expect(result.document?.rules[0]).toMatchObject({ value: { type: 'Any', src: written } });
+    expect(result.errors.map(error => [error.code, error.line, error.column])).toEqual([['parse/selector-capture-argument', 1, column]]);
+  });
+
+  it('captures a selector pseudo whose argument is a selector list', () => {
+    const result = safeParse('/entry.less', '@t: selector(.a:is(.b, .c), .d:not(.e));');
+    expect(result.errors).toEqual([]);
+    expect(result.document?.rules[0]).toMatchObject({ value: { type: 'SelectorCapture', src: 'selector(.a:is(.b, .c), .d:not(.e))' } });
+  });
+
+  /* Outside selector(), a pseudo argument reads as before: an interpolated one is the interpolated pseudo. */
+  it('parses `.x:not(@{t}) {}`', () => {
+    expect(safeParse('/entry.less', '.x:not(@{t}) {}').errors).toEqual([]);
+  });
+
+  /*
+   * P45 residuals outside selector(), balanced input that still stops the
+   * parse (ledger P49 NOTES): a selector pseudo whose argument is not a
+   * selector list, and an interpolated pseudo argument inside a pseudo argument.
+   */
+  it.fails.each(['.a:is(1px) {}', '.x:is(.a:not(@{t})) {}'])('parses `%s`', (source) => {
+    expect(safeParse('/entry.less', source).document).toBeDefined();
+  });
+
+  /*
+   * P45 residuals inside selector() (ledger P49 NOTES): `:lang()`, `:dir()`
+   * and a non-selector pseudo read their own arguments, which take no
+   * non-identifier or interpolation there.
+   */
+  it.fails.each(['@t: selector(.a:lang(1px));', '@t: selector(.a:dir(1px));', '@t: selector(.a:lang(@{t}));', '@t: selector(.a:hover(@{t}));'])('parses `%s`', (source) => {
     expect(safeParse('/entry.less', source).document).toBeDefined();
   });
 
