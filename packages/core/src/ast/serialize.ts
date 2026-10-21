@@ -9542,24 +9542,10 @@ function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boole
   return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value, e);
 }
 
-/**
- * [selector-capture] The ref a lone bare `@{name}` simple splices (a single-part interp
- * whose sole part is a ref), else null. A pseudo's interpolation is its name, never a
- * selector.
- */
-function simpleInterpRef(sim: SimpleToken): InterpRef | null {
-  const interp = sim.interp;
-  if (sim.type === 'PseudoSelector' || interp?.parts.length !== 1) {
-    return null;
-  }
-  const part = interp.parts[0]!;
-  return 'ref' in part ? part : null;
-}
-
-/** [selector-capture] `simpleInterpRef` for the sole simple of a LONE complex —
- *  a `@{name}` that is the ENTIRE selector (no leading combinator, no tail, a
- *  single-simple head). This is the whole-selector position, where a group
- *  expands to header branches rather than compacting to `:is(…)`. */
+/** [selector-capture] The ref a LONE complex splices — a `@{name}` that is the ENTIRE
+ *  selector (no leading combinator, no tail, a single simple whose interpolation is
+ *  one ref; a pseudo's interpolation is its name). This is the whole-selector
+ *  position, where a group expands to header branches rather than compacting to `:is(…)`. */
 function loneInterpRef(c: SelectorBranch): InterpRef | null {
   if (c.type === 'RelativeSelector') {
     return null;
@@ -9569,10 +9555,8 @@ function loneInterpRef(c: SelectorBranch): InterpRef | null {
     return null;
   }
   const tokens = termTokens(terms[0]!);
-  if (tokens.length !== 1) {
-    return null;
-  }
-  return simpleInterpRef(tokens[0]!);
+  const parts = tokens.length === 1 && tokens[0]!.type !== 'PseudoSelector' ? tokens[0]!.interp?.parts : undefined;
+  return parts?.length === 1 && 'ref' in parts[0]! ? parts[0] : null;
 }
 
 /**
@@ -9585,12 +9569,6 @@ function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): Ma
   const part = loneInterpRef(c);
   return part && mapMaybe(interpSelectorPart(part, frame, e), value =>
     typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value);
-}
-
-/** Bytes for one non-group interpolation ref part (matches `evalInterp`: fold the
- * ref, honour its `unquote`). */
-function resolveRefBytes(part: InterpRef, frame: Frame | null, e: Lane): MaybePromise<string> {
-  return mapMaybe(interpRefValue(part, frame, e), part.unquote ? emitSplice : readText);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
@@ -10434,14 +10412,14 @@ function pseudoElementFlag(c: SelectorBranch, frame: Frame | null, e: Lane): num
 
 function tokenPseudoElementFlag(sim: SimpleToken, frame: Frame | null, e: Lane): number {
   const known = tokenPseudoElement(sim);
-  if (known === true && sim.interp !== null && sim.interp.parts[0] !== undefined && !('lit' in sim.interp.parts[0])) {
+  const first = sim.interp?.parts[0];
+  if (known === true && first !== undefined && 'ref' in first) {
     /*
      * ponytail: a lone `@{s}` is evaluated a second time here to know whether it is a
      * selector list (an async one counts as text); carry that from the selector's own
      * resolution if this shows in a profile.
      */
-    const part = simpleInterpRef(sim);
-    return part !== null && isGroupInterpSync(part, frame, e) ? PSEUDO_CAPTURE : PSEUDO_TEXT;
+    return sim.interp!.parts.length === 1 && isGroupInterpSync(first, frame, e) ? PSEUDO_CAPTURE : PSEUDO_TEXT;
   }
   if (known !== undefined) {
     return known ? PSEUDO_LAST : PSEUDO_NONE;
@@ -12064,7 +12042,7 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
       return null;
     }
     pieces.push(source.slice(chunkStart, hole.start));
-    pieces.push(resolveRefBytes(part, frame, e));
+    pieces.push(mapMaybe(interpRefValue(part, frame, e), part.unquote ? emitSplice : readText));
     cursor = hole.end;
     chunkStart = cursor;
   }
