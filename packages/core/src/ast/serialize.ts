@@ -10958,8 +10958,13 @@ interface Emit extends Lane {
    */
   prepublishedImportFacts: PrepublishedImportFacts;
 
-  /** Document-root CSS terminals already written in the required output prelude. */
-  hoistedCssImports: Set<AtRuleStatement> | null;
+  /*
+   * Document-root CSS terminals hoisted into the output prelude, each with the
+   * chunks reserved for it there; a duplicate reserves none. The render walk
+   * writes each import into its chunk where it reaches it, so its condition
+   * reads the variables declared before it.
+   */
+  hoistedCssImports: Map<AtRuleStatement, number[]> | null;
 
   /** Block-comment trivia runs already replayed during this render. */
   emittedBlockTrivia: EmittedTrivia;
@@ -13749,9 +13754,6 @@ interface CssImportPlan {
   head: number;
   tail: number;
   nodes: Array<AtRuleStatement | null> | null;
-  targets: Array<Quoted | Url | null> | null;
-  frames: Array<Frame | null> | null;
-  withinDocuments: Array<NonNullable<ImportDocumentTree['withinDocument']> | null> | null;
   next: number[] | null;
 }
 
@@ -13762,23 +13764,11 @@ type ImportPlanMode = typeof IMPORT_PLAN_PREPARE
   | typeof IMPORT_PLAN_RENDER_EXPLICIT
   | typeof IMPORT_PLAN_RENDER_CONTEXT;
 
-function appendCssImportPlan(
-  plan: CssImportPlan,
-  node: AtRuleStatement | null,
-  target: Quoted | Url | null,
-  frame: Frame | null,
-  withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null
-): number {
+function appendCssImportPlan(plan: CssImportPlan, node: AtRuleStatement | null): number {
   const nodes = plan.nodes ??= [];
-  const targets = plan.targets ??= [];
-  const frames = plan.frames ??= [];
-  const withinDocuments = plan.withinDocuments ??= [];
   const next = plan.next ??= [];
   const index = nodes.length;
   nodes.push(node);
-  targets.push(target);
-  frames.push(frame);
-  withinDocuments.push(withinDocument);
   next.push(-1);
   if (plan.tail === -1) {
     plan.head = index;
@@ -13903,9 +13893,6 @@ function planImportedFacts(
         head: -1,
         tail: -1,
         nodes: null,
-        targets: null,
-        frames: null,
-        withinDocuments: null,
         next: null
       }
     : null;
@@ -14179,9 +14166,9 @@ function planImportedFacts(
               (furtherCssImportKeys ??= new Set()).add(key);
             }
           }
-          (e.hoistedCssImports ??= new Set()).add(st);
+          (e.hoistedCssImports ??= new Map()).set(st, e.hoistedCssImports.get(st) ?? []);
           if (!duplicate) {
-            appendCssImportPlan(cssPlan, st, target, scope, withinDocument);
+            appendCssImportPlan(cssPlan, st);
           }
         }
       } else if (st.type === 'StyleImport') {
@@ -14194,7 +14181,7 @@ function planImportedFacts(
           deferred.push(st);
           deferredSites.push(at);
           if (cssPlan !== null) {
-            const anchor = appendCssImportPlan(cssPlan, null, null, null, null);
+            const anchor = appendCssImportPlan(cssPlan, null);
             (deferredAnchors ??= []).push(anchor);
           }
         }
@@ -14566,11 +14553,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
      * public Context route has no such driver callback, so it uses the typed
      * document-prelude plan while retaining Context loading for non-terminals.
      */
-    const hoisted = !options?.importDocument
-      ? planned.cssImports === undefined
-        ? emitHoistedCssImports(root.rules, rootFrame, e)
-        : emitPlannedCssImports(planned.cssImports, e)
-      : undefined;
+
+    /* A caller's import handler owns terminal imports itself: nothing is hoisted. */
+    reserveHoistedCssImports(root.rules, options?.importDocument ? null : planned.cssImports, e);
     const finalize = (): SerializeResult => {
       /*
        * [extend/dynamic] DEFERRED REWRITE: fold the walk-recorded dynamic extenders
@@ -14615,7 +14600,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       emitLeadingDocumentBlockComments(e);
       return mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), finish);
     };
-    return mapMaybe(hoisted, emitBody);
+    return emitBody();
   };
 
   /*
@@ -14677,9 +14662,6 @@ function emitDocumentStatements(
       }
     };
     for (const child of rules) {
-      if (child.type === 'AtRuleStatement' && e.hoistedCssImports?.has(child)) {
-        continue;
-      }
       if (child.type !== 'StyleImport') {
         batch.push(child);
         continue;
@@ -14869,7 +14851,7 @@ function emitDocumentStatements(
         }
         break;
       case 'AtRuleStatement':
-        if (e.referenceImportDepth === 0 && !e.hoistedCssImports?.has(child)) {
+        if (!writeHoistedCssImport(child, frame, e) && e.referenceImportDepth === 0) {
           emitBeforeDocumentStatement(child);
           emitAtRuleStatement(child, frame, e);
           markAfterDocumentStatement(child);
@@ -17298,7 +17280,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
         }
         case 'AtRuleStatement': {
           /* [charset] Written only at the top of the output ({@link hoistCharsets}), never where it stands. */
-          if (isCharset(node)) {
+          if (isCharset(node) || writeHoistedCssImport(node, frame, e)) {
             break;
           }
           if (nested) {
@@ -20517,59 +20499,32 @@ function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | nul
 }
 
 /**
- * Write the planner-carried CSS prelude in document order. Each item retains the
- * lexical frame and driver-owned source scope in which its typed target was
- * authored; the later import splice sees the same canonical node in the
- * `hoistedCssImports` set and therefore emits no second copy.
+ * Reserve the output prelude's document-root CSS imports in document order:
+ * one chunk per import, the planner's when it carried them, else the root's
+ * own, a duplicate reserving none ({@link Emit.hoistedCssImports}). The render
+ * walk writes each where it reaches it ({@link writeHoistedCssImport}).
  */
-function emitPlannedCssImports(plan: CssImportPlan | null, e: Emit): MaybePromise<void> {
-  if (plan === null) {
+function reserveHoistedCssImports(rules: Statement[], plan: CssImportPlan | null | undefined, e: Emit): void {
+  if (plan !== undefined) {
+    if (plan === null) {
+      return;
+    }
+    const nodes = plan.nodes!;
+    const links = plan.next!;
+    for (let index = plan.head; index !== -1; index = links[index]!) {
+      const node = nodes[index]!;
+      if (node !== null) {
+        e.hoistedCssImports!.get(node)!.push(e.chunks.length);
+        put(e, '');
+      }
+    }
     return;
   }
-  const nodes = plan.nodes!;
-  const targets = plan.targets!;
-  const frames = plan.frames!;
-  const withinDocuments = plan.withinDocuments!;
-  const links = plan.next!;
-  const run = (from: number): MaybePromise<void> => {
-    let index = from;
-    while (index !== -1) {
-      const node = nodes[index]!;
-      if (node === null) {
-        index = links[index]!;
-        continue;
-      }
-      const withinDocument = withinDocuments[index]!;
-      if (withinDocument === null) {
-        emitAtRuleStatementRaw(node, frames[index]!, e, targets[index]!);
-        index = links[index]!;
-        continue;
-      }
-      let next = index;
-      const emitted = inDocument(e, withinDocument, () => {
-        while (next !== -1 && withinDocuments[next] === withinDocument) {
-          const scopedNode = nodes[next]!;
-          if (scopedNode !== null) {
-            emitAtRuleStatementRaw(scopedNode, frames[next]!, e, targets[next]!);
-          }
-          next = links[next]!;
-        }
-      });
-      if (isThenable(emitted)) {
-        return emitted.then(() => run(next));
-      }
-      index = next;
-    }
-  };
-  return run(plan.head);
-}
-
-function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void {
   if (e.s.context?.options.processImports === false) {
     return;
   }
   const seen = new Set<string>();
-  let hoisted: Set<AtRuleStatement> | null = null;
+  let hoisted: Map<AtRuleStatement, number[]> | null = null;
   for (const child of rules) {
     if (child.type !== 'AtRuleStatement') {
       continue;
@@ -20579,16 +20534,41 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
       continue;
     }
     const key = cssImportKey(child, target);
-    (hoisted ??= new Set()).add(child);
+    const slots: number[] = [];
+    (hoisted ??= new Map()).set(child, slots);
     if (key !== null) {
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
     }
-    emitAtRuleStatementRaw(child, frame, e, target);
+    slots.push(e.chunks.length);
+    put(e, '');
   }
   e.hoistedCssImports = hoisted;
+}
+
+/**
+ * Whether `node` is a hoisted CSS import, which is then written into the next
+ * chunk reserved for it in the output prelude (none for a duplicate), evaluated
+ * here, at its place in the document, so its condition reads what is declared
+ * before it (`$bp: 600px; @import "a.css" (min-width: $bp)`). Positions recorded
+ * while writing it map to that chunk.
+ */
+function writeHoistedCssImport(node: AtRuleStatement, frame: Frame, e: Emit): boolean {
+  const slot = e.hoistedCssImports?.get(node)?.shift();
+  if (slot === undefined) {
+    return e.hoistedCssImports?.has(node) === true;
+  }
+  const from = e.chunks.length;
+  const marked = e.positions?.length ?? 0;
+  emitAtRuleStatementRaw(node, frame, e, cssImportTarget(node)!);
+  e.chunks[slot] = e.chunks.splice(from).join('');
+  for (let index = marked; index < (e.positions?.length ?? 0); index++) {
+    e.positions![index]!.start = slot;
+    e.positions![index]!.end = slot + 1;
+  }
+  return true;
 }
 
 /**
