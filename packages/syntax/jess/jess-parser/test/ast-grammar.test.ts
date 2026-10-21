@@ -1166,9 +1166,16 @@ describe('Jess AST grammar facts', () => {
     expect(parseRecovering(source).document).toBeDefined();
   });
 
-  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
-  it.fails.each(['$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));'])('parses `%s`', (source) => {
+  /* P45 residual, balanced input that still stops the parse; it predates selector() (ledger P49 NOTES). */
+  it.fails.each(['$t: selector(.a:nth-child(2n+1of .b));'])('parses `%s`', (source) => {
     expect(parseRecovering(source).document).toBeDefined();
+  });
+
+  /* A `:not()` argument reads interpolation as a selector does (ledger P21); a capture holds text, so it is the capture's error. */
+  it('parses `$t: selector(.a:not(${t}));` and reports the capture', () => {
+    const { document, recovered } = parseRecovering('$t: selector(.a:not(${t}));');
+    expect(document).toBeDefined();
+    expect(recovered.map(error => error.name)).toEqual(['JessSelectorCaptureArgumentError']);
   });
 
   /* `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1, owner 2026-10-20): a capture keeps a non-selector item as written. */

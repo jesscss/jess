@@ -3726,12 +3726,12 @@ const scssFactory = (g: ScssInputRules) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      sequence(
+      noTrivia(sequence(
         g.Identifier,
         literal('('),
         g.GeneralTemplate,
         literal(')')
-      ),
+      )),
       sequence(
         literal('('),
         g.GeneralTemplate,

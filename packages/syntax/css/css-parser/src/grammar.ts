@@ -316,6 +316,7 @@ type GrammarRuleName =
   | 'calcValueAtom'
   | 'valueAtom'
   | 'queryBoundTail'
+  | 'SelectorOnlyPseudoArgument'
   | 'QueryFeatureName'
   | 'queryFeatureName'
   | 'MediaFeatureOpener'
@@ -5258,6 +5259,7 @@ const cssFactory = (g: GrammarSelf) => {
     ForgivingSelectorRest,
     ForgivingSelectorItem,
     ForgivingSelectorList,
+    SelectorOnlyPseudoArgument,
     PseudoArgument,
     OfTypePseudoArgument,
     AnPlusB,
