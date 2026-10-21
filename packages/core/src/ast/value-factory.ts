@@ -173,9 +173,10 @@ export const makeNull = (explicit = false): Null => (explicit ? NULL_LITERAL : N
 
 export function makeList(
   value: readonly ValueGroup[],
-  sep: ListSeparator = ','
+  sep: ListSeparator = ',',
+  selector = false
 ): List {
-  const l: Mutable<List> = { type: 'List', value, sep, bytes: '' };
+  const l: Mutable<List> = { type: 'List', value, sep, selector, bytes: '' };
   l.bytes = serializeValue(l);
   return l;
 }

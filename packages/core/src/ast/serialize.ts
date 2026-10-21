@@ -79,16 +79,19 @@ import {
 } from './nodes.js';
 import serializerNodes from './nodes.js';
 import {
+  type SelectorPlace,
   type SelectorText,
   type SelectorUnits,
   appendText,
-  continuesNameAt,
   crossTexts,
   hasTopLevelComma,
   interleave,
   isOneText,
   isUnit,
   oneText,
+  placeSelectorList,
+  PLACE_WHOLE,
+  selectorPlace,
   selectorListValue,
   selectorValue,
   textBranches
@@ -9522,10 +9525,10 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
 type InterpRef = Extract<InterpPart, { ref: ValueNode }>;
 
 /**
- * [selector-capture] Whether an interpolation ref's value is a selector list, a GROUP
- * whose branches are selectors (a branch list at whole-selector position, a `:is(…)`
- * compaction in compound position): a comma
- * list — a `selector(…)` capture (P49), `&` and `selector.parse()` (P50), a written list —
+ * [selector-capture] Whether an interpolation ref's value is read item by item in a
+ * selector (a branch list at whole-selector position; in a compound, as
+ * {@link placeSelectorList} places a selector value or a plain list): a comma list — a
+ * `selector(…)` capture (P49), `&` and `selector.parse()` (P50), a written list —
  * however the ref reaches it, a variable, an alias of it or a mixin parameter (owner
  * 2026-10-20: "we should be consistent about values"). Escaped text (`~'.a, .b'`) is
  * never one: it is printed as written, its commas, `&` and combinators being characters
@@ -9544,18 +9547,21 @@ const selectorBranches = (items: readonly ValueGroup[], unquote: boolean): strin
   : [unquote && !isValueGroupArray(item) && item.type === 'Quoted' ? item.value : interpRefBytes(item, unquote)]);
 
 /**
- * [selector-capture] What one selector interpolation ref splices, its value read once
- * ({@link ARG_SELECTOR}): a selector list's group, else the value's bytes. The selector
- * reducer preserves this MaybePromise so a public async plugin can resolve one slot
- * before the next slot is evaluated in the SAME lexical frame.
+ * [selector-capture] What one selector interpolation ref splices at `place`, its value
+ * read once ({@link ARG_SELECTOR}): the text it appends, or the texts that multiply its
+ * branch ({@link selectorPart}). The selector reducer preserves this MaybePromise so a
+ * public async plugin can resolve one slot before the next slot is evaluated in the
+ * SAME lexical frame.
  */
-function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane): MaybePromise<string[] | string> {
+function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane, place: SelectorPlace): MaybePromise<string[] | string> {
   const value = interpRefValue(part, frame, e, ARG_SELECTOR);
-  return isThenable(value) ? value.then(v => selectorPart(v, part.unquote)) : selectorPart(value, part.unquote);
+  return isThenable(value) ? value.then(v => selectorPart(v, part.unquote, place)) : selectorPart(value, part.unquote, place);
 }
 
-const selectorPart = (value: EvalValue, unquote: boolean): string[] | string =>
-  isSelectorListValue(value) ? selectorBranches(value.value, unquote) : interpRefBytes(value, unquote);
+/** [selector-capture] What a value spliced at `place` is: a comma list placed as {@link placeSelectorList} says, any other value its bytes. */
+const selectorPart = (value: EvalValue, unquote: boolean, place: SelectorPlace): string[] | string => isSelectorListValue(value)
+  ? placeSelectorList(selectorBranches(value.value, unquote), value, place)
+  : interpRefBytes(value, unquote);
 
 /** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
 function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boolean {
@@ -9588,7 +9594,7 @@ function loneInterpRef(c: SelectorBranch): InterpRef | null {
  */
 function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> | null {
   const part = loneInterpRef(c);
-  return part && mapMaybe(interpSelectorPart(part, frame, e), value =>
+  return part && mapMaybe(interpSelectorPart(part, frame, e, PLACE_WHOLE), value =>
     typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value);
 }
 
@@ -9603,11 +9609,9 @@ function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): 
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, escaped text as written, EXCEPT a selector list, which in a
- *  compound (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a single `:is(…)` group (a
- *  single-branch list splices its lone branch bare), and, continuing a name with the
- *  text before or after it (`prev` and `next` are the tokens glued to this one),
- *  multiplies the token, one text per selector. */
+ *  part folds to its bytes, escaped text as written, EXCEPT a comma list: a selector
+ *  value is placed as `&` is and a plain list multiplies the token, one text per item
+ *  ({@link selectorPart}; `prev` and `next` are the tokens glued to this one). */
 function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev?: SimpleToken, next?: SimpleToken): MaybePromise<SelectorText> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
@@ -9640,11 +9644,9 @@ function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev
    * later slot to observe a different loop/mixin placement.
    */
   const entryFrame = frame;
-  const splice = (out: SelectorText, i: number, value: string[] | string): SelectorText => typeof value === 'string'
+  const splice = (out: SelectorText, value: string[] | string): SelectorText => typeof value === 'string'
     ? appendText(out, value)
-    : continuesNameAt(value, out === '' ? (prev?.type === 'SimpleSelector' ? prev.text ?? '' : '') : oneText(out), continuesAfter(interp.parts[i + 1], next))
-      ? crossTexts([out, value], picked => picked.join(''))
-      : appendText(out, ampSub(value));
+    : crossTexts([out, value], picked => picked.join(''));
   const step = (index: number, out: SelectorText): MaybePromise<SelectorText> => {
     for (let i = index; i < interp.parts.length; i++) {
       const part = interp.parts[i]!;
@@ -9652,11 +9654,11 @@ function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev
         out = appendText(out, part.lit);
         continue;
       }
-      const piece = interpSelectorPart(part, entryFrame, e);
+      const piece = interpSelectorPart(part, entryFrame, e, selectorPlace(interp.parts, i, prev !== undefined, next !== undefined, continuesAfter(interp.parts[i + 1], next)));
       if (isThenable(piece)) {
-        return piece.then(value => step(i + 1, splice(out, i, value)));
+        return piece.then(value => step(i + 1, splice(out, value)));
       }
-      out = splice(out, i, piece);
+      out = splice(out, piece);
     }
     return typeof out === 'string'
       ? resolveEmergentInterp(out, entryFrame, e)

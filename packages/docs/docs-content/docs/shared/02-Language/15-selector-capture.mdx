@@ -206,6 +206,104 @@ With `collapseNesting` the same source writes `.page :is(.card, .panel) { paddin
 A `&` inside the capture stays a parent reference, resolved where the selector is
 used: `selector(&.active, & + .item)` interpolated inside `.tab` refers to `.tab`.
 
+## Gluing a captured selector to other text
+
+A captured selector interpolated next to other selector text is placed the way `&` is.
+The same rule covers `&` itself used as a value, and the result of `selector.parse()`:
+
+- **A name glued after it** builds a name from each selector, as `&__title` does:
+  one rule per selector.
+- **Anything else glued to it** (a class before it, a pseudo-class after it) treats the
+  list as one unit, `:is(…)`, as `&` stands for its parent.
+
+<AudienceGate include={['less']}>
+
+```less
+@cards: selector(.card, .panel);
+
+@{cards}__title { font-weight: bold; }
+.theme-dark@{cards} { color: white; }
+@{cards}:hover { outline: none; }
+```
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+```less
+$cards: selector(.card, .panel);
+
+${cards}__title { font-weight: bold; }
+.theme-dark${cards} { color: white; }
+${cards}:hover { outline: none; }
+```
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+```scss
+.card, .panel {
+  #{&}__title { font-weight: bold; }
+  .theme-dark#{&} { color: white; }
+}
+```
+
+Dart Sass pastes the text of `&` here and re-reads it (`.card .card, .card .panel__title, …`).
+Jess places it as `&` is instead.
+
+</AudienceGate>
+
+```css
+.card__title,
+.panel__title {
+  font-weight: bold;
+}
+.theme-dark:is(.card, .panel) {
+  color: white;
+}
+:is(.card, .panel):hover {
+  outline: none;
+}
+```
+
+<AudienceGate include={['sass']}>
+
+In `.scss` the rules above stay nested under `.card, .panel`, as any nested rule does.
+
+</AudienceGate>
+
+A plain comma list is different: it holds text, not selectors, so wherever it is glued
+each item is pasted in and the rule repeats for it.
+
+<AudienceGate include={['less']}>
+
+```less
+@fruits: apple, satsuma;            // a plain list
+@fruit-selectors: selector(apple, satsuma);
+
+.fruit-@{fruits} { color: orange; }          // .fruit-apple, .fruit-satsuma
+.fruit-@{fruit-selectors} { color: orange; } // .fruit-:is(apple, satsuma)
+```
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+```less
+$fruits: apple, satsuma;            // a plain list
+$fruit-selectors: selector(apple, satsuma);
+
+.fruit-${fruits} { color: orange; }          // .fruit-apple, .fruit-satsuma
+.fruit-${fruit-selectors} { color: orange; } // .fruit-:is(apple, satsuma)
+```
+
+</AudienceGate>
+
+The second rule matches an element with the class `fruit-` that is also an `apple` or a
+`satsuma` element: the class before a captured selector never becomes part of a name,
+just as `.fruit-&` does not.
+
 <AudienceGate include={['less', 'jess']}>
 
 An argument that is not a selector list (`selector(1px)`, `selector()`) is an error
