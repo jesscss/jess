@@ -3,9 +3,10 @@
  * nested rule's selector list into, one per branch.
  */
 
-import { isNameCode, isQuote, stringEnd } from './css-syntax.js';
+import { isQuote, stringEnd } from './css-syntax.js';
 import { makeKeyword, makeList, makeNull } from './value-factory.js';
-import type { ValueGroup } from './value-eval.js';
+import { isValueGroupArray, type List, type ValueGroup } from './value-eval.js';
+import type { InterpPart } from './nodes.js';
 
 /** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
 export function hasTopLevelComma(text: string): boolean {
@@ -54,7 +55,7 @@ export function selectorListValue(branches: readonly string[] | null): ValueGrou
 export function selectorValue(branches: readonly (readonly string[])[] | null): ValueGroup {
   return branches === null || branches.length === 0
     ? makeNull(true)
-    : makeList(branches.map(components => components.map(makeKeyword)), ',');
+    : makeList(branches.map(components => components.map(makeKeyword)), ',', true);
 }
 
 /**
@@ -98,9 +99,10 @@ function selectorComponents(branch: string): string[] {
 export const isUnit = (selector: string): string => `:is(${selector})`;
 
 /**
- * A resolved selector's text, or, where a selector list it interpolates continues a name
- * ({@link continuesNameAt}), the branches that multiplies it into (`.col-@{l}` with
- * `@l: sm, md` is `.col-sm`, `.col-md`).
+ * A resolved selector's text, or the branches a list it interpolates multiplies it into:
+ * a plain list anywhere (`.col-@{l}` with `@l: sm, md` is `.col-sm`, `.col-md`), a
+ * selector value where a name is glued after it, as `&__x` (`resolveSimpleTexts` in
+ * `serialize.ts`).
  */
 export type SelectorText = string | string[];
 
@@ -130,22 +132,72 @@ export const crossTexts = <T, R = string>(values: readonly (T | T[])[], build: (
   ? build(values)
   : values.reduce<T[][]>((picks, value) => picks.flatMap(pick => (Array.isArray(value) ? value : [value]).map(part => [...pick, part])), [[]]).map(build);
 
-/** Whether code point `code` ends a name, or is the `.`, `#` or `:` that opens one. */
-const opensName = (code: number): boolean => code === 0x2E /* . */ || code === 0x23 /* # */ || code === 0x3A /* : */ || isNameCode(code);
+/**
+ * [selector-capture] Whether a comma list is a selector value (ledger P49, P50): built
+ * as one ({@link selectorValue}: a `selector(…)` capture, `&`, `selector.parse()`), or a
+ * list of them (`@s: selector(.a), selector(.b)`).
+ */
+export const isSelectorValue = (list: List): boolean =>
+  list.selector || list.value.every(item => !isValueGroupArray(item) && item.type === 'List' && item.sep === ',' && isSelectorValue(item));
+
+/* [selector-capture] Where a selector interpolation stands in its compound ({@link placeSelectorList}): nothing is glued to it. */
+export const PLACE_ALONE = 0;
+
+/* It opens its compound, and a selector is glued after it (`@{s}:hover`). */
+export const PLACE_OPENS = 1;
+
+/* A selector or name is glued before it (`.x@{s}`, `.col-@{s}`). */
+export const PLACE_GLUED = 2;
+
+/* A name is glued after it (`@{s}__title`). */
+export const PLACE_NAME = 3;
+
+/* It is the whole selector, read one branch per item. */
+export const PLACE_WHOLE = 4;
+
+export type SelectorPlace = typeof PLACE_ALONE | typeof PLACE_OPENS | typeof PLACE_GLUED | typeof PLACE_NAME | typeof PLACE_WHOLE;
+
+/** Whether code point `code` ends a selector in an interpolation template's text: `(`, `)`, `,`, whitespace or a combinator (`>`, `+`, `~`). */
+const separates = (code: number): boolean => code === 0x28 || code === 0x29 || code === 0x2C
+  || code === 0x20 || code === 0x0A || code === 0x09 || code === 0x3E || code === 0x2B || code === 0x7E;
 
 /**
- * [nesting] Whether a selector list `branches`, glued after the text `before`, continues
- * a name: a name is glued after it (`after`), as `&__x` continues its parent's
- * (`continuesName` in `serialize.ts`), or one of its selectors opens with a name glued
- * after a name, or after the `.`, `#` or `:` that opens one (`.col-` then `sm`, `:`
- * then `hover`). Such a list multiplies its
- * token, one text per selector, as `&__x` does, since `:is()` is no part of a name and
- * `.col-:is(sm, md)` and `:is(.card, .panel)__title` are no selectors. Glued at a
- * compound boundary (`.x` then `.a`, `.a` then `:hover`, `[x]` then `a`) it is one
- * `:is()` group.
+ * [selector-capture] Where the interpolation `parts[at]` of a selector token stands in
+ * its compound ({@link placeSelectorList}): a name glued after it (`nameAfter`), anything
+ * glued before it (the part before it; for the first part, the token before it,
+ * `gluedBefore`), anything glued after it (likewise, `gluedAfter`), or nothing. A
+ * literal part beside it glues only up to a separator, so an interpolation that opens
+ * or closes a pseudo argument the Less parser keeps in the token's text (`:not(@{l})`,
+ * `:has(> @{l})`, `:not(.k, @{l})`) stands alone in that argument.
  */
-export const continuesNameAt = (branches: readonly string[], before: string, after: boolean): boolean =>
-  after || (opensName(before.charCodeAt(before.length - 1)) && branches.some(branch => isNameCode(branch.charCodeAt(0))));
+export const selectorPlace = (parts: readonly InterpPart[], at: number, gluedBefore: boolean, gluedAfter: boolean, nameAfter: boolean): SelectorPlace => {
+  const before = parts[at - 1];
+  const after = parts[at + 1];
+  if (nameAfter) {
+    return PLACE_NAME;
+  }
+  if (before === undefined ? gluedBefore : !('lit' in before) || !separates(before.lit.charCodeAt(before.lit.length - 1))) {
+    return PLACE_GLUED;
+  }
+  return (after === undefined ? gluedAfter : !('lit' in after) || !separates(after.lit.charCodeAt(0))) ? PLACE_OPENS : PLACE_ALONE;
+};
+
+/**
+ * [selector-capture] What a comma list's `branches` splice into a selector at `place`:
+ * the text appended, or the texts that multiply the branch. At whole-selector position,
+ * one branch per item. A selector value ({@link isSelectorValue}`(list)`, ledger P49, P50) is placed as `&` is: with a name glued after it, it
+ * multiplies the branch, one per selector, as `&__x` does; anywhere else it is one
+ * `:is()` group, as `&` stands for `:is(parent)` (`.fruit-cap-:is(apple, satsuma)`,
+ * `:is(.btn, .button):hover`), one selector written bare only where nothing is glued
+ * before it. A plain list is text: glued to anything, each item is spliced and
+ * multiplies the branch (`.col-sm, .col-md`, `sm:hover, md:hover`); alone in its
+ * compound it is the list as written there. Owner 2026-10-21: "`@foo: one, two;` is
+ * different from: `@foo: selector(one, two);` the latter, with @{foo} is an :is()".
+ */
+export const placeSelectorList = (branches: string[], list: List, place: SelectorPlace): string[] | string =>
+  place === PLACE_NAME || place === PLACE_WHOLE || (place !== PLACE_ALONE && !isSelectorValue(list))
+    ? branches
+    : branches.length === 1 && place !== PLACE_GLUED ? branches[0]! : isUnit(branches.join(', '));
 
 /** `out` with `text` appended to each of its branches. */
 export const appendText = (out: SelectorText, text: string): SelectorText =>

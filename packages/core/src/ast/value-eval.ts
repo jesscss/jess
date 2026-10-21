@@ -204,6 +204,13 @@ export interface List {
   /** The one semantic payload of a List. */
   readonly value: readonly ValueGroup[];
   readonly sep: ListSeparator;
+
+  /**
+   * Whether this is a selector list: a `selector(…)` capture, `&` read as a value or a
+   * `selector.parse()` result. Interpolated into a selector it is placed as `&` is,
+   * where a plain list is text (ledger P49, P50; owner 2026-10-21).
+   */
+  readonly selector: boolean;
   readonly bytes: string;
 }
 
