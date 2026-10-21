@@ -29,7 +29,7 @@ type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string; readonly start: number };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
 type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
-type JessQueryFeatureName = { readonly property: Keyword };
+type JessQueryFeatureName = { readonly property: Keyword | Interpolation };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
 
@@ -588,19 +588,16 @@ function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
 }
 
 function reduceColonFeature(children: readonly unknown[], lostMessage: string): ValueNode {
-  const propertyName = children
-    .filter(isToken)
-    .map(requireToken)
-    .find(token => token.value !== '(' && token.value !== ')' && token.value !== ':' && token.value.trim().length > 0)?.value;
-  if (propertyName === undefined) {
+  const property = children.find((child): child is JessQueryFeatureName => typeof child === 'object' && child !== null && 'property' in child)?.property;
+  if (property === undefined) {
     throw new TypeError(lostMessage);
   }
   const value = children.find(isValueNode);
   return value === undefined
-    ? block(keyword(propertyName))
+    ? block(property)
     : block(operation(
         ':',
-        keyword(propertyName),
+        property,
         value,
         false,
         cssBaseMathOutsideParens(':')

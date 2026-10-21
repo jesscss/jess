@@ -3906,10 +3906,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           );
     }
   );
+
+  /*
+   * A feature's name, which may be interpolated (`(${f}: 1px)`, `(min-${f}: 1px)`):
+   * a prelude name takes `${…}` (ledger P13 (a)).
+   */
   const QueryFeatureName = node<JessQueryFeatureName>(
     'QueryFeatureName',
-    g.Identifier,
-    children => ({ property: keyword(requireToken(children[0]).value) })
+    choice(
+      g.DollarBraceValue,
+      sequence(
+        g.Identifier,
+        optional(g.DollarBraceValue)
+      )
+    ),
+    children => ({ property: children.length === 1 && isToken(children[0])
+      ? keyword(requireToken(children[0]).value)
+      : interpolationFromTemplateChildren(children) })
   );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
@@ -4015,7 +4028,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -4026,7 +4039,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(')')
       )
@@ -4093,13 +4106,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * css's `GeneralDelim`: a delim in a `<general-enclosed>` group's rest. An
    * at-rule prelude gives `$` its meaning (ledger P13), so there a delim stops
-   * the group; a `media()` or `supports()` test reads css's delim
-   * (`supports(: x)`).
+   * the group, except a `:`, which a prelude gives none: it follows an
+   * interpolated feature name (`(${f}: 1px)`, a name that takes `${…}`). A
+   * `media()` or `supports()` test reads css's delim (`supports(: x)`).
    */
-  const GeneralDelim = choice({
-    gate: state => isTestValue(state),
-    combinator: g.PunctuationValue
-  });
+  const GeneralDelim = choice(
+    {
+      gate: state => isTestValue(state),
+      combinator: g.PunctuationValue
+    },
+    sequence(
+      peek(literal(':')),
+      g.PunctuationValue
+    )
+  );
   const MediaGeneralValue = choice(
     {
       gate: state => isTestValue(state),
@@ -4682,7 +4702,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -4693,7 +4713,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(')')
       )

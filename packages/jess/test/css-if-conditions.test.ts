@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
 
@@ -221,21 +224,48 @@ describe('variables in an at-rule query\'s feature values', () => {
     );
   });
 
-  /*
-   * SCSS writes a bare `$d` in an `@supports` declaration's value as text.
-   * Reading it as the variable reaches the same declaration in a root
-   * `@import "a.css" supports((display: $d))`, which SCSS evaluates where a
-   * root variable is not found (`@import "a.css" screen and (min-width: $d)`
-   * fails the same way today).
-   */
-  it.fails('scss: a bare variable in a supports declaration value', async () => {
+  it('scss: a bare variable in a supports declaration value', async () => {
     await expect(render('$d: grid;\n@supports (display: $d) { .a { b: c; } }', '.scss'))
       .resolves.toBe('@supports (display: grid) {\n  .a {\n    b: c;\n  }\n}\n');
+  });
+
+  /* A root CSS `@import`'s condition reads the variables declared before it, as Dart Sass does. */
+  it('scss: a variable in a root CSS import\'s supports() and media query', async () => {
+    await expect(render('$d: grid;\n$bp: 600px;\n@import "a.css" supports(display: $d);\n@import "b.css" screen and (min-width: $bp);', '.scss'))
+      .resolves.toBe('@import "a.css" supports(display: grid);\n@import "b.css" screen and (min-width: 600px);\n');
+  });
+
+  it('scss: a root CSS import\'s condition reads a variable from an imported partial', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-css-import-condition-'));
+    writeFileSync(join(dir, '_variables.scss'), '$bp: 600px;\n');
+    writeFileSync(join(dir, 'main.scss'), '@import "variables";\n@import "print.css" print and (min-width: $bp);\n.a { b: c; }\n');
+    await expect(new Compiler().render(join(dir, 'main.scss')))
+      .resolves.toBe('@import "print.css" print and (min-width: 600px);\n.a {\n  b: c;\n}\n');
+  });
+
+  /* A prelude name takes `${…}` (ledger P13 (a)); an SCSS one `#{…}`, as Dart Sass reads it. */
+  it('scss: an interpolated feature name', async () => {
+    await expect(render('$f: min-width;\n@media (#{$f}: 600px) { .a { b: c; } }', '.scss'))
+      .resolves.toBe('@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n');
+  });
+
+  it('.jess: an interpolated feature name', async () => {
+    await expect(render('$f: min-width;\n$p: display;\n@media (${f}: 600px) { .a { b: c; } }\n@supports (${p}: grid) { .a { b: c; } }', '.jess')).resolves.toBe(
+      '@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@supports (display: grid) {\n  .a {\n    b: c;\n  }\n}\n'
+    );
   });
 
   /* A container style query's value is a custom property's, as a `style()` test's is (ledger P38). */
   it('.jess: a container style query substitutes interpolation only', async () => {
     await expect(render('$t: dark;\n@container style(--theme: ${t}) { .a { b: c; } }\n@container style(--theme: $t) { .a { b: c; } }', '.jess')).resolves.toBe(
+      '@container style(--theme: dark) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@container style(--theme: $t) {\n  .a {\n    b: c;\n  }\n}\n'
+    );
+  });
+
+  it('scss: a container style query substitutes interpolation only', async () => {
+    await expect(render('$t: dark;\n@container style(--theme: #{$t}) { .a { b: c; } }\n@container style(--theme: $t) { .a { b: c; } }', '.scss')).resolves.toBe(
       '@container style(--theme: dark) {\n  .a {\n    b: c;\n  }\n}\n'
       + '@container style(--theme: $t) {\n  .a {\n    b: c;\n  }\n}\n'
     );

@@ -461,7 +461,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
         { type: 'Quoted', value: 'theme.css' },
-        { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } } }] }
+        { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Operation', operator: ':' } }] }
       ] } }]
     });
 
@@ -2752,7 +2752,7 @@ describe('SCSS @charset inherits the CSS <string> prelude', () => {
   it('keeps the well-formed forms, including the SCSS-only comment position', () => {
     /* A block comment is a NODE in SCSS and TRIVIA in CSS, which is why the CSS
      * rule spells the comment positions instead of taking a bare string. */
-    for (const source of ['@charset "utf-8";', '@charset /* keep */ "utf-8";', "@charset 'utf-8'  ;"]) {
+    for (const source of ['@charset "utf-8";', '@charset /* keep */ "utf-8";', '@charset \'utf-8\'  ;']) {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();

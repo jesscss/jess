@@ -474,7 +474,14 @@ describe('@jesscss/scss-parser public parse API', () => {
         }
       }]
     });
-    expect(bare(simple)).toEqual(bare(supported));
+
+    /* A lone declaration is written without the parens it does not need, as `.css` and Dart Sass write it. */
+    expect(simple).toMatchObject({
+      rules: [{ prelude: { parts: [
+        { type: 'Quoted', value: 'theme.css' },
+        { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Operation', operator: ':' } }] }
+      ] } }]
+    });
     expect(layered).toMatchObject({
       rules: [{
         type: 'AtRuleStatement', name: '@import',
@@ -496,7 +503,7 @@ describe('@jesscss/scss-parser public parse API', () => {
      * declaration-condition colon, spelled `name: value` as a query prelude
      * spells it. The typed tree, not source-byte replay, is the public contract.
      */
-    expect(serialize(simple).css).toBe('@import "theme.css" supports((display: grid));\n');
+    expect(serialize(simple).css).toBe('@import "theme.css" supports(display: grid);\n');
     expect(serialize(supported).css).toBe('@import "theme.css" supports((display: grid));\n');
     expect(serialize(layered).css).toBe('@import "theme.css" layer(tokens) supports((display: grid)) screen;\n');
 
