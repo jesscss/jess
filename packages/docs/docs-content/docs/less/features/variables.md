@@ -98,7 +98,7 @@ builds a name from each selector, and anything else glued to it treats the list 
 ```
 
 On its own as a whole selector (`@{targets} { … }`), either kind writes one selector per
-item. See [Selector capture](./selector-capture) for the full rules.
+item. See [Selector capture](../language/selector-capture) for the full rules.
 
 #### URLs
 
