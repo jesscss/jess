@@ -742,6 +742,12 @@ function lowerCssIf(groups: readonly ArgumentGroup[], name: string): IfValue | u
   return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon, name);
 }
 
+/** `and` or `or` in any case, as a CSS `if()` condition's operation carries it ({@link foldLogicalOperation}). */
+function logicalOperator(operator: string): 'and' | 'or' | null {
+  const lower = operator.toLowerCase();
+  return lower === 'and' || lower === 'or' ? lower : null;
+}
+
 function isElse(condition: ValueSlot): boolean {
   return !isValueSlotArray(condition) && condition.type === 'Keyword' && condition.src.length === 4 && condition.src.toLowerCase() === 'else';
 }
@@ -766,11 +772,13 @@ function ifCondition(value: ValueSlot): GuardNode {
         }
         break;
       }
-      case 'Operation':
-        if (value.operator === 'and' || value.operator === 'or') {
-          return { g: value.operator, left: ifCondition(value.left), right: ifCondition(value.right), word: authoredLogicalWords.get(value) ?? value.operator, gluedAt: NO_SPAN, parens: 0 };
+      case 'Operation': {
+        const logical = logicalOperator(value.operator);
+        if (logical !== null) {
+          return { g: logical, left: ifCondition(value.left), right: ifCondition(value.right), word: value.operator, gluedAt: NO_SPAN, parens: 0 };
         }
         break;
+      }
       case 'Expression': {
         const negated = value.value;
         if (value._asCall === null && !isValueSlotArray(negated) && negated.type === 'Condition' && negated.guard.g === 'not' && negated.guard.inner.g === 'truth') {
@@ -806,11 +814,11 @@ function juxtaposedTests(run: readonly ValueSlot[]): ValueSlot {
     if (part.type === 'FunctionCall' && part.name === 'sass') {
       return false;
     }
-    if (part.type === 'Operation' && (part.operator === 'and' || part.operator === 'or')) {
+    if (part.type === 'Operation' && logicalOperator(part.operator) !== null) {
       if (!unfold(part.left)) {
         return false;
       }
-      parts.push(keyword(authoredLogicalWords.get(part) ?? part.operator));
+      parts.push(keyword(part.operator));
       return unfold(part.right);
     }
     parts.push(part);
@@ -964,35 +972,23 @@ export function scssConditionSource(value: ValueSlot): string {
  * Fold one logical rung left-associatively onto `Operation` nodes carrying the
  * word itself as the operator. The operator token is kept out of the fold by
  * shape (only values participate), so the rung reduces the same way whether it
- * spelled `and` or `or`.
+ * spelled `and` or `or`. In a CSS `if()` condition the word is kept as
+ * authored (`AND`): the condition is CSS's, whose keywords are any case, and
+ * {@link ifCondition} reads it into the guard's `word` (ledger J20).
  */
-export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
+export function foldLogicalOperation(children: readonly unknown[], state: unknown): ValueNode {
   const values = children.filter(isScssValue);
-  const words = children.filter(isToken).map(token => token.value.trim()).filter((text) => {
+  const operators = children.filter(isToken).map(token => token.value.trim()).filter((text) => {
     const operator = text.toLowerCase();
     return operator === 'and' || operator === 'or';
   });
   let result = requireValue(values[0]);
   for (let index = 1; index < values.length; index += 1) {
-    const word = words[index - 1]!;
-    const operator = word.toLowerCase();
-    const folded = operation(operator, result, values[index]!, false, cssBaseMathOutsideParens(operator));
-    if (word !== operator) {
-      authoredLogicalWords.set(folded, word);
-    }
-    result = folded;
+    const operator = isIfTest(state) ? operators[index - 1]! : operators[index - 1]!.toLowerCase();
+    result = operation(operator, result, values[index]!, false, cssBaseMathOutsideParens(operator.toLowerCase()));
   }
   return result;
 }
-
-/**
- * The `and` / `or` an `Operation` was written with, where it is not the
- * lowercase operator (`AND`). Sass reads the operator in any case; a CSS
- * `if()` condition built from the operation keeps the keyword as authored
- * (ledger J20, owner 2026-10-13: "CSS any case"). Read once, by
- * {@link ifCondition}, while the same parse lowers the `if()`.
- */
-const authoredLogicalWords = new WeakMap<ValueNode, string>();
 
 export function scssOptionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);
