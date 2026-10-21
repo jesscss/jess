@@ -3416,7 +3416,7 @@ function authoredVariableNameOf(source: string, start: number, end: number): { n
   return { name: source.slice(nameStart, nameEnd), start: nameStart, end: nameEnd };
 }
 
-function authoredLessInterpolationVariableNameOf(source: string, start: number, end: number): string | null {
+function interpolatedVariableNameOf(source: string, start: number, end: number): string | null {
   let nameStart = start;
   while (nameStart < end) {
     const code = source.charCodeAt(nameStart);
@@ -3783,21 +3783,21 @@ function variableReferenceFactOf(source: string, node: CssCstNode, language: Jes
   if (language === 'css') {
     return null;
   }
-  if (node.grammarType === 'VariableInterpolation') {
+  if (node.grammarType === 'VariableInterpolation' || node.grammarType === 'DollarBrace' || node.grammarType === 'ExpressionDollarBrace') {
+    /*
+     * Less `@{name}` reads `@name`; .jess `${name}` reads `$name` and `${[$key]}`
+     * reads `$key`, while `${[name]}` reads a property (ledger P13).
+     */
     const start = absoluteStart(node);
-    const end = absoluteEnd(node);
-    if (language === 'less' && source.charCodeAt(start) === 64 /* @ */ && source.charCodeAt(start + 1) === 123 /* { */) {
-      const name = authoredLessInterpolationVariableNameOf(source, start + 2, end);
-      if (name === null) {
-        return null;
-      }
-      return {
-        name: normalizedVariableName(`@${name}`, language),
-        display: source.slice(start, end),
-        span: node.span
-      };
-    }
-    return null;
+    const sigil = language === 'less' ? 64 : 36; // `@` or `$`
+    const keyed = language === 'jess' && source.charCodeAt(start + 2) === 91; // `[`
+    const name = (language === 'less' || language === 'jess') && source.charCodeAt(start) === sigil && source.charCodeAt(start + 1) === 123 /* { */
+      && (!keyed || source.charCodeAt(start + 3) === 36)
+      ? interpolatedVariableNameOf(source, start + (keyed ? 4 : 2), absoluteEnd(node))
+      : null;
+    return name === null
+      ? null
+      : { name: normalizedVariableName(String.fromCharCode(sigil) + name, language), display: source.slice(start, absoluteEnd(node)), span: node.span };
   }
   if (node.grammarType !== 'VariableReference' && node.grammarType !== 'Reference') {
     return null;

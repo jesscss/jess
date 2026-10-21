@@ -1249,7 +1249,12 @@ function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
 
 /** The values of a component-value slot, in order: a multi-part slot is its parts. */
 function slotParts(slot: ValueSlot): ValueNode[] {
-  return isValueSlotArray(slot) ? slot.flatMap(slotParts) : [slot];
+  /* A run's authored separator other than a space (`16/9`) is a part, as a delim is. */
+  return isValueSlotArray(slot)
+    ? slot.flatMap((item, index) => index > 0 && valueLayoutOf(slot)?.[index - 1]?.trim()
+        ? [any(valueLayoutOf(slot)![index - 1]!.trim()), ...slotParts(item)]
+        : slotParts(item))
+    : [slot];
 }
 
 /**

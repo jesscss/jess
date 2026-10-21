@@ -23,9 +23,9 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -103,6 +103,7 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
+  RoutedQueryFunction: Combinator<FunctionCall>;
   GeneralDelim: Combinator<unknown>;
   MediaTest: Combinator<FunctionCall>;
   SupportsTest: Combinator<FunctionCall>;
@@ -426,7 +427,7 @@ const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * General-enclosed retains its body as an interpolation template. Delimiters
  * recurse below; this leaf owns every other byte without a source reparse.
  */
-const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
+const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
 
 /*
  * Grammar-local copy of the leading pseudo-colon recognizer (byte-identical
@@ -763,17 +764,19 @@ const scssFactory = (g: ScssInputRules) => {
    * production never speculatively scans a leading identifier for an ordinary
    * keyword value and then backtracks. Because it requires `#{` first, it also
    * cannot capture a `--name#{...}` token, which the old leading-identifier arm
-   * had to exclude with a dedicated `not(--\u2026#{)` guard.
+   * had to exclude with a dedicated `not(--\u2026#{)` guard. `noTrivia`: only
+   * glued chunks continue it, so a space ends it (`#{$w} solid` is two values);
+   * each interpolation's own braces read the document's trivia (`#{ $w }`).
    */
   const InterpolatedValue = node<Interpolation>(
     'InterpolatedValue',
-    sequence(
-      g.SassInterpolation,
+    noTrivia(sequence(
+      parser({ trivia: whitespace }, g.SassInterpolation),
       many(choice(
         regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
-        g.SassInterpolation
+        parser({ trivia: whitespace }, g.SassInterpolation)
       ))
-    ),
+    )),
     children => interpolation(children.flatMap(child => isInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
@@ -1104,12 +1107,20 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * css's `GeneralDelim`: a delim in a `<general-enclosed>` group's rest. In
    * an at-rule prelude SCSS reads its own values there (`--#{$name}` is no
-   * delim); a CSS `if()` test reads css's delim (`supports(: x)`).
+   * delim), and a `:`, which follows an interpolated feature name
+   * (`(#{$f}: 1px)`); a CSS `if()` test reads css's delim (`supports(: x)`).
    */
-  const GeneralDelim = choice({
-    gate: state => isIfTest(state),
-    combinator: g.PunctuationValue
-  });
+  const GeneralDelim = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: g.PunctuationValue
+    },
+    node<ValueNode>(
+      'PunctuationValue',
+      literal(':'),
+      () => any(':')
+    )
+  );
   const mediaTestOrCall = choice(
     {
       gate: state => isIfTest(state),
@@ -2253,8 +2264,9 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * In an import condition, CSS permits a single declaration without the
-   * parentheses required by a general <supports-condition>. Its canonical fact
-   * is still the same parenthesized declaration condition used elsewhere.
+   * parentheses required by a general <supports-condition>
+   * (`supports(display: grid)`), and it is written without them, as `.css`
+   * writes it (ledger P38: CSS comes out as `.css` writes it).
    */
   const ImportDeclaration = node<ValueNode>(
     'ImportDeclaration',
@@ -2263,13 +2275,13 @@ const scssFactory = (g: ScssInputRules) => {
       literal(':'),
       g.SupportsAtom
     ),
-    children => block(operation(
+    children => operation(
       ':',
       keyword(requireToken(children[0]).value),
       requireValue(children[2]),
       false,
       cssBaseMathOutsideParens(':')
-    ))
+    )
   );
   const ImportSupports = node<FunctionCall>(
     'ImportSupports',
@@ -3560,27 +3572,51 @@ const scssFactory = (g: ScssInputRules) => {
       ));
     }
   );
+
+  /*
+   * A query's function (`style(--theme: #{$t})`, `foo(bar)`): its contents
+   * are the `<general-enclosed>` template, so `#{…}` substitutes and a
+   * `$name` is text (ledger P13); a `style()` query's value is a
+   * custom property's (ledger P38). Without `#{…}` it is the authored text it
+   * always was. The routed one is css's slot for a function the media and
+   * container terms' dispatch read, as Less binds it.
+   */
   const QueryFunction = node<FunctionCall>(
     'QueryFunction',
-    sequence(
+    noTrivia(sequence(
       g.QueryFunctionName,
       literal('('),
-      scanTo(
-        literal(')'),
-        { skip: [balanced(
-          '(',
-          ')'
-        )] }
-      ),
+      g.GeneralTemplate,
       expect(
         literal(')'),
         ')'
       )
-    ),
+    )),
     (children, _fields, span) => withGluedKeywordSpan(funcCall(
       requireToken(children[0]).value,
-      [any(children.length > 2 ? requireToken(children[2]).value : '')]
+      [queryFunctionContents(children[2])]
     ), span)
+  );
+
+  /* The same function, its opener read by css's media and container term dispatch. */
+  const RoutedQueryFunction = node<FunctionCall>(
+    'QueryFunction',
+    noTrivia(sequence(
+      routed(),
+      g.GeneralTemplate,
+      expect(
+        literal(')'),
+        ')'
+      )
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(
+      funcCall(
+        requireToken(children[0]).value.slice(0, -1),
+        [queryFunctionContents(children[1])]
+      ),
+      span,
+      state
+    )
   );
 
   /*
@@ -3597,10 +3633,13 @@ const scssFactory = (g: ScssInputRules) => {
    * function would otherwise reach QueryFunction and be lowered to
    * FunctionCall(Any). Keep this public parse route to facts the canonical
    * AST actually owns; dynamic SCSS values require their own semantic model.
+   * A declaration's value is a value position, so `$name` is the variable
+   * (owner 2026-10-20, ledger P13/P38).
    */
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
     choice(
+      g.VariableReference,
       g.LiteralQuoted,
       g.Color,
       g.Dimension,
@@ -3617,29 +3656,52 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const GeneralTemplateGroup = node<Interpolation>(
     'GeneralTemplateGroup',
-    choice(
+    noTrivia(choice(
       sequence(literal('('), g.GeneralTemplate, literal(')')),
       sequence(literal('['), g.GeneralTemplate, literal(']')),
       sequence(literal('{'), g.GeneralTemplate, literal('}'))
-    ),
+    )),
     interpolationFromTemplateChildren
   );
+
+  /* A string's body is its own text, any `(` or `)` included (`selector([data-state=")"])`), and its `#{…}`. */
   const GeneralTemplateQuoted = node<Interpolation>(
     'GeneralTemplateQuoted',
-    choice(
-      sequence(literal('"'), g.GeneralTemplate, literal('"')),
-      sequence(literal('\''), g.GeneralTemplate, literal('\''))
-    ),
+    noTrivia(choice(
+      sequence(
+        literal('"'),
+        many(choice(
+          parser({ trivia: whitespace }, g.SassInterpolation),
+          regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
+        )),
+        literal('"')
+      ),
+      sequence(
+        literal('\''),
+        many(choice(
+          parser({ trivia: whitespace }, g.SassInterpolation),
+          regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
+        )),
+        literal('\'')
+      )
+    )),
     interpolationFromTemplateChildren
   );
+
+  /*
+   * `<general-enclosed>` contents as authored: text, a block comment, groups,
+   * strings and `#{…}`, every byte kept (`noTrivia`), so `foo(a (b) c)` is
+   * written as it stands.
+   */
   const GeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
-    many(choice(
-      g.SassInterpolation,
+    noTrivia(many(choice(
+      parser({ trivia: whitespace }, g.SassInterpolation),
       g.GeneralTemplateGroup,
       g.GeneralTemplateQuoted,
+      customValueBlockCommentRun,
       generalTemplateText
-    )),
+    ))),
     interpolationFromTemplateChildren
   );
   const Enclosed = node<FunctionCall | Block>(
@@ -5226,6 +5288,7 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeature,
     QueryFunction,
+    RoutedQueryFunction,
     GeneralDelim,
     MediaTest,
     SupportsTest,

@@ -50,6 +50,21 @@ export const requireForBinding = (value: unknown): ForBinding => requireForBindi
 export const requireGuardNode = (value: unknown): GuardNode => requireGuardNodeOf(value, isScssValue, DIALECT);
 export const isScssValueSlotValue = (value: unknown): value is ValueSlot => isValueSlotOf(value, isScssValue);
 export const interpolationFromTemplateChildren = (children: readonly unknown[]): Interpolation => interpolationFromTemplateChildrenIn(children, DIALECT);
+
+/** A query function's contents: the template when it holds `#{…}`, else the authored text it always was. */
+export function queryFunctionContents(child: unknown): ValueNode {
+  const template = requireInterpolation(child);
+  if (template.parts.some(part => 'ref' in part)) {
+    return template;
+  }
+  let text = '';
+  for (const part of template.parts) {
+    if ('lit' in part) {
+      text += part.lit;
+    }
+  }
+  return any(text);
+}
 export const customValueFromChildren = (children: readonly unknown[]): Any | Interpolation => customValueFromChildrenIn(children, DIALECT);
 export const appendCustomValueParts = (children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void => appendCustomValuePartsIn(children, parts, seen, DIALECT);
 
