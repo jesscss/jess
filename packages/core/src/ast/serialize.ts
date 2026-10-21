@@ -9509,11 +9509,11 @@ type InterpRef = Extract<InterpPart, { ref: ValueNode }>;
  * 2026-10-20: "we should be consistent about values"). Escaped text (`~'.a, .b'`) is
  * never one: it is printed as written, its commas, `&` and combinators being characters
  * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"; "in Less, we
- * promise ~"" as a 'dump whatever you want as-is'"). Where an interpolation splices
- * text ({@link ValueEvaluator.selectorInterpolationText}, Sass), none is.
+ * promise ~"" as a 'dump whatever you want as-is'"). The same in `.scss`, where Dart
+ * Sass splices the list's text (owner 2026-10-20: "That way we can say that dart-sass
+ * can suck it").
  */
-const isSelectorListValue = (value: EvalValue, e: Lane): value is EvalList =>
-  !isLiteral(value) && isCommaList(value) && e.ev?.selectorInterpolationText !== true;
+const isSelectorListValue = (value: EvalValue): value is EvalList => !isLiteral(value) && isCommaList(value);
 
 const isCommaList = (value: ValueGroup): value is EvalList => !isValueGroupArray(value) && value.type === 'List' && value.sep === ',';
 
@@ -9530,16 +9530,16 @@ const selectorBranches = (items: readonly ValueGroup[], unquote: boolean): strin
  */
 function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane): MaybePromise<string[] | string> {
   const value = interpRefValue(part, frame, e, ARG_SELECTOR);
-  return isThenable(value) ? value.then(v => selectorPart(v, part.unquote, e)) : selectorPart(value, part.unquote, e);
+  return isThenable(value) ? value.then(v => selectorPart(v, part.unquote)) : selectorPart(value, part.unquote);
 }
 
-const selectorPart = (value: EvalValue, unquote: boolean, e: Lane): string[] | string =>
-  isSelectorListValue(value, e) ? selectorBranches(value.value, unquote) : interpRefBytes(value, unquote);
+const selectorPart = (value: EvalValue, unquote: boolean): string[] | string =>
+  isSelectorListValue(value) ? selectorBranches(value.value, unquote) : interpRefBytes(value, unquote);
 
 /** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
 function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boolean {
   const value = interpRefValue(part, frame, e, ARG_SELECTOR);
-  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value, e);
+  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value);
 }
 
 /** [selector-capture] The ref a LONE complex splices — a `@{name}` that is the ENTIRE
