@@ -140,7 +140,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('AtRulePrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryFeature')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
-    expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Property')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
 
     /*

@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout, queryFeatureNameFrom } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -807,6 +807,11 @@ function isInterpolationFact(value: unknown): value is InterpolationFact {
   return typeof value === 'object' && value !== null
     && 'ref' in value && isValueNode(value.ref)
     && 'src' in value && typeof value.src === 'string';
+}
+
+/** A query feature's name (`QueryFeatureName`): an identifier's text, or the `Interpolation` its `@{…}` makes. */
+function queryFeatureNameOf(children: readonly unknown[]): string | Interpolation {
+  return queryFeatureNameFrom(children.map(child => isInterpolationFact(child) ? interpolation([{ ref: child.ref, unquote: true }]) : child));
 }
 
 function requireInterpolationFact(value: unknown): InterpolationFact {
@@ -3080,6 +3085,7 @@ export {
   isInterp,
   isInterpolationAccessorFact,
   isInterpolationFact,
+  queryFeatureNameOf,
   isLessCallArg,
   enclosedFrom,
   isLessEachCallback,

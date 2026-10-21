@@ -71,6 +71,8 @@ export {
   generalEnclosedGroup,
   authoredSource,
   queryFeatureContents,
+  queryFeatureNameFrom,
+  queryFeatureNameValue,
   enclosedCall,
   styleFeature,
   supportsDeclaration,

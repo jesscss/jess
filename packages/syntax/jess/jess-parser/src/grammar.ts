@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -122,7 +122,6 @@ import type {
   JessOperatorFact,
   JessReferenceTail,
   JessComplexTail,
-  JessQueryFeatureName,
   JessAtRuleHeader,
   JessMixinCallArgument,
   JessCallArgument
@@ -266,7 +265,8 @@ type JessRules = {
   SupportsTest: Combinator<FunctionCall>;
   StyleTest: Combinator<FunctionCall>;
   StyleFeature: Combinator<ValueNode>;
-  QueryFeatureName: Combinator<JessQueryFeatureName>;
+  QueryFeatureName: Combinator<string | Interpolation>;
+  MediaFeatureOpener: Combinator<unknown>;
   QueryComparisonFeature: Combinator<ValueNode>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
   QueryTerm: Combinator<ValueNode>;
@@ -329,6 +329,10 @@ type SharedSyntax = {
 
   /* Inherited from the CSS base: a function-form `<general-enclosed>`, kept as written. */
   QueryFunction: Combinator<FunctionCall>;
+
+  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  mediaFeatureOpener: Combinator<unknown>;
+  queryFeatureName: Combinator<unknown>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests, and the value run they read. */
   ValueSequence: Combinator<unknown>;
@@ -3908,23 +3912,32 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A container or supports feature's name, which may be interpolated
-   * (`(${f}: 1px)`, `(min-${f}: 1px)`): a prelude name takes `${…}` (ledger P13
-   * (a)). A media feature is read by css's media group, whose name is an
-   * identifier, so there `(${f}: 1px)` is `<general-enclosed>` (`GeneralDelim`).
+   * A query feature's name, which may be interpolated (`(${f}: 1px)`,
+   * `(min-${f}: 1px)`): a prelude name takes `${…}` (ledger P13 (a)). css's
+   * `QueryFeatureName` slot: in css's media opener dispatch it owns the
+   * identifier the dispatch read (`routed`), and anywhere else, as in the
+   * `@container` and `@supports` features below and a media feature an
+   * interpolation opens (`MediaFeatureOpener`), it reads it.
    */
-  const QueryFeatureName = node<JessQueryFeatureName>(
-    'QueryFeatureName',
-    choice(
-      g.DollarBraceValue,
-      sequence(
+  const QueryFeatureName = node<string | Interpolation>(
+    'Property',
+    noTrivia(sequence(
+      routed(choice(
         g.Identifier,
-        optional(g.DollarBraceValue)
-      )
-    ),
-    children => ({ property: children.length === 1 && isToken(children[0])
-      ? keyword(requireToken(children[0]).value)
-      : interpolationFromTemplateChildren(children) })
+        g.DollarBraceValue
+      )),
+      optional(g.DollarBraceValue)
+    )),
+    children => queryFeatureNameFrom(children)
+  );
+
+  /*
+   * css's media opener dispatch, then a name it cannot read: one an
+   * interpolation opens (`(${f}: $bp)`), read once as the name.
+   */
+  const MediaFeatureOpener = choice(
+    g.mediaFeatureOpener,
+    g.queryFeatureName
   );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
@@ -3968,12 +3981,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )
     ),
     (children, fields) => {
-      const propertyFact = children.find((child): child is JessQueryFeatureName => typeof child === 'object' && child !== null && 'property' in child);
-      if (propertyFact === undefined) {
-        throw new TypeError('Jess query comparison lost its property.');
-      }
-      const values = children.filter(isValueNode);
-
       /*
        * Read the operators back from the shared terminal's captures. Restating the
        * operator set as a runtime filter would be a second, drift-prone copy of a
@@ -3987,28 +3994,29 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             fields,
             'comparison'
           ).map(capture => typeof capture.value === 'string' ? capture.value : requireToken(capture.value).value);
-      if (values.length === 0 || operators.length === 0) {
+
+      /*
+       * The name (`QueryFeatureName`: an identifier's text or an
+       * `Interpolation`) and the values, in written order: `name op value`,
+       * or `value op name [op value]`, each compared as written.
+       */
+      const operands = children.flatMap(child => isValueNode(child)
+        ? [child]
+        : typeof child === 'string' && !operators.includes(child) ? [queryFeatureNameValue(child)] : []);
+      const first = operands[0];
+      const second = operands[1];
+      const trailing = operands[2];
+      if (first === undefined || second === undefined || operators.length === 0) {
         throw new TypeError('Jess query comparison lost an operand.');
       }
-      const propertyIndex = children.indexOf(propertyFact);
-      const firstValueIndex = children.findIndex(isValueNode);
-      let result = propertyIndex < firstValueIndex
-        ? operation(
-            operators[0]!,
-            propertyFact.property,
-            values[0]!,
-            false,
-            cssBaseMathOutsideParens(operators[0]!)
-          )
-        : operation(
-            operators[0]!,
-            values[0]!,
-            propertyFact.property,
-            false,
-            cssBaseMathOutsideParens(operators[0]!)
-          );
+      let result = operation(
+        operators[0]!,
+        first,
+        second,
+        false,
+        cssBaseMathOutsideParens(operators[0]!)
+      );
       if (operators.length === 2) {
-        const trailing = values.at(-1);
         if (trailing === undefined) {
           throw new TypeError('Jess query comparison lost its range end.');
         }
@@ -6441,6 +6449,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     StyleTest,
     StyleFeature,
     QueryFeatureName,
+    MediaFeatureOpener,
     QueryComparisonFeature,
     QueryNonOnlyKeyword,
     QueryTerm,
