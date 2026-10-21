@@ -81,6 +81,22 @@ describe('scss: `selector.parse()` reads a selector string', () => {
     await expect(new Compiler({ compile: { functionMode: 'error' } }).renderString(source, { extension: '.scss' }))
       .rejects.toMatchObject({ reason: expect.stringContaining(message) });
   });
+
+  /*
+   * Sass's `#{…}` splices a selector list's text, which Dart Sass then reads as the
+   * selector: glued to a compound, the list's commas separate selectors (`.btn, .button:hover`),
+   * where `.less` and `.jess` group the list (`:is(.btn, .button):hover`, ledger P49).
+   */
+  it.each([false, true])('splices a parsed list interpolated into a selector as text, collapseNesting: %s', async (collapseNesting) => {
+    const source = '@use "sass:selector"; $buttons: selector.parse(".btn, .button"); .toolbar #{$buttons}:hover { color: red; }';
+    await expect(new Compiler({ output: { collapseNesting } }).renderString(source, { extension: '.scss' }))
+      .resolves.toBe('.toolbar .btn, .button:hover {\n  color: red;\n}\n');
+  });
+
+  it('splices `&` interpolated into a nested selector as text', async () => {
+    await expect(new Compiler().renderString('.btn, .button { .toolbar #{&}:hover { color: red; } }', { extension: '.scss' }))
+      .resolves.toBe('.btn,\n.button {\n  .toolbar .btn, .button:hover {\n    color: red;\n  }\n}\n');
+  });
 });
 
 /*
@@ -89,7 +105,8 @@ describe('scss: `selector.parse()` reads a selector string', () => {
  * argument to the same function through its `.jess` module namespace.
  */
 describe('scss → jess: `selector.parse()`', () => {
-  const [interpolated, ...rest] = cases;
+  /* The two cases that interpolate a parsed list into a selector: see the open item below. */
+  const [interpolated, heldInVariable, ...rest] = cases;
 
   /* The converter's fact that `selector-parse` is a Sass built-in (`#sass` exports it as `selectorParse`). */
   const functions = { from: '#sass', names: new Map([['selector-parse', 'selectorParse']]) };
@@ -109,13 +126,17 @@ describe('scss → jess: `selector.parse()`', () => {
   });
 
   /*
-   * Open (ledger P49 NOTES, 2026-10-20): the capture interpolated into a selector is
-   * written one selector per line, as a selector list header is; the same list
-   * computed by `selector.parse()` (or `&`) and interpolated is spliced as text, on
-   * one line.
+   * Open (ledger P49 NOTES, 2026-10-20): Sass's `#{…}` splices a selector list's text,
+   * written on one line (`.btn, .link {`); `.jess` `${…}` interpolates the list's
+   * selectors, written one per line as a selector list header is (`.btn,\n.link {`), and
+   * glued to a compound grouped (`:is(…)`) where Sass's text is two selectors. `.jess`
+   * spells that text only through a variable holding an escaped string
+   * (`$text: ~"${parsed}"; ${text} { … }`), which the emitter does not write.
    */
-  it.fails(interpolated[0], async () => {
-    const jess = emitJess(parseScss(interpolated[1]));
-    await expect(render(jess, '.jess')).resolves.toBe(await render(interpolated[1]));
-  });
+  for (const [name, source] of [interpolated, heldInVariable]) {
+    it.fails(name, async () => {
+      const jess = emitJess(parseScss(source), { functions });
+      await expect(render(jess, '.jess')).resolves.toBe(await render(source));
+    });
+  }
 });
