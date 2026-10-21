@@ -283,6 +283,35 @@ describe('selector() capture', () => {
       await expect(render('@-use "#sass/selector";\n$buttons: $selector.parse(".btn, .button");\n.toolbar { ${buttons} { color: red; } }', collapseNesting, 'jess')).resolves.toBe(expected);
     });
 
+    it('a list glued after a name prefix whose selectors open with `.` is a compound boundary: one :is() group', async () => {
+      await expect(render('@buttons: selector(.btn, .button);\n.toolbar@{buttons} { color: red; }', false))
+        .resolves.toBe('.toolbar:is(.btn, .button) {\n  color: red;\n}\n');
+    });
+
+    /*
+     * A list glued to a name continues it, as `&__x` does: one branch per selector, never
+     * `:is()`, which is no part of a name (`.col-:is(sm, md)`, `:is(.card, .panel)__title`).
+     */
+    describe('a list continuing a name multiplies branches', () => {
+      it.each([
+        ['less', '@sizes: sm, md;\n.col-@{sizes} { float: left; }'],
+        ['jess', '$sizes: sm, md;\n.col-${sizes} { float: left; }']
+      ] as const)('%s: a name prefix', async (language, source) => {
+        await expect(render(source, false, language)).resolves.toBe('.col-sm,\n.col-md {\n  float: left;\n}\n');
+      });
+
+      it.each([false, true])('scss: #{&} before a BEM suffix under two parents, collapseNesting: %s', async (collapseNesting) => {
+        await expect(render('.card, .panel {\n  #{&}__title { font-weight: bold; }\n}', collapseNesting, 'scss')).resolves.toBe(collapseNesting
+          ? ':is(.card, .panel) .card__title,\n:is(.card, .panel) .panel__title {\n  font-weight: bold;\n}\n'
+          : '.card,\n.panel {\n  .card__title,\n  .panel__title {\n    font-weight: bold;\n  }\n}\n');
+      });
+
+      it('scss: #{&} before a BEM suffix under one parent', async () => {
+        await expect(render('.card {\n  #{&}__title { font-weight: bold; }\n}', false, 'scss'))
+          .resolves.toBe('.card {\n  .card__title {\n    font-weight: bold;\n  }\n}\n');
+      });
+    });
+
     /* Escaped text is never read as selector syntax (ledger O8, owner 2026-10-09: "everywhere that is text should print AS WRITTEN"). */
     it('leaves escaped text spliced as written', async () => {
       await expect(render('@buttons: ~".btn, .button";\n@clickable: @buttons;\n.toolbar @{clickable}:hover { color: red; }', false))
