@@ -108,6 +108,9 @@ The captured value is the same value `&` is in a `.jess` or `.scss` value, and t
 same value Sass's `selector.parse()` returns: a comma list with one item per
 selector, each item a space list of its compound selectors and combinators. So
 `selector(.card, .panel > h2)` has two items, and its second is `.panel`, `>`, `h2`.
+An item taken out of it is still a selector: interpolated into a selector, it is
+placed as the whole list is (see below), so the item `.panel > h2` glued after
+`.active` is `.active:is(.panel > h2)`.
 
 <AudienceGate include={['less']}>
 
@@ -273,8 +276,10 @@ In `.scss` the rules above stay nested under `.card, .panel`, as any nested rule
 
 </AudienceGate>
 
-A plain comma list is different: it holds text, not selectors, so wherever it is glued
-each item is pasted in and the rule repeats for it.
+A plain comma list is different: it holds text, not selectors, so wherever it stands
+in a selector, glued to other text or on its own after a combinator, each item is
+pasted in and the rule repeats for it. Only inside a pseudo-class's argument
+does it stay one item of that argument: `:not(:is(apple, satsuma))`.
 
 <AudienceGate include={['less']}>
 
@@ -284,6 +289,8 @@ each item is pasted in and the rule repeats for it.
 
 .fruit-@{fruits} { color: orange; }          // .fruit-apple, .fruit-satsuma
 .fruit-@{fruit-selectors} { color: orange; } // .fruit-:is(apple, satsuma)
+.basket @{fruits} { color: green; }          // .basket apple, .basket satsuma
+.basket @{fruit-selectors} { color: green; } // .basket :is(apple, satsuma)
 ```
 
 </AudienceGate>
@@ -296,6 +303,8 @@ $fruit-selectors: selector(apple, satsuma);
 
 .fruit-${fruits} { color: orange; }          // .fruit-apple, .fruit-satsuma
 .fruit-${fruit-selectors} { color: orange; } // .fruit-:is(apple, satsuma)
+.basket ${fruits} { color: green; }          // .basket apple, .basket satsuma
+.basket ${fruit-selectors} { color: green; } // .basket :is(apple, satsuma)
 ```
 
 </AudienceGate>

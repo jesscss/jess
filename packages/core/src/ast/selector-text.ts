@@ -55,8 +55,18 @@ export function selectorListValue(branches: readonly string[] | null): ValueGrou
 export function selectorValue(branches: readonly (readonly string[])[] | null): ValueGroup {
   return branches === null || branches.length === 0
     ? makeNull(true)
-    : makeList(branches.map(components => components.map(makeKeyword)), ',', true);
+    : makeList(branches.map(components => Object.defineProperty(components.map(makeKeyword), 'selector', { value: true })), ',', true);
 }
+
+/**
+ * [selector-capture] Whether a value is one selector of a selector value (ledger P49):
+ * the space list of its compound selectors and combinators, as {@link selectorValue}
+ * built it, read out by `extract()`, `list.nth()`, `each()`, `@each` or `$for`. It stays
+ * that space list to the list functions (`list.nth(list.nth($s, 1), 2)` is a compound),
+ * and interpolated into a selector it is placed as a selector value of one selector is
+ * ({@link placeSelectorList}).
+ */
+export const isSelectorItem = (value: unknown): boolean => Array.isArray(value) && 'selector' in value;
 
 /**
  * A composed branch's compound selectors and combinators: its parts between the
@@ -140,7 +150,7 @@ export const crossTexts = <T, R = string>(values: readonly (T | T[])[], build: (
 export const isSelectorValue = (list: List): boolean =>
   list.selector || list.value.every(item => !isValueGroupArray(item) && item.type === 'List' && item.sep === ',' && isSelectorValue(item));
 
-/* [selector-capture] Where a selector interpolation stands in its compound ({@link placeSelectorList}): nothing is glued to it. */
+/* [selector-capture] Where a selector interpolation stands in its compound ({@link placeSelectorList}): it is the whole compound (`.c @{s}`). */
 export const PLACE_ALONE = 0;
 
 /* It opens its compound, and a selector is glued after it (`@{s}:hover`). */
@@ -155,7 +165,17 @@ export const PLACE_NAME = 3;
 /* It is the whole selector, read one branch per item. */
 export const PLACE_WHOLE = 4;
 
-export type SelectorPlace = typeof PLACE_ALONE | typeof PLACE_OPENS | typeof PLACE_GLUED | typeof PLACE_NAME | typeof PLACE_WHOLE;
+/* It is a whole compound of a pseudo's argument (`:not(@{s})`, `:has(> @{s})`). */
+export const PLACE_ARGUMENT = 5;
+
+export type SelectorPlace = typeof PLACE_ALONE | typeof PLACE_OPENS | typeof PLACE_GLUED | typeof PLACE_NAME | typeof PLACE_WHOLE | typeof PLACE_ARGUMENT;
+
+/**
+ * [selector-capture] Where a compound stands: in the selector, or in a pseudo's argument,
+ * where a plain list that is the whole compound is one `:is()` item of the argument rather
+ * than a branch per item ({@link placeSelectorList}).
+ */
+export type CompoundIn = 'selector' | 'argument';
 
 /** Whether code point `code` ends a selector in an interpolation template's text: `(`, `)`, `,`, whitespace or a combinator (`>`, `+`, `~`). */
 const separates = (code: number): boolean => code === 0x28 || code === 0x29 || code === 0x2C
@@ -164,38 +184,46 @@ const separates = (code: number): boolean => code === 0x28 || code === 0x29 || c
 /**
  * [selector-capture] Where the interpolation `parts[at]` of a selector token stands in
  * its compound ({@link placeSelectorList}): a name glued after it (`nameAfter`), anything
- * glued before it (the part before it; for the first part, the token before it,
- * `gluedBefore`), anything glued after it (likewise, `gluedAfter`), or nothing. A
- * literal part beside it glues only up to a separator, so an interpolation that opens
- * or closes a pseudo argument the Less parser keeps in the token's text (`:not(@{l})`,
- * `:has(> @{l})`, `:not(.k, @{l})`) stands alone in that argument.
+ * glued before it (the part before it; for the first part, `token`, the token glued
+ * before this one), anything glued after it (likewise, `gluedAfter`), or nothing: the
+ * whole compound, of the selector or of a pseudo's argument (`token` says which,
+ * {@link CompoundIn}, when no token is glued before). A literal part beside it glues only
+ * up to a separator, and only a pseudo argument the Less parser keeps in the token's text
+ * puts one there, so an interpolation that opens or closes it (`:not(@{l})`,
+ * `:has(> @{l})`, `:not(.k, @{l})`) is a whole compound of that argument.
  */
-export const selectorPlace = (parts: readonly InterpPart[], at: number, gluedBefore: boolean, gluedAfter: boolean, nameAfter: boolean): SelectorPlace => {
+export const selectorPlace = (parts: readonly InterpPart[], at: number, token: object | CompoundIn, gluedAfter: boolean, nameAfter: boolean): SelectorPlace => {
   const before = parts[at - 1];
   const after = parts[at + 1];
   if (nameAfter) {
     return PLACE_NAME;
   }
-  if (before === undefined ? gluedBefore : !('lit' in before) || !separates(before.lit.charCodeAt(before.lit.length - 1))) {
+  if (before === undefined ? typeof token === 'object' : !('lit' in before) || !separates(before.lit.charCodeAt(before.lit.length - 1))) {
     return PLACE_GLUED;
   }
-  return (after === undefined ? gluedAfter : !('lit' in after) || !separates(after.lit.charCodeAt(0))) ? PLACE_OPENS : PLACE_ALONE;
+  if (after === undefined ? gluedAfter : !('lit' in after) || !separates(after.lit.charCodeAt(0))) {
+    return PLACE_OPENS;
+  }
+  return token === 'argument' || before !== undefined || after !== undefined ? PLACE_ARGUMENT : PLACE_ALONE;
 };
 
 /**
- * [selector-capture] What a comma list's `branches` splice into a selector at `place`:
+ * [selector-capture] What a comma list's `branches` splice into a selector at `place`
+ * (`selector`: whether it is a selector value, {@link isSelectorValue}, or one selector
+ * of one, {@link isSelectorItem}):
  * the text appended, or the texts that multiply the branch. At whole-selector position,
- * one branch per item. A selector value ({@link isSelectorValue}`(list)`, ledger P49, P50) is placed as `&` is: with a name glued after it, it
+ * one branch per item. A selector value (ledger P49, P50) is placed as `&` is: with a name glued after it, it
  * multiplies the branch, one per selector, as `&__x` does; anywhere else it is one
  * `:is()` group, as `&` stands for `:is(parent)` (`.fruit-cap-:is(apple, satsuma)`,
- * `:is(.btn, .button):hover`), one selector written bare only where nothing is glued
- * before it. A plain list is text: glued to anything, each item is spliced and
- * multiplies the branch (`.col-sm, .col-md`, `sm:hover, md:hover`); alone in its
- * compound it is the list as written there. Owner 2026-10-21: "`@foo: one, two;` is
+ * `:is(.btn, .button):hover`, `.c :is(a, b)`), one selector written bare only where
+ * nothing is glued before it. A plain list is text: each item is spliced and multiplies
+ * the branch (`.col-sm, .col-md`, `sm:hover, md:hover`, `.c a, .c b`), except as a whole
+ * compound of a pseudo's argument, where it is one `:is()` item of that argument
+ * (`:not(:is(b, i))`), never a rule per item. Owner 2026-10-21: "`@foo: one, two;` is
  * different from: `@foo: selector(one, two);` the latter, with @{foo} is an :is()".
  */
-export const placeSelectorList = (branches: string[], list: List, place: SelectorPlace): string[] | string =>
-  place === PLACE_NAME || place === PLACE_WHOLE || (place !== PLACE_ALONE && !isSelectorValue(list))
+export const placeSelectorList = (branches: string[], selector: boolean, place: SelectorPlace): string[] | string =>
+  place === PLACE_NAME || place === PLACE_WHOLE || (place !== PLACE_ARGUMENT && !selector)
     ? branches
     : branches.length === 1 && place !== PLACE_GLUED ? branches[0]! : isUnit(branches.join(', '));
 
