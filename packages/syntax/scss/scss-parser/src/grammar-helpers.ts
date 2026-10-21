@@ -781,6 +781,15 @@ function ifCondition(value: ValueSlot): GuardNode {
           return { g: value.operator, left: ifCondition(value.left), right: ifCondition(value.right), word: value.operator, gluedAt: NO_SPAN, parens: 0 };
         }
         break;
+
+      /* `AND` / `OR` as authored ({@link foldLogicalOperation}): its operands read as this condition's. */
+      case 'Condition': {
+        const { guard } = value;
+        if ((guard.g === 'and' || guard.g === 'or') && guard.left.g === 'truth' && guard.right.g === 'truth') {
+          return { ...guard, left: ifCondition(guard.left.value), right: ifCondition(guard.right.value) };
+        }
+        break;
+      }
       case 'Expression': {
         const negated = value.value;
         if (value._asCall === null && !isValueSlotArray(negated) && negated.type === 'Condition' && negated.guard.g === 'not' && negated.guard.inner.g === 'truth') {
@@ -954,19 +963,57 @@ export function scssConditionSource(value: ValueSlot): string {
   }
 }
 
+/** An `and` / `or` keyword of a CSS `if()` condition, as authored (`AND`). */
+export interface ConditionWord {
+  readonly conditionWord: string;
+}
+
+export function conditionWord(children: readonly unknown[]): ConditionWord {
+  return { conditionWord: requireToken(children[0]).value.trim() };
+}
+
+function isConditionWord(child: unknown): child is ConditionWord {
+  return typeof child === 'object' && child !== null && 'conditionWord' in child;
+}
+
 /**
  * Fold one logical rung left-associatively onto `Operation` nodes carrying the
  * word itself as the operator. The operator token is kept out of the fold by
  * shape (only values participate), so the rung reduces the same way whether it
  * spelled `and` or `or`.
+ *
+ * In a CSS `if()` condition the keyword arrives as authored ({@link
+ * ConditionWord}); one not in lower case (`AND`) folds to the condition
+ * written as authored ({@link Condition}, its `word` kept, ledger J20), which
+ * {@link ifCondition} reads as the condition's own `and` / `or` (ledger P38:
+ * "in CSS it comes out as written"). Its truth is Sass's `and` / `or`'s, so a
+ * Sass `if()` that consumes it decides as before.
  */
 export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
   const values = children.filter(isScssValue);
-  const operators = children.filter(isToken).map(token => token.value.trim().toLowerCase()).filter(text => text === 'and' || text === 'or');
+  const words: string[] = [];
+  for (const child of children) {
+    if (isConditionWord(child)) {
+      words.push(child.conditionWord);
+    } else if (isToken(child)) {
+      const word = child.value.trim().toLowerCase();
+      if (word === 'and' || word === 'or') {
+        words.push(word);
+      }
+    }
+  }
   let result = requireValue(values[0]);
   for (let index = 1; index < values.length; index += 1) {
-    result = operation(operators[index - 1]!, result, values[index]!, false,
-      cssBaseMathOutsideParens(operators[index - 1]!));
+    const word = words[index - 1]!;
+    const right = values[index]!;
+    if (word === 'and' || word === 'or') {
+      result = operation(word, result, right, false, cssBaseMathOutsideParens(word));
+    } else {
+      const guard: GuardNode = { g: word.toLowerCase() === 'and' ? 'and' : 'or', left: scssTruth(result), right: scssTruth(right), word, gluedAt: NO_SPAN, parens: 0 };
+
+      /* Written from its guard (`word`, ledger J20), so no source text is kept: an operand may be one `scssConditionSource` cannot spell (`#{$a}`). */
+      result = condition(guard, '');
+    }
   }
   return result;
 }
