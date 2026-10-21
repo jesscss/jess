@@ -13123,29 +13123,33 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
       recordPropertyDeclaration(frame, st, frame);
     } else if (st.type === 'Ruleset') {
       const list = st.selector;
-      const context = [list, st];
-      const branches = list.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass rule selector', context));
-      resolvedSelectorBranchesOf(list, branches, e);
+      if (list.selectors.some(selectorBranchHasInterp)) {
+        const context = [list, st];
+        const branches = list.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass rule selector', context));
+        resolvedSelectorBranchesOf(list, branches, e);
 
-      /*
-       * An inline `:extend()` holds its own branch — the parser's object, shared with
-       * this list — so the extend reads the resolved branch too, or it extends from
-       * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
-       */
-      for (let index = 0; st.extendInstructions !== undefined && index < branches.length; index++) {
-        const c = list.selectors[index]!;
-        for (let i = 0; branches[index] !== c && i < st.extendInstructions.length; i++) {
-          const inst = st.extendInstructions[i]!;
-          if (inst.subject?.selectors[0] === c) {
-            resolvedSelectorBranchesOf(inst.subject, [branches[index]!], e);
+        /*
+         * An inline `:extend()` holds its own branch — the parser's object, shared with
+         * this list — so the extend reads the resolved branch too, or it extends from
+         * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
+         */
+        for (let index = 0; st.extendInstructions !== undefined && index < branches.length; index++) {
+          const c = list.selectors[index]!;
+          for (let i = 0; branches[index] !== c && i < st.extendInstructions.length; i++) {
+            const inst = st.extendInstructions[i]!;
+            if (inst.subject?.selectors[0] === c) {
+              resolvedSelectorBranchesOf(inst.subject, [branches[index]!], e);
+            }
           }
         }
       }
 
       /* The same planner reads extend targets before matching, resolved in this cold pass and lexical frame alongside rule selectors. */
       for (const inst of st.extendInstructions ?? []) {
-        const targetContext = [inst.target, st];
-        resolvedSelectorBranchesOf(inst.target, inst.target.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass :extend() target', targetContext)), e);
+        if (inst.target.selectors.some(selectorBranchHasInterp)) {
+          const context = [inst.target, st];
+          resolvedSelectorBranchesOf(inst.target, inst.target.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass :extend() target', context)), e);
+        }
       }
 
       /* The rule's body is its `&` ({@link parentSelectorBranches}), as the walk's frame is ({@link activateRuleFrame}). */
