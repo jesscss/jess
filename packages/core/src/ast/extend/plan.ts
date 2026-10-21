@@ -183,8 +183,7 @@ export type AtRuleScopes = Map<AtRuleBlock, number>;
 
 /**
  * `own` — the IR of `list` — without the branches whose interpolation the extend
- * pre-pass left unresolved (a lone `@{list}`, which the header expands; one that
- * failed to resolve), or null when none is left. Their IR has no text (an
+ * pre-pass left unresolved (one that failed to resolve), or null when none is left. Their IR has no text (an
  * interpolated token is `''`), so an extender built from one wrote an empty branch
  * (`.z, {`) or lost a parent (`.z, .c {` for `.c` under one), dropping or widening
  * the target's rule (ledger O17). Read from the AST's own interpolation flag, since a

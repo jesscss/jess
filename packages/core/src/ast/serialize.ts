@@ -71,6 +71,7 @@ import {
   selectorTermOf,
   selist,
   simpleSelector,
+  simpleTokenText,
   simpleTokenHasInterp,
   textHoldsParentRef,
   branchTextIsPlaceholder,
@@ -9713,13 +9714,17 @@ function interpTokenSpelling(token: SimpleToken): string {
   return out;
 }
 
-function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): string {
-  const value = mapMaybe(resolveSimpleTexts(sim, frame, e), oneText);
+/** `value`, read where a selector interpolation cannot be awaited: an awaitable one is {@link AsyncSelectorInterp} at `sim`. */
+function settledSelectorSync<T>(value: MaybePromise<T>, sim: SimpleToken): T {
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw new AsyncSelectorInterp(sim);
   }
   return value;
+}
+
+function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): string {
+  return oneText(settledSelectorSync(resolveSimpleTexts(sim, frame, e), sim));
 }
 
 function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane): MaybePromise<SelectorText> {
@@ -12791,7 +12796,7 @@ function rejectAsyncSelectorInterp(
  * renders again with other values). Static (`&`, `.a`) simple tokens are shared. A glued
  * name merged into one token is no longer a compound.
  */
-function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: Lane): SelectorTerm {
+function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: Lane): SelectorTerm | SelectorTerm[] {
   if (!compoundHasInterp(comp)) {
     return comp;
   }
@@ -12800,7 +12805,7 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
    * Resolve EVERY interpolated simple before building, so a throw leaves nothing
    * half-resolved for the caller's recovery path to serialize.
    */
-  const texts: Array<string | undefined> = [];
+  const texts: Array<SelectorText | undefined> = [];
 
   /* Each pseudo whose argument interpolates, and its resolved copy. */
   const pseudos: SimpleToken[] = [];
@@ -12817,17 +12822,16 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
       continue;
     }
     if (sim.interp !== null) {
-      texts[i] = resolveSimpleTextSync(sim, frame, e);
+      texts[i] = settledSelectorSync(resolveSimpleTexts(sim, frame, e, comp.value[i - 1], comp.value[i + 1]), sim);
     }
   }
 
   /*
    * A selector list continuing a name multiplies the compound ({@link resolveSimpleTexts}):
-   * one token of its selectors' list, as one resolved simple writes it.
+   * one compound per selector, crossed as {@link resolveCompound} crosses them for the header.
    */
-  const whole = resolveCompound(comp, frame, e);
-  if (Array.isArray(whole)) {
-    return simpleSelector(oneText(whole));
+  if (!isOneText(texts)) {
+    return crossTexts(comp.value.map((sim, i) => texts[i] ?? simpleTokenText(copies[pseudos.indexOf(sim)] ?? sim)), picked => simpleSelector(picked.join('')));
   }
   const tokens = resolvedCompoundTokens(comp.value, texts);
   for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
@@ -12999,11 +13003,11 @@ function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: Lane
   if (args === null || !pseudoHasInterp(p)) {
     return p;
   }
-  const selectors = args.selectors.map(c => resolveSelectorBranchInterpCopy(c, frame, e));
+  const selectors = args.selectors.flatMap(c => resolveSelectorBranchInterpCopy(c, frame, e));
   return { ...p, args: { ...args, selectors }, _hasInterp: false };
 }
 
-function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane): SelectorTerm {
+function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane): SelectorTerm | SelectorTerm[] {
   if (term.type === 'CompoundSelector') {
     return resolveCompoundInterpCopy(term, frame, e);
   }
@@ -13014,11 +13018,19 @@ function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, 
     }
     return term;
   }
-  return term.interp !== null ? simpleSelector(resolveSimpleTextSync(term, frame, e)) : term;
+  if (term.interp === null) {
+    return term;
+  }
+  const text = settledSelectorSync(resolveSimpleTexts(term, frame, e), term);
+  return typeof text === 'string' ? simpleSelector(text) : text.map(branch => simpleSelector(branch));
 }
 
-/** A selector branch with its interpolation resolved in `frame`: a new branch, or `c` when it holds none. */
-function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: Lane): SelectorBranch {
+/**
+ * A selector branch with its interpolation resolved in `frame`: a new branch, or `c` when
+ * it holds none; the branches a selector list continuing a name multiplies it into, crossed
+ * as {@link resolveSelectorBranch} crosses them for the header.
+ */
+function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: Lane): SelectorBranch | SelectorBranch[] {
   if (!selectorBranchHasInterp(c)) {
     return c;
   }
@@ -13026,14 +13038,16 @@ function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null,
     return resolveSelectorTermInterpCopy(c, frame, e);
   }
   const hasLiteralAmpersand = selectorBranchHasAmpersand(c);
-  const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator =>
-    typeof term === 'string' ? term : resolveSelectorTermInterpCopy(term, frame, e);
-  if (c.type === 'ComplexSelector') {
-    const [head, ...rest] = c.value;
-    return { ...c, value: [resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
-  }
-  const [combinator, head, ...rest] = c.value;
-  return { ...c, value: [combinator, resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+  return crossTexts(selectorBranchTerms(c).map(term => resolveSelectorTermInterpCopy(term, frame, e)), (terms): SelectorBranch => {
+    let at = 0;
+    const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator => typeof term === 'string' ? term : terms[at++]!;
+    if (c.type === 'ComplexSelector') {
+      const [, ...rest] = c.value;
+      return { ...c, value: [terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+    }
+    const [combinator, , ...rest] = c.value;
+    return { ...c, value: [combinator, terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+  });
 }
 
 /** The selector list `list` reads as for the extend planner: its resolved copy, or itself ({@link EvalSession.resolvedSelectors}). */
@@ -13041,17 +13055,17 @@ function plannedSelectorList(list: SelectorList, e: Lane): SelectorList {
   return e.s.resolvedSelectors.get(list) ?? list;
 }
 
-/** Record `branch` as branch `index` of `list`'s resolved copy ({@link EvalSession.resolvedSelectors}). */
-function resolvedSelectorBranchOf(list: SelectorList, index: number, branch: SelectorBranch, e: Lane): void {
-  if (branch === list.selectors[index]) {
+/**
+ * Record `branches`, one entry per branch of `list` (the branch itself when it resolved
+ * to itself, or the branches it expands to), as `list`'s resolved copy
+ * ({@link EvalSession.resolvedSelectors}): a lone selector list and a list continuing a
+ * name are as many branches as the header writes for them.
+ */
+function resolvedSelectorBranchesOf(list: SelectorList, branches: ReadonlyArray<SelectorBranch | SelectorBranch[]>, e: Lane): void {
+  if (branches.every((branch, index) => branch === list.selectors[index])) {
     return;
   }
-  let copy = e.s.resolvedSelectors.get(list);
-  if (copy === undefined) {
-    copy = { ...list, selectors: list.selectors.slice() };
-    e.s.resolvedSelectors.set(list, copy);
-  }
-  copy.selectors[index] = branch;
+  e.s.resolvedSelectors.set(list, { ...list, selectors: branches.flat() });
 }
 
 /**
@@ -13091,27 +13105,25 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
       recordPropertyDeclaration(frame, st, frame);
     } else if (st.type === 'Ruleset') {
       const list = st.selector;
-      for (let index = 0; index < list.selectors.length; index++) {
-        const c = list.selectors[index]!;
-
-        /*
-         * A lone `@{s}` group (a selector list) is whole-selector position, which
-         * the header expands to its branches ({@link expandSelectorBranch}); resolved
-         * here it would be the compound-position `:is(…)` and change the header
-         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored, as does
-         * a branch a selector list continuing a name multiplies ({@link resolveSimpleTexts}),
-         * which no one resolved branch writes.
-         */
+      const branches: Array<SelectorBranch | SelectorBranch[]> = [];
+      for (const c of list.selectors) {
         if (!selectorBranchHasInterp(c)) {
+          branches.push(c);
           continue;
         }
         try {
-          const lone = loneInterpRef(c);
-          if (lone !== null && isGroupInterpSync(lone, frame, e)) {
-            continue;
-          }
-          const resolved = resolveSelectorBranchInterpCopy(c, frame, e);
-          resolvedSelectorBranchOf(list, index, resolved, e);
+          /*
+           * A branch reads as the header writes it: a lone `@{s}` is whole-selector
+           * position, the branches the header expands it to ({@link expandSelectorBranch}),
+           * one per selector of a selector list, and a selector list continuing a name
+           * multiplies the branch ({@link resolveSimpleTexts}). Each expanded branch is one
+           * resolved simple, as a resolved interpolated token is ({@link resolvedCompoundTokens}).
+           */
+          const lone = loneInterpRef(c) === null ? null : loneInterpBranches(c, frame, e);
+          const resolved = lone === null
+            ? resolveSelectorBranchInterpCopy(c, frame, e)
+            : settledSelectorSync(lone, termTokens(selectorBranchTerms(c)[0]!)[0]!).map(text => simpleSelector(text));
+          branches.push(resolved);
 
           /*
            * An inline `:extend()` holds its own branch — the parser's object, shared with
@@ -13121,7 +13133,7 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           for (let i = 0; st.extendInstructions !== undefined && i < st.extendInstructions.length; i++) {
             const inst = st.extendInstructions[i]!;
             if (inst.subject?.selectors[0] === c) {
-              resolvedSelectorBranchOf(inst.subject, 0, resolved, e);
+              resolvedSelectorBranchesOf(inst.subject, [resolved], e);
             }
           }
         } catch (error) {
@@ -13132,8 +13144,10 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
            * match), never regresses.
            */
           rejectAsyncSelectorInterp(error, 'extend pre-pass rule selector', [c, list, st], e);
+          branches.push(c);
         }
       }
+      resolvedSelectorBranchesOf(list, branches, e);
 
       /*
        * The same planner reads extend targets before matching. Resolve their
@@ -13142,23 +13156,29 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
        * traversal is introduced.
        */
       for (const inst of st.extendInstructions ?? []) {
-        for (let index = 0; index < inst.target.selectors.length; index++) {
-          const c = inst.target.selectors[index]!;
+        const targets: Array<SelectorBranch | SelectorBranch[]> = [];
+        for (const c of inst.target.selectors) {
           if (!selectorBranchHasInterp(c)) {
+            targets.push(c);
             continue;
           }
           try {
-            resolvedSelectorBranchOf(inst.target, index, resolveSelectorBranchInterpCopy(c, frame, e), e);
+            targets.push(resolveSelectorBranchInterpCopy(c, frame, e));
           } catch (error) {
             /*
              * As above: an awaitable target is reported; a genuinely unresolvable
              * one is preserved and the planner keeps its no-match behavior.
              */
             rejectAsyncSelectorInterp(error, 'extend pre-pass :extend() target', [c, inst.target, st], e);
+            targets.push(c);
           }
         }
+        resolvedSelectorBranchesOf(inst.target, targets, e);
       }
+
+      /* The rule's body is its `&` ({@link parentSelectorBranches}), as the walk's frame is ({@link activateRuleFrame}). */
       const childFrame = makeFrame(frame, st.rules, collectMixins(st.rules), collectDeclIndex(st.rules), null);
+      childFrame.outputOf = st;
       resolveSelectorInterpForExtend(st.rules, childFrame, e);
     } else if (st.type === 'AtRuleBlock') {
       /*
