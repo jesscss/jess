@@ -1581,7 +1581,6 @@ describe('Jess AST grammar facts', () => {
 
     for (const invalid of [
       '@media $screen { .card { color: blue; } }',
-      '@media (min-width: $width) { .card { color: blue; } }',
       '.card { @charset "UTF-8"; }',
       '.card { @import "theme.css"; }',
       '.card { color: blue; } @charset "UTF-8";',
@@ -1862,12 +1861,16 @@ describe('Jess AST grammar facts', () => {
      * `@media` reads the CSS base's media query list, so a group that is no
      * `<mf-range>` is `<general-enclosed>` (media-queries-4 §3.1): valid CSS,
      * emitted as written. Its component values are header terms, so a bare
-     * `$limit` — no `.jess` form in a prelude, where `${…}` is the only one
-     * (ledger P13/P16) — is still rejected.
+     * `$limit` there — no `.jess` form in a prelude's names, where `${…}` is
+     * the only one (ledger P13/P16) — is still rejected. A feature's value is
+     * a value position (owner 2026-10-20), where `$limit` is a variable.
      */
     const generalEnclosed = '@media (width < 80rem < 100rem) {\n  .card {\n    color: blue;\n  }\n}\n';
     expect(serialize(parse(generalEnclosed)).css).toBe(generalEnclosed);
-    expect(() => parse('@media (width >= $limit) { .card { color: blue; } }')).toThrow(SyntaxError);
+    expect(() => parse('@media (width < 1px $limit) { .card { color: blue; } }')).toThrow(SyntaxError);
+    for (const dynamic of ['@media (width >= $limit) { .card { color: blue; } }', '@media (min-width: $limit) { .card { color: blue; } }', '@media (min-width: ${limit}px) { .card { color: blue; } }']) {
+      expect(parse(dynamic).rules[0], dynamic).toMatchObject({ type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', value: { type: 'Operation' } } });
+    }
 
     /*
      * css-contain-3 §3.3 `<style-query>`: a typed container-header function, the
@@ -2198,11 +2201,18 @@ describe('Jess AST grammar facts', () => {
     for (const invalid of [
       '@supports { .card { color: blue; } }',
       '@supports color { .card { color: blue; } }',
-      '@supports (display: $theme) { .card { color: blue; } }',
       '@supports $(display) { .card { color: blue; } }',
       '@supports (display: grid), (color: blue) { .card { color: blue; } }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+
+    /* A supports declaration's value is a value position (owner 2026-10-20): `$name` and `${name}` are variables there. */
+    for (const dynamic of ['@supports (display: $theme) { .card { color: blue; } }', '@supports (display: ${theme}) { .card { color: blue; } }']) {
+      expect(parse(dynamic).rules[0], dynamic).toMatchObject({
+        type: 'AtRuleBlock',
+        prelude: { type: 'Block', value: { type: 'Operation', operator: ':', right: dynamic.includes('${') ? { type: 'Interpolation' } : { type: 'Lookup', name: 'theme' } } }
+      });
     }
   });
 

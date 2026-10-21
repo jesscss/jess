@@ -5234,8 +5234,11 @@ function evalTyped(
        * its structure directly (each part resolved) instead of re-splitting a joined
        * string. Typed consumption only — the emit path (`evalValue`) still joins the
        * parts to bytes, so an un-consumed space value serializes exactly as before.
+       * Its parts are read under the argument's policy, as a comma list's items
+       * are: a paren group in an argument of a call written out as-is keeps its
+       * parens (`media((min-width: 1px) and (max-width: 2px))`, ledger P38).
        */
-      const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues));
+      const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues, argument));
       return combineAll(parts, vals => vals);
     }
     case 'FunctionCall':
