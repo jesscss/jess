@@ -79,6 +79,7 @@ import {
 } from './nodes.js';
 import serializerNodes from './nodes.js';
 import {
+  type CompoundIn,
   type SelectorPlace,
   type SelectorText,
   type SelectorUnits,
@@ -87,6 +88,8 @@ import {
   hasTopLevelComma,
   interleave,
   isOneText,
+  isSelectorItem,
+  isSelectorValue,
   isUnit,
   oneText,
   placeSelectorList,
@@ -4975,8 +4978,9 @@ const ARG_SPLICE = 4;
 
 /**
  * A value an interpolation splices into a selector ({@link interpSelectorPart}): as
- * {@link ARG_SPLICE}, but a mixin argument bound as bytes is read as the selector list
- * it was evaluated to, so a list a variable passes is that list (ledger P49).
+ * {@link ARG_SPLICE}, but a mixin argument bound as bytes is read as the selector list,
+ * or the one selector of one ({@link isSelectorItem}), it was evaluated to, so a list a
+ * variable passes is that list (ledger P49).
  */
 const ARG_SELECTOR = 5;
 type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE | typeof ARG_SELECTOR;
@@ -5037,7 +5041,7 @@ function evalTyped(
       }
       {
         const snapshot = e.s.snapshotValues?.get(node);
-        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || (argument === ARG_SELECTOR && isCommaList(snapshot))) ? snapshot : undefined)
+        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || (argument === ARG_SELECTOR && (isCommaList(snapshot) || isSelectorItem(snapshot)))) ? snapshot : undefined)
           ?? snapshotOf(node, frame, e, 'url')
           ?? materializeNode(node, e);
       }
@@ -5126,7 +5130,7 @@ function evalTyped(
         ? force(literal(node.raw))
         : resolved.evaluated !== null
           ? reachedEvaluated(e, resolved.evaluated)
-          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
+          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument));
     }
     case 'Block':
       /*
@@ -9558,15 +9562,15 @@ function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane, place
   return isThenable(value) ? value.then(v => selectorPart(v, part.unquote, place)) : selectorPart(value, part.unquote, place);
 }
 
-/** [selector-capture] What a value spliced at `place` is: a comma list placed as {@link placeSelectorList} says, any other value its bytes. */
+/** [selector-capture] What a value spliced at `place` is: a comma list, or one selector of a selector value ({@link isSelectorItem}), placed as {@link placeSelectorList} says, any other value its bytes. */
 const selectorPart = (value: EvalValue, unquote: boolean, place: SelectorPlace): string[] | string => isSelectorListValue(value)
-  ? placeSelectorList(selectorBranches(value.value, unquote), value, place)
-  : interpRefBytes(value, unquote);
+  ? placeSelectorList(selectorBranches(value.value, unquote), isSelectorValue(value), place)
+  : isSelectorItem(value) ? placeSelectorList([interpRefBytes(value, unquote)], true, place) : interpRefBytes(value, unquote);
 
 /** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
 function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boolean {
   const value = interpRefValue(part, frame, e, ARG_SELECTOR);
-  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value);
+  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value) || isSelectorItem(value);
 }
 
 /** [selector-capture] The ref a LONE complex splices — a `@{name}` that is the ENTIRE
@@ -9611,8 +9615,10 @@ function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
  *  part folds to its bytes, escaped text as written, EXCEPT a comma list: a selector
  *  value is placed as `&` is and a plain list multiplies the token, one text per item
- *  ({@link selectorPart}; `prev` and `next` are the tokens glued to this one). */
-function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev?: SimpleToken, next?: SimpleToken): MaybePromise<SelectorText> {
+ *  ({@link selectorPart}). `before` is the token glued before this one or, for the
+ *  first token of a compound, where that compound is ({@link CompoundIn}); `next` is the
+ *  token glued after it. */
+function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, before: SimpleToken | CompoundIn = 'selector', next?: SimpleToken): MaybePromise<SelectorText> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
    * `:is(a, b)` form via the core-owned join. An INTERPOLATION-FREE argument is
@@ -9630,7 +9636,7 @@ function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev
       return pseudoCanonical(sim);
     }
     return combineAll(
-      args.selectors.map(branch => resolveSelectorBranch(branch, frame, e)),
+      args.selectors.map(branch => resolveSelectorBranch(branch, frame, e, 'argument')),
       values => pseudoJoin(sim, values.flatMap(textBranches))
     );
   }
@@ -9654,7 +9660,7 @@ function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev
         out = appendText(out, part.lit);
         continue;
       }
-      const piece = interpSelectorPart(part, entryFrame, e, selectorPlace(interp.parts, i, prev !== undefined, next !== undefined, continuesAfter(interp.parts[i + 1], next)));
+      const piece = interpSelectorPart(part, entryFrame, e, selectorPlace(interp.parts, i, before, next !== undefined, continuesAfter(interp.parts[i + 1], next)));
       if (isThenable(piece)) {
         return piece.then(value => step(i + 1, splice(out, value)));
       }
@@ -9736,25 +9742,26 @@ function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): 
   return oneText(settledSelectorSync(resolveSimpleTexts(sim, frame, e), sim));
 }
 
-function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane): MaybePromise<SelectorText> {
+function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): MaybePromise<SelectorText> {
   if (!compoundHasInterp(c)) {
     return compoundCanonical(c);
   }
-  return combineAll(c.value.map((sim, i) => resolveSimpleTexts(sim, frame, e, c.value[i - 1], c.value[i + 1])), values => crossTexts(values, picked => picked.join('')));
+  return combineAll(c.value.map((sim, i) => resolveSimpleTexts(sim, frame, e, c.value[i - 1] ?? within, c.value[i + 1])), values => crossTexts(values, picked => picked.join('')));
 }
 
 /** The concrete canonical string of a (possibly interpolated) complex, in the entering
- * frame, or the branches a list continuing a name multiplies it into ({@link SelectorText}).
+ * frame, or the branches a list continuing a name multiplies it into ({@link SelectorText}),
+ * `within` the selector or a pseudo's argument ({@link CompoundIn}).
  * Static selectors keep the cached `canonical()` fast path. */
-function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<SelectorText> {
+function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): MaybePromise<SelectorText> {
   if (!selectorBranchHasInterp(c)) {
     return selectorBranchCanonical(c);
   }
   const terms = selectorBranchTerms(c);
   const combinators = selectorBranchCombinators(c);
   return combineAll(terms.map(term => term.type === 'CompoundSelector'
-    ? resolveCompound(term, frame, e)
-    : selectorTermHasInterp(term) ? resolveSimpleTexts(term, frame, e) : selectorTermCanonical(term)), values => crossTexts(values, (picked) => {
+    ? resolveCompound(term, frame, e, within)
+    : selectorTermHasInterp(term) ? resolveSimpleTexts(term, frame, e, within) : selectorTermCanonical(term)), values => crossTexts(values, (picked) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     let out = c.type === 'RelativeSelector'
       ? renderCombinator(combinators[0]!).trimStart() + picked[0]!
@@ -10281,8 +10288,14 @@ function resolveSelectorBranchAmp(
   });
 }
 
-/** [nesting] Resolve a selector list against `parents`, flattening each complex's
- *  branch variants. Reused for a list-accepting pseudo's args. */
+/** [nesting] Resolve a list-accepting pseudo's argument against `parents`, flattening
+ *  each complex's branch variants.
+ *
+ *  ponytail: a plain list standing alone in a compound of this argument multiplies
+ *  that branch into more items of the list (`:not(& b, & i)`), not one `:is()` item as
+ *  an argument without `&` keeps it ({@link resolveSelectorBranch} `within`); in a
+ *  list-accepting pseudo both match the same elements at the same specificity. Carry
+ *  `within` through the `&` resolvers if the byte form must agree. */
 function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Frame | null, e: Lane): MaybePromise<string[]> {
   return combineAll(list.selectors.map(c => resolveSelectorBranchAmp(c, parents, frame, e)), values => values.flat());
 }
@@ -12814,7 +12827,7 @@ function rejectAsyncSelectorInterp(
  * renders again with other values). Static (`&`, `.a`) simple tokens are shared. A glued
  * name merged into one token is no longer a compound.
  */
-function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: Lane): SelectorTerm | SelectorTerm[] {
+function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorTerm | SelectorTerm[] {
   if (!compoundHasInterp(comp)) {
     return comp;
   }
@@ -12838,7 +12851,7 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
       continue;
     }
     if (sim.interp !== null) {
-      texts[i] = settledSelectorSync(resolveSimpleTexts(sim, frame, e, comp.value[i - 1], comp.value[i + 1]), sim);
+      texts[i] = settledSelectorSync(resolveSimpleTexts(sim, frame, e, comp.value[i - 1] ?? within, comp.value[i + 1]), sim);
     }
   }
 
@@ -13012,13 +13025,13 @@ function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: Lane
   if (args === null || !pseudoHasInterp(p)) {
     return p;
   }
-  const selectors = args.selectors.flatMap(c => resolveSelectorBranchInterpCopy(c, frame, e));
+  const selectors = args.selectors.flatMap(c => resolveSelectorBranchInterpCopy(c, frame, e, 'argument'));
   return { ...p, args: { ...args, selectors }, _hasInterp: false };
 }
 
-function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane): SelectorTerm | SelectorTerm[] {
+function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorTerm | SelectorTerm[] {
   if (term.type === 'CompoundSelector') {
-    return resolveCompoundInterpCopy(term, frame, e);
+    return resolveCompoundInterpCopy(term, frame, e, within);
   }
   if (term.type === 'PseudoSelector' && term.args !== null) {
     if (pseudoHasInterp(term)) {
@@ -13030,7 +13043,7 @@ function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, 
   if (term.interp === null) {
     return term;
   }
-  const text = settledSelectorSync(resolveSimpleTexts(term, frame, e), term);
+  const text = settledSelectorSync(resolveSimpleTexts(term, frame, e, within), term);
   return typeof text === 'string' ? simpleSelector(text) : text.map(branch => simpleSelector(branch));
 }
 
@@ -13039,15 +13052,15 @@ function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, 
  * it holds none; the branches a selector list continuing a name multiplies it into, crossed
  * as {@link resolveSelectorBranch} crosses them for the header.
  */
-function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: Lane): SelectorBranch | SelectorBranch[] {
+function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorBranch | SelectorBranch[] {
   if (!selectorBranchHasInterp(c)) {
     return c;
   }
   if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
-    return resolveSelectorTermInterpCopy(c, frame, e);
+    return resolveSelectorTermInterpCopy(c, frame, e, within);
   }
   const hasLiteralAmpersand = selectorBranchHasAmpersand(c);
-  return crossTexts(selectorBranchTerms(c).map(term => resolveSelectorTermInterpCopy(term, frame, e)), (terms): SelectorBranch => {
+  return crossTexts(selectorBranchTerms(c).map(term => resolveSelectorTermInterpCopy(term, frame, e, within)), (terms): SelectorBranch => {
     let at = 0;
     const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator => typeof term === 'string' ? term : terms[at++]!;
     if (c.type === 'ComplexSelector') {
