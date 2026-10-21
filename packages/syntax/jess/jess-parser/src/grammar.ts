@@ -3398,17 +3398,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ParenValue,
     g.SquareValue,
     g.DollarValue,
-
-    /*
-     * In a CSS `if()` condition, a `media()` or `supports()` test's value takes
-     * `${name}` as well as `$name` (owner 2026-10-20: "it's in a 'value
-     * position' in the at-rule prelude, so intuitively it can be $bp or
-     * ${bp}"); any other value position takes `$name` alone (ledger P13).
-     */
-    {
-      gate: state => isIfTest(state),
-      combinator: g.DollarBrace
-    },
     g.ExpressionLambda,
     g.InterpolatedValue,
     g.CustomPropertyValue,
@@ -3417,7 +3406,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.Quoted,
     g.Color,
     g.Dimension,
-    ParentSelector
+    ParentSelector,
+
+    /*
+     * In a CSS `if()` condition, a `media()` or `supports()` test's value takes
+     * `${name}` as well as `$name` (owner 2026-10-20: "it's in a 'value
+     * position' in the at-rule prelude, so intuitively it can be $bp or
+     * ${bp}"); any other value position takes `$name` alone (ledger P13). Last,
+     * so no other value pays for the gate.
+     */
+    {
+      gate: state => isIfTest(state),
+      combinator: g.DollarBrace
+    }
   );
   const ValueAtom = node<ValueNode>(
     'ValueAtom',

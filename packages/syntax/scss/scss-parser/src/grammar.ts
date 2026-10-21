@@ -1433,7 +1433,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathTopSum
       ))
     )),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldLogicalOperation(children, state)
+    children => foldLogicalOperation(children)
   );
   const ValueLogicalOr = node<ValueNode>(
     'ValueLogicalOr',
@@ -1446,7 +1446,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.ValueLogicalAnd
       ))
     )),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldLogicalOperation(children, state)
+    children => foldLogicalOperation(children)
   );
 
   /**

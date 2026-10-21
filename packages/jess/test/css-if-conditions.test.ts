@@ -30,16 +30,6 @@ const plainCss: ReadonlyArray<readonly [string, string, string]> = [
     '.a {\n  color: if((media(print) and supports(color: lch(0% 0 0))) or style(--scheme: dark): black; else: white);\n}\n'
   ],
   [
-    'an upper-case `AND`',
-    '.layout { display: if(media(width >= 600px) AND supports(display: grid): grid; else: block); }',
-    '.layout {\n  display: if(media(width >= 600px) AND supports(display: grid): grid; else: block);\n}\n'
-  ],
-  [
-    'an upper-case `OR`',
-    '.a { color: if(media(print) OR style(--scheme: dark): black; else: white); }',
-    '.a {\n  color: if(media(print) OR style(--scheme: dark): black; else: white);\n}\n'
-  ],
-  [
     'an upper-case `NOT`',
     '.a { color: if(NOT media(print): blue; else: black); }',
     '.a {\n  color: if(NOT media(print): blue; else: black);\n}\n'
@@ -97,6 +87,36 @@ describe('a plain CSS if() is written as `.css` writes it, in every dialect', ()
     const source = 'a {b: if(css(1) and css(2) var(--and) css(3): c)}';
     const outputs = await Promise.all((['.css', '.scss', '.jess'] as const).map(extension => render(source, extension)));
     expect(outputs).toEqual(outputs.map(() => 'a {\n  b: if(css(1) and css(2) var(--and) css(3): c);\n}\n'));
+  });
+});
+
+/** An upper-case `AND` / `OR` between tests: a CSS keyword is any case (ledger J20), so it is written as authored. */
+const keywordCase: ReadonlyArray<readonly [string, string, string]> = [
+  [
+    'AND',
+    '.layout { display: if(media(width >= 600px) AND supports(display: grid): grid; else: block); }',
+    '.layout {\n  display: if(media(width >= 600px) AND supports(display: grid): grid; else: block);\n}\n'
+  ],
+  [
+    'OR',
+    '.a { color: if(media(print) OR style(--scheme: dark): black; else: white); }',
+    '.a {\n  color: if(media(print) OR style(--scheme: dark): black; else: white);\n}\n'
+  ]
+];
+
+describe('an upper-case keyword between tests', () => {
+  it.each(keywordCase)('%s is written as authored in css, less and jess', async (_name, source, expected) => {
+    const outputs = await Promise.all((['.css', '.less', '.jess'] as const).map(extension => render(source, extension)));
+    expect(outputs).toEqual(outputs.map(() => expected));
+  });
+
+  /*
+   * SCSS reads the condition as a Sass expression, whose `and` / `or` operation
+   * keeps no authored spelling, so it writes `and` / `or`. Keeping it needs the
+   * spelling on the operation or a CSS-condition production of its own.
+   */
+  it.fails.each(keywordCase)('%s is written as authored in scss', async (_name, source, expected) => {
+    await expect(render(source, '.scss')).resolves.toBe(expected);
   });
 });
 
