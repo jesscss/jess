@@ -20534,8 +20534,10 @@ function reserveHoistedCssImports(rules: Statement[], plan: CssImportPlan | null
       continue;
     }
     const key = cssImportKey(child, target);
-    const slots: number[] = [];
-    (hoisted ??= new Map()).set(child, slots);
+
+    /* The same node can stand twice in a built tree: it keeps the chunks it has. */
+    const slots = (hoisted ??= new Map()).get(child) ?? [];
+    hoisted.set(child, slots);
     if (key !== null) {
       if (seen.has(key)) {
         continue;
