@@ -192,7 +192,7 @@ import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -5207,9 +5207,7 @@ function evalTyped(
         evalTypedSlot(node.condition, frame, e, projectMixinValues, argument),
         evalTypedSlot(node.value, frame, e, projectMixinValues, argument)
       ], (parts) => {
-        const condition = emitValueC(parts[0]!, e);
-        const value = emitValueC(parts[1]!, e);
-        return makeAny(value === '' ? `${condition}:` : `${condition}: ${value}`);
+        return makeAny(writtenBranch(emitValueC(parts[0]!, e), emitValueC(parts[1]!, e)));
       });
     case 'Sequence': {
       /*
@@ -5242,10 +5240,12 @@ function evalTyped(
 
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. A
-       * lowered Less `if()` is a call, so its arguments are on a call lane. */
+       * lowered Less `if()` is a call, so its arguments are on a call lane. A
+       * written CSS `if()` is kept as written, as a call that cannot compute is
+       * (`$($x * 2)` writes `if(…) * 2`, as it writes `var(--x) * 2`). */
       return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument), makeAny);
+        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument), bytes => keepAsWritten(makeKeyword(bytes)));
     }
     case 'Range':
       /*
@@ -5996,9 +5996,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * branch's own syntax. An omitted value keeps the bare colon (`cond:`).
        */
       return combineAll([evalValueSlot(node.condition, frame, e), evalValueSlot(node.value, frame, e)], (parts) => {
-        const condition = emitValueC(parts[0]!, e);
-        const value = emitValueC(parts[1]!, e);
-        return literal(value === '' ? `${condition}:` : `${condition}: ${value}`);
+        return literal(writtenBranch(emitValueC(parts[0]!, e), emitValueC(parts[1]!, e)));
       });
     case 'Block': {
       /*
@@ -7853,14 +7851,15 @@ function pickIfValue<T>(
   };
 
   /*
-   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …)
-   * is decided as far as compile time can, branch by branch, and what is left
-   * is written as a CSS `if()` ({@link pickCssIfBranches}). Its conditions are
-   * not CSS values, so what they reach is not checked [P47/P48], as {@link
-   * writtenCondition} reads one; only a taken or kept branch's value is
-   * evaluated.
+   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …),
+   * or only `else` branches, is a CSS `if()`: decided as far as compile time
+   * can, branch by branch, and what is left is written as a CSS `if()` with the
+   * trailing `;` it was written with ({@link pickCssIfBranches}). Its
+   * conditions are not CSS values, so what they reach is not checked [P47/P48],
+   * as {@link writtenCondition} reads one; only a taken or kept branch's value
+   * is evaluated.
    */
-  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard))
+  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard)) || node.branches.every(branch => branch.guard === null)
     ? pickCssIfBranches(
         node.branches,
         guard => withUnitErrors(node, e, () => partialGuard(guard, deps, value => mapMaybe(
@@ -7869,7 +7868,7 @@ function pickIfValue<T>(
         ))),
         taken => use(taken, e),
         kept => combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
-          write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join(sepGlue(';', e.compress === true))})`))
+          write(`if(${kept.map((item, at) => writtenBranch(item.condition, emitValueC(values[at]!, e))).join(sepGlue(';', e.compress === true))}${node.trailingSemicolon ? ';' : ''})`))
       )
     : mapMaybe(step(0), taken => use(taken, e));
 }

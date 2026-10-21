@@ -27,8 +27,8 @@ export function jessIf(node: IfValue, p: IfSpeller): string {
   if (node._asCall !== null) {
     return p.gap('IfValue', 'a Less `if()` lowered from a call (ledger P36): its call has no `.jess` spelling here');
   }
-  const branches = node.branches.map(branch => `${branch.guard === null ? 'else' : condition(branch.guard, p)}: ${p.value(branch.value)}`);
-  return `if(${branches.join('; ')})`;
+  const branches = node.branches.map(branch => jessBranch(branch.guard === null ? 'else' : condition(branch.guard, p), p.value(branch.value)));
+  return `if(${branches.join('; ')}${node.trailingSemicolon ? ';' : ''})`;
 }
 
 /**
