@@ -121,7 +121,7 @@ import type {
   SimpleToken,
   SelectorTerm,
   SelectorList,
-  SelectorCapture,
+  InterpPart,
   List,
   Statement,
   StyleImport,
@@ -173,6 +173,7 @@ import {
   type Value,
   type Any as TextValue,
   type Keyword as KeywordValue,
+  type List as EvalList,
   type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
@@ -4950,17 +4951,24 @@ const ARG_BINDING = 3;
  * writes nothing — but typed, so a string is read by its content.
  */
 const ARG_SPLICE = 4;
-type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE;
 
-/** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}). */
-const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE;
+/**
+ * A value an interpolation splices into a selector ({@link interpSelectorPart}): as
+ * {@link ARG_SPLICE}, but a mixin argument bound as bytes is read as the selector list
+ * it was evaluated to, so a list a variable passes is that list (ledger P49).
+ */
+const ARG_SELECTOR = 5;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE | typeof ARG_SELECTOR;
+
+/** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}, {@link ARG_SELECTOR}). */
+const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE || argument === ARG_SELECTOR;
 
 /**
  * Whether the authored layout between a group's items rides on the value
- * ({@link ARG_BINDING}, {@link ARG_SPLICE}): only these modes write the value
+ * ({@link ARG_BINDING}, {@link ARG_SPLICE}, {@link ARG_SELECTOR}): only these modes write the value
  * out as bytes, so no other typed evaluation reads the layout table.
  */
-const replaysLayout = (argument: ArgumentMode): boolean => argument === ARG_BINDING || argument === ARG_SPLICE;
+const replaysLayout = (argument: ArgumentMode): boolean => argument === ARG_BINDING || argument === ARG_SPLICE || argument === ARG_SELECTOR;
 
 function evalTyped(
   node: ValueNode,
@@ -5008,7 +5016,7 @@ function evalTyped(
       }
       {
         const snapshot = e.s.snapshotValues?.get(node);
-        return (snapshot !== undefined && !isStructuredGroup(snapshot) ? snapshot : undefined)
+        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || (argument === ARG_SELECTOR && isCommaList(snapshot))) ? snapshot : undefined)
           ?? snapshotOf(node, frame, e, 'url')
           ?? materializeNode(node, e);
       }
@@ -6556,8 +6564,8 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: Lane): str
  * content, which is never re-read for a quote (ledger V22). Any other value is
  * spliced as it is written in a declaration ({@link ARG_SPLICE}).
  */
-function unquotedRef(ref: ValueNode, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
-  return mapMaybe(evalTyped(ref, frame, e, false, ARG_SPLICE), value =>
+function unquotedRef(ref: ValueNode, frame: Frame | null, e: Lane, argument: typeof ARG_SPLICE | typeof ARG_SELECTOR = ARG_SPLICE): MaybePromise<EvalValue> {
+  return mapMaybe(evalTyped(ref, frame, e, false, argument), value =>
     !isValueGroupArray(value) && value.type === 'Quoted' ? literal(value.value) : value);
 }
 
@@ -9408,8 +9416,10 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: Lane): MaybePromise<
 }
 
 /**
- * Fold a value node to bytes for an INTERPOLATION splice. A spliced number gets the
- * SAME digits as a declaration value: one policy for every computed number, whatever
+ * Fold an INTERPOLATION ref to the value it splices: a string's content where the ref
+ * splices unquoted ({@link unquotedRef}, read as `argument` says), else the ref's
+ * value. A spliced number gets the SAME digits as a declaration value: one policy for
+ * every computed number, whatever
  * position it lands in. (This used to emit a computed dimension at full double
  * precision, so `@x: pi()` printed `3.14159265` in a value and `3.141592653589793`
  * spliced — a less.js eval-time implementation accident, not a CSS rule.)
@@ -9426,9 +9436,12 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: Lane): MaybePromise<
  * interpolation reaches this function as an already-folded value, so it carries no
  * unit multiset to validate.
  */
-function evalBytesInterp(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, spliceCtx(e)), readText);
+function interpRefValue(part: InterpRef, frame: Frame | null, e: Lane, argument: typeof ARG_SPLICE | typeof ARG_SELECTOR = ARG_SPLICE): MaybePromise<EvalValue> {
+  return part.unquote ? unquotedRef(part.ref, frame, spliceCtx(e), argument) : evalValue(part.ref, frame, spliceCtx(e));
 }
+
+/** The bytes an interpolation ref's value ({@link interpRefValue}) splices. */
+const interpRefBytes = (value: EvalValue, unquote: boolean): string => unquote ? emitSplice(value) : readText(value);
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
 /**
@@ -9485,60 +9498,55 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
   return out;
 }
 
+type InterpRef = Extract<InterpPart, { ref: ValueNode }>;
+
 /**
- * [selector-capture] A GROUP interpolation: a lone bare `@{name}` in a selector
- * whose variable resolves to a `selector(…)` selector-list CAPTURE, whose branches are
- * parser-owned: a comma-separated branch list at whole-selector position, a
- * `:is(…)` compaction in compound position. Escaped text (`~'.a, .b'`) is never
- * a group: it is printed as written, its commas, `&` and combinators being
- * characters (owner 2026-10-09: "everywhere that is text should print AS
- * WRITTEN"; "in Less, we promise ~"" as a 'dump whatever you want as-is'"), so
- * it splices on the byte path like any other value. Returns null for any
- * non-group interpolation (`.a-@{n}`, `@{n}` bound to a plain value or text).
+ * [selector-capture] Whether an interpolation ref's value is a selector list, a GROUP
+ * whose branches are selectors (a branch list at whole-selector position, a `:is(…)`
+ * compaction in compound position): a comma
+ * list — a `selector(…)` capture (P49), `&` and `selector.parse()` (P50), a written list —
+ * however the ref reaches it, a variable, an alias of it or a mixin parameter (owner
+ * 2026-10-20: "we should be consistent about values"). Escaped text (`~'.a, .b'`) is
+ * never one: it is printed as written, its commas, `&` and combinators being characters
+ * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"; "in Less, we
+ * promise ~"" as a 'dump whatever you want as-is'"). Where an interpolation splices
+ * text ({@link ValueEvaluator.selectorInterpolationText}, Sass), none is.
  */
-interface GroupInterp { branches: string[]; multi: boolean }
+const isSelectorListValue = (value: EvalValue, e: Lane): value is EvalList =>
+  !isLiteral(value) && isCommaList(value) && e.ev?.selectorInterpolationText !== true;
 
-/** [selector-capture] The group a single interpolation REF resolves to: a `selector(…)`
- *  selector CAPTURE, or a comma list of them. Any other ref (a plain value, escaped text) is null. */
-function refGroupInterp(ref: ValueNode, frame: Frame | null, e: Lane): GroupInterp | null {
-  const hit = ref.type === 'Lookup' && ref.kind === 'var' ? resolveVarRef(frame, literalName(ref), ref.scope, e) : undefined;
-  const bound = hit === undefined || isValueSlotArray(hit.value) ? undefined : hit.value;
+const isCommaList = (value: ValueGroup): value is EvalList => !isValueGroupArray(value) && value.type === 'List' && value.sep === ',';
 
-  /* A `;` call's argument is the `~(…)` value list it holds (P46). */
-  const list = bound?.type === 'Block' && bound.escaped === true ? bound.value : bound;
-  if (list === undefined || isValueSlotArray(list)) {
-    return null;
-  }
-  if (list.type === 'SelectorCapture') {
-    return { branches: list.branches.slice(), multi: list.branches.length > 1 };
-  }
+/** The selectors of a selector-list value's items: a comma list of lists is the one list of their selectors. */
+const selectorBranches = (items: readonly ValueGroup[], unquote: boolean): string[] => items.flatMap(item => isCommaList(item)
+  ? selectorBranches(item.value, unquote)
+  : [unquote && !isValueGroupArray(item) && item.type === 'Quoted' ? item.value : interpRefBytes(item, unquote)]);
 
-  /* A comma list of captures (`selector(.a), selector(.b)`) is the one list of their branches. */
-  if (list.type !== 'List' || list.sep !== ',' || !list.value.every(isSelectorCaptureSlot)) {
-    return null;
-  }
-  const branches = list.value.flatMap(capture => capture.branches);
-  return { branches, multi: branches.length > 1 };
+/**
+ * [selector-capture] What one selector interpolation ref splices, its value read once
+ * ({@link ARG_SELECTOR}): a selector list's group, else the value's bytes. The selector
+ * reducer preserves this MaybePromise so a public async plugin can resolve one slot
+ * before the next slot is evaluated in the SAME lexical frame.
+ */
+function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane): MaybePromise<string[] | string> {
+  const value = interpRefValue(part, frame, e, ARG_SELECTOR);
+  return isThenable(value) ? value.then(v => selectorPart(v, part.unquote, e)) : selectorPart(value, part.unquote, e);
 }
 
-const isSelectorCaptureSlot = (slot: ValueSlot): slot is SelectorCapture => !isValueSlotArray(slot) && slot.type === 'SelectorCapture';
+const selectorPart = (value: EvalValue, unquote: boolean, e: Lane): string[] | string =>
+  isSelectorListValue(value, e) ? selectorBranches(value.value, unquote) : interpRefBytes(value, unquote);
 
-/** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
- *  single-part interp whose sole part is a group ref) — else null. */
-function simpleGroupInterp(sim: SimpleToken, frame: Frame | null, e: Lane): GroupInterp | null {
-  const interp = sim.interp;
-  if (interp?.parts.length !== 1) {
-    return null;
-  }
-  const part = interp.parts[0]!;
-  return 'ref' in part ? refGroupInterp(part.ref, frame, e) : null;
+/** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
+function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boolean {
+  const value = interpRefValue(part, frame, e, ARG_SELECTOR);
+  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value, e);
 }
 
-/** [selector-capture] `simpleGroupInterp` for the sole simple of a LONE complex —
- *  a `@{name}` that is the ENTIRE selector (no leading combinator, no tail, a
- *  single-simple head). This is the whole-selector position, where a capture
- *  expands to header branches rather than compacting to `:is(…)`. */
-function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: Lane): GroupInterp | null {
+/** [selector-capture] The ref a LONE complex splices — a `@{name}` that is the ENTIRE
+ *  selector (no leading combinator, no tail, a single simple whose interpolation is
+ *  one ref; a pseudo's interpolation is its name). This is the whole-selector
+ *  position, where a group expands to header branches rather than compacting to `:is(…)`. */
+function loneInterpRef(c: SelectorBranch): InterpRef | null {
   if (c.type === 'RelativeSelector') {
     return null;
   }
@@ -9547,39 +9555,39 @@ function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: Lane): Group
     return null;
   }
   const tokens = termTokens(terms[0]!);
-  if (tokens.length !== 1) {
-    return null;
-  }
-  return simpleGroupInterp(tokens[0]!, frame, e);
+  const parts = tokens.length === 1 && tokens[0]!.type !== 'PseudoSelector' ? tokens[0]!.interp?.parts : undefined;
+  return parts?.length === 1 && 'ref' in parts[0]! ? parts[0] : null;
 }
 
-/** Bytes for one non-group interpolation ref part (matches `evalInterp`: fold the
- * ref, honour its `unquote`). The selector reducer preserves this MaybePromise so
- * a public async plugin can resolve one slot before the next slot is evaluated in
- * the SAME lexical frame. */
-function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: Lane): MaybePromise<string> {
-  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitSplice) : evalBytesInterp(part.ref, frame, e);
+/**
+ * [selector-capture] The branches a lone `@{name}` selector is, its value read once: a
+ * selector list's selectors, one per branch; any other value is the one branch
+ * {@link resolveSelectorBranch} writes for it (its bytes, any `@{…}` they spell
+ * resolved, the leading whitespace dropped, ledger O8(b)). Null when `c` is not one.
+ */
+function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> | null {
+  const part = loneInterpRef(c);
+  return part && mapMaybe(interpSelectorPart(part, frame, e), value =>
+    typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
- *  A lone whole-selector `selector(…)` capture EXPANDS to one branch per captured
- *  selector, one per line in a nested header (ledger O8(a)). Every other complex
- *  resolves to exactly one string (a compound-embedded group compacts to `:is(…)`
- *  inside `resolveComplex`), escaped text included, as written: `~'.a, .b'` is
- *  the one branch `.a, .b` (owner 2026-10-09). */
+ *  A lone whole-selector selector list EXPANDS to one branch per selector, one per
+ *  line in a nested header (ledger O8(a)). Every other complex resolves to exactly
+ *  one string (a compound-embedded group compacts to `:is(…)` inside
+ *  `resolveComplex`), escaped text included, as written: `~'.a, .b'` is the one
+ *  branch `.a, .b` (owner 2026-10-09). */
 function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> {
-  const g = loneGroupInterp(c, frame, e);
-  if (g !== null) {
-    return g.branches;
-  }
-
-  return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
+  return loneInterpBranches(c, frame, e) ?? mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
 }
 
+/** A selector interpolation part's text: a group compacts to `:is(…)` in a compound, a one-branch group is its branch bare ({@link ampSub}). */
+const groupInterpText = (value: string[] | string): string => typeof value === 'string' ? value : ampSub(value);
+
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, escaped text as written, EXCEPT a `selector(…)` capture
- *  embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to
- *  a single `:is(…)` group; a single-branch capture splices its lone branch bare. */
+ *  part folds to its bytes, escaped text as written, EXCEPT a selector list embedded
+ *  in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to a single
+ *  `:is(…)` group; a single-branch list splices its lone branch bare. */
 function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): MaybePromise<string> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
@@ -9619,17 +9627,11 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): Mayb
         out += part.lit;
         continue;
       }
-      const g = refGroupInterp(part.ref, entryFrame, e);
-      if (g !== null) {
-        const joined = g.branches.join(', ');
-        out += g.multi ? `:is(${joined})` : joined;
-        continue;
+      const piece = interpSelectorPart(part, entryFrame, e);
+      if (isThenable(piece)) {
+        return piece.then(value => step(i + 1, out + groupInterpText(value)));
       }
-      const bytes = resolveRefBytes(part, entryFrame, e);
-      if (isThenable(bytes)) {
-        return bytes.then(value => step(i + 1, out + value));
-      }
-      out += bytes;
+      out += groupInterpText(piece);
     }
     return resolveEmergentInterp(out, entryFrame, e);
   };
@@ -10410,8 +10412,14 @@ function pseudoElementFlag(c: SelectorBranch, frame: Frame | null, e: Lane): num
 
 function tokenPseudoElementFlag(sim: SimpleToken, frame: Frame | null, e: Lane): number {
   const known = tokenPseudoElement(sim);
-  if (known === true && sim.interp !== null && sim.interp.parts[0] !== undefined && !('lit' in sim.interp.parts[0])) {
-    return simpleGroupInterp(sim, frame, e) === null ? PSEUDO_TEXT : PSEUDO_CAPTURE;
+  const first = sim.interp?.parts[0];
+  if (known === true && first !== undefined && 'ref' in first) {
+    /*
+     * ponytail: a lone `@{s}` is evaluated a second time here to know whether it is a
+     * selector list (an async one counts as text); carry that from the selector's own
+     * resolution if this shows in a profile.
+     */
+    return sim.interp!.parts.length === 1 && isGroupInterpSync(first, frame, e) ? PSEUDO_CAPTURE : PSEUDO_TEXT;
   }
   if (known !== undefined) {
     return known ? PSEUDO_LAST : PSEUDO_NONE;
@@ -10567,9 +10575,9 @@ function ownStringsSync(list: SelectorList, frame: Frame | null, e: Lane): strin
 function rootStrings(list: SelectorList, frame: Frame | null, e: Lane): MaybePromise<string[]> {
   const parts: Array<MaybePromise<string[]>> = [];
   for (const c of list.selectors) {
-    const g = loneGroupInterp(c, frame, e);
-    if (g !== null) {
-      parts.push(g.branches);
+    const lone = loneInterpBranches(c, frame, e);
+    if (lone !== null) {
+      parts.push(lone);
       continue;
     }
     parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
@@ -12034,7 +12042,7 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
       return null;
     }
     pieces.push(source.slice(chunkStart, hole.start));
-    pieces.push(resolveRefBytes(part, frame, e));
+    pieces.push(mapMaybe(interpRefValue(part, frame, e), part.unquote ? emitSplice : readText));
     cursor = hole.end;
     chunkStart = cursor;
   }
@@ -13067,7 +13075,8 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           continue;
         }
         try {
-          if (loneGroupInterp(c, frame, e) !== null) {
+          const lone = loneInterpRef(c);
+          if (lone !== null && isGroupInterpSync(lone, frame, e)) {
             continue;
           }
           const resolved = resolveSelectorBranchInterpCopy(c, frame, e);

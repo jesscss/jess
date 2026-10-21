@@ -41,7 +41,6 @@
     "name-code-point: const m = text.match(/[#.][\\w-]+|&[\\w-]*|[\\w-]+/gu);",
     "name-code-point: return c === 0x2d /* - */ || c === 0x5f /* _ */",
     "dialect-sniff: const lessDocument = e.s.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;",
-    "is-text: out += g.multi ? `:is(${joined})` : joined;",
     "is-text: return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;",
     "quote-scan: } else if (c === 0x22 /* \" */ || c === 0x27 /* ' */) {",
     "is-text: return ':is(' + written.slice(0, pe) + ')' + written.slice(pe);",

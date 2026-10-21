@@ -238,9 +238,56 @@ describe('selector() capture', () => {
     await expect(render('.m(@s) { @{s} { c: d; } }\n.p { .m(selector(.a), selector(.b);); }', false)).resolves.toBe(nested);
   });
 
-  /* Follow-up (P49 NOTES): a variable holding a capture binds a mixin parameter as its text. */
-  it.fails('expands a capture a variable passes as a mixin argument', async () => {
+  it('expands a capture a variable passes as a mixin argument', async () => {
     await expect(render('@t: selector(.a, .b);\n.m(@s) { @{s} { c: d; } }\n.p { .m(@t); }', false)).resolves.toBe('.p {\n  .a,\n  .b {\n    c: d;\n  }\n}\n');
+  });
+
+  /*
+   * A selector list interpolated into a selector is grouped by its value, however the
+   * value is reached (ledger P49, P50; owner 2026-10-20: "variables aren't looser", "we
+   * should be consistent about values"): a variable, an alias of it, a mixin parameter,
+   * `&` and `selector.parse()` give the selector the capture written in place gives.
+   */
+  describe('a selector-list value is the same selector however it is reached', () => {
+    const glued = '.toolbar :is(.btn, .button):hover {\n  color: red;\n}\n';
+
+    it.each([
+      ['less', 'a variable', '@buttons: selector(.btn, .button);\n.toolbar @{buttons}:hover { color: red; }'],
+      ['less', 'an alias', '@buttons: selector(.btn, .button);\n@clickable: @buttons;\n.toolbar @{clickable}:hover { color: red; }'],
+      ['jess', 'a variable', '$buttons: selector(.btn, .button);\n.toolbar ${buttons}:hover { color: red; }'],
+      ['jess', 'an alias', '$buttons: selector(.btn, .button);\n$clickable: $buttons;\n.toolbar ${clickable}:hover { color: red; }'],
+      ['jess', 'selector.parse()', '@-use "#sass/selector";\n$buttons: $selector.parse(".btn, .button");\n.toolbar ${buttons}:hover { color: red; }']
+    ] as const)('%s: %s glued to a selector is one :is() group', async (language, _route, source) => {
+      await expect(render(source, false, language)).resolves.toBe(glued);
+    });
+
+    it.each([false, true])('a mixin parameter, collapseNesting: %s', async (collapseNesting) => {
+      const source = '@buttons: selector(.btn, .button);\n.hover(@targets) { @{targets}:hover { color: red; } }\n.toolbar { .hover(@buttons); }';
+      await expect(render(source, collapseNesting)).resolves.toBe(collapseNesting
+        ? glued
+        : '.toolbar {\n  :is(.btn, .button):hover {\n    color: red;\n  }\n}\n');
+    });
+
+    it.each([false, true])('`&` in .jess, collapseNesting: %s', async (collapseNesting) => {
+      const source = '.btn, .button {\n  $self: &;\n  .toolbar ${self}:hover { color: red; }\n}';
+      await expect(render(source, collapseNesting, 'jess')).resolves.toBe(collapseNesting
+        ? ':is(.btn, .button) .toolbar :is(.btn, .button):hover {\n  color: red;\n}\n'
+        : '.btn,\n.button {\n  .toolbar :is(.btn, .button):hover {\n    color: red;\n  }\n}\n');
+    });
+
+    it.each([false, true])('a whole nested selector from an alias and selector.parse(), collapseNesting: %s', async (collapseNesting) => {
+      const expected = collapseNesting
+        ? '.toolbar :is(.btn, .button) {\n  color: red;\n}\n'
+        : '.toolbar {\n  .btn,\n  .button {\n    color: red;\n  }\n}\n';
+      await expect(render('@buttons: selector(.btn, .button);\n@clickable: @buttons;\n.toolbar { @{clickable} { color: red; } }', collapseNesting)).resolves.toBe(expected);
+      await expect(render('@-use "#sass/selector";\n$buttons: $selector.parse(".btn, .button");\n.toolbar { ${buttons} { color: red; } }', collapseNesting, 'jess')).resolves.toBe(expected);
+    });
+
+    /* Escaped text is never read as selector syntax (ledger O8, owner 2026-10-09: "everywhere that is text should print AS WRITTEN"). */
+    it('leaves escaped text spliced as written', async () => {
+      await expect(render('@buttons: ~".btn, .button";\n@clickable: @buttons;\n.toolbar @{clickable}:hover { color: red; }', false))
+        .resolves.toBe('.toolbar .btn, .button:hover {\n  color: red;\n}\n');
+    });
   });
 
   /* Follow-up (P49 NOTES): an interpolated selector is not captured yet; today it takes the error path above. */
