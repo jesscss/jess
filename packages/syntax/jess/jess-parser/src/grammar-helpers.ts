@@ -1031,8 +1031,8 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
 
 /**
  * Whether the parse is reading a CSS `if()` condition, where `media()`,
- * `supports()` and `style()` are CSS tests whose arguments are kept as written
- * (css-values-5 §8.3), as SCSS keeps them.
+ * `supports()` and `style()` are CSS tests (css-values-5 §8.3), read with
+ * css's query grammar.
  */
 function isIfTest(state: unknown): boolean {
   return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;
@@ -1041,6 +1041,21 @@ function isIfTest(state: unknown): boolean {
 /** The parse state inside an `if()` call: its conditions are read as CSS `if()` conditions. */
 function enterIfTest(state: unknown): object {
   return typeof state === 'object' && state !== null ? { ...state, ifTest: true } : { ifTest: true };
+}
+
+/**
+ * Whether the parse is reading a `media()` or `supports()` test's argument: a
+ * value position, where `${name}` substitutes as `$name` does (owner
+ * 2026-10-20: "intuitively it can be $bp or ${bp}"), unlike any other value
+ * position (ledger P13).
+ */
+function isTestValue(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'testValue' in state && state.testValue === true;
+}
+
+/** The parse state inside a `media()` or `supports()` test's argument. */
+function enterTestValue(state: unknown): object {
+  return typeof state === 'object' && state !== null ? { ...state, testValue: true } : { testValue: true };
 }
 
 /** The parse state of a value inside an `if()` call that is not a condition: the state it had outside, unchanged when it was not set. */
@@ -1141,7 +1156,7 @@ function ifCondition(value: ValueSlot): GuardNode {
  * same way in .jess"): each `;` group a branch, `else` the one with no
  * condition. A group that is not a branch leaves the call css's branch list.
  */
-function lowerCssIf(groups: readonly CallGroup[]): IfValue | undefined {
+function lowerCssIf(groups: readonly CallGroup[], name: string): IfValue | undefined {
   const branches: IfValueBranch[] = [];
   let trailingSemicolon = false;
   for (const [index, group] of groups.entries()) {
@@ -1158,7 +1173,7 @@ function lowerCssIf(groups: readonly CallGroup[]): IfValue | undefined {
     });
   }
   const [first, ...others] = branches;
-  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon);
+  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon, name);
 }
 
 /**
@@ -1201,7 +1216,7 @@ function genericCallFrom(children: readonly unknown[]): FunctionCall | IfValue {
     }
     return call;
   }
-  const lowered = name.toLowerCase() === 'if' ? lowerCssIf(groups.map(gluedBranch)) : undefined;
+  const lowered = name.toLowerCase() === 'if' ? lowerCssIf(groups.map(gluedBranch), name) : undefined;
   if (lowered !== undefined) {
     return lowered;
   }
@@ -1245,6 +1260,8 @@ export {
   isIfTest,
   enterIfTest,
   leaveIfTest,
+  isTestValue,
+  enterTestValue,
   genericCallFrom,
   selectorCaptureFrom,
   leadingSeparatorValue,

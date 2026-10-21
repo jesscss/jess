@@ -217,6 +217,7 @@ type GrammarRuleName =
   | 'LeadingDashRawPseudoArgument'
   | 'LangPseudoArgument'
   | 'MediaGeneralValue'
+  | 'GeneralDelim'
   | 'DirPseudoArgument'
   | 'AnPlusB'
   | 'MarginAtRule'
@@ -3382,13 +3383,18 @@ const cssFactory = (g: GrammarSelf) => {
    * The component values of a `<general-enclosed>` or an if-test's contents
    * after its query part: comma-separated value runs, and the tokens a value
    * run cannot start with (`,`, `/`, `!`, `;`, a `{}` block), each read once.
+   * A delim is css's value atom, so a css value run reads it; a superset's
+   * value run may not start with one (`supports(: x)`, `media(a : : b)`), so
+   * it is read here, after the run, through `GeneralDelim`: css's delim, which
+   * a superset whose prelude gives a delim meaning (`.jess` `$`) narrows (P45).
    */
   const generalPunctuation = choice(
     literal(','),
     literal('/'),
     literal('!'),
     literal(';'),
-    g.CurlyValue
+    g.CurlyValue,
+    g.GeneralDelim
   );
   const generalRest = many(choice(
     g.ValueSequence,
@@ -5326,6 +5332,7 @@ const cssFactory = (g: GrammarSelf) => {
     MediaCondition,
     MediaFeatureContents,
     MediaGeneralValue: g.ValueSequence,
+    GeneralDelim: g.PunctuationValue,
     mediaGroupContents,
     queryGroupRest,
     styleGroupContents,

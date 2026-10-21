@@ -4014,14 +4014,15 @@ describe('CSS if()', () => {
     expect(declarationValue(parse(`a { x: ${value}; }`))).toMatchObject({ type: 'IfValue', _asCall: null });
   });
 
-  it('reads a test as its authored text and `$( … )` as a truth test', () => {
+  /* A test is css's structure, its values `.jess` values (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
+  it('reads a test as css reads it, with `.jess` values, and `$( … )` as a truth test', () => {
     expect(bare(declarationValue(parse('a { x: if(media(width >= $w) and $($a): 1px; else: 2px); }')))).toMatchObject({
       type: 'IfValue',
       branches: [
         {
           guard: {
             g: 'and',
-            left: { g: 'css', value: { type: 'Any', src: 'media(width >= $w)' }, parens: 0 },
+            left: { g: 'css', value: { type: 'FunctionCall', name: 'media', args: [{ value: { type: 'Operation', operator: '>=', left: { type: 'Keyword', src: 'width' }, right: { type: 'Lookup', name: 'w' } } }] }, parens: 0 },
             right: { g: 'truth', value: { type: 'Lookup', name: 'a' }, parens: 0 },
             parens: 0
           },

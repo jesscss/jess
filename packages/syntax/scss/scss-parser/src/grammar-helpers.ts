@@ -16,8 +16,8 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Branch, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -430,9 +430,11 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
 
   /*
    * A comparison operator with no operand on one side compares nothing, so it
-   * is the CSS delim it is (`type(<length>)`): the argument is the run.
+   * is the CSS delim it is (`type(<length>)`, `foo(a == )`): the argument is
+   * the run.
    */
-  if (isComparisonToken(children[0]) || isComparisonToken(children[children.length - 1])) {
+  const last = children.findLast(child => !isArgumentGap(child));
+  if (isComparisonToken(children[0]) || isComparisonToken(last)) {
     return callArg(argumentRun(children));
   }
   const left = requireValueSlot(children[0]);
@@ -450,11 +452,16 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * {@link reduceScssCall} keeps where a branch may stand.
    */
   if (children.some(child => isToken(child) && child.value === ':')) {
-    const value = requireValueSlot(children[children.length - 1]);
+    /*
+     * A branch with no value (`else:`) has the empty value css's `Branch`
+     * writes as a bare colon; a keyword with none (`$a:`) binds nothing, so it
+     * is the run it is.
+     */
+    const value = isScssValueSlotValue(last) ? last : undefined;
     if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
-      return callArg(branch(left, value));
+      return callArg(branch(left, value ?? []));
     }
-    return callArg(value, left.name, false, '$');
+    return value === undefined ? callArg(argumentRun(children)) : callArg(value, left.name, false, '$');
   }
   const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
   const operator = requireToken(children[at]).value;
@@ -491,16 +498,21 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
+/** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
+function isArgumentGap(child: unknown): boolean {
+  return isToken(child) && !isScssValue(child) && !COMPARISON_OPERATORS.has(child.value) && child.value !== ':';
+}
+
 function argumentRun(children: readonly unknown[]): ValueSlot {
   const values: ValueSlot[] = [];
   const layout: string[] = [];
   let gap = '';
   for (const child of children) {
+    if (isArgumentGap(child)) {
+      gap = requireToken(child).value;
+      continue;
+    }
     if (isToken(child) && !isScssValue(child)) {
-      if (!COMPARISON_OPERATORS.has(child.value) && child.value !== ':') {
-        gap = child.value;
-        continue;
-      }
       appendRun(values, layout, any(child.value), gap);
     } else {
       appendRun(values, layout, requireValueSlot(child), gap);
@@ -512,8 +524,8 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
 
 /**
  * Whether the parse is reading a CSS `if()` condition, where `media()`,
- * `supports()` and `style()` are CSS tests whose arguments are kept as written
- * (css-values-5 §8.3) rather than Sass function calls.
+ * `supports()` and `style()` are CSS tests (css-values-5 §8.3), read with
+ * css's query grammar, rather than Sass function calls.
  */
 export function isIfTest(state: unknown): boolean {
   return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;
@@ -718,7 +730,7 @@ function branchListCall(name: string, groups: readonly ArgumentGroup[]): Functio
  * condition, any other condition is {@link ifCondition}'s. A group that is not
  * a branch (`if(a: 1; b)`) leaves the call the branch list css writes.
  */
-function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
+function lowerCssIf(groups: readonly ArgumentGroup[], name: string): IfValue | undefined {
   const branches: IfValueBranch[] = [];
   let trailingSemicolon = false;
   for (const [index, group] of groups.entries()) {
@@ -737,7 +749,7 @@ function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
     });
   }
   const [first, ...others] = branches;
-  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon);
+  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon, name);
 }
 
 function isElse(condition: ValueSlot): boolean {
@@ -785,7 +797,20 @@ function ifCondition(value: ValueSlot): GuardNode {
         break;
     }
   }
-  return { g: 'css', value, parens: 0 };
+  return { g: 'css', value: isValueSlotArray(value) ? juxtaposedTests(value) : value, parens: 0 };
+}
+
+/**
+ * A condition whose `and` / `or` stands beside other juxtaposed values
+ * (`css(1) and css(2) var(--and) css(3)`), which css-values-5 gives no
+ * meaning: Sass's expression folded the keyword into an operation inside the
+ * space run, so it is unfolded into the run css builds, each operand and the
+ * keyword as written.
+ */
+function juxtaposedTests(run: readonly ValueSlot[]): ValueSlot {
+  const isLogical = (part: ValueSlot): part is Operation => !isValueSlotArray(part) && part.type === 'Operation' && (part.operator === 'and' || part.operator === 'or');
+  const unfold = (part: ValueSlot): ValueSlot[] => (isLogical(part) ? [...unfold(part.left), keyword(part.operator), ...unfold(part.right)] : [part]);
+  return run.some(isLogical) ? run.flatMap(unfold) : run;
 }
 
 /** A `sass()` condition: the comparison or negation written in it, or its value's truth. */
@@ -824,7 +849,7 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
   }
   const lowerName = name.toLowerCase();
   if (groups.length > 1 || isBranchArgument(groups[0]!.args[0])) {
-    return (lowerName === 'if' ? lowerCssIf(groups) : undefined) ?? branchListCall(name, groups);
+    return (lowerName === 'if' ? lowerCssIf(groups, name) : undefined) ?? branchListCall(name, groups);
   }
   const args = groups[0]!.args.map(unbranched);
   const separators = groups[0]!.separators;
