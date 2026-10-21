@@ -3,7 +3,7 @@
  * nested rule's selector list into, one per branch.
  */
 
-import { isQuote, stringEnd } from './css-syntax.js';
+import { isNameCode, isQuote, stringEnd } from './css-syntax.js';
 import { makeKeyword, makeList, makeNull } from './value-factory.js';
 import type { ValueGroup } from './value-eval.js';
 
@@ -93,3 +93,51 @@ function selectorComponents(branch: string): string[] {
   }
   return out;
 }
+
+/** A selector `:is(…)` holding `selector` as one unit. */
+export const isUnit = (selector: string): string => `:is(${selector})`;
+
+/**
+ * A resolved selector's text, or, where a selector list it interpolates continues a name
+ * ({@link continuesNameAt}), the branches that multiplies it into (`.col-@{l}` with
+ * `@l: sm, md` is `.col-sm`, `.col-md`).
+ */
+export type SelectorText = string | string[];
+
+/** Whether no text of `values` is multiplied. */
+export const isOneText = <T>(values: readonly (T | string[])[]): values is readonly T[] => !values.some(value => Array.isArray(value));
+
+/** A selector text as the branches it is. */
+export const textBranches = (text: SelectorText): readonly string[] => typeof text === 'string' ? [text] : text;
+
+/** A selector text as one string, for a consumer that reads one: its branches as a list. */
+export const oneText = (text: SelectorText): string => typeof text === 'string' ? text : text.join(', ');
+
+/**
+ * `values` crossed, the leftmost most significant, as a `&` odometer is
+ * (`joinAmpersand` in `serialize.ts`): `build` writes each pick, once when none multiplies.
+ */
+export const crossTexts = (values: readonly SelectorText[], build: (picked: readonly string[]) => string): SelectorText => isOneText(values)
+  ? build(values)
+  : values.reduce<string[][]>((picks, value) => picks.flatMap(pick => textBranches(value).map(text => [...pick, text])), [[]]).map(build);
+
+/** Whether code point `code` ends a name, or is the `.`, `#` or `:` that opens one. */
+const opensName = (code: number): boolean => code === 0x2E /* . */ || code === 0x23 /* # */ || code === 0x3A /* : */ || isNameCode(code);
+
+/**
+ * [nesting] Whether a selector list `branches`, glued after the text `before`, continues
+ * a name: a name is glued after it (`after`), as `&__x` continues its parent's
+ * (`continuesName` in `serialize.ts`), or one of its selectors opens with a name glued
+ * after a name, or after the `.`, `#` or `:` that opens one (`.col-` then `sm`, `:`
+ * then `hover`). Such a list multiplies its
+ * token, one text per selector, as `&__x` does, since `:is()` is no part of a name and
+ * `.col-:is(sm, md)` and `:is(.card, .panel)__title` are no selectors. Glued at a
+ * compound boundary (`.x` then `.a`, `.a` then `:hover`, `[x]` then `a`) it is one
+ * `:is()` group.
+ */
+export const continuesNameAt = (branches: readonly string[], before: string, after: boolean): boolean =>
+  after || (opensName(before.charCodeAt(before.length - 1)) && branches.some(branch => isNameCode(branch.charCodeAt(0))));
+
+/** `out` with `text` appended to each of its branches. */
+export const appendText = (out: SelectorText, text: string): SelectorText =>
+  typeof out === 'string' ? out + text : out.map(value => value + text);

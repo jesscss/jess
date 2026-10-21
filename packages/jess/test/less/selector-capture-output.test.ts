@@ -300,6 +300,11 @@ describe('selector() capture', () => {
         await expect(render(source, false, language)).resolves.toBe('.col-sm,\n.col-md {\n  float: left;\n}\n');
       });
 
+      it('less: a pseudo-class name', async () => {
+        await expect(render('@states: hover, focus;\n.btn:@{states} { outline: none; }', false))
+          .resolves.toBe('.btn:hover,\n.btn:focus {\n  outline: none;\n}\n');
+      });
+
       it.each([false, true])('scss: #{&} before a BEM suffix under two parents, collapseNesting: %s', async (collapseNesting) => {
         await expect(render('.card, .panel {\n  #{&}__title { font-weight: bold; }\n}', collapseNesting, 'scss')).resolves.toBe(collapseNesting
           ? ':is(.card, .panel) .card__title,\n:is(.card, .panel) .panel__title {\n  font-weight: bold;\n}\n'

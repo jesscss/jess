@@ -78,7 +78,21 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
-import { hasTopLevelComma, interleave, selectorListValue, selectorValue } from './selector-text.js';
+import {
+  type SelectorText,
+  appendText,
+  continuesNameAt,
+  crossTexts,
+  hasTopLevelComma,
+  interleave,
+  isOneText,
+  isUnit,
+  oneText,
+  selectorListValue,
+  selectorValue,
+  textBranches
+} from './selector-text.js';
+import { isNameCode } from './css-syntax.js';
 import type {
   Any,
   Apply,
@@ -2147,7 +2161,7 @@ function orderedMixinsForStatements(
        * allocate: resolve its keys, then continue the fold from the next statement.
        */
       const parts = s.selector.selectors.map(c =>
-        (selectorBranchHasInterp(c) ? resolveSelectorBranch(c, f, e) : selectorBranchCanonical(c)));
+        (selectorBranchHasInterp(c) ? mapMaybe(resolveSelectorBranch(c, f, e), oneText) : selectorBranchCanonical(c)));
       let pending = false;
       for (const part of parts) {
         if (isThenable(part)) {
@@ -2159,16 +2173,14 @@ function orderedMixinsForStatements(
         const rule = s;
         const at = index;
         return Promise.all(parts).then((resolvedKeys) => {
-          addRuleKeys(rule, at, resolvedKeys.flatMap(textBranches));
+          addRuleKeys(rule, at, resolvedKeys);
           return run(at + 1);
         });
       }
       scratchKeys.length = 0;
       for (const part of parts) {
-        if (typeof part === 'string') {
+        if (!isThenable(part)) {
           scratchKeys.push(part);
-        } else if (!isThenable(part)) {
-          scratchKeys.push(...part);
         }
       }
       addRuleKeys(s, index, scratchKeys);
@@ -9583,48 +9595,6 @@ function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): 
   return loneInterpBranches(c, frame, e) ?? mapMaybe(resolveSelectorBranch(c, frame, e), value => typeof value === 'string' ? [value] : value);
 }
 
-/**
- * A resolved selector's text, or, where a selector list it interpolates continues a name
- * ({@link resolveSimpleTexts}), the branches that multiplies it into (`.col-@{l}` with `@l: sm, md`
- * is `.col-sm`, `.col-md`).
- */
-type SelectorText = string | string[];
-
-const isOneText = (values: readonly SelectorText[]): values is readonly string[] => values.every(value => typeof value === 'string');
-
-/** A selector text as the branches it is. */
-const textBranches = (text: SelectorText): readonly string[] => typeof text === 'string' ? [text] : text;
-
-/** A selector text as one string, for a consumer that reads one: its branches as a list. */
-const oneText = (text: SelectorText): string => typeof text === 'string' ? text : text.join(', ');
-
-/**
- * `values` crossed, the leftmost most significant, as a `&` odometer is
- * ({@link joinAmpersand}): `build` writes each pick, once when none multiplies.
- */
-function crossTexts(values: readonly SelectorText[], build: (picked: readonly string[]) => string): SelectorText {
-  if (isOneText(values)) {
-    return build(values);
-  }
-  let picks: string[][] = [[]];
-  for (const value of values) {
-    const next: string[][] = [];
-    for (const pick of picks) {
-      for (const text of textBranches(value)) {
-        next.push([...pick, text]);
-      }
-    }
-    picks = next;
-  }
-  return picks.map(build);
-}
-
-const concatTexts = (picked: readonly string[]): string => picked.join('');
-
-/** `out` with `text` appended to each of its branches. */
-const appendText = (out: SelectorText, text: string): SelectorText =>
-  typeof out === 'string' ? out + text : out.map(value => value + text);
-
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
  *  part folds to its bytes, escaped text as written, EXCEPT a selector list, which in a
  *  compound (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a single `:is(…)` group (a
@@ -9663,30 +9633,14 @@ function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev
    * later slot to observe a different loop/mixin placement.
    */
   const entryFrame = frame;
-  const parts = interp.parts;
-
-  /*
-   * [nesting] A selector list continues a name where a name is glued after it, as
-   * `&__x` continues its parent's ({@link continuesName}), or where one of its
-   * selectors opens with a name glued after another simple of the compound: a type
-   * selector only leads a compound (Selectors 4 §3.1), so there it continues the
-   * name before it (`.col-` then `sm`). Such a list multiplies the token, one text
-   * per selector, as `&__x` does, since `:is()` is no part of a name and
-   * `.col-:is(sm, md)` and `:is(.card, .panel)__title` are no selectors. Glued at a
-   * compound boundary (`.x` then `.a`, `.a` then `:hover`) it is one `:is()` group.
-   */
-  const splice = (out: SelectorText, i: number, value: string[] | string): SelectorText => {
-    if (typeof value === 'string') {
-      return appendText(out, value);
-    }
-    const following = parts[i + 1];
-    const continues = (following === undefined ? continuesName(next) : 'lit' in following && isNameCode(following.lit.charCodeAt(0)))
-      || ((out !== '' || prev !== undefined) && value.some(branch => isNameCode(branch.charCodeAt(0))));
-    return continues ? crossTexts([out, value], concatTexts) : appendText(out, ampSub(value));
-  };
+  const splice = (out: SelectorText, i: number, value: string[] | string): SelectorText => typeof value === 'string'
+    ? appendText(out, value)
+    : continuesNameAt(value, out === '' ? (prev?.type === 'SimpleSelector' ? prev.text ?? '' : '') : oneText(out), continuesAfter(interp.parts[i + 1], next))
+      ? crossTexts([out, value], picked => picked.join(''))
+      : appendText(out, ampSub(value));
   const step = (index: number, out: SelectorText): MaybePromise<SelectorText> => {
-    for (let i = index; i < parts.length; i++) {
-      const part = parts[i]!;
+    for (let i = index; i < interp.parts.length; i++) {
+      const part = interp.parts[i]!;
       if ('lit' in part) {
         out = appendText(out, part.lit);
         continue;
@@ -9773,9 +9727,7 @@ function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane): May
   if (!compoundHasInterp(c)) {
     return compoundCanonical(c);
   }
-  const tokens = c.value;
-  const parts = tokens.map((sim, i) => resolveSimpleTexts(sim, frame, e, tokens[i - 1], tokens[i + 1]));
-  return combineAll(parts, values => crossTexts(values, concatTexts));
+  return combineAll(c.value.map((sim, i) => resolveSimpleTexts(sim, frame, e, c.value[i - 1], c.value[i + 1])), values => crossTexts(values, picked => picked.join('')));
 }
 
 /** The concrete canonical string of a (possibly interpolated) complex, in the entering
@@ -9787,10 +9739,9 @@ function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane):
   }
   const terms = selectorBranchTerms(c);
   const combinators = selectorBranchCombinators(c);
-  const texts = terms.map(term => term.type === 'CompoundSelector'
+  return combineAll(terms.map(term => term.type === 'CompoundSelector'
     ? resolveCompound(term, frame, e)
-    : selectorTermHasInterp(term) ? resolveSimpleTexts(term, frame, e) : selectorTermCanonical(term));
-  return combineAll(texts, values => crossTexts(values, (picked) => {
+    : selectorTermHasInterp(term) ? resolveSimpleTexts(term, frame, e) : selectorTermCanonical(term)), values => crossTexts(values, (picked) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     let out = c.type === 'RelativeSelector'
       ? renderCombinator(combinators[0]!).trimStart() + picked[0]!
@@ -9980,46 +9931,43 @@ function parentUnit(parent: string, written: string, kind: number): string {
  *  A list-accepting pseudo (`:is`/`:where`/`:not`/`:has`/`:matches`) whose args
  *  reference `&` recurses so the `&` becomes the BARE parent list inside the pseudo
  *  (`:not(&)` over `.a, .b` → `:not(.a, .b)`, not the De-Morgan-wrong
- *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
- *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
- *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
- *  fused append (`&__el`) or a `&` glued after another simple (`glued`, `.qux&`) —
- *  DISTRIBUTES per parent. Where `kinds` is given ({@link PARENT_AS_WRITTEN}), a parent this
+ *  `:not(.a), :not(.b)`). A bare LEADING `&` (the first of `tokens` with no name
+ *  glued after it, the compound SUBJECT — `&`, `&.mod`, `& + &`) wraps in
+ *  `:is(parents)`, which keeps the subject even for a complex parent
+ *  (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a fused append
+ *  (`&__el`) or a `&` glued after another simple (`.qux&`) — DISTRIBUTES per parent. Where `kinds` is given ({@link PARENT_AS_WRITTEN}), a parent this
  *  `&` cannot take as written is one unit, `:is(parent)`: this `&` is not the one that
  *  places it ({@link placeParent}). Returns one variant per distribution — the
  *  branch-multiplying case. */
 function resolveTokenAmp(
-  sim: SimpleToken,
+  tokens: readonly SimpleToken[],
+  at: number,
   parents: string[],
   subs: readonly string[],
-  first: boolean,
-  glued: boolean,
   kinds: Uint8Array | null,
   frame: Frame | null,
-  e: Lane,
-  prev?: SimpleToken,
-  next?: SimpleToken
+  e: Lane
 ): MaybePromise<readonly string[]> {
+  const sim = tokens[at]!;
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
       branches => [pseudoJoin(sim, branches)]
     );
   }
-  const variants = (text: string): readonly string[] => {
+  return mapMaybe(resolveSimpleTexts(sim, frame, e, tokens[at - 1], tokens[at + 1]), texts => textBranches(texts).flatMap((text) => {
     if (!textHoldsParentRef(text)) {
       return [text];
     }
-    if (first && text === '&') {
+    if (at === 0 && !continuesName(tokens[1]) && text === '&') {
       return kinds !== null && parents.length === 1 && (kinds[0]! & PARENT_SEVERAL) !== 0 ? [parentUnit(subs[0]!, subs[0]!, kinds[0]!)] : subs;
     }
     return parents.map((p, i) => {
       const kind = kinds === null ? PARENT_AS_WRITTEN : kinds[i]!;
       const written = p + text.slice(1);
-      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && glued) ? parentUnit(p, written, kind) : written;
+      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && at > 0) ? parentUnit(p, written, kind) : written;
     });
-  };
-  return mapMaybe(resolveSimpleTexts(sim, frame, e, prev, next), texts => typeof texts === 'string' ? variants(texts) : texts.flatMap(variants));
+  }));
 }
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
@@ -10047,15 +9995,15 @@ function resolveCompoundAmp(
   while (ref !== -1 && trailing - 1 > ref && isUserActionToken(cmp.value[trailing - 1]!)) {
     trailing--;
   }
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0 && !continuesName(cmp.value[1]), i > 0, i === ref ? null : kinds, frame, e, cmp.value[i - 1], cmp.value[i + 1]));
+  const tokens = cmp.value.map((_, i) => resolveTokenAmp(cmp.value, i, parents, subs, i === ref ? null : kinds, frame, e));
   return combineAll(tokens, (lists) => {
-    /* The simples before the first `&` hold none, so each is one variant: `before`. */
-    let before = '';
+    /* The simples before the first `&` hold none; a selector list continuing a name multiplies them: `before`. */
+    let before = [''];
     let acc = [''];
     let tail = [''];
     for (let i = 0; i < lists.length; i++) {
       if (i === ref) {
-        before = acc[0]!;
+        before = acc;
         acc = [''];
         continue;
       }
@@ -10074,16 +10022,20 @@ function resolveCompoundAmp(
     if (ref === -1) {
       return acc;
     }
-    const lead = ref > 0 && leadsWithElement(lists[0]![0]!, 0) ? lists[0]![0]! : '';
+
+    /* The first simple of a `before`, where it is an element; the leftmost is the most significant. */
+    const lead = (first: string): string => ref > 0 && leadsWithElement(first, 0) ? first : '';
 
     /* One variant per parent where the `&` distributes; else one unit of them all, written as it is. */
     const placed = lists[ref]!;
     const aligned = kinds !== null && placed.length === parents.length;
     const out: string[] = [];
-    for (let j = 0; j < placed.length; j++) {
-      for (const after of acc) {
-        for (const end of tail) {
-          out.push(placeParent(placed[j]!, before, lead, after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+    for (let k = 0; k < before.length; k++) {
+      for (let j = 0; j < placed.length; j++) {
+        for (const after of acc) {
+          for (const end of tail) {
+            out.push(placeParent(placed[j]!, before[k]!, lead(lists[0]![Math.floor(k * lists[0]!.length / before.length)]!), after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+          }
         }
       }
     }
@@ -10102,10 +10054,9 @@ function continuesName(sim: SimpleToken | undefined): boolean {
   return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
 }
 
-/** Whether `c` continues a name glued to a `&`: a name code point (CSS Syntax 3 §4.2) or the backslash of an escape. */
-function isNameCode(c: number): boolean {
-  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c === 0x5C /* \ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
-}
+/** Whether a name is glued after an interpolation: the part of its token that follows it, else the token after it ({@link continuesName}). */
+const continuesAfter = (following: InterpPart | undefined, next: SimpleToken | undefined): boolean =>
+  following === undefined ? continuesName(next) : 'lit' in following && isNameCode(following.lit.charCodeAt(0));
 
 /**
  * [nesting] A `&` that is a plain reference to its parent follows CSS nesting
@@ -10259,7 +10210,7 @@ function resolveTermAmp(
 ): MaybePromise<readonly string[]> {
   return term.type === 'CompoundSelector'
     ? resolveCompoundAmp(term, parents, subs, head, kinds, frame, e)
-    : resolveTokenAmp(term, parents, subs, true, false, head ? null : kinds, frame, e);
+    : resolveTokenAmp([term], 0, parents, subs, head ? null : kinds, frame, e);
 }
 
 /** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
@@ -10361,7 +10312,7 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
      * would drop the whole list a bubbled at-rule writes per parent.
      */
     return mapMaybe(resolveSelectorBranch(child, frame, e), texts => textBranches(texts).flatMap(text =>
-      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text)));
+      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? isUnit(p) + ' ' : p + ' ') + text)));
   }
   if ((parents.length >= 2 || branchHasTextAmp(child) || ((ampNeedsPlacement(child) || (flags !== undefined && endsAfterPseudoElement(child))) && parentKind(parents[0]!, flags === undefined ? PSEUDO_NONE : flags[0]!) !== PARENT_AS_WRITTEN))
     && !parents.some(hasTopLevelComma)) {
@@ -10585,17 +10536,9 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
 
     /* A branch a list continuing a name multiplies ({@link SelectorText}) is one value per selector, in its branch's group. */
     const guarded = e.collapseMode !== 'compact';
-    const values: string[] = [];
-    const groups: number[] = [];
-    let oneGroup = true;
-    for (let i = 0; i < texts.length; i++) {
-      const key = nestingGroupKey(child.selectors[i]!, guarded);
-      for (const value of textBranches(texts[i]!)) {
-        oneGroup &&= key >= 0 && key === (groups[0] ?? key);
-        values.push(value);
-        groups.push(key);
-      }
-    }
+    const values = texts.flatMap(textBranches);
+    const groups = texts.flatMap((text, i) => textBranches(text).map(() => nestingGroupKey(child.selectors[i]!, guarded)));
+    const oneGroup = groups.every(key => key >= 0 && key === groups[0]);
     if (oneGroup) {
       return [a + ' :is(' + values.join(', ') + ')'];
     }
@@ -12878,6 +12821,15 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
       texts[i] = resolveSimpleTextSync(sim, frame, e);
     }
   }
+
+  /*
+   * A selector list continuing a name multiplies the compound ({@link resolveSimpleTexts}):
+   * one token of its selectors' list, as one resolved simple writes it.
+   */
+  const whole = resolveCompound(comp, frame, e);
+  if (Array.isArray(whole)) {
+    return simpleSelector(oneText(whole));
+  }
   const tokens = resolvedCompoundTokens(comp.value, texts);
   for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
     const at = pseudos.indexOf(tokens[i]!);
@@ -12932,7 +12884,8 @@ function resolvedCompoundTokens(value: readonly SimpleToken[], texts: ReadonlyAr
  * (ledger X12). A resolved token is plain text, a glued name merged into the name it
  * continues ({@link resolvedCompoundTokens}). Null when the copy would not compose the
  * bytes the authored list does: a lone `@{name}` branch, which may expand to a captured
- * selector list, or a resolved `&` the template did not write (the authored list keeps
+ * selector list, a selector list continuing a name, which multiplies its branch
+ * ({@link resolveSimpleTexts}), or a resolved `&` the template did not write (the authored list keeps
  * it literal text; the copy would compose it).
  */
 function resolvedSelectorList(list: SelectorList, frame: Frame | null, e: Lane): MaybePromise<SelectorList | null> {
@@ -12983,11 +12936,15 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: Lane):
     return term;
   }
   const tokens = termTokens(term);
-  const texts: Array<MaybePromise<string | undefined>> = [];
-  for (const sim of tokens) {
-    texts.push(simpleTokenHasInterp(sim) ? mapMaybe(resolveSimpleTexts(sim, frame, e), oneText) : undefined);
+  const texts: Array<MaybePromise<SelectorText | undefined>> = [];
+  for (let i = 0; i < tokens.length; i++) {
+    texts.push(simpleTokenHasInterp(tokens[i]!) ? resolveSimpleTexts(tokens[i]!, frame, e, tokens[i - 1], tokens[i + 1]) : undefined);
   }
   return combineAll(texts, (resolved) => {
+    /* A selector list continuing a name multiplies the branch: no one copy writes it. */
+    if (!isOneText(resolved)) {
+      return null;
+    }
     for (let i = 0; i < tokens.length; i++) {
       const text = resolved[i];
       const sim = tokens[i]!;
@@ -13142,7 +13099,9 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
          * A lone `@{s}` group (a selector list) is whole-selector position, which
          * the header expands to its branches ({@link expandSelectorBranch}); resolved
          * here it would be the compound-position `:is(…)` and change the header
-         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored.
+         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored, as does
+         * a branch a selector list continuing a name multiplies ({@link resolveSimpleTexts}),
+         * which no one resolved branch writes.
          */
         if (!selectorBranchHasInterp(c)) {
           continue;
