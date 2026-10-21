@@ -11,6 +11,10 @@ import { withSourceSpan, type AstSourceSpan } from './provenance.js';
 import { recoveredInTree } from './grammar-helpers.js';
 import { appendInterpolationLiteral, authoredSource, branchSegments, isInterpolation, isSelectorBranch, tokenText, withTriviaGaps } from './css-grammar-helpers.js';
 
+/* CSS whitespace (css-syntax-3 §4.2), not JavaScript's: U+00A0 is an identifier code point in CSS. */
+const CSS_LEADING_WHITESPACE = /^[ \t\n\r\f]+/u;
+const CSS_TRAILING_WHITESPACE = /[ \t\n\r\f]+$/u;
+
 /**
  * A `:is()` / `:where()` item a parse kept because it is not a selector
  * (`forgivingSelectorItem`, `forgivingSelectorList`), recorded on the run's
@@ -57,7 +61,7 @@ export function forgivingSelectorRest(children: readonly unknown[]): ForgivingSe
   }
   const last = parts[parts.length - 1];
   if (last !== undefined && 'lit' in last) {
-    parts[parts.length - 1] = { lit: last.lit.trimEnd() };
+    parts[parts.length - 1] = { lit: last.lit.replace(CSS_TRAILING_WHITESPACE, '') };
   }
   const only = parts.length === 1 ? parts[0] : undefined;
   return { rest: only !== undefined && 'lit' in only ? simpleSelector(only.lit) : interpolatedSimpleSelector(interpolation(parts)) };
@@ -82,8 +86,8 @@ export function forgivingSelectorItem(children: readonly unknown[], span: AstSou
     return withSourceSpan(prefix, span);
   }
   const written = authoredSource(span, state, 'A forgiving selector-list item');
-  const kept = written.trim();
-  const start = span.start + written.length - written.trimStart().length;
+  const kept = written.replace(CSS_LEADING_WHITESPACE, '').replace(CSS_TRAILING_WHITESPACE, '');
+  const start = span.start + written.length - written.replace(CSS_LEADING_WHITESPACE, '').length;
   const gapped = withTriviaGaps(children, triviaLog);
   const item = withSourceSpan(
     rest === undefined

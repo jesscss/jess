@@ -1905,7 +1905,8 @@ describe('SCSS canonical-AST grammar', () => {
   /* `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1, owner 2026-10-20): a non-selector item is kept as written. */
   it.each([
     ['.card:is(.active, 1px) { color: blue; }', '.card:is(.active, 1px) {\n  color: blue;\n}\n', ['1px']],
-    ['.a:where() { color: blue; }', '.a:where() {\n  color: blue;\n}\n', []]
+    ['.a:where() { color: blue; }', '.a:where() {\n  color: blue;\n}\n', []],
+    ['.a:is(.b /* c */, .d) { color: blue; }', '.a:is(.b, .d) {\n  color: blue;\n}\n', []]
   ])('parses %s and records each item that is not a selector', (source, css, forgiven) => {
     const document = parse(source);
     expect(serialize(document).css).toBe(css);

@@ -438,6 +438,16 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 
+/*
+ * The trivia of a `:is()` / `:where()` argument: whitespace and both comment
+ * forms, so a comment between items or after an item's selector is trivia
+ * there as CSS reads it, not the start of a kept item.
+ */
+const forgivingListTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  comment: regex(/\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\//)
+});
+
 /* Keep custom-value comments visible as source trivia without making them
  * semantic custom-value parts. Root capture is selected against the one
  * document trivia table, which names every SCSS comment `comment`, so the
@@ -4662,7 +4672,7 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       optional(space),
       parser(
-        { trivia: whitespace },
+        { trivia: forgivingListTrivia },
         g.ForgivingSelectorList
       ),
       optional(space),

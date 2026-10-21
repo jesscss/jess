@@ -459,11 +459,12 @@ function pushForgivenSelectorItemTwin(node: CssCstNode, source: string, push: Pa
   }
 }
 
-/* A CST node's span without the whitespace at its edges. */
+/* A CST node's span without the CSS whitespace at its edges (css-syntax-3 §4.2; U+00A0 is not whitespace there). */
 function trimmedSpan(node: CssCstNode, source: string): { start: number; end: number } {
   const written = source.slice(absoluteStart(node), absoluteEnd(node));
-  const start = absoluteStart(node) + written.length - written.trimStart().length;
-  return { start, end: start + written.trim().length };
+  const unled = written.replace(/^[ \t\n\r\f]+/u, '');
+  const start = absoluteStart(node) + written.length - unled.length;
+  return { start, end: start + unled.replace(/[ \t\n\r\f]+$/u, '').length };
 }
 
 /*
