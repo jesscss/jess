@@ -1261,3 +1261,17 @@ now quantified — a big multi-week effort, not a switch.
   side-effect `import 'parseman'`; jess-parser's helpers carried one
   (`import {} from 'parseman'`), which loaded the parseman root runtime in all
   four fused Jess variants; removed.
+
+- **2026-10-21 — query feature name slot (fix/interpolation-parse-gaps).** css
+  now names the feature name in a query feature's contents (`QueryFeatureName`,
+  its routed `Property`) and what a media feature's contents open with
+  (`MediaFeatureOpener`, its dispatch); Less, SCSS and `.jess` override only
+  those two slots to read their interpolation in a name. Their own
+  `@container` / `@supports` `QueryFeature` / `SupportsFeature` productions now
+  read the same name, but they are still per-dialect copies of css's
+  `QueryFeature` (css's reads the name through the same slot): the next
+  convergence step for this family is to drop them for css's, which needs each
+  dialect's padding and value policy to move into css's slots first. `.jess`
+  `:not()` / `:has()` now read css's `SelectorOnlyPseudoArgument`; `.jess`'s
+  `PseudoSelectorList` / `PseudoSelectorComplex` / `PseudoSelectorCompound`
+  remain for `of S`, `selector()`, `$apply` and `$extend`.
