@@ -507,9 +507,9 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'css/forgiving-selector-item',
     {
-      summary: '`${item}` is not a selector; browsers ignore it here',
-      reason: '`:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1): an item that is not a selector is dropped and the others still match. It is written as authored.',
-      fix: 'Remove `${item}`, or write the selector you meant.'
+      summary: '${item} is not a selector; browsers ignore it here',
+      reason: '`:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1): an item that is not a complex selector (an empty item, one that opens with a combinator, or one that is not selector syntax) is dropped and the others still match. It is written as authored.',
+      fix: 'Remove it, or write the selector you meant.'
     }
   ],
   [

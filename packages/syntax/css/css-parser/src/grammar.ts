@@ -65,6 +65,8 @@ import {
   anPlusBFrom,
   directionKeyword,
   forgivingSelectorItem,
+  forgivingSelectorList,
+  forgivingSelectorRest,
   isAnPlusB,
   isNthArgument,
   isSelectorList,
@@ -231,6 +233,7 @@ type GrammarRuleName =
   | 'PseudoArgument'
   | 'PseudoSelector'
   | 'RelativeSelector'
+  | 'ForgivingSelectorRest'
   | 'ForgivingSelectorItem'
   | 'ForgivingSelectorList'
   | 'QueryClause'
@@ -1401,33 +1404,39 @@ const cssFactory = (g: GrammarSelf) => {
    * match nothing. Each comma-separated item is read once, at the current
    * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
    * the item up to its `,` or `)` — balanced, so a nested group or block is
-   * part of it (the rest's leading `not()` keeps it from matching nothing:
-   * `scanTo` succeeds empty when its sentinel is next). An item with a rest,
-   * or none at all, is kept as written (`forgivingSelectorItem`, which records
-   * it for the compiler's `css/forgiving-selector-item` warning). Trivia is the
-   * caller's: each dialect's pseudo reads this list under its own selector
-   * trivia.
+   * part of it. The rest's leading `not()` keeps it from matching nothing
+   * (`scanTo` succeeds empty when its sentinel is next); a dialect overrides
+   * the rest to read its interpolation there. An item with a rest, a relative
+   * item and an empty item beside another are kept as written, their structure
+   * kept so their interpolations and `&` evaluate (`forgivingSelectorItem`,
+   * which records them for the compiler's `css/forgiving-selector-item`
+   * warning). Trivia is the caller's: each dialect's pseudo reads this list
+   * under its own selector trivia.
    */
-  const forgivingSelectorRest = sequence(
-    not(choice(literal(','), literal(')'))),
-    scanTo(
-      choice(literal(','), literal(')')),
-      {
-        skip: [
-          balanced('(', ')'),
-          balanced('[', ']'),
-          balanced('{', '}')
-        ]
-      }
-    )
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      scanTo(
+        choice(literal(','), literal(')')),
+        {
+          skip: [
+            balanced('(', ')'),
+            balanced('[', ']'),
+            balanced('{', '}')
+          ]
+        }
+      )
+    ),
+    children => forgivingSelectorRest(children)
   );
   const ForgivingSelectorItem = node(
     'ForgivingSelectorItem',
     sequence(
       optional(g.RelativeSelector),
-      optional(forgivingSelectorRest)
+      optional(g.ForgivingSelectorRest)
     ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => forgivingSelectorItem(children, span, state)
+    (children, _fields, span, _rawChildren, triviaLog, state) => forgivingSelectorItem(children, span, triviaLog, state)
   );
   const ForgivingSelectorList = node(
     'ForgivingSelectorList',
@@ -1435,7 +1444,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.ForgivingSelectorItem,
       literal(',')
     ),
-    children => selist(...selectorBranches(children))
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => forgivingSelectorList(children, state)
   );
 
   /*
@@ -5220,6 +5229,7 @@ const cssFactory = (g: GrammarSelf) => {
     AttributeSelector,
     PseudoSelector,
     RelativeSelector,
+    ForgivingSelectorRest,
     ForgivingSelectorItem,
     ForgivingSelectorList,
     PseudoArgument,

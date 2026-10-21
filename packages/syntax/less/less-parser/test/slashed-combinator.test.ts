@@ -42,7 +42,7 @@ describe('a slashed combinator is an invalid selector', () => {
    */
   it('is a forgiven item of an :is() argument', () => {
     expect(failureOf(':is(.a /deep/ .b) { c: d; }')).toBeUndefined();
-    expect(forgivenSelectorItemsOf(parse(':is(.a /deep/ .b) { c: d; }')).map(item => item.text)).toEqual(['.a /deep/ .b']);
+    expect(forgivenSelectorItemsOf(parse(':is(.a /deep/ .b) { c: d; }')).map(item => item.written)).toEqual(['.a /deep/ .b']);
   });
 
   it.each([

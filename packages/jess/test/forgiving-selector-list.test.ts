@@ -14,8 +14,8 @@ import { Compiler } from '../src/index.js';
 type Dialect = 'css' | 'less' | 'scss' | 'jess';
 const DIALECTS: readonly Dialect[] = ['css', 'less', 'scss', 'jess'];
 
-async function render(dialect: Dialect, source: string) {
-  const result = await new Compiler().renderToResult({ source, filePath: `/proj/forgiving.${dialect}` }, {});
+async function render(dialect: Dialect, source: string, collapseNesting: false | 'native' = false) {
+  const result = await new Compiler({ output: { collapseNesting } }).renderToResult({ source, filePath: `/proj/forgiving.${dialect}` }, {});
   return {
     css: String(result.css),
     errors: result.errors.map(error => [error.code, error.line, error.column]),
@@ -47,7 +47,38 @@ describe('the forgiving selector list of :is() and :where()', () => {
         warnings: [['css/forgiving-selector-item', 2, 12, '`2px` is not a selector; browsers ignore it here']]
       });
     });
+
+    it(`${dialect}: warns at an empty item beside another and at a relative item`, async () => {
+      expect(await render(dialect, '.a:is(.b,,.c) { color: red; }\n.d:where(> .e) { color: red; }')).toEqual({
+        css: '.a:is(.b, , .c) {\n  color: red;\n}\n.d:where(> .e) {\n  color: red;\n}\n',
+        errors: [],
+        warnings: [
+          ['css/forgiving-selector-item', 1, 10, 'An empty item is not a selector; browsers ignore it here'],
+          ['css/forgiving-selector-item', 2, 10, '`> .e` is not a selector; browsers ignore it here']
+        ]
+      });
+    });
+
+    it(`${dialect}: an & in a kept item is the parent, nested or flattened, as in any selector`, async () => {
+      const source = '.p {\n  .a:is(.k, & 1px) { color: red; }\n}';
+      expect((await render(dialect, source)).css).toBe('.p {\n  .a:is(.k, & 1px) {\n    color: red;\n  }\n}\n');
+      expect((await render(dialect, source, 'native')).css).toBe('.a:is(.k, .p 1px) {\n  color: red;\n}\n');
+    });
   }
+
+  /* A kept item keeps its structure, so an interpolation in it evaluates, before or after what is not a selector. */
+  it.each([
+    ['less', '@x: ~".y";\n.a:is(.b, @{x} 1px, 1px @{x}) { color: red; }'],
+    ['scss', '$x: ".y";\n.a:is(.b, #{$x} 1px, 1px #{$x}) { color: red; }'],
+    ['jess', '$x: ".y";\n.a:is(.b, ${x} 1px, 1px ${x}) { color: red; }']
+  ] as const)('%s: evaluates an interpolation in a kept item', async (dialect, source) => {
+    const { css, errors, warnings } = await render(dialect, source);
+    expect({ css, errors, codes: warnings.map(([code]) => code) }).toEqual({
+      css: '.a:is(.b, .y 1px, 1px .y) {\n  color: red;\n}\n',
+      errors: [],
+      codes: ['css/forgiving-selector-item', 'css/forgiving-selector-item']
+    });
+  });
 
   it.each([
     ['less', '@s: selector(.a:is(1px));\n@{s} { color: red; }'],

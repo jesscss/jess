@@ -163,8 +163,8 @@ export {
   withAuthoredSeparators,
   withTriviaGaps
 } from './ast/css-grammar-helpers.js';
-export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorItem, withForgivenSelectorItems } from './ast/forgiving-selector.js';
-export type { ForgivenSelectorItem } from './ast/forgiving-selector.js';
+export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorItem, forgivingSelectorList, forgivingSelectorRest, withForgivenSelectorItems } from './ast/forgiving-selector.js';
+export type { ForgivenSelectorItem, ForgivingSelectorRest } from './ast/forgiving-selector.js';
 export { componentRun } from './ast/component-run.js';
 export type { GuardNode } from './ast/guard-node.js';
 export { hasCssTest, inParens } from './ast/guard-node.js';

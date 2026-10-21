@@ -436,20 +436,27 @@ export function pushParseTwinDiagnostics(
  * A `:is()` / `:where()` item that is not a selector (Selectors 4 §16.1, owner
  * 2026-10-20), in every dialect: the compiler keeps it as written and warns
  * (`forgivingSelectorItem`, `@jesscss/core`); the editor underlines the item.
- * A selector item holds exactly its selector node; a kept one holds text,
- * after a selector prefix or alone.
+ * An item is kept when it has a rest past its selector, when its selector opens
+ * with a combinator, or when it is empty beside another item.
  */
 function pushForgivenSelectorItemTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
-  const children = cstChildrenOf(node);
-  if (node.grammarType !== 'ForgivingSelectorItem' || (children.length === 1 && children.every(isCstNode))) {
+  if (node.grammarType !== 'ForgivingSelectorList') {
     return;
   }
-  const at = trimmedSpan(node, source);
-  if (at.end === at.start) {
-    return;
+  const items = cstChildrenOf(node).filter(child => isCstNode(child) && child.grammarType === 'ForgivingSelectorItem').filter(isCstNode);
+  for (const item of items) {
+    const parts = cstChildrenOf(item).filter(isCstNode);
+    const selector = parts[0]?.grammarType === 'RelativeSelector' ? parts[0] : undefined;
+    const relative = selector !== undefined && cstChildrenOf(selector)[0]?._tag === 'leaf';
+    const kept = parts.some(part => part.grammarType === 'ForgivingSelectorRest') || relative || (parts.length === 0 && items.length > 1);
+    if (!kept) {
+      continue;
+    }
+    const at = trimmedSpan(item, source);
+    const written = source.slice(at.start, at.end);
+    const warning = makeJessError({ severity: 'warn', code: 'css/forgiving-selector-item', phase: 'parse', meta: { item: written === '' ? 'An empty item' : `\`${written}\`` } });
+    push('css/forgiving-selector-item', 'warning', warning.message, at, { phase: 'parse', reason: warning.reason, fix: warning.fix });
   }
-  const warning = makeJessError({ severity: 'warn', code: 'css/forgiving-selector-item', phase: 'parse', meta: { item: source.slice(at.start, at.end) } });
-  push('css/forgiving-selector-item', 'warning', warning.message, at, { phase: 'parse', reason: warning.reason, fix: warning.fix });
 }
 
 /* A CST node's span without the whitespace at its edges. */

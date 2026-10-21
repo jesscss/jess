@@ -982,8 +982,8 @@ export class Context {
     const forgiven = forgivenSelectorItemsOf(document);
     if (forgiven.length > 0) {
       void this.withSourceOwner(documentContext, () => {
-        for (const item of forgiven) {
-          this.warnAtNode('css/forgiving-selector-item', 'parse', item, { item: item.text });
+        for (const { item, written } of forgiven) {
+          this.warnAtNode('css/forgiving-selector-item', 'parse', item, { item: written === '' ? 'An empty item' : `\`${written}\`` });
         }
       });
     }

@@ -498,7 +498,9 @@ describe('JessLanguageServiceEngine', () => {
       ['jess', '.card:is(.active, 1px) { color: red; }', '1px'],
       ['less', '.x { a: selector(.a:is(1px)); }', '1px'],
       ['css', '.a:where( 1px ) { color: red; }', '1px'],
-      ['css', '.a:is(.b 1px) { color: red; }', '.b 1px']
+      ['css', '.a:is(.b 1px) { color: red; }', '.b 1px'],
+      ['css', '.a:is(> .b) { color: red; }', '> .b'],
+      ['less', '.a:is(.b, @{x} 1px) { color: red; }', '@{x} 1px']
     ])('warns at the forgiven item (%s: %s)', (languageId, input, underlined) => {
       const engine = createEngine();
       const doc = createDocument(languageId, input);
@@ -510,6 +512,17 @@ describe('JessLanguageServiceEngine', () => {
       expect(diagnostics[0]!.message.startsWith(`\`${underlined}\` is not a selector; browsers ignore it here`)).toBe(true);
       expect(input.slice(doc.offsetAt(diagnostics[0]!.range.start), doc.offsetAt(diagnostics[0]!.range.end))).toBe(underlined);
       expect(engine.getDiagnostics(doc.uri).filter(item => item.severity === DiagnosticSeverity.Error)).toEqual([]);
+    });
+
+    it('warns at an empty item beside another', () => {
+      const engine = createEngine();
+      const input = '.a:is(.b,,.c) { color: red; }';
+      const doc = createDocument('css', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/forgiving-selector-item');
+      expect(diagnostics.map(item => [doc.offsetAt(item.range.start), doc.offsetAt(item.range.end)])).toEqual([[9, 10]]);
+      expect(diagnostics[0]!.message.startsWith('An empty item is not a selector; browsers ignore it here')).toBe(true);
     });
 
     it.each([

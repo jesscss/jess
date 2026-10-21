@@ -1909,7 +1909,7 @@ describe('SCSS canonical-AST grammar', () => {
   ])('parses %s and records each item that is not a selector', (source, css, forgiven) => {
     const document = parse(source);
     expect(serialize(document).css).toBe(css);
-    expect(forgivenSelectorItemsOf(document).map(item => item.text)).toEqual(forgiven);
+    expect(forgivenSelectorItemsOf(document).map(item => item.written)).toEqual(forgiven);
   });
 
   it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {

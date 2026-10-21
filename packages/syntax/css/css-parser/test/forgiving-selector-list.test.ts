@@ -38,17 +38,28 @@ describe('the forgiving selector list of :is() and :where()', () => {
     ['.a:is(1px) { color: red; }', '.a:is(1px) {\n  color: red;\n}\n', [['1px', 6]]],
     ['.x:where(2n+1) { color: red; }', '.x:where(2n+1) {\n  color: red;\n}\n', [['2n+1', 9]]],
     ['.a:is() { color: red; }', '.a:is() {\n  color: red;\n}\n', []],
-    [':is(.card, ) { color: red; }', ':is(.card, ) {\n  color: red;\n}\n', []],
+    [':is(.card, ) { color: red; }', ':is(.card, ) {\n  color: red;\n}\n', [['', 11]]],
+    ['.x:is(.a,,.b) { color: red; }', '.x:is(.a, , .b) {\n  color: red;\n}\n', [['', 9]]],
+    ['.x:is(> .a, .b) { color: red; }', '.x:is(> .a, .b) {\n  color: red;\n}\n', [['> .a', 6]]],
     ['.x:is( .a , .b ) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n', []],
     ['.x:is(.a 1px, .b) { color: red; }', '.x:is(.a 1px, .b) {\n  color: red;\n}\n', [['.a 1px', 6]]],
     ['.x:is(.b, {x,y}) { color: red; }', '.x:is(.b, {x,y}) {\n  color: red;\n}\n', [['{x,y}', 10]]]
   ] as const)('parses %s, keeps it as written and records each item that is not a selector', (source, css, forgiven) => {
     const document = parse(source);
     expect(serialize(document).css).toBe(css);
-    expect(forgivenSelectorItemsOf(document).map(item => [item.text, sourceStartOf(item)])).toEqual(forgiven);
-    for (const item of forgivenSelectorItemsOf(document)) {
-      expect(source.slice(sourceStartOf(item), sourceEndOf(item))).toBe(item.text);
+    expect(forgivenSelectorItemsOf(document).map(({ item, written }) => [written, sourceStartOf(item)])).toEqual(forgiven);
+    for (const { item, written } of forgivenSelectorItemsOf(document)) {
+      expect(source.slice(sourceStartOf(item), sourceEndOf(item))).toBe(written);
     }
+  });
+
+  /* A kept item keeps the selector it opens with: its rest is one more simple, after a space or glued, as written. */
+  it.each([
+    ['.x:is(.a 1px) { color: red; }', 'ComplexSelector'],
+    ['.x:is(.a:not(.b)2px) { color: red; }', 'CompoundSelector'],
+    ['.x:is(1px) { color: red; }', 'SimpleSelector']
+  ])('keeps the structure of the kept item in %s', (source, type) => {
+    expect(itemTypes(pseudoOf(source))).toEqual([type]);
   });
 
   it('keeps the selectors of a forgiving list structured beside the kept item', () => {

@@ -984,7 +984,7 @@ describe('public Less parse()', () => {
   ])('parses `%s`', (source, forgiven) => {
     const result = safeParse('/entry.less', source);
     expect(result.errors).toEqual([]);
-    expect(forgivenSelectorItemsOf(result.document!).map(item => item.text)).toEqual(forgiven);
+    expect(forgivenSelectorItemsOf(result.document!).map(item => item.written)).toEqual(forgiven);
   });
 
   it('captures a forgiving list as written', () => {

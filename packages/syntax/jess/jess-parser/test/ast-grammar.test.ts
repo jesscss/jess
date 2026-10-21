@@ -1179,7 +1179,7 @@ describe('Jess AST grammar facts', () => {
   ])('parses `%s` and records each item that is not a selector', (source, forgiven) => {
     const { document, recovered } = parseRecovering(source);
     expect(recovered).toEqual([]);
-    expect(forgivenSelectorItemsOf(document).map(item => item.text)).toEqual(forgiven);
+    expect(forgivenSelectorItemsOf(document).map(item => item.written)).toEqual(forgiven);
   });
 
   it('keeps selector() inside an @supports prelude the CSS feature test', () => {
@@ -1274,7 +1274,7 @@ describe('Jess AST grammar facts', () => {
      */
     const rejected = run(jessGrammar.Stylesheet, '.x:not(.a-$[t]) { c: d; }', { trivia: jessGrammar.whitespace });
     expect(rejected.ok && rejected.unconsumedFrom === null).toBe(false);
-    expect(forgivenSelectorItemsOf(parse('.x:is(.card-$[t]) { c: d; }')).map(item => item.text)).toEqual(['.card-$[t]']);
+    expect(forgivenSelectorItemsOf(parse('.x:is(.card-$[t]) { c: d; }')).map(item => item.written)).toEqual(['.card-$[t]']);
   });
 
   it('accepts a leading combinator in a selector-pseudo argument (selectors-4 §4.2)', () => {

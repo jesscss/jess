@@ -27,6 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
+import type { ForgivenSelectorItem } from './forgiving-selector.js';
 import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
@@ -1638,7 +1639,7 @@ export interface Stylesheet extends SpanSlots, TriviaSlot {
    * a selector, for the compiler's `css/forgiving-selector-item` warning
    * (`withForgivenSelectorItems`).
    */
-  _forgiven?: readonly SimpleSelector[];
+  _forgiven?: readonly ForgivenSelectorItem[];
 }
 
 /*
