@@ -5130,7 +5130,7 @@ function evalTyped(
         ? force(literal(node.raw))
         : resolved.evaluated !== null
           ? reachedEvaluated(e, resolved.evaluated)
-          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
+          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument));
     }
     case 'Block':
       /*
