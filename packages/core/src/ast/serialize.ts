@@ -14851,7 +14851,7 @@ function emitDocumentStatements(
         }
         break;
       case 'AtRuleStatement':
-        if (!writeHoistedCssImport(child, frame, e) && e.referenceImportDepth === 0) {
+        if (!writeHoistedCssImport(child, true, frame, e) && e.referenceImportDepth === 0 && !e.hoistedCssImports?.has(child)) {
           emitBeforeDocumentStatement(child);
           emitAtRuleStatement(child, frame, e);
           markAfterDocumentStatement(child);
@@ -17280,7 +17280,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
         }
         case 'AtRuleStatement': {
           /* [charset] Written only at the top of the output ({@link hoistCharsets}), never where it stands. */
-          if (isCharset(node) || writeHoistedCssImport(node, frame, e)) {
+          if (isCharset(node) || writeHoistedCssImport(node, composed === null && e.depth === 0, frame, e)) {
             break;
           }
           if (nested) {
@@ -20549,16 +20549,23 @@ function reserveHoistedCssImports(rules: Statement[], plan: CssImportPlan | null
 }
 
 /**
- * Whether `node` is a hoisted CSS import, which is then written into the next
- * chunk reserved for it in the output prelude (none for a duplicate), evaluated
- * here, at its place in the document, so its condition reads what is declared
- * before it (`$bp: 600px; @import "a.css" (min-width: $bp)`). Positions recorded
- * while writing it map to that chunk.
+ * Whether `node` is a hoisted CSS import reached at the document root (`root`:
+ * outside any rule, nested or collapsed), where it
+ * is written into the next chunk reserved for it in the output prelude (none
+ * for a duplicate), evaluated here, at its place in the document, so its
+ * condition reads what is declared before it (`$bp: 600px; @import "a.css"
+ * (min-width: $bp)`). Positions recorded while writing it map to that chunk. A
+ * placement of the same sheet in a block or a `(reference)` import is not the
+ * hoisted one, and is written where it stands, as before.
  */
-function writeHoistedCssImport(node: AtRuleStatement, frame: Frame, e: Emit): boolean {
-  const slot = e.hoistedCssImports?.get(node)?.shift();
+function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Frame, e: Emit): boolean {
+  const slots = e.hoistedCssImports?.get(node);
+  if (slots === undefined || !root || e.atRuleBodyDepth !== 0 || e.referenceImportDepth !== 0) {
+    return false;
+  }
+  const slot = slots.shift();
   if (slot === undefined) {
-    return e.hoistedCssImports?.has(node) === true;
+    return true;
   }
   const from = e.chunks.length;
   const marked = e.positions?.length ?? 0;
