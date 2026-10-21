@@ -1751,12 +1751,12 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ValueLogicalAnd">
     <h2><a href="#rule-ValueLogicalAnd">§</a> ValueLogicalAnd</h2>
     <div class="diagram" data-rule="ValueLogicalAnd"></div>
-    <div class="ebnf">ValueLogicalAnd ::= MathTopSum (WHITESPACE or COMMENT LogicalAnd WHITESPACE or COMMENT MathTopSum)*</div>
+    <div class="ebnf">ValueLogicalAnd ::= MathTopSum (WHITESPACE or COMMENT (LogicalAnd | LogicalAnd) WHITESPACE or COMMENT MathTopSum)*</div>
   </section>
   <section class="rule" id="rule-ValueLogicalOr">
     <h2><a href="#rule-ValueLogicalOr">§</a> ValueLogicalOr</h2>
     <div class="diagram" data-rule="ValueLogicalOr"></div>
-    <div class="ebnf">ValueLogicalOr ::= ValueLogicalAnd (WHITESPACE or COMMENT LogicalOr WHITESPACE or COMMENT ValueLogicalAnd)*</div>
+    <div class="ebnf">ValueLogicalOr ::= ValueLogicalAnd (WHITESPACE or COMMENT (LogicalOr | LogicalOr) WHITESPACE or COMMENT ValueLogicalAnd)*</div>
   </section>
   <section class="rule" id="rule-CallArgument">
     <h2><a href="#rule-CallArgument">§</a> CallArgument</h2>
@@ -2840,8 +2840,8 @@ svg.railroad-diagram rect {
   { name: "MathSum", dsl: function(){ return Diagram(Sequence(NonTerminal("MathProduct"), ZeroOrMore(Sequence(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT?"), Terminal("+"), Terminal("WHITESPACE or COMMENT?")), Sequence(Terminal("WHITESPACE or COMMENT?"), Terminal("-"), Terminal("WHITESPACE or COMMENT")), Sequence(Terminal("/[-+]/"), Terminal("WHITESPACE or COMMENT?"))), NonTerminal("MathProduct"))))); } },
   { name: "MathTopProduct", dsl: function(){ return Diagram(Sequence(NonTerminal("MathUnary"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT?"), Terminal("/[*%]/"), Terminal("WHITESPACE or COMMENT?"), NonTerminal("MathUnary"))))); } },
   { name: "MathTopSum", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopProduct"), ZeroOrMore(Sequence(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT?"), Terminal("+"), Terminal("WHITESPACE or COMMENT?")), Sequence(Terminal("WHITESPACE or COMMENT?"), Terminal("-"), Terminal("WHITESPACE or COMMENT")), Sequence(Terminal("/[-+]/"), Terminal("WHITESPACE or COMMENT?"))), NonTerminal("MathTopProduct"))))); } },
-  { name: "ValueLogicalAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("LogicalAnd"), Terminal("WHITESPACE or COMMENT"), NonTerminal("MathTopSum"))))); } },
-  { name: "ValueLogicalOr", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueLogicalAnd"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("LogicalOr"), Terminal("WHITESPACE or COMMENT"), NonTerminal("ValueLogicalAnd"))))); } },
+  { name: "ValueLogicalAnd", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), Choice(0, NonTerminal("LogicalAnd"), NonTerminal("LogicalAnd")), Terminal("WHITESPACE or COMMENT"), NonTerminal("MathTopSum"))))); } },
+  { name: "ValueLogicalOr", dsl: function(){ return Diagram(Sequence(NonTerminal("ValueLogicalAnd"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), Choice(0, NonTerminal("LogicalOr"), NonTerminal("LogicalOr")), Terminal("WHITESPACE or COMMENT"), NonTerminal("ValueLogicalAnd"))))); } },
   { name: "CallArgument", dsl: function(){ return Diagram(Sequence(Optional(Terminal("/[<>]=?/")), NonTerminal("ValueTerm"), Optional(Terminal("/[<>]=?(?=[ \\t\\n\\r\\f]*[),])/")), Optional(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, Terminal("=="), Terminal("!="), Terminal(">="), Terminal("<="), Terminal(">"), Terminal("<"), Terminal(":")), Optional(Terminal("WHITESPACE or COMMENT")), Optional(NonTerminal("ValueTerm")))))); } },
   { name: "ValuePair", dsl: function(){ return Diagram(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, Sequence(NonTerminal("ValueTerm"), ZeroOrMore(Sequence(Terminal(":"), NonTerminal("ValueTerm")))), Sequence(Terminal("/\\/(?![*/])|\\*/"), ZeroOrMore(Sequence(Sequence(Comment("not"), Terminal("{")), NonTerminal("CustomPart"))))))); } },
   { name: "ArgumentPair", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CallArgument"))); } },
