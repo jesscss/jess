@@ -41,6 +41,7 @@ import { walkAuthoredValue } from './traversal.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
   AnPlusB,
+  Any,
   AnonymousMixin,
   CompoundSelector,
   Block,
@@ -1688,6 +1689,7 @@ export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => val
     case 'default':
       return true;
     case 'truth':
+    case 'css':
       return 'value' in value && isOperand(value.value);
     case 'cmp':
     case 'match':
@@ -1812,7 +1814,7 @@ export function appendCustomValueParts(children: readonly unknown[], parts: Inte
 
 /** Reduce a whole custom-property value to `Interpolation` (when it carries an
  * interpolation) or to verbatim `Any` text. */
-export function customValueFromChildren(children: readonly unknown[], dialect: string): ValueNode {
+export function customValueFromChildren(children: readonly unknown[], dialect: string): Any | Interpolation {
   const parts: Interpolation['parts'] = [];
   const seen = { interpolated: false };
   appendCustomValueParts(

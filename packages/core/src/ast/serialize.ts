@@ -78,7 +78,7 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
-import { hasTopLevelComma, interleave, selectorListValue } from './selector-text.js';
+import { hasTopLevelComma, interleave, selectorListValue, selectorValue } from './selector-text.js';
 import type {
   Any,
   Apply,
@@ -191,7 +191,7 @@ import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -3573,6 +3573,7 @@ function guardReadsInOrder(guard: GuardNode): boolean {
     case 'match':
       return callValueHasLookup(guard.left, readsInOrder, undefined) || callValueHasLookup(guard.right, readsInOrder, undefined);
     case 'truth':
+    case 'css':
       return callValueHasLookup(guard.value, readsInOrder, undefined);
     case 'call':
       return guard.args.some(arg => callValueHasLookup(arg, readsInOrder, undefined));
@@ -5236,7 +5237,7 @@ function evalTyped(
        * lowered Less `if()` is a call, so its arguments are on a call lane. */
       return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument));
+        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument), makeAny);
     }
     case 'Range':
       /*
@@ -5684,6 +5685,7 @@ function writtenCondition(guard: GuardNode, frame: Frame | null, e: Lane): Maybe
       return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`${head}${inner}`));
     }
     case 'truth':
+    case 'css':
       return mapMaybe(evalValueSlot(guard.value, frame, e), v => written(emitValueC(v, e)));
     case 'call':
       return combineAll(guard.args.map(arg => evalValueSlot(arg, frame, e)), args =>
@@ -5811,12 +5813,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Keyword':
     case 'Comment':
 
-    /*
-     * A selector CAPTURE `selector(…)` reaching a plain VALUE position (never its intended
-     * use — it belongs in a selector interpolation) emits its canonical `src`.
-     */
+    /* A selector capture is the selector list `&` is (ledgers P49, P50). */
     case 'SelectorCapture':
-      return literal(node.type === 'Comment' ? node.text : node.src);
+      return node.type === 'SelectorCapture' ? selectorValue(node.components) : literal(node.type === 'Comment' ? node.text : node.src);
     case 'Dimension':
       /*
        * Typed materialization owns Less's numeric spelling canonicalization
@@ -6229,11 +6228,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         return evalCall(unlowered, frame, e, false);
       }
 
-      /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
-       * bytes, exactly what an absent value emits. */
+      /* An unmatched Less `if(@c, a)` is empty bytes, exactly what an absent
+       * value emits. An unmatched CSS `if()` in SCSS or `.jess` is no value, so
+       * its declaration is not written, as Dart Sass writes none for `null`. */
       return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
-        ? literal('')
-        : evalValueSlot(taken, frame, ae));
+        ? (node._asCall === null ? NULL : literal(''))
+        : evalValueSlot(taken, frame, ae), literal);
     }
     case 'Interpolation':
       return evalInterp(node, frame, e);
@@ -7825,7 +7825,8 @@ function pickIfValue<T>(
   node: IfValue,
   frame: Frame | null,
   e: Lane,
-  use: (taken: ValueSlot | undefined, e: Lane) => MaybePromise<T>
+  use: (taken: ValueSlot | undefined, e: Lane) => MaybePromise<T>,
+  write: (bytes: string) => T
 ): MaybePromise<T> {
   const deps = guardDeps(frame, e);
   const step = (index: number): MaybePromise<ValueSlot | undefined> => {
@@ -7842,7 +7843,27 @@ function pickIfValue<T>(
       taken => taken ? branch.value : step(index + 1)
     );
   };
-  return mapMaybe(step(0), taken => use(taken, e));
+
+  /*
+   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …)
+   * is decided as far as compile time can, branch by branch, and what is left
+   * is written as a CSS `if()` ({@link pickCssIfBranches}). Its conditions are
+   * not CSS values, so what they reach is not checked [P47/P48], as {@link
+   * writtenCondition} reads one; only a taken or kept branch's value is
+   * evaluated.
+   */
+  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard))
+    ? pickCssIfBranches(
+        node.branches,
+        guard => withUnitErrors(node, e, () => partialGuard(guard, deps, value => mapMaybe(
+          evalValueSlot(value, frame, e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e),
+          v => emitValueC(v, e)
+        ))),
+        taken => use(taken, e),
+        kept => combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
+          write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join(sepGlue(';', e.compress === true))})`))
+      )
+    : mapMaybe(step(0), taken => use(taken, e));
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */
@@ -18162,7 +18183,7 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
  *  `@x: $if (…) { {…} } $else { {…} }; @x();` splices the chosen arm's
  *  declarations. `undefined` when no arm matches. */
 function pickIfBranch(node: IfValue, frame: Frame | null, e: Lane): ValueSlot | undefined {
-  return settled(pickIfValue(node, frame, e, taken => taken), '$if value-arm block resolution', node, e);
+  return settled(pickIfValue(node, frame, e, taken => taken, () => undefined), '$if value-arm block resolution', node, e);
 }
 
 /**

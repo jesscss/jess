@@ -394,8 +394,12 @@ describe('Jess constructs discovered outside the parser suites', () => {
     });
   });
 
+  /* `$name:` in a call is a named argument, as in a `$fn(…)` call (`.jess` docs, functions). */
+  it('reads a named argument in a call', () => {
+    expect(parse('a { b: f($x: 1) }').rules[0]).toMatchObject({ rules: [{ value: { type: 'FunctionCall', name: 'f', args: [{ name: 'x' }] } }] });
+  });
+
   it.each([
-    ['Sass named argument', 'a { b: f($x: 1) }'],
     ['Sass spread argument', 'a { b: f($x...) }']
   ])('PINNED DEFECT — rejects a Sass call/member form (%s)', (_label, source) => {
     /*

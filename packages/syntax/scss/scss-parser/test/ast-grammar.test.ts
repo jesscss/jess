@@ -2832,9 +2832,12 @@ describe('statement spelling of the typed at-rules', () => {
 });
 
 /*
- * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
- * builds. OPEN for the owner: SCSS reads `if(` as Sass's
- * `if($condition, $if-true, $if-false)`, so a branch list stops the parse.
+ * CSS `if()` (css-values-5 §8.3, ledger P38) is a value-position conditional,
+ * the `IfValue` Sass's `if($c, a, b)` builds too (owner 2026-10-19: "parse to
+ * the equivalent structure that would be intepreted the same way in .jess"): a
+ * CSS test is a `css` condition the browser answers, written as authored; a
+ * `sass()` condition is Sass's truth test; `else` is the branch with no
+ * condition. A test's arguments are its authored text, as Dart Sass reads them.
  */
 describe('CSS if()', () => {
   const declarationValue = (document: Stylesheet): unknown => {
@@ -2842,20 +2845,43 @@ describe('CSS if()', () => {
     return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
   };
 
-  it.fails.each([
+  it.each([
     'if(media(width >= 600px): 1px; else: 2px)',
     'if(supports(display: grid): grid; else: block)',
     'if(style(--theme: dark): white; else: black)',
     'if(supports(selector(.a ~ .b)): a; else: b)',
     'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
     'if(media(print) and supports(display: grid): a; else: b)'
-  ])('builds the css tree for %s', (value) => {
-    const source = `a { x: ${value}; }`;
-    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  ])('builds an IfValue for %s', (value) => {
+    expect(declarationValue(parse(`a { x: ${value}; }`))).toMatchObject({ type: 'IfValue', _asCall: null });
+  });
+
+  it('reads a test as its authored text and sass() as a truth test', () => {
+    expect(bare(declarationValue(parse('a { x: if(media(width >= $w) and sass($a): 1px; else: 2px); }')))).toEqual({
+      type: 'IfValue',
+      branches: [
+        {
+          guard: {
+            g: 'and',
+            left: { g: 'css', value: { type: 'Any', src: 'media(width >= $w)' }, parens: 0 },
+            right: { g: 'truth', value: { type: 'Lookup', kind: 'var', name: 'a', raw: '@a', scope: 'live' }, parens: 0 },
+            word: 'and',
+            gluedAt: -1,
+            parens: 0
+          },
+          value: { type: 'Dimension', number: 1, unit: 'px', src: '1px' }
+        },
+        { guard: null, value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }
+      ]
+    });
   });
 
   it('keeps Sass if() for any other first argument', () => {
     expect(declarationValue(parse('a { x: if($a, 1px, 2px); }'))).toMatchObject({ type: 'IfValue' });
+  });
+
+  it('reads media() as a call outside an if() condition', () => {
+    expect(declarationValue(parse('a { x: media(print); y: if($a, media($b), 2px); }'))).toMatchObject({ type: 'FunctionCall', name: 'media' });
   });
 });
 

@@ -10,11 +10,8 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
-  isSelectorList,
   recoveredInTree,
-  selectorBranchComponents,
-  selectorBranchHasAmpersand,
-  selectorBranchHasInterp,
+  selectorStringComponents,
   withSourceSpan,
   withForgivenSelectorItems,
   withTriviaMap,
@@ -77,11 +74,12 @@ export interface ScssParsed {
   readonly recovered: readonly ScssRecoveredError[];
 }
 
-/** The document, or the first problem the grammar recovered from, raised. */
+/** The document, or the first error the grammar recovered from, raised; a warning does not stop it. */
 export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
   const { document, recovered } = parseRecoveringWith(grammar, input);
-  if (recovered[0] !== undefined) {
-    throw recovered[0];
+  const error = recovered.find(problem => !('severity' in problem));
+  if (error !== undefined) {
+    throw error;
   }
   return document;
 }
@@ -210,15 +208,5 @@ export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string
   const source = text.trim();
   const diagnostics: ScssRecoveredError[] = [];
   const result = run(entry, source, { trivia, state: { source, diagnostics } });
-  if (!result.ok || result.unconsumedFrom !== null || result.errors.length > 0 || diagnostics.length > 0 || !isSelectorList(result.value)) {
-    throw new TypeError('$selector: expected selector.');
-  }
-  const branches = result.value.selectors;
-  if (branches.some(selectorBranchHasInterp)) {
-    throw new TypeError('$selector: expected selector.');
-  }
-  if (branches.some(selectorBranchHasAmpersand)) {
-    throw new TypeError('$selector: Parent selectors aren\'t allowed here.');
-  }
-  return branches.map(selectorBranchComponents);
+  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
 }

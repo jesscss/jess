@@ -12,7 +12,7 @@
     "statements": 531
   },
   "packages/core/src/ast/emit-jess.ts#JessPrinter.node": {
-    "statements": 51
+    "statements": 49
   },
   "packages/core/src/ast/evaluator.ts#recoverCallFailure": {
     "params": 6

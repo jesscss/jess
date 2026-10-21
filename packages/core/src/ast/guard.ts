@@ -20,12 +20,12 @@
  */
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { ValueSlot } from './nodes.js';
+import type { IfValueBranch, ValueSlot } from './nodes.js';
 import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
 import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
-import type { GuardNode } from './guard-node.js';
+import { hasCssTest, type GuardNode } from './guard-node.js';
 
 /*
  * The guard node and its constructor live in `guard-node.ts`, which imports nothing
@@ -33,7 +33,7 @@ import type { GuardNode } from './guard-node.js';
  * load this evaluator and its value domain.
  */
 export type { GuardNode } from './guard-node.js';
-export { inParens } from './guard-node.js';
+export { hasCssTest, inParens } from './guard-node.js';
 
 /**
  * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.
@@ -187,7 +187,150 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
     }
     case 'default':
       return deps.isDefault();
+
+    /*
+     * A CSS `if()` test is the browser's to answer: an `IfValue` holding one is
+     * written as a CSS `if()` and never reaches here (`hasCssTest`).
+     */
+    case 'css':
+      return false;
   }
+}
+
+/** What is left of a CSS `if()` condition compile time cannot decide: as written, and without the parens written around it. */
+export interface CssCondition {
+  readonly text: string;
+  readonly bare: string;
+}
+
+const inConditionParens = (parens: number, bytes: string): string =>
+  parens === 0 ? bytes : `${'('.repeat(parens)}${bytes}${')'.repeat(parens)}`;
+
+/**
+ * A CSS `if()` condition decided as far as compile time can (ledger P38; Dart
+ * Sass's reading of a condition holding `sass()`): a part with no CSS test is
+ * decided ({@link evalGuard}); `and` drops its true operands and is false at
+ * its first false one, `or` drops its false operands and is true at its first
+ * true one, and neither reads past the operand that decides it; `not` of what
+ * is left is written `not`. A CSS test is written as `cssTest` writes it.
+ * Keywords are written as authored (ledger J20); an `and`/`or` left with one
+ * operand once a compile-time part is dropped is that operand, without the
+ * parens written around it, as Dart Sass writes it.
+ */
+export function partialGuard(
+  node: GuardNode,
+  deps: GuardEvalDeps,
+  cssTest: (value: ValueSlot) => MaybePromise<string>
+): MaybePromise<boolean | CssCondition> {
+  switch (node.g) {
+    case 'css': {
+      const bare = cssTest(node.value);
+      const left = (text: string): CssCondition => ({ text: inConditionParens(node.parens, text), bare: text });
+      return isThenable(bare) ? bare.then(left) : left(bare);
+    }
+    case 'not': {
+      if (!hasCssTest(node.inner)) {
+        break;
+      }
+      const inner = partialGuard(node.inner, deps, cssTest);
+      const negated = (value: boolean | CssCondition): boolean | CssCondition => {
+        if (typeof value === 'boolean') {
+          return !value;
+        }
+        const bare = `${node.word} ${value.text}`;
+        return { text: inConditionParens(node.parens, bare), bare };
+      };
+      return isThenable(inner) ? inner.then(negated) : negated(inner);
+    }
+    case 'and':
+    case 'or': {
+      if (!hasCssTest(node)) {
+        break;
+      }
+      const decides = node.g === 'or';
+      const operands: GuardNode[] = [];
+      const flatten = (operand: GuardNode): void => {
+        if (operand.g === node.g && operand.parens === 0) {
+          flatten(operand.left);
+          flatten(operand.right);
+        } else {
+          operands.push(operand);
+        }
+      };
+      flatten(node.left);
+      flatten(node.right);
+      const left: CssCondition[] = [];
+      const step = (index: number): MaybePromise<boolean | CssCondition> => {
+        const operand = operands[index];
+        if (operand === undefined) {
+          if (left.length === 0) {
+            return !decides;
+          }
+          const bare = left.length === 1 ? left[0]!.bare : left.map(condition => condition.text).join(` ${node.word} `);
+          return { text: inConditionParens(node.parens, bare), bare };
+        }
+        const decided = partialGuard(operand, deps, cssTest);
+        const next = (value: boolean | CssCondition): MaybePromise<boolean | CssCondition> => {
+          if (value === decides) {
+            return decides;
+          }
+          if (typeof value !== 'boolean') {
+            left.push(value);
+          }
+          return step(index + 1);
+        };
+        return isThenable(decided) ? decided.then(next) : next(decided);
+      };
+      return step(0);
+    }
+    default:
+      break;
+  }
+  return evalGuard(node, deps);
+}
+
+/** A branch of a CSS `if()` that compile time could not decide away, with what is left of its condition. */
+export interface KeptBranch {
+  readonly condition: string;
+  readonly value: ValueSlot;
+}
+
+/**
+ * [P38] The branches of an `if()` holding a CSS test (`media()`, `supports()`,
+ * `style()`, …), which only the browser can answer (css-values-5 §8.3). Each
+ * condition is decided as far as compile time can, in order ({@link
+ * partialGuard}), as Dart Sass decides a CSS `if()` with `sass()` conditions
+ * (owner 2026-10-19: "do what sass does"): a branch decided false is dropped;
+ * one decided true before any branch is kept is `take`n as the value, and
+ * after one is kept it is kept as `else`; the rest are kept with what is left
+ * of their conditions and `write`n as a CSS `if()`. No condition after a taken
+ * branch is read. No branch left is `take(undefined)`, no value.
+ */
+export function pickCssIfBranches<T>(
+  branches: readonly IfValueBranch[],
+  decide: (guard: GuardNode) => MaybePromise<boolean | CssCondition>,
+  take: (value: ValueSlot | undefined) => MaybePromise<T>,
+  write: (kept: readonly KeptBranch[]) => MaybePromise<T>
+): MaybePromise<T> {
+  const kept: KeptBranch[] = [];
+  const step = (index: number): MaybePromise<T> => {
+    const branch = branches[index];
+    if (branch === undefined) {
+      return kept.length === 0 ? take(undefined) : write(kept);
+    }
+    const decided = branch.guard === null ? true : decide(branch.guard);
+    const next = (condition: boolean | CssCondition): MaybePromise<T> => {
+      if (condition === true && kept.length === 0) {
+        return take(branch.value);
+      }
+      if (condition !== false) {
+        kept.push({ condition: condition === true ? 'else' : condition.text, value: branch.value });
+      }
+      return step(index + 1);
+    };
+    return isThenable(decided) ? decided.then(next) : next(decided);
+  };
+  return step(0);
 }
 
 /** Whether a VALUE node references `default()` — a `default()` call anywhere in the

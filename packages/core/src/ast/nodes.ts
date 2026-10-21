@@ -127,18 +127,20 @@ export interface Url extends SpanSlots {
 }
 
 /**
- * A selector-list CAPTURE value `selector(…)` (`.less` and `.jess`) — a STRUCTURED list of selector
- * branches captured for interpolation into a selector position. The parser owns
- * the branch split (grammar `SelectorList`); `branches` holds the canonical text
- * of each captured complex selector, so the serializer never re-scans bytes for
- * top-level commas. Interpolated into a selector, the branches expand structurally:
- * a WHOLE-selector position emits them as comma-separated header branches, a
- * COMPOUND position compacts them into a single `:is(…)` group. As a plain value
- * (never the intended use) it emits its `src`, the canonical `selector(…)` spelling.
+ * A selector-list CAPTURE `selector(…)` (`.less` and `.jess`): the selector list the
+ * parser read (grammar `SelectorList`), held as the canonical text of each branch
+ * (`branches`) and each branch's compound selectors and combinators (`components`,
+ * {@link selectorBranchComponents}), so nothing re-scans bytes. As a value it is the
+ * value `&` and Sass's `selector.parse()` are (ledgers P49, P50): a comma list of
+ * those space lists, written `.a > .b, .c`. Interpolated into a selector, the branches
+ * expand structurally: a WHOLE-selector position emits them as comma-separated header
+ * branches, a COMPOUND position compacts them into a single `:is(…)` group. `src` is
+ * the canonical `selector(…)` spelling.
  */
 export interface SelectorCapture {
   readonly type: 'SelectorCapture';
   readonly branches: readonly string[];
+  readonly components: readonly (readonly string[])[];
   readonly src: string;
 }
 
@@ -1680,8 +1682,8 @@ export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
 export const NULL_NODE: Null = { type: 'Null', src: 'null' };
 export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
 export const url = (value: ValueNode): Url => ({ type: 'Url', value, _s: NO_SPAN, _e: NO_SPAN });
-export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
-  ({ type: 'SelectorCapture', branches, src });
+export const selectorCapture = (branches: readonly string[], components: readonly (readonly string[])[], src: string): SelectorCapture =>
+  ({ type: 'SelectorCapture', branches, components, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
 export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
   ({ type: 'Quoted', src, value, quote, escaped, interp });

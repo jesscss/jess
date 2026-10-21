@@ -12,6 +12,7 @@ import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
   recoveredInTree,
+  selectorStringComponents,
   simpleSelectorIsPlaceholder,
   withSourceSpan,
   withForgivenSelectorItems,
@@ -226,6 +227,24 @@ function lineOptions(input: string, span: Span): {
 export interface JessParsed {
   readonly document: Stylesheet;
   readonly recovered: readonly JessRecoveredError[];
+}
+
+/**
+ * `text` read by the production `selector(…)` reads its argument with, as Sass's
+ * `selector.parse()` reads a selector string: each selector's compound selectors
+ * and combinators. A string that is not a whole selector list, or that holds `&`,
+ * throws with Dart Sass's message.
+ */
+export function parseSelectorWith(grammar: JessAstGrammar, text: string): string[][] {
+  const entry = grammar.PseudoSelectorList;
+  const trivia = grammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('Jess AST grammar is missing its selector-list entry.');
+  }
+  const source = text.trim();
+  const diagnostics: JessRecoveredError[] = [];
+  const result = run(entry, source, { trivia, state: { source, diagnostics, stars: [] } });
+  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
 }
 
 /** The document, or the first problem the grammar recovered from, raised. */

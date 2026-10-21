@@ -1,5 +1,5 @@
 import type { Deprecation } from '../deprecation.js';
-import { type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode, leadingSeparatorValueText } from './codes.js';
+import { type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode, leadingSeparatorValueText, resolveTemplate } from './codes.js';
 import { INJECTED_TEXT_NOTE, authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
 import {
   JessError,
@@ -614,6 +614,30 @@ export class LeadingSeparatorValueError extends SyntaxError {
     this.reason = text.reason;
     this.fix = text.fix;
     this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
+ * Sass's `if($condition, $if-true, $if-false)`, which Dart Sass deprecates in
+ * favor of CSS `if()` (its deprecation `if-function`). A parse WARNING: the
+ * call is still evaluated, as Dart Sass evaluates it.
+ */
+export class DeprecatedIfFunctionWarning extends SyntaxError {
+  readonly code = 'parse/deprecated-if-function' as const;
+  readonly severity = 'warn' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number) {
+    const text = resolveTemplate('parse/deprecated-if-function', {});
+    super(text.summary);
+    this.name = 'DeprecatedIfFunctionWarning';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
   }
 }
 
