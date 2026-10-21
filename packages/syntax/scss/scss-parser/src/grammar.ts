@@ -427,7 +427,7 @@ const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * General-enclosed retains its body as an interpolation template. Delimiters
  * recurse below; this leaf owns every other byte without a source reparse.
  */
-const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
+const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
 
 /*
  * Grammar-local copy of the leading pseudo-colon recognizer (byte-identical
@@ -1115,9 +1115,10 @@ const scssFactory = (g: ScssInputRules) => {
       gate: state => isIfTest(state),
       combinator: g.PunctuationValue
     },
-    sequence(
-      peek(literal(':')),
-      g.PunctuationValue
+    node<ValueNode>(
+      'PunctuationValue',
+      literal(':'),
+      () => any(':')
     )
   );
   const mediaTestOrCall = choice(
@@ -2265,7 +2266,7 @@ const scssFactory = (g: ScssInputRules) => {
    * In an import condition, CSS permits a single declaration without the
    * parentheses required by a general <supports-condition>
    * (`supports(display: grid)`), and it is written without them, as `.css`
-   * and Dart Sass write it.
+   * writes it (ledger P38: CSS comes out as `.css` writes it).
    */
   const ImportDeclaration = node<ValueNode>(
     'ImportDeclaration',
@@ -3575,37 +3576,39 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * A query's function (`style(--theme: #{$t})`, `foo(bar)`): its contents
    * are the `<general-enclosed>` template, so `#{…}` substitutes and a
-   * `$name` is text, as Dart Sass reads them; a `style()` query's value is a
+   * `$name` is text (ledger P13); a `style()` query's value is a
    * custom property's (ledger P38). Without `#{…}` it is the authored text it
    * always was. The routed one is css's slot for a function the media and
    * container terms' dispatch read, as Less binds it.
    */
   const QueryFunction = node<FunctionCall>(
     'QueryFunction',
-    sequence(
+    noTrivia(sequence(
       g.QueryFunctionName,
       literal('('),
-      noTrivia(g.GeneralTemplate),
+      g.GeneralTemplate,
       expect(
         literal(')'),
         ')'
       )
-    ),
+    )),
     (children, _fields, span) => withGluedKeywordSpan(funcCall(
       requireToken(children[0]).value,
       [queryFunctionContents(children[2])]
     ), span)
   );
+
+  /* The same function, its opener read by css's media and container term dispatch. */
   const RoutedQueryFunction = node<FunctionCall>(
     'QueryFunction',
-    sequence(
+    noTrivia(sequence(
       routed(),
-      noTrivia(g.GeneralTemplate),
+      g.GeneralTemplate,
       expect(
         literal(')'),
         ')'
       )
-    ),
+    )),
     (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(
       funcCall(
         requireToken(children[0]).value.slice(0, -1),
@@ -3631,7 +3634,7 @@ const scssFactory = (g: ScssInputRules) => {
    * FunctionCall(Any). Keep this public parse route to facts the canonical
    * AST actually owns; dynamic SCSS values require their own semantic model.
    * A declaration's value is a value position, so `$name` is the variable
-   * (owner 2026-10-20, ledger P13/P38), as Dart Sass reads it.
+   * (owner 2026-10-20, ledger P13/P38).
    */
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
@@ -3653,11 +3656,11 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const GeneralTemplateGroup = node<Interpolation>(
     'GeneralTemplateGroup',
-    choice(
+    noTrivia(choice(
       sequence(literal('('), g.GeneralTemplate, literal(')')),
       sequence(literal('['), g.GeneralTemplate, literal(']')),
       sequence(literal('{'), g.GeneralTemplate, literal('}'))
-    ),
+    )),
     interpolationFromTemplateChildren
   );
 
@@ -3684,14 +3687,21 @@ const scssFactory = (g: ScssInputRules) => {
     )),
     interpolationFromTemplateChildren
   );
+
+  /*
+   * `<general-enclosed>` contents as authored: text, a block comment, groups,
+   * strings and `#{…}`, every byte kept (`noTrivia`), so `foo(a (b) c)` is
+   * written as it stands.
+   */
   const GeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
-    many(choice(
+    noTrivia(many(choice(
       parser({ trivia: whitespace }, g.SassInterpolation),
       g.GeneralTemplateGroup,
       g.GeneralTemplateQuoted,
+      customValueBlockCommentRun,
       generalTemplateText
-    )),
+    ))),
     interpolationFromTemplateChildren
   );
   const Enclosed = node<FunctionCall | Block>(

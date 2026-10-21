@@ -229,7 +229,7 @@ describe('variables in an at-rule query\'s feature values', () => {
       .resolves.toBe('@supports (display: grid) {\n  .a {\n    b: c;\n  }\n}\n');
   });
 
-  /* A root CSS `@import`'s condition reads the variables declared before it, as Dart Sass does. */
+  /* A root CSS `@import` is evaluated where it stands, so its condition reads the variables declared before it. */
   it('scss: a variable in a root CSS import\'s supports() and media query', async () => {
     await expect(render('$d: grid;\n$bp: 600px;\n@import "a.css" supports(display: $d);\n@import "b.css" screen and (min-width: $bp);', '.scss'))
       .resolves.toBe('@import "a.css" supports(display: grid);\n@import "b.css" screen and (min-width: 600px);\n');
@@ -243,16 +243,28 @@ describe('variables in an at-rule query\'s feature values', () => {
       .resolves.toBe('@import "print.css" print and (min-width: 600px);\n.a {\n  b: c;\n}\n');
   });
 
-  /* A prelude name takes `${…}` (ledger P13 (a)); an SCSS one `#{…}`, as Dart Sass reads it. */
+  /* The hoisted import is the root one; the same partial imported in a rule is written there, as before. */
+  it('scss: a partial imported in a rule and at the root', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-css-import-placement-'));
+    writeFileSync(join(dir, '_print.scss'), '@import "print.css" print and (min-width: $bp);\n');
+    writeFileSync(join(dir, 'main.scss'), '$bp: 600px;\n.theme { $bp: 900px; @import "print"; }\n@import "print";\n');
+    await expect(new Compiler().render(join(dir, 'main.scss')))
+      .resolves.toBe('@import "print.css" print and (min-width: 600px);\n.theme {\n  @import "print.css" print and (min-width: 900px);\n}\n');
+  });
+
+  /* A prelude name takes the dialect's interpolation (ledger P13 (a)); a media feature reads it as `<general-enclosed>`. */
   it('scss: an interpolated feature name', async () => {
-    await expect(render('$f: min-width;\n@media (#{$f}: 600px) { .a { b: c; } }', '.scss'))
-      .resolves.toBe('@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n');
+    await expect(render('$f: min-width;\n$r: aspect-ratio;\n@media (#{$f}: 600px) { .a { b: c; } }\n@media (#{$r}: 16/9) { .a { b: c; } }', '.scss')).resolves.toBe(
+      '@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@media (aspect-ratio: 16 / 9) {\n  .a {\n    b: c;\n  }\n}\n'
+    );
   });
 
   it('.jess: an interpolated feature name', async () => {
-    await expect(render('$f: min-width;\n$p: display;\n@media (${f}: 600px) { .a { b: c; } }\n@supports (${p}: grid) { .a { b: c; } }', '.jess')).resolves.toBe(
+    await expect(render('$f: min-width;\n$p: display;\n$d: width;\n@media (${f}: 600px) { .a { b: c; } }\n@supports (${p}: grid) { .a { b: c; } }\n@container card (min-${d}: 400px) { .a { b: c; } }', '.jess')).resolves.toBe(
       '@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n'
       + '@supports (display: grid) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@container card (min-width: 400px) {\n  .a {\n    b: c;\n  }\n}\n'
     );
   });
 

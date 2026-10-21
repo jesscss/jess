@@ -3908,8 +3908,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A feature's name, which may be interpolated (`(${f}: 1px)`, `(min-${f}: 1px)`):
-   * a prelude name takes `${…}` (ledger P13 (a)).
+   * A container or supports feature's name, which may be interpolated
+   * (`(${f}: 1px)`, `(min-${f}: 1px)`): a prelude name takes `${…}` (ledger P13
+   * (a)). A media feature is read by css's media group, whose name is an
+   * identifier, so there `(${f}: 1px)` is `<general-enclosed>` (`GeneralDelim`).
    */
   const QueryFeatureName = node<JessQueryFeatureName>(
     'QueryFeatureName',
@@ -4115,9 +4117,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       gate: state => isTestValue(state),
       combinator: g.PunctuationValue
     },
-    sequence(
-      peek(literal(':')),
-      g.PunctuationValue
+    node<ValueNode>(
+      'PunctuationValue',
+      literal(':'),
+      () => any(':')
     )
   );
   const MediaGeneralValue = choice(

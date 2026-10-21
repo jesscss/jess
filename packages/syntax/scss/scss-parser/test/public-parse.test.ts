@@ -475,7 +475,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       }]
     });
 
-    /* A lone declaration is written without the parens it does not need, as `.css` and Dart Sass write it. */
+    /* A lone declaration is written without the parens it does not need, as `.css` writes it. */
     expect(simple).toMatchObject({
       rules: [{ prelude: { parts: [
         { type: 'Quoted', value: 'theme.css' },

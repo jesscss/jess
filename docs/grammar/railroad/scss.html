@@ -1281,7 +1281,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-GeneralDelim">
     <h2><a href="#rule-GeneralDelim">§</a> GeneralDelim</h2>
     <div class="diagram" data-rule="GeneralDelim"></div>
-    <div class="ebnf">GeneralDelim ::= PunctuationValue | &amp;&quot;:&quot; PunctuationValue</div>
+    <div class="ebnf">GeneralDelim ::= PunctuationValue | &quot;:&quot;</div>
   </section>
   <section class="rule" id="rule-mediaGroupContents">
     <h2><a href="#rule-mediaGroupContents">§</a> mediaGroupContents</h2>
@@ -1956,7 +1956,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-GeneralTemplate">
     <h2><a href="#rule-GeneralTemplate">§</a> GeneralTemplate</h2>
     <div class="diagram" data-rule="GeneralTemplate"></div>
-    <div class="ebnf">GeneralTemplate ::= (SassInterpolation | GeneralTemplateGroup | GeneralTemplateQuoted | /(?:[^#()\[\]{}'&quot;\\]|\\[\s\S]|#(?!\{))+/)*</div>
+    <div class="ebnf">GeneralTemplate ::= (SassInterpolation | GeneralTemplateGroup | GeneralTemplateQuoted | COMMENT | /(?:[^#()\[\]{}'&quot;\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/)*</div>
   </section>
   <section class="rule" id="rule-GeneralTemplateGroup">
     <h2><a href="#rule-GeneralTemplateGroup">§</a> GeneralTemplateGroup</h2>
@@ -2746,7 +2746,7 @@ svg.railroad-diagram rect {
   { name: "MediaCondition", dsl: function(){ return Diagram(Sequence(NonTerminal("MediaInParens"), ZeroOrMore(Choice(0, Sequence(NonTerminal("QueryAndOr"), Optional(NonTerminal("MediaInParens"))), NonTerminal("GluedConnectiveFunction"))))); } },
   { name: "MediaFeatureContents", dsl: function(){ return Diagram(Choice(0, Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, NonTerminal("MediaInParens"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))), NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))), NonTerminal("queryFunctionBound"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))))), Sequence(NonTerminal("QueryValue"), NonTerminal("queryBoundTail")))); } },
   { name: "MediaGeneralValue", dsl: function(){ return Diagram(NonTerminal("ValueSequence")); } },
-  { name: "GeneralDelim", dsl: function(){ return Diagram(Choice(0, NonTerminal("PunctuationValue"), Sequence(Sequence(Comment("peek"), Terminal(":")), NonTerminal("PunctuationValue")))); } },
+  { name: "GeneralDelim", dsl: function(){ return Diagram(Choice(0, NonTerminal("PunctuationValue"), Terminal(":"))); } },
   { name: "mediaGroupContents", dsl: function(){ return Diagram(Sequence(Optional(Choice(0, NonTerminal("MediaCondition"), NonTerminal("MediaFeatureContents"))), NonTerminal("queryGroupRest"))); } },
   { name: "queryGroupRest", dsl: function(){ return Diagram(Sequence(ZeroOrMore(Choice(0, NonTerminal("ValueSequence"), Terminal(","), Terminal("/"), Terminal("!"), Terminal(";"), NonTerminal("CurlyValue"), NonTerminal("GeneralDelim"))), Terminal(")"))); } },
   { name: "styleGroupContents", dsl: function(){ return Diagram(Sequence(Optional(Choice(0, Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(NonTerminal("IdentToken"), Optional(Terminal("(")))), Choice(0, Sequence(NonTerminal("RoutedKeyword"), Optional(NonTerminal("StyleInParens"))), Skip(), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))), NonTerminal("queryFunctionBound"), NonTerminal("StyleFeature"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))))), NonTerminal("StyleCondition"))), NonTerminal("queryGroupRest"))); } },
@@ -2881,7 +2881,7 @@ svg.railroad-diagram rect {
   { name: "WhileRule", dsl: function(){ return Diagram(Sequence(NonTerminal("IfCondition"), NonTerminal("IfBody"))); } },
   { name: "DiagnosticDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("Value"), Terminal(";"))); } },
   { name: "SupportsAtom", dsl: function(){ return Diagram(Choice(0, NonTerminal("VariableReference"), NonTerminal("LiteralQuoted"), NonTerminal("Color"), NonTerminal("Dimension"), NonTerminal("CustomPropertyValue"), NonTerminal("Keyword"))); } },
-  { name: "GeneralTemplate", dsl: function(){ return Diagram(ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), NonTerminal("GeneralTemplateGroup"), NonTerminal("GeneralTemplateQuoted"), Terminal("/(?:[^#()\\[\\]{}'\"\\\\]|\\\\[\\s\\S]|#(?!\\{))+/")))); } },
+  { name: "GeneralTemplate", dsl: function(){ return Diagram(ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), NonTerminal("GeneralTemplateGroup"), NonTerminal("GeneralTemplateQuoted"), Terminal("COMMENT"), Terminal("/(?:[^#()\\[\\]{}'\"\\\\/]|\\\\[\\s\\S]|#(?!\\{)|\\/(?!\\*))+/")))); } },
   { name: "GeneralTemplateGroup", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("GeneralTemplate"), Terminal(")")), Sequence(Terminal("["), NonTerminal("GeneralTemplate"), Terminal("]")), Sequence(Terminal("{"), NonTerminal("GeneralTemplate"), Terminal("}")))); } },
   { name: "GeneralTemplateQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), Terminal("/(?:[^\"\\\\#]|\\\\[\\s\\S]|#(?!\\{))+/"))), Terminal("\"")), Sequence(Terminal("'"), ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), Terminal("/(?:[^'\\\\#]|\\\\[\\s\\S]|#(?!\\{))+/"))), Terminal("'")))); } },
   { name: "SupportsNotKeyword", dsl: function(){ return Diagram(NonTerminal("QueryNot")); } },
