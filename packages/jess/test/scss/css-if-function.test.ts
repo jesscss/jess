@@ -8,12 +8,20 @@ import { Compiler } from '../../src/index.js';
  * .scss, in these cases, i think do what sass does, and parse to the equivalent
  * structure that would be intepreted the same way in .jess".
  *
- * Every expectation is Dart Sass 1.101.7's output (`sass --no-source-map`, the
+ * Which branch is taken is Dart Sass 1.101.7's (`sass --no-source-map`, the
  * `sass` devDependency). The inputs are sass-spec's (`spec/expressions/if/`) or
  * the shapes its README and the CSS spec use: a branch list whose conditions are
  * CSS tests (`media()`, `supports()`, `style()`, any other function) is written
  * out, a `sass()` condition is decided at compile time, and Sass's own
  * `if($condition, $if-true, $if-false)` still works, with a deprecation warning.
+ *
+ * How a CSS `if()` is written is Jess's, not Dart Sass's. Owner 2026-10-20,
+ * shown `.css` writing `if(else: 2px;)` where Dart Sass writes `2px`: "oh
+ * weird... yeah in CSS it comes out as written". A CSS `if()` is written as
+ * `.css` writes it in every dialect, and only a compile-time condition (`sass()`
+ * here, `$( … )` in `.jess`) changes it: its branch is taken or dropped, and
+ * the branches left keep their text, joined by `;`, with the trailing `;` the
+ * `if()` was written with.
  */
 const render = async (source: string, extension: '.scss' | '.jess' = '.scss'): Promise<string> =>
   new Compiler({}).renderString(source, { extension });
@@ -21,7 +29,7 @@ const render = async (source: string, extension: '.scss' | '.jess' = '.scss'): P
 const result = async (source: string, extension: '.scss' | '.jess' = '.scss') =>
   new Compiler({}).renderToResult({ source, filePath: `/proj/if${extension}` }, { suppressWarnings: true });
 
-/** A CSS `if()` with no `sass()` condition is written as Dart Sass writes it. */
+/** A CSS `if()` with no `sass()` condition is written as `.css` writes it. */
 const written: ReadonlyArray<readonly [string, string, string]> = [
   ['media() branches', '.a { width: if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px); }', '.a {\n  width: if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px);\n}\n'],
   ['a media() range', '.a { x: if(media(width >= 600px): 1px; else: 2px); }', '.a {\n  x: if(media(width >= 600px): 1px; else: 2px);\n}\n'],
@@ -35,9 +43,11 @@ const written: ReadonlyArray<readonly [string, string, string]> = [
   ['a variable in a test, which is not substituted', '$w: 10px; .a { x: if(media(width >= $w): 1px; else: 2px); }', '.a {\n  x: if(media(width >= $w): 1px; else: 2px);\n}\n'],
   ['an interpolation in a test, which is', '$w: 10px; .a { x: if(media(width >= #{$w}): 1px; else: 2px); }', '.a {\n  x: if(media(width >= 10px): 1px; else: 2px);\n}\n'],
   ['a user function named media, which a test does not call', '@function media($x) { @return 99; } .a { x: if(media(print): 1px; else: 2px); y: media(print); }', '.a {\n  x: if(media(print): 1px; else: 2px);\n  y: 99;\n}\n'],
-  ['an `else` alone', 'a {b: if(else: c)}', 'a {\n  b: c;\n}\n'],
-  ['two `else`s', 'a {b: if(else: c; else: d)}', 'a {\n  b: c;\n}\n'],
-  ['a trailing `;`', 'a {b: if(css(): c; else: d;)}', 'a {\n  b: if(css(): c; else: d);\n}\n'],
+
+  /* Dart Sass writes `c` for these two and drops the trailing `;`; Jess writes them as `.css` does (owner 2026-10-20, above). */
+  ['an `else` alone', 'a {b: if(else: c)}', 'a {\n  b: if(else: c);\n}\n'],
+  ['two `else`s', 'a {b: if(else: c; else: d)}', 'a {\n  b: if(else: c; else: d);\n}\n'],
+  ['a trailing `;`', 'a {b: if(css(): c; else: d;)}', 'a {\n  b: if(css(): c; else: d;);\n}\n'],
   ['padding', 'a {b: if( css() : c ; else : d )}', 'a {\n  b: if(css(): c; else: d);\n}\n']
 ];
 
@@ -48,6 +58,9 @@ const resolved: ReadonlyArray<readonly [string, string, string]> = [
   ['sass() of a variable', '$a: true; b {c: if(sass($a): d; else: e)}', 'b {\n  c: d;\n}\n'],
   ['a theme flag', '$dark: false; .a { color: if(sass($dark): white; else: black); }', '.a {\n  color: black;\n}\n'],
   ['sass() false before a media() branch', '.a { x: if(sass(false): a; media(print): b; else: c); }', '.a {\n  x: if(media(print): b; else: c);\n}\n'],
+
+  /* Dart Sass drops the trailing `;`; Jess keeps it (owner 2026-10-20, above). */
+  ['a theme flag before a media() branch, with the trailing `;`', '$dark: false; .a { color: if(sass($dark): white; media(print): black; else: gray;); }', '.a {\n  color: if(media(print): black; else: gray;);\n}\n'],
   ['sass() true after a test', 'a {b: if(css(1): c; sass(true): d; else: e)}', 'a {\n  b: if(css(1): c; else: d; else: e);\n}\n'],
   ['sass() false with no other branch', 'a {b: if(sass(false): c)}', ''],
   ['not sass()', 'a {b: if(not sass(false): c; else: d)}', 'a {\n  b: c;\n}\n'],
@@ -155,8 +168,30 @@ describe('jess: CSS if()', () => {
     ['a variable', '$dark: false;\n.a { color: if($($dark): white; else: black); }', '.a {\n  color: black;\n}\n'],
     ['a condition before a media() branch', '.a { x: if($(false): a; media(print): b; else: c); }', '.a {\n  x: if(media(print): b; else: c);\n}\n'],
     ['a condition and a test', '$a: true;\n.a { x: if($($a) and media(print): a; else: b); }', '.a {\n  x: if(media(print): a; else: b);\n}\n'],
-    ['a test in a value', '$w: 2px;\n.a { x: if(media(print): $($w * 2); else: 1px); }', '.a {\n  x: if(media(print): 4px; else: 1px);\n}\n']
+    ['a test in a value', '$w: 2px;\n.a { x: if(media(print): $($w * 2); else: 1px); }', '.a {\n  x: if(media(print): 4px; else: 1px);\n}\n'],
+
+    /* A written CSS `if()` is kept as written in math, as `var(--x)` is (ledger P45: it stopped the compile). */
+    ['a CSS if() in math', '$x: if(media(print): 1px; else: 3px);\n.a { x: $($x * 2); }', '.a {\n  x: if(media(print): 1px; else: 3px) * 2;\n}\n']
   ])('resolves %s', async (_name, source, expected) => {
     await expect(render(source, '.jess')).resolves.toBe(expected);
+  });
+});
+
+/*
+ * One rule in every dialect (owner 2026-10-20): a CSS `if()` with no
+ * compile-time condition is written as `.css` writes it, nested and compressed.
+ */
+const sassOnly = new Set(['branch values Sass computes', 'a variable in a test, which is not substituted', 'an interpolation in a test, which is', 'a user function named media, which a test does not call']);
+
+describe('css, scss and jess: a CSS if() is written alike', () => {
+  it.each(written.filter(([name]) => !sassOnly.has(name)))('%s', async (_name, source, expected) => {
+    for (const compress of [false, true]) {
+      const outputs = await Promise.all((['.css', '.scss', '.jess'] as const).map(extension =>
+        new Compiler(compress ? { output: { compress } } : {}).renderString(source, { extension })));
+      expect(outputs).toEqual([outputs[0], outputs[0], outputs[0]]);
+      if (!compress) {
+        expect(outputs[0]).toBe(expected);
+      }
+    }
   });
 });

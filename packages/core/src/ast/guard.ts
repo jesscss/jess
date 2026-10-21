@@ -25,7 +25,7 @@ import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-ev
 import { makeList } from './value-factory.js';
 import { holdsKeptOperation } from './value-operate.js';
 import { isTruthy } from './value-truth.js';
-import { hasCssTest, type GuardNode } from './guard-node.js';
+import { hasCssTest, onlyCssTests, type GuardNode } from './guard-node.js';
 
 /*
  * The guard node and its constructor live in `guard-node.ts`, which imports nothing
@@ -289,6 +289,9 @@ export function partialGuard(
   return evalGuard(node, deps);
 }
 
+/** [P38] A branch as written, `condition: value`; an omitted value keeps the bare colon (`cond:`). */
+export const writtenBranch = (condition: string, value: string): string => (value === '' ? `${condition}:` : `${condition}: ${value}`);
+
 /** A branch of a CSS `if()` that compile time could not decide away, with what is left of its condition. */
 export interface KeptBranch {
   readonly condition: string;
@@ -296,15 +299,17 @@ export interface KeptBranch {
 }
 
 /**
- * [P38] The branches of an `if()` holding a CSS test (`media()`, `supports()`,
- * `style()`, …), which only the browser can answer (css-values-5 §8.3). Each
- * condition is decided as far as compile time can, in order ({@link
- * partialGuard}), as Dart Sass decides a CSS `if()` with `sass()` conditions
- * (owner 2026-10-19: "do what sass does"): a branch decided false is dropped;
- * one decided true before any branch is kept is `take`n as the value, and
- * after one is kept it is kept as `else`; the rest are kept with what is left
- * of their conditions and `write`n as a CSS `if()`. No condition after a taken
- * branch is read. No branch left is `take(undefined)`, no value.
+ * [P38] The branches of a CSS `if()` (`media()`, `supports()`, `style()`, …
+ * tests, which only the browser can answer, css-values-5 §8.3). With no
+ * compile-time condition every branch is kept, `else` too, and the `if()` is
+ * `write`n as `.css` writes it (owner 2026-10-20: "yeah in CSS it comes out as
+ * written"). Otherwise each condition is decided as far as compile time can,
+ * in order ({@link partialGuard}), as Dart Sass decides a CSS `if()` with
+ * `sass()` conditions (owner 2026-10-19: "do what sass does"): a branch decided
+ * false is dropped; one decided true before any branch is kept is `take`n as
+ * the value, and after one is kept it is kept as `else`; the rest are kept with
+ * what is left of their conditions and `write`n as a CSS `if()`. No condition
+ * after a taken branch is read. No branch left is `take(undefined)`, no value.
  */
 export function pickCssIfBranches<T>(
   branches: readonly IfValueBranch[],
@@ -313,6 +318,7 @@ export function pickCssIfBranches<T>(
   write: (kept: readonly KeptBranch[]) => MaybePromise<T>
 ): MaybePromise<T> {
   const kept: KeptBranch[] = [];
+  const settles = branches.some(branch => branch.guard !== null && !onlyCssTests(branch.guard));
   const step = (index: number): MaybePromise<T> => {
     const branch = branches[index];
     if (branch === undefined) {
@@ -320,7 +326,7 @@ export function pickCssIfBranches<T>(
     }
     const decided = branch.guard === null ? true : decide(branch.guard);
     const next = (condition: boolean | CssCondition): MaybePromise<T> => {
-      if (condition === true && kept.length === 0) {
+      if (condition === true && kept.length === 0 && settles) {
         return take(branch.value);
       }
       if (condition !== false) {

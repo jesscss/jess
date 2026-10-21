@@ -1143,8 +1143,10 @@ function ifCondition(value: ValueSlot): GuardNode {
  */
 function lowerCssIf(groups: readonly CallGroup[]): IfValue | undefined {
   const branches: IfValueBranch[] = [];
+  let trailingSemicolon = false;
   for (const [index, group] of groups.entries()) {
     if (group.lead === undefined && index === groups.length - 1 && index > 0) {
+      trailingSemicolon = true;
       continue;
     }
     if (group.lead === undefined || group.branch === undefined) {
@@ -1156,7 +1158,7 @@ function lowerCssIf(groups: readonly CallGroup[]): IfValue | undefined {
     });
   }
   const [first, ...others] = branches;
-  return first === undefined ? undefined : ifValue([first, ...others]);
+  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon);
 }
 
 /**

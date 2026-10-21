@@ -62,6 +62,21 @@ export type GuardNode =
 /** `guard` inside one more paren group the author wrote around it (same shape, so the same hidden class). */
 export const inParens = (guard: GuardNode): GuardNode => ({ ...guard, parens: guard.parens + 1 });
 
+/** Whether a guard tree is CSS `if()` tests alone, joined by `and`, `or` and `not`: nothing in it is decided at compile time. */
+export function onlyCssTests(node: GuardNode): boolean {
+  switch (node.g) {
+    case 'css':
+      return true;
+    case 'and':
+    case 'or':
+      return onlyCssTests(node.left) && onlyCssTests(node.right);
+    case 'not':
+      return onlyCssTests(node.inner);
+    default:
+      return false;
+  }
+}
+
 /** Whether a guard tree holds a CSS `if()` test, which leaves it undecided at compile time. */
 export function hasCssTest(node: GuardNode): boolean {
   switch (node.g) {
