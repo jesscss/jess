@@ -111,18 +111,9 @@ const keywordCase: ReadonlyArray<readonly [string, string, string]> = [
 ];
 
 describe('an upper-case keyword between tests', () => {
-  it.each(keywordCase)('%s is written as authored in css, less and jess', async (_name, source, expected) => {
-    const outputs = await Promise.all((['.css', '.less', '.jess'] as const).map(extension => render(source, extension)));
+  it.each(keywordCase)('%s is written as authored in every dialect', async (_name, source, expected) => {
+    const outputs = await Promise.all(DIALECTS.map(extension => render(source, extension)));
     expect(outputs).toEqual(outputs.map(() => expected));
-  });
-
-  /*
-   * SCSS reads the condition as a Sass expression, whose `and` / `or` operation
-   * keeps no authored spelling, so it writes `and` / `or`. Keeping it needs the
-   * spelling on the operation or a CSS-condition production of its own.
-   */
-  it.fails.each(keywordCase)('%s is written as authored in scss', async (_name, source, expected) => {
-    await expect(render(source, '.scss')).resolves.toBe(expected);
   });
 });
 
@@ -136,6 +127,13 @@ const variables: ReadonlyArray<readonly [Extension, string]> = [
   ['.jess', '$bp: 600px;\n$d: grid;\n.a { width: if(media(width >= ${bp}): 50%; else: 100%); display: if(supports(display: ${d}): $d; else: block); }']
 ];
 
+/* An interpolation glued to the unit after it. */
+const unitVariables: ReadonlyArray<readonly [Extension, string]> = [
+  ['.less', '@bp: 600;\n.a { width: if(media(width >= @{bp}px): 50%; else: 100%); }'],
+  ['.scss', '$bp: 600;\n.a { width: if(media(width >= #{$bp}px): 50%; else: 100%); }'],
+  ['.jess', '$bp: 600;\n.a { width: if(media(width >= ${bp}px): 50%; else: 100%); }']
+];
+
 /* A media query's own groups are the same value position. */
 const groupedVariables: ReadonlyArray<readonly [Extension, string]> = [
   ['.less', '@sm: 600px;\n@md: 900px;\n.a { width: if(media((min-width: @sm) and (max-width: @{md})): 50%; else: 100%); }'],
@@ -144,15 +142,21 @@ const groupedVariables: ReadonlyArray<readonly [Extension, string]> = [
 ];
 
 describe('variables in media() and supports() tests', () => {
-  it.each(groupedVariables.filter(([extension]) => extension !== '.less'))('%s in a group %s', async (extension, source) => {
+  it.each(groupedVariables)('%s in a group %s', async (extension, source) => {
     await expect(render(source, extension))
       .resolves.toBe('.a {\n  width: if(media((min-width: 600px) and (max-width: 900px)): 50%; else: 100%);\n}\n');
   });
 
-  /* Less writes a media test's `and`-joined groups without their parens (`media(min-width: 600px and max-width: 900px)`), with or without a variable. */
-  it.fails.each(groupedVariables.filter(([extension]) => extension === '.less'))('%s in a group %s', async (extension, source) => {
+  it('keeps a media test\'s groups in every dialect', async () => {
+    const source = '.a { width: if(media((min-width: 600px) and (max-width: 900px)): 50%; else: 100%); }';
+    const outputs = await Promise.all(DIALECTS.map(extension => render(source, extension)));
+    expect(outputs).toEqual(DIALECTS.map(() => '.a {\n  width: if(media((min-width: 600px) and (max-width: 900px)): 50%; else: 100%);\n}\n'));
+  });
+
+  /* An interpolation glued to a unit is one value, as the dialect's interpolation splices it (`${bp}px` with `$bp: 600` is `600px`). */
+  it.each(unitVariables)('%s %s', async (extension, source) => {
     await expect(render(source, extension))
-      .resolves.toBe('.a {\n  width: if(media((min-width: 600px) and (max-width: 900px)): 50%; else: 100%);\n}\n');
+      .resolves.toBe('.a {\n  width: if(media(width >= 600px): 50%; else: 100%);\n}\n');
   });
 
   it.each(variables)('%s %s', async (extension, source) => {
@@ -175,5 +179,81 @@ describe('style() tests', () => {
   it.each(styleValues)('%s %s', async (extension, source, test) => {
     await expect(render(source, extension))
       .resolves.toBe(`.card {\n  background: if(${test}: #222; else: white);\n}\n`);
+  });
+});
+
+/**
+ * The same value position in an at-rule prelude: a `@media`, `@container` or
+ * `@supports` feature's value takes both of its dialect's spellings (owner
+ * 2026-10-20, above). A name in the prelude still takes interpolation only.
+ */
+const preludeVariables: ReadonlyArray<readonly [Extension, string]> = [
+  ['.less', '@bp: 600px;\n@d: grid;\n@media (min-width: @bp) { .a { b: c; } }\n@container card (width >= @{bp}) { .a { b: c; } }\n@supports (display: @d) { .a { b: c; } }'],
+  ['.less', '@bp: 600px;\n@d: grid;\n@media (min-width: @{bp}) { .a { b: c; } }\n@container card (width >= @bp) { .a { b: c; } }\n@supports (display: @{d}) { .a { b: c; } }'],
+  ['.scss', '$bp: 600px;\n$d: grid;\n@media (min-width: #{$bp}) { .a { b: c; } }\n@container card (width >= $bp) { .a { b: c; } }\n@supports (display: #{$d}) { .a { b: c; } }'],
+  ['.jess', '$bp: 600px;\n$d: grid;\n@media (min-width: $bp) { .a { b: c; } }\n@container card (width >= ${bp}) { .a { b: c; } }\n@supports (display: $d) { .a { b: c; } }'],
+  ['.jess', '$bp: 600px;\n$d: grid;\n@media (min-width: ${bp}) { .a { b: c; } }\n@container card (width >= $bp) { .a { b: c; } }\n@supports (display: ${d}) { .a { b: c; } }']
+];
+
+const preludeUnitVariables: ReadonlyArray<readonly [Extension, string]> = [
+  ['.less', '@bp: 600;\n@media (min-width: @{bp}px) { .a { b: c; } }'],
+  ['.scss', '$bp: 600;\n@media (min-width: #{$bp}px) { .a { b: c; } }'],
+  ['.jess', '$bp: 600;\n@media (min-width: ${bp}px) { .a { b: c; } }']
+];
+
+describe('variables in an at-rule query\'s feature values', () => {
+  it.each(preludeVariables)('%s %s', async (extension, source) => {
+    await expect(render(source, extension)).resolves.toBe(
+      '@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@container card (width >= 600px) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@supports (display: grid) {\n  .a {\n    b: c;\n  }\n}\n'
+    );
+  });
+
+  it.each(preludeUnitVariables)('%s %s', async (extension, source) => {
+    await expect(render(source, extension)).resolves.toBe('@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n');
+  });
+
+  it('scss: a bare variable in a media and container feature value', async () => {
+    await expect(render('$bp: 600px;\n@media (min-width: $bp) { .a { b: c; } }\n@container card (width >= #{$bp}) { .a { b: c; } }', '.scss')).resolves.toBe(
+      '@media (min-width: 600px) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@container card (width >= 600px) {\n  .a {\n    b: c;\n  }\n}\n'
+    );
+  });
+
+  /*
+   * SCSS writes a bare `$d` in an `@supports` declaration's value as text.
+   * Reading it as the variable reaches the same declaration in a root
+   * `@import "a.css" supports((display: $d))`, which SCSS evaluates where a
+   * root variable is not found (`@import "a.css" screen and (min-width: $d)`
+   * fails the same way today).
+   */
+  it.fails('scss: a bare variable in a supports declaration value', async () => {
+    await expect(render('$d: grid;\n@supports (display: $d) { .a { b: c; } }', '.scss'))
+      .resolves.toBe('@supports (display: grid) {\n  .a {\n    b: c;\n  }\n}\n');
+  });
+
+  /* A container style query's value is a custom property's, as a `style()` test's is (ledger P38). */
+  it('.jess: a container style query substitutes interpolation only', async () => {
+    await expect(render('$t: dark;\n@container style(--theme: ${t}) { .a { b: c; } }\n@container style(--theme: $t) { .a { b: c; } }', '.jess')).resolves.toBe(
+      '@container style(--theme: dark) {\n  .a {\n    b: c;\n  }\n}\n'
+      + '@container style(--theme: $t) {\n  .a {\n    b: c;\n  }\n}\n'
+    );
+  });
+});
+
+/**
+ * An upper-case `AND` / `OR` outside a CSS `if()` condition is unchanged: it is
+ * Sass's operator there, whatever its case (sass-spec `expressions/if`:
+ * `if(sass(true) AND sass(true): c)` decides).
+ */
+describe('scss: AND / OR outside a CSS if() condition', () => {
+  it('decides a sass() condition joined by AND', async () => {
+    await expect(render('a {b: if(sass(true) AND sass(true): c)}', '.scss')).resolves.toBe('a {\n  b: c;\n}\n');
+  });
+
+  it('is Sass\'s operator in a plain value and in a Sass if()', async () => {
+    await expect(render('$a: true;\n$b: false;\n.a { x: $a AND $b; y: if($a OR $b, yes, no); }', '.scss'))
+      .resolves.toBe('.a {\n  x: false;\n  y: yes;\n}\n');
   });
 });

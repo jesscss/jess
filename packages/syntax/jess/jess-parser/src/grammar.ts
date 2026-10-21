@@ -142,6 +142,7 @@ type JessRules = {
   ReferenceCallTail: Combinator<JessReferenceTail>;
   DollarValue: Combinator<ValueNode>;
   DollarBrace: Combinator<Interpolation>;
+  DollarBraceValue: Combinator<Interpolation>;
   ExpressionDollarBrace: Combinator<ExpressionFact>;
   DollarInterp: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
@@ -3424,7 +3425,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
      */
     {
       gate: state => isTestValue(state),
-      combinator: g.DollarBrace
+      combinator: g.DollarBraceValue
     }
   );
   const ValueAtom = node<ValueNode>(
@@ -3805,7 +3806,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * Header URLs deliberately retain the CSS-only URL payload. The normal Jess
    * value route replaces this child with its dynamic URL override, but media,
-   * supports, and descriptor headers are not value positions. Routing after the
+   * supports, and descriptor headers keep CSS's URL. Routing after the
    * shared glued opener keeps that narrow override local without a competing
    * `Url` / `Call` / `Keyword` choice.
    */
@@ -3840,6 +3841,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `${name}` as a value, glued to the text after it as one interpolation
+   * (`${bp}px` with `$bp: 600` is `600px`), as Less's `@{bp}px` and SCSS's
+   * `#{$bp}px` splice.
+   */
+  const DollarBraceValue = node<Interpolation>(
+    'DollarBraceValue',
+    noTrivia(sequence(
+      g.DollarBrace,
+      many(choice(
+        interpolatedValueTail,
+        g.DollarBrace
+      ))
+    )),
+    children => children.length === 1
+      ? requireInterpolation(children[0])
+      : interpolationFromTemplateChildren(children)
+  );
+
+  /*
+   * A query feature's value is a value position, in an at-rule prelude and in
+   * a `media()` or `supports()` test alike (owner 2026-10-20: "we resolved in
+   * Less v5 that it's in a 'value position' in the at-rule prelude, so
+   * intuitively it can be $bp or ${bp}"), so it may be a variable, `$name` or
+   * `${name}`. A name in the prelude takes `${…}` only (ledger P13).
+   */
+  const queryValueAtom = choice(
+    g.MathDollarValue,
+    g.DollarBraceValue,
+    g.HeaderValueAtom
+  );
+
+  /*
    * A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
    * `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The constrained header
    * atoms carry no slash of their own, so the query value takes the ratio tail
@@ -3847,22 +3880,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * for `:` and the range comparisons. Left-factored on the atom: the no-slash
    * majority takes an absent optional tail instead of a doomed ratio arm.
    */
-  /*
-   * A `media()` or `supports()` test's feature value is a value position
-   * (owner 2026-10-20: "intuitively it can be $bp or ${bp}"), so there it may
-   * be a variable, `$name` or `${name}`; in an at-rule prelude it is a header
-   * atom (ledger P13).
-   */
-  const queryValueAtom = choice(
-    {
-      gate: state => isTestValue(state),
-      combinator: choice(
-        g.DollarValue,
-        g.DollarBrace
-      )
-    },
-    g.HeaderValueAtom
-  );
   const QueryValue = node<ValueNode>(
     'QueryValue',
     sequence(
@@ -4069,7 +4086,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * A media `<general-enclosed>` group's component values, read as header
    * terms rather than values: an at-rule prelude is an identifier position at
    * every depth (ledger P13/P16), where `${…}` is the only `$` form, so a bare
-   * `$name` there is rejected as it is in the rest of the header. A group
+   * `$name` there is rejected; only a feature's value takes it. A group
    * inside a CSS `if()` `media()` test is a value position (owner 2026-10-20),
    * so there it reads values, as css's slot does (`media((width >= $bp))`).
    */
@@ -4243,7 +4260,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * The opener is one token so `style(` cannot split across whitespace, and the
    * argument is the same structural custom-property comparison the other
    * dialects build — `funcCall('style', [Operation(':', <name>, <value>)])`,
-   * matching Less rather than an opaque header slice.
+   * matching Less rather than an opaque header slice. Its value is a custom
+   * property's, read with the custom-value parts a `style()` test reads
+   * (`StyleFeature`; ledger P38), so `${…}` substitutes and a `$name` is text.
    */
   const jessStyleFunctionOpener = token(noTrivia(sequence(
     word(
@@ -4259,7 +4278,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       jessStyleFunctionOpener,
       g.CustomPropertyName,
       literal(':'),
-      g.QueryValue,
+      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
       literal(')')
     ),
     children => funcCall(
@@ -4267,7 +4286,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       [operation(
         ':',
         keyword(requireToken(children[1]).value),
-        requireValueNode(children[3]),
+        customValueFromChildren(children.slice(3, -1)),
         false,
         cssBaseMathOutsideParens(':')
       )]
@@ -4525,17 +4544,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * `@supports` is not a generic CSS header: its condition grammar owns every
-   * parenthesis and logical connective. Keep this interpolation-free until a
-   * typed model exists for general-enclosed forms such as `selector(...)`.
-   * In particular, do not hide their arguments in Any/raw header bytes.
+   * parenthesis and logical connective. Do not hide the arguments of
+   * general-enclosed forms such as `selector(...)` in Any/raw header bytes.
    * A supported declaration's value is the same plain CSS component value a
    * media feature takes — `@supports (width: min(1px, 2px))` and
    * `@supports (background: url(a.png))` are ordinary CSS. A third private copy
    * of the leaf set is what let those degrade to opaque general-enclosed text.
+   * It is the same value position, so it takes `$name` and `${name}` as a
+   * media feature's value does.
    */
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
-    g.HeaderValueAtom,
+    queryValueAtom,
     children => requireValueNode(children[0])
   );
 
@@ -6357,6 +6377,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ReferenceCallTail,
     DollarValue,
     DollarBrace,
+    DollarBraceValue,
     ExpressionDollarBrace,
     DollarInterp,
     ExpressionDollarInterp,
