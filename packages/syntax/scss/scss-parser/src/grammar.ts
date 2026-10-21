@@ -678,7 +678,7 @@ const scssFactory = (g: ScssInputRules) => {
       sequence(
         literal('"'),
         many(choice(
-          g.SassInterpolation,
+          parser({ trivia: whitespace }, g.SassInterpolation),
           regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('"')
@@ -686,7 +686,7 @@ const scssFactory = (g: ScssInputRules) => {
       sequence(
         literal('\''),
         many(choice(
-          g.SassInterpolation,
+          parser({ trivia: whitespace }, g.SassInterpolation),
           regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('\'')
@@ -814,7 +814,7 @@ const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         literal('('),
         optional(valueTrivia),
-        g.Value,
+        parser({ trivia: whitespace }, g.Value),
         optional(valueTrivia),
         literal(')')
       ))
@@ -1154,7 +1154,7 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       many(choice(
         regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
-        g.SassInterpolation
+        parser({ trivia: whitespace }, g.SassInterpolation)
       ))
     ),
     (children) => {
