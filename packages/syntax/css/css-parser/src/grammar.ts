@@ -64,6 +64,9 @@ import {
   isSelectorBranch,
   anPlusBFrom,
   directionKeyword,
+  forgivingSelectorItem,
+  forgivingSelectorList,
+  forgivingSelectorRest,
   isAnPlusB,
   isNthArgument,
   isSelectorList,
@@ -229,6 +232,10 @@ type GrammarRuleName =
   | 'Property'
   | 'PseudoArgument'
   | 'PseudoSelector'
+  | 'RelativeSelector'
+  | 'ForgivingSelectorRest'
+  | 'ForgivingSelectorItem'
+  | 'ForgivingSelectorList'
   | 'QueryClause'
   | 'QueryFeature'
   | 'QueryFunction'
@@ -1367,11 +1374,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`, and
-   * the shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is
-   * a compound selector) take a selector-ONLY argument: a (relative) selector
+   * The selector-argument pseudos (`:not`/`:has`/`:matches`, and the
+   * shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is a
+   * compound selector) take a selector-ONLY argument: a (relative) selector
    * list with no general-any text fallback, so `:not(2n+1)` fails the selector
-   * and rejects the whole pseudo. The
+   * and rejects the whole pseudo (`:is()` and `:where()` forgive instead,
+   * `ForgivingSelectorList` below). The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
    * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.
@@ -1381,11 +1389,62 @@ const cssFactory = (g: GrammarSelf) => {
     parser(
       { trivia: interstitialTrivia },
       oneOrMoreSep(
-        RelativeSelector,
+        g.RelativeSelector,
         literal(',')
       )
     ),
     children => selist(...selectorBranches(children))
+  );
+
+  /*
+   * `:is()` and `:where()` take a `<forgiving-selector-list>` (Selectors 4
+   * §4.2, §4.4, §16.1): an item that is not a selector is dropped by a browser
+   * and the others still match, so `.card:is(.active, 1px)` is
+   * `.card:is(.active)` and `.a:is(1px)` / `.a:is()` are valid selectors that
+   * match nothing. Each comma-separated item is read once, at the current
+   * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
+   * the item up to its `,` or `)` — balanced, so a nested group or block is
+   * part of it. The rest's leading `not()` keeps it from matching nothing
+   * (`scanTo` succeeds empty when its sentinel is next); a dialect overrides
+   * the rest to read its interpolation there. An item with a rest, a relative
+   * item and an empty item beside another are kept as written, their structure
+   * kept so their interpolations and `&` evaluate (`forgivingSelectorItem`,
+   * which records them for the compiler's `css/forgiving-selector-item`
+   * warning). Trivia is the caller's: each dialect's pseudo reads this list
+   * under its own selector trivia.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      scanTo(
+        choice(literal(','), literal(')')),
+        {
+          skip: [
+            balanced('(', ')'),
+            balanced('[', ']'),
+            balanced('{', '}')
+          ]
+        }
+      )
+    ),
+    children => forgivingSelectorRest(children)
+  );
+  const ForgivingSelectorItem = node(
+    'ForgivingSelectorItem',
+    sequence(
+      optional(g.RelativeSelector),
+      optional(g.ForgivingSelectorRest)
+    ),
+    (children, _fields, span, _rawChildren, triviaLog, state) => forgivingSelectorItem(children, span, triviaLog, state)
+  );
+  const ForgivingSelectorList = node(
+    'ForgivingSelectorList',
+    oneOrMoreSep(
+      g.ForgivingSelectorItem,
+      literal(',')
+    ),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => forgivingSelectorList(children, state)
   );
 
   /*
@@ -1421,7 +1480,18 @@ const cssFactory = (g: GrammarSelf) => {
           )
         ),
         cssCase(
-          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          ['is(', 'where('],
+          sequence(
+            routed(),
+            parser(
+              { trivia: interstitialTrivia },
+              g.ForgivingSelectorList
+            ),
+            literal(')')
+          )
+        ),
+        cssCase(
+          ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
             SelectorOnlyPseudoArgument,
@@ -1583,7 +1653,7 @@ const cssFactory = (g: GrammarSelf) => {
   const NestedSelectorList = node(
     'SelectorList',
     oneOrMoreSep(
-      RelativeSelector,
+      g.RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
@@ -5158,6 +5228,10 @@ const cssFactory = (g: GrammarSelf) => {
     NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
+    RelativeSelector,
+    ForgivingSelectorRest,
+    ForgivingSelectorItem,
+    ForgivingSelectorList,
     PseudoArgument,
     OfTypePseudoArgument,
     AnPlusB,

@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { sourceSpanOf, type InterpPart, type SelectorBranch, type SelectorTerm, type Stylesheet, type Ruleset, type SimpleToken } from '@jesscss/core/ast';
+import { forgivenSelectorItemsOf, sourceSpanOf, type InterpPart, type SelectorBranch, type SelectorTerm, type Stylesheet, type Ruleset, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
@@ -1167,8 +1167,19 @@ describe('Jess AST grammar facts', () => {
   });
 
   /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
-  it.fails.each(['$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+  it.fails.each(['$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));'])('parses `%s`', (source) => {
     expect(parseRecovering(source).document).toBeDefined();
+  });
+
+  /* `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1, owner 2026-10-20): a capture keeps a non-selector item as written. */
+  it.each([
+    ['.a:is(1px) {}', ['1px']],
+    ['$t: selector(.a:is(1px));', ['1px']],
+    ['.a:where() {}', []]
+  ])('parses `%s` and records each item that is not a selector', (source, forgiven) => {
+    const { document, recovered } = parseRecovering(source);
+    expect(recovered).toEqual([]);
+    expect(forgivenSelectorItemsOf(document).map(item => item.written)).toEqual(forgiven);
   });
 
   it('keeps selector() inside an @supports prelude the CSS feature test', () => {
@@ -1258,12 +1269,12 @@ describe('Jess AST grammar facts', () => {
      * An `$[…]` lookup is invalid in a pseudo argument, which is not a static `SelectorList`, so it
      * never reaches the structured path: it stays opaque exactly as before (the
      * Jess selector chain has no typed interpolation for pseudo args yet, so the
-     * rule does not fully parse).
+     * rule does not fully parse). In `:is()`'s forgiving selector list the item
+     * is not a selector, so it is kept as written.
      */
-    for (const interpolated of ['.x:not(.a-$[t]) { c: d; }', '.x:is(.card-$[t]) { c: d; }']) {
-      const rejected = run(jessGrammar.Stylesheet, interpolated, { trivia: jessGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null, interpolated).toBe(false);
-    }
+    const rejected = run(jessGrammar.Stylesheet, '.x:not(.a-$[t]) { c: d; }', { trivia: jessGrammar.whitespace });
+    expect(rejected.ok && rejected.unconsumedFrom === null).toBe(false);
+    expect(forgivenSelectorItemsOf(parse('.x:is(.card-$[t]) { c: d; }')).map(item => item.written)).toEqual(['.card-$[t]']);
   });
 
   it('accepts a leading combinator in a selector-pseudo argument (selectors-4 §4.2)', () => {
@@ -1375,11 +1386,11 @@ describe('Jess AST grammar facts', () => {
      * The selector-argument class keeps its selector-ONLY argument: a failed
      * selector must reject the whole pseudo rather than fall through to the
      * any-value scan, and a Jess interpolation must stay typed rather than being
-     * flattened into opaque argument text.
+     * flattened into opaque argument text. (`:is()` and `:where()` take a
+     * forgiving selector list instead, which keeps a non-selector item.)
      */
     for (const source of [
       '.x:not(2n+1) { color: red; }',
-      '.x:is(2n+1) { color: red; }',
       '.x:has(2n+1) { color: red; }',
       '.x:nth-child(+ n) { color: red; }',
       '.x:nth-child(+ n-5) { color: red; }',

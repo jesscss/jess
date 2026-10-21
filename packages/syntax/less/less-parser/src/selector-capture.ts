@@ -5,7 +5,7 @@
  * recovered-error channel (P45).
  */
 import type { Span } from 'parseman';
-import { any, selectorCaptureOf, simpleSelector } from '@jesscss/core/ast';
+import { adoptForgivenSelectorItems, any, authoredSource, selectorCaptureOf, simpleSelector } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, SelectorCaptureProblem, SimpleToken } from '@jesscss/core/ast';
 import { isLessSelectorList, requireToken, staticSelectorPseudoFrom } from './grammar-helpers.js';
 import { LessSelectorCaptureArgumentError } from './parse-error.js';
@@ -23,9 +23,9 @@ export function selectorCaptureFrom(children: readonly unknown[], span: Span, st
   const found = selectorCaptureOf(children, span);
   const nested = problemBefore(selectorCaptureOfState(state)?.problem, found);
   if ('type' in found) {
-    return nested === undefined ? found : recovered(found.src, nested, state);
+    return nested === undefined ? adoptForgivenSelectorItems(children, found, state) : recovered(found.src, nested, state);
   }
-  return recovered(found.written, nested ?? found, state);
+  return recovered(found.written ?? authoredSource(span, state, 'A selector capture'), nested ?? found, state);
 }
 
 /*
@@ -63,5 +63,5 @@ export function capturedPseudoFrom(children: readonly unknown[], span: Span, sta
   if (capture !== undefined && problemBefore(capture.problem, found) === undefined) {
     capture.problem = found;
   }
-  return simpleSelector(found.written);
+  return simpleSelector(found.written ?? authoredSource(span, state, 'A selector pseudo'));
 }

@@ -23,8 +23,8 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
@@ -155,6 +155,7 @@ type ScssRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
+  ForgivingSelectorRest: Combinator<ForgivingRest>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
@@ -190,6 +191,9 @@ type ScssSharedSyntax = {
   TypedOfTypePseudoArgument: Combinator<NthArgument>;
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
+
+  /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
+  ForgivingSelectorList: Combinator<SelectorList>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -433,6 +437,16 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
  */
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
+
+/*
+ * The trivia of a `:is()` / `:where()` argument: whitespace and both comment
+ * forms, so a comment between items or after an item's selector is trivia
+ * there as CSS reads it, not the start of a kept item.
+ */
+const forgivingListTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  comment: regex(/\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\//)
+});
 
 /* Keep custom-value comments visible as source trivia without making them
  * semantic custom-value parts. Root capture is selected against the one
@@ -4485,7 +4499,7 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+   * The strict selector-argument pseudos (`:not`/`:has`/`:matches`) take a
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
    * non-relative shape reduces identically to `g.SelectorList`; the retained
@@ -4610,7 +4624,7 @@ const scssFactory = (g: ScssInputRules) => {
 
     /*
        * Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
-       * and DO NOT join — core serialization owns the inline `:is(a, b)` rule
+       * and DO NOT join — core serialization owns the inline `:not(a, b)` rule
        * (`pseudoCanonical`). `SelectorOnlyPseudoArgument` is the one parse of
        * the static argument; an interpolated argument fails there and, with no
        * text fallback for these names, rejects exactly as before.
@@ -4623,6 +4637,44 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       optional(space),
       expect(SelectorOnlyPseudoArgument, 'pseudo selector argument'),
+      optional(space),
+      literal(')')
+    ),
+    children => pseudoSelector(
+      scssPseudoName(requireToken(children[0]).value),
+      requireSelectorList(children.find(isSelectorList))
+    )
+  );
+
+  /*
+   * The CSS base's rest of a `:is()` / `:where()` item, reading SCSS's `#{…}`
+   * there as a selector does, so it evaluates in a kept item.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      oneOrMore(choice(
+        g.SassInterpolation,
+        sequence(
+          not(choice(literal(','), literal(')'), literal('#{'))),
+          scanTo(choice(literal(','), literal(')'), literal('#{')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')] })
+        )
+      ))
+    ),
+    children => forgivingSelectorRest(children)
+  );
+
+  /* `:is()` / `:where()`: the CSS base's forgiving selector list, over SCSS's own `RelativeSelector`. */
+  const ForgivingPseudo = node<SimpleToken>(
+    'StructuredPseudo',
+    sequence(
+      routed(),
+      optional(space),
+      parser(
+        { trivia: forgivingListTrivia },
+        g.ForgivingSelectorList
+      ),
       optional(space),
       literal(')')
     ),
@@ -4669,7 +4721,8 @@ const scssFactory = (g: ScssInputRules) => {
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
     caseInsensitive([':nth-of-type(', ':nth-last-of-type(', ':nth-col(', ':nth-last-col('], NthTypePseudo),
-    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
+    caseInsensitive([':is(', ':where('], ForgivingPseudo),
+    caseInsensitive([':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
     caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
     caseInsensitive(':lang(', LangPseudo),
     caseInsensitive(':dir(', DirPseudo),
@@ -5094,6 +5147,7 @@ const scssFactory = (g: ScssInputRules) => {
     CompoundSelector,
     ComplexSelector,
     RelativeSelector,
+    ForgivingSelectorRest,
     NestedSelector,
     Extend,
     Ruleset,

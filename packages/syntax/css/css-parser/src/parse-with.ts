@@ -10,8 +10,10 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
+  withForgivenSelectorItems,
   withSourceSpan,
   withTriviaMap,
+  type ForgivenSelectorItem,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { cssGrammar } from './grammar/ast.js';
@@ -74,11 +76,14 @@ export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
   /*
    * The input rides the parse state so a reducer can record the source bytes of
    * a structured `<general-enclosed>` group, which the emitter prints as written.
+   * `document.forgivenSelectorItems` collects each `:is()` / `:where()` item
+   * that is not a selector, for the compiler's warning.
    */
+  const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*
@@ -137,8 +142,8 @@ export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
       ...positionAt(input, result.span.end)
     });
   }
-  return withTriviaMap(
+  return withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
-  );
+  ), forgivenSelectorItems);
 }

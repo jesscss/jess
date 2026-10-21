@@ -13,7 +13,9 @@ import {
   recoveredInTree,
   selectorStringComponents,
   withSourceSpan,
+  withForgivenSelectorItems,
   withTriviaMap,
+  type ForgivenSelectorItem,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { scssGrammar } from './grammar/ast.js';
@@ -103,10 +105,11 @@ export function parseRecoveringWith(grammar: ScssAstGrammar, input: string): Scs
    * the grammar recovered from (P45).
    */
   const diagnostics: ScssRecoveredError[] = [];
+  const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input, diagnostics }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*
@@ -169,10 +172,10 @@ export function parseRecoveringWith(grammar: ScssAstGrammar, input: string): Scs
     });
   }
 
-  const document = withTriviaMap(
+  const document = withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
-  );
+  ), forgivenSelectorItems);
   return { document, recovered: inSourceOrder(recoveredInTree(document, diagnostics)) };
 }
 
