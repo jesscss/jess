@@ -71,6 +71,25 @@ This differs from normal interpolation:
 - `$(...)` interpolates an expression into output.
 - `selector(...)` captures parsed selector syntax so selector-aware features can use it later.
 
+Interpolated with `${…}` into a selector, a captured list and a plain comma list differ
+when other selector text is glued to them. A plain list is text: each item is pasted in,
+and the rule repeats for it. A captured list, or `&` held in a variable, is placed the way
+`&` is: a name glued after it builds a name from each selector, and anything else glued
+to it treats the list as one `:is(…)` unit.
+
+```less
+$sizes: sm, md;
+$targets: selector(.notice, .warning);
+
+.col-${sizes} { float: left; }       // .col-sm, .col-md
+${targets}__icon { width: 1em; }     // .notice__icon, .warning__icon
+.alert${targets} { padding: 1em; }   // .alert:is(.notice, .warning)
+${targets}:hover { opacity: 0.8; }   // :is(.notice, .warning):hover
+```
+
+On its own as a whole selector (`${targets} { … }`), either kind writes one selector per
+item. See [Selector capture](/language/selector-capture).
+
 ## Interpolation examples
 
 ### 1. Selectors in style rules

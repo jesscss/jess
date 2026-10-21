@@ -81,14 +81,24 @@ When a variable should hold a selector or selector list, wrap it in `selector( .
 @targets: selector(.notice, .warning);
 ```
 
-This keeps the value selector-aware instead of treating it like a normal value list.
-Use it when the variable will later be consumed as a selector, such as by `:extend(...)`.
-
-Prefer this explicit form over legacy unquoted selector-like values such as:
+A captured selector list and a plain comma list interpolate differently when other
+selector text is glued to them. A plain list is text: each item is pasted in, and the
+rule repeats for it. A captured list is placed the way `&` is: a name glued after it
+builds a name from each selector, and anything else glued to it treats the list as one
+`:is(…)` unit.
 
 ```less
-@targets: .notice, .warning;
+@sizes: sm, md;
+@targets: selector(.notice, .warning);
+
+.col-@{sizes} { float: left; }       // .col-sm, .col-md
+@{targets}__icon { width: 1em; }     // .notice__icon, .warning__icon
+.alert@{targets} { padding: 1em; }   // .alert:is(.notice, .warning)
+@{targets}:hover { opacity: 0.8; }   // :is(.notice, .warning):hover
 ```
+
+On its own as a whole selector (`@{targets} { … }`), either kind writes one selector per
+item. See [Selector capture](./selector-capture) for the full rules.
 
 #### URLs
 
