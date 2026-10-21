@@ -104,8 +104,16 @@ export const isUnit = (selector: string): string => `:is(${selector})`;
  */
 export type SelectorText = string | string[];
 
+/**
+ * Where each branch of a selector list's resolved copy came from, when one authored
+ * branch resolved to several: the index of its authored branch, or `~index` for a lone
+ * interpolation naming a selector list, which the header writer composes under a parent
+ * as one `:is()` unit (`.toolbar :is(.btn, .button)`).
+ */
+export type SelectorUnits = Int32Array;
+
 /** Whether no text of `values` is multiplied. */
-export const isOneText = <T>(values: readonly (T | string[])[]): values is readonly T[] => !values.some(value => Array.isArray(value));
+export const isOneText = <T>(values: readonly (T | T[])[]): values is readonly T[] => !values.some(value => Array.isArray(value));
 
 /** A selector text as the branches it is. */
 export const textBranches = (text: SelectorText): readonly string[] => typeof text === 'string' ? [text] : text;
@@ -116,10 +124,11 @@ export const oneText = (text: SelectorText): string => typeof text === 'string' 
 /**
  * `values` crossed, the leftmost most significant, as a `&` odometer is
  * (`joinAmpersand` in `serialize.ts`): `build` writes each pick, once when none multiplies.
+ * Selector texts, or the selector parts the extend pre-pass resolves them into.
  */
-export const crossTexts = (values: readonly SelectorText[], build: (picked: readonly string[]) => string): SelectorText => isOneText(values)
+export const crossTexts = <T, R = string>(values: readonly (T | T[])[], build: (picked: readonly T[]) => R): R | R[] => isOneText(values)
   ? build(values)
-  : values.reduce<string[][]>((picks, value) => picks.flatMap(pick => textBranches(value).map(text => [...pick, text])), [[]]).map(build);
+  : values.reduce<T[][]>((picks, value) => picks.flatMap(pick => (Array.isArray(value) ? value : [value]).map(part => [...pick, part])), [[]]).map(build);
 
 /** Whether code point `code` ends a name, or is the `.`, `#` or `:` that opens one. */
 const opensName = (code: number): boolean => code === 0x2E /* . */ || code === 0x23 /* # */ || code === 0x3A /* : */ || isNameCode(code);

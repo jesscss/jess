@@ -744,16 +744,27 @@ adjacent/child targets each match their respective combinator form.
   resolved branch (`@{s} .r:extend(.z)`, `div @{s}:extend(.z)`, and a branch that is
   one interpolated simple: `@{s}:extend(.z)`, `.@{v}:extend(.b)`, `@{s}.r:extend(.z)`,
   `.z, .p .q` under `.p`). The pre-pass that resolves a rule's selector points the
-  inline extend at the resolved branch (`resolveSelectorInterpForExtend`). A lone
-  `@{list}` naming a selector LIST stays as authored, so the static plan cannot read
-  it: an extend from it — inline, body-form, or from a rule nested under it — is
-  skipped, never written as an empty or parentless extender (`.z, {`, `.z, .c {`),
-  which would drop or widen the target's rule (ledger O17; `extend/plan.ts`
-  `writableLevel`). Placed by a mixin call, the walk records the same rule from
-  its written header and extends from it (`.z, .q, .w`). Still open for such a lone
-  list: flattened output (`collapseNesting`) composes a rule nested under it from the
-  unresolved IR, so `@{list} { .c {} } .y:extend(.c all)` writes ` :is(.c, .y)` with
-  the parent lost (the header writer itself writes `.q, .w .c` there).
+  inline extend at the resolved branch (`resolveSelectorInterpForExtend`). It resolves
+  each branch to the branches the header writer writes for it, so the plan reads the
+  header the document has with or without an extend: a lone `@{list}` naming a
+  selector list is one branch per selector (ledger O8(a)), and a list continuing a
+  name (`.col-@{sizes}`, `#{&}__title`) one branch per selector it multiplies into,
+  its other simples and `&` kept as tokens. So `@{list}:extend(.z)` with
+  `@list: selector(.q, .w)` writes `.z, .q, .w`, `.y:extend(.col-sm)` extends
+  `.col-@{sizes}` with `@sizes: sm, md` (and `.y:extend(.b.col-sm)` extends
+  `.b.col-@{sizes}`), and `@{list} { .c {} } .y:extend(.c all)` writes
+  `:is(.q, .w) :is(.c, .y)` flattened. A `&` in such a selector is the rule's
+  parent, as in the walk. Flattened by an extend in collapsed output, the header
+  folds as it does with no extend: a lone list under a parent stays one `:is()` unit
+  (`.toolbar :is(.btn, .button), .link`). A lone list's selectors are each held as
+  text and matched whole, as a lone `@{sel}` is (ledger X7 known gap): `@s: selector(.a .b, .c)`
+  with `.z:extend(.b all)` misses `.a .b`. A branch the pre-pass cannot resolve keeps no text, so an
+  extend from it — inline, body-form, or from a rule nested under it — is skipped,
+  never written as an empty or parentless extender (`.z, {`, `.z, .c {`), which would
+  drop or widen the target's rule (ledger O17; `extend/plan.ts` `writableLevel`).
+  Placed by a mixin call or loop, the walk records a lone list or a multiplied branch
+  from its written header, as opaque text: at the root it is a target (`.z, .q, .w`),
+  and nested under a rule in a mixin body it is not yet a target part by part.
   (See §12 for the interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility
