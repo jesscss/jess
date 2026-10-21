@@ -864,4 +864,14 @@ export interface ValueEvaluator {
    * `calc()` (ledger V32). Absent means `false`.
    */
   readonly sassCalculations?: boolean;
+
+  /**
+   * Whether an interpolation in a selector splices its value's text, as Sass's
+   * `#{…}` does (Dart Sass then reads the spliced text as the selector), so a
+   * selector list glued to a compound is its text (`.x#{$s}` with `$s` the list
+   * `.a, .b` is `.x.a, .b`). Elsewhere a selector-list value is its selectors,
+   * however it is reached (ledger P49, P50): `.x@{s}` is `.x:is(.a, .b)`.
+   * Absent means `false`.
+   */
+  readonly selectorInterpolationText?: boolean;
 }
