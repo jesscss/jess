@@ -4022,7 +4022,7 @@ describe('CSS if()', () => {
         {
           guard: {
             g: 'and',
-            left: { g: 'css', value: { type: 'FunctionCall', name: 'media', args: [{ value: { type: 'Sequence', parts: [{}, { type: 'Lookup', name: 'w' }] } }] }, parens: 0 },
+            left: { g: 'css', value: { type: 'FunctionCall', name: 'media', args: [{ value: { type: 'Operation', operator: '>=', left: { type: 'Keyword', src: 'width' }, right: { type: 'Lookup', name: 'w' } } }] }, parens: 0 },
             right: { g: 'truth', value: { type: 'Lookup', name: 'a' }, parens: 0 },
             parens: 0
           },

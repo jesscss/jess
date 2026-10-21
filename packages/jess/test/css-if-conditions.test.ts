@@ -77,16 +77,22 @@ describe('a plain CSS if() is written as `.css` writes it, in every dialect', ()
     }
   });
 
-  /*
-   * sass-spec `spec/expressions/if`: a condition whose `and` sits beside other
-   * juxtaposed values (css-values-5 gives it no meaning). Not Less: `css()` is
-   * no CSS test there, so the condition is Less's, as in `if(iscolor(@c) and
-   * isnumber(@n), a, b)`.
-   */
+  /* sass-spec `spec/expressions/if`: a condition whose `and` sits beside other juxtaposed values (css-values-5 gives it no meaning). */
   it('keeps every operand of a juxtaposed condition', async () => {
     const source = 'a {b: if(css(1) and css(2) var(--and) css(3): c)}';
     const outputs = await Promise.all((['.css', '.scss', '.jess'] as const).map(extension => render(source, extension)));
     expect(outputs).toEqual(outputs.map(() => 'a {\n  b: if(css(1) and css(2) var(--and) css(3): c);\n}\n'));
+  });
+
+  /*
+   * Less reads a condition as a CSS one only when it is built of `media()`,
+   * `supports()` and `style()` tests; `css()` is no test, so Less evaluates
+   * this condition as its own (`if(false: c)`). No ruling yet says whether a
+   * branch condition is ever Less's.
+   */
+  it.fails('less: keeps every operand of a juxtaposed condition', async () => {
+    await expect(render('a {b: if(css(1) and css(2) var(--and) css(3): c)}', '.less'))
+      .resolves.toBe('a {\n  b: if(css(1) and css(2) var(--and) css(3): c);\n}\n');
   });
 });
 
@@ -130,7 +136,25 @@ const variables: ReadonlyArray<readonly [Extension, string]> = [
   ['.jess', '$bp: 600px;\n$d: grid;\n.a { width: if(media(width >= ${bp}): 50%; else: 100%); display: if(supports(display: ${d}): $d; else: block); }']
 ];
 
+/* A media query's own groups are the same value position. */
+const groupedVariables: ReadonlyArray<readonly [Extension, string]> = [
+  ['.less', '@sm: 600px;\n@md: 900px;\n.a { width: if(media((min-width: @sm) and (max-width: @{md})): 50%; else: 100%); }'],
+  ['.scss', '$sm: 600px;\n$md: 900px;\n.a { width: if(media((min-width: $sm) and (max-width: #{$md})): 50%; else: 100%); }'],
+  ['.jess', '$sm: 600px;\n$md: 900px;\n.a { width: if(media((min-width: $sm) and (max-width: ${md})): 50%; else: 100%); }']
+];
+
 describe('variables in media() and supports() tests', () => {
+  it.each(groupedVariables.filter(([extension]) => extension !== '.less'))('%s in a group %s', async (extension, source) => {
+    await expect(render(source, extension))
+      .resolves.toBe('.a {\n  width: if(media((min-width: 600px) and (max-width: 900px)): 50%; else: 100%);\n}\n');
+  });
+
+  /* Less writes a media test's `and`-joined groups without their parens (`media(min-width: 600px and max-width: 900px)`), with or without a variable. */
+  it.fails.each(groupedVariables.filter(([extension]) => extension === '.less'))('%s in a group %s', async (extension, source) => {
+    await expect(render(source, extension))
+      .resolves.toBe('.a {\n  width: if(media((min-width: 600px) and (max-width: 900px)): 50%; else: 100%);\n}\n');
+  });
+
   it.each(variables)('%s %s', async (extension, source) => {
     await expect(render(source, extension))
       .resolves.toBe('.a {\n  width: if(media(width >= 600px): 50%; else: 100%);\n  display: if(supports(display: grid): grid; else: block);\n}\n');

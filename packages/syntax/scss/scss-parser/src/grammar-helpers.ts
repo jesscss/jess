@@ -430,9 +430,11 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
 
   /*
    * A comparison operator with no operand on one side compares nothing, so it
-   * is the CSS delim it is (`type(<length>)`): the argument is the run.
+   * is the CSS delim it is (`type(<length>)`, `foo(a == )`): the argument is
+   * the run.
    */
-  if (isComparisonToken(children[0]) || isComparisonToken(children[children.length - 1])) {
+  const last = children.findLast(child => !isArgumentGap(child));
+  if (isComparisonToken(children[0]) || isComparisonToken(last)) {
     return callArg(argumentRun(children));
   }
   const left = requireValueSlot(children[0]);
@@ -450,13 +452,16 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * {@link reduceScssCall} keeps where a branch may stand.
    */
   if (children.some(child => isToken(child) && child.value === ':')) {
-    /* A branch with no value (`else:`) has the empty value css's `Branch` writes as a bare colon. */
-    const last = children[children.length - 1];
-    const value = isScssValueSlotValue(last) ? last : [];
+    /*
+     * A branch with no value (`else:`) has the empty value css's `Branch`
+     * writes as a bare colon; a keyword with none (`$a:`) binds nothing, so it
+     * is the run it is.
+     */
+    const value = isScssValueSlotValue(last) ? last : undefined;
     if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
-      return callArg(branch(left, value));
+      return callArg(branch(left, value ?? []));
     }
-    return callArg(value, left.name, false, '$');
+    return value === undefined ? callArg(argumentRun(children)) : callArg(value, left.name, false, '$');
   }
   const at = children.findIndex(child => isToken(child) && !isScssValue(child) && COMPARISON_OPERATORS.has(child.value));
   const operator = requireToken(children[at]).value;
@@ -493,16 +498,21 @@ function isComparisonToken(child: unknown): boolean {
  * A call argument read as the css run of its components: each operator a
  * delim, each operand spliced in, with the padding written before it.
  */
+/** The padding a call argument's tokens carry between its parts: a token that is no value, comparison or `:`. */
+function isArgumentGap(child: unknown): boolean {
+  return isToken(child) && !isScssValue(child) && !COMPARISON_OPERATORS.has(child.value) && child.value !== ':';
+}
+
 function argumentRun(children: readonly unknown[]): ValueSlot {
   const values: ValueSlot[] = [];
   const layout: string[] = [];
   let gap = '';
   for (const child of children) {
+    if (isArgumentGap(child)) {
+      gap = requireToken(child).value;
+      continue;
+    }
     if (isToken(child) && !isScssValue(child)) {
-      if (!COMPARISON_OPERATORS.has(child.value) && child.value !== ':') {
-        gap = child.value;
-        continue;
-      }
       appendRun(values, layout, any(child.value), gap);
     } else {
       appendRun(values, layout, requireValueSlot(child), gap);
@@ -514,8 +524,8 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
 
 /**
  * Whether the parse is reading a CSS `if()` condition, where `media()`,
- * `supports()` and `style()` are CSS tests whose arguments are kept as written
- * (css-values-5 §8.3) rather than Sass function calls.
+ * `supports()` and `style()` are CSS tests (css-values-5 §8.3), read with
+ * css's query grammar, rather than Sass function calls.
  */
 export function isIfTest(state: unknown): boolean {
   return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;

@@ -103,6 +103,7 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
+  GeneralDelim: Combinator<unknown>;
   MediaTest: Combinator<FunctionCall>;
   SupportsTest: Combinator<FunctionCall>;
   StyleTest: Combinator<FunctionCall>;
@@ -190,6 +191,7 @@ type ScssSharedSyntax = {
   MediaTestBody: Combinator<unknown>;
   SupportsTestBody: Combinator<unknown>;
   StyleTestBody: Combinator<unknown>;
+  PunctuationValue: Combinator<unknown>;
 
   /*
    * Inherited from the CSS base: the typed `An+B` arguments of the `:nth-*()`
@@ -1043,7 +1045,7 @@ const scssFactory = (g: ScssInputRules) => {
     children => ifTestCall(children)
   );
 
-  /*
+  /**
    * A style query's `<style-feature>` (css's `StyleFeature` slot): the custom
    * property css's style contents dispatch read, `:`, and its value, a custom
    * property's (owner 2026-10-20, on `style(--theme: ${t})`: "yep, that is
@@ -1059,6 +1061,8 @@ const scssFactory = (g: ScssInputRules) => {
         parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart))
       ))
     ),
+
+    /* The name the dispatch read; after it, the `:` and the value's parts, when written. */
     children => styleFeature([
       keyword(requireToken(children[0]).value),
       ...(children.length > 1 ? [customValueFromChildren(children.slice(2))] : [])
@@ -1096,6 +1100,16 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
   );
+
+  /*
+   * css's `GeneralDelim`: a delim in a `<general-enclosed>` group's rest. In
+   * an at-rule prelude SCSS reads its own values there (`--#{$name}` is no
+   * delim); a CSS `if()` test reads css's delim (`supports(: x)`).
+   */
+  const GeneralDelim = choice({
+    gate: state => isIfTest(state),
+    combinator: g.PunctuationValue
+  });
   const mediaTestOrCall = choice(
     {
       gate: state => isIfTest(state),
@@ -5183,6 +5197,7 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeature,
     QueryFunction,
+    GeneralDelim,
     MediaTest,
     SupportsTest,
     StyleTest,

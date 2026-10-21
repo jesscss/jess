@@ -41,7 +41,7 @@ const written: ReadonlyArray<readonly [string, string, string]> = [
   ['a parenthesized test', '.a { x: if((media(print)): a; else: b); }', '.a {\n  x: if((media(print)): a; else: b);\n}\n'],
   ['branch values Sass computes', '$w: 10px; .a { x: if(media(print): $w * 2; else: 1px + 1px); }', '.a {\n  x: if(media(print): 20px; else: 2px);\n}\n'],
 
-  /* A test's value is a value position, so a variable substitutes, as Sass's `@media` reads it (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
+  /* A test's value is a value position, so a variable substitutes (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
   ['a variable in a test, which is substituted', '$w: 10px; .a { x: if(media(width >= $w): 1px; else: 2px); }', '.a {\n  x: if(media(width >= 10px): 1px; else: 2px);\n}\n'],
   ['an interpolation in a test, which is', '$w: 10px; .a { x: if(media(width >= #{$w}): 1px; else: 2px); }', '.a {\n  x: if(media(width >= 10px): 1px; else: 2px);\n}\n'],
   ['a user function named media, which a test does not call', '@function media($x) { @return 99; } .a { x: if(media(print): 1px; else: 2px); y: media(print); }', '.a {\n  x: if(media(print): 1px; else: 2px);\n  y: 99;\n}\n'],

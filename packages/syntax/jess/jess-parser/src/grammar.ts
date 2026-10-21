@@ -113,6 +113,8 @@ import {
   isIfTest,
   enterIfTest,
   leaveIfTest,
+  isTestValue,
+  enterTestValue,
   genericCallFrom
 } from './grammar-helpers.js';
 import type {
@@ -270,7 +272,8 @@ type JessRules = {
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
   AtRulePreludeClause: Combinator<ValueNode>;
-  MediaGeneralValue: Combinator<ValueNode>;
+  MediaGeneralValue: Combinator<unknown>;
+  GeneralDelim: Combinator<unknown>;
   DottedAtRuleKeyword: Combinator<Keyword>;
   AtRulePrelude: Combinator<ValueNode | null>;
   ContainerStyleQuery: Combinator<FunctionCall>;
@@ -326,7 +329,9 @@ type SharedSyntax = {
   /* Inherited from the CSS base: a function-form `<general-enclosed>`, kept as written. */
   QueryFunction: Combinator<FunctionCall>;
 
-  /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
+  /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests, and the value run they read. */
+  ValueSequence: Combinator<unknown>;
+  PunctuationValue: Combinator<unknown>;
   MediaTestBody: Combinator<unknown>;
   SupportsTestBody: Combinator<unknown>;
   StyleTestBody: Combinator<unknown>;
@@ -2702,7 +2707,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       { trivia: whitespace },
       sequence(
         routed(),
-        g.MediaTestBody
+        withCtx(state => enterTestValue(state), g.MediaTestBody)
       )
     ),
     children => ifTestCall(children)
@@ -2713,7 +2718,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       { trivia: whitespace },
       sequence(
         routed(),
-        g.SupportsTestBody
+        withCtx(state => enterTestValue(state), g.SupportsTestBody)
       )
     ),
     children => ifTestCall(children)
@@ -2730,7 +2735,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     children => ifTestCall(children)
   );
 
-  /*
+  /**
    * A style query's `<style-feature>` (css's `StyleFeature` slot): the custom
    * property css's style contents dispatch read, `:`, and its value, a custom
    * property's (owner 2026-10-20, on `style(--theme: ${t})`: "yep, that is
@@ -2746,6 +2751,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart))
       ))
     ),
+
+    /* The name the dispatch read; after it, the `:` and the value's parts, when written. */
     children => styleFeature([
       keyword(requireToken(children[0]).value),
       ...(children.length > 1 ? [customValueFromChildren(children.slice(2))] : [])
@@ -3409,14 +3416,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ParentSelector,
 
     /*
-     * In a CSS `if()` condition, a `media()` or `supports()` test's value takes
-     * `${name}` as well as `$name` (owner 2026-10-20: "it's in a 'value
-     * position' in the at-rule prelude, so intuitively it can be $bp or
-     * ${bp}"); any other value position takes `$name` alone (ledger P13). Last,
-     * so no other value pays for the gate.
+     * A `media()` or `supports()` test's value takes `${name}` as well as
+     * `$name` (owner 2026-10-20: "it's in a 'value position' in the at-rule
+     * prelude, so intuitively it can be $bp or ${bp}"); any other value
+     * position takes `$name` alone (ledger P13). Last, so no other value pays
+     * for the gate.
      */
     {
-      gate: state => isIfTest(state),
+      gate: state => isTestValue(state),
       combinator: g.DollarBrace
     }
   );
@@ -3840,15 +3847,31 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * for `:` and the range comparisons. Left-factored on the atom: the no-slash
    * majority takes an absent optional tail instead of a doomed ratio arm.
    */
+  /*
+   * A `media()` or `supports()` test's feature value is a value position
+   * (owner 2026-10-20: "intuitively it can be $bp or ${bp}"), so there it may
+   * be a variable, `$name` or `${name}`; in an at-rule prelude it is a header
+   * atom (ledger P13).
+   */
+  const queryValueAtom = choice(
+    {
+      gate: state => isTestValue(state),
+      combinator: choice(
+        g.DollarValue,
+        g.DollarBrace
+      )
+    },
+    g.HeaderValueAtom
+  );
   const QueryValue = node<ValueNode>(
     'QueryValue',
     sequence(
-      g.HeaderValueAtom,
+      queryValueAtom,
       optional(sequence(
         optional(rawWhitespace),
         literal('/'),
         optional(rawWhitespace),
-        g.HeaderValueAtom
+        queryValueAtom
       ))
     ),
     (children) => {
@@ -4046,12 +4069,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * A media `<general-enclosed>` group's component values, read as header
    * terms rather than values: an at-rule prelude is an identifier position at
    * every depth (ledger P13/P16), where `${…}` is the only `$` form, so a bare
-   * `$name` there is rejected as it is in the rest of the header.
+   * `$name` there is rejected as it is in the rest of the header. A group
+   * inside a CSS `if()` `media()` test is a value position (owner 2026-10-20),
+   * so there it reads values, as css's slot does (`media((width >= $bp))`).
    */
-  const MediaGeneralValue = node<ValueNode>(
-    'MediaGeneralValue',
-    g.QueryTerm,
-    children => requireValueNode(children[0])
+  /*
+   * css's `GeneralDelim`: a delim in a `<general-enclosed>` group's rest. An
+   * at-rule prelude gives `$` its meaning (ledger P13), so there a delim stops
+   * the group; a `media()` or `supports()` test reads css's delim
+   * (`supports(: x)`).
+   */
+  const GeneralDelim = choice({
+    gate: state => isTestValue(state),
+    combinator: g.PunctuationValue
+  });
+  const MediaGeneralValue = choice(
+    {
+      gate: state => isTestValue(state),
+      combinator: g.ValueSequence
+    },
+    node<ValueNode>(
+      'MediaGeneralValue',
+      g.QueryTerm,
+      children => requireValueNode(children[0])
+    )
   );
 
   /*
@@ -6363,6 +6404,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryDashedIdentifier,
     AtRulePreludeClause,
     MediaGeneralValue,
+    GeneralDelim,
     DottedAtRuleKeyword,
     AtRulePrelude,
     ContainerStyleQuery,

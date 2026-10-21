@@ -80,7 +80,7 @@ export function onlyCssTests(node: GuardNode): boolean {
 /**
  * A CSS `if()` test call (css-values-5 §8.3 `<if-test>`): `media()`,
  * `supports()` or `style()`, any case. The browser answers it, so it is never
- * a call to a function of that name (Dart Sass reads it so).
+ * a call to a function of that name.
  */
 export function isIfTestCall(value: ValueSlot): value is FunctionCall {
   if (!('type' in value) || value.type !== 'FunctionCall') {

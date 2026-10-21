@@ -22,7 +22,7 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
-import { cssConditionRun, cssGroup, cssNegation, withCss } from './css-if-condition.js';
+import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
 import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
@@ -126,8 +126,14 @@ type FunctionConditionFact = {
   /** A chain of operators (`a=b=c`, `a==b`): the CSS run it is, written as authored. */
   readonly run?: ValueSlot;
 
-  /** A CSS `if()` condition (`media(print) and style(--a: b)`): the CSS run it is, written as `.css` writes it ({@link cssConditionRun}). */
+  /**
+   * A CSS `if()` condition (`media(print) and style(--a: b)`): the CSS run it
+   * is, written as `.css` writes it, and the keyword tokens in it, whose case
+   * the first enclosing Less condition reports ({@link cssConditionRun}).
+   * Unlike `run`, a paren group around it keeps it.
+   */
   readonly css?: ValueSlot;
+  readonly cssKeywords?: readonly unknown[];
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type VariableNameFact = {
@@ -2327,7 +2333,7 @@ function functionConditionParenFrom(children: readonly unknown[], span: SourceSp
   const fact = { guard: inParens(inner.guard), src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
   return withCss(inner.raw === undefined || inner.hasComparison
     ? fact
-    : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) }, cssGroup(inner.css, span));
+    : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) }, cssGroup(inner, span));
 }
 
 /** One side of a value-position comparison, as the value it compares. */
@@ -2347,7 +2353,7 @@ function functionConditionOperandFact(value: unknown, state: unknown): FunctionC
   const fact = { guard: lessTruth(bare), src: functionConditionSource(bare), grouped: false, hasComparison: false, bare };
 
   /* The value dispatch reads `media(`, `supports(` and `style(` as a CSS `if()` test wherever it stands. */
-  return withCss(isLessGuardOperand(value) ? { ...fact, raw: value.run } : fact, isIfTestCall(bare) ? bare : undefined);
+  return withCss(isLessGuardOperand(value) ? { ...fact, raw: value.run } : fact, isIfTestCall(bare) ? cssOperand(bare) : undefined);
 }
 
 /**
@@ -2628,7 +2634,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
  * function condition's keyword token.
  */
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[], rawChildren: readonly unknown[] = [], state?: unknown): FunctionConditionFact {
-  const css = cssConditionRun(children);
+  const css = cssConditionRun(children, rawChildren, raw => reportConditionKeywordCase(raw, state));
   let first: FunctionConditionFact | undefined;
   let guard: MixinGuard | undefined;
   let src = '';

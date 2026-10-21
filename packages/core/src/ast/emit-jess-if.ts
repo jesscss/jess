@@ -3,7 +3,7 @@
  * the printer stays one reviewable size. The printer lends what it already
  * spells: a value, a `$( … )` boundary, a guard and a string template.
  */
-import { hasCssTest, type GuardNode } from './guard-node.js';
+import { hasCssTest, isIfTestCall, type GuardNode } from './guard-node.js';
 import type { Expression, IfValue, Interpolation, ValueSlot } from './nodes.js';
 
 /** The `.jess` spellings an `if()` is built from. */
@@ -74,14 +74,18 @@ function cssTest(value: ValueSlot, p: IfSpeller): string {
         ? p.gap('Any', 'a CSS test holding `${`, `$[` or `$(`, which `.jess` reads as a `$` form')
         : value.src;
     case 'Interpolation':
-      /* A `<general-enclosed>` function's authored content (`selector(:has(a))`) is written as it was. */
-      return value.parts.every(part => 'lit' in part) ? value.parts.map(part => ('lit' in part ? part.lit : '')).join('') : p.template(value);
+      return isLiteralTemplate(value) ? value.parts.map(part => ('lit' in part ? part.lit : '')).join('') : p.template(value);
     case 'Operation':
       return `${cssTest(value.left, p)}${value.operator === ':' ? '' : ' '}${value.operator} ${cssTest(value.right, p)}`;
     case 'Block':
       return value.delimiter === 'paren' && value.escaped !== true ? `(${cssTest(value.value, p)})` : p.value(value);
+
+    /*
+     * A test is query syntax; a `<general-enclosed>` call in it (`selector(:has(a))`)
+     * is its authored content. Any other call is a value, the printer's.
+     */
     case 'FunctionCall':
-      return value.args.every(arg => arg.name === undefined && !arg.spread)
+      return value.args.every(arg => isLiteralTemplate(arg.value)) || isIfTestCall(value)
         ? `${value.name}(${value.args.map(arg => cssTest(arg.value, p)).join(', ')})`
         : p.value(value);
     default:
@@ -91,3 +95,8 @@ function cssTest(value: ValueSlot, p: IfSpeller): string {
 
 /** A branch argument, `condition: value`, the colon the branch's own (ledger P38); an omitted value keeps the bare colon. */
 export const jessBranch = (condition: string, value: string): string => (value === '' ? `${condition}:` : `${condition}: ${value}`);
+
+/** A template of literal text alone: a `<general-enclosed>` call's authored content, written as it was. */
+function isLiteralTemplate(value: ValueSlot): boolean {
+  return 'type' in value && value.type === 'Interpolation' && value.parts.every(part => 'lit' in part);
+}
