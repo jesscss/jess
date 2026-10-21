@@ -507,6 +507,9 @@ export interface IfValueBranch {
 export interface IfValue extends AuthoredCallSlot {
   readonly type: 'IfValue';
   readonly branches: readonly [IfValueBranch, ...IfValueBranch[]];
+
+  /** A CSS `if()` written with the spec's trailing `;` (`if(a: b;)`, css-values-5 §8.3), which a written `if()` keeps. */
+  readonly trailingSemicolon: boolean;
 }
 
 /* -------------------------------------------------------------- value */
@@ -1997,8 +2000,8 @@ export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ typ
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null, callArgument = false): Expression =>
   ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall, _callArgument: callArgument });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
-export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
-  ({ type: 'IfValue', branches, _asCall: asCall });
+export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null, trailingSemicolon = false): IfValue =>
+  ({ type: 'IfValue', branches, _asCall: asCall, trailingSemicolon });
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,

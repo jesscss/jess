@@ -67,7 +67,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9445
+    "statements": 9441
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -88,10 +88,10 @@
     "statements": 52
   },
   "packages/core/src/ast/serialize.ts#evalTyped": {
-    "statements": 74
+    "statements": 72
   },
   "packages/core/src/ast/serialize.ts#evalValue": {
-    "statements": 149
+    "statements": 147
   },
   "packages/core/src/ast/serialize.ts#evalCollectionEntries": {
     "statements": 59
