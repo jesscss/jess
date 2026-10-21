@@ -436,10 +436,12 @@ export function pushParseTwinDiagnostics(
  * A `:is()` / `:where()` item that is not a selector (Selectors 4 §16.1, owner
  * 2026-10-20), in every dialect: the compiler keeps it as written and warns
  * (`forgivingSelectorItem`, `@jesscss/core`); the editor underlines the item.
- * A selector item holds a selector node; a kept one holds none.
+ * A selector item holds exactly its selector node; a kept one holds text,
+ * after a selector prefix or alone.
  */
 function pushForgivenSelectorItemTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
-  if (node.grammarType !== 'ForgivingSelectorItem' || cstChildrenOf(node).some(isCstNode)) {
+  const children = cstChildrenOf(node);
+  if (node.grammarType !== 'ForgivingSelectorItem' || (children.length === 1 && children.every(isCstNode))) {
     return;
   }
   const at = trimmedSpan(node, source);

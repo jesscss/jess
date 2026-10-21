@@ -497,7 +497,8 @@ describe('JessLanguageServiceEngine', () => {
       ['scss', '.card:is(.active, 1px) { color: red; }', '1px'],
       ['jess', '.card:is(.active, 1px) { color: red; }', '1px'],
       ['less', '.x { a: selector(.a:is(1px)); }', '1px'],
-      ['css', '.a:where( 1px ) { color: red; }', '1px']
+      ['css', '.a:where( 1px ) { color: red; }', '1px'],
+      ['css', '.a:is(.b 1px) { color: red; }', '.b 1px']
     ])('warns at the forgiven item (%s: %s)', (languageId, input, underlined) => {
       const engine = createEngine();
       const doc = createDocument(languageId, input);

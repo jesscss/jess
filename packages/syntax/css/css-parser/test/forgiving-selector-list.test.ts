@@ -38,7 +38,10 @@ describe('the forgiving selector list of :is() and :where()', () => {
     ['.a:is(1px) { color: red; }', '.a:is(1px) {\n  color: red;\n}\n', [['1px', 6]]],
     ['.x:where(2n+1) { color: red; }', '.x:where(2n+1) {\n  color: red;\n}\n', [['2n+1', 9]]],
     ['.a:is() { color: red; }', '.a:is() {\n  color: red;\n}\n', []],
-    [':is(.card, ) { color: red; }', ':is(.card, ) {\n  color: red;\n}\n', []]
+    [':is(.card, ) { color: red; }', ':is(.card, ) {\n  color: red;\n}\n', []],
+    ['.x:is( .a , .b ) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n', []],
+    ['.x:is(.a 1px, .b) { color: red; }', '.x:is(.a 1px, .b) {\n  color: red;\n}\n', [['.a 1px', 6]]],
+    ['.x:is(.b, {x,y}) { color: red; }', '.x:is(.b, {x,y}) {\n  color: red;\n}\n', [['{x,y}', 10]]]
   ] as const)('parses %s, keeps it as written and records each item that is not a selector', (source, css, forgiven) => {
     const document = parse(source);
     expect(serialize(document).css).toBe(css);

@@ -1386,7 +1386,7 @@ const cssFactory = (g: GrammarSelf) => {
     parser(
       { trivia: interstitialTrivia },
       oneOrMoreSep(
-        RelativeSelector,
+        g.RelativeSelector,
         literal(',')
       )
     ),
@@ -1400,11 +1400,13 @@ const cssFactory = (g: GrammarSelf) => {
    * `.card:is(.active)` and `.a:is(1px)` / `.a:is()` are valid selectors that
    * match nothing. Each comma-separated item is read once, at the current
    * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
-   * the item up to its `,` or `)` — balanced, so a nested group is part of it.
-   * An item with a rest, or none at all, is kept as written
-   * (`forgivingSelectorItem`, which records it for the compiler's
-   * `css/forgiving-selector-item` warning). Trivia is the caller's: each
-   * dialect's pseudo reads this list under its own selector trivia.
+   * the item up to its `,` or `)` — balanced, so a nested group or block is
+   * part of it (the rest's leading `not()` keeps it from matching nothing:
+   * `scanTo` succeeds empty when its sentinel is next). An item with a rest,
+   * or none at all, is kept as written (`forgivingSelectorItem`, which records
+   * it for the compiler's `css/forgiving-selector-item` warning). Trivia is the
+   * caller's: each dialect's pseudo reads this list under its own selector
+   * trivia.
    */
   const forgivingSelectorRest = sequence(
     not(choice(literal(','), literal(')'))),
@@ -1413,7 +1415,8 @@ const cssFactory = (g: GrammarSelf) => {
       {
         skip: [
           balanced('(', ')'),
-          balanced('[', ']')
+          balanced('[', ']'),
+          balanced('{', '}')
         ]
       }
     )
@@ -1641,7 +1644,7 @@ const cssFactory = (g: GrammarSelf) => {
   const NestedSelectorList = node(
     'SelectorList',
     oneOrMoreSep(
-      RelativeSelector,
+      g.RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)

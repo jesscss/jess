@@ -4488,7 +4488,7 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+   * The strict selector-argument pseudos (`:not`/`:has`/`:matches`) take a
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
    * non-relative shape reduces identically to `g.SelectorList`; the retained
@@ -4613,7 +4613,7 @@ const scssFactory = (g: ScssInputRules) => {
 
     /*
        * Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
-       * and DO NOT join — core serialization owns the inline `:is(a, b)` rule
+       * and DO NOT join — core serialization owns the inline `:not(a, b)` rule
        * (`pseudoCanonical`). `SelectorOnlyPseudoArgument` is the one parse of
        * the static argument; an interpolated argument fails there and, with no
        * text fallback for these names, rejects exactly as before.

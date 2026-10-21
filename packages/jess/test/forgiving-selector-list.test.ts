@@ -72,10 +72,13 @@ describe('the forgiving selector list of :is() and :where()', () => {
     expect((await render('less', '.x { a: selector(.a:is(@{t})); }')).errors).toEqual([['parse/selector-capture-argument', 1, 24]]);
   });
 
+  /* `:not()` and `:has()` take a strict list (Selectors 4 §4.3, §4.5): nothing in them is forgiven. */
   for (const dialect of DIALECTS) {
-    it(`${dialect}: :not() and :has() still take a strict selector list`, async () => {
-      expect((await render(dialect, '.x:not(2n+1) { color: red; }')).errors).toMatchObject([['parse/syntax-error', 1, expect.any(Number)]]);
-      expect((await render(dialect, '.x:has(2n+1) { color: red; }')).errors).toMatchObject([['parse/syntax-error', 1, expect.any(Number)]]);
+    it(`${dialect}: does not forgive an item of :not() or :has()`, async () => {
+      for (const source of ['.x:not(2n+1) { color: red; }', '.x:has(2n+1) { color: red; }']) {
+        const { warnings } = await render(dialect, source);
+        expect(warnings.filter(([code]) => code === 'css/forgiving-selector-item'), source).toEqual([]);
+      }
     });
   }
 });

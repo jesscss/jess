@@ -4819,7 +4819,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Keep it local, like CSS's generic pseudo argument: it is an implementation
   // component of the public pseudo production, not a second parser API.
   // Retain the parsed `SelectorList` rather than collapsing it to text. A
-  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // whitelisted selector-function pseudo (`:not`/`:has`/…) keeps it as structured
   // `args`; `PseudoSelector` joins the opaque `:global`/`:local`
   // fallback via `selectorBranchCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
@@ -4879,7 +4879,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * `selector(<selector-list>)` in value position is a selector capture (owner
    * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
-   * `selector(` opener here, and its argument is the `:is()` family's
+   * `selector(` opener here, and its argument is the strict selector pseudos'
    * `pseudoSelectorArgument`, read as `pseudoSelectorRouted` reads it: the
    * padding before `)` is the argument's. It is a selector-valued Less value,
    * not a text capture: the selector grammar owns every branch boundary and the
@@ -4950,9 +4950,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )
   );
   /*
-   * Inside a capture, a selector pseudo reads its argument as the capture
-   * does, so a non-selector or interpolated argument (`selector(.a:is(1px))`)
-   * is recovered where it stands and reported by the capture (P45).
+   * Inside a capture, a selector pseudo with a strict argument reads it as the
+   * capture does, so a non-selector or interpolated argument
+   * (`selector(.a:not(@{t}))`) is recovered where it stands and reported by
+   * the capture (P45).
    */
   const capturedPseudoRouted = node(
     'PseudoSelector',
@@ -5010,7 +5011,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
       [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
-      choice(pseudoSelectorRouted, interpolatedArgumentPseudoRouted)
+      choice(
+        { gate: state => selectorCaptureOfState(state) !== undefined, combinator: capturedPseudoRouted },
+        pseudoSelectorRouted,
+        interpolatedArgumentPseudoRouted
+      )
     ),
     caseOf(':lang(', choice(langPseudoRouted, interpolatedArgumentPseudoRouted)),
     caseOf(':dir(', choice(dirPseudoRouted, interpolatedArgumentPseudoRouted)),
