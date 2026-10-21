@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { forgivenSelectorItemsOf } from '@jesscss/core/ast';
 import { LessParseError, parse } from '@jesscss/less-parser';
 
 /** The typed failure `parse()` throws, or `undefined` when the source parses. */
@@ -25,13 +26,23 @@ describe('a slashed combinator is an invalid selector', () => {
     ['a nested rule', '.a {\n  .b /deep/ .c { x: y; }\n}'],
     ['glued to its neighbours', '.a/deep/.b { c: d; }'],
     ['after a later branch of a list', '.a, .b /deep/ .c { d: e; }'],
-    ['inside a selector pseudo argument', ':is(.a /deep/ .b) { c: d; }'],
+    ['inside a selector pseudo argument', ':not(.a /deep/ .b) { c: d; }'],
     ['inside an inline :extend() target', '.x:extend(.a /deep/ .b) { c: d; }'],
     ['inside a body :extend() target', '.x { &:extend(.a /deep/ .b); }']
   ])('%s', (_label, source) => {
     const failure = failureOf(source);
     expect(failure).toBeInstanceOf(LessParseError);
     expect(failure).toMatchObject({ code: 'parse/syntax-error' });
+  });
+
+  /*
+   * `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1,
+   * owner 2026-10-20): an item that is not a selector, this one included, is
+   * kept as written and warned, not a parse error.
+   */
+  it('is a forgiven item of an :is() argument', () => {
+    expect(failureOf(':is(.a /deep/ .b) { c: d; }')).toBeUndefined();
+    expect(forgivenSelectorItemsOf(parse(':is(.a /deep/ .b) { c: d; }')).map(item => item.written)).toEqual(['.a /deep/ .b']);
   });
 
   it.each([

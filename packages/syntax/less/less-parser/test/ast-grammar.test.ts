@@ -943,10 +943,9 @@ describe('Less AST grammar facts', () => {
       ['@t: selector();', 'parse/selector-capture-argument', 'selector()'],
       ['@t: selector( );', 'parse/selector-capture-argument', 'selector( )'],
       ['@t: selector(x {)} y);', 'parse/selector-capture-argument', '{)} y'],
-      ['@t: selector(.a:is(1px));', 'parse/selector-capture-argument', '1px'],
       ['@t: selector(.a:not(@{t}));', 'parse/selector-capture-argument', '@{t}'],
-      ['@t: selector(.a:is(.b 1px));', 'parse/selector-capture-argument', '1px'],
-      ['@t: selector(.a:is());', 'parse/selector-capture-argument', ':is()'],
+      ['@t: selector(.a:is(@{t}));', 'parse/selector-capture-argument', '@{t}'],
+      ['@t: selector(.a:is(.b:not(1px)));', 'parse/selector-capture-argument', '1px'],
       ['@t: selector(:nth-child(2n of .a:is(1px) 5px));', 'parse/selector-capture-argument', ':nth-child(2n of .a:is(1px) 5px)']
     ] as const) {
       const diagnostics: LessRecoveredError[] = [];
@@ -9985,22 +9984,29 @@ describe('Less AST grammar facts', () => {
     ]);
 
     /*
-     * A `@{…}`-interpolation-bearing arg cannot reach the static SelectorList
-     * arm — its bytes do not exist until evaluation — so it becomes one
-     * interpolation-backed SimpleSelector instead of a structured PseudoSelector.
-     * Less 4.8.0 models this same case structurally (literal chunks and refs as
-     * separate elements), so the parts stay typed and are never joined to text.
+     * An item of `:is()`'s forgiving selector list is a Less selector, so an
+     * interpolated one is an ordinary interpolated simple inside the structured
+     * pseudo's `args`, resolved per frame like a top-level one.
      */
     expect(headTokens('.x:is(@{sel}) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       {
-        type: 'SimpleSelector',
-        text: null,
-        interp: {
-          parts: [{ lit: ':is(' }, { ref: { name: 'sel' } }, { lit: ')' }]
+        type: 'PseudoSelector',
+        name: ':is',
+        args: {
+          type: 'SelectorList',
+          selectors: [{ type: 'SimpleSelector', text: null, interp: { parts: [{ ref: { name: 'sel' } }] } }]
         }
       }
     ]);
+
+    /*
+     * A `@{…}`-interpolation-bearing arg of a pseudo that takes a strict
+     * selector list cannot reach its static SelectorList arm — its bytes do not
+     * exist until evaluation — so it becomes one interpolation-backed
+     * SimpleSelector instead of a structured PseudoSelector. The parts stay
+     * typed and are never joined to text.
+     */
     expect(headTokens('.x:not(.a@{b}) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       {

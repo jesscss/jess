@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
-import type { Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { NO_SPAN, any, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -228,6 +228,7 @@ type JessRules = {
   PseudoSelectorComplex: Combinator<SelectorBranch>;
   PseudoSelectorTail: Combinator<SelectorBranch>;
   PseudoSelectorList: Combinator<SelectorList>;
+  ForgivingSelectorRest: Combinator<ForgivingRest>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
   ComplexSelector: Combinator<SelectorBranch>;
   NestedSelectorList: Combinator<SelectorList>;
@@ -326,6 +327,12 @@ type SharedSyntax = {
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
   TypedOfTypePseudoArgument: Combinator<NthArgument>;
+
+  /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
+  ForgivingSelectorList: Combinator<SelectorList>;
+
+  /* Inherited from the CSS base: an optional leading combinator, then this grammar's `ComplexSelector`. */
+  RelativeSelector: Combinator<SelectorBranch>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -2147,6 +2154,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return selector;
     }
   );
+
+  /*
+   * The CSS base's rest of a `:is()` / `:where()` item, reading `.jess`'s
+   * `${…}` there as a selector does, so it evaluates in a kept item.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      oneOrMore(choice(
+        g.DollarBrace,
+        sequence(
+          not(choice(literal(','), literal(')'), literal('${'))),
+          scanTo(choice(literal(','), literal(')'), literal('${')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')] })
+        )
+      ))
+    ),
+    children => forgivingSelectorRest(children)
+  );
   const PseudoSelector = node<SimpleToken>(
     'PseudoSelector',
 
@@ -2158,7 +2184,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
      * CSS base's `:lang()` / `:dir()` arguments own their padding themselves.
      * The one glued name/function opener routes nth and selector-only names to
      * their own argument grammars, so `of S` stays child-index-only and
-     * `:not(2n+1)` cannot fall through to general-any text. A bare nth or
+     * `:not(2n+1)` cannot fall through to general-any text; `:is()` and
+     * `:where()` read the CSS base's forgiving selector list. A bare nth or
      * selector-only name rejects rather than becoming a keyword pseudo.
      */
     sequence(
@@ -2186,7 +2213,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           )
         ),
         caseInsensitiveWhen(
-          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          ['is(', 'where('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            parser(
+              { trivia: whitespace },
+              g.ForgivingSelectorList
+            ),
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
             optional(rawWhitespace),
@@ -2343,11 +2383,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * The generic (non-nth) functional-pseudo argument: a static `SelectorList`
-   * only (`:not(.a, .b)`, `:is(.a)`, `:has(> .b)`). The nth families dispatch by
+   * only (`:not(.a, .b)`, `:has(> .b)`). The nth families dispatch by
    * name to their own arguments above; CSS's generic raw pseudo-argument arm is
    * deliberately NOT used here — it would hide dynamic Jess interpolation as
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
-   * text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
+   * text: a whitelisted selector-function pseudo (`:not`/`:has`/…) keeps it as
    * structured `args` and never canonicalizes at parse (the inner `_canon` memos
    * stay unpopulated); `PseudoSelector` derives opaque SimpleSelector text otherwise.
    */
@@ -2444,7 +2484,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `selector(<selector-list>)` in value position is a selector capture (owner
    * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
    * `selector(` opener here, and its argument is the static selector list the
-   * `:is()` family takes, padded the same way. Where the list cannot start or
+   * strict selector pseudos (`:not()`, `:has()`) take, padded the same way. Where the list cannot start or
    * cannot continue (`selector()`, `selector(1px)`, `selector($x)`), the rest
    * of the argument is read to `)` as `InvalidSelectorCaptureArgument` and
    * reported, and the parse carries on (P45). Its leading `not(')')` keeps it
@@ -5986,32 +6026,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A NESTING leading combinator: CSS Nesting lets a nested selector open with a
-   * combinator (`.parent { > .child { … } }`), where `>` relates to the implicit
-   * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
-   * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
-   * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
-   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`. The
-   * `relativeSelectorCombinator` it opens with is shared with the functional-
-   * pseudo argument (defined above with the nth/pseudo selector rules).
-   */
-  const RelativeSelector = node<SelectorBranch>(
-    'RelativeSelector',
-    sequence(
-      optional(relativeSelectorCombinator),
-      g.ComplexSelector
-    ),
-    (children) => {
-      const branch = children.find(isSelectorBranch)!;
-      if (children.length === 1) {
-        return branch;
-      }
-      const lead = jessRelativeCombinator(children[0]);
-      return relativeSelector(lead, branchSegments(branch));
-    }
-  );
-
-  /*
    * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
    * (`SimpleSelector`/`CompoundSelector`/`ComplexSelector`, whatever each item
    * reduces to) and, because this is a nesting context, ADDS `RelativeSelector`
@@ -6019,12 +6033,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * leading combinator. Items MIX freely (`> .a, .b`). The node NAME is the
    * canonical `SelectorList` (only the rules-map KEY differs); the TOP-LEVEL
    * `SelectorList` admits no leading combinator, so a stylesheet-root `> .a` —
-   * with no parent to relate to — is still rejected.
+   * with no parent to relate to — is still rejected. The item is the CSS
+   * base's `RelativeSelector` over this grammar's `ComplexSelector`.
    */
   const NestedSelectorList = node<SelectorList>(
     'SelectorList',
     oneOrMoreSep(
-      RelativeSelector,
+      g.RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
@@ -6343,6 +6358,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelectorComplex,
     PseudoSelectorTail,
     PseudoSelectorList,
+    ForgivingSelectorRest,
     SelectorCapture,
     ComplexSelector,
     NestedSelectorList,

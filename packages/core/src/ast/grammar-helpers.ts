@@ -15,8 +15,8 @@
  * drift, not a merge candidate: unifying it silently would change parsing.
  * Dialect-specific helpers stay in their own `grammar.ts`.
  */
-import { keyword, NULL_NODE, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
-import { withBodySpan } from './provenance.js';
+import { keyword, NULL_NODE, pseudoHasInterp, selectorBranchCanonical, selectorBranchComponents, selectorBranchHasAmpersand, selectorBranchHasInterp, selectorCapture } from './nodes.js';
+import { NO_SPAN, sourceEndOf, sourceStartOf, withBodySpan } from './provenance.js';
 import type {
   ComplexSelector,
   ForBinding,
@@ -213,20 +213,35 @@ export function scannedLeaf(children: readonly unknown[]): SpannedToken & Token 
  * What `selector(…)` holds when its argument is not a selector list: where to
  * report it — the rest the list could not read, without its trailing padding,
  * or the whole call when the argument holds nothing — and the call, written
- * as a capture prints (the list canonical, the rest as written).
+ * as a capture prints (the list canonical, the rest as written), or
+ * `undefined` where the list reads an interpolation, which has no canonical
+ * spelling: the call is then kept as authored (`authoredSource`).
  */
 export interface SelectorCaptureProblem {
   readonly start: number;
   readonly end: number;
-  readonly written: string;
+  readonly written: string | undefined;
 }
 
-/** The capture a `selector(` reduction built, or the problem to report. */
+/**
+ * The capture a `selector(` reduction built, or the problem to report. A
+ * capture holds its list as text, so it cannot hold an interpolation, which a
+ * `:is()` / `:where()` item reads (`selector(.a:is(@{x}))`): that is reported
+ * at the item.
+ */
 export function selectorCaptureOf(children: readonly unknown[], span: SourceSpan): SelectorCapture | SelectorCaptureProblem {
   const selector = children.find(isSelectorListChild);
   const rest = writtenTokenBetween(children);
   const branches = selector?.selectors.map(selectorBranchCanonical);
   const list = branches?.join(', ');
+  if (selector?.selectors.some(selectorBranchHasInterp)) {
+    const item = interpolatedItemIn(selector);
+    return {
+      start: item === undefined ? span.start : sourceStartOf(item),
+      end: item === undefined ? span.end : sourceEndOf(item),
+      written: undefined
+    };
+  }
   if (branches !== undefined && rest === undefined) {
     return selectorCapture(branches, selector!.selectors.map(selectorBranchComponents), `selector(${list})`);
   }
@@ -267,4 +282,29 @@ export function recoveredInTree<E extends object>(root: object, errors: readonly
     }
   }
   return errors.filter(error => !('recoveredValue' in error) || (typeof error.recoveredValue === 'object' && error.recoveredValue !== null && seen.has(error.recoveredValue)));
+}
+
+/*
+ * The first `:is()` / `:where()` item in a list that reads an interpolation,
+ * found through the pseudos that hold it; `undefined` when it has no span.
+ */
+function interpolatedItemIn(list: SelectorList): SelectorBranch | undefined {
+  for (const branch of list.selectors) {
+    if (!selectorBranchHasInterp(branch)) {
+      continue;
+    }
+    const terms = branch.type === 'ComplexSelector' || branch.type === 'RelativeSelector' ? branch.value : [branch];
+    for (const term of terms) {
+      const tokens = typeof term === 'string' ? [] : term.type === 'CompoundSelector' ? term.value : [term];
+      for (const token of tokens) {
+        if (token.type === 'PseudoSelector' && token.args !== null && pseudoHasInterp(token)) {
+          return interpolatedItemIn(token.args) ?? (sourceStartOf(branch) === NO_SPAN ? undefined : branch);
+        }
+      }
+    }
+    if (sourceStartOf(branch) !== NO_SPAN) {
+      return branch;
+    }
+  }
+  return undefined;
 }

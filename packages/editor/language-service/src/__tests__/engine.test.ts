@@ -446,9 +446,8 @@ describe('JessLanguageServiceEngine', () => {
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a, @x); }\n.after { color: red; }', ', @x'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(); }\n.after { color: red; }', 'selector()'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector( ); }\n.after { color: red; }', 'selector( )'],
-      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:is(1px)); }\n.after { color: red; }', '1px'],
+      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:is(@{t})); }\n.after { color: red; }', '@{t}'],
       ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:not(@{t})); }\n.after { color: red; }', '@{t}'],
-      ['less', 'parse/selector-capture-argument', '.legacy { a: selector(.a:is()); }\n.after { color: red; }', ':is()'],
       ['jess', 'parse/selector-capture-argument', '.legacy { a: selector( .a, 1px ); }\n.after { color: red; }', ', 1px'],
       ['jess', 'parse/selector-capture-argument', '.legacy { a: selector($x); }\n.after { color: red; }', '$x']
     ])('underlines %s %s without losing the document', (languageId, code, input, underlined) => {
@@ -472,6 +471,9 @@ describe('JessLanguageServiceEngine', () => {
       ['less', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
       ['jess', '.x { a: selector(.a > .b ~ .c, &.d, [x^=y]); }'],
       ['less', '.x { a: selector(.a:hover, .b::before, .c:nth-child(2n), .d:is(.e), :root, .f:lang(en)); }'],
+      ['less', '.x { a: selector(.a:is(1px)); }'],
+      ['less', '.x { a: selector(.a:is()); }'],
+      ['jess', '.x { a: selector(.a:is(1px)); }'],
       ['jess', '.x { a: selector(.a:hover, .b::before, .c:nth-child(2n), .d:is(.e), :root); }'],
       ['less', '@supports selector(.a ~ .b) { .x { c: d; } }'],
       ['less', '.x { c: if(supports(selector(.a ~ .b)): x; else: y); }'],
@@ -483,6 +485,55 @@ describe('JessLanguageServiceEngine', () => {
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       expect(engine.getDiagnostics(doc.uri).filter(item => String(item.code).includes('selector-capture') || item.code === 'css/invalid-value-punctuation')).toEqual([]);
+    });
+
+    /*
+     * The compiler's `css/forgiving-selector-item` warning, at the same place:
+     * the `:is()` / `:where()` item that is not a selector (Selectors 4 §16.1).
+     */
+    it.each([
+      ['css', '.card:is(.active, 1px) { color: red; }', '1px'],
+      ['less', '.card:is(.active, 1px) { color: red; }', '1px'],
+      ['scss', '.card:is(.active, 1px) { color: red; }', '1px'],
+      ['jess', '.card:is(.active, 1px) { color: red; }', '1px'],
+      ['less', '.x { a: selector(.a:is(1px)); }', '1px'],
+      ['css', '.a:where( 1px ) { color: red; }', '1px'],
+      ['css', '.a:is(.b 1px) { color: red; }', '.b 1px'],
+      ['css', '.a:is(> .b) { color: red; }', '> .b'],
+      ['less', '.a:is(.b, @{x} 1px) { color: red; }', '@{x} 1px']
+    ])('warns at the forgiven item (%s: %s)', (languageId, input, underlined) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/forgiving-selector-item');
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Warning });
+      expect(diagnostics[0]!.message.startsWith(`\`${underlined}\` is not a selector; browsers ignore it here`)).toBe(true);
+      expect(input.slice(doc.offsetAt(diagnostics[0]!.range.start), doc.offsetAt(diagnostics[0]!.range.end))).toBe(underlined);
+      expect(engine.getDiagnostics(doc.uri).filter(item => item.severity === DiagnosticSeverity.Error)).toEqual([]);
+    });
+
+    it('warns at an empty item beside another', () => {
+      const engine = createEngine();
+      const input = '.a:is(.b,,.c) { color: red; }';
+      const doc = createDocument('css', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/forgiving-selector-item');
+      expect(diagnostics.map(item => [doc.offsetAt(item.range.start), doc.offsetAt(item.range.end)])).toEqual([[9, 10]]);
+      expect(diagnostics[0]!.message.startsWith('An empty item is not a selector; browsers ignore it here')).toBe(true);
+    });
+
+    it.each([
+      ['css', '.a:is() { color: red; }'],
+      ['css', '.x:is(.a, .b) { color: red; }']
+    ])('does not warn for a forgiving list of selectors (%s: %s)', (languageId, input) => {
+      const engine = createEngine();
+      const doc = createDocument(languageId, input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      expect(engine.getDiagnostics(doc.uri).filter(item => item.code === 'css/forgiving-selector-item')).toEqual([]);
     });
 
     /* The compiler's `css/invalid-value-punctuation` error, at the same place: the declaration (ledger P48). */

@@ -1,6 +1,6 @@
 import { run } from 'parseman';
 import { makeLessRegistry } from '@jesscss/fns';
-import { valueLayoutOf } from '@jesscss/core/ast';
+import { forgivenSelectorItemsOf, valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
@@ -1902,25 +1902,36 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  /* `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1, owner 2026-10-20): a non-selector item is kept as written. */
+  it.each([
+    ['.card:is(.active, 1px) { color: blue; }', '.card:is(.active, 1px) {\n  color: blue;\n}\n', ['1px']],
+    ['.a:where() { color: blue; }', '.a:where() {\n  color: blue;\n}\n', []],
+    ['.a:is(.b /* c */, .d) { color: blue; }', '.a:is(.b, .d) {\n  color: blue;\n}\n', []]
+  ])('parses %s and records each item that is not a selector', (source, css, forgiven) => {
+    const document = parse(source);
+    expect(serialize(document).css).toBe(css);
+    expect(forgivenSelectorItemsOf(document).map(item => item.written)).toEqual(forgiven);
+  });
+
   it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {
     const accepted = (source: string): boolean => {
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
       return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
     };
 
     /*
      * `of <selector>` is defined only for the nth-child index family (Selectors-4
      * §6.6.2); the type-index families reject it, and a non-selector argument to a
-     * selector-arg pseudo (`:not`/`:is`) now rejects rather than falling through to
+     * selector-arg pseudo (`:not`) now rejects rather than falling through to
      * opaque text. Bare `:nth-child`/`:nth-of-type` (no parens) reject too. This
-     * closes the SCSS divergences against css/jess/less.
+     * closes the SCSS divergences against css/jess/less. `:is()` and `:where()`
+     * take a forgiving selector list instead, which keeps a non-selector item.
      */
     for (const source of [
       '.card:nth-of-type(2n of .a) { color: blue; }',
       '.card:nth-of-type(n of .a) { color: blue; }',
       '.card:nth-last-of-type(-n+3 of .a) { color: blue; }',
       '.card:not(2n+1) { color: blue; }',
-      '.card:is(2n+1) { color: blue; }',
       '.card:nth-child { color: blue; }',
       '.card:nth-of-type { color: blue; }'
     ]) {
@@ -1931,6 +1942,7 @@ describe('SCSS canonical-AST grammar', () => {
       'a:nth-of-type(2n+1) { color: blue; }',
       '.card:not(.a) { color: blue; }',
       '.card:is(.a, .b) { color: blue; }',
+      '.card:is(2n+1) { color: blue; }',
       '.card:has(> .b) { color: blue; }',
       '.card:has(+ .b) { color: blue; }',
       '.card:has(~ .b) { color: blue; }',

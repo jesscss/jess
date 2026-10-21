@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
-import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
@@ -344,6 +344,7 @@ type LessRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
+  ForgivingSelectorRest: Combinator<ForgivingRest>;
   SelectorList: Combinator<SelectorList>;
   ExtendTarget: Combinator<ExtendTargetListFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
@@ -393,6 +394,8 @@ type SharedSyntax = {
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
+  // Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list.
+  ForgivingSelectorList: Combinator<SelectorList>;
   // Inherited from the CSS base: the media query list (`@media`, an import postlude).
   QueryPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base: an only-clause or a chain of media terms.
@@ -4817,7 +4820,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Keep it local, like CSS's generic pseudo argument: it is an implementation
   // component of the public pseudo production, not a second parser API.
   // Retain the parsed `SelectorList` rather than collapsing it to text. A
-  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // whitelisted selector-function pseudo (`:not`/`:has`/…) keeps it as structured
   // `args`; `PseudoSelector` joins the opaque `:global`/`:local`
   // fallback via `selectorBranchCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
@@ -4877,7 +4880,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * `selector(<selector-list>)` in value position is a selector capture (owner
    * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
-   * `selector(` opener here, and its argument is the `:is()` family's
+   * `selector(` opener here, and its argument is the strict selector pseudos'
    * `pseudoSelectorArgument`, read as `pseudoSelectorRouted` reads it: the
    * padding before `)` is the argument's. It is a selector-valued Less value,
    * not a text capture: the selector grammar owns every branch boundary and the
@@ -4935,9 +4938,41 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )
   );
   /*
-   * Inside a capture, a selector pseudo reads its argument as the capture
-   * does, so a non-selector or interpolated argument (`selector(.a:is(1px))`)
-   * is recovered where it stands and reported by the capture (P45).
+   * The CSS base's rest of a `:is()` / `:where()` item, reading Less's `@{…}`
+   * there as a selector does, so it evaluates in a kept item.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      oneOrMore(choice(
+        g.VariableInterpolation,
+        sequence(
+          not(choice(literal(','), literal(')'), literal('@{'))),
+          scanTo(choice(literal(','), literal(')'), literal('@{')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')] })
+        )
+      ))
+    ),
+    children => forgivingSelectorRest(children.map(child => isInterpolationFact(child) ? interpolation([{ ref: child.ref, unquote: true }]) : child))
+  );
+  /*
+   * `:is()` / `:where()`: the CSS base's forgiving selector list, whose items
+   * are Less selectors, interpolation and all; one that is not a selector is
+   * kept as written, in a capture too.
+   */
+  const forgivingPseudoRouted = node(
+    'PseudoSelector',
+    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(g.ForgivingSelectorList, literal(')')))),
+    children => staticSelectorPseudoFrom(
+      requireToken(children[0]).value.slice(0, -1),
+      children[1]
+    )
+  );
+  /*
+   * Inside a capture, a selector pseudo with a strict argument reads it as the
+   * capture does, so a non-selector or interpolated argument
+   * (`selector(.a:not(@{t}))`) is recovered where it stands and reported by
+   * the capture (P45).
    */
   const capturedPseudoRouted = node(
     'PseudoSelector',
@@ -4992,9 +5027,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const pseudo = dispatch(
     pseudoOpen,
+    caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
-      choice(pseudoSelectorRouted, interpolatedArgumentPseudoRouted)
+      [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
+      choice(
+        { gate: state => selectorCaptureOfState(state) !== undefined, combinator: capturedPseudoRouted },
+        pseudoSelectorRouted,
+        interpolatedArgumentPseudoRouted
+      )
     ),
     caseOf(':lang(', choice(langPseudoRouted, interpolatedArgumentPseudoRouted)),
     caseOf(':dir(', choice(dirPseudoRouted, interpolatedArgumentPseudoRouted)),
@@ -5010,8 +5050,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // selector surface.
   const staticPseudoDispatch = dispatch(
     pseudoOpen,
+    caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
+      [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
       choice(
         { gate: state => selectorCaptureOfState(state) !== undefined, combinator: capturedPseudoRouted },
         pseudoSelectorRouted
@@ -5847,6 +5888,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ExtendStatement,
     RulesetWithExtends,
     RelativeSelector,
+    ForgivingSelectorRest,
     NestedRulesetWithExtends,
     Quoted,
     LiteralQuoted,
