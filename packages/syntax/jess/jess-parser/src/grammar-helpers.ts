@@ -1141,7 +1141,7 @@ function ifCondition(value: ValueSlot): GuardNode {
  * same way in .jess"): each `;` group a branch, `else` the one with no
  * condition. A group that is not a branch leaves the call css's branch list.
  */
-function lowerCssIf(groups: readonly CallGroup[]): IfValue | undefined {
+function lowerCssIf(groups: readonly CallGroup[], name: string): IfValue | undefined {
   const branches: IfValueBranch[] = [];
   let trailingSemicolon = false;
   for (const [index, group] of groups.entries()) {
@@ -1158,7 +1158,7 @@ function lowerCssIf(groups: readonly CallGroup[]): IfValue | undefined {
     });
   }
   const [first, ...others] = branches;
-  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon);
+  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon, name);
 }
 
 /**
@@ -1201,7 +1201,7 @@ function genericCallFrom(children: readonly unknown[]): FunctionCall | IfValue {
     }
     return call;
   }
-  const lowered = name.toLowerCase() === 'if' ? lowerCssIf(groups.map(gluedBranch)) : undefined;
+  const lowered = name.toLowerCase() === 'if' ? lowerCssIf(groups.map(gluedBranch), name) : undefined;
   if (lowered !== undefined) {
     return lowered;
   }

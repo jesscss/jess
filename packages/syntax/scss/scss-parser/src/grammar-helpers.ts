@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleStatement, Branch, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
@@ -450,7 +450,9 @@ export function scssCallArgument(children: readonly unknown[]): ScssCallArg {
    * {@link reduceScssCall} keeps where a branch may stand.
    */
   if (children.some(child => isToken(child) && child.value === ':')) {
-    const value = requireValueSlot(children[children.length - 1]);
+    /* A branch with no value (`else:`) has the empty value css's `Branch` writes as a bare colon. */
+    const last = children[children.length - 1];
+    const value = isScssValueSlotValue(last) ? last : [];
     if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
       return callArg(branch(left, value));
     }
@@ -718,7 +720,7 @@ function branchListCall(name: string, groups: readonly ArgumentGroup[]): Functio
  * condition, any other condition is {@link ifCondition}'s. A group that is not
  * a branch (`if(a: 1; b)`) leaves the call the branch list css writes.
  */
-function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
+function lowerCssIf(groups: readonly ArgumentGroup[], name: string): IfValue | undefined {
   const branches: IfValueBranch[] = [];
   let trailingSemicolon = false;
   for (const [index, group] of groups.entries()) {
@@ -737,7 +739,7 @@ function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
     });
   }
   const [first, ...others] = branches;
-  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon);
+  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon, name);
 }
 
 function isElse(condition: ValueSlot): boolean {
@@ -766,7 +768,7 @@ function ifCondition(value: ValueSlot): GuardNode {
       }
       case 'Operation':
         if (value.operator === 'and' || value.operator === 'or') {
-          return { g: value.operator, left: ifCondition(value.left), right: ifCondition(value.right), word: value.operator, gluedAt: NO_SPAN, parens: 0 };
+          return { g: value.operator, left: ifCondition(value.left), right: ifCondition(value.right), word: authoredLogicalWords.get(value) ?? value.operator, gluedAt: NO_SPAN, parens: 0 };
         }
         break;
       case 'Expression': {
@@ -785,7 +787,36 @@ function ifCondition(value: ValueSlot): GuardNode {
         break;
     }
   }
-  return { g: 'css', value, parens: 0 };
+  return { g: 'css', value: isValueSlotArray(value) ? juxtaposedTests(value) : value, parens: 0 };
+}
+
+/**
+ * A condition whose `and` / `or` stands beside other juxtaposed values
+ * (`css(1) and css(2) var(--and) css(3)`), which css-values-5 gives no
+ * meaning: Sass's expression folded the keyword into an operation inside the
+ * space run, so it is unfolded into the run css builds, each operand and the
+ * keyword as written. A run holding a `sass()` condition keeps Sass's reading.
+ */
+function juxtaposedTests(run: readonly ValueSlot[]): ValueSlot {
+  const parts: ValueSlot[] = [];
+  const unfold = (part: ValueSlot): boolean => {
+    if (isValueSlotArray(part)) {
+      return part.every(unfold);
+    }
+    if (part.type === 'FunctionCall' && part.name === 'sass') {
+      return false;
+    }
+    if (part.type === 'Operation' && (part.operator === 'and' || part.operator === 'or')) {
+      if (!unfold(part.left)) {
+        return false;
+      }
+      parts.push(keyword(authoredLogicalWords.get(part) ?? part.operator));
+      return unfold(part.right);
+    }
+    parts.push(part);
+    return true;
+  };
+  return run.every(unfold) ? parts : run;
 }
 
 /** A `sass()` condition: the comparison or negation written in it, or its value's truth. */
@@ -824,7 +855,7 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
   }
   const lowerName = name.toLowerCase();
   if (groups.length > 1 || isBranchArgument(groups[0]!.args[0])) {
-    return (lowerName === 'if' ? lowerCssIf(groups) : undefined) ?? branchListCall(name, groups);
+    return (lowerName === 'if' ? lowerCssIf(groups, name) : undefined) ?? branchListCall(name, groups);
   }
   const args = groups[0]!.args.map(unbranched);
   const separators = groups[0]!.separators;
@@ -937,14 +968,31 @@ export function scssConditionSource(value: ValueSlot): string {
  */
 export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
   const values = children.filter(isScssValue);
-  const operators = children.filter(isToken).map(token => token.value.trim().toLowerCase()).filter(text => text === 'and' || text === 'or');
+  const words = children.filter(isToken).map(token => token.value.trim()).filter((text) => {
+    const operator = text.toLowerCase();
+    return operator === 'and' || operator === 'or';
+  });
   let result = requireValue(values[0]);
   for (let index = 1; index < values.length; index += 1) {
-    result = operation(operators[index - 1]!, result, values[index]!, false,
-      cssBaseMathOutsideParens(operators[index - 1]!));
+    const word = words[index - 1]!;
+    const operator = word.toLowerCase();
+    const folded = operation(operator, result, values[index]!, false, cssBaseMathOutsideParens(operator));
+    if (word !== operator) {
+      authoredLogicalWords.set(folded, word);
+    }
+    result = folded;
   }
   return result;
 }
+
+/**
+ * The `and` / `or` an `Operation` was written with, where it is not the
+ * lowercase operator (`AND`). Sass reads the operator in any case; a CSS
+ * `if()` condition built from the operation keeps the keyword as authored
+ * (ledger J20, owner 2026-10-13: "CSS any case"). Read once, by
+ * {@link ifCondition}, while the same parse lowers the `if()`.
+ */
+const authoredLogicalWords = new WeakMap<ValueNode, string>();
 
 export function scssOptionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);

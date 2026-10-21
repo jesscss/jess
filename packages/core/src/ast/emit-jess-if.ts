@@ -28,7 +28,7 @@ export function jessIf(node: IfValue, p: IfSpeller): string {
     return p.gap('IfValue', 'a Less `if()` lowered from a call (ledger P36): its call has no `.jess` spelling here');
   }
   const branches = node.branches.map(branch => jessBranch(branch.guard === null ? 'else' : condition(branch.guard, p), p.value(branch.value)));
-  return `if(${branches.join('; ')}${node.trailingSemicolon ? ';' : ''})`;
+  return `${node.name}(${branches.join('; ')}${node.trailingSemicolon ? ';' : ''})`;
 }
 
 /**
@@ -57,17 +57,36 @@ function condition(node: GuardNode, p: IfSpeller): string {
   }
 }
 
-/** A CSS test's authored text, which `.jess` reads as a custom property's value: a `$name` in it is text, and `${name}` interpolates. */
+/**
+ * A CSS test as `.jess` reads it, the structure css builds: a `media()`,
+ * `supports()` or `style()` call over query syntax (a feature's `:` and
+ * comparisons, paren groups, `and` / `or` / `not` as keywords) whose values are
+ * `.jess` values, a `$name` among them. A `style()` value is a custom
+ * property's, so text in it stays text and `${name}` interpolates.
+ */
 function cssTest(value: ValueSlot, p: IfSpeller): string {
-  if (!Array.isArray(value) && 'type' in value && value.type === 'Any') {
-    return value.src.includes('${') || value.src.includes('$[') || value.src.includes('$(')
-      ? p.gap('Any', 'a CSS test holding `${`, `$[` or `$(`, which `.jess` reads as a `$` form')
-      : value.src;
+  if (!('type' in value)) {
+    return value.map(part => cssTest(part, p)).join(' ');
   }
-  if (!Array.isArray(value) && 'type' in value && value.type === 'Interpolation') {
-    return p.template(value);
+  switch (value.type) {
+    case 'Any':
+      return value.src.includes('${') || value.src.includes('$[') || value.src.includes('$(')
+        ? p.gap('Any', 'a CSS test holding `${`, `$[` or `$(`, which `.jess` reads as a `$` form')
+        : value.src;
+    case 'Interpolation':
+      /* A `<general-enclosed>` function's authored content (`selector(:has(a))`) is written as it was. */
+      return value.parts.every(part => 'lit' in part) ? value.parts.map(part => ('lit' in part ? part.lit : '')).join('') : p.template(value);
+    case 'Operation':
+      return `${cssTest(value.left, p)}${value.operator === ':' ? '' : ' '}${value.operator} ${cssTest(value.right, p)}`;
+    case 'Block':
+      return value.delimiter === 'paren' && value.escaped !== true ? `(${cssTest(value.value, p)})` : p.value(value);
+    case 'FunctionCall':
+      return value.args.every(arg => arg.name === undefined && !arg.spread)
+        ? `${value.name}(${value.args.map(arg => cssTest(arg.value, p)).join(', ')})`
+        : p.value(value);
+    default:
+      return p.value(value);
   }
-  return p.value(value);
 }
 
 /** A branch argument, `condition: value`, the colon the branch's own (ledger P38); an omitted value keeps the bare colon. */

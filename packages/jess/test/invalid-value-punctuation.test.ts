@@ -361,13 +361,8 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
   }
 
   const IF_AND = 'if(media(print) and supports(display: grid): a; else: b)';
-  it.each(['css', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
+  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
     expect(await clean(dialect, sheet(IF_AND))).toContain(`x: ${IF_AND};`);
-  });
-
-  /* Less reads `and` between two tests as its own condition (`if(false: a; else: b)`). */
-  it.fails('less: a CSS if() condition joined by `and`', async () => {
-    expect(await clean('less', sheet(IF_AND))).toContain(`x: ${IF_AND};`);
   });
 
   /* A call argument whose first item is followed by a `:` is a branch (ledger P38): the colon is its structure. */

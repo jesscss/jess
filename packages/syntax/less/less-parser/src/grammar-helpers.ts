@@ -22,7 +22,7 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, isValueSlotArray, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -124,6 +124,14 @@ type FunctionConditionFact = {
 
   /** A chain of operators (`a=b=c`, `a==b`): the CSS run it is, written as authored. */
   readonly run?: ValueSlot;
+
+  /**
+   * A CSS `if()` condition (css-values-5 §8.3): `media()`, `supports()` and
+   * `style()` tests joined by `not`, `and`, `or` and paren groups. The browser
+   * answers it, so it is the component run css builds, its keywords as
+   * authored (ledger P38; J20, "CSS any case").
+   */
+  readonly css?: ValueSlot;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type VariableNameFact = {
@@ -2321,6 +2329,9 @@ function functionConditionParenFrom(children: readonly unknown[], span: SourceSp
     throw new TypeError('Less function condition lost its parenthesized operand.');
   }
   const fact = { guard: inParens(inner.guard), src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
+  if (inner.css !== undefined) {
+    return { ...fact, css: withSourceSpan(block(inner.css), span) };
+  }
   return inner.raw === undefined || inner.hasComparison
     ? fact
     : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) };
@@ -2341,6 +2352,10 @@ function functionConditionOperandFact(value: unknown, state: unknown): FunctionC
   }
   const bare = isLessGuardOperand(value) ? lessMathInValue(value.run, state) : requireValueNode(value);
   const fact = { guard: lessTruth(bare), src: functionConditionSource(bare), grouped: false, hasComparison: false, bare };
+  /* The value dispatch reads `media(`, `supports(` and `style(` as a CSS `if()` test wherever it stands. */
+  if (isIfTestCall(bare)) {
+    return { ...fact, css: bare };
+  }
   return isLessGuardOperand(value) ? { ...fact, raw: value.run } : fact;
 }
 
@@ -2359,13 +2374,22 @@ function functionConditionTermFrom(
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
-  if (negated) {
-    reportConditionKeywordCase(rawChildren[0], state);
-  }
   let index = negated ? 1 : 0;
   let left = functionConditionOperandFact(children[index], state);
   const groupLed = left.grouped;
   index += 1;
+  if (left.css !== undefined && index === children.length) {
+    /* `not` before a CSS test, unglued: the CSS condition `not <if-test>`, the keyword as authored. */
+    if (!negated) {
+      return left;
+    }
+    if (!gluedToNot(rawChildren[0], left.css)) {
+      return { guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: NO_SPAN, parens: 0 }, src: `${notWord} ${left.src}`, grouped: false, hasComparison: false, css: [keyword(notWord), left.css] };
+    }
+  }
+  if (negated) {
+    reportConditionKeywordCase(rawChildren[0], state);
+  }
   if (groupLed && index < children.length && guardOperatorText(children[index]) === null) {
     /* A group holding a condition heads the run as the condition's truth (ledger P42). */
     const head = left.raw === undefined || left.hasComparison ? condition(left.guard, left.src) : requireValueNode(left.raw);
@@ -2402,6 +2426,11 @@ function functionConditionTermFrom(
   return negated
     ? { guard: { g: 'not', inner: guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${src})`, grouped: false, hasComparison: true }
     : { guard, src, grouped: false, hasComparison: true };
+}
+
+/** Whether a `not` token is glued to the group after it (`not(…)`), which CSS reads as one function token. */
+function gluedToNot(not: unknown, operand: ValueSlot): boolean {
+  return isSpannedToken(not) && !isValueSlotArray(operand) && operand.type === 'Block' && sourceStartOf(operand) === not.span.end;
 }
 
 /**
@@ -2610,7 +2639,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
   }
   ands.push(parenConditionTermFrom(term, termRaw, state));
   const fact = foldFunctionCondition('or', [...ors, foldFunctionCondition('and', ands)]);
-  return withSourceSpan(block(fact.run ?? condition(fact.guard, fact.src)), span);
+  return withSourceSpan(block(fact.css ?? fact.run ?? condition(fact.guard, fact.src)), span);
 }
 
 /**
@@ -2626,6 +2655,13 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
   let hasComparison = false;
   let word: string = kind;
   let gluedAt = NO_SPAN;
+
+  /*
+   * The CSS run while every term is a CSS test and no keyword is glued to the
+   * group after it (`and(…)`, which CSS reads as one function token), else `null`.
+   */
+  let css: ValueSlot[] | null = [];
+  let keywordEnd = NO_SPAN;
   for (let index = 0; index < children.length; index++) {
     const child = children[index];
     if (!isFunctionConditionFact(child)) {
@@ -2633,9 +2669,16 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
       if (text !== undefined && text !== null) {
         word = text;
         gluedAt = isLessParenLogical(child) ? child.gluedAt : NO_SPAN;
-        reportConditionKeywordCase(rawChildren[index], state);
+        /* The token carries the whitespace around the keyword: the keyword ends where its text does. */
+        const raw = rawChildren[index];
+        const rawText = lessTerminalText(raw);
+        keywordEnd = isSpannedToken(raw) && rawText !== null ? raw.span.start + rawText.trimEnd().length : NO_SPAN;
       }
       continue;
+    }
+    if (css !== null) {
+      const glued = gluedAt !== NO_SPAN || (child.css !== undefined && !isValueSlotArray(child.css) && child.css.type === 'Block' && sourceStartOf(child.css) === keywordEnd);
+      css = child.css === undefined || glued ? null : css.length === 0 ? [child.css] : [...css, keyword(word), child.css];
     }
     if (first === undefined || guard === undefined) {
       first = child;
@@ -2651,7 +2694,18 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
   if (first === undefined || guard === undefined) {
     throw new TypeError('Less function condition lost its first term.');
   }
-  if (guard === first.guard && first.run !== undefined) {
+  if (css === null) {
+    /* A Less condition's keywords are lowercase (owner 2026-10-13: "B: CSS any case, Less lowercase"). */
+    for (let index = 0; index < children.length; index++) {
+      if (!isFunctionConditionFact(children[index])) {
+        reportConditionKeywordCase(rawChildren[index], state);
+      }
+    }
+  }
+  if (css !== null && css.length > 1) {
+    return { guard, src, grouped: false, hasComparison: false, css };
+  }
+  if (guard === first.guard && (first.run !== undefined || first.css !== undefined)) {
     return first;
   }
   if (guard === first.guard) {

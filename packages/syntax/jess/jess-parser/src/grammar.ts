@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -259,6 +259,10 @@ type JessRules = {
   HeaderValue: Combinator<ValueSlot>;
   HeaderCallArgument: Combinator<ValueSlot>;
   QueryValue: Combinator<ValueNode>;
+  MediaTest: Combinator<FunctionCall>;
+  SupportsTest: Combinator<FunctionCall>;
+  StyleTest: Combinator<FunctionCall>;
+  StyleFeature: Combinator<ValueNode>;
   QueryFeatureName: Combinator<JessQueryFeatureName>;
   QueryComparisonFeature: Combinator<ValueNode>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
@@ -321,6 +325,11 @@ type SharedSyntax = {
 
   /* Inherited from the CSS base: a function-form `<general-enclosed>`, kept as written. */
   QueryFunction: Combinator<FunctionCall>;
+
+  /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
+  MediaTestBody: Combinator<unknown>;
+  SupportsTestBody: Combinator<unknown>;
+  StyleTestBody: Combinator<unknown>;
 
   /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments and the `<an+b>` fact. */
   LangPseudoArgument: Combinator<List | Interpolation>;
@@ -2672,25 +2681,94 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /**
    * A CSS `if()` test (css-values-5 §8.3): `media()`, `supports()` or
-   * `style()` in an `if()` condition, whose argument is a media query, a
-   * supports condition or a style query. It is read as a custom property's
-   * value is read (`CustomInnerPart`): a `$name` in it is text and `${name}`
-   * interpolates, as SCSS reads its tests, so the test is that text. Outside an
-   * `if()` condition the same names are function calls.
+   * `style()` in an `if()` condition. Its argument is css's (`MediaTestBody`,
+   * `SupportsTestBody`, `StyleTestBody`): a media query, a supports condition
+   * or a style query, read and written as `.css` reads and writes it, whose
+   * values are `.jess` values, so a `$name` and a `${name}` in a `media()` or
+   * `supports()` test substitute (owner 2026-10-20: "it's in a 'value
+   * position' in the at-rule prelude, so intuitively it can be $bp or
+   * ${bp}"). Outside an `if()` condition the same names are function calls.
+   *
+   * Restated ONLY as the routed shell, as Less restates them: a dialect
+   * dispatch routed to the inherited node never hands over its head. A `.jess`
+   * value runs with trivia cleared, so the shell skips the gap after the
+   * opener (`media( print )`) as css's value run does.
+   * TODO(jess#298): delete the three shells once parseman detects routed()
+   * through a composed rule.
    */
-  const CssTest = node<Any | Interpolation>(
-    'CssTest',
-    noTrivia(sequence(
-      routed(),
-      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
-      literal(')')
-    )),
-    children => customValueFromChildren(children)
+  const MediaTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.MediaTestBody
+      )
+    ),
+    children => ifTestCall(children)
   );
-  const callOrCssTest = choice(
+  const SupportsTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.SupportsTestBody
+      )
+    ),
+    children => ifTestCall(children)
+  );
+  const StyleTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.StyleTestBody
+      )
+    ),
+    children => ifTestCall(children)
+  );
+
+  /*
+   * A style query's `<style-feature>` (css's `StyleFeature` slot): the custom
+   * property css's style contents dispatch read, `:`, and its value, a custom
+   * property's (owner 2026-10-20, on `style(--theme: ${t})`: "yep, that is
+   * correct, it's a custom prop declaration"), so only `${…}` substitutes and
+   * a `$name` is text.
+   */
+  const StyleFeature = node<ValueNode>(
+    'StyleFeature',
+    sequence(
+      routed(),
+      optional(sequence(
+        literal(':'),
+        parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart))
+      ))
+    ),
+    children => styleFeature([
+      keyword(requireToken(children[0]).value),
+      ...(children.length > 1 ? [customValueFromChildren(children.slice(2))] : [])
+    ])
+  );
+  const mediaTestOrCall = choice(
     {
       gate: state => isIfTest(state),
-      combinator: CssTest
+      combinator: MediaTest
+    },
+    GenericCall
+  );
+  const supportsTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: SupportsTest
+    },
+    GenericCall
+  );
+  const styleTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: StyleTest
     },
     GenericCall
   );
@@ -2884,8 +2962,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       withCtx(state => enterIfTest(state), GenericCall)
     ),
     caseInsensitiveWhen(
-      ['media(', 'supports(', 'style('],
-      callOrCssTest
+      'media(',
+      mediaTestOrCall
+    ),
+    caseInsensitiveWhen(
+      'supports(',
+      supportsTestOrCall
+    ),
+    caseInsensitiveWhen(
+      'style(',
+      styleTestOrCall
     ),
 
     /*
@@ -3312,6 +3398,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ParenValue,
     g.SquareValue,
     g.DollarValue,
+
+    /*
+     * In a CSS `if()` condition, a `media()` or `supports()` test's value takes
+     * `${name}` as well as `$name` (owner 2026-10-20: "it's in a 'value
+     * position' in the at-rule prelude, so intuitively it can be $bp or
+     * ${bp}"); any other value position takes `$name` alone (ledger P13).
+     */
+    {
+      gate: state => isIfTest(state),
+      combinator: g.DollarBrace
+    },
     g.ExpressionLambda,
     g.InterpolatedValue,
     g.CustomPropertyValue,
@@ -6253,6 +6350,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     HeaderValue,
     HeaderCallArgument,
     QueryValue,
+    MediaTest,
+    SupportsTest,
+    StyleTest,
+    StyleFeature,
     QueryFeatureName,
     QueryComparisonFeature,
     QueryNonOnlyKeyword,

@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -103,6 +103,10 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
+  MediaTest: Combinator<FunctionCall>;
+  SupportsTest: Combinator<FunctionCall>;
+  StyleTest: Combinator<FunctionCall>;
+  StyleFeature: Combinator<ValueNode>;
   SupportsAtom: Combinator<ValueNode>;
   GeneralTemplate: Combinator<Interpolation>;
   GeneralTemplateGroup: Combinator<Interpolation>;
@@ -181,6 +185,11 @@ type ScssSharedSyntax = {
   /* Inherited from the CSS base: the media query list and the container prelude. */
   QueryPrelude: Combinator<ValueNode>;
   ContainerPrelude: Combinator<ValueNode>;
+
+  /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
+  MediaTestBody: Combinator<unknown>;
+  SupportsTestBody: Combinator<unknown>;
+  StyleTestBody: Combinator<unknown>;
 
   /*
    * Inherited from the CSS base: the typed `An+B` arguments of the `:nth-*()`
@@ -984,21 +993,76 @@ const scssFactory = (g: ScssInputRules) => {
 
   /**
    * A CSS `if()` test (css-values-5 §8.3): `media()`, `supports()` or
-   * `style()` in an `if()` condition, whose argument is a media query, a
-   * supports condition or a style query. Dart Sass reads it as written,
-   * interpolating only `#{…}`, so a `$name` in it is text; this reads it as a
-   * custom property's value is read (`CustomInnerPart`), and the test is that
-   * text: an `Any`, or an `Interpolation` around a `#{…}`. Outside an `if()`
-   * condition the same names are function calls (`IdentifierOrFunction`).
+   * `style()` in an `if()` condition. Its argument is css's (`MediaTestBody`,
+   * `SupportsTestBody`, `StyleTestBody`): a media query, a supports condition
+   * or a style query, read and written as `.css` reads and writes it, whose
+   * values are SCSS values, so a `$name` and a `#{…}` in a `media()` or
+   * `supports()` test substitute (owner 2026-10-20: "it's in a 'value
+   * position' in the at-rule prelude, so intuitively it can be $bp or ${bp}").
+   * Outside an `if()` condition the same names are function calls
+   * (`IdentifierOrFunction`).
+   *
+   * Restated ONLY as the routed shell, as Less restates them: a dialect
+   * dispatch routed to the inherited node never hands over its head. An SCSS
+   * value runs with trivia cleared, so the shell skips the gap after the
+   * opener (`media( print )`) as css's value run does.
+   * TODO(jess#298): delete the three shells once parseman detects routed()
+   * through a composed rule.
    */
-  const CssTest = node<ValueNode>(
-    'CssTest',
-    noTrivia(sequence(
+  const MediaTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.MediaTestBody
+      )
+    ),
+    children => ifTestCall(children)
+  );
+  const SupportsTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.SupportsTestBody
+      )
+    ),
+    children => ifTestCall(children)
+  );
+  const StyleTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.StyleTestBody
+      )
+    ),
+    children => ifTestCall(children)
+  );
+
+  /*
+   * A style query's `<style-feature>` (css's `StyleFeature` slot): the custom
+   * property css's style contents dispatch read, `:`, and its value, a custom
+   * property's (owner 2026-10-20, on `style(--theme: ${t})`: "yep, that is
+   * correct, it's a custom prop declaration"), so only `#{…}` substitutes and
+   * a `$name` is text, as Dart Sass reads it.
+   */
+  const StyleFeature = node<ValueNode>(
+    'StyleFeature',
+    sequence(
       routed(),
-      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
-      literal(')')
-    )),
-    children => customValueFromChildren(children)
+      optional(sequence(
+        literal(':'),
+        parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart))
+      ))
+    ),
+    children => styleFeature([
+      keyword(requireToken(children[0]).value),
+      ...(children.length > 1 ? [customValueFromChildren(children.slice(2))] : [])
+    ])
   );
 
   /**
@@ -1032,10 +1096,24 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0, span, state)
   );
-  const callOrCssTest = choice(
+  const mediaTestOrCall = choice(
     {
       gate: state => isIfTest(state),
-      combinator: CssTest
+      combinator: MediaTest
+    },
+    Call
+  );
+  const supportsTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: SupportsTest
+    },
+    Call
+  );
+  const styleTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: StyleTest
     },
     Call
   );
@@ -1153,7 +1231,9 @@ const scssFactory = (g: ScssInputRules) => {
 
     /* `sass(…)` holds a Sass expression, not a condition (Dart Sass reads it so); its calls are calls. */
     when('sass(', withCtx(state => leaveIfTest(state), Call)),
-    caseInsensitive(['media(', 'supports(', 'style('], callOrCssTest),
+    caseInsensitive('media(', mediaTestOrCall),
+    caseInsensitive('supports(', supportsTestOrCall),
+    caseInsensitive('style(', styleTestOrCall),
 
     /*
      * A trailing escaped paren is a value keyword, not a call: `\(` and `a\(` are
@@ -1491,7 +1571,13 @@ const scssFactory = (g: ScssInputRules) => {
           literal(':')
         ),
         optional(valueTrivia),
-        withCtx(state => leaveIfTest(state), g.ValueTerm)
+
+        /*
+         * A branch's value may be empty (`if(else:)`, css-values-5 §8.3
+         * `<declaration-value>?`); a comparison with nothing after it is the
+         * delim run it is (`scssCallArgument`).
+         */
+        optional(withCtx(state => leaveIfTest(state), g.ValueTerm))
       ))
     )),
     children => scssCallArgument(children)
@@ -5097,6 +5183,10 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeature,
     QueryFunction,
+    MediaTest,
+    SupportsTest,
+    StyleTest,
+    StyleFeature,
     SupportsAtom,
     GeneralTemplate,
     GeneralTemplateGroup,
