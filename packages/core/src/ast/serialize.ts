@@ -9501,14 +9501,9 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
 type InterpRef = Extract<InterpPart, { ref: ValueNode }>;
 
 /**
- * [selector-capture] A GROUP interpolation: an interpolation in a selector whose value
- * is a selector list, whose branches are selectors: a comma-separated branch list at
- * whole-selector position, a `:is(…)` compaction in compound position.
- */
-interface GroupInterp { branches: string[]; multi: boolean }
-
-/**
- * [selector-capture] Whether an interpolation ref's value is a selector list: a comma
+ * [selector-capture] Whether an interpolation ref's value is a selector list, a GROUP
+ * whose branches are selectors (a branch list at whole-selector position, a `:is(…)`
+ * compaction in compound position): a comma
  * list — a `selector(…)` capture (P49), `&` and `selector.parse()` (P50), a written list —
  * however the ref reaches it, a variable, an alias of it or a mixin parameter (owner
  * 2026-10-20: "we should be consistent about values"). Escaped text (`~'.a, .b'`) is
@@ -9523,15 +9518,9 @@ const isSelectorListValue = (value: EvalValue, e: Lane): value is EvalList =>
 const isCommaList = (value: ValueGroup): value is EvalList => !isValueGroupArray(value) && value.type === 'List' && value.sep === ',';
 
 /** The selectors of a selector-list value's items: a comma list of lists is the one list of their selectors. */
-function pushSelectorBranches(items: readonly ValueGroup[], unquote: boolean, out: string[]): void {
-  for (const item of items) {
-    if (isCommaList(item)) {
-      pushSelectorBranches(item.value, unquote, out);
-    } else {
-      out.push(unquote && !isValueGroupArray(item) && item.type === 'Quoted' ? item.value : interpRefBytes(item, unquote));
-    }
-  }
-}
+const selectorBranches = (items: readonly ValueGroup[], unquote: boolean): string[] => items.flatMap(item => isCommaList(item)
+  ? selectorBranches(item.value, unquote)
+  : [unquote && !isValueGroupArray(item) && item.type === 'Quoted' ? item.value : interpRefBytes(item, unquote)]);
 
 /**
  * [selector-capture] What one selector interpolation ref splices, its value read once
@@ -9539,28 +9528,18 @@ function pushSelectorBranches(items: readonly ValueGroup[], unquote: boolean, ou
  * reducer preserves this MaybePromise so a public async plugin can resolve one slot
  * before the next slot is evaluated in the SAME lexical frame.
  */
-function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane): MaybePromise<GroupInterp | string> {
+function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane): MaybePromise<string[] | string> {
   const value = interpRefValue(part, frame, e, ARG_SELECTOR);
   return isThenable(value) ? value.then(v => selectorPart(v, part.unquote, e)) : selectorPart(value, part.unquote, e);
 }
 
-function selectorPart(value: EvalValue, unquote: boolean, e: Lane): GroupInterp | string {
-  if (!isSelectorListValue(value, e)) {
-    return interpRefBytes(value, unquote);
-  }
-  const branches: string[] = [];
-  pushSelectorBranches(value.value, unquote, branches);
-  return { branches, multi: branches.length > 1 };
-}
+const selectorPart = (value: EvalValue, unquote: boolean, e: Lane): string[] | string =>
+  isSelectorListValue(value, e) ? selectorBranches(value.value, unquote) : interpRefBytes(value, unquote);
 
 /** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
 function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boolean {
   const value = interpRefValue(part, frame, e, ARG_SELECTOR);
-  if (isThenable(value)) {
-    observeRejectedThenable(value);
-    return false;
-  }
-  return isSelectorListValue(value, e);
+  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value, e);
 }
 
 /**
@@ -9604,11 +9583,8 @@ function loneInterpRef(c: SelectorBranch): InterpRef | null {
  */
 function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> | null {
   const part = loneInterpRef(c);
-  if (part === null) {
-    return null;
-  }
-  return mapMaybe(interpSelectorPart(part, frame, e), value =>
-    typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value.branches);
+  return part && mapMaybe(interpSelectorPart(part, frame, e), value =>
+    typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value);
 }
 
 /** Bytes for one non-group interpolation ref part (matches `evalInterp`: fold the
@@ -9627,9 +9603,8 @@ function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): 
   return loneInterpBranches(c, frame, e) ?? mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
 }
 
-/** A selector interpolation part's text: a group compacts to `:is(…)` in a compound, a one-branch group is its branch bare. */
-const groupInterpText = (value: GroupInterp | string): string =>
-  typeof value === 'string' ? value : value.multi ? `:is(${value.branches.join(', ')})` : value.branches.join(', ');
+/** A selector interpolation part's text: a group compacts to `:is(…)` in a compound, a one-branch group is its branch bare ({@link ampSub}). */
+const groupInterpText = (value: string[] | string): string => typeof value === 'string' ? value : ampSub(value);
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
  *  part folds to its bytes, escaped text as written, EXCEPT a selector list embedded
@@ -10460,6 +10435,11 @@ function pseudoElementFlag(c: SelectorBranch, frame: Frame | null, e: Lane): num
 function tokenPseudoElementFlag(sim: SimpleToken, frame: Frame | null, e: Lane): number {
   const known = tokenPseudoElement(sim);
   if (known === true && sim.interp !== null && sim.interp.parts[0] !== undefined && !('lit' in sim.interp.parts[0])) {
+    /*
+     * ponytail: a lone `@{s}` is evaluated a second time here to know whether it is a
+     * selector list (an async one counts as text); carry that from the selector's own
+     * resolution if this shows in a profile.
+     */
     const part = simpleInterpRef(sim);
     return part !== null && isGroupInterpSync(part, frame, e) ? PSEUDO_CAPTURE : PSEUDO_TEXT;
   }
