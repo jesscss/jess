@@ -139,6 +139,7 @@ svg.railroad-diagram rect {
     <a href="#rule-AttributeSelector">AttributeSelector</a>
     <a href="#rule-PseudoSelector">PseudoSelector</a>
     <a href="#rule-RelativeSelector">RelativeSelector</a>
+    <a href="#rule-ForgivingSelectorRest">ForgivingSelectorRest</a>
     <a href="#rule-ForgivingSelectorItem">ForgivingSelectorItem</a>
     <a href="#rule-ForgivingSelectorList">ForgivingSelectorList</a>
     <a href="#rule-PseudoArgument">PseudoArgument</a>
@@ -837,10 +838,15 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="RelativeSelector"></div>
     <div class="ebnf">RelativeSelector ::= (&quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot;)? ComplexSelector</div>
   </section>
+  <section class="rule" id="rule-ForgivingSelectorRest">
+    <h2><a href="#rule-ForgivingSelectorRest">§</a> ForgivingSelectorRest</h2>
+    <div class="diagram" data-rule="ForgivingSelectorRest"></div>
+    <div class="ebnf">ForgivingSelectorRest ::= !(&quot;,&quot; | &quot;)&quot;) (DollarBrace | !(&quot;,&quot; | &quot;)&quot; | &quot;${&quot;) /* … */)+</div>
+  </section>
   <section class="rule" id="rule-ForgivingSelectorItem">
     <h2><a href="#rule-ForgivingSelectorItem">§</a> ForgivingSelectorItem</h2>
     <div class="diagram" data-rule="ForgivingSelectorItem"></div>
-    <div class="ebnf">ForgivingSelectorItem ::= RelativeSelector? (!(&quot;,&quot; | &quot;)&quot;) /* … */)?</div>
+    <div class="ebnf">ForgivingSelectorItem ::= RelativeSelector? ForgivingSelectorRest?</div>
   </section>
   <section class="rule" id="rule-ForgivingSelectorList">
     <h2><a href="#rule-ForgivingSelectorList">§</a> ForgivingSelectorList</h2>
@@ -2913,7 +2919,8 @@ svg.railroad-diagram rect {
   { name: "AttributeSelector", dsl: function(){ return Diagram(Sequence(Terminal("["), Optional(NonTerminal("AttributeNamespace")), NonTerminal("Identifier"), Optional(Sequence(NonTerminal("AttributeOperator"), Choice(0, NonTerminal("LiteralQuoted"), NonTerminal("Identifier")), Optional(NonTerminal("AttributeModifier")))), Terminal("]"))); } },
   { name: "PseudoSelector", dsl: function(){ return Diagram(Sequence(NonTerminal("PseudoSelectorColon"), NonTerminal("identifierOrFunction"), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Choice(0, Sequence(NonTerminal("AnPlusB"), Optional(Sequence(NonTerminal("NthOfKeyword"), NonTerminal("PseudoSelectorList"))), NonTerminal("PseudoSelectorCloseAhead")), Sequence(Sequence(Comment("not"), Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("PseudoSelectorList"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), Choice(0, NonTerminal("TypedOfTypePseudoArgument"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Sequence(Comment("not"), Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("PseudoSelectorList"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), NonTerminal("ForgivingSelectorList"), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), NonTerminal("PseudoSelectorArgument"), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(NonTerminal("LangPseudoArgument"), Terminal(")")), Sequence(NonTerminal("DirPseudoArgument"), Terminal(")")), Sequence(Comment("not"), Skip()), NonTerminal("GenericPseudoArgument"), Skip()))); } },
   { name: "RelativeSelector", dsl: function(){ return Diagram(Sequence(Optional(Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("ComplexSelector"))); } },
-  { name: "ForgivingSelectorItem", dsl: function(){ return Diagram(Sequence(Optional(NonTerminal("RelativeSelector")), Optional(Sequence(Sequence(Comment("not"), Choice(0, Terminal(","), Terminal(")"))), Comment("…"))))); } },
+  { name: "ForgivingSelectorRest", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal(","), Terminal(")"))), OneOrMore(Choice(0, NonTerminal("DollarBrace"), Sequence(Sequence(Comment("not"), Choice(0, Terminal(","), Terminal(")"), Terminal("${"))), Comment("…")))))); } },
+  { name: "ForgivingSelectorItem", dsl: function(){ return Diagram(Sequence(Optional(NonTerminal("RelativeSelector")), Optional(NonTerminal("ForgivingSelectorRest")))); } },
   { name: "ForgivingSelectorList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ForgivingSelectorItem"), Terminal(","))); } },
   { name: "PseudoArgument", dsl: function(){ return Diagram(Choice(0, NonTerminal("LeadingDashRawPseudoArgument"), NonTerminal("TypedNthPseudoArgument"), NonTerminal("SelectorList"), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("pseudoArgumentContent")))); } },
   { name: "OfTypePseudoArgument", dsl: function(){ return Diagram(Choice(0, NonTerminal("LeadingDashRawPseudoArgument"), NonTerminal("TypedOfTypePseudoArgument"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Choice(0, NonTerminal("SelectorList"), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("pseudoArgumentContent")))))); } },
