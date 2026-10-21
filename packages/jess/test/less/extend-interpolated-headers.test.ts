@@ -107,3 +107,16 @@ describe('an extend of a selector an interpolated header resolves to', () => {
     await expect(render(source, true, language)).resolves.toBe(collapsed);
   });
 });
+
+/* EXTEND-SEMANTICS §10: a lone interpolation naming a selector list extends and is extended as its selectors. */
+describe('a selector list a lone interpolation names, with an extend', () => {
+  it.each([false, true])('extends from each of its selectors, collapseNesting: %s', async (collapseNesting) => {
+    await expect(render('@buttons: selector(.btn, .button);\n.focusable { outline: auto; }\n@{buttons}:extend(.focusable) { cursor: pointer; }', collapseNesting, 'less'))
+      .resolves.toBe('.focusable,\n.btn,\n.button {\n  outline: auto;\n}\n.btn,\n.button {\n  cursor: pointer;\n}\n');
+  });
+
+  it('keeps its selectors as the parent of a rule an extend flattens', async () => {
+    await expect(render('@buttons: selector(.btn, .button);\n@{buttons} {\n  .icon { margin: 0; }\n}\n.badge:extend(.icon all) {}', true, 'less'))
+      .resolves.toBe(':is(.btn, .button) :is(.icon, .badge) {\n  margin: 0;\n}\n');
+  });
+});

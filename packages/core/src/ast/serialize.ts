@@ -12807,17 +12807,15 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
    */
   const texts: Array<SelectorText | undefined> = [];
 
-  /* Each pseudo whose argument interpolates, and its resolved copy. */
-  const pseudos: SimpleToken[] = [];
-  const copies: SimpleToken[] = [];
-  for (let i = 0; i < comp.value.length; i++) {
-    const sim = comp.value[i]!;
+  /* The compound's tokens, each pseudo whose argument interpolates replaced by its resolved copy. */
+  const tokens = comp.value.slice();
+  for (let i = 0; i < tokens.length; i++) {
+    const sim = tokens[i]!;
     texts.push(undefined);
     if (sim.type === 'PseudoSelector' && sim.args !== null) {
       if (pseudoHasInterp(sim)) {
         probePseudoInterp(sim, frame, e);
-        pseudos.push(sim);
-        copies.push(resolvePseudoInterpCopy(sim, frame, e));
+        tokens[i] = resolvePseudoInterpCopy(sim, frame, e);
       }
       continue;
     }
@@ -12831,16 +12829,10 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
    * one compound per selector, crossed as {@link resolveCompound} crosses them for the header.
    */
   if (!isOneText(texts)) {
-    return crossTexts(comp.value.map((sim, i) => texts[i] ?? simpleTokenText(copies[pseudos.indexOf(sim)] ?? sim)), picked => simpleSelector(picked.join('')));
+    return crossTexts(tokens.map((sim, i) => texts[i] ?? simpleTokenText(sim)), picked => simpleSelector(picked.join('')));
   }
-  const tokens = resolvedCompoundTokens(comp.value, texts);
-  for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
-    const at = pseudos.indexOf(tokens[i]!);
-    if (at !== -1) {
-      tokens[i] = copies[at]!;
-    }
-  }
-  return tokens.length === 1 ? tokens[0]! : { ...comp, value: tokens, _hasInterp: false, _canon: undefined };
+  const out = resolvedCompoundTokens(tokens, texts);
+  return out.length === 1 ? out[0]! : { ...comp, value: out, _hasInterp: false, _canon: undefined };
 }
 
 /**
@@ -13069,6 +13061,32 @@ function resolvedSelectorBranchesOf(list: SelectorList, branches: ReadonlyArray<
 }
 
 /**
+ * [extend/selector-interp] Branch `c` of a selector list as the header writer writes
+ * it, for the extend planner: a lone `@{s}` is whole-selector position, the branches the
+ * header expands it to ({@link expandSelectorBranch}), one per selector of a selector list,
+ * and a selector list continuing a name multiplies the branch ({@link resolveSimpleTexts}).
+ * Each expanded branch is one resolved simple, as a resolved interpolated token is
+ * ({@link resolvedCompoundTokens}). `c` itself when it does not resolve: an AWAITABLE
+ * interpolation is a capability gap, reported; anything else (a guarded rule never
+ * emitted) leaves it verbatim, and the extend engine falls back to no match. `context` is
+ * the list, then its rule, a diagnostic falls back to.
+ */
+function plannedBranches(c: SelectorBranch, frame: Frame, e: Lane, where: string, context: readonly object[]): SelectorBranch | SelectorBranch[] {
+  if (!selectorBranchHasInterp(c)) {
+    return c;
+  }
+  try {
+    const lone = loneInterpRef(c) === null ? null : loneInterpBranches(c, frame, e);
+    return lone === null
+      ? resolveSelectorBranchInterpCopy(c, frame, e)
+      : settledSelectorSync(lone, termTokens(selectorBranchTerms(c)[0]!)[0]!).map(text => simpleSelector(text));
+  } catch (error) {
+    rejectAsyncSelectorInterp(error, where, [c, ...context], e);
+    return c;
+  }
+}
+
+/**
  * [extend/selector-interp] The extend engine ({@link computeExtends}) reads each rule
  * selector's IR BEFORE the frame walk, so a `@{…}` token (`[data=@{attr-data}]`,
  * `.@{n}`) is unresolved (`text: null` → `''`) at match/emit time — the interp rule
@@ -13105,75 +13123,29 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
       recordPropertyDeclaration(frame, st, frame);
     } else if (st.type === 'Ruleset') {
       const list = st.selector;
-      const branches: Array<SelectorBranch | SelectorBranch[]> = [];
-      for (const c of list.selectors) {
-        if (!selectorBranchHasInterp(c)) {
-          branches.push(c);
-          continue;
-        }
-        try {
-          /*
-           * A branch reads as the header writes it: a lone `@{s}` is whole-selector
-           * position, the branches the header expands it to ({@link expandSelectorBranch}),
-           * one per selector of a selector list, and a selector list continuing a name
-           * multiplies the branch ({@link resolveSimpleTexts}). Each expanded branch is one
-           * resolved simple, as a resolved interpolated token is ({@link resolvedCompoundTokens}).
-           */
-          const lone = loneInterpRef(c) === null ? null : loneInterpBranches(c, frame, e);
-          const resolved = lone === null
-            ? resolveSelectorBranchInterpCopy(c, frame, e)
-            : settledSelectorSync(lone, termTokens(selectorBranchTerms(c)[0]!)[0]!).map(text => simpleSelector(text));
-          branches.push(resolved);
-
-          /*
-           * An inline `:extend()` holds its own branch — the parser's object, shared with
-           * this list — so the extend reads the resolved branch too, or it extends from
-           * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
-           */
-          for (let i = 0; st.extendInstructions !== undefined && i < st.extendInstructions.length; i++) {
-            const inst = st.extendInstructions[i]!;
-            if (inst.subject?.selectors[0] === c) {
-              resolvedSelectorBranchesOf(inst.subject, [resolved], e);
-            }
-          }
-        } catch (error) {
-          /*
-           * An AWAITABLE interp is a capability gap, not an unresolvable branch:
-           * report it. Anything else (e.g. a guarded rule never emitted) leaves the
-           * selector verbatim — the extend engine falls back to the baseline (no
-           * match), never regresses.
-           */
-          rejectAsyncSelectorInterp(error, 'extend pre-pass rule selector', [c, list, st], e);
-          branches.push(c);
-        }
-      }
+      const context = [list, st];
+      const branches = list.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass rule selector', context));
       resolvedSelectorBranchesOf(list, branches, e);
 
       /*
-       * The same planner reads extend targets before matching. Resolve their
-       * typed selector interpolation in this existing cold pass and lexical
-       * frame, alongside rule selectors; no selector text recovery or second
-       * traversal is introduced.
+       * An inline `:extend()` holds its own branch — the parser's object, shared with
+       * this list — so the extend reads the resolved branch too, or it extends from
+       * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
        */
-      for (const inst of st.extendInstructions ?? []) {
-        const targets: Array<SelectorBranch | SelectorBranch[]> = [];
-        for (const c of inst.target.selectors) {
-          if (!selectorBranchHasInterp(c)) {
-            targets.push(c);
-            continue;
-          }
-          try {
-            targets.push(resolveSelectorBranchInterpCopy(c, frame, e));
-          } catch (error) {
-            /*
-             * As above: an awaitable target is reported; a genuinely unresolvable
-             * one is preserved and the planner keeps its no-match behavior.
-             */
-            rejectAsyncSelectorInterp(error, 'extend pre-pass :extend() target', [c, inst.target, st], e);
-            targets.push(c);
+      for (let index = 0; st.extendInstructions !== undefined && index < branches.length; index++) {
+        const c = list.selectors[index]!;
+        for (let i = 0; branches[index] !== c && i < st.extendInstructions.length; i++) {
+          const inst = st.extendInstructions[i]!;
+          if (inst.subject?.selectors[0] === c) {
+            resolvedSelectorBranchesOf(inst.subject, [branches[index]!], e);
           }
         }
-        resolvedSelectorBranchesOf(inst.target, targets, e);
+      }
+
+      /* The same planner reads extend targets before matching, resolved in this cold pass and lexical frame alongside rule selectors. */
+      for (const inst of st.extendInstructions ?? []) {
+        const targetContext = [inst.target, st];
+        resolvedSelectorBranchesOf(inst.target, inst.target.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass :extend() target', targetContext)), e);
       }
 
       /* The rule's body is its `&` ({@link parentSelectorBranches}), as the walk's frame is ({@link activateRuleFrame}). */
