@@ -104,6 +104,14 @@ export const isUnit = (selector: string): string => `:is(${selector})`;
  */
 export type SelectorText = string | string[];
 
+/**
+ * Where each branch of a selector list's resolved copy came from, when one authored
+ * branch resolved to several: the index of its authored branch, or `~index` for a lone
+ * interpolation naming a selector list, which the header writer composes under a parent
+ * as one `:is()` unit (`.toolbar :is(.btn, .button)`).
+ */
+export type SelectorUnits = Int32Array;
+
 /** Whether no text of `values` is multiplied. */
 export const isOneText = <T>(values: readonly (T | T[])[]): values is readonly T[] => !values.some(value => Array.isArray(value));
 

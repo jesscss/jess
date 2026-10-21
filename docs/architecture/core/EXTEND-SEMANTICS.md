@@ -749,11 +749,16 @@ adjacent/child targets each match their respective combinator form.
   header the document has with or without an extend: a lone `@{list}` naming a
   selector list is one branch per selector (ledger O8(a)), and a list continuing a
   name (`.col-@{sizes}`, `#{&}__title`) one branch per selector it multiplies into,
-  each one resolved simple. So `@{list}:extend(.z)` with `@list: selector(.q, .w)`
-  writes `.z, .q, .w`, `.y:extend(.col-sm)` extends `.col-@{sizes}` with
-  `@sizes: sm, md`, and `@{list} { .c {} } .y:extend(.c all)` writes
+  its other simples and `&` kept as tokens. So `@{list}:extend(.z)` with
+  `@list: selector(.q, .w)` writes `.z, .q, .w`, `.y:extend(.col-sm)` extends
+  `.col-@{sizes}` with `@sizes: sm, md` (and `.y:extend(.b.col-sm)` extends
+  `.b.col-@{sizes}`), and `@{list} { .c {} } .y:extend(.c all)` writes
   `:is(.q, .w) :is(.c, .y)` flattened. A `&` in such a selector is the rule's
-  parent, as in the walk. A branch the pre-pass cannot resolve keeps no text, so an
+  parent, as in the walk. Flattened by an extend in collapsed output, the header
+  folds as it does with no extend: a lone list under a parent stays one `:is()` unit
+  (`.toolbar :is(.btn, .button), .link`). A lone list's selectors are each held as
+  text and matched whole, as a lone `@{sel}` is (ledger X7 known gap): `@s: selector(.a .b, .c)`
+  with `.z:extend(.b all)` misses `.a .b`. A branch the pre-pass cannot resolve keeps no text, so an
   extend from it — inline, body-form, or from a rule nested under it — is skipped,
   never written as an empty or parentless extender (`.z, {`, `.z, .c {`), which would
   drop or widen the target's rule (ledger O17; `extend/plan.ts` `writableLevel`).

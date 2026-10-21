@@ -71,8 +71,9 @@ describe('an interpolated header with an extend elsewhere in the document', () =
 
 /*
  * Where the extend applies, the extender joins the selectors the header resolves to. In
- * nested output that is the header of the rules written out; collapsed, a branch a list
- * continuing a name multiplies stays its own branch, as it is with no extend.
+ * nested output that is the header of the rules written out. Collapsed, it is the header
+ * written with no extend, the extender added: a lone selector list under a parent stays
+ * the one `:is()` unit, and a branch a list continuing a name multiplies stays its own.
  */
 describe('an extend of a selector an interpolated header resolves to', () => {
   const extended: ReadonlyArray<readonly [Language, string, string, string, string]> = [
@@ -87,7 +88,19 @@ describe('an extend of a selector an interpolated header resolves to', () => {
     ['less', 'a capture nested in a rule',
       '@buttons: selector(.btn, .button);\n.toolbar {\n  @{buttons} { margin: 0; }\n}\n.link:extend(.toolbar .btn) { color: blue; }',
       '.toolbar {\n  .btn, .button { margin: 0; }\n}\n.link:extend(.toolbar .btn) { color: blue; }',
-      '.toolbar .btn,\n.toolbar .button,\n.link {\n  margin: 0;\n}\n.link {\n  color: blue;\n}\n'],
+      '.toolbar :is(.btn, .button),\n.link {\n  margin: 0;\n}\n.link {\n  color: blue;\n}\n'],
+    ['less', 'a capture beside the selector an extend reaches',
+      '@buttons: selector(.btn, .button);\n.toolbar {\n  @{buttons}, .link { margin: 0; }\n}\n.nav-link:extend(.toolbar .link) { color: blue; }',
+      '.toolbar {\n  .btn, .button, .link { margin: 0; }\n}\n.nav-link:extend(.toolbar .link) { color: blue; }',
+      '.toolbar :is(.btn, .button),\n.toolbar .link,\n.nav-link {\n  margin: 0;\n}\n.nav-link {\n  color: blue;\n}\n'],
+    ['less', 'a compound continuing a name',
+      '@sizes: sm, md;\n.btn.size-@{sizes} { padding: 0; }\n.btn-compact:extend(.btn.size-sm) { border: 0; }',
+      '.btn.size-sm, .btn.size-md { padding: 0; }\n.btn-compact:extend(.btn.size-sm) { border: 0; }',
+      '.btn.size-sm,\n.btn.size-md,\n.btn-compact {\n  padding: 0;\n}\n.btn-compact {\n  border: 0;\n}\n'],
+    ['less', 'a `&` compound continuing a name',
+      '@sizes: sm, md;\n.btn {\n  &.size-@{sizes} { padding: 0; }\n}\n.btn-compact:extend(.btn.size-sm) { border: 0; }',
+      '.btn {\n  &.size-sm, &.size-md { padding: 0; }\n}\n.btn-compact:extend(.btn.size-sm) { border: 0; }',
+      '.btn.size-sm,\n.btn.size-md,\n.btn-compact {\n  padding: 0;\n}\n.btn-compact {\n  border: 0;\n}\n'],
     ['scss', '#{&} before a BEM suffix',
       '.card, .panel {\n  #{&}__title { font-weight: bold; }\n}\n.headline { @extend .card__title; }',
       '.card, .panel {\n  .card__title, .panel__title { font-weight: bold; }\n}\n.headline { @extend .card__title; }',

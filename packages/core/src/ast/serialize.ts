@@ -71,7 +71,6 @@ import {
   selectorTermOf,
   selist,
   simpleSelector,
-  simpleTokenText,
   simpleTokenHasInterp,
   textHoldsParentRef,
   branchTextIsPlaceholder,
@@ -81,6 +80,7 @@ import {
 import serializerNodes from './nodes.js';
 import {
   type SelectorText,
+  type SelectorUnits,
   appendText,
   continuesNameAt,
   crossTexts,
@@ -4324,6 +4324,9 @@ interface EvalSession {
    * placed twice). One map per render, shared by every context of it.
    */
   resolvedSelectors: Map<SelectorList, SelectorList>;
+
+  /** [extend/selector-interp] Where each branch of a resolved copy that expanded came from ({@link SelectorUnits}), by its parsed list. */
+  resolvedUnits: Map<SelectorList, SelectorUnits>;
 
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
@@ -10726,6 +10729,9 @@ interface DynamicExtendState {
   /** The extend pre-pass's resolved selector lists ({@link EvalSession.resolvedSelectors}). */
   resolvedSelectors: ReadonlyMap<SelectorList, SelectorList>;
 
+  /** {@link EvalSession.resolvedUnits}. */
+  resolvedUnits: ReadonlyMap<SelectorList, SelectorUnits>;
+
   /** The import placements the walk issued, which the static plan never projected:
    * a rule they place is a dynamic emission even when `staticRules` holds it, since
    * the plan holds it at another copy of its sheet. */
@@ -10977,6 +10983,7 @@ function scratchEmit(e: Lane): Emit {
       trivia: e.s.trivia,
       pseudoElementLists: e.s.pseudoElementLists,
       resolvedSelectors: e.s.resolvedSelectors,
+      resolvedUnits: e.s.resolvedUnits,
       propNames: e.s.propNames,
       scopedFunctionNames: e.s.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
       lambdaFunctionNames: e.s.lambdaFunctionNames, // [lambda-fn] preserve the user-`@function` gate
@@ -12828,11 +12835,10 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
    * A selector list continuing a name multiplies the compound ({@link resolveSimpleTexts}):
    * one compound per selector, crossed as {@link resolveCompound} crosses them for the header.
    */
-  if (!isOneText(texts)) {
-    return crossTexts(tokens.map((sim, i) => texts[i] ?? simpleTokenText(sim)), picked => simpleSelector(picked.join('')));
-  }
-  const out = resolvedCompoundTokens(tokens, texts);
-  return out.length === 1 ? out[0]! : { ...comp, value: out, _hasInterp: false, _canon: undefined };
+  return crossTexts<string | undefined, SelectorTerm>(texts, (picked) => {
+    const out = resolvedCompoundTokens(tokens, picked);
+    return out.length === 1 ? out[0]! : { ...comp, value: out, _hasInterp: false, _canon: undefined };
+  });
 }
 
 /**
@@ -13057,7 +13063,12 @@ function resolvedSelectorBranchesOf(list: SelectorList, branches: ReadonlyArray<
   if (branches.every((branch, index) => branch === list.selectors[index])) {
     return;
   }
-  e.s.resolvedSelectors.set(list, { ...list, selectors: branches.flat() });
+  const selectors = branches.flat();
+  e.s.resolvedSelectors.set(list, { ...list, selectors });
+  if (selectors.length !== branches.length) {
+    const lone = (branch: SelectorBranch[], index: number): boolean => branch.length > 1 && loneInterpRef(list.selectors[index]!) !== null;
+    e.s.resolvedUnits.set(list, Int32Array.from(branches.flatMap((branch, index) => Array.isArray(branch) ? branch.map(() => lone(branch, index) ? ~index : index) : [index])));
+  }
 }
 
 /**
@@ -13076,7 +13087,7 @@ function plannedBranches(c: SelectorBranch, frame: Frame, e: Lane, where: string
     return c;
   }
   try {
-    const lone = loneInterpRef(c) === null ? null : loneInterpBranches(c, frame, e);
+    const lone = loneInterpBranches(c, frame, e);
     return lone === null
       ? resolveSelectorBranchInterpCopy(c, frame, e)
       : settledSelectorSync(lone, termTokens(selectorBranchTerms(c)[0]!)[0]!).map(text => simpleSelector(text));
@@ -14305,6 +14316,7 @@ function createRenderSession(
       trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
       pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
       resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
+      resolvedUnits: new Map(),
       propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
       scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
       lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
@@ -14471,7 +14483,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0 || e.importedWalkPlacement) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
-    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact', e.s.resolvedSelectors); // [extend] null when no `:extend()` anywhere
+    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact', e.s.resolvedSelectors, e.s.resolvedUnits); // [extend] null when no `:extend()` anywhere
     e.importPlacements = planned.imports?.importPlacements ?? null;
 
     /*
@@ -14514,6 +14526,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerEnds: [],
         staticRules,
         resolvedSelectors: e.s.resolvedSelectors,
+        resolvedUnits: e.s.resolvedUnits,
         walkPlacements: null,
         subjects: [],
         instructions: [],
@@ -15692,7 +15705,7 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
     bubbles: dyn.baseOverlay.bubbles,
     atRuleScopes: dyn.atRuleScopes
   };
-  return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors);
+  return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors, dyn.resolvedUnits);
 }
 
 /**
