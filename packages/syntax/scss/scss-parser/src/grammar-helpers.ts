@@ -17,7 +17,7 @@
  */
 
 import { NO_SPAN, any, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Branch, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -803,28 +803,12 @@ function ifCondition(value: ValueSlot): GuardNode {
  * (`css(1) and css(2) var(--and) css(3)`), which css-values-5 gives no
  * meaning: Sass's expression folded the keyword into an operation inside the
  * space run, so it is unfolded into the run css builds, each operand and the
- * keyword as written. A run holding a `sass()` condition keeps Sass's reading.
+ * keyword as written.
  */
 function juxtaposedTests(run: readonly ValueSlot[]): ValueSlot {
-  const parts: ValueSlot[] = [];
-  const unfold = (part: ValueSlot): boolean => {
-    if (isValueSlotArray(part)) {
-      return part.every(unfold);
-    }
-    if (part.type === 'FunctionCall' && part.name === 'sass') {
-      return false;
-    }
-    if (part.type === 'Operation' && logicalOperator(part.operator) !== null) {
-      if (!unfold(part.left)) {
-        return false;
-      }
-      parts.push(keyword(part.operator));
-      return unfold(part.right);
-    }
-    parts.push(part);
-    return true;
-  };
-  return run.every(unfold) ? parts : run;
+  const isLogical = (part: ValueSlot): part is Operation => !isValueSlotArray(part) && part.type === 'Operation' && logicalOperator(part.operator) !== null;
+  const unfold = (part: ValueSlot): ValueSlot[] => (isLogical(part) ? [...unfold(part.left), keyword(part.operator), ...unfold(part.right)] : [part]);
+  return run.some(isLogical) ? run.flatMap(unfold) : run;
 }
 
 /** A `sass()` condition: the comparison or negation written in it, or its value's truth. */
