@@ -192,7 +192,7 @@ import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -5240,10 +5240,12 @@ function evalTyped(
 
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. A
-       * lowered Less `if()` is a call, so its arguments are on a call lane. */
+       * lowered Less `if()` is a call, so its arguments are on a call lane. A
+       * written CSS `if()` is kept as written, as a call that cannot compute is
+       * (`$($x * 2)` writes `if(…) * 2`, as it writes `var(--x) * 2`). */
       return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument), makeAny);
+        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument), bytes => keepAsWritten(makeKeyword(bytes)));
     }
     case 'Range':
       /*
@@ -7869,11 +7871,6 @@ function pickIfValue<T>(
           write(`if(${kept.map((item, at) => writtenBranch(item.condition, emitValueC(values[at]!, e))).join(sepGlue(';', e.compress === true))}${node.trailingSemicolon ? ';' : ''})`))
       )
     : mapMaybe(step(0), taken => use(taken, e));
-}
-
-/** [P38] A branch as written, `condition: value`; an omitted value keeps the bare colon (`cond:`). */
-function writtenBranch(condition: string, value: string): string {
-  return value === '' ? `${condition}:` : `${condition}: ${value}`;
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */

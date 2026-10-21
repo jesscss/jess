@@ -2861,7 +2861,8 @@ describe('CSS if()', () => {
           value: { type: 'Dimension', number: 1, unit: 'px', src: '1px' }
         },
         { guard: null, value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }
-      ]
+      ],
+      trailingSemicolon: false
     });
   });
 

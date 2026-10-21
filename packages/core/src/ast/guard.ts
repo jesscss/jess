@@ -289,6 +289,9 @@ export function partialGuard(
   return evalGuard(node, deps);
 }
 
+/** [P38] A branch as written, `condition: value`; an omitted value keeps the bare colon (`cond:`). */
+export const writtenBranch = (condition: string, value: string): string => (value === '' ? `${condition}:` : `${condition}: ${value}`);
+
 /** A branch of a CSS `if()` that compile time could not decide away, with what is left of its condition. */
 export interface KeptBranch {
   readonly condition: string;

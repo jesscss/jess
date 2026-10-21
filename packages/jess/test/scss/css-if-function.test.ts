@@ -168,7 +168,10 @@ describe('jess: CSS if()', () => {
     ['a variable', '$dark: false;\n.a { color: if($($dark): white; else: black); }', '.a {\n  color: black;\n}\n'],
     ['a condition before a media() branch', '.a { x: if($(false): a; media(print): b; else: c); }', '.a {\n  x: if(media(print): b; else: c);\n}\n'],
     ['a condition and a test', '$a: true;\n.a { x: if($($a) and media(print): a; else: b); }', '.a {\n  x: if(media(print): a; else: b);\n}\n'],
-    ['a test in a value', '$w: 2px;\n.a { x: if(media(print): $($w * 2); else: 1px); }', '.a {\n  x: if(media(print): 4px; else: 1px);\n}\n']
+    ['a test in a value', '$w: 2px;\n.a { x: if(media(print): $($w * 2); else: 1px); }', '.a {\n  x: if(media(print): 4px; else: 1px);\n}\n'],
+
+    /* A written CSS `if()` is kept as written in math, as `var(--x)` is (ledger P45: it stopped the compile). */
+    ['a CSS if() in math', '$x: if(media(print): 1px; else: 3px);\n.a { x: $($x * 2); }', '.a {\n  x: if(media(print): 1px; else: 3px) * 2;\n}\n']
   ])('resolves %s', async (_name, source, expected) => {
     await expect(render(source, '.jess')).resolves.toBe(expected);
   });
