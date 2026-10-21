@@ -720,9 +720,11 @@ function branchListCall(name: string, groups: readonly ArgumentGroup[]): Functio
  */
 function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
   const branches: IfValueBranch[] = [];
+  let trailingSemicolon = false;
   for (const [index, group] of groups.entries()) {
     const [lead, ...rest] = group.args;
     if (lead === undefined && index === groups.length - 1 && index > 0) {
+      trailingSemicolon = true;
       continue;
     }
     if (!isBranchArgument(lead)) {
@@ -735,7 +737,7 @@ function lowerCssIf(groups: readonly ArgumentGroup[]): IfValue | undefined {
     });
   }
   const [first, ...others] = branches;
-  return first === undefined ? undefined : ifValue([first, ...others]);
+  return first === undefined ? undefined : ifValue([first, ...others], null, trailingSemicolon);
 }
 
 function isElse(condition: ValueSlot): boolean {

@@ -5207,9 +5207,7 @@ function evalTyped(
         evalTypedSlot(node.condition, frame, e, projectMixinValues, argument),
         evalTypedSlot(node.value, frame, e, projectMixinValues, argument)
       ], (parts) => {
-        const condition = emitValueC(parts[0]!, e);
-        const value = emitValueC(parts[1]!, e);
-        return makeAny(value === '' ? `${condition}:` : `${condition}: ${value}`);
+        return makeAny(writtenBranch(emitValueC(parts[0]!, e), emitValueC(parts[1]!, e)));
       });
     case 'Sequence': {
       /*
@@ -5996,9 +5994,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * branch's own syntax. An omitted value keeps the bare colon (`cond:`).
        */
       return combineAll([evalValueSlot(node.condition, frame, e), evalValueSlot(node.value, frame, e)], (parts) => {
-        const condition = emitValueC(parts[0]!, e);
-        const value = emitValueC(parts[1]!, e);
-        return literal(value === '' ? `${condition}:` : `${condition}: ${value}`);
+        return literal(writtenBranch(emitValueC(parts[0]!, e), emitValueC(parts[1]!, e)));
       });
     case 'Block': {
       /*
@@ -7853,14 +7849,15 @@ function pickIfValue<T>(
   };
 
   /*
-   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …)
-   * is decided as far as compile time can, branch by branch, and what is left
-   * is written as a CSS `if()` ({@link pickCssIfBranches}). Its conditions are
-   * not CSS values, so what they reach is not checked [P47/P48], as {@link
-   * writtenCondition} reads one; only a taken or kept branch's value is
-   * evaluated.
+   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …),
+   * or only `else` branches, is a CSS `if()`: decided as far as compile time
+   * can, branch by branch, and what is left is written as a CSS `if()` with the
+   * trailing `;` it was written with ({@link pickCssIfBranches}). Its
+   * conditions are not CSS values, so what they reach is not checked [P47/P48],
+   * as {@link writtenCondition} reads one; only a taken or kept branch's value
+   * is evaluated.
    */
-  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard))
+  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard)) || node.branches.every(branch => branch.guard === null)
     ? pickCssIfBranches(
         node.branches,
         guard => withUnitErrors(node, e, () => partialGuard(guard, deps, value => mapMaybe(
@@ -7869,9 +7866,14 @@ function pickIfValue<T>(
         ))),
         taken => use(taken, e),
         kept => combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
-          write(`if(${kept.map((item, at) => `${item.condition}: ${emitValueC(values[at]!, e)}`).join(sepGlue(';', e.compress === true))})`))
+          write(`if(${kept.map((item, at) => writtenBranch(item.condition, emitValueC(values[at]!, e))).join(sepGlue(';', e.compress === true))}${node.trailingSemicolon ? ';' : ''})`))
       )
     : mapMaybe(step(0), taken => use(taken, e));
+}
+
+/** [P38] A branch as written, `condition: value`; an omitted value keeps the bare colon (`cond:`). */
+function writtenBranch(condition: string, value: string): string {
+  return value === '' ? `${condition}:` : `${condition}: ${value}`;
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */
