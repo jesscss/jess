@@ -1827,7 +1827,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (fact === undefined) {
         throw new TypeError('Less function condition lost its fact.');
       }
-      return fact.run ?? condition(fact.guard, fact.src);
+      return fact.css ?? fact.run ?? condition(fact.guard, fact.src);
     }
   );
   /**

@@ -22,7 +22,8 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -124,6 +125,15 @@ type FunctionConditionFact = {
 
   /** A chain of operators (`a=b=c`, `a==b`): the CSS run it is, written as authored. */
   readonly run?: ValueSlot;
+
+  /**
+   * A CSS `if()` condition (`media(print) and style(--a: b)`): the CSS run it
+   * is, written as `.css` writes it, and the keyword tokens in it, whose case
+   * the first enclosing Less condition reports ({@link cssConditionRun}).
+   * Unlike `run`, a paren group around it keeps it.
+   */
+  readonly css?: ValueSlot;
+  readonly cssKeywords?: readonly unknown[];
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type VariableNameFact = {
@@ -2321,9 +2331,9 @@ function functionConditionParenFrom(children: readonly unknown[], span: SourceSp
     throw new TypeError('Less function condition lost its parenthesized operand.');
   }
   const fact = { guard: inParens(inner.guard), src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
-  return inner.raw === undefined || inner.hasComparison
+  return withCss(inner.raw === undefined || inner.hasComparison
     ? fact
-    : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) };
+    : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) }, cssGroup(inner, span));
 }
 
 /** One side of a value-position comparison, as the value it compares. */
@@ -2341,7 +2351,9 @@ function functionConditionOperandFact(value: unknown, state: unknown): FunctionC
   }
   const bare = isLessGuardOperand(value) ? lessMathInValue(value.run, state) : requireValueNode(value);
   const fact = { guard: lessTruth(bare), src: functionConditionSource(bare), grouped: false, hasComparison: false, bare };
-  return isLessGuardOperand(value) ? { ...fact, raw: value.run } : fact;
+
+  /* The value dispatch reads `media(`, `supports(` and `style(` as a CSS `if()` test wherever it stands. */
+  return withCss(isLessGuardOperand(value) ? { ...fact, raw: value.run } : fact, isIfTestCall(bare) ? cssOperand(bare) : undefined);
 }
 
 /**
@@ -2359,13 +2371,15 @@ function functionConditionTermFrom(
 ): FunctionConditionFact {
   const negated = isFunctionConditionNot(children[0]);
   const notWord = negated ? requireTerminalText(children[0]) : '';
-  if (negated) {
-    reportConditionKeywordCase(rawChildren[0], state);
-  }
   let index = negated ? 1 : 0;
   let left = functionConditionOperandFact(children[index], state);
   const groupLed = left.grouped;
   index += 1;
+
+  /* `not` before a CSS test alone is CSS's keyword, in any case. */
+  if (negated && (index < children.length || cssNegation(left, notWord, notGluedAt, rawChildren[0]) === undefined)) {
+    reportConditionKeywordCase(rawChildren[0], state);
+  }
   if (groupLed && index < children.length && guardOperatorText(children[index]) === null) {
     /* A group holding a condition heads the run as the condition's truth (ledger P42). */
     const head = left.raw === undefined || left.hasComparison ? condition(left.guard, left.src) : requireValueNode(left.raw);
@@ -2392,7 +2406,7 @@ function functionConditionTermFrom(
   if (operator === null) {
     const grouped = left.grouped;
     if (negated) {
-      return { guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison };
+      return withCss({ guard: { g: 'not', inner: left.guard, word: notWord, gluedAt: notGluedAt, parens: 0 }, src: `${notWord}(${left.src})`, grouped, hasComparison: left.hasComparison }, cssNegation(left, notWord, notGluedAt, rawChildren[0]));
     }
     return { ...left, grouped };
   }
@@ -2610,7 +2624,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
   }
   ands.push(parenConditionTermFrom(term, termRaw, state));
   const fact = foldFunctionCondition('or', [...ors, foldFunctionCondition('and', ands)]);
-  return withSourceSpan(block(fact.run ?? condition(fact.guard, fact.src)), span);
+  return withSourceSpan(block(fact.css ?? fact.run ?? condition(fact.guard, fact.src)), span);
 }
 
 /**
@@ -2620,6 +2634,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
  * function condition's keyword token.
  */
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[], rawChildren: readonly unknown[] = [], state?: unknown): FunctionConditionFact {
+  const css = cssConditionRun(children, rawChildren, raw => reportConditionKeywordCase(raw, state));
   let first: FunctionConditionFact | undefined;
   let guard: MixinGuard | undefined;
   let src = '';
@@ -2633,7 +2648,9 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
       if (text !== undefined && text !== null) {
         word = text;
         gluedAt = isLessParenLogical(child) ? child.gluedAt : NO_SPAN;
-        reportConditionKeywordCase(rawChildren[index], state);
+
+        /* A CSS `if()` condition's keywords are CSS's, in any case (ledger J20). */
+        reportConditionKeywordCase(css === undefined ? rawChildren[index] : undefined, state);
       }
       continue;
     }
@@ -2651,15 +2668,14 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[],
   if (first === undefined || guard === undefined) {
     throw new TypeError('Less function condition lost its first term.');
   }
-  if (guard === first.guard && first.run !== undefined) {
-    return first;
-  }
   if (guard === first.guard) {
-    return first.raw === undefined
-      ? { guard, src, grouped: false, hasComparison }
-      : { guard, src, grouped: false, hasComparison, raw: first.raw };
+    return first.run !== undefined || first.css !== undefined
+      ? first
+      : first.raw === undefined
+        ? { guard, src, grouped: false, hasComparison }
+        : { guard, src, grouped: false, hasComparison, raw: first.raw };
   }
-  return { guard, src, grouped: false, hasComparison };
+  return withCss({ guard, src, grouped: false, hasComparison }, css);
 }
 
 function isStatement(value: unknown): value is Statement {

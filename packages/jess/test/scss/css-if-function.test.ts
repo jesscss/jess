@@ -40,7 +40,9 @@ const written: ReadonlyArray<readonly [string, string, string]> = [
   ['a negated test', '.a { x: if(not media(print): a; else: b); }', '.a {\n  x: if(not media(print): a; else: b);\n}\n'],
   ['a parenthesized test', '.a { x: if((media(print)): a; else: b); }', '.a {\n  x: if((media(print)): a; else: b);\n}\n'],
   ['branch values Sass computes', '$w: 10px; .a { x: if(media(print): $w * 2; else: 1px + 1px); }', '.a {\n  x: if(media(print): 20px; else: 2px);\n}\n'],
-  ['a variable in a test, which is not substituted', '$w: 10px; .a { x: if(media(width >= $w): 1px; else: 2px); }', '.a {\n  x: if(media(width >= $w): 1px; else: 2px);\n}\n'],
+
+  /* A test's value is a value position, so a variable substitutes (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
+  ['a variable in a test, which is substituted', '$w: 10px; .a { x: if(media(width >= $w): 1px; else: 2px); }', '.a {\n  x: if(media(width >= 10px): 1px; else: 2px);\n}\n'],
   ['an interpolation in a test, which is', '$w: 10px; .a { x: if(media(width >= #{$w}): 1px; else: 2px); }', '.a {\n  x: if(media(width >= 10px): 1px; else: 2px);\n}\n'],
   ['a user function named media, which a test does not call', '@function media($x) { @return 99; } .a { x: if(media(print): 1px; else: 2px); y: media(print); }', '.a {\n  x: if(media(print): 1px; else: 2px);\n  y: 99;\n}\n'],
 
@@ -159,7 +161,7 @@ describe('scss → jess: if() lowers to `.jess` if()', () => {
  * a named argument, never a condition.
  */
 describe('jess: CSS if()', () => {
-  it.each(written.filter(([name]) => !name.includes('interpolation') && !name.includes('user function') && !name.includes('Sass computes')))('writes %s', async (_name, source, expected) => {
+  it.each(written.filter(([name]) => !name.includes('variable') && !name.includes('interpolation') && !name.includes('user function') && !name.includes('Sass computes')))('writes %s', async (_name, source, expected) => {
     await expect(render(source.replaceAll(/\$w: 10px; /g, ''), '.jess')).resolves.toBe(expected);
   });
 
@@ -181,7 +183,7 @@ describe('jess: CSS if()', () => {
  * One rule in every dialect (owner 2026-10-20): a CSS `if()` with no
  * compile-time condition is written as `.css` writes it, nested and compressed.
  */
-const sassOnly = new Set(['branch values Sass computes', 'a variable in a test, which is not substituted', 'an interpolation in a test, which is', 'a user function named media, which a test does not call']);
+const sassOnly = new Set(['branch values Sass computes', 'a variable in a test, which is substituted', 'an interpolation in a test, which is', 'a user function named media, which a test does not call']);
 
 describe('css, scss and jess: a CSS if() is written alike', () => {
   it.each(written.filter(([name]) => !sassOnly.has(name)))('%s', async (_name, source, expected) => {

@@ -207,7 +207,7 @@ import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, hasCssTest, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -7875,18 +7875,19 @@ function pickIfValue<T>(
    * trailing `;` it was written with ({@link pickCssIfBranches}). Its
    * conditions are not CSS values, so what they reach is not checked [P47/P48],
    * as {@link writtenCondition} reads one; only a taken or kept branch's value
-   * is evaluated.
+   * is evaluated. A test is the browser's, never a call to a function of its
+   * name, so it is written out with its arguments evaluated.
    */
   return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard)) || node.branches.every(branch => branch.guard === null)
     ? pickCssIfBranches(
         node.branches,
-        guard => withUnitErrors(node, e, () => partialGuard(guard, deps, value => mapMaybe(
-          evalValueSlot(value, frame, e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e),
+        guard => withUnitErrors(node, e, () => partialGuard(guard, deps, (value, lane = e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e) => mapMaybe(
+          isIfTestCall(value) ? preserveCall(value, frame, lane) : evalValueSlot(value, frame, lane),
           v => emitValueC(v, e)
         ))),
         taken => use(taken, e),
         kept => combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
-          write(`if(${kept.map((item, at) => writtenBranch(item.condition, emitValueC(values[at]!, e))).join(sepGlue(';', e.compress === true))}${node.trailingSemicolon ? ';' : ''})`))
+          write(`${node.name}(${kept.map((item, at) => writtenBranch(item.condition, emitValueC(values[at]!, e))).join(sepGlue(';', e.compress === true))}${node.trailingSemicolon ? ';' : ''})`))
       )
     : mapMaybe(step(0), taken => use(taken, e));
 }

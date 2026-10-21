@@ -3,7 +3,7 @@
  * parsers that build guards through `@jesscss/core/ast` do not load the guard
  * evaluator (`guard.ts`) and its value domain.
  */
-import type { ValueSlot } from './nodes.js';
+import type { FunctionCall, ValueSlot } from './nodes.js';
 
 /**
  * A guard condition tree, evaluated to a boolean; one that nothing consumes is
@@ -75,6 +75,19 @@ export function onlyCssTests(node: GuardNode): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * A CSS `if()` test call (css-values-5 §8.3 `<if-test>`): `media()`,
+ * `supports()` or `style()`, any case. The browser answers it, so it is never
+ * a call to a function of that name.
+ */
+export function isIfTestCall(value: ValueSlot): value is FunctionCall {
+  if (!('type' in value) || value.type !== 'FunctionCall') {
+    return false;
+  }
+  const name = value.name.toLowerCase();
+  return name === 'media' || name === 'supports' || name === 'style';
 }
 
 /** Whether a guard tree holds a CSS `if()` test, which leaves it undecided at compile time. */

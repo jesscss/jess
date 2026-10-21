@@ -2857,14 +2857,36 @@ describe('CSS if()', () => {
     expect(declarationValue(parse(`a { x: ${value}; }`))).toMatchObject({ type: 'IfValue', _asCall: null });
   });
 
-  it('reads a test as its authored text and sass() as a truth test', () => {
+  /* A test is css's structure, its values SCSS values (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
+  it('reads a test as css reads it, with SCSS values, and sass() as a truth test', () => {
     expect(bare(declarationValue(parse('a { x: if(media(width >= $w) and sass($a): 1px; else: 2px); }')))).toEqual({
       type: 'IfValue',
       branches: [
         {
           guard: {
             g: 'and',
-            left: { g: 'css', value: { type: 'Any', src: 'media(width >= $w)' }, parens: 0 },
+            left: {
+              g: 'css',
+              value: {
+                type: 'FunctionCall',
+                name: 'media',
+                args: [{
+                  name: undefined,
+                  sigil: undefined,
+                  spread: false,
+                  value: {
+                    type: 'Operation',
+                    operator: '>=',
+                    left: { type: 'Keyword', src: 'width' },
+                    right: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'live' },
+                    inMathFunction: false,
+                    mathOutsideParens: true
+                  }
+                }],
+                modern: false
+              },
+              parens: 0
+            },
             right: { g: 'truth', value: { type: 'Lookup', kind: 'var', name: 'a', raw: '@a', scope: 'live' }, parens: 0 },
             word: 'and',
             gluedAt: -1,
@@ -2874,7 +2896,8 @@ describe('CSS if()', () => {
         },
         { guard: null, value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }
       ],
-      trailingSemicolon: false
+      trailingSemicolon: false,
+      name: 'if'
     });
   });
 

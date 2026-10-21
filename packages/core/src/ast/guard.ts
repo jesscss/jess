@@ -33,7 +33,7 @@ import { hasCssTest, onlyCssTests, type GuardNode } from './guard-node.js';
  * load this evaluator and its value domain.
  */
 export type { GuardNode } from './guard-node.js';
-export { hasCssTest, inParens } from './guard-node.js';
+export { hasCssTest, inParens, isIfTestCall } from './guard-node.js';
 
 /**
  * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.
