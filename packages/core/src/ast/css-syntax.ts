@@ -22,3 +22,8 @@ export function stringEnd(text: string, start: number): number {
   }
   return Math.min(i, text.length);
 }
+
+/** Whether `c` continues a name glued to a `&`: a name code point (CSS Syntax 3 §4.2) or the backslash of an escape. */
+export function isNameCode(c: number): boolean {
+  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c === 0x5C /* \ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
+}

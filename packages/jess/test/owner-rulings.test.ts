@@ -204,6 +204,14 @@ describe('owner rulings (Less 5)', () => {
     await expect(compile('$s: selector(.a, .b);\n.a, .b { own: &; captured: $s; }', '.jess')).resolves.toBe('.a,\n.b {\n  own: .a, .b;\n  captured: .a, .b;\n}\n');
   });
 
+  it('P49, P50 (owner 2026-10-20): a selector list interpolated into a selector groups in every dialect, .scss included', async () => {
+    const grouped = '.toolbar :is(.btn, .button):hover {\n  color: red;\n}\n';
+    await expect(render('@buttons: selector(.btn, .button);\n.toolbar @{buttons}:hover { color: red; }')).resolves.toBe(grouped);
+    await expect(compile('@use "sass:selector";\n$buttons: selector.parse(".btn, .button");\n.toolbar #{$buttons}:hover { color: red; }', '.scss')).resolves.toBe(grouped);
+    await expect(compile('.btn, .button {\n  .toolbar #{&}:hover { color: red; }\n}', '.scss'))
+      .resolves.toBe('.btn,\n.button {\n  .toolbar :is(.btn, .button):hover {\n    color: red;\n  }\n}\n');
+  });
+
   it('X3 (owner 2026-10-05): an all extend groups equal-specificity extenders into an :is() at the match', async () => {
     await expect(render('.a .c { color: red; }\n.d:extend(.c all) {}\n#e:extend(.c all) {}'))
       .resolves.toBe('.a :is(.c, .d),\n.a #e {\n  color: red;\n}\n');
