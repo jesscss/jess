@@ -78,7 +78,21 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
-import { hasTopLevelComma, interleave, selectorListValue, selectorValue } from './selector-text.js';
+import {
+  type SelectorText,
+  appendText,
+  continuesNameAt,
+  crossTexts,
+  hasTopLevelComma,
+  interleave,
+  isOneText,
+  isUnit,
+  oneText,
+  selectorListValue,
+  selectorValue,
+  textBranches
+} from './selector-text.js';
+import { isNameCode } from './css-syntax.js';
 import type {
   Any,
   Apply,
@@ -531,8 +545,8 @@ function parentSelectorBranches(frame: Frame | null, e: Lane): MaybePromise<stri
      * ({@link joinAmpersand}), a branch with none follows each parent, and the
      * branches' lists interleave parent by parent.
      */
-    : combineAll(of.selector.selectors.map(branch => mapMaybe(resolveSelectorBranch(branch, outer, e), text =>
-        selectorBranchHasAmpersand(branch) ? joinAmpersand(text, parents) : parents.map(parent => `${parent} ${text}`))), interleave));
+    : combineAll(of.selector.selectors.map(branch => mapMaybe(resolveSelectorBranch(branch, outer, e), texts =>
+        textBranches(texts).map(text => selectorBranchHasAmpersand(branch) ? joinAmpersand(text, parents) : parents.map(parent => `${parent} ${text}`)))), lists => interleave(lists.flat())));
 }
 
 /**
@@ -2147,7 +2161,7 @@ function orderedMixinsForStatements(
        * allocate: resolve its keys, then continue the fold from the next statement.
        */
       const parts = s.selector.selectors.map(c =>
-        (selectorBranchHasInterp(c) ? resolveSelectorBranch(c, f, e) : selectorBranchCanonical(c)));
+        (selectorBranchHasInterp(c) ? mapMaybe(resolveSelectorBranch(c, f, e), oneText) : selectorBranchCanonical(c)));
       let pending = false;
       for (const part of parts) {
         if (isThenable(part)) {
@@ -9141,7 +9155,7 @@ function writtenBlockBody(
       case 'Ruleset': {
         const selector = combineAll(
           rule.selector.selectors.map(branch => resolveSelectorBranch(branch, bodyFrame, e)),
-          branches => branches.join(compress ? ',' : ', ')
+          branches => branches.flatMap(textBranches).join(compress ? ',' : ', ')
         );
         const guard = rule.guard;
         const holds = guard === undefined
@@ -9577,17 +9591,16 @@ function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): Ma
  *  `resolveComplex`), escaped text included, as written: `~'.a, .b'` is the one
  *  branch `.a, .b` (owner 2026-10-09). */
 function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> {
-  return loneInterpBranches(c, frame, e) ?? mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
+  return loneInterpBranches(c, frame, e) ?? mapMaybe(resolveSelectorBranch(c, frame, e), value => typeof value === 'string' ? [value] : value);
 }
 
-/** A selector interpolation part's text: a group compacts to `:is(…)` in a compound, a one-branch group is its branch bare ({@link ampSub}). */
-const groupInterpText = (value: string[] | string): string => typeof value === 'string' ? value : ampSub(value);
-
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, escaped text as written, EXCEPT a selector list embedded
- *  in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to a single
- *  `:is(…)` group; a single-branch list splices its lone branch bare. */
-function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): MaybePromise<string> {
+ *  part folds to its bytes, escaped text as written, EXCEPT a selector list, which in a
+ *  compound (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a single `:is(…)` group (a
+ *  single-branch list splices its lone branch bare), and, continuing a name with the
+ *  text before or after it (`prev` and `next` are the tokens glued to this one),
+ *  multiplies the token, one text per selector. */
+function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev?: SimpleToken, next?: SimpleToken): MaybePromise<SelectorText> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
    * `:is(a, b)` form via the core-owned join. An INTERPOLATION-FREE argument is
@@ -9606,7 +9619,7 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): Mayb
     }
     return combineAll(
       args.selectors.map(branch => resolveSelectorBranch(branch, frame, e)),
-      values => pseudoJoin(sim, values)
+      values => pseudoJoin(sim, values.flatMap(textBranches))
     );
   }
   const interp = sim.interp;
@@ -9619,20 +9632,27 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): Mayb
    * later slot to observe a different loop/mixin placement.
    */
   const entryFrame = frame;
-  const step = (index: number, out: string): MaybePromise<string> => {
+  const splice = (out: SelectorText, i: number, value: string[] | string): SelectorText => typeof value === 'string'
+    ? appendText(out, value)
+    : continuesNameAt(value, out === '' ? (prev?.type === 'SimpleSelector' ? prev.text ?? '' : '') : oneText(out), continuesAfter(interp.parts[i + 1], next))
+      ? crossTexts([out, value], picked => picked.join(''))
+      : appendText(out, ampSub(value));
+  const step = (index: number, out: SelectorText): MaybePromise<SelectorText> => {
     for (let i = index; i < interp.parts.length; i++) {
       const part = interp.parts[i]!;
       if ('lit' in part) {
-        out += part.lit;
+        out = appendText(out, part.lit);
         continue;
       }
       const piece = interpSelectorPart(part, entryFrame, e);
       if (isThenable(piece)) {
-        return piece.then(value => step(i + 1, out + groupInterpText(value)));
+        return piece.then(value => step(i + 1, splice(out, i, value)));
       }
-      out += groupInterpText(piece);
+      out = splice(out, i, piece);
     }
-    return resolveEmergentInterp(out, entryFrame, e);
+    return typeof out === 'string'
+      ? resolveEmergentInterp(out, entryFrame, e)
+      : combineAll(out.map(value => resolveEmergentInterp(value, entryFrame, e)), values => values);
   };
   return step(0, '');
 }
@@ -9694,7 +9714,7 @@ function interpTokenSpelling(token: SimpleToken): string {
 }
 
 function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): string {
-  const value = resolveSimpleText(sim, frame, e);
+  const value = mapMaybe(resolveSimpleTexts(sim, frame, e), oneText);
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw new AsyncSelectorInterp(sim);
@@ -9702,37 +9722,32 @@ function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): 
   return value;
 }
 
-function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane): MaybePromise<string> {
+function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane): MaybePromise<SelectorText> {
   if (!compoundHasInterp(c)) {
     return compoundCanonical(c);
   }
-  const parts = c.value.map(sim => resolveSimpleText(sim, frame, e));
-  return combineAll(parts, values => values.join(''));
+  return combineAll(c.value.map((sim, i) => resolveSimpleTexts(sim, frame, e, c.value[i - 1], c.value[i + 1])), values => crossTexts(values, picked => picked.join('')));
 }
 
-function resolveSelectorTerm(term: SelectorTerm, frame: Frame | null, e: Lane): MaybePromise<string> {
-  if (term.type === 'CompoundSelector') {
-    return resolveCompound(term, frame, e);
-  }
-  return selectorTermHasInterp(term) ? resolveSimpleText(term, frame, e) : selectorTermCanonical(term);
-}
-
-/** The concrete canonical string of a (possibly interpolated) complex, in
- * the entering frame. Static selectors keep the cached `canonical()` fast path. */
-function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string> {
+/** The concrete canonical string of a (possibly interpolated) complex, in the entering
+ * frame, or the branches a list continuing a name multiplies it into ({@link SelectorText}).
+ * Static selectors keep the cached `canonical()` fast path. */
+function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<SelectorText> {
   if (!selectorBranchHasInterp(c)) {
     return selectorBranchCanonical(c);
   }
   const terms = selectorBranchTerms(c);
   const combinators = selectorBranchCombinators(c);
-  return combineAll(terms.map(term => resolveSelectorTerm(term, frame, e)), (values) => {
+  return combineAll(terms.map(term => term.type === 'CompoundSelector'
+    ? resolveCompound(term, frame, e)
+    : selectorTermHasInterp(term) ? resolveSimpleTexts(term, frame, e) : selectorTermCanonical(term)), values => crossTexts(values, (picked) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     let out = c.type === 'RelativeSelector'
-      ? renderCombinator(combinators[0]!).trimStart() + values[0]!
-      : values[0]!;
+      ? renderCombinator(combinators[0]!).trimStart() + picked[0]!
+      : picked[0]!;
     for (let i = start; i < combinators.length; i++) {
       const valueIndex = c.type === 'RelativeSelector' ? i : i + 1;
-      out += renderCombinator(combinators[i]!) + values[valueIndex]!;
+      out += renderCombinator(combinators[i]!) + picked[valueIndex]!;
     }
 
     /*
@@ -9740,14 +9755,14 @@ function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane):
      * the branch boundary it is canonicalized away (ledger O8(b)).
      */
     return out.trimStart();
-  });
+  }));
 }
 
 /** Synchronous-only selector consumers (mixin-key indexing and nested-mode
  * header probes) retain their existing contract. Public emitted selectors use
  * the MaybePromise path above. */
 function resolveSelectorBranchSync(c: SelectorBranch, frame: Frame | null, e: Lane): string {
-  const value = resolveSelectorBranch(c, frame, e);
+  const value = mapMaybe(resolveSelectorBranch(c, frame, e), oneText);
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
@@ -9915,43 +9930,43 @@ function parentUnit(parent: string, written: string, kind: number): string {
  *  A list-accepting pseudo (`:is`/`:where`/`:not`/`:has`/`:matches`) whose args
  *  reference `&` recurses so the `&` becomes the BARE parent list inside the pseudo
  *  (`:not(&)` over `.a, .b` → `:not(.a, .b)`, not the De-Morgan-wrong
- *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
- *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
- *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
- *  fused append (`&__el`) or a `&` glued after another simple (`glued`, `.qux&`) —
- *  DISTRIBUTES per parent. Where `kinds` is given ({@link PARENT_AS_WRITTEN}), a parent this
+ *  `:not(.a), :not(.b)`). A bare LEADING `&` (the first of `tokens` with no name
+ *  glued after it, the compound SUBJECT — `&`, `&.mod`, `& + &`) wraps in
+ *  `:is(parents)`, which keeps the subject even for a complex parent
+ *  (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a fused append
+ *  (`&__el`) or a `&` glued after another simple (`.qux&`) — DISTRIBUTES per parent. Where `kinds` is given ({@link PARENT_AS_WRITTEN}), a parent this
  *  `&` cannot take as written is one unit, `:is(parent)`: this `&` is not the one that
  *  places it ({@link placeParent}). Returns one variant per distribution — the
  *  branch-multiplying case. */
 function resolveTokenAmp(
-  sim: SimpleToken,
+  tokens: readonly SimpleToken[],
+  at: number,
   parents: string[],
   subs: readonly string[],
-  first: boolean,
-  glued: boolean,
   kinds: Uint8Array | null,
   frame: Frame | null,
   e: Lane
 ): MaybePromise<readonly string[]> {
+  const sim = tokens[at]!;
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
       branches => [pseudoJoin(sim, branches)]
     );
   }
-  return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {
+  return mapMaybe(resolveSimpleTexts(sim, frame, e, tokens[at - 1], tokens[at + 1]), texts => textBranches(texts).flatMap((text) => {
     if (!textHoldsParentRef(text)) {
       return [text];
     }
-    if (first && text === '&') {
+    if (at === 0 && !continuesName(tokens[1]) && text === '&') {
       return kinds !== null && parents.length === 1 && (kinds[0]! & PARENT_SEVERAL) !== 0 ? [parentUnit(subs[0]!, subs[0]!, kinds[0]!)] : subs;
     }
     return parents.map((p, i) => {
       const kind = kinds === null ? PARENT_AS_WRITTEN : kinds[i]!;
       const written = p + text.slice(1);
-      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && glued) ? parentUnit(p, written, kind) : written;
+      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && at > 0) ? parentUnit(p, written, kind) : written;
     });
-  });
+  }));
 }
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
@@ -9979,15 +9994,15 @@ function resolveCompoundAmp(
   while (ref !== -1 && trailing - 1 > ref && isUserActionToken(cmp.value[trailing - 1]!)) {
     trailing--;
   }
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0 && !continuesName(cmp.value[1]), i > 0, i === ref ? null : kinds, frame, e));
+  const tokens = cmp.value.map((_, i) => resolveTokenAmp(cmp.value, i, parents, subs, i === ref ? null : kinds, frame, e));
   return combineAll(tokens, (lists) => {
-    /* The simples before the first `&` hold none, so each is one variant: `before`. */
-    let before = '';
+    /* The simples before the first `&` hold none; a selector list continuing a name multiplies them: `before`. */
+    let before = [''];
     let acc = [''];
     let tail = [''];
     for (let i = 0; i < lists.length; i++) {
       if (i === ref) {
-        before = acc[0]!;
+        before = acc;
         acc = [''];
         continue;
       }
@@ -10006,16 +10021,20 @@ function resolveCompoundAmp(
     if (ref === -1) {
       return acc;
     }
-    const lead = ref > 0 && leadsWithElement(lists[0]![0]!, 0) ? lists[0]![0]! : '';
+
+    /* The first simple of a `before`, where it is an element; the leftmost is the most significant. */
+    const lead = (first: string): string => ref > 0 && leadsWithElement(first, 0) ? first : '';
 
     /* One variant per parent where the `&` distributes; else one unit of them all, written as it is. */
     const placed = lists[ref]!;
     const aligned = kinds !== null && placed.length === parents.length;
     const out: string[] = [];
-    for (let j = 0; j < placed.length; j++) {
-      for (const after of acc) {
-        for (const end of tail) {
-          out.push(placeParent(placed[j]!, before, lead, after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+    for (let k = 0; k < before.length; k++) {
+      for (let j = 0; j < placed.length; j++) {
+        for (const after of acc) {
+          for (const end of tail) {
+            out.push(placeParent(placed[j]!, before[k]!, lead(lists[0]![Math.floor(k * lists[0]!.length / before.length)]!), after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+          }
         }
       }
     }
@@ -10034,10 +10053,9 @@ function continuesName(sim: SimpleToken | undefined): boolean {
   return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
 }
 
-/** Whether `c` continues a name glued to a `&`: a name code point (CSS Syntax 3 §4.2) or the backslash of an escape. */
-function isNameCode(c: number): boolean {
-  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c === 0x5C /* \ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
-}
+/** Whether a name is glued after an interpolation: the part of its token that follows it, else the token after it ({@link continuesName}). */
+const continuesAfter = (following: InterpPart | undefined, next: SimpleToken | undefined): boolean =>
+  following === undefined ? continuesName(next) : 'lit' in following && isNameCode(following.lit.charCodeAt(0));
 
 /**
  * [nesting] A `&` that is a plain reference to its parent follows CSS nesting
@@ -10191,7 +10209,7 @@ function resolveTermAmp(
 ): MaybePromise<readonly string[]> {
   return term.type === 'CompoundSelector'
     ? resolveCompoundAmp(term, parents, subs, head, kinds, frame, e)
-    : resolveTokenAmp(term, parents, subs, true, false, head ? null : kinds, frame, e);
+    : resolveTokenAmp([term], 0, parents, subs, head ? null : kinds, frame, e);
 }
 
 /** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
@@ -10292,14 +10310,14 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
      * nothing either way, but written bare (`.a::before .c`) it is invalid and
      * would drop the whole list a bubbled at-rule writes per parent.
      */
-    return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
-      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
+    return mapMaybe(resolveSelectorBranch(child, frame, e), texts => textBranches(texts).flatMap(text =>
+      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? isUnit(p) + ' ' : p + ' ') + text)));
   }
   if ((parents.length >= 2 || branchHasTextAmp(child) || ((ampNeedsPlacement(child) || (flags !== undefined && endsAfterPseudoElement(child))) && parentKind(parents[0]!, flags === undefined ? PSEUDO_NONE : flags[0]!) !== PARENT_AS_WRITTEN))
     && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
-  return mapMaybe(resolveSelectorBranch(child, frame, e), text => joinAmpersand(text, parents));
+  return mapMaybe(resolveSelectorBranch(child, frame, e), texts => textBranches(texts).flatMap(text => joinAmpersand(text, parents)));
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: Lane): MaybePromise<string[]> {
@@ -10423,7 +10441,7 @@ function tokenPseudoElementFlag(sim: SimpleToken, frame: Frame | null, e: Lane):
   if (known !== undefined) {
     return known ? PSEUDO_LAST : PSEUDO_NONE;
   }
-  const text = resolveSimpleText(sim, frame, e);
+  const text = mapMaybe(resolveSimpleTexts(sim, frame, e), oneText);
   if (isThenable(text)) {
     observeRejectedThenable(text);
     return PSEUDO_LAST;
@@ -10455,10 +10473,10 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
   const isPrefix = `:is(${parents.join(', ')}) `;
   const parts = child.selectors.map((c) => {
     if (!selectorBranchHasAmpersand(c)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => [isPrefix + canon]);
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canons => textBranches(canons).map(canon => isPrefix + canon));
     }
     if (parents.some(hasTopLevelComma)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => joinAmpersand(canon, parents));
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canons => textBranches(canons).flatMap(canon => joinAmpersand(canon, parents)));
     }
     return resolveSelectorBranchAmp(c, parents, frame, e);
   });
@@ -10510,18 +10528,16 @@ function wrapIsList(branches: string[]): string {
  * [class*="col-"]`, the CSS-Nesting desugaring. */
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
-  return combineAll(canons, (values) => {
-    if (values.length === 1) {
-      return [a + ' ' + values[0]!];
+  return combineAll(canons, (texts) => {
+    if (texts.length === 1 && typeof texts[0] === 'string') {
+      return [a + ' ' + texts[0]];
     }
+
+    /* A branch a list continuing a name multiplies ({@link SelectorText}) is one value per selector, in its branch's group. */
     const guarded = e.collapseMode !== 'compact';
-    const groups: number[] = [];
-    let oneGroup = true;
-    for (const branch of child.selectors) {
-      const key = nestingGroupKey(branch, guarded);
-      oneGroup &&= key >= 0 && key === (groups[0] ?? key);
-      groups.push(key);
-    }
+    const values = texts.flatMap(textBranches);
+    const groups = texts.flatMap((text, i) => textBranches(text).map(() => nestingGroupKey(child.selectors[i]!, guarded)));
+    const oneGroup = groups.every(key => key >= 0 && key === groups[0]);
     if (oneGroup) {
       return [a + ' :is(' + values.join(', ') + ')'];
     }
@@ -10579,7 +10595,7 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: Lane): MaybePro
       parts.push(lone);
       continue;
     }
-    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
+    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), values => textBranches(values).map(value => selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value)));
   }
 
   /* A lone `@{s}` group may hold anything, so its branches count as ending with a pseudo-element ({@link tokenPseudoElement}). */
@@ -12804,6 +12820,15 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
       texts[i] = resolveSimpleTextSync(sim, frame, e);
     }
   }
+
+  /*
+   * A selector list continuing a name multiplies the compound ({@link resolveSimpleTexts}):
+   * one token of its selectors' list, as one resolved simple writes it.
+   */
+  const whole = resolveCompound(comp, frame, e);
+  if (Array.isArray(whole)) {
+    return simpleSelector(oneText(whole));
+  }
   const tokens = resolvedCompoundTokens(comp.value, texts);
   for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
     const at = pseudos.indexOf(tokens[i]!);
@@ -12858,7 +12883,8 @@ function resolvedCompoundTokens(value: readonly SimpleToken[], texts: ReadonlyAr
  * (ledger X12). A resolved token is plain text, a glued name merged into the name it
  * continues ({@link resolvedCompoundTokens}). Null when the copy would not compose the
  * bytes the authored list does: a lone `@{name}` branch, which may expand to a captured
- * selector list, or a resolved `&` the template did not write (the authored list keeps
+ * selector list, a selector list continuing a name, which multiplies its branch
+ * ({@link resolveSimpleTexts}), or a resolved `&` the template did not write (the authored list keeps
  * it literal text; the copy would compose it).
  */
 function resolvedSelectorList(list: SelectorList, frame: Frame | null, e: Lane): MaybePromise<SelectorList | null> {
@@ -12909,11 +12935,15 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: Lane):
     return term;
   }
   const tokens = termTokens(term);
-  const texts: Array<MaybePromise<string | undefined>> = [];
-  for (const sim of tokens) {
-    texts.push(simpleTokenHasInterp(sim) ? resolveSimpleText(sim, frame, e) : undefined);
+  const texts: Array<MaybePromise<SelectorText | undefined>> = [];
+  for (let i = 0; i < tokens.length; i++) {
+    texts.push(simpleTokenHasInterp(tokens[i]!) ? resolveSimpleTexts(tokens[i]!, frame, e, tokens[i - 1], tokens[i + 1]) : undefined);
   }
   return combineAll(texts, (resolved) => {
+    /* A selector list continuing a name multiplies the branch: no one copy writes it. */
+    if (!isOneText(resolved)) {
+      return null;
+    }
     for (let i = 0; i < tokens.length; i++) {
       const text = resolved[i];
       const sim = tokens[i]!;
@@ -13068,7 +13098,9 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
          * A lone `@{s}` group (a selector list) is whole-selector position, which
          * the header expands to its branches ({@link expandSelectorBranch}); resolved
          * here it would be the compound-position `:is(…)` and change the header
-         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored.
+         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored, as does
+         * a branch a selector list continuing a name multiplies ({@link resolveSimpleTexts}),
+         * which no one resolved branch writes.
          */
         if (!selectorBranchHasInterp(c)) {
           continue;
