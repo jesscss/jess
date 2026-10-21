@@ -87,14 +87,11 @@ import {
   hasTopLevelComma,
   interleave,
   isOneText,
-  isSelectorValue,
   isUnit,
   oneText,
   placeSelectorList,
-  PLACE_ALONE,
-  PLACE_GLUED,
-  PLACE_NAME,
-  PLACE_OPENS,
+  PLACE_WHOLE,
+  selectorPlace,
   selectorListValue,
   selectorValue,
   textBranches
@@ -9563,7 +9560,7 @@ function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane, place
 
 /** [selector-capture] What a value spliced at `place` is: a comma list placed as {@link placeSelectorList} says, any other value its bytes. */
 const selectorPart = (value: EvalValue, unquote: boolean, place: SelectorPlace): string[] | string => isSelectorListValue(value)
-  ? placeSelectorList(selectorBranches(value.value, unquote), isSelectorValue(value), place)
+  ? placeSelectorList(selectorBranches(value.value, unquote), value, place)
   : interpRefBytes(value, unquote);
 
 /** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
@@ -9597,7 +9594,7 @@ function loneInterpRef(c: SelectorBranch): InterpRef | null {
  */
 function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> | null {
   const part = loneInterpRef(c);
-  return part && mapMaybe(interpSelectorPart(part, frame, e, PLACE_NAME), value =>
+  return part && mapMaybe(interpSelectorPart(part, frame, e, PLACE_WHOLE), value =>
     typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value);
 }
 
@@ -9657,9 +9654,7 @@ function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, prev
         out = appendText(out, part.lit);
         continue;
       }
-      const piece = interpSelectorPart(part, entryFrame, e, continuesAfter(interp.parts[i + 1], next)
-        ? PLACE_NAME
-        : out !== '' || prev !== undefined ? PLACE_GLUED : i + 1 < interp.parts.length || next !== undefined ? PLACE_OPENS : PLACE_ALONE);
+      const piece = interpSelectorPart(part, entryFrame, e, selectorPlace(interp.parts, i, prev !== undefined, next !== undefined, continuesAfter(interp.parts[i + 1], next)));
       if (isThenable(piece)) {
         return piece.then(value => step(i + 1, splice(out, value)));
       }

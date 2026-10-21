@@ -6,6 +6,7 @@
 import { isQuote, stringEnd } from './css-syntax.js';
 import { makeKeyword, makeList, makeNull } from './value-factory.js';
 import { isValueGroupArray, type List, type ValueGroup } from './value-eval.js';
+import type { InterpPart } from './nodes.js';
 
 /** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
 export function hasTopLevelComma(text: string): boolean {
@@ -148,15 +149,43 @@ export const PLACE_OPENS = 1;
 /* A selector or name is glued before it (`.x@{s}`, `.col-@{s}`). */
 export const PLACE_GLUED = 2;
 
-/* A name is glued after it (`@{s}__title`), or it is read one branch per item. */
+/* A name is glued after it (`@{s}__title`). */
 export const PLACE_NAME = 3;
 
-export type SelectorPlace = typeof PLACE_ALONE | typeof PLACE_OPENS | typeof PLACE_GLUED | typeof PLACE_NAME;
+/* It is the whole selector, read one branch per item. */
+export const PLACE_WHOLE = 4;
+
+export type SelectorPlace = typeof PLACE_ALONE | typeof PLACE_OPENS | typeof PLACE_GLUED | typeof PLACE_NAME | typeof PLACE_WHOLE;
+
+/** Whether code point `code` ends a selector in an interpolation template's text: `(`, `)`, `,`, whitespace or a combinator (`>`, `+`, `~`). */
+const separates = (code: number): boolean => code === 0x28 || code === 0x29 || code === 0x2C
+  || code === 0x20 || code === 0x0A || code === 0x09 || code === 0x3E || code === 0x2B || code === 0x7E;
+
+/**
+ * [selector-capture] Where the interpolation `parts[at]` of a selector token stands in
+ * its compound ({@link placeSelectorList}): a name glued after it (`nameAfter`), anything
+ * glued before it (the part before it; for the first part, the token before it,
+ * `gluedBefore`), anything glued after it (likewise, `gluedAfter`), or nothing. A
+ * literal part beside it glues only up to a separator, so an interpolation that opens
+ * or closes a pseudo argument the Less parser keeps in the token's text (`:not(@{l})`,
+ * `:has(> @{l})`, `:not(.k, @{l})`) stands alone in that argument.
+ */
+export const selectorPlace = (parts: readonly InterpPart[], at: number, gluedBefore: boolean, gluedAfter: boolean, nameAfter: boolean): SelectorPlace => {
+  const before = parts[at - 1];
+  const after = parts[at + 1];
+  if (nameAfter) {
+    return PLACE_NAME;
+  }
+  if (before === undefined ? gluedBefore : !('lit' in before) || !separates(before.lit.charCodeAt(before.lit.length - 1))) {
+    return PLACE_GLUED;
+  }
+  return (after === undefined ? gluedAfter : !('lit' in after) || !separates(after.lit.charCodeAt(0))) ? PLACE_OPENS : PLACE_ALONE;
+};
 
 /**
  * [selector-capture] What a comma list's `branches` splice into a selector at `place`:
- * the text appended, or the texts that multiply the branch. A selector value
- * (`selector`, ledger P49, P50) is placed as `&` is: with a name glued after it, it
+ * the text appended, or the texts that multiply the branch. At whole-selector position,
+ * one branch per item. A selector value ({@link isSelectorValue}`(list)`, ledger P49, P50) is placed as `&` is: with a name glued after it, it
  * multiplies the branch, one per selector, as `&__x` does; anywhere else it is one
  * `:is()` group, as `&` stands for `:is(parent)` (`.fruit-cap-:is(apple, satsuma)`,
  * `:is(.btn, .button):hover`), one selector written bare only where nothing is glued
@@ -165,8 +194,8 @@ export type SelectorPlace = typeof PLACE_ALONE | typeof PLACE_OPENS | typeof PLA
  * compound it is the list as written there. Owner 2026-10-21: "`@foo: one, two;` is
  * different from: `@foo: selector(one, two);` the latter, with @{foo} is an :is()".
  */
-export const placeSelectorList = (branches: string[], selector: boolean, place: SelectorPlace): string[] | string =>
-  place === PLACE_NAME || (!selector && place !== PLACE_ALONE)
+export const placeSelectorList = (branches: string[], list: List, place: SelectorPlace): string[] | string =>
+  place === PLACE_NAME || place === PLACE_WHOLE || (place !== PLACE_ALONE && !isSelectorValue(list))
     ? branches
     : branches.length === 1 && place !== PLACE_GLUED ? branches[0]! : isUnit(branches.join(', '));
 

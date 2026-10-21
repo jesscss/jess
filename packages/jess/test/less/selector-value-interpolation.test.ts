@@ -78,6 +78,31 @@ describe('a selector value interpolated into a selector is placed as `&` is', ()
   });
 });
 
+/*
+ * In a pseudo's argument an interpolation starts a selector of that argument's list, glued
+ * to nothing: either kind of list stays inside the argument (never a rule per item, which
+ * would turn `:not(b, i)` into `:not(b), :not(i)`).
+ */
+describe('a list interpolated into a pseudo argument', () => {
+  it.each([
+    ['less', 'a plain list', '@inline: b, i;\n.copy:not(@{inline}) { c: d; }\n.copy:has(> @{inline}) { c: d; }\n.copy:not(.lead, @{inline}) { c: d; }'],
+    ['less', 'a selector value', '@inline: selector(b, i);\n.copy:not(@{inline}) { c: d; }\n.copy:has(> @{inline}) { c: d; }\n.copy:not(.lead, @{inline}) { c: d; }'],
+    ['scss', 'a plain list', '$inline: b, i;\n.copy:not(#{$inline}) { c: d; }\n.copy:has(> #{$inline}) { c: d; }\n.copy:not(.lead, #{$inline}) { c: d; }']
+  ] as const)('%s: %s stays one argument item', async (language, _kind, source) => {
+    await expect(render(source, false, language)).resolves.toBe(
+      '.copy:not(:is(b, i)) {\n  c: d;\n}\n.copy:has(> :is(b, i)) {\n  c: d;\n}\n.copy:not(.lead, :is(b, i)) {\n  c: d;\n}\n'
+    );
+  });
+});
+
+/* A comma list of captures is a selector value too (ledger P49 NOTES 2026-10-17). */
+it.each([
+  ['less', '@fruits: selector(apple), selector(satsuma);\n.basket { .ripe@{fruits} { c: d; } }'],
+  ['jess', '$fruits: selector(apple), selector(satsuma);\n.basket { .ripe${fruits} { c: d; } }']
+] as const)('%s: a comma list of captures glued after a class is one :is() group', async (language, source) => {
+  await expect(render(source, false, language)).resolves.toBe(under(['.ripe:is(apple, satsuma)'], false));
+});
+
 describe('`&` interpolated into a selector is placed as `&` is', () => {
   const amp: Record<'scss' | 'jess', (header: string) => string> = {
     scss: header => `apple, satsuma {\n  ${header.replace('&', '#{&}')} { c: d; }\n}`,

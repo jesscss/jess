@@ -283,14 +283,15 @@ describe('selector() capture', () => {
       await expect(render('@-use "#sass/selector";\n$buttons: $selector.parse(".btn, .button");\n.toolbar { ${buttons} { color: red; } }', collapseNesting, 'jess')).resolves.toBe(expected);
     });
 
-    it('a list glued after a name prefix whose selectors open with `.` is a compound boundary: one :is() group', async () => {
+    it('a selector value glued after a class is one :is() group', async () => {
       await expect(render('@buttons: selector(.btn, .button);\n.toolbar@{buttons} { color: red; }', false))
         .resolves.toBe('.toolbar:is(.btn, .button) {\n  color: red;\n}\n');
     });
 
     /*
-     * A list glued to a name continues it, as `&__x` does: one branch per selector, never
-     * `:is()`, which is no part of a name (`.col-:is(sm, md)`, `:is(.card, .panel)__title`).
+     * A plain list glued to a name is text: one branch per item. `#{&}` with a name glued
+     * after it continues that name, as `&__x` does (owner 2026-10-21; the rest of the
+     * table is in `selector-value-interpolation.test.ts`).
      */
     describe('a list continuing a name multiplies branches', () => {
       it.each([
