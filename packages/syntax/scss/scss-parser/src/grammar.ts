@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -2309,9 +2309,15 @@ const scssFactory = (g: ScssInputRules) => {
         caseInsensitiveWord('supports'),
         literal('(')
       )),
+
+      /*
+       * The declaration first: a condition's top reads an identifier as its
+       * stray operand (`SupportsInParens`), so `display: grid` would commit to
+       * `display` and fail at the `:`.
+       */
       choice(
-        g.SupportsCondition,
-        g.ImportDeclaration
+        g.ImportDeclaration,
+        g.SupportsCondition
       ),
       literal(')')
     ),
@@ -3748,14 +3754,12 @@ const scssFactory = (g: ScssInputRules) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      sequence(
+      noTrivia(sequence(
         g.Identifier,
-        noTrivia(sequence(
-          literal('('),
-          g.GeneralTemplate,
-          literal(')')
-        ))
-      ),
+        literal('('),
+        g.GeneralTemplate,
+        literal(')')
+      )),
       noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
@@ -3800,23 +3804,42 @@ const scssFactory = (g: ScssInputRules) => {
           ));
     }
   );
+
+  /*
+   * css's `<supports-in-parens>` arms, then an identifier where one is
+   * expected, with the group after it: `selector (a)` is `selector` and a
+   * `(a)` group, never the glued `selector(` (css-syntax-3 §4.3.4), and
+   * `color` is no condition. They parse (ledger P45), and the compile reports
+   * `css/invalid-supports-condition` (owner 2026-10-22). Only outside a
+   * condition's parentheses: inside them, `(a and b)` stays general-enclosed.
+   */
   const SupportsInParens = node<ValueNode>(
     'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.SupportsCondition,
+        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
         literal(')')
       ),
       g.SupportsFeature,
-      g.Enclosed
+      g.Enclosed,
+      {
+        gate: state => !isInSupportsGroup(state),
+        combinator: sequence(
+          g.Keyword,
+          optional(g.Enclosed)
+        )
+      }
     ),
     (children) => {
-      const value = children.find(isScssValue);
-      if (value === undefined) {
+      const values = children.filter(isScssValue);
+      if (values.length === 0) {
         throw new TypeError('SCSS supports parenthesis lost its typed condition.');
       }
-      return isScssValue(children[0]) ? value : block(value);
+      if (!isScssValue(children[0])) {
+        return block(values[0]!);
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
     }
   );
   const SupportsNotKeyword = node<Keyword>(

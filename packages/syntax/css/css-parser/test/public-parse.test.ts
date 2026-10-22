@@ -38,7 +38,7 @@ describe('public CSS parse()', () => {
      * nothing, and reads exactly like a pass. Assert the count so the fixture
      * set cannot shrink — or fail to resolve — in silence.
      */
-    expect(fixtures.length).toBe(34);
+    expect(fixtures.length).toBe(35);
     for (const filename of fixtures) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
@@ -51,7 +51,7 @@ describe('public CSS parse()', () => {
   it('rejects every public-CST error fixture through the direct Stylesheet route', () => {
     const fixtureRoot = join(import.meta.dirname, 'css/errors');
     const fixtures = readdirSync(fixtureRoot).filter(name => name.endsWith('.css'));
-    expect(fixtures.length).toBe(53);
+    expect(fixtures.length).toBe(52);
     for (const filename of fixtures) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
@@ -142,11 +142,17 @@ describe('public CSS parse()', () => {
     });
   });
 
-  it('requires supports function tokens to glue the function name to the opening paren', () => {
+  it('reads an identifier apart from its paren as an identifier and a group, never a supports function', () => {
+    /*
+     * `selector (.grid)` is no `selector(` function token (css-syntax-3
+     * §4.3.4): it parses as written (ledger P45) and the compile reports it
+     * (owner 2026-10-22).
+     */
     const source = '@supports selector (.grid) { .grid { display: grid; } }';
-    const cst = parseCssCst(source);
-    expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
-    expect(() => parse(source)).toThrow(SyntaxError);
+    expect(parseCssCst(source).errors).toHaveLength(0);
+    expect(parse(source).rules[0]).toMatchObject({
+      prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'selector' }, { type: 'Block', delimiter: 'paren' }] }
+    });
   });
 
   it('accepts negative An+B pseudo arguments through the public direct-AST route', () => {

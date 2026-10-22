@@ -1769,7 +1769,7 @@ describe('StyleImport', () => {
 
   it('keeps a byte-identical visible self-extend inside a hidden selector ancestor', async () => {
     const imported = stylesheet([
-      atRuleBlock('@supports', keyword('feature'), [
+      atRuleBlock('@media', keyword('print'), [
         rule('.hidden-parent', [
           decl('must-not', keyword('leak')),
           rule('.target', [decl('color', keyword('blue'))])
@@ -1791,7 +1791,7 @@ describe('StyleImport', () => {
         ? { document: imported, key: 'reference.less' }
         : undefined)
     })).resolves.toEqual({
-      css: '@supports feature {\n  .hidden-parent .target {\n    color: blue;\n  }\n}\n'
+      css: '@media print {\n  .hidden-parent .target {\n    color: blue;\n  }\n}\n'
     });
   });
 

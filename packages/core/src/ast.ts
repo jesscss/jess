@@ -163,6 +163,7 @@ export {
   withAuthoredSeparators,
   withTriviaGaps
 } from './ast/css-grammar-helpers.js';
+export { enterSupportsGroup, isInSupportsGroup } from './ast/supports-condition.js';
 export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorItem, forgivingSelectorList, forgivingSelectorRest, withForgivenSelectorItems } from './ast/forgiving-selector.js';
 export type { ForgivenSelectorItem, ForgivingSelectorRest } from './ast/forgiving-selector.js';
 export { componentRun } from './ast/component-run.js';

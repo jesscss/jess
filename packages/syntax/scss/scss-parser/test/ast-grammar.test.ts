@@ -1623,8 +1623,9 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   it('matches public conditional-prelude rejection without a fallback block path', () => {
+    /* A bare identifier is no supports condition: it parses (ledger P45) and the compile reports it (owner 2026-10-22). */
+    expect(parseScssCst('@supports color { .bad { color: red; } }').errors).toHaveLength(0);
     for (const source of [
-      '@supports color { .bad { color: red; } }',
       '@supports { .bad { color: red; } }',
       '@media $cond { .bad { color: red; } }',
       '@container $cond { .bad { color: red; } }',
