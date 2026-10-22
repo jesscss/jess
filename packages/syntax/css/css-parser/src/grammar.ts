@@ -316,6 +316,11 @@ type GrammarRuleName =
   | 'calcValueAtom'
   | 'valueAtom'
   | 'queryBoundTail'
+  | 'SelectorOnlyPseudoArgument'
+  | 'QueryFeatureName'
+  | 'queryFeatureName'
+  | 'MediaFeatureOpener'
+  | 'mediaFeatureOpener'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -1387,12 +1392,9 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const SelectorOnlyPseudoArgument = node(
     'SelectorOnlyPseudoArgument',
-    parser(
-      { trivia: interstitialTrivia },
-      oneOrMoreSep(
-        g.RelativeSelector,
-        literal(',')
-      )
+    oneOrMoreSep(
+      g.RelativeSelector,
+      literal(',')
     ),
     children => selist(...selectorBranches(children))
   );
@@ -1495,7 +1497,10 @@ const cssFactory = (g: GrammarSelf) => {
           ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
-            SelectorOnlyPseudoArgument,
+            parser(
+              { trivia: interstitialTrivia },
+              SelectorOnlyPseudoArgument
+            ),
             literal(')')
           )
         ),
@@ -3374,8 +3379,16 @@ const cssFactory = (g: GrammarSelf) => {
     routed(),
     children => tokenText(children[0])
   );
+
+  /*
+   * A feature's name and what follows it. The name is the `QueryFeatureName`
+   * slot, css's routed `Property`: a superset binds its own to read its
+   * interpolation in the name (`(min-${d}: 1px)`, ledger P13 (a)), and the
+   * contents reducer reads an `Interpolation` there as the name.
+   */
+  const QueryFeatureName = RoutedProperty;
   const queryFeatureName = sequence(
-    RoutedProperty,
+    g.QueryFeatureName,
     queryFeatureNameTail
   );
 
@@ -3798,10 +3811,18 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     otherwise(queryFeatureName)
   );
+
+  /*
+   * What a media feature's contents open with: css's opener dispatch. A
+   * named slot: a superset whose feature name can open with its interpolation
+   * (`(${f}: 1px)`), which the dispatch's identifier head does not read, binds
+   * the dispatch then `queryFeatureName`, so the name is read once, as a name.
+   */
+  const MediaFeatureOpener = mediaFeatureOpener;
   const MediaFeatureContents = node(
     'QueryFeatureContents',
     choice(
-      mediaFeatureOpener,
+      g.MediaFeatureOpener,
       sequence(
         g.QueryValue,
         g.queryBoundTail
@@ -5238,6 +5259,7 @@ const cssFactory = (g: GrammarSelf) => {
     ForgivingSelectorRest,
     ForgivingSelectorItem,
     ForgivingSelectorList,
+    SelectorOnlyPseudoArgument,
     PseudoArgument,
     OfTypePseudoArgument,
     AnPlusB,
@@ -5330,6 +5352,10 @@ const cssFactory = (g: GrammarSelf) => {
     GluedConnectiveFunction,
     QueryConnective,
     MediaCondition,
+    MediaFeatureOpener,
+    mediaFeatureOpener,
+    QueryFeatureName,
+    queryFeatureName,
     MediaFeatureContents,
     MediaGeneralValue: g.ValueSequence,
     GeneralDelim: g.PunctuationValue,

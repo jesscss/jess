@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -294,6 +294,10 @@ type LessRules = {
   /** A media query's term outside parentheses: the CSS base's slot, with Less's `@{…}` / `@name` terms. */
   MediaTypeTerm: Combinator<ValueNode>;
   RoutedQueryFunction: Combinator<FunctionCall | Block>;
+  /** A query feature's name: the CSS base's slot, with Less's `@{…}`. */
+  QueryFeatureName: Combinator<string | Interpolation>;
+  /** What a media feature's contents open with: the CSS base's slot, with a name an interpolation opens. */
+  MediaFeatureOpener: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   /* `style()`, `scroll-state()`, or a function-form general-enclosed routed through its opener. */
   ContainerStyleQuery: Combinator<unknown>;
@@ -402,6 +406,9 @@ type SharedSyntax = {
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: a media type, keyword or function term — MediaTypeTerm's last arm.
   QueryIdentOrFunctionTerm: Combinator<ValueNode>;
+  // Inherited from the CSS base: the media feature opener dispatch — MediaFeatureOpener's first arm — and a feature's name and what follows it.
+  mediaFeatureOpener: Combinator<unknown>;
+  queryFeatureName: Combinator<unknown>;
   // Inherited from the CSS base: an and/or connective, or a peeked glued and( / or( operand.
   QueryConnective: Combinator<unknown>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -2245,9 +2252,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // value and query grammars share it without a recursive query-value cycle.
   const QueryColonFeature = node(
     'QueryColonFeature',
-    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathValue, literal(')')),
+    sequence(literal('('), g.QueryFeatureName, regex(/:[ \t\n\r\f]*/), g.MathValue, literal(')')),
     (children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(
-      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
+      block(operation(':', queryFeatureNameValue(children[1]), requireValueNode(children[3]), false,
         lessMathOutsideParens(state, ':'))),
       span
     )
@@ -3839,14 +3846,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SupportsFeature',
     sequence(
       literal('('),
-      g.Identifier,
+      g.QueryFeatureName,
       optional(sequence(literal(':'), g.SupportsValue)),
       literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
-      const property = keyword(requireToken(children[1]).value);
-      const value = children.find(isValueNode);
-      return value === undefined
+      const property = queryFeatureNameValue(children[1]);
+      const value = children.findLast(isValueNode);
+      return value === undefined || value === property
         ? block(property)
         : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
     }
@@ -3908,24 +3915,48 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(g.MathValue, g.queryLeaf),
     children => requireValueNode(children[0])
   );
+  /*
+   * A query feature's name, which may be interpolated (`(min-@{d}: 1px)`,
+   * `(@{f}: 1px)`). css's `QueryFeatureName` slot: in css's media opener
+   * dispatch it owns the identifier the dispatch read (`routed`), and anywhere
+   * else, as in the `@container` and `@supports` features here and a media
+   * feature an interpolation opens (`MediaFeatureOpener`), it reads it.
+   */
+  const QueryFeatureName = node(
+    'Property',
+    noTrivia(sequence(
+      routed(choice(g.Identifier, g.Interpolation)),
+      many(choice(g.Interpolation, g.InterpolatedPropertyTail))
+    )),
+    children => queryFeatureNameFrom(children.map(child => isInterpolationFact(child) ? interpolation([{ ref: child.ref, unquote: true }]) : child))
+  );
+
+  /*
+   * css's media opener dispatch, then a name it cannot read: one an
+   * interpolation opens (`(@{f}: @bp)`), read once as the name.
+   */
+  const MediaFeatureOpener = choice(
+    g.mediaFeatureOpener,
+    g.queryFeatureName
+  );
   const QueryBareFeature = node(
     'QueryBareFeature',
-    sequence(literal('('), g.Identifier, literal(')')),
-    children => block(keyword(requireToken(children[1]).value))
+    sequence(literal('('), g.QueryFeatureName, literal(')')),
+    children => block(queryFeatureNameValue(children[1]))
   );
   const QueryComparisonFeature = node(
     'QueryComparisonFeature',
     sequence(
-      literal('('), g.Identifier, g.QueryComparisonOperator, g.MathValue,
+      literal('('), g.QueryFeatureName, g.QueryComparisonOperator, g.MathValue,
       optional(sequence(g.QueryComparisonOperator, g.MathValue)), literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
-      const values = children.filter(isValueNode);
+      const values = children.slice(2).filter(isValueNode);
       const operators = lessQueryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query comparison lost a value or operator.');
       }
-      let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!, false,
+      let comparison = operation(operators[0]!, queryFeatureNameValue(children[1]), values[0]!, false,
         lessMathOutsideParens(state, operators[0]!));
       if (operators.length === 2) {
         if (values[1] === undefined) {
@@ -3940,16 +3971,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryRangeFeature = node(
     'QueryRangeFeature',
     sequence(
-      literal('('), g.MathValue, g.QueryComparisonOperator, g.Identifier,
+      literal('('), g.MathValue, g.QueryComparisonOperator, g.QueryFeatureName,
       optional(sequence(g.QueryComparisonOperator, g.MathValue)), literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
-      const values = children.filter(isValueNode);
+      const values = children.filter(isValueNode).filter(value => value !== children[3]);
       const operators = lessQueryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query range lost a value or operator.');
       }
-      let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value), false,
+      let comparison = operation(operators[0]!, values[0]!, queryFeatureNameValue(children[3]), false,
         lessMathOutsideParens(state, operators[0]!));
       if (operators.length === 2) {
         if (values[1] === undefined) {
@@ -5836,6 +5867,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     QueryColonFeature,
     MediaTypeTerm,
     RoutedQueryFunction,
+    QueryFeatureName,
+    MediaFeatureOpener,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,

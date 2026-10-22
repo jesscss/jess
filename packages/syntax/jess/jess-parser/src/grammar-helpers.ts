@@ -22,14 +22,13 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { JessArithmeticOutsideExpressionError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
-import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg } from '@jesscss/core/ast';
+import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, FunctionCall, IfValue, IfValueBranch } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string; readonly start: number };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
 type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
-type JessQueryFeatureName = { readonly property: Keyword | Interpolation };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
 
@@ -587,12 +586,16 @@ function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
   return { value, src: value.src };
 }
 
+/* A `( name )` or `( name : value )` feature: the name (`QueryFeatureName`) comes first. */
 function reduceColonFeature(children: readonly unknown[], lostMessage: string): ValueNode {
-  const property = children.find((child): child is JessQueryFeatureName => typeof child === 'object' && child !== null && 'property' in child)?.property;
-  if (property === undefined) {
+  const index = children.findIndex(child => typeof child === 'string' || isInterpolation(child));
+  const name = children[index];
+  if (typeof name !== 'string' && !isInterpolation(name)) {
     throw new TypeError(lostMessage);
   }
-  const value = children.find(isValueNode);
+  const property = queryFeatureNameValue(name);
+  const last = children.findLast(isValueNode);
+  const value = last === name ? undefined : last;
   return value === undefined
     ? block(property)
     : block(operation(
@@ -1350,7 +1353,6 @@ export type {
   JessOperatorFact,
   JessReferenceTail,
   JessComplexTail,
-  JessQueryFeatureName,
   JessAtRuleHeader,
   JessMixinCallArgument,
   JessCallArgument

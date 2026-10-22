@@ -3210,9 +3210,9 @@ or a legacy-tree port.
   Jess, "the dialect's explicit interpolation syntax" is `${…}` and only `${…}`
   — `$(…)` is a value-position expression, not interpolation, so it is rejected
   in the general-enclosed body and in every `(…)`/`[…]`/`{…}` nested inside it
-  (`DirectJessGeneralTemplate`). A quoted string in that body is an ordinary
-  Jess string and keeps `$(…)`, via the mirrored
-  `DirectJessGeneralQuotedTemplate` chain. See DESIGN-DECISIONS P16. The
+  (`GeneralTemplate`). A quoted string in that body is an ordinary Jess
+  string, read as string text, and keeps `$(…)` (`GeneralTemplateQuoted`).
+  See DESIGN-DECISIONS P16. The
   serializer keeps a `GeneralEnclosed` segment structurally protected while it
   normalizes surrounding supports syntax, including when authored content has
   private-use Unicode bytes.

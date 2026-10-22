@@ -62,7 +62,6 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('Enclosed')).toBe(1);
     expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
     expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
-    expect(grammarTypes.get('GeneralQuotedTemplateGroup')).toBe(1);
     expect([...grammarTypes.keys()].some(type => /General(?:Quoted)?Template(?:Paren|Square|Brace|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
   });
 
@@ -103,7 +102,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('Quoted')).toBe(1);
-    expect(grammarTypes.get('PseudoSelectorArgument')).toBe(1);
+    expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBe(1);
     expect(grammarTypes.get('PseudoSelectorList')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoSelectorCompound')).toBeGreaterThan(0);
     expect(grammarTypes.get('NthChildArgument')).toBe(1);
@@ -117,7 +116,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('GenericPseudoArgument')).toBe(1);
-    expect(grammarTypes.get('PseudoSelectorArgument')).toBeUndefined();
+    expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeUndefined();
   });
 
   it('reuses the semantic Quoted slot for static attribute values', () => {
@@ -140,7 +139,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('AtRulePrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryFeature')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
-    expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Property')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
 
     /*

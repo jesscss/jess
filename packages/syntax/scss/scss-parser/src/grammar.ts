@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -101,6 +101,8 @@ type ScssRules = {
   WhileRule: Combinator<While>;
   DiagnosticDirective: Combinator<AtRuleStatement>;
   QueryValue: Combinator<ValueNode>;
+  QueryFeatureName: Combinator<string | Interpolation>;
+  MediaFeatureOpener: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
   RoutedQueryFunction: Combinator<FunctionCall>;
@@ -187,6 +189,10 @@ type ScssSharedSyntax = {
   /* Inherited from the CSS base: the media query list and the container prelude. */
   QueryPrelude: Combinator<ValueNode>;
   ContainerPrelude: Combinator<ValueNode>;
+
+  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  mediaFeatureOpener: Combinator<unknown>;
+  queryFeatureName: Combinator<unknown>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
   MediaTestBody: Combinator<unknown>;
@@ -669,22 +675,22 @@ const scssFactory = (g: ScssInputRules) => {
   const InterpolatedQuoted = node<Quoted>(
     'Quoted',
     choice(
-      sequence(
+      noTrivia(sequence(
         literal('"'),
         many(choice(
-          g.SassInterpolation,
+          parser({ trivia: whitespace }, g.SassInterpolation),
           regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('"')
-      ),
-      sequence(
+      )),
+      noTrivia(sequence(
         literal('\''),
         many(choice(
-          g.SassInterpolation,
+          parser({ trivia: whitespace }, g.SassInterpolation),
           regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('\'')
-      )
+      ))
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const src = authoredSource(span, state, 'An interpolated SCSS string');
@@ -808,7 +814,7 @@ const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         literal('('),
         optional(valueTrivia),
-        g.Value,
+        parser({ trivia: whitespace }, g.Value),
         optional(valueTrivia),
         literal(')')
       ))
@@ -839,7 +845,7 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       literal('['),
       optional(valueTrivia),
-      optional(g.Value),
+      optional(parser({ trivia: whitespace }, g.Value)),
       optional(valueTrivia),
       literal(']')
     )),
@@ -1148,7 +1154,7 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       many(choice(
         regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
-        g.SassInterpolation
+        parser({ trivia: whitespace }, g.SassInterpolation)
       ))
     ),
     (children) => {
@@ -3497,24 +3503,56 @@ const scssFactory = (g: ScssInputRules) => {
    * Building it on g.QueryValue is what gives the range form `<ratio>`
    * bounds (`(16/9 < aspect-ratio < 2/1)`) without restating the ratio grammar.
    */
+  /*
+   * A query feature's name, which may be interpolated (`(min-#{$d}: 1px)`,
+   * `(#{$f}: 1px)`). css's `QueryFeatureName` slot: in css's media opener
+   * dispatch it owns the identifier the dispatch read (`routed`), and anywhere
+   * else, as in the `@container` and `@supports` features here and a media
+   * feature an interpolation opens (`MediaFeatureOpener`), it reads it. Its
+   * chunks are glued; each interpolation's braces read the document's trivia
+   * (`#{ $d }`).
+   */
+  const QueryFeatureName = node<string | Interpolation>(
+    'Property',
+    noTrivia(sequence(
+      routed(choice(
+        g.Identifier,
+        parser({ trivia: whitespace }, g.SassInterpolation)
+      )),
+      many(choice(
+        parser({ trivia: whitespace }, g.SassInterpolation),
+        regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)
+      ))
+    )),
+    children => queryFeatureNameFrom(children)
+  );
+
+  /*
+   * css's media opener dispatch, then a name it cannot read: one an
+   * interpolation opens (`(#{$f}: $bp)`), read once as the name.
+   */
+  const MediaFeatureOpener = choice(
+    g.mediaFeatureOpener,
+    g.queryFeatureName
+  );
   const QueryFeature = node<ValueNode>(
     'QueryFeature',
     choice(
       sequence(
         literal('('),
-        propertyIdentifier,
+        g.QueryFeatureName,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyIdentifier,
+        g.QueryFeatureName,
         literal(':'),
         g.QueryValue,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyIdentifier,
+        g.QueryFeatureName,
         queryComparisonOperator,
         g.QueryValue,
         literal(')')
@@ -3523,7 +3561,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal('('),
         g.QueryValue,
         queryComparisonOperator,
-        propertyIdentifier,
+        g.QueryFeatureName,
         optional(sequence(
           queryComparisonOperator,
           g.QueryValue
@@ -3533,43 +3571,24 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       /*
-       * The value-first arm is the only one holding a value where the other three
-       * hold the feature name, so that child alone settles which arm matched.
+       * The name (`QueryFeatureName`: an identifier's text or an
+       * `Interpolation`) and the values, joined by `:` or the comparisons in
+       * written order: `name`, `name : value`, `name op value`, or
+       * `value op name [op value]`.
        */
-      if (isScssValue(children[1])) {
-        const values = children.filter(isScssValue);
-        const property = keyword(requireToken(children[3]).value);
-        let comparison = operation(
-          requireToken(children[2]).value,
-          requireValue(values[0]),
-          property,
+      const operands = children.flatMap(child => isScssValue(child) ? [child] : typeof child === 'string' ? [keyword(child)] : []);
+      const operators = children.filter(child => isToken(child) && !isScssValue(child)).map(child => requireToken(child).value).filter(text => text !== '(' && text !== ')');
+      let result = requireValue(operands[0]);
+      for (let index = 0; index < operators.length; index++) {
+        result = operation(
+          operators[index]!,
+          result,
+          requireValue(operands[index + 1]),
           false,
-          cssBaseMathOutsideParens(requireToken(children[2]).value)
+          cssBaseMathOutsideParens(operators[index]!)
         );
-        const upper = values[1];
-        if (upper !== undefined) {
-          comparison = operation(
-            requireToken(children[children.length - 3]).value,
-            comparison,
-            upper,
-            false,
-            cssBaseMathOutsideParens(requireToken(children[children.length - 3]).value)
-          );
-        }
-        return block(comparison);
       }
-      const property = keyword(requireToken(children[1]).value);
-      if (children.length === 3) {
-        return block(property);
-      }
-      const value = requireValue(children[children.length - 2]);
-      return block(operation(
-        requireToken(children[2]).value,
-        property,
-        value,
-        false,
-        cssBaseMathOutsideParens(requireToken(children[2]).value)
-      ));
+      return block(result);
     }
   );
 
@@ -3709,15 +3728,17 @@ const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         g.Identifier,
-        literal('('),
-        g.GeneralTemplate,
-        literal(')')
+        noTrivia(sequence(
+          literal('('),
+          g.GeneralTemplate,
+          literal(')')
+        ))
       ),
-      sequence(
+      noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
         literal(')')
-      )
+      ))
     ),
     (children, _fields, span) => children.length === 4
       ? withGluedKeywordSpan(funcCall(
@@ -3731,20 +3752,21 @@ const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         literal('('),
-        propertyIdentifier,
+        g.QueryFeatureName,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyIdentifier,
+        g.QueryFeatureName,
         literal(':'),
         g.SupportsAtom,
         literal(')')
       )
     ),
     (children) => {
-      const property = keyword(requireToken(children[1]).value);
-      const value = children.find(isScssValue);
+      const property = queryFeatureNameValue(children[1]);
+      const last = children.findLast(isScssValue);
+      const value = last === property ? undefined : last;
       return value === undefined
         ? block(property)
         : block(operation(
@@ -5286,6 +5308,8 @@ const scssFactory = (g: ScssInputRules) => {
     WhileRule,
     DiagnosticDirective,
     QueryValue,
+    QueryFeatureName,
+    MediaFeatureOpener,
     QueryFeature,
     QueryFunction,
     RoutedQueryFunction,
