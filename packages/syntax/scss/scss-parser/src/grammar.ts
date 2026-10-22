@@ -103,6 +103,7 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  QueryComparedHead: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
   RoutedQueryFunction: Combinator<FunctionCall>;
@@ -190,9 +191,15 @@ type ScssSharedSyntax = {
   QueryPrelude: Combinator<ValueNode>;
   ContainerPrelude: Combinator<ValueNode>;
 
-  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  /*
+   * Inherited from the CSS base: the media feature opener dispatch, and a
+   * feature's name and what follows it; the compared-head dispatch after a
+   * value-first bound, and the range name and what follows it.
+   */
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
   MediaTestBody: Combinator<unknown>;
@@ -1684,9 +1691,16 @@ const scssFactory = (g: ScssInputRules) => {
     (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
   );
 
+  /*
+   * A comma and the list item after it. A block comment before the comma is
+   * trivia (`( $a /* c *\/ , $b )`), as css reads it there: the document
+   * trivia names only whitespace and `//`, so the pair spells it, and the
+   * separator starts at the comma.
+   */
   const ValuePair = node<ScssValuePair>(
     'ValuePair',
     noTrivia(sequence(
+      optional(valueTrivia),
       literal(','),
       optional(valueTrivia),
       choice(
@@ -1695,27 +1709,20 @@ const scssFactory = (g: ScssInputRules) => {
       )
     )),
     (children) => {
-      if (children.length !== 2 && children.length !== 3) {
-        throw new TypeError('ValuePair produced unexpected children.');
-      }
-      if (requireToken(children[0]).value !== ',') {
+      const separator = children.slice(0, -1).map(child => requireToken(child).value);
+      const comma = separator.indexOf(',');
+      if (comma === -1) {
         throw new TypeError('ValuePair lost its comma.');
       }
-      const separator = children.length === 3
-        ? `,${requireToken(children[1]).value}`
-        : ',';
-      return { separator, value: requireValueSlot(children[children.length - 1]) };
+      return { separator: separator.slice(comma).join(''), value: requireValueSlot(children[children.length - 1]) };
     }
   );
 
   /*
-   * An argument comma also admits padding BEFORE it, which the value-list comma
-   * must not: at declaration top level the space in `a , b` is already the list
-   * grammar's own boundary, and widening `ValuePair` would re-cut every such
-   * value that parses today. Inside an argument list there is no competing
-   * reading, so `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators.
-   * The separator keeps the authored bytes in authored order, so an argument
-   * list that carried no leading pad records exactly what it recorded before.
+   * An argument comma admits padding BEFORE it, so `f(c , d)` and
+   * `f(c /* z *\/, d)` are plain padded separators. Unlike `ValuePair`'s, the
+   * separator keeps the authored bytes in authored order, so an argument list
+   * that carried no leading pad records exactly what it recorded before.
    */
   const ArgumentPair = node<ScssArgumentPair>(
     'ArgumentPair',
@@ -2272,18 +2279,24 @@ const scssFactory = (g: ScssInputRules) => {
    * In an import condition, CSS permits a single declaration without the
    * parentheses required by a general <supports-condition>
    * (`supports(display: grid)`), and it is written without them, as `.css`
-   * writes it (ledger P38: CSS comes out as `.css` writes it).
+   * writes it (ledger P38: CSS comes out as `.css` writes it). Its name is the
+   * one an `@supports` feature reads (`QueryFeatureName`), so it takes `#{…}`
+   * (`supports(#{$p}: grid)`); a starred name (`*zoom`) is the property
+   * identifier's, as it always was.
    */
   const ImportDeclaration = node<ValueNode>(
     'ImportDeclaration',
     sequence(
-      propertyIdentifier,
+      choice(
+        g.QueryFeatureName,
+        propertyIdentifier
+      ),
       literal(':'),
       g.SupportsAtom
     ),
     children => operation(
       ':',
-      keyword(requireToken(children[0]).value),
+      isToken(children[0]) ? keyword(children[0].value) : queryFeatureNameValue(children[0]),
       requireValue(children[2]),
       false,
       cssBaseMathOutsideParens(':')
@@ -3534,6 +3547,15 @@ const scssFactory = (g: ScssInputRules) => {
   const MediaFeatureOpener = choice(
     g.mediaFeatureOpener,
     g.queryFeatureName
+  );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= #{$d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
   );
   const QueryFeature = node<ValueNode>(
     'QueryFeature',
@@ -5310,6 +5332,7 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryFeature,
     QueryFunction,
     RoutedQueryFunction,

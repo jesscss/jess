@@ -3471,7 +3471,6 @@ describe('Jess AST grammar facts', () => {
 
       // Malformed bodies must be positioned errors, never raw bytes.
       '.card { ${}: blue; }',
-      '.card { ${ property}: blue; }',
       '.card { ${$property}: blue; }',
       '.card { ${m.key}: blue; }',
       '.card { ${property: blue; }',

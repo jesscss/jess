@@ -30,6 +30,13 @@ const features: ReadonlyArray<readonly [string, Extension, string]> = [
 
   ['@media (400px <= width <= 900px)', '.css', '@media (400px <= width <= 900px) { .a { b: c; } }'],
   ['@media (400px <= width <= 900px)', '.less', '@dimension: width;\n@media (400px <= @{dimension} <= 900px) { .a { b: c; } }'],
+  ['@media (400px <= width)', '.css', '@media (400px <= width) { .a { b: c; } }'],
+  ['@media (400px <= width)', '.less', '@dimension: width;\n@media (400px <= @{dimension}) { .a { b: c; } }'],
+  ['@media (400px <= width)', '.scss', '$dimension: width;\n@media (400px <= #{$dimension}) { .a { b: c; } }'],
+  ['@media (400px <= width)', '.jess', '$dimension: width;\n@media (400px <= ${dimension}) { .a { b: c; } }'],
+
+  ['@media (400px <= width <= 900px)', '.scss', '$dimension: width;\n@media (400px <= #{$dimension} <= 900px) { .a { b: c; } }'],
+  ['@media (400px <= width <= 900px)', '.jess', '$dimension: width;\n@media (400px <= ${dimension} <= 900px) { .a { b: c; } }'],
 
   ['@container card (min-width: 400px)', '.css', '@container card (min-width: 400px) { .a { b: c; } }'],
   ['@container card (min-width: 400px)', '.less', '@dimension: width;\n@container card (min-@{dimension}: 400px) { .a { b: c; } }'],

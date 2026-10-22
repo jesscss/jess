@@ -321,6 +321,9 @@ type GrammarRuleName =
   | 'queryFeatureName'
   | 'MediaFeatureOpener'
   | 'mediaFeatureOpener'
+  | 'QueryComparedHead'
+  | 'queryComparedHead'
+  | 'queryRangeName'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -3468,11 +3471,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The range name after a value-first bound's comparison, owning the
-   * identifier the dispatch below read, and an optional second comparison.
+   * The range name after a value-first bound's comparison, and an optional
+   * second comparison. The name is the `QueryFeatureName` slot, owning the
+   * identifier the dispatch below read.
    */
   const queryRangeName = sequence(
-    RoutedProperty,
+    g.QueryFeatureName,
     optional(sequence(
       g.QueryComparisonOperator,
       optional(g.QueryValue)
@@ -3522,6 +3526,15 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * What a value-first bound's comparison is followed by: css's compared-head
+   * dispatch. A named slot, as `MediaFeatureOpener` is: a superset whose range
+   * name can open with its interpolation (`400px <= ${d}`), which the
+   * dispatch's identifier head does not read, binds the dispatch then
+   * `queryRangeName`, so the name is read once, as a name.
+   */
+  const QueryComparedHead = queryComparedHead;
+
+  /*
    * What follows a value-first bound in a media feature or an if-test: a range
    * (`< width`, `< width < 2px`), or other component values, which make the
    * feature `<general-enclosed>` (media-queries-4 §3.1). The comparison is
@@ -3536,7 +3549,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.QueryComparisonOperator,
       optional(choice(
-        queryComparedHead,
+        g.QueryComparedHead,
         boundValues
       ))
     ),
@@ -5354,6 +5367,9 @@ const cssFactory = (g: GrammarSelf) => {
     MediaCondition,
     MediaFeatureOpener,
     mediaFeatureOpener,
+    QueryComparedHead,
+    queryComparedHead,
+    queryRangeName,
     QueryFeatureName,
     queryFeatureName,
     MediaFeatureContents,

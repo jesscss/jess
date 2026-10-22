@@ -266,6 +266,7 @@ type JessRules = {
   StyleFeature: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  QueryComparedHead: Combinator<unknown>;
   QueryComparisonFeature: Combinator<ValueNode>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
   QueryTerm: Combinator<ValueNode>;
@@ -333,9 +334,15 @@ type SharedSyntax = {
    */
   SelectorOnlyPseudoArgument: Combinator<SelectorList>;
 
-  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  /*
+   * Inherited from the CSS base: the media feature opener dispatch, and a
+   * feature's name and what follows it; the compared-head dispatch after a
+   * value-first bound, and the range name and what follows it.
+   */
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests, and the value run they read. */
   ValueSequence: Combinator<unknown>;
@@ -710,42 +717,43 @@ const typeNamespace = regex(/\$type\./);
  * branches again on `$`, a name, or a quote. Those are disjoint continuation
  * sets, so this is structural factoring rather than five competing `${...}`
  * alternatives.
+ *
+ * Trivia inside the braces is padding, as anywhere `.jess` reads trivia
+ * (`${ size }`, `${ /* lg *\/ size }` are `${size}`): the braces read the
+ * document's trivia, and the bracket key is `noTrivia`, so `${[ x ]}`,
+ * `${[$ x]}` and a quoted key's bytes stay exact. `$ {` is no opener.
  */
-const dollarBraceStructure = noTrivia(sequence(
-  literal('${'),
-  choice(
-    sequence(
-      literal('['),
-      choice(
-        sequence(
-          literal('$'),
+const dollarBraceStructure = parser(
+  { trivia: whitespace },
+  sequence(
+    literal('${'),
+    choice(
+      noTrivia(sequence(
+        literal('['),
+        choice(
+          sequence(
+            literal('$'),
+            dollarName
+          ),
           dollarName,
-          literal(']}')
+          sequence(
+            literal('\''),
+            regex(/(?:[^'\\]|\\[\s\S])*/),
+            literal('\'')
+          ),
+          sequence(
+            literal('"'),
+            regex(/(?:[^"\\]|\\[\s\S])*/),
+            literal('"')
+          )
         ),
-        sequence(
-          dollarName,
-          literal(']}')
-        ),
-        sequence(
-          literal('\''),
-          regex(/(?:[^'\\]|\\[\s\S])*/),
-          literal('\''),
-          literal(']}')
-        ),
-        sequence(
-          literal('"'),
-          regex(/(?:[^"\\]|\\[\s\S])*/),
-          literal('"'),
-          literal(']}')
-        )
-      )
+        literal(']')
+      )),
+      dollarName
     ),
-    sequence(
-      dollarName,
-      literal('}')
-    )
+    literal('}')
   )
-));
+);
 
 /*
  * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
@@ -3920,6 +3928,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.mediaFeatureOpener,
     g.queryFeatureName
   );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= ${d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
+  );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
     choice(
@@ -6409,6 +6426,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     StyleFeature,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryComparisonFeature,
     QueryNonOnlyKeyword,
     QueryTerm,

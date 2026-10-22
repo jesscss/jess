@@ -361,13 +361,28 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — rejects a comment before a value-list comma', () => {
+  it('reads an interpolation after a value-first bound as the range name', () => {
     /*
-     * `c /* z *` + `/, d` is the two-item list `c, d`; the comment is trivia.
-     * CSS, Less and Jess all parse it. Same root cause as the at-rule-prelude
-     * pins above: trivia is not applied at every position it belongs.
+     * `(400px <= #{$d})` is the range `(400px <= width)` with its name
+     * interpolated: the same `Operation` the identifier builds, not a
+     * general-enclosed run.
      */
-    expect(() => parse('a { b: c /* z */, d }')).toThrow();
+    expect(firstRule('@media (400px <= #{$d}) { a { b: c } }')).toMatchObject({
+      prelude: {
+        type: 'Block',
+        value: { type: 'Operation', operator: '<=', left: { type: 'Dimension' }, right: { type: 'Interpolation' } }
+      }
+    });
+  });
+
+  it('accepts a comment before a value-list comma', () => {
+    /*
+     * `c /* z *` + `/, d` is the two-item list `c, d`; the comment is trivia,
+     * as CSS, Less and Jess read it.
+     */
+    expect(firstRule('a { b: c /* z */, d }')).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'b', value: { type: 'List', sep: ',' } }]
+    });
   });
 
   it.each([
