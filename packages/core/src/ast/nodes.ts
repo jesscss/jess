@@ -27,6 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
+import type { ForgivenSelectorItem } from './forgiving-selector.js';
 import { NO_SPAN, isAuthoredGroupExpression, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
@@ -127,18 +128,20 @@ export interface Url extends SpanSlots {
 }
 
 /**
- * A selector-list CAPTURE value `selector(…)` (`.less` and `.jess`) — a STRUCTURED list of selector
- * branches captured for interpolation into a selector position. The parser owns
- * the branch split (grammar `SelectorList`); `branches` holds the canonical text
- * of each captured complex selector, so the serializer never re-scans bytes for
- * top-level commas. Interpolated into a selector, the branches expand structurally:
- * a WHOLE-selector position emits them as comma-separated header branches, a
- * COMPOUND position compacts them into a single `:is(…)` group. As a plain value
- * (never the intended use) it emits its `src`, the canonical `selector(…)` spelling.
+ * A selector-list CAPTURE `selector(…)` (`.less` and `.jess`): the selector list the
+ * parser read (grammar `SelectorList`), held as the canonical text of each branch
+ * (`branches`) and each branch's compound selectors and combinators (`components`,
+ * {@link selectorBranchComponents}), so nothing re-scans bytes. As a value it is the
+ * value `&` and Sass's `selector.parse()` are (ledgers P49, P50): a comma list of
+ * those space lists, written `.a > .b, .c`. Interpolated into a selector, the branches
+ * expand structurally: a WHOLE-selector position emits them as comma-separated header
+ * branches, a COMPOUND position compacts them into a single `:is(…)` group. `src` is
+ * the canonical `selector(…)` spelling.
  */
 export interface SelectorCapture {
   readonly type: 'SelectorCapture';
   readonly branches: readonly string[];
+  readonly components: readonly (readonly string[])[];
   readonly src: string;
 }
 
@@ -196,7 +199,7 @@ export type VariableLookup = 'live' | 'scoped';
  * ABSENT on `DotLookup`, which is why "what is being looked up" there looked
  * like a semantic problem instead of a missing slot.
  */
-export type LookupKind = 'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member';
+export type LookupKind = 'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member' | 'parent';
 
 /**
  * A reference: WHERE you look (`scope`), WHAT kind of thing you look for
@@ -225,6 +228,8 @@ export interface Lookup extends SpanSlots {
    *   ruleset chain, carrying the source declaration's `!important`.
    * `entry` — the current declaration-entry surface; `name` is empty, and dot
    *   steps on it resolve against both CSS property and variable declarations.
+   * `parent` — `&` in a SCSS or `.jess` value: the selector of the style rule the
+   *   value is evaluated in, or `null` outside any rule; `name` is empty.
    */
   readonly kind: LookupKind;
 
@@ -502,6 +507,12 @@ export interface IfValueBranch {
 export interface IfValue extends AuthoredCallSlot {
   readonly type: 'IfValue';
   readonly branches: readonly [IfValueBranch, ...IfValueBranch[]];
+
+  /** A CSS `if()` written with the spec's trailing `;` (`if(a: b;)`, css-values-5 §8.3), which a written `if()` keeps. */
+  readonly trailingSemicolon: boolean;
+
+  /** The function name as authored (`if`, `IF`; a function name is ASCII case-insensitive), which a written `if()` keeps. */
+  readonly name: string;
 }
 
 /* -------------------------------------------------------------- value */
@@ -1093,6 +1104,25 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
       ? relativeCanonical(branch)
       : selectorTermCanonical(branch);
 
+/**
+ * A branch's compound selectors and combinators, each in its canonical spelling, the
+ * descendant combinator left out (`.a > .b .c` is `.a`, `>`, `.b`, `.c`): the parts
+ * {@link selectorBranchCanonical} joins.
+ */
+export const selectorBranchComponents = (branch: SelectorBranch): string[] => {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [selectorTermCanonical(branch)];
+  }
+  const out: string[] = [];
+  for (const part of branch.value) {
+    const text = typeof part === 'string' ? renderCombinator(part).trim() : selectorTermCanonical(part);
+    if (text !== '') {
+      out.push(text);
+    }
+  }
+  return out;
+};
+
 /** A non-selector pseudo argument's spelling: `An+B` unspaced, a `:lang()` list `, `-joined. */
 export const pseudoArgumentText = (arg: PseudoArgument): string => {
   if (arg.type !== 'List') {
@@ -1609,6 +1639,13 @@ export interface ModuleImport extends SpanSlots {
 export interface Stylesheet extends SpanSlots, TriviaSlot {
   readonly type: 'Stylesheet';
   readonly rules: Statement[];
+
+  /**
+   * Each `:is()` / `:where()` item the parse kept as written because it is not
+   * a selector, for the compiler's `css/forgiving-selector-item` warning
+   * (`withForgivenSelectorItems`).
+   */
+  _forgiven?: readonly ForgivenSelectorItem[];
 }
 
 /*
@@ -1652,8 +1689,8 @@ export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
 export const NULL_NODE: Null = { type: 'Null', src: 'null' };
 export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
 export const url = (value: ValueNode): Url => ({ type: 'Url', value, _s: NO_SPAN, _e: NO_SPAN });
-export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
-  ({ type: 'SelectorCapture', branches, src });
+export const selectorCapture = (branches: readonly string[], components: readonly (readonly string[])[], src: string): SelectorCapture =>
+  ({ type: 'SelectorCapture', branches, components, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
 export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
   ({ type: 'Quoted', src, value, quote, escaped, interp });
@@ -1872,6 +1909,10 @@ export const variableReference = (name: string | ValueNode, lookup: VariableLook
 export const declarationReference = (raw: string = '$'): Lookup =>
   ({ type: 'Lookup', scope: 'scoped', kind: 'entry', name: '', raw, _s: NO_SPAN, _e: NO_SPAN });
 
+/** `&` in a value — {@link Lookup} of kind `parent`. */
+export const parentSelectorReference = (): Lookup =>
+  ({ type: 'Lookup', scope: 'scoped', kind: 'parent', name: '', raw: '&', _s: NO_SPAN, _e: NO_SPAN });
+
 /** One lookup step in a {@link Reference} chain (dot or bracket — one node). */
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
   indexBase === undefined ? { type: 'LookupStep', kind, name } : { type: 'LookupStep', kind, name, indexBase };
@@ -1962,8 +2003,8 @@ export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ typ
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null, callArgument = false): Expression =>
   ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall, _callArgument: callArgument });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src, _s: NO_SPAN, _e: NO_SPAN });
-export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
-  ({ type: 'IfValue', branches, _asCall: asCall });
+export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null, trailingSemicolon = false, name = 'if'): IfValue =>
+  ({ type: 'IfValue', branches, _asCall: asCall, trailingSemicolon, name });
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,

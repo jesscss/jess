@@ -11,10 +11,10 @@ export type {
 
 import type { Stylesheet } from '@jesscss/core/ast';
 import { jessGrammar } from './grammar/ast.js';
-import { parseRecoveringWith, parseWith, type JessParsed, type JessParseOptions } from './parse-with.js';
+import { parseRecoveringWith, parseSelectorWith, parseWith, type JessParsed, type JessParseOptions } from './parse-with.js';
 
 export type { JessParseOptions, JessParsed } from './parse-with.js';
-export { JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
+export { JessArithmeticOutsideExpressionError, JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
 
 /**
  * Parse Jess directly into the canonical AST v2 document.
@@ -33,4 +33,13 @@ export function parse(input: string, options: JessParseOptions = {}): Stylesheet
  */
 export function parseRecovering(input: string, options: JessParseOptions = {}): JessParsed {
   return parseRecoveringWith(jessGrammar, input, options);
+}
+
+/**
+ * A selector string read as `selector(…)` reads its argument, for Sass's
+ * `selector.parse()` (`#sass/selector`): each selector's compound selectors and
+ * combinators.
+ */
+export function parseSelector(text: string): string[][] {
+  return parseSelectorWith(jessGrammar, text);
 }

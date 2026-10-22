@@ -38,9 +38,11 @@ import {
 } from './nodes.js';
 import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
 import { walkAuthoredValue } from './traversal.js';
+import { isInterpolatedName } from './query-feature-name.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
   AnPlusB,
+  Any,
   AnonymousMixin,
   CompoundSelector,
   Block,
@@ -1026,7 +1028,7 @@ export function queryValueRatio(children: readonly unknown[]): ValueNode {
  */
 export function queryFeatureContents(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
   const head = children[0];
-  if (isValue(head)) {
+  if (isValue(head) && !isInterpolatedName(head, children)) {
     /* A lone value is no `<mf-plain>`/`<mf-range>`: the feature is general-enclosed. */
     if (children.length === 1) {
       return withAuthoredGeneralEnclosed(withGluedKeywordSpan(head, span), span, state);
@@ -1038,9 +1040,8 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
     if (!isRange) {
       return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
     }
-    const property = keyword(tokenText(children[2]));
     const operators = queryComparisonOperators(children);
-    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
+    let result: ValueNode = operation(operators[0]!, head, keyword(tokenText(children[2])), false, cssBaseMathOutsideParens(operators[0]!));
     if (operators.length > 1) {
       const right = children[4];
       if (!isValue(right)) {
@@ -1050,7 +1051,7 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
     }
     return result;
   }
-  const name = keyword(tokenText(head));
+  const name = isValue(head) ? head : keyword(tokenText(head));
   if (children.length === 1) {
     return name;
   }
@@ -1068,7 +1069,7 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
   /* A comparison is exactly `name op value [op value]`; anything else read is general-enclosed. */
   const isComparison = (children.length === 3 && isValue(children[2]))
     || (children.length === 5 && isValue(children[2]) && isValue(children[4]));
-  return isComparison ? chainedQueryComparison(name, children) : withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
+  return isComparison ? chainedQueryComparison(name, children.slice(1)) : withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
 }
 
 /*
@@ -1248,7 +1249,12 @@ function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
 
 /** The values of a component-value slot, in order: a multi-part slot is its parts. */
 function slotParts(slot: ValueSlot): ValueNode[] {
-  return isValueSlotArray(slot) ? slot.flatMap(slotParts) : [slot];
+  /* A run's authored separator other than a space (`16/9`) is a part, as a delim is. */
+  return isValueSlotArray(slot)
+    ? slot.flatMap((item, index) => index > 0 && valueLayoutOf(slot)?.[index - 1]?.trim()
+        ? [any(valueLayoutOf(slot)![index - 1]!.trim()), ...slotParts(item)]
+        : slotParts(item))
+    : [slot];
 }
 
 /**
@@ -1688,6 +1694,7 @@ export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => val
     case 'default':
       return true;
     case 'truth':
+    case 'css':
       return 'value' in value && isOperand(value.value);
     case 'cmp':
     case 'match':
@@ -1812,7 +1819,7 @@ export function appendCustomValueParts(children: readonly unknown[], parts: Inte
 
 /** Reduce a whole custom-property value to `Interpolation` (when it carries an
  * interpolation) or to verbatim `Any` text. */
-export function customValueFromChildren(children: readonly unknown[], dialect: string): ValueNode {
+export function customValueFromChildren(children: readonly unknown[], dialect: string): Any | Interpolation {
   const parts: Interpolation['parts'] = [];
   const seen = { interpolated: false };
   appendCustomValueParts(

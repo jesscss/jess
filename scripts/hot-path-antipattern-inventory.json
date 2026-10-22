@@ -933,14 +933,6 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "68f268feda865b9f",
-      "ordinal": 0,
-      "snippet": "pseudos.indexOf(tokens[i]!)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "9a857e0c6c27698d",
       "ordinal": 1,
@@ -1053,13 +1045,6 @@
       "fingerprint": "d1eb8fc25775a38f",
       "ordinal": 1,
       "snippet": "new WeakMap<Value, string>()"
-    },
-    {
-      "file": "packages/syntax/jess/jess-parser/src/grammar-helpers.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "97ff02257e854e79",
-      "ordinal": 0,
-      "snippet": "children .filter(isToken) .map(requireToken)"
     },
     {
       "file": "packages/syntax/jess/jess-parser/src/grammar.ts",

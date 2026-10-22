@@ -41,6 +41,7 @@ The current allowlist holds:
 - `@jesscss/plugin-less`
 - `@jesscss/plugin-scss`
 - `@jesscss/plugin-node-modules`
+- `@jesscss/plugin-remote-import`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
 - `@jesscss/patch-css`
@@ -420,6 +421,16 @@ pnpm run release:alpha:publish
   - `release:alpha:publish`
 - Purpose: manual backup path when you want GitHub Actions to perform publish, not the default daily flow.
 - The workflow itself also enforces branch `alpha` before publish.
+- CI publishes tokenlessly through npm trusted publishing, so every allowlisted
+  package needs this workflow registered as its trusted publisher. Register it
+  with `pnpm run release:alpha:trust` (an npm session with publish rights is
+  required). The command is safe to re-run: packages that already have the
+  publisher are reported as already registered. It cannot register a package
+  that is not on npm yet; see "Adding a package to the publish set" below.
+- After the publish, the workflow pushes the release tag. That push skips the
+  repository's git hooks: the publish step has rewritten every `package.json` to
+  the published version, so the `alpha` pre-push check (which needs a clean
+  tree) would refuse a commit that is already verified and already on npm.
 
 ## CI readiness
 
@@ -446,7 +457,13 @@ The publish script is idempotent for existing versions: if `<pkg>@<version>` alr
   - keep the existing bad alpha as historical
 - If one package fails during publish:
   - fix root cause
-  - rerun `pnpm run release:alpha:publish` (already-published packages are skipped)
+  - rerun `pnpm run release:alpha:publish`, or re-dispatch the CI workflow. The
+    re-run publishes the same version: when the alpha manifest's version is the
+    highest one on npm but only part of the publish set has it, the resolver
+    resumes that version (reason `resume-partial`) and skips the packages already
+    published, instead of moving on to the next alpha and leaving a partial set.
+  - a dev → alpha refresh never resumes: it carries new code, so it always takes
+    the next free version.
 
 Useful orchestrator flags:
 
@@ -475,3 +492,27 @@ Before adding any blocked package to `scripts/release/alpha-allowlist.json`:
 2) Confirm the package is not `private` and has valid publish metadata.
 3) Run `pnpm run release:alpha:check` to validate the set.
 4) Update this runbook's publish scope list in the same PR.
+
+### Adding a package to the publish set
+
+A package that has never been published has no npm settings page, so neither
+`release:alpha:trust` nor the CI workflow can publish it. Publish it once by
+hand from the `alpha` branch, with the release version in its `package.json`:
+
+```bash
+pnpm --filter <pkg> publish --tag alpha --no-git-checks
+pnpm run release:alpha:trust
+```
+
+npm points a brand-new package's `latest` dist-tag at its first version even when
+it is published with `--tag alpha`. The new package therefore has `latest` on the
+current alpha while the older packages keep `latest` on their earlier line. To
+realign, move `latest` across the whole set to the current alpha version:
+
+```bash
+node -e "for (const p of require('./scripts/release/alpha-allowlist.json')) console.log(p)" \
+  | xargs -I{} npm dist-tag add {}@<version> latest
+```
+
+or set one package with `npm dist-tag add <pkg>@<version> latest`. Passing
+`--set-latest` on the next release does the same for that release (see above).

@@ -1,5 +1,5 @@
 import type { Deprecation } from '../deprecation.js';
-import { type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
+import { type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode, leadingSeparatorValueText, resolveTemplate } from './codes.js';
 import { INJECTED_TEXT_NOTE, authoredLineCol, lineColAt, extractRelevantLines, type SourceOwner } from './code-frame.js';
 import {
   JessError,
@@ -590,6 +590,57 @@ export function makeJessError(init: JessErrorInit): JessError {
   return new JessError(init);
 }
 
+/**
+ * A value led by a `/` or `*` with nothing on its left (ledger P33), which a
+ * parser recognizes so the error sits on the value it leads; the parse
+ * carries on (P45). One class for every dialect that reads one.
+ */
+export class LeadingSeparatorValueError extends SyntaxError {
+  readonly code = 'parse/leading-separator-value' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, operator: string, recoveredValue: object) {
+    const text = leadingSeparatorValueText(operator);
+    super(text.summary);
+    this.name = 'LeadingSeparatorValueError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
+/**
+ * Sass's `if($condition, $if-true, $if-false)`, which Dart Sass deprecates in
+ * favor of CSS `if()` (its deprecation `if-function`). A parse WARNING: the
+ * call is still evaluated, as Dart Sass evaluates it.
+ */
+export class DeprecatedIfFunctionWarning extends SyntaxError {
+  readonly code = 'parse/deprecated-if-function' as const;
+  readonly severity = 'warn' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason: string;
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number) {
+    const text = resolveTemplate('parse/deprecated-if-function', {});
+    super(text.summary);
+    this.name = 'DeprecatedIfFunctionWarning';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.reason = text.reason;
+    this.fix = text.fix;
+  }
+}
+
 const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what it does to a function plugin or to a step that runs on the compiled CSS.';
 const NO_PRE_PROCESSORS = 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.';
 const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.';
@@ -971,6 +1022,28 @@ export const ERR = {
   selectorCaptureArgument(args: Common = {}) {
     return makeJessError({
       code: 'parse/selector-capture-argument',
+      phase: 'parse',
+      ...args
+    });
+  },
+
+  /** A value led by a `/` or `*` with nothing on its left (ledger P33), parsed and then an error (P45). */
+  leadingSeparatorValue(operator: string, args: Common = {}) {
+    const text = leadingSeparatorValueText(operator);
+    return makeJessError({
+      code: 'parse/leading-separator-value',
+      phase: 'parse',
+      summary: text.summary,
+      reason: text.reason,
+      fix: text.fix,
+      ...args
+    });
+  },
+
+  /** A `.jess` `*` between two numbers or variables outside `$( … )` (ledger P17; P45: parsed, then an error). */
+  arithmeticOutsideExpression(args: Common = {}) {
+    return makeJessError({
+      code: 'parse/arithmetic-outside-expression',
       phase: 'parse',
       ...args
     });

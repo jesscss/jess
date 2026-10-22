@@ -261,7 +261,6 @@ const expectedFailureFixtures = new Map<string, string>([
    * A golden edit no ruling decides yet is not applied (pending-golden-edits.ts), so
    * these fail until the owner decides.
    */
-  ['tests-unit/functions/functions.less', 'the golden writes `length-1: 1;`; jess reads `$list-1`, the value `~(1, 2, 3)`, as the three-item list (`length-1: 3;`), a proposal awaiting the owner (ledger V26, OPEN)'],
 
   /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of

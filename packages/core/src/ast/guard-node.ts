@@ -3,7 +3,7 @@
  * parsers that build guards through `@jesscss/core/ast` do not load the guard
  * evaluator (`guard.ts`) and its value domain.
  */
-import type { ValueSlot } from './nodes.js';
+import type { FunctionCall, ValueSlot } from './nodes.js';
 
 /**
  * A guard condition tree, evaluated to a boolean; one that nothing consumes is
@@ -41,6 +41,13 @@ import type { ValueSlot } from './nodes.js';
  *    Syntax 3 §4.3.4), else `-1`: written so, it is written without a gap and
  *    warned about there (ledger N17).
  */
+/*
+ * `css` is a CSS `if()` test (css-values-5 §8.3: `supports()`, `media()`,
+ * `style()`, or any other condition the browser answers when it computes the
+ * value). Nothing decides it at compile time: an `IfValue` holding one keeps
+ * the branches it cannot decide and writes them as a CSS `if()` (ledger P38).
+ * It carries `truth`'s fields, so the two are one hidden class.
+ */
 export type GuardNode =
   | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
   | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot; readonly implied: boolean; readonly parens: number }
@@ -48,8 +55,52 @@ export type GuardNode =
   | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode; readonly word: string; readonly gluedAt: number; readonly parens: number }
   | { readonly g: 'not'; readonly inner: GuardNode; readonly word: string; readonly gluedAt: number; readonly parens: number }
   | { readonly g: 'truth'; readonly value: ValueSlot; readonly parens: number }
+  | { readonly g: 'css'; readonly value: ValueSlot; readonly parens: number }
   | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[]; readonly parens: number }
   | { readonly g: 'default'; readonly parens: number };
 
 /** `guard` inside one more paren group the author wrote around it (same shape, so the same hidden class). */
 export const inParens = (guard: GuardNode): GuardNode => ({ ...guard, parens: guard.parens + 1 });
+
+/** Whether a guard tree is CSS `if()` tests alone, joined by `and`, `or` and `not`: nothing in it is decided at compile time. */
+export function onlyCssTests(node: GuardNode): boolean {
+  switch (node.g) {
+    case 'css':
+      return true;
+    case 'and':
+    case 'or':
+      return onlyCssTests(node.left) && onlyCssTests(node.right);
+    case 'not':
+      return onlyCssTests(node.inner);
+    default:
+      return false;
+  }
+}
+
+/**
+ * A CSS `if()` test call (css-values-5 §8.3 `<if-test>`): `media()`,
+ * `supports()` or `style()`, any case. The browser answers it, so it is never
+ * a call to a function of that name.
+ */
+export function isIfTestCall(value: ValueSlot): value is FunctionCall {
+  if (!('type' in value) || value.type !== 'FunctionCall') {
+    return false;
+  }
+  const name = value.name.toLowerCase();
+  return name === 'media' || name === 'supports' || name === 'style';
+}
+
+/** Whether a guard tree holds a CSS `if()` test, which leaves it undecided at compile time. */
+export function hasCssTest(node: GuardNode): boolean {
+  switch (node.g) {
+    case 'css':
+      return true;
+    case 'and':
+    case 'or':
+      return hasCssTest(node.left) || hasCssTest(node.right);
+    case 'not':
+      return hasCssTest(node.inner);
+    default:
+      return false;
+  }
+}

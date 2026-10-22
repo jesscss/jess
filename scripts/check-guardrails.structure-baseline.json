@@ -12,7 +12,7 @@
     "statements": 531
   },
   "packages/core/src/ast/emit-jess.ts#JessPrinter.node": {
-    "statements": 51
+    "statements": 49
   },
   "packages/core/src/ast/evaluator.ts#recoverCallFailure": {
     "params": 6
@@ -67,7 +67,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9506
+    "statements": 9427
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -88,10 +88,10 @@
     "statements": 52
   },
   "packages/core/src/ast/serialize.ts#evalTyped": {
-    "statements": 74
+    "statements": 72
   },
   "packages/core/src/ast/serialize.ts#evalValue": {
-    "statements": 149
+    "statements": 147
   },
   "packages/core/src/ast/serialize.ts#evalCollectionEntries": {
     "statements": 59
@@ -125,7 +125,7 @@
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#resolveTokenAmp": {
-    "params": 8
+    "params": 7
   },
   "packages/core/src/ast/serialize.ts#resolveCompoundAmp": {
     "params": 7
@@ -175,7 +175,7 @@
     "statements": 58
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
-    "statements": 188
+    "statements": 186
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements.emit~2": {
     "statements": 89
@@ -335,7 +335,7 @@
     "statements": 63
   },
   "packages/diagnostics-core/src/tolerant-cst.ts": {
-    "statements": 3467
+    "statements": 3464
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#animationNameReferences": {
     "statements": 81

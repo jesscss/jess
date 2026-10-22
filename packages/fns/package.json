@@ -9,7 +9,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.28",
+  "version": "2.0.0-alpha.30",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -56,6 +56,11 @@
       "types": "./lib/sass/map/index.d.ts",
       "import": "./lib/sass/map/index.js",
       "require": "./lib/sass/map/index.cjs"
+    },
+    "./sass/selector": {
+      "types": "./lib/sass/selector/index.d.ts",
+      "import": "./lib/sass/selector/index.js",
+      "require": "./lib/sass/selector/index.cjs"
     },
     "./sass/math": {
       "types": "./lib/sass/math/index.d.ts",

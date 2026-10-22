@@ -12,8 +12,10 @@ import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
   recoveredInTree,
+  selectorStringComponents,
   simpleSelectorIsPlaceholder,
   withSourceSpan,
+  withForgivenSelectorItems,
   withTriviaMap,
   type Apply,
   type Ruleset,
@@ -23,10 +25,12 @@ import {
   type SimpleSelector,
   type SimpleToken,
   type Statement,
+  type ForgivenSelectorItem,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
 import type { jessGrammar } from './grammar/ast.js';
+import { bareArithmeticIn } from './grammar-helpers.js';
 import { JessParseError, type JessRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
 
@@ -225,6 +229,24 @@ export interface JessParsed {
   readonly recovered: readonly JessRecoveredError[];
 }
 
+/**
+ * `text` read by the production `selector(…)` reads its argument with, as Sass's
+ * `selector.parse()` reads a selector string: each selector's compound selectors
+ * and combinators. A string that is not a whole selector list, or that holds `&`,
+ * throws with Dart Sass's message.
+ */
+export function parseSelectorWith(grammar: JessAstGrammar, text: string): string[][] {
+  const entry = grammar.PseudoSelectorList;
+  const trivia = grammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('Jess AST grammar is missing its selector-list entry.');
+  }
+  const source = text.trim();
+  const diagnostics: JessRecoveredError[] = [];
+  const result = run(entry, source, { trivia, state: { source, diagnostics, stars: [] } });
+  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
+}
+
 /** The document, or the first problem the grammar recovered from, raised. */
 export function parseWith(grammar: JessAstGrammar, input: string, options: JessParseOptions = {}): Stylesheet {
   const { document, recovered } = parseRecoveringWith(grammar, input, options);
@@ -249,13 +271,17 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
   /*
    * `state.source` lets the CSS base's media reducers keep a
    * `<general-enclosed>` query group as written (ledger N14);
-   * `state.diagnostics` collects what the grammar recovered from (P45).
+   * `state.diagnostics` collects what the grammar recovered from (P45), and
+   * `state.stars` each `*` delim read, so arithmetic outside `$( … )` is looked
+   * for only in a document that holds one.
    */
   const diagnostics: JessRecoveredError[] = [];
+  const stars: object[] = [];
+  const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input, diagnostics }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics, stars, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok) {
     throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));
@@ -301,12 +327,16 @@ export function parseRecoveringWith(grammar: JessAstGrammar, input: string, opti
       ...positionAt(input, result.span.end)
     });
   }
-  const document = withTriviaMap(
+  const document = withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
-  );
+  ), forgivenSelectorItems);
   validateJessOptions(document, options);
-  return { document, recovered: inSourceOrder(recoveredInTree(document, diagnostics)) };
+  const recovered = recoveredInTree(document, diagnostics);
+  return {
+    document,
+    recovered: inSourceOrder(stars.length === 0 ? recovered : [...recovered, ...bareArithmeticIn(document, stars)])
+  };
 }
 
 /** One report per item, ordered by where it is written: a reducer may run more than once. */

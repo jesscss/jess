@@ -12,7 +12,7 @@ import {
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
-import { parse } from '@jesscss/scss-parser';
+import { parseRecovering, parseSelector } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
 export type ScssPluginOptions = {
@@ -28,8 +28,8 @@ export type ScssPluginOptions = {
 
 type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
-/* A `.scss` `calc()` is a Sass calculation, as dart-sass evaluates it (ledger V32). */
-const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations: true });
+/* A `.scss` `calc()` is a Sass calculation, as dart-sass evaluates it (ledger V32); `selector.parse()` reads a string with the SCSS grammar's own selector list. */
+const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations: true, parseSelector });
 
 /**
  * `#sass` and `#sass/<module>` are this plugin's private paths to the Sass
@@ -40,7 +40,7 @@ const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations
  */
 const providedModules = new ProvidedModules([
   ['#sass', '@jesscss/fns/sass'],
-  ...['color', 'list', 'map', 'math', 'string'].map(name => [`#sass/${name}`, `@jesscss/fns/sass/${name}`] as const)
+  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`#sass/${name}`, `@jesscss/fns/sass/${name}`] as const)
 ], createRequire(import.meta.url));
 type ScssDialectDefaults = Required<Pick<
   NonNullable<ISafeParseResult['dialectDefaults']>,
@@ -84,11 +84,12 @@ export class ScssPlugin extends AbstractPlugin {
    */
   safeParse(filePath: string, source: string): ISafeParseResult {
     try {
+      const { document, recovered } = parseRecovering(source);
       return {
-        document: parse(source),
+        document,
         dialectDefaults: this.#dialectDefaults,
-        errors: [],
-        warnings: []
+        errors: recovered.filter(problem => !('severity' in problem)).map(error => parserDiagnostic({ dialect: 'SCSS', error, filePath, source })),
+        warnings: recovered.filter(problem => 'severity' in problem).map(warning => parserDiagnostic({ dialect: 'SCSS', error: warning, filePath, source }))
       };
     } catch (error) {
       return {

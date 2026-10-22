@@ -249,9 +249,11 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^(?:export )?(?:async )?function /gmu)).toBeLessThanOrEqual(611);
-    expect(occurrences(/new Map/gu)).toBeLessThanOrEqual(94);
-    expect(occurrences(/new Set/gu)).toBeLessThanOrEqual(44);
+    expect(occurrences(/^(?:export )?(?:async )?function /gmu)).toBeLessThanOrEqual(606);
+
+    /* The hoisted CSS imports' set became a map to their reserved chunks: one fewer Set for each Map. */
+    expect(occurrences(/new Map/gu)).toBeLessThanOrEqual(96);
+    expect(occurrences(/new Set/gu)).toBeLessThanOrEqual(42);
     expect(occurrences(/new WeakMap/gu)).toBeLessThanOrEqual(11);
     expect(occurrences(/new WeakSet/gu)).toBeLessThanOrEqual(2);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBeLessThanOrEqual(9);

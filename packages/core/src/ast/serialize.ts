@@ -78,6 +78,28 @@ import {
   colorAlphaSlash
 } from './nodes.js';
 import serializerNodes from './nodes.js';
+import {
+  type CompoundIn,
+  type SelectorPlace,
+  type SelectorText,
+  type SelectorUnits,
+  appendText,
+  crossTexts,
+  hasTopLevelComma,
+  interleave,
+  isOneText,
+  isSelectorItem,
+  isSelectorValue,
+  isUnit,
+  oneText,
+  placeSelectorList,
+  PLACE_WHOLE,
+  selectorPlace,
+  selectorListValue,
+  selectorValue,
+  textBranches
+} from './selector-text.js';
+import { isNameCode } from './css-syntax.js';
 import type {
   Any,
   Apply,
@@ -120,7 +142,7 @@ import type {
   SimpleToken,
   SelectorTerm,
   SelectorList,
-  SelectorCapture,
+  InterpPart,
   List,
   Statement,
   StyleImport,
@@ -172,6 +194,7 @@ import {
   type Value,
   type Any as TextValue,
   type Keyword as KeywordValue,
+  type List as EvalList,
   type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
@@ -188,8 +211,9 @@ import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAs
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, guardUsesDefault, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -491,6 +515,45 @@ function importContextKey(scope: Frame): object | string {
     }
   }
   return scope.importContext = outer + '\n' + part;
+}
+
+/**
+ * `&` in a value ({@link Lookup} kind `parent`): the composed branches of the style rule
+ * the value is evaluated in, or null outside any rule (owner 2026-10-19: "in .scss, in
+ * these cases, i think do what sass does"); {@link selectorListValue} is the value. The
+ * rule is the one the output lands in, the chain {@link importContextKey} walks: a mixin
+ * call, a content block and a loop iteration are in the rule they are placed in, a
+ * bare-`&` rule is its parent.
+ */
+function parentSelectorBranches(frame: Frame | null, e: Lane): MaybePromise<string[] | null> {
+  if (frame === null) {
+    return null;
+  }
+
+  /* A function's body runs for its caller, so its `&` is the caller's. */
+  const scope = importScopeOf(frame.importScope === undefined && frame.callerFallback === true && frame.fallback ? frame.fallback : frame);
+  const outer = scope.parent;
+  if (outer === null) {
+    return null;
+  }
+  const parents = parentSelectorBranches(outer, e);
+  const of = scope.outputOf;
+  if (of?.type !== 'Ruleset') {
+    return parents;
+  }
+  return mapMaybe(parents, parents => parents === null || parents.length === 0
+
+    /* A parentless `&` is empty at the root, as {@link flattenResolved} reads it. */
+    ? mapMaybe(rootStrings(of.selector, outer, e), own => own.filter(branch => branch !== ''))
+
+    /*
+     * Each branch as Sass resolves it, never as the writer compacts it (`:is()`, a
+     * pseudo-element's hold): every `&` stands for each parent in turn
+     * ({@link joinAmpersand}), a branch with none follows each parent, and the
+     * branches' lists interleave parent by parent.
+     */
+    : combineAll(of.selector.selectors.map(branch => mapMaybe(resolveSelectorBranch(branch, outer, e), texts =>
+        textBranches(texts).map(text => selectorBranchHasAmpersand(branch) ? joinAmpersand(text, parents) : parents.map(parent => `${parent} ${text}`)))), lists => interleave(lists.flat())));
 }
 
 /**
@@ -1413,89 +1476,6 @@ function scopedFunctionNames(fns: ReadonlyMap<string, Fn> | null): Set<string> |
   return fns === null ? undefined : new Set(fns.keys());
 }
 
-function isModuleFn(value: unknown): value is Fn {
-  return typeof value === 'function'
-    && 'params' in value
-    && Array.isArray(value.params);
-}
-
-type ModuleCallable = (...args: unknown[]) => unknown;
-
-function isModuleCallable(value: unknown): value is ModuleCallable {
-  return typeof value === 'function';
-}
-
-function moduleFunctionResult(value: unknown, name: string): ValueGroup {
-  if (isValueGroup(value)) {
-    return value;
-  }
-  if (typeof value === 'number') {
-    return makeDimension(value);
-  }
-  if (typeof value === 'string') {
-    // A JS module function's plain string never passed through a parser; its text is its only fact.
-    return sniffLiteral(value);
-  }
-  if (typeof value === 'boolean') {
-    return makeBool(value);
-  }
-  if (value === null || value === undefined) {
-    return NULL;
-  }
-  throw new TypeError(`Module function "${name}" returned an unsupported value.`);
-}
-
-function bindModuleFunction(value: ModuleCallable | Fn, name: string): Fn {
-  if (isModuleFn(value)) {
-    return defineFunction(name, {
-      params: value.params,
-      variadic: true,
-      body: (args, context) => value(args, context)
-    });
-  }
-  return defineFunction(name, {
-    params: [],
-    variadic: true,
-    body: args => mapMaybe(
-      value(...groupItems(args)),
-      result => moduleFunctionResult(result, name)
-    )
-  });
-}
-
-function moduleAstValue(value: unknown, name: string, seen: Set<object> | null = null): ValueSlot {
-  if (value === null) {
-    return NULL_NODE;
-  }
-  if (typeof value === 'string') {
-    return keyword(value);
-  }
-  if (typeof value === 'number') {
-    return dimension(value);
-  }
-  if (typeof value === 'boolean') {
-    return keyword(value ? 'true' : 'false');
-  }
-  if (typeof value === 'object') {
-    if (seen?.has(value)) {
-      throw new TypeError(`Module export "${name}" is cyclic.`);
-    }
-    seen ??= new Set();
-    seen.add(value);
-    if (Array.isArray(value)) {
-      const result = list(value.map((item, index) => moduleAstValue(item, `${name}[${index}]`, seen)));
-      seen.delete(value);
-      return result;
-    }
-    const entries = Object.entries(value).map(([key, member]) =>
-      collectionEntry(keyword(key), moduleAstValue(member, `${name}.${key}`, seen))
-    );
-    seen.delete(value);
-    return collection(entries);
-  }
-  throw new TypeError(`Module export "${name}" is not a supported stylesheet value.`);
-}
-
 function addModuleFunction(frame: Frame, fn: Fn, e: Lane): void {
   (activationOf(frame).moduleFns ??= new Map()).set(fn.name.toLowerCase(), fn);
   if (e.s.context?.sourceContext?.plugin?.supportedExtensions?.includes('.scss') === true) {
@@ -1560,7 +1540,7 @@ function bindModuleNamespace(
   const values: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(module)) {
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${name}`), e);
+      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`), e);
     } else {
       values[name] = value;
     }
@@ -2188,7 +2168,7 @@ function orderedMixinsForStatements(
        * allocate: resolve its keys, then continue the fold from the next statement.
        */
       const parts = s.selector.selectors.map(c =>
-        (selectorBranchHasInterp(c) ? resolveSelectorBranch(c, f, e) : selectorBranchCanonical(c)));
+        (selectorBranchHasInterp(c) ? mapMaybe(resolveSelectorBranch(c, f, e), oneText) : selectorBranchCanonical(c)));
       let pending = false;
       for (const part of parts) {
         if (isThenable(part)) {
@@ -3615,6 +3595,7 @@ function guardReadsInOrder(guard: GuardNode): boolean {
     case 'match':
       return callValueHasLookup(guard.left, readsInOrder, undefined) || callValueHasLookup(guard.right, readsInOrder, undefined);
     case 'truth':
+    case 'css':
       return callValueHasLookup(guard.value, readsInOrder, undefined);
     case 'call':
       return guard.args.some(arg => callValueHasLookup(arg, readsInOrder, undefined));
@@ -4350,6 +4331,9 @@ interface EvalSession {
    */
   resolvedSelectors: Map<SelectorList, SelectorList>;
 
+  /** [extend/selector-interp] Where each branch of a resolved copy that expanded came from ({@link SelectorUnits}), by its parsed list. */
+  resolvedUnits: Map<SelectorList, SelectorUnits>;
+
   /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
    * `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
@@ -4991,17 +4975,25 @@ const ARG_BINDING = 3;
  * writes nothing — but typed, so a string is read by its content.
  */
 const ARG_SPLICE = 4;
-type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE;
 
-/** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}). */
-const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE;
+/**
+ * A value an interpolation splices into a selector ({@link interpSelectorPart}): as
+ * {@link ARG_SPLICE}, but a mixin argument bound as bytes is read as the selector list,
+ * or the one selector of one ({@link isSelectorItem}), it was evaluated to, so a list a
+ * variable passes is that list (ledger P49).
+ */
+const ARG_SELECTOR = 5;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE | typeof ARG_SELECTOR;
+
+/** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}, {@link ARG_SELECTOR}). */
+const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE || argument === ARG_SELECTOR;
 
 /**
  * Whether the authored layout between a group's items rides on the value
- * ({@link ARG_BINDING}, {@link ARG_SPLICE}): only these modes write the value
+ * ({@link ARG_BINDING}, {@link ARG_SPLICE}, {@link ARG_SELECTOR}): only these modes write the value
  * out as bytes, so no other typed evaluation reads the layout table.
  */
-const replaysLayout = (argument: ArgumentMode): boolean => argument === ARG_BINDING || argument === ARG_SPLICE;
+const replaysLayout = (argument: ArgumentMode): boolean => argument === ARG_BINDING || argument === ARG_SPLICE || argument === ARG_SELECTOR;
 
 function evalTyped(
   node: ValueNode,
@@ -5049,7 +5041,7 @@ function evalTyped(
       }
       {
         const snapshot = e.s.snapshotValues?.get(node);
-        return (snapshot !== undefined && !isStructuredGroup(snapshot) ? snapshot : undefined)
+        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || (argument === ARG_SELECTOR && (isCommaList(snapshot) || isSelectorItem(snapshot)))) ? snapshot : undefined)
           ?? snapshotOf(node, frame, e, 'url')
           ?? materializeNode(node, e);
       }
@@ -5099,7 +5091,9 @@ function evalTyped(
           : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument));
       }
       if (node.kind !== 'var') {
-        return mapMaybe(evalValue(node, frame, e), v => force(v));
+        return node.kind === 'parent'
+          ? mapMaybe(parentSelectorBranches(frame, e), selectorListValue)
+          : mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -5136,7 +5130,7 @@ function evalTyped(
         ? force(literal(node.raw))
         : resolved.evaluated !== null
           ? reachedEvaluated(e, resolved.evaluated)
-          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues));
+          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument));
     }
     case 'Block':
       /*
@@ -5238,9 +5232,7 @@ function evalTyped(
         evalTypedSlot(node.condition, frame, e, projectMixinValues, argument),
         evalTypedSlot(node.value, frame, e, projectMixinValues, argument)
       ], (parts) => {
-        const condition = emitValueC(parts[0]!, e);
-        const value = emitValueC(parts[1]!, e);
-        return makeAny(value === '' ? `${condition}:` : `${condition}: ${value}`);
+        return makeAny(writtenBranch(emitValueC(parts[0]!, e), emitValueC(parts[1]!, e)));
       });
     case 'Sequence': {
       /*
@@ -5249,8 +5241,11 @@ function evalTyped(
        * its structure directly (each part resolved) instead of re-splitting a joined
        * string. Typed consumption only — the emit path (`evalValue`) still joins the
        * parts to bytes, so an un-consumed space value serializes exactly as before.
+       * Its parts are read under the argument's policy, as a comma list's items
+       * are: a paren group in an argument of a call written out as-is keeps its
+       * parens (`media((min-width: 1px) and (max-width: 2px))`, ledger P38).
        */
-      const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues));
+      const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues, argument));
       return combineAll(parts, vals => vals);
     }
     case 'FunctionCall':
@@ -5273,10 +5268,12 @@ function evalTyped(
 
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. A
-       * lowered Less `if()` is a call, so its arguments are on a call lane. */
+       * lowered Less `if()` is a call, so its arguments are on a call lane. A
+       * written CSS `if()` is kept as written, as a call that cannot compute is
+       * (`$($x * 2)` writes `if(…) * 2`, as it writes `var(--x) * 2`). */
       return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument));
+        : evalTypedSlot(taken, frame, ae, projectMixinValues, argument), bytes => keepAsWritten(makeKeyword(bytes)));
     }
     case 'Range':
       /*
@@ -5724,6 +5721,7 @@ function writtenCondition(guard: GuardNode, frame: Frame | null, e: Lane): Maybe
       return mapMaybe(writtenCondition(guard.inner, frame, e), inner => written(`${head}${inner}`));
     }
     case 'truth':
+    case 'css':
       return mapMaybe(evalValueSlot(guard.value, frame, e), v => written(emitValueC(v, e)));
     case 'call':
       return combineAll(guard.args.map(arg => evalValueSlot(arg, frame, e)), args =>
@@ -5851,12 +5849,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Keyword':
     case 'Comment':
 
-    /*
-     * A selector CAPTURE `selector(…)` reaching a plain VALUE position (never its intended
-     * use — it belongs in a selector interpolation) emits its canonical `src`.
-     */
+    /* A selector capture is the selector list `&` is (ledgers P49, P50). */
     case 'SelectorCapture':
-      return literal(node.type === 'Comment' ? node.text : node.src);
+      return node.type === 'SelectorCapture' ? selectorValue(node.components) : literal(node.type === 'Comment' ? node.text : node.src);
     case 'Dimension':
       /*
        * Typed materialization owns Less's numeric spelling canonicalization
@@ -5943,9 +5938,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * `PropertyReference`, `var` was `VariableReference`, and a `var` whose
        * `name` is a NODE is what `VarIndirect` (`@@x`) used to be.
        */
-      if (node.kind === 'entry') {
-        return literal(node.raw);
-      }
       if (node.kind === 'var') {
         return mapMaybe(lookupName(node, frame, e), (nm) => {
           const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -5959,6 +5951,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
             ? reachedEvaluated(e, hit.evaluated)
             : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
         });
+      }
+
+      /* `$` keeps its spelling; `&` is the selector of the rule it is in ({@link parentSelectorBranches}). */
+      if (node.kind === 'entry' || node.kind === 'parent') {
+        return node.kind === 'entry'
+          ? literal(node.raw)
+          : mapMaybe(parentSelectorBranches(frame, e), selectorListValue);
       }
 
       const hit = resolvePropAccessor(node, frame, e);
@@ -6025,9 +6024,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * branch's own syntax. An omitted value keeps the bare colon (`cond:`).
        */
       return combineAll([evalValueSlot(node.condition, frame, e), evalValueSlot(node.value, frame, e)], (parts) => {
-        const condition = emitValueC(parts[0]!, e);
-        const value = emitValueC(parts[1]!, e);
-        return literal(value === '' ? `${condition}:` : `${condition}: ${value}`);
+        return literal(writtenBranch(emitValueC(parts[0]!, e), emitValueC(parts[1]!, e)));
       });
     case 'Block': {
       /*
@@ -6265,11 +6262,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         return evalCall(unlowered, frame, e, false);
       }
 
-      /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
-       * bytes, exactly what an absent value emits. */
+      /* An unmatched Less `if(@c, a)` is empty bytes, exactly what an absent
+       * value emits. An unmatched CSS `if()` in SCSS or `.jess` is no value, so
+       * its declaration is not written, as Dart Sass writes none for `null`. */
       return pickIfValue(node, frame, node._asCall === null ? e : deriveLane(e, 'call'), (taken, ae) => taken === undefined
-        ? literal('')
-        : evalValueSlot(taken, frame, ae));
+        ? (node._asCall === null ? NULL : literal(''))
+        : evalValueSlot(taken, frame, ae), literal);
     }
     case 'Interpolation':
       return evalInterp(node, frame, e);
@@ -6592,8 +6590,8 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: Lane): str
  * content, which is never re-read for a quote (ledger V22). Any other value is
  * spliced as it is written in a declaration ({@link ARG_SPLICE}).
  */
-function unquotedRef(ref: ValueNode, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
-  return mapMaybe(evalTyped(ref, frame, e, false, ARG_SPLICE), value =>
+function unquotedRef(ref: ValueNode, frame: Frame | null, e: Lane, argument: typeof ARG_SPLICE | typeof ARG_SELECTOR = ARG_SPLICE): MaybePromise<EvalValue> {
+  return mapMaybe(evalTyped(ref, frame, e, false, argument), value =>
     !isValueGroupArray(value) && value.type === 'Quoted' ? literal(value.value) : value);
 }
 
@@ -7861,7 +7859,8 @@ function pickIfValue<T>(
   node: IfValue,
   frame: Frame | null,
   e: Lane,
-  use: (taken: ValueSlot | undefined, e: Lane) => MaybePromise<T>
+  use: (taken: ValueSlot | undefined, e: Lane) => MaybePromise<T>,
+  write: (bytes: string) => T
 ): MaybePromise<T> {
   const deps = guardDeps(frame, e);
   const step = (index: number): MaybePromise<ValueSlot | undefined> => {
@@ -7878,7 +7877,29 @@ function pickIfValue<T>(
       taken => taken ? branch.value : step(index + 1)
     );
   };
-  return mapMaybe(step(0), taken => use(taken, e));
+
+  /*
+   * [P38] An `if()` holding a CSS test (`media()`, `supports()`, `style()`, …),
+   * or only `else` branches, is a CSS `if()`: decided as far as compile time
+   * can, branch by branch, and what is left is written as a CSS `if()` with the
+   * trailing `;` it was written with ({@link pickCssIfBranches}). Its
+   * conditions are not CSS values, so what they reach is not checked [P47/P48],
+   * as {@link writtenCondition} reads one; only a taken or kept branch's value
+   * is evaluated. A test is the browser's, never a call to a function of its
+   * name, so it is written out with its arguments evaluated.
+   */
+  return node.branches.some(branch => branch.guard !== null && hasCssTest(branch.guard)) || node.branches.every(branch => branch.guard === null)
+    ? pickCssIfBranches(
+        node.branches,
+        guard => withUnitErrors(node, e, () => partialGuard(guard, deps, (value, lane = e.reached || e.checks !== undefined ? deriveLane(e, e.reached ? 'unreached' : 'unchecked') : e) => mapMaybe(
+          isIfTestCall(value) ? preserveCall(value, frame, lane) : evalValueSlot(value, frame, lane),
+          v => emitValueC(v, e)
+        ))),
+        taken => use(taken, e),
+        kept => combineAll(kept.map(item => evalValueSlot(item.value, frame, e)), values =>
+          write(`${node.name}(${kept.map((item, at) => writtenBranch(item.condition, emitValueC(values[at]!, e))).join(sepGlue(';', e.compress === true))}${node.trailingSemicolon ? ';' : ''})`))
+      )
+    : mapMaybe(step(0), taken => use(taken, e));
 }
 
 /** Classify one binding root structurally and cache that render-local decision. */
@@ -9149,7 +9170,7 @@ function writtenBlockBody(
       case 'Ruleset': {
         const selector = combineAll(
           rule.selector.selectors.map(branch => resolveSelectorBranch(branch, bodyFrame, e)),
-          branches => branches.join(compress ? ',' : ', ')
+          branches => branches.flatMap(textBranches).join(compress ? ',' : ', ')
         );
         const guard = rule.guard;
         const holds = guard === undefined
@@ -9423,8 +9444,10 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: Lane): MaybePromise<
 }
 
 /**
- * Fold a value node to bytes for an INTERPOLATION splice. A spliced number gets the
- * SAME digits as a declaration value: one policy for every computed number, whatever
+ * Fold an INTERPOLATION ref to the value it splices: a string's content where the ref
+ * splices unquoted ({@link unquotedRef}, read as `argument` says), else the ref's
+ * value. A spliced number gets the SAME digits as a declaration value: one policy for
+ * every computed number, whatever
  * position it lands in. (This used to emit a computed dimension at full double
  * precision, so `@x: pi()` printed `3.14159265` in a value and `3.141592653589793`
  * spliced — a less.js eval-time implementation accident, not a CSS rule.)
@@ -9441,9 +9464,12 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: Lane): MaybePromise<
  * interpolation reaches this function as an already-folded value, so it carries no
  * unit multiset to validate.
  */
-function evalBytesInterp(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, spliceCtx(e)), readText);
+function interpRefValue(part: InterpRef, frame: Frame | null, e: Lane, argument: typeof ARG_SPLICE | typeof ARG_SELECTOR = ARG_SPLICE): MaybePromise<EvalValue> {
+  return part.unquote ? unquotedRef(part.ref, frame, spliceCtx(e), argument) : evalValue(part.ref, frame, spliceCtx(e));
 }
+
+/** The bytes an interpolation ref's value ({@link interpRefValue}) splices. */
+const interpRefBytes = (value: EvalValue, unquote: boolean): string => unquote ? emitSplice(value) : readText(value);
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
 /**
@@ -9500,60 +9526,58 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
   return out;
 }
 
+type InterpRef = Extract<InterpPart, { ref: ValueNode }>;
+
 /**
- * [selector-capture] A GROUP interpolation: a lone bare `@{name}` in a selector
- * whose variable resolves to a `selector(…)` selector-list CAPTURE, whose branches are
- * parser-owned: a comma-separated branch list at whole-selector position, a
- * `:is(…)` compaction in compound position. Escaped text (`~'.a, .b'`) is never
- * a group: it is printed as written, its commas, `&` and combinators being
- * characters (owner 2026-10-09: "everywhere that is text should print AS
- * WRITTEN"; "in Less, we promise ~"" as a 'dump whatever you want as-is'"), so
- * it splices on the byte path like any other value. Returns null for any
- * non-group interpolation (`.a-@{n}`, `@{n}` bound to a plain value or text).
+ * [selector-capture] Whether an interpolation ref's value is read item by item in a
+ * selector (a branch list at whole-selector position; in a compound, as
+ * {@link placeSelectorList} places a selector value or a plain list): a comma list — a
+ * `selector(…)` capture (P49), `&` and `selector.parse()` (P50), a written list —
+ * however the ref reaches it, a variable, an alias of it or a mixin parameter (owner
+ * 2026-10-20: "we should be consistent about values"). Escaped text (`~'.a, .b'`) is
+ * never one: it is printed as written, its commas, `&` and combinators being characters
+ * (owner 2026-10-09: "everywhere that is text should print AS WRITTEN"; "in Less, we
+ * promise ~"" as a 'dump whatever you want as-is'"). The same in `.scss`, where Dart
+ * Sass splices the list's text (owner 2026-10-20: "That way we can say that dart-sass
+ * can suck it").
  */
-interface GroupInterp { branches: string[]; multi: boolean }
+const isSelectorListValue = (value: EvalValue): value is EvalList => !isLiteral(value) && isCommaList(value);
 
-/** [selector-capture] The group a single interpolation REF resolves to: a `selector(…)`
- *  selector CAPTURE, or a comma list of them. Any other ref (a plain value, escaped text) is null. */
-function refGroupInterp(ref: ValueNode, frame: Frame | null, e: Lane): GroupInterp | null {
-  const hit = ref.type === 'Lookup' && ref.kind === 'var' ? resolveVarRef(frame, literalName(ref), ref.scope, e) : undefined;
-  const bound = hit === undefined || isValueSlotArray(hit.value) ? undefined : hit.value;
+const isCommaList = (value: ValueGroup): value is EvalList => !isValueGroupArray(value) && value.type === 'List' && value.sep === ',';
 
-  /* A `;` call's argument is the `~(…)` value list it holds (P46). */
-  const list = bound?.type === 'Block' && bound.escaped === true ? bound.value : bound;
-  if (list === undefined || isValueSlotArray(list)) {
-    return null;
-  }
-  if (list.type === 'SelectorCapture') {
-    return { branches: list.branches.slice(), multi: list.branches.length > 1 };
-  }
+/** The selectors of a selector-list value's items: a comma list of lists is the one list of their selectors. */
+const selectorBranches = (items: readonly ValueGroup[], unquote: boolean): string[] => items.flatMap(item => isCommaList(item)
+  ? selectorBranches(item.value, unquote)
+  : [unquote && !isValueGroupArray(item) && item.type === 'Quoted' ? item.value : interpRefBytes(item, unquote)]);
 
-  /* A comma list of captures (`selector(.a), selector(.b)`) is the one list of their branches. */
-  if (list.type !== 'List' || list.sep !== ',' || !list.value.every(isSelectorCaptureSlot)) {
-    return null;
-  }
-  const branches = list.value.flatMap(capture => capture.branches);
-  return { branches, multi: branches.length > 1 };
+/**
+ * [selector-capture] What one selector interpolation ref splices at `place`, its value
+ * read once ({@link ARG_SELECTOR}): the text it appends, or the texts that multiply its
+ * branch ({@link selectorPart}). The selector reducer preserves this MaybePromise so a
+ * public async plugin can resolve one slot before the next slot is evaluated in the
+ * SAME lexical frame.
+ */
+function interpSelectorPart(part: InterpRef, frame: Frame | null, e: Lane, place: SelectorPlace): MaybePromise<string[] | string> {
+  const value = interpRefValue(part, frame, e, ARG_SELECTOR);
+  return isThenable(value) ? value.then(v => selectorPart(v, part.unquote, place)) : selectorPart(value, part.unquote, place);
 }
 
-const isSelectorCaptureSlot = (slot: ValueSlot): slot is SelectorCapture => !isValueSlotArray(slot) && slot.type === 'SelectorCapture';
+/** [selector-capture] What a value spliced at `place` is: a comma list, or one selector of a selector value ({@link isSelectorItem}), placed as {@link placeSelectorList} says, any other value its bytes. */
+const selectorPart = (value: EvalValue, unquote: boolean, place: SelectorPlace): string[] | string => isSelectorListValue(value)
+  ? placeSelectorList(selectorBranches(value.value, unquote), isSelectorValue(value), place)
+  : isSelectorItem(value) ? placeSelectorList([interpRefBytes(value, unquote)], true, place) : interpRefBytes(value, unquote);
 
-/** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
- *  single-part interp whose sole part is a group ref) — else null. */
-function simpleGroupInterp(sim: SimpleToken, frame: Frame | null, e: Lane): GroupInterp | null {
-  const interp = sim.interp;
-  if (interp?.parts.length !== 1) {
-    return null;
-  }
-  const part = interp.parts[0]!;
-  return 'ref' in part ? refGroupInterp(part.ref, frame, e) : null;
+/** Whether a selector interpolation ref is a group, in a synchronous position; one that awaits a plugin is not. */
+function isGroupInterpSync(part: InterpRef, frame: Frame | null, e: Lane): boolean {
+  const value = interpRefValue(part, frame, e, ARG_SELECTOR);
+  return isThenable(value) ? (observeRejectedThenable(value), false) : isSelectorListValue(value) || isSelectorItem(value);
 }
 
-/** [selector-capture] `simpleGroupInterp` for the sole simple of a LONE complex —
- *  a `@{name}` that is the ENTIRE selector (no leading combinator, no tail, a
- *  single-simple head). This is the whole-selector position, where a capture
- *  expands to header branches rather than compacting to `:is(…)`. */
-function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: Lane): GroupInterp | null {
+/** [selector-capture] The ref a LONE complex splices — a `@{name}` that is the ENTIRE
+ *  selector (no leading combinator, no tail, a single simple whose interpolation is
+ *  one ref; a pseudo's interpolation is its name). This is the whole-selector
+ *  position, where a group expands to header branches rather than compacting to `:is(…)`. */
+function loneInterpRef(c: SelectorBranch): InterpRef | null {
   if (c.type === 'RelativeSelector') {
     return null;
   }
@@ -9562,40 +9586,39 @@ function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: Lane): Group
     return null;
   }
   const tokens = termTokens(terms[0]!);
-  if (tokens.length !== 1) {
-    return null;
-  }
-  return simpleGroupInterp(tokens[0]!, frame, e);
+  const parts = tokens.length === 1 && tokens[0]!.type !== 'PseudoSelector' ? tokens[0]!.interp?.parts : undefined;
+  return parts?.length === 1 && 'ref' in parts[0]! ? parts[0] : null;
 }
 
-/** Bytes for one non-group interpolation ref part (matches `evalInterp`: fold the
- * ref, honour its `unquote`). The selector reducer preserves this MaybePromise so
- * a public async plugin can resolve one slot before the next slot is evaluated in
- * the SAME lexical frame. */
-function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: Lane): MaybePromise<string> {
-  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitSplice) : evalBytesInterp(part.ref, frame, e);
+/**
+ * [selector-capture] The branches a lone `@{name}` selector is, its value read once: a
+ * selector list's selectors, one per branch; any other value is the one branch
+ * {@link resolveSelectorBranch} writes for it (its bytes, any `@{…}` they spell
+ * resolved, the leading whitespace dropped, ledger O8(b)). Null when `c` is not one.
+ */
+function loneInterpBranches(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> | null {
+  const part = loneInterpRef(c);
+  return part && mapMaybe(interpSelectorPart(part, frame, e, PLACE_WHOLE), value =>
+    typeof value === 'string' ? [resolveEmergentInterp(value, frame, e).trimStart()] : value);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
- *  A lone whole-selector `selector(…)` capture EXPANDS to one branch per captured
- *  selector, one per line in a nested header (ledger O8(a)). Every other complex
- *  resolves to exactly one string (a compound-embedded group compacts to `:is(…)`
- *  inside `resolveComplex`), escaped text included, as written: `~'.a, .b'` is
- *  the one branch `.a, .b` (owner 2026-10-09). */
+ *  A lone whole-selector selector list EXPANDS to one branch per selector, one per
+ *  line in a nested header (ledger O8(a)). Every other complex resolves to exactly
+ *  one string (a compound-embedded group compacts to `:is(…)` inside
+ *  `resolveComplex`), escaped text included, as written: `~'.a, .b'` is the one
+ *  branch `.a, .b` (owner 2026-10-09). */
 function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string[]> {
-  const g = loneGroupInterp(c, frame, e);
-  if (g !== null) {
-    return g.branches;
-  }
-
-  return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
+  return loneInterpBranches(c, frame, e) ?? mapMaybe(resolveSelectorBranch(c, frame, e), value => typeof value === 'string' ? [value] : value);
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
- *  part folds to its bytes, escaped text as written, EXCEPT a `selector(…)` capture
- *  embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`), which compacts to
- *  a single `:is(…)` group; a single-branch capture splices its lone branch bare. */
-function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): MaybePromise<string> {
+ *  part folds to its bytes, escaped text as written, EXCEPT a comma list: a selector
+ *  value is placed as `&` is and a plain list multiplies the token, one text per item
+ *  ({@link selectorPart}). `before` is the token glued before this one or, for the
+ *  first token of a compound, where that compound is ({@link CompoundIn}); `next` is the
+ *  token glued after it. */
+function resolveSimpleTexts(sim: SimpleToken, frame: Frame | null, e: Lane, before: SimpleToken | CompoundIn = 'selector', next?: SimpleToken): MaybePromise<SelectorText> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
    * `:is(a, b)` form via the core-owned join. An INTERPOLATION-FREE argument is
@@ -9613,8 +9636,8 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): Mayb
       return pseudoCanonical(sim);
     }
     return combineAll(
-      args.selectors.map(branch => resolveSelectorBranch(branch, frame, e)),
-      values => pseudoJoin(sim, values)
+      args.selectors.map(branch => resolveSelectorBranch(branch, frame, e, 'argument')),
+      values => pseudoJoin(sim, values.flatMap(textBranches))
     );
   }
   const interp = sim.interp;
@@ -9627,26 +9650,25 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: Lane): Mayb
    * later slot to observe a different loop/mixin placement.
    */
   const entryFrame = frame;
-  const step = (index: number, out: string): MaybePromise<string> => {
+  const splice = (out: SelectorText, value: string[] | string): SelectorText => typeof value === 'string'
+    ? appendText(out, value)
+    : crossTexts([out, value], picked => picked.join(''));
+  const step = (index: number, out: SelectorText): MaybePromise<SelectorText> => {
     for (let i = index; i < interp.parts.length; i++) {
       const part = interp.parts[i]!;
       if ('lit' in part) {
-        out += part.lit;
+        out = appendText(out, part.lit);
         continue;
       }
-      const g = refGroupInterp(part.ref, entryFrame, e);
-      if (g !== null) {
-        const joined = g.branches.join(', ');
-        out += g.multi ? `:is(${joined})` : joined;
-        continue;
+      const piece = interpSelectorPart(part, entryFrame, e, selectorPlace(interp.parts, i, before, next !== undefined, continuesAfter(interp.parts[i + 1], next)));
+      if (isThenable(piece)) {
+        return piece.then(value => step(i + 1, splice(out, value)));
       }
-      const bytes = resolveRefBytes(part, entryFrame, e);
-      if (isThenable(bytes)) {
-        return bytes.then(value => step(i + 1, out + value));
-      }
-      out += bytes;
+      out = splice(out, piece);
     }
-    return resolveEmergentInterp(out, entryFrame, e);
+    return typeof out === 'string'
+      ? resolveEmergentInterp(out, entryFrame, e)
+      : combineAll(out.map(value => resolveEmergentInterp(value, entryFrame, e)), values => values);
   };
   return step(0, '');
 }
@@ -9707,8 +9729,8 @@ function interpTokenSpelling(token: SimpleToken): string {
   return out;
 }
 
-function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): string {
-  const value = resolveSimpleText(sim, frame, e);
+/** `value`, read where a selector interpolation cannot be awaited: an awaitable one is {@link AsyncSelectorInterp} at `sim`. */
+function settledSelectorSync<T>(value: MaybePromise<T>, sim: SimpleToken): T {
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw new AsyncSelectorInterp(sim);
@@ -9716,37 +9738,37 @@ function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): 
   return value;
 }
 
-function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane): MaybePromise<string> {
+function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: Lane): string {
+  return oneText(settledSelectorSync(resolveSimpleTexts(sim, frame, e), sim));
+}
+
+function resolveCompound(c: CompoundSelector, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): MaybePromise<SelectorText> {
   if (!compoundHasInterp(c)) {
     return compoundCanonical(c);
   }
-  const parts = c.value.map(sim => resolveSimpleText(sim, frame, e));
-  return combineAll(parts, values => values.join(''));
+  return combineAll(c.value.map((sim, i) => resolveSimpleTexts(sim, frame, e, c.value[i - 1] ?? within, c.value[i + 1])), values => crossTexts(values, picked => picked.join('')));
 }
 
-function resolveSelectorTerm(term: SelectorTerm, frame: Frame | null, e: Lane): MaybePromise<string> {
-  if (term.type === 'CompoundSelector') {
-    return resolveCompound(term, frame, e);
-  }
-  return selectorTermHasInterp(term) ? resolveSimpleText(term, frame, e) : selectorTermCanonical(term);
-}
-
-/** The concrete canonical string of a (possibly interpolated) complex, in
- * the entering frame. Static selectors keep the cached `canonical()` fast path. */
-function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane): MaybePromise<string> {
+/** The concrete canonical string of a (possibly interpolated) complex, in the entering
+ * frame, or the branches a list continuing a name multiplies it into ({@link SelectorText}),
+ * `within` the selector or a pseudo's argument ({@link CompoundIn}).
+ * Static selectors keep the cached `canonical()` fast path. */
+function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): MaybePromise<SelectorText> {
   if (!selectorBranchHasInterp(c)) {
     return selectorBranchCanonical(c);
   }
   const terms = selectorBranchTerms(c);
   const combinators = selectorBranchCombinators(c);
-  return combineAll(terms.map(term => resolveSelectorTerm(term, frame, e)), (values) => {
+  return combineAll(terms.map(term => term.type === 'CompoundSelector'
+    ? resolveCompound(term, frame, e, within)
+    : selectorTermHasInterp(term) ? resolveSimpleTexts(term, frame, e, within) : selectorTermCanonical(term)), values => crossTexts(values, (picked) => {
     const start = c.type === 'RelativeSelector' ? 1 : 0;
     let out = c.type === 'RelativeSelector'
-      ? renderCombinator(combinators[0]!).trimStart() + values[0]!
-      : values[0]!;
+      ? renderCombinator(combinators[0]!).trimStart() + picked[0]!
+      : picked[0]!;
     for (let i = start; i < combinators.length; i++) {
       const valueIndex = c.type === 'RelativeSelector' ? i : i + 1;
-      out += renderCombinator(combinators[i]!) + values[valueIndex]!;
+      out += renderCombinator(combinators[i]!) + picked[valueIndex]!;
     }
 
     /*
@@ -9754,14 +9776,14 @@ function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: Lane):
      * the branch boundary it is canonicalized away (ledger O8(b)).
      */
     return out.trimStart();
-  });
+  }));
 }
 
 /** Synchronous-only selector consumers (mixin-key indexing and nested-mode
  * header probes) retain their existing contract. Public emitted selectors use
  * the MaybePromise path above. */
 function resolveSelectorBranchSync(c: SelectorBranch, frame: Frame | null, e: Lane): string {
-  const value = resolveSelectorBranch(c, frame, e);
+  const value = mapMaybe(resolveSelectorBranch(c, frame, e), oneText);
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
@@ -9929,43 +9951,43 @@ function parentUnit(parent: string, written: string, kind: number): string {
  *  A list-accepting pseudo (`:is`/`:where`/`:not`/`:has`/`:matches`) whose args
  *  reference `&` recurses so the `&` becomes the BARE parent list inside the pseudo
  *  (`:not(&)` over `.a, .b` → `:not(.a, .b)`, not the De-Morgan-wrong
- *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
- *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
- *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
- *  fused append (`&__el`) or a `&` glued after another simple (`glued`, `.qux&`) —
- *  DISTRIBUTES per parent. Where `kinds` is given ({@link PARENT_AS_WRITTEN}), a parent this
+ *  `:not(.a), :not(.b)`). A bare LEADING `&` (the first of `tokens` with no name
+ *  glued after it, the compound SUBJECT — `&`, `&.mod`, `& + &`) wraps in
+ *  `:is(parents)`, which keeps the subject even for a complex parent
+ *  (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a fused append
+ *  (`&__el`) or a `&` glued after another simple (`.qux&`) — DISTRIBUTES per parent. Where `kinds` is given ({@link PARENT_AS_WRITTEN}), a parent this
  *  `&` cannot take as written is one unit, `:is(parent)`: this `&` is not the one that
  *  places it ({@link placeParent}). Returns one variant per distribution — the
  *  branch-multiplying case. */
 function resolveTokenAmp(
-  sim: SimpleToken,
+  tokens: readonly SimpleToken[],
+  at: number,
   parents: string[],
   subs: readonly string[],
-  first: boolean,
-  glued: boolean,
   kinds: Uint8Array | null,
   frame: Frame | null,
   e: Lane
 ): MaybePromise<readonly string[]> {
+  const sim = tokens[at]!;
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
       branches => [pseudoJoin(sim, branches)]
     );
   }
-  return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {
+  return mapMaybe(resolveSimpleTexts(sim, frame, e, tokens[at - 1], tokens[at + 1]), texts => textBranches(texts).flatMap((text) => {
     if (!textHoldsParentRef(text)) {
       return [text];
     }
-    if (first && text === '&') {
+    if (at === 0 && !continuesName(tokens[1]) && text === '&') {
       return kinds !== null && parents.length === 1 && (kinds[0]! & PARENT_SEVERAL) !== 0 ? [parentUnit(subs[0]!, subs[0]!, kinds[0]!)] : subs;
     }
     return parents.map((p, i) => {
       const kind = kinds === null ? PARENT_AS_WRITTEN : kinds[i]!;
       const written = p + text.slice(1);
-      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && glued) ? parentUnit(p, written, kind) : written;
+      return (kind & PARENT_SEVERAL) !== 0 || ((kind & PARENT_ELEMENT) !== 0 && at > 0) ? parentUnit(p, written, kind) : written;
     });
-  });
+  }));
 }
 
 /** [nesting] One compound resolved against `parents`, its tokens concatenated;
@@ -9993,15 +10015,15 @@ function resolveCompoundAmp(
   while (ref !== -1 && trailing - 1 > ref && isUserActionToken(cmp.value[trailing - 1]!)) {
     trailing--;
   }
-  const tokens = cmp.value.map((sim, i) => resolveTokenAmp(sim, parents, subs, i === 0 && !continuesName(cmp.value[1]), i > 0, i === ref ? null : kinds, frame, e));
+  const tokens = cmp.value.map((_, i) => resolveTokenAmp(cmp.value, i, parents, subs, i === ref ? null : kinds, frame, e));
   return combineAll(tokens, (lists) => {
-    /* The simples before the first `&` hold none, so each is one variant: `before`. */
-    let before = '';
+    /* The simples before the first `&` hold none; a selector list continuing a name multiplies them: `before`. */
+    let before = [''];
     let acc = [''];
     let tail = [''];
     for (let i = 0; i < lists.length; i++) {
       if (i === ref) {
-        before = acc[0]!;
+        before = acc;
         acc = [''];
         continue;
       }
@@ -10020,16 +10042,20 @@ function resolveCompoundAmp(
     if (ref === -1) {
       return acc;
     }
-    const lead = ref > 0 && leadsWithElement(lists[0]![0]!, 0) ? lists[0]![0]! : '';
+
+    /* The first simple of a `before`, where it is an element; the leftmost is the most significant. */
+    const lead = (first: string): string => ref > 0 && leadsWithElement(first, 0) ? first : '';
 
     /* One variant per parent where the `&` distributes; else one unit of them all, written as it is. */
     const placed = lists[ref]!;
     const aligned = kinds !== null && placed.length === parents.length;
     const out: string[] = [];
-    for (let j = 0; j < placed.length; j++) {
-      for (const after of acc) {
-        for (const end of tail) {
-          out.push(placeParent(placed[j]!, before, lead, after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+    for (let k = 0; k < before.length; k++) {
+      for (let j = 0; j < placed.length; j++) {
+        for (const after of acc) {
+          for (const end of tail) {
+            out.push(placeParent(placed[j]!, before[k]!, lead(lists[0]![Math.floor(k * lists[0]!.length / before.length)]!), after, end, head, aligned ? kinds[j]! : PARENT_AS_WRITTEN));
+          }
         }
       }
     }
@@ -10048,10 +10074,9 @@ function continuesName(sim: SimpleToken | undefined): boolean {
   return sim?.type === 'SimpleSelector' && sim.text !== null && sim.text.length > 0 && isNameCode(sim.text.charCodeAt(0));
 }
 
-/** Whether `c` continues a name glued to a `&`: a name code point (CSS Syntax 3 §4.2) or the backslash of an escape. */
-function isNameCode(c: number): boolean {
-  return c === 0x2D /* - */ || c === 0x5F /* _ */ || c === 0x5C /* \ */ || c >= 0x80 || (c >= 0x30 && c <= 0x39) || ((c | 32) >= 0x61 && (c | 32) <= 0x7A);
-}
+/** Whether a name is glued after an interpolation: the part of its token that follows it, else the token after it ({@link continuesName}). */
+const continuesAfter = (following: InterpPart | undefined, next: SimpleToken | undefined): boolean =>
+  following === undefined ? continuesName(next) : 'lit' in following && isNameCode(following.lit.charCodeAt(0));
 
 /**
  * [nesting] A `&` that is a plain reference to its parent follows CSS nesting
@@ -10205,7 +10230,7 @@ function resolveTermAmp(
 ): MaybePromise<readonly string[]> {
   return term.type === 'CompoundSelector'
     ? resolveCompoundAmp(term, parents, subs, head, kinds, frame, e)
-    : resolveTokenAmp(term, parents, subs, true, false, head ? null : kinds, frame, e);
+    : resolveTokenAmp([term], 0, parents, subs, head ? null : kinds, frame, e);
 }
 
 /** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
@@ -10263,8 +10288,14 @@ function resolveSelectorBranchAmp(
   });
 }
 
-/** [nesting] Resolve a selector list against `parents`, flattening each complex's
- *  branch variants. Reused for a list-accepting pseudo's args. */
+/** [nesting] Resolve a list-accepting pseudo's argument against `parents`, flattening
+ *  each complex's branch variants.
+ *
+ *  ponytail: a plain list standing alone in a compound of this argument multiplies
+ *  that branch into more items of the list (`:not(& b, & i)`), not one `:is()` item as
+ *  an argument without `&` keeps it ({@link resolveSelectorBranch} `within`); in a
+ *  list-accepting pseudo both match the same elements at the same specificity. Carry
+ *  `within` through the `&` resolvers if the byte form must agree. */
 function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Frame | null, e: Lane): MaybePromise<string[]> {
   return combineAll(list.selectors.map(c => resolveSelectorBranchAmp(c, parents, frame, e)), values => values.flat());
 }
@@ -10306,14 +10337,14 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
      * nothing either way, but written bare (`.a::before .c`) it is invalid and
      * would drop the whole list a bubbled at-rule writes per parent.
      */
-    return mapMaybe(resolveSelectorBranch(child, frame, e), text =>
-      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? `:is(${p}) ` : p + ' ') + text));
+    return mapMaybe(resolveSelectorBranch(child, frame, e), texts => textBranches(texts).flatMap(text =>
+      parents.map((p, i) => (flags !== undefined && flags[i] !== PSEUDO_NONE ? isUnit(p) + ' ' : p + ' ') + text)));
   }
   if ((parents.length >= 2 || branchHasTextAmp(child) || ((ampNeedsPlacement(child) || (flags !== undefined && endsAfterPseudoElement(child))) && parentKind(parents[0]!, flags === undefined ? PSEUDO_NONE : flags[0]!) !== PARENT_AS_WRITTEN))
     && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e, flags);
   }
-  return mapMaybe(resolveSelectorBranch(child, frame, e), text => joinAmpersand(text, parents));
+  return mapMaybe(resolveSelectorBranch(child, frame, e), texts => textBranches(texts).flatMap(text => joinAmpersand(text, parents)));
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: Lane): MaybePromise<string[]> {
@@ -10425,13 +10456,19 @@ function pseudoElementFlag(c: SelectorBranch, frame: Frame | null, e: Lane): num
 
 function tokenPseudoElementFlag(sim: SimpleToken, frame: Frame | null, e: Lane): number {
   const known = tokenPseudoElement(sim);
-  if (known === true && sim.interp !== null && sim.interp.parts[0] !== undefined && !('lit' in sim.interp.parts[0])) {
-    return simpleGroupInterp(sim, frame, e) === null ? PSEUDO_TEXT : PSEUDO_CAPTURE;
+  const first = sim.interp?.parts[0];
+  if (known === true && first !== undefined && 'ref' in first) {
+    /*
+     * ponytail: a lone `@{s}` is evaluated a second time here to know whether it is a
+     * selector list (an async one counts as text); carry that from the selector's own
+     * resolution if this shows in a profile.
+     */
+    return sim.interp!.parts.length === 1 && isGroupInterpSync(first, frame, e) ? PSEUDO_CAPTURE : PSEUDO_TEXT;
   }
   if (known !== undefined) {
     return known ? PSEUDO_LAST : PSEUDO_NONE;
   }
-  const text = resolveSimpleText(sim, frame, e);
+  const text = mapMaybe(resolveSimpleTexts(sim, frame, e), oneText);
   if (isThenable(text)) {
     observeRejectedThenable(text);
     return PSEUDO_LAST;
@@ -10463,10 +10500,10 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
   const isPrefix = `:is(${parents.join(', ')}) `;
   const parts = child.selectors.map((c) => {
     if (!selectorBranchHasAmpersand(c)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => [isPrefix + canon]);
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canons => textBranches(canons).map(canon => isPrefix + canon));
     }
     if (parents.some(hasTopLevelComma)) {
-      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => joinAmpersand(canon, parents));
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canons => textBranches(canons).flatMap(canon => joinAmpersand(canon, parents)));
     }
     return resolveSelectorBranchAmp(c, parents, frame, e);
   });
@@ -10518,18 +10555,16 @@ function wrapIsList(branches: string[]): string {
  * [class*="col-"]`, the CSS-Nesting desugaring. */
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
-  return combineAll(canons, (values) => {
-    if (values.length === 1) {
-      return [a + ' ' + values[0]!];
+  return combineAll(canons, (texts) => {
+    if (texts.length === 1 && typeof texts[0] === 'string') {
+      return [a + ' ' + texts[0]];
     }
+
+    /* A branch a list continuing a name multiplies ({@link SelectorText}) is one value per selector, in its branch's group. */
     const guarded = e.collapseMode !== 'compact';
-    const groups: number[] = [];
-    let oneGroup = true;
-    for (const branch of child.selectors) {
-      const key = nestingGroupKey(branch, guarded);
-      oneGroup &&= key >= 0 && key === (groups[0] ?? key);
-      groups.push(key);
-    }
+    const values = texts.flatMap(textBranches);
+    const groups = texts.flatMap((text, i) => textBranches(text).map(() => nestingGroupKey(child.selectors[i]!, guarded)));
+    const oneGroup = groups.every(key => key >= 0 && key === groups[0]);
     if (oneGroup) {
       return [a + ' :is(' + values.join(', ') + ')'];
     }
@@ -10582,12 +10617,12 @@ function ownStringsSync(list: SelectorList, frame: Frame | null, e: Lane): strin
 function rootStrings(list: SelectorList, frame: Frame | null, e: Lane): MaybePromise<string[]> {
   const parts: Array<MaybePromise<string[]>> = [];
   for (const c of list.selectors) {
-    const g = loneGroupInterp(c, frame, e);
-    if (g !== null) {
-      parts.push(g.branches);
+    const lone = loneInterpBranches(c, frame, e);
+    if (lone !== null) {
+      parts.push(lone);
       continue;
     }
-    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
+    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), values => textBranches(values).map(value => selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value)));
   }
 
   /* A lone `@{s}` group may hold anything, so its branches count as ending with a pseudo-element ({@link tokenPseudoElement}). */
@@ -10712,6 +10747,9 @@ interface DynamicExtendState {
 
   /** The extend pre-pass's resolved selector lists ({@link EvalSession.resolvedSelectors}). */
   resolvedSelectors: ReadonlyMap<SelectorList, SelectorList>;
+
+  /** {@link EvalSession.resolvedUnits}. */
+  resolvedUnits: ReadonlyMap<SelectorList, SelectorUnits>;
 
   /** The import placements the walk issued, which the static plan never projected:
    * a rule they place is a dynamic emission even when `staticRules` holds it, since
@@ -10935,8 +10973,13 @@ interface Emit extends Lane {
    */
   prepublishedImportFacts: PrepublishedImportFacts;
 
-  /** Document-root CSS terminals already written in the required output prelude. */
-  hoistedCssImports: Set<AtRuleStatement> | null;
+  /*
+   * Document-root CSS terminals hoisted into the output prelude, each with the
+   * chunks reserved for it there; a duplicate reserves none. The render walk
+   * writes each import into its chunk where it reaches it, so its condition
+   * reads the variables declared before it.
+   */
+  hoistedCssImports: Map<AtRuleStatement, number[]> | null;
 
   /** Block-comment trivia runs already replayed during this render. */
   emittedBlockTrivia: EmittedTrivia;
@@ -10964,6 +11007,7 @@ function scratchEmit(e: Lane): Emit {
       trivia: e.s.trivia,
       pseudoElementLists: e.s.pseudoElementLists,
       resolvedSelectors: e.s.resolvedSelectors,
+      resolvedUnits: e.s.resolvedUnits,
       propNames: e.s.propNames,
       scopedFunctionNames: e.s.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
       lambdaFunctionNames: e.s.lambdaFunctionNames, // [lambda-fn] preserve the user-`@function` gate
@@ -12049,7 +12093,7 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
       return null;
     }
     pieces.push(source.slice(chunkStart, hole.start));
-    pieces.push(resolveRefBytes(part, frame, e));
+    pieces.push(mapMaybe(interpRefValue(part, frame, e), part.unquote ? emitSplice : readText));
     cursor = hole.end;
     chunkStart = cursor;
   }
@@ -12783,7 +12827,7 @@ function rejectAsyncSelectorInterp(
  * renders again with other values). Static (`&`, `.a`) simple tokens are shared. A glued
  * name merged into one token is no longer a compound.
  */
-function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: Lane): SelectorTerm {
+function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorTerm | SelectorTerm[] {
   if (!compoundHasInterp(comp)) {
     return comp;
   }
@@ -12792,34 +12836,33 @@ function resolveCompoundInterpCopy(comp: CompoundSelector, frame: Frame | null, 
    * Resolve EVERY interpolated simple before building, so a throw leaves nothing
    * half-resolved for the caller's recovery path to serialize.
    */
-  const texts: Array<string | undefined> = [];
+  const texts: Array<SelectorText | undefined> = [];
 
-  /* Each pseudo whose argument interpolates, and its resolved copy. */
-  const pseudos: SimpleToken[] = [];
-  const copies: SimpleToken[] = [];
-  for (let i = 0; i < comp.value.length; i++) {
-    const sim = comp.value[i]!;
+  /* The compound's tokens, each pseudo whose argument interpolates replaced by its resolved copy. */
+  const tokens = comp.value.slice();
+  for (let i = 0; i < tokens.length; i++) {
+    const sim = tokens[i]!;
     texts.push(undefined);
     if (sim.type === 'PseudoSelector' && sim.args !== null) {
       if (pseudoHasInterp(sim)) {
         probePseudoInterp(sim, frame, e);
-        pseudos.push(sim);
-        copies.push(resolvePseudoInterpCopy(sim, frame, e));
+        tokens[i] = resolvePseudoInterpCopy(sim, frame, e);
       }
       continue;
     }
     if (sim.interp !== null) {
-      texts[i] = resolveSimpleTextSync(sim, frame, e);
+      texts[i] = settledSelectorSync(resolveSimpleTexts(sim, frame, e, comp.value[i - 1] ?? within, comp.value[i + 1]), sim);
     }
   }
-  const tokens = resolvedCompoundTokens(comp.value, texts);
-  for (let i = 0; pseudos.length > 0 && i < tokens.length; i++) {
-    const at = pseudos.indexOf(tokens[i]!);
-    if (at !== -1) {
-      tokens[i] = copies[at]!;
-    }
-  }
-  return tokens.length === 1 ? tokens[0]! : { ...comp, value: tokens, _hasInterp: false, _canon: undefined };
+
+  /*
+   * A selector list continuing a name multiplies the compound ({@link resolveSimpleTexts}):
+   * one compound per selector, crossed as {@link resolveCompound} crosses them for the header.
+   */
+  return crossTexts<string | undefined, SelectorTerm>(texts, (picked) => {
+    const out = resolvedCompoundTokens(tokens, picked);
+    return out.length === 1 ? out[0]! : { ...comp, value: out, _hasInterp: false, _canon: undefined };
+  });
 }
 
 /**
@@ -12866,7 +12909,8 @@ function resolvedCompoundTokens(value: readonly SimpleToken[], texts: ReadonlyAr
  * (ledger X12). A resolved token is plain text, a glued name merged into the name it
  * continues ({@link resolvedCompoundTokens}). Null when the copy would not compose the
  * bytes the authored list does: a lone `@{name}` branch, which may expand to a captured
- * selector list, or a resolved `&` the template did not write (the authored list keeps
+ * selector list, a selector list continuing a name, which multiplies its branch
+ * ({@link resolveSimpleTexts}), or a resolved `&` the template did not write (the authored list keeps
  * it literal text; the copy would compose it).
  */
 function resolvedSelectorList(list: SelectorList, frame: Frame | null, e: Lane): MaybePromise<SelectorList | null> {
@@ -12917,11 +12961,15 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: Lane):
     return term;
   }
   const tokens = termTokens(term);
-  const texts: Array<MaybePromise<string | undefined>> = [];
-  for (const sim of tokens) {
-    texts.push(simpleTokenHasInterp(sim) ? resolveSimpleText(sim, frame, e) : undefined);
+  const texts: Array<MaybePromise<SelectorText | undefined>> = [];
+  for (let i = 0; i < tokens.length; i++) {
+    texts.push(simpleTokenHasInterp(tokens[i]!) ? resolveSimpleTexts(tokens[i]!, frame, e, tokens[i - 1], tokens[i + 1]) : undefined);
   }
   return combineAll(texts, (resolved) => {
+    /* A selector list continuing a name multiplies the branch: no one copy writes it. */
+    if (!isOneText(resolved)) {
+      return null;
+    }
     for (let i = 0; i < tokens.length; i++) {
       const text = resolved[i];
       const sim = tokens[i]!;
@@ -12977,13 +13025,13 @@ function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: Lane
   if (args === null || !pseudoHasInterp(p)) {
     return p;
   }
-  const selectors = args.selectors.map(c => resolveSelectorBranchInterpCopy(c, frame, e));
+  const selectors = args.selectors.flatMap(c => resolveSelectorBranchInterpCopy(c, frame, e, 'argument'));
   return { ...p, args: { ...args, selectors }, _hasInterp: false };
 }
 
-function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane): SelectorTerm {
+function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorTerm | SelectorTerm[] {
   if (term.type === 'CompoundSelector') {
-    return resolveCompoundInterpCopy(term, frame, e);
+    return resolveCompoundInterpCopy(term, frame, e, within);
   }
   if (term.type === 'PseudoSelector' && term.args !== null) {
     if (pseudoHasInterp(term)) {
@@ -12992,26 +13040,36 @@ function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, 
     }
     return term;
   }
-  return term.interp !== null ? simpleSelector(resolveSimpleTextSync(term, frame, e)) : term;
+  if (term.interp === null) {
+    return term;
+  }
+  const text = settledSelectorSync(resolveSimpleTexts(term, frame, e, within), term);
+  return typeof text === 'string' ? simpleSelector(text) : text.map(branch => simpleSelector(branch));
 }
 
-/** A selector branch with its interpolation resolved in `frame`: a new branch, or `c` when it holds none. */
-function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: Lane): SelectorBranch {
+/**
+ * A selector branch with its interpolation resolved in `frame`: a new branch, or `c` when
+ * it holds none; the branches a selector list continuing a name multiplies it into, crossed
+ * as {@link resolveSelectorBranch} crosses them for the header.
+ */
+function resolveSelectorBranchInterpCopy(c: SelectorBranch, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorBranch | SelectorBranch[] {
   if (!selectorBranchHasInterp(c)) {
     return c;
   }
   if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
-    return resolveSelectorTermInterpCopy(c, frame, e);
+    return resolveSelectorTermInterpCopy(c, frame, e, within);
   }
   const hasLiteralAmpersand = selectorBranchHasAmpersand(c);
-  const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator =>
-    typeof term === 'string' ? term : resolveSelectorTermInterpCopy(term, frame, e);
-  if (c.type === 'ComplexSelector') {
-    const [head, ...rest] = c.value;
-    return { ...c, value: [resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
-  }
-  const [combinator, head, ...rest] = c.value;
-  return { ...c, value: [combinator, resolveSelectorTermInterpCopy(head, frame, e), ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+  return crossTexts(selectorBranchTerms(c).map(term => resolveSelectorTermInterpCopy(term, frame, e, within)), (terms): SelectorBranch => {
+    let at = 0;
+    const part = (term: SelectorTerm | Combinator): SelectorTerm | Combinator => typeof term === 'string' ? term : terms[at++]!;
+    if (c.type === 'ComplexSelector') {
+      const [, ...rest] = c.value;
+      return { ...c, value: [terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+    }
+    const [combinator, , ...rest] = c.value;
+    return { ...c, value: [combinator, terms[at++]!, ...rest.map(part)], _hasInterp: false, _hasAmp: hasLiteralAmpersand, _canon: undefined };
+  });
 }
 
 /** The selector list `list` reads as for the extend planner: its resolved copy, or itself ({@link EvalSession.resolvedSelectors}). */
@@ -13019,17 +13077,48 @@ function plannedSelectorList(list: SelectorList, e: Lane): SelectorList {
   return e.s.resolvedSelectors.get(list) ?? list;
 }
 
-/** Record `branch` as branch `index` of `list`'s resolved copy ({@link EvalSession.resolvedSelectors}). */
-function resolvedSelectorBranchOf(list: SelectorList, index: number, branch: SelectorBranch, e: Lane): void {
-  if (branch === list.selectors[index]) {
+/**
+ * Record `branches`, one entry per branch of `list` (the branch itself when it resolved
+ * to itself, or the branches it expands to), as `list`'s resolved copy
+ * ({@link EvalSession.resolvedSelectors}): a lone selector list and a list continuing a
+ * name are as many branches as the header writes for them.
+ */
+function resolvedSelectorBranchesOf(list: SelectorList, branches: ReadonlyArray<SelectorBranch | SelectorBranch[]>, e: Lane): void {
+  if (branches.every((branch, index) => branch === list.selectors[index])) {
     return;
   }
-  let copy = e.s.resolvedSelectors.get(list);
-  if (copy === undefined) {
-    copy = { ...list, selectors: list.selectors.slice() };
-    e.s.resolvedSelectors.set(list, copy);
+  const selectors = branches.flat();
+  e.s.resolvedSelectors.set(list, { ...list, selectors });
+  if (selectors.length !== branches.length) {
+    const lone = (branch: SelectorBranch[], index: number): boolean => branch.length > 1 && loneInterpRef(list.selectors[index]!) !== null;
+    e.s.resolvedUnits.set(list, Int32Array.from(branches.flatMap((branch, index) => Array.isArray(branch) ? branch.map(() => lone(branch, index) ? ~index : index) : [index])));
   }
-  copy.selectors[index] = branch;
+}
+
+/**
+ * [extend/selector-interp] Branch `c` of a selector list as the header writer writes
+ * it, for the extend planner: a lone `@{s}` is whole-selector position, the branches the
+ * header expands it to ({@link expandSelectorBranch}), one per selector of a selector list,
+ * and a selector list continuing a name multiplies the branch ({@link resolveSimpleTexts}).
+ * Each expanded branch is one resolved simple, as a resolved interpolated token is
+ * ({@link resolvedCompoundTokens}). `c` itself when it does not resolve: an AWAITABLE
+ * interpolation is a capability gap, reported; anything else (a guarded rule never
+ * emitted) leaves it verbatim, and the extend engine falls back to no match. `context` is
+ * the list, then its rule, a diagnostic falls back to.
+ */
+function plannedBranches(c: SelectorBranch, frame: Frame, e: Lane, where: string, context: readonly object[]): SelectorBranch | SelectorBranch[] {
+  if (!selectorBranchHasInterp(c)) {
+    return c;
+  }
+  try {
+    const lone = loneInterpBranches(c, frame, e);
+    return lone === null
+      ? resolveSelectorBranchInterpCopy(c, frame, e)
+      : settledSelectorSync(lone, termTokens(selectorBranchTerms(c)[0]!)[0]!).map(text => simpleSelector(text));
+  } catch (error) {
+    rejectAsyncSelectorInterp(error, where, [c, ...context], e);
+    return c;
+  }
 }
 
 /**
@@ -13069,71 +13158,38 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
       recordPropertyDeclaration(frame, st, frame);
     } else if (st.type === 'Ruleset') {
       const list = st.selector;
-      for (let index = 0; index < list.selectors.length; index++) {
-        const c = list.selectors[index]!;
+      if (list.selectors.some(selectorBranchHasInterp)) {
+        const context = [list, st];
+        const branches = list.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass rule selector', context));
+        resolvedSelectorBranchesOf(list, branches, e);
 
         /*
-         * A lone `@{s}` group (a selector list) is whole-selector position, which
-         * the header expands to its branches ({@link expandSelectorBranch}); resolved
-         * here it would be the compound-position `:is(…)` and change the header
-         * (`.p::before, .q` → `:is(.p::before, .q)`), so it stays as authored.
+         * An inline `:extend()` holds its own branch — the parser's object, shared with
+         * this list — so the extend reads the resolved branch too, or it extends from
+         * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
          */
-        if (!selectorBranchHasInterp(c)) {
-          continue;
-        }
-        try {
-          if (loneGroupInterp(c, frame, e) !== null) {
-            continue;
-          }
-          const resolved = resolveSelectorBranchInterpCopy(c, frame, e);
-          resolvedSelectorBranchOf(list, index, resolved, e);
-
-          /*
-           * An inline `:extend()` holds its own branch — the parser's object, shared with
-           * this list — so the extend reads the resolved branch too, or it extends from
-           * the unresolved one, whose IR writes nothing (`@{s}:extend(.z)` wrote `.z, {`).
-           */
-          for (let i = 0; st.extendInstructions !== undefined && i < st.extendInstructions.length; i++) {
+        for (let index = 0; st.extendInstructions !== undefined && index < branches.length; index++) {
+          const c = list.selectors[index]!;
+          for (let i = 0; branches[index] !== c && i < st.extendInstructions.length; i++) {
             const inst = st.extendInstructions[i]!;
             if (inst.subject?.selectors[0] === c) {
-              resolvedSelectorBranchOf(inst.subject, 0, resolved, e);
+              resolvedSelectorBranchesOf(inst.subject, [branches[index]!], e);
             }
           }
-        } catch (error) {
-          /*
-           * An AWAITABLE interp is a capability gap, not an unresolvable branch:
-           * report it. Anything else (e.g. a guarded rule never emitted) leaves the
-           * selector verbatim — the extend engine falls back to the baseline (no
-           * match), never regresses.
-           */
-          rejectAsyncSelectorInterp(error, 'extend pre-pass rule selector', [c, list, st], e);
         }
       }
 
-      /*
-       * The same planner reads extend targets before matching. Resolve their
-       * typed selector interpolation in this existing cold pass and lexical
-       * frame, alongside rule selectors; no selector text recovery or second
-       * traversal is introduced.
-       */
+      /* The same planner reads extend targets before matching, resolved in this cold pass and lexical frame alongside rule selectors. */
       for (const inst of st.extendInstructions ?? []) {
-        for (let index = 0; index < inst.target.selectors.length; index++) {
-          const c = inst.target.selectors[index]!;
-          if (!selectorBranchHasInterp(c)) {
-            continue;
-          }
-          try {
-            resolvedSelectorBranchOf(inst.target, index, resolveSelectorBranchInterpCopy(c, frame, e), e);
-          } catch (error) {
-            /*
-             * As above: an awaitable target is reported; a genuinely unresolvable
-             * one is preserved and the planner keeps its no-match behavior.
-             */
-            rejectAsyncSelectorInterp(error, 'extend pre-pass :extend() target', [c, inst.target, st], e);
-          }
+        if (inst.target.selectors.some(selectorBranchHasInterp)) {
+          const context = [inst.target, st];
+          resolvedSelectorBranchesOf(inst.target, inst.target.selectors.map(c => plannedBranches(c, frame, e, 'extend pre-pass :extend() target', context)), e);
         }
       }
+
+      /* The rule's body is its `&` ({@link parentSelectorBranches}), as the walk's frame is ({@link activateRuleFrame}). */
       const childFrame = makeFrame(frame, st.rules, collectMixins(st.rules), collectDeclIndex(st.rules), null);
+      childFrame.outputOf = st;
       resolveSelectorInterpForExtend(st.rules, childFrame, e);
     } else if (st.type === 'AtRuleBlock') {
       /*
@@ -13713,9 +13769,6 @@ interface CssImportPlan {
   head: number;
   tail: number;
   nodes: Array<AtRuleStatement | null> | null;
-  targets: Array<Quoted | Url | null> | null;
-  frames: Array<Frame | null> | null;
-  withinDocuments: Array<NonNullable<ImportDocumentTree['withinDocument']> | null> | null;
   next: number[] | null;
 }
 
@@ -13726,23 +13779,11 @@ type ImportPlanMode = typeof IMPORT_PLAN_PREPARE
   | typeof IMPORT_PLAN_RENDER_EXPLICIT
   | typeof IMPORT_PLAN_RENDER_CONTEXT;
 
-function appendCssImportPlan(
-  plan: CssImportPlan,
-  node: AtRuleStatement | null,
-  target: Quoted | Url | null,
-  frame: Frame | null,
-  withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null
-): number {
+function appendCssImportPlan(plan: CssImportPlan, node: AtRuleStatement | null): number {
   const nodes = plan.nodes ??= [];
-  const targets = plan.targets ??= [];
-  const frames = plan.frames ??= [];
-  const withinDocuments = plan.withinDocuments ??= [];
   const next = plan.next ??= [];
   const index = nodes.length;
   nodes.push(node);
-  targets.push(target);
-  frames.push(frame);
-  withinDocuments.push(withinDocument);
   next.push(-1);
   if (plan.tail === -1) {
     plan.head = index;
@@ -13867,9 +13908,6 @@ function planImportedFacts(
         head: -1,
         tail: -1,
         nodes: null,
-        targets: null,
-        frames: null,
-        withinDocuments: null,
         next: null
       }
     : null;
@@ -14143,9 +14181,9 @@ function planImportedFacts(
               (furtherCssImportKeys ??= new Set()).add(key);
             }
           }
-          (e.hoistedCssImports ??= new Set()).add(st);
+          (e.hoistedCssImports ??= new Map()).set(st, e.hoistedCssImports.get(st) ?? []);
           if (!duplicate) {
-            appendCssImportPlan(cssPlan, st, target, scope, withinDocument);
+            appendCssImportPlan(cssPlan, st);
           }
         }
       } else if (st.type === 'StyleImport') {
@@ -14158,7 +14196,7 @@ function planImportedFacts(
           deferred.push(st);
           deferredSites.push(at);
           if (cssPlan !== null) {
-            const anchor = appendCssImportPlan(cssPlan, null, null, null, null);
+            const anchor = appendCssImportPlan(cssPlan, null);
             (deferredAnchors ??= []).push(anchor);
           }
         }
@@ -14284,6 +14322,7 @@ function createRenderSession(
       trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
       pseudoElementLists: new Map(), // [nesting] parents ending with a pseudo-element
       resolvedSelectors: new Map(), // [extend/selector-interp] the pre-pass's resolved lists
+      resolvedUnits: new Map(),
       propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
       scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
       lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
@@ -14450,7 +14489,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0 || e.importedWalkPlacement) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
-    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact', e.s.resolvedSelectors); // [extend] null when no `:extend()` anywhere
+    e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact', e.s.resolvedSelectors, e.s.resolvedUnits); // [extend] null when no `:extend()` anywhere
     e.importPlacements = planned.imports?.importPlacements ?? null;
 
     /*
@@ -14493,6 +14532,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerEnds: [],
         staticRules,
         resolvedSelectors: e.s.resolvedSelectors,
+        resolvedUnits: e.s.resolvedUnits,
         walkPlacements: null,
         subjects: [],
         instructions: [],
@@ -14528,11 +14568,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
      * public Context route has no such driver callback, so it uses the typed
      * document-prelude plan while retaining Context loading for non-terminals.
      */
-    const hoisted = !options?.importDocument
-      ? planned.cssImports === undefined
-        ? emitHoistedCssImports(root.rules, rootFrame, e)
-        : emitPlannedCssImports(planned.cssImports, e)
-      : undefined;
+
+    /* A caller's import handler owns terminal imports itself: nothing is hoisted. */
+    reserveHoistedCssImports(root.rules, options?.importDocument ? null : planned.cssImports, e);
     const finalize = (): SerializeResult => {
       /*
        * [extend/dynamic] DEFERRED REWRITE: fold the walk-recorded dynamic extenders
@@ -14577,7 +14615,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       emitLeadingDocumentBlockComments(e);
       return mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), finish);
     };
-    return mapMaybe(hoisted, emitBody);
+    return emitBody();
   };
 
   /*
@@ -14639,9 +14677,6 @@ function emitDocumentStatements(
       }
     };
     for (const child of rules) {
-      if (child.type === 'AtRuleStatement' && e.hoistedCssImports?.has(child)) {
-        continue;
-      }
       if (child.type !== 'StyleImport') {
         batch.push(child);
         continue;
@@ -14831,7 +14866,7 @@ function emitDocumentStatements(
         }
         break;
       case 'AtRuleStatement':
-        if (e.referenceImportDepth === 0 && !e.hoistedCssImports?.has(child)) {
+        if (!writeHoistedCssImport(child, true, frame, e) && e.referenceImportDepth === 0 && !e.hoistedCssImports?.has(child)) {
           emitBeforeDocumentStatement(child);
           emitAtRuleStatement(child, frame, e);
           markAfterDocumentStatement(child);
@@ -15671,7 +15706,7 @@ function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | nu
     bubbles: dyn.baseOverlay.bubbles,
     atRuleScopes: dyn.atRuleScopes
   };
-  return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors);
+  return computeExtends(dyn.root, overlay, guardedNesting, dyn.resolvedSelectors, dyn.resolvedUnits);
 }
 
 /**
@@ -16146,15 +16181,15 @@ function flattenResolved(
   });
 }
 
-/** Establish one ordinary visible ruleset activation for either writer. */
-function activateRuleFrame(rule: Ruleset, frame: Frame, e: Lane): Frame {
+/** Establish one ordinary visible ruleset activation for either writer; `sourceOwner`, when given, is the document its body is written in. */
+function activateRuleFrame(rule: Ruleset, frame: Frame, e: Lane, sourceOwner?: object | null): Frame {
   const priorPlacement = frame.rulePlacements?.get(rule);
   let childFrame: Frame;
   if (priorPlacement?.parent === frame) {
     childFrame = priorPlacement;
   } else {
     childFrame = makeFrame(frame, rule.rules, collectMixins(rule.rules), collectDeclIndex(rule.rules), null);
-    childFrame.sourceOwner = sourceOwnerForBody(rule.rules, frame, e);
+    childFrame.sourceOwner = sourceOwner === undefined ? sourceOwnerForBody(rule.rules, frame, e) : sourceOwner;
     childFrame.outputOf = rule;
 
     /*
@@ -17260,7 +17295,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
         }
         case 'AtRuleStatement': {
           /* [charset] Written only at the top of the output ({@link hoistCharsets}), never where it stands. */
-          if (isCharset(node)) {
+          if (isCharset(node) || writeHoistedCssImport(node, composed === null && e.depth === 0, frame, e)) {
             break;
           }
           if (nested) {
@@ -17814,7 +17849,7 @@ function expandCall(
               leakBodyVars(frame, def.rules, callFrame, e);
               publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
               if (def.ruleMixin !== true) {
-                publishExplicitRulesets(frame, def.rules, callFrame);
+                publishExplicitRulesets(frame, def.rules, callFrame, e);
               }
               return run(index + 1);
             });
@@ -17841,7 +17876,7 @@ function expandCall(
            */
           publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
           if (def.ruleMixin !== true) {
-            publishExplicitRulesets(frame, def.rules, callFrame);
+            publishExplicitRulesets(frame, def.rules, callFrame, e);
           }
         }
       };
@@ -18173,7 +18208,7 @@ function publishOrderedMixins(frame: Frame, index: OrderedMixinIndex | null, hom
  * frame, retaining its call bindings and any ordered imports. Ruleset-mixins do
  * not use this path: they already participate in ordinary ruleset dispatch.
  */
-function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Frame): void {
+function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Frame, e: Lane): void {
   for (const statement of rules) {
     if (statement.type !== 'Ruleset') {
       continue;
@@ -18187,11 +18222,8 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
      */
     let placement = callFrame.rulePlacements?.get(statement);
     if (placement?.parent !== callFrame) {
-      placement = makeFrame(callFrame, statement.rules, collectMixins(statement.rules), collectDeclIndex(statement.rules), null);
-
       /* The rule sits in the called body, so it is that body's document's source. */
-      placement.sourceOwner = callFrame.sourceOwner;
-      (callFrame.rulePlacements ??= new Map()).set(statement, placement);
+      placement = activateRuleFrame(statement, callFrame, e, callFrame.sourceOwner ?? null);
     }
     (activationOf(frame).publishedRules ??= []).push({ rule: statement, frame: placement });
   }
@@ -18201,7 +18233,7 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
  *  `@x: $if (…) { {…} } $else { {…} }; @x();` splices the chosen arm's
  *  declarations. `undefined` when no arm matches. */
 function pickIfBranch(node: IfValue, frame: Frame | null, e: Lane): ValueSlot | undefined {
-  return settled(pickIfValue(node, frame, e, taken => taken), '$if value-arm block resolution', node, e);
+  return settled(pickIfValue(node, frame, e, taken => taken, () => undefined), '$if value-arm block resolution', node, e);
 }
 
 /**
@@ -18481,31 +18513,6 @@ interface EvaluatedForItems {
 }
 
 type ForItems = ForItem[] | EvaluatedForItems | CollectionOverlay<ValueCollectionEntry> | ValueCollection;
-
-/** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
-function hasTopLevelComma(text: string): boolean {
-  let depth = 0;
-  let quote = '';
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
-    if (quote !== '') {
-      if (c === quote) {
-        quote = '';
-      }
-      continue;
-    }
-    if (c === '"' || c === '\'') {
-      quote = c;
-    } else if (c === '(' || c === '[' || c === '{') {
-      depth++;
-    } else if (c === ')' || c === ']' || c === '}') {
-      depth--;
-    } else if (depth === 0 && c === ',') {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * If the iterable resolves to an executable detached ruleset, return its
@@ -20507,59 +20514,32 @@ function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | nul
 }
 
 /**
- * Write the planner-carried CSS prelude in document order. Each item retains the
- * lexical frame and driver-owned source scope in which its typed target was
- * authored; the later import splice sees the same canonical node in the
- * `hoistedCssImports` set and therefore emits no second copy.
+ * Reserve the output prelude's document-root CSS imports in document order:
+ * one chunk per import, the planner's when it carried them, else the root's
+ * own, a duplicate reserving none ({@link Emit.hoistedCssImports}). The render
+ * walk writes each where it reaches it ({@link writeHoistedCssImport}).
  */
-function emitPlannedCssImports(plan: CssImportPlan | null, e: Emit): MaybePromise<void> {
-  if (plan === null) {
+function reserveHoistedCssImports(rules: Statement[], plan: CssImportPlan | null | undefined, e: Emit): void {
+  if (plan !== undefined) {
+    if (plan === null) {
+      return;
+    }
+    const nodes = plan.nodes!;
+    const links = plan.next!;
+    for (let index = plan.head; index !== -1; index = links[index]!) {
+      const node = nodes[index]!;
+      if (node !== null) {
+        e.hoistedCssImports!.get(node)!.push(e.chunks.length);
+        put(e, '');
+      }
+    }
     return;
   }
-  const nodes = plan.nodes!;
-  const targets = plan.targets!;
-  const frames = plan.frames!;
-  const withinDocuments = plan.withinDocuments!;
-  const links = plan.next!;
-  const run = (from: number): MaybePromise<void> => {
-    let index = from;
-    while (index !== -1) {
-      const node = nodes[index]!;
-      if (node === null) {
-        index = links[index]!;
-        continue;
-      }
-      const withinDocument = withinDocuments[index]!;
-      if (withinDocument === null) {
-        emitAtRuleStatementRaw(node, frames[index]!, e, targets[index]!);
-        index = links[index]!;
-        continue;
-      }
-      let next = index;
-      const emitted = inDocument(e, withinDocument, () => {
-        while (next !== -1 && withinDocuments[next] === withinDocument) {
-          const scopedNode = nodes[next]!;
-          if (scopedNode !== null) {
-            emitAtRuleStatementRaw(scopedNode, frames[next]!, e, targets[next]!);
-          }
-          next = links[next]!;
-        }
-      });
-      if (isThenable(emitted)) {
-        return emitted.then(() => run(next));
-      }
-      index = next;
-    }
-  };
-  return run(plan.head);
-}
-
-function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void {
   if (e.s.context?.options.processImports === false) {
     return;
   }
   const seen = new Set<string>();
-  let hoisted: Set<AtRuleStatement> | null = null;
+  let hoisted: Map<AtRuleStatement, number[]> | null = null;
   for (const child of rules) {
     if (child.type !== 'AtRuleStatement') {
       continue;
@@ -20569,16 +20549,50 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
       continue;
     }
     const key = cssImportKey(child, target);
-    (hoisted ??= new Set()).add(child);
+
+    /* The same node can stand twice in a built tree: it keeps the chunks it has. */
+    const slots = (hoisted ??= new Map()).get(child) ?? [];
+    hoisted.set(child, slots);
     if (key !== null) {
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
     }
-    emitAtRuleStatementRaw(child, frame, e, target);
+    slots.push(e.chunks.length);
+    put(e, '');
   }
   e.hoistedCssImports = hoisted;
+}
+
+/**
+ * Whether `node` is a hoisted CSS import reached at the document root (`root`:
+ * outside any rule, nested or collapsed), where it
+ * is written into the next chunk reserved for it in the output prelude (none
+ * for a duplicate), evaluated here, at its place in the document, so its
+ * condition reads what is declared before it (`$bp: 600px; @import "a.css"
+ * (min-width: $bp)`). Positions recorded while writing it map to that chunk. A
+ * placement of the same sheet in a block or a `(reference)` import is not the
+ * hoisted one, and is written where it stands, as before.
+ */
+function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Frame, e: Emit): boolean {
+  const slots = e.hoistedCssImports?.get(node);
+  if (slots === undefined || !root || e.atRuleBodyDepth !== 0 || e.referenceImportDepth !== 0) {
+    return false;
+  }
+  const slot = slots.shift();
+  if (slot === undefined) {
+    return true;
+  }
+  const from = e.chunks.length;
+  const marked = e.positions?.length ?? 0;
+  emitAtRuleStatementRaw(node, frame, e, cssImportTarget(node)!);
+  e.chunks[slot] = e.chunks.splice(from).join('');
+  for (let index = marked; index < (e.positions?.length ?? 0); index++) {
+    e.positions![index]!.start = slot;
+    e.positions![index]!.end = slot + 1;
+  }
+  return true;
 }
 
 /**

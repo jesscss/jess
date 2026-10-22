@@ -1,6 +1,6 @@
 import { run } from 'parseman';
 import { makeLessRegistry } from '@jesscss/fns';
-import { valueLayoutOf } from '@jesscss/core/ast';
+import { forgivenSelectorItemsOf, valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
@@ -461,7 +461,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
         { type: 'Quoted', value: 'theme.css' },
-        { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } } }] }
+        { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Operation', operator: ':' } }] }
       ] } }]
     });
 
@@ -1902,25 +1902,36 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  /* `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1, owner 2026-10-20): a non-selector item is kept as written. */
+  it.each([
+    ['.card:is(.active, 1px) { color: blue; }', '.card:is(.active, 1px) {\n  color: blue;\n}\n', ['1px']],
+    ['.a:where() { color: blue; }', '.a:where() {\n  color: blue;\n}\n', []],
+    ['.a:is(.b /* c */, .d) { color: blue; }', '.a:is(.b, .d) {\n  color: blue;\n}\n', []]
+  ])('parses %s and records each item that is not a selector', (source, css, forgiven) => {
+    const document = parse(source);
+    expect(serialize(document).css).toBe(css);
+    expect(forgivenSelectorItemsOf(document).map(item => item.written)).toEqual(forgiven);
+  });
+
   it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {
     const accepted = (source: string): boolean => {
-      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace, state: { source } });
       return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
     };
 
     /*
      * `of <selector>` is defined only for the nth-child index family (Selectors-4
      * §6.6.2); the type-index families reject it, and a non-selector argument to a
-     * selector-arg pseudo (`:not`/`:is`) now rejects rather than falling through to
+     * selector-arg pseudo (`:not`) now rejects rather than falling through to
      * opaque text. Bare `:nth-child`/`:nth-of-type` (no parens) reject too. This
-     * closes the SCSS divergences against css/jess/less.
+     * closes the SCSS divergences against css/jess/less. `:is()` and `:where()`
+     * take a forgiving selector list instead, which keeps a non-selector item.
      */
     for (const source of [
       '.card:nth-of-type(2n of .a) { color: blue; }',
       '.card:nth-of-type(n of .a) { color: blue; }',
       '.card:nth-last-of-type(-n+3 of .a) { color: blue; }',
       '.card:not(2n+1) { color: blue; }',
-      '.card:is(2n+1) { color: blue; }',
       '.card:nth-child { color: blue; }',
       '.card:nth-of-type { color: blue; }'
     ]) {
@@ -1931,6 +1942,7 @@ describe('SCSS canonical-AST grammar', () => {
       'a:nth-of-type(2n+1) { color: blue; }',
       '.card:not(.a) { color: blue; }',
       '.card:is(.a, .b) { color: blue; }',
+      '.card:is(2n+1) { color: blue; }',
       '.card:has(> .b) { color: blue; }',
       '.card:has(+ .b) { color: blue; }',
       '.card:has(~ .b) { color: blue; }',
@@ -2740,7 +2752,7 @@ describe('SCSS @charset inherits the CSS <string> prelude', () => {
   it('keeps the well-formed forms, including the SCSS-only comment position', () => {
     /* A block comment is a NODE in SCSS and TRIVIA in CSS, which is why the CSS
      * rule spells the comment positions instead of taking a bare string. */
-    for (const source of ['@charset "utf-8";', '@charset /* keep */ "utf-8";', "@charset 'utf-8'  ;"]) {
+    for (const source of ['@charset "utf-8";', '@charset /* keep */ "utf-8";', '@charset \'utf-8\'  ;']) {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
@@ -2821,9 +2833,12 @@ describe('statement spelling of the typed at-rules', () => {
 });
 
 /*
- * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
- * builds. OPEN for the owner: SCSS reads `if(` as Sass's
- * `if($condition, $if-true, $if-false)`, so a branch list stops the parse.
+ * CSS `if()` (css-values-5 §8.3, ledger P38) is a value-position conditional,
+ * the `IfValue` Sass's `if($c, a, b)` builds too (owner 2026-10-19: "parse to
+ * the equivalent structure that would be intepreted the same way in .jess"): a
+ * CSS test is a `css` condition the browser answers, written as authored; a
+ * `sass()` condition is Sass's truth test; `else` is the branch with no
+ * condition. A test's arguments are its authored text, as Dart Sass reads them.
  */
 describe('CSS if()', () => {
   const declarationValue = (document: Stylesheet): unknown => {
@@ -2831,20 +2846,67 @@ describe('CSS if()', () => {
     return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
   };
 
-  it.fails.each([
+  it.each([
     'if(media(width >= 600px): 1px; else: 2px)',
     'if(supports(display: grid): grid; else: block)',
     'if(style(--theme: dark): white; else: black)',
     'if(supports(selector(.a ~ .b)): a; else: b)',
     'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
     'if(media(print) and supports(display: grid): a; else: b)'
-  ])('builds the css tree for %s', (value) => {
-    const source = `a { x: ${value}; }`;
-    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  ])('builds an IfValue for %s', (value) => {
+    expect(declarationValue(parse(`a { x: ${value}; }`))).toMatchObject({ type: 'IfValue', _asCall: null });
+  });
+
+  /* A test is css's structure, its values SCSS values (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
+  it('reads a test as css reads it, with SCSS values, and sass() as a truth test', () => {
+    expect(bare(declarationValue(parse('a { x: if(media(width >= $w) and sass($a): 1px; else: 2px); }')))).toEqual({
+      type: 'IfValue',
+      branches: [
+        {
+          guard: {
+            g: 'and',
+            left: {
+              g: 'css',
+              value: {
+                type: 'FunctionCall',
+                name: 'media',
+                args: [{
+                  name: undefined,
+                  sigil: undefined,
+                  spread: false,
+                  value: {
+                    type: 'Operation',
+                    operator: '>=',
+                    left: { type: 'Keyword', src: 'width' },
+                    right: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'live' },
+                    inMathFunction: false,
+                    mathOutsideParens: true
+                  }
+                }],
+                modern: false
+              },
+              parens: 0
+            },
+            right: { g: 'truth', value: { type: 'Lookup', kind: 'var', name: 'a', raw: '@a', scope: 'live' }, parens: 0 },
+            word: 'and',
+            gluedAt: -1,
+            parens: 0
+          },
+          value: { type: 'Dimension', number: 1, unit: 'px', src: '1px' }
+        },
+        { guard: null, value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }
+      ],
+      trailingSemicolon: false,
+      name: 'if'
+    });
   });
 
   it('keeps Sass if() for any other first argument', () => {
     expect(declarationValue(parse('a { x: if($a, 1px, 2px); }'))).toMatchObject({ type: 'IfValue' });
+  });
+
+  it('reads media() as a call outside an if() condition', () => {
+    expect(declarationValue(parse('a { x: media(print); y: if($a, media($b), 2px); }'))).toMatchObject({ type: 'FunctionCall', name: 'media' });
   });
 });
 

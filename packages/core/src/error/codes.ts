@@ -30,6 +30,8 @@ export type JessErrorCode =
   | 'parse/ambiguous-not'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
+  | 'parse/arithmetic-outside-expression'
+  | 'parse/deprecated-if-function'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'compose/not-top-level'
@@ -74,6 +76,7 @@ export type JessErrorCode =
   | 'selector/parentless-ampersand'
   | 'selector/comma-list-interpolation'
   | 'css/glued-condition-keyword'
+  | 'css/forgiving-selector-item'
   | 'css/legacy-ie-syntax'
   | 'css/invalid-value-punctuation';
 
@@ -82,6 +85,24 @@ export type JessErrorCode =
  * Use `${placeholders}` for meta fields.
  */
 type Template = { summary: string; reason: string; fix: string };
+
+/**
+ * The text of `parse/leading-separator-value` (ledger P33): a value led by a
+ * `/` or `*` with nothing on its left, in every dialect that reads one.
+ */
+export function leadingSeparatorValueText(operator: string): Template {
+  return operator === '/'
+    ? {
+        summary: 'A value cannot start with "/".',
+        reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
+        fix: 'Write the path as url(/path) or as a string.'
+      }
+    : {
+        summary: `A value cannot start with "${operator}".`,
+        reason: `A \`${operator}\` goes between two values, so it needs a value before it.`,
+        fix: 'Write the value it goes after, or remove it.'
+      };
+}
 
 const TEMPLATES = new Map<JessErrorCode, Template>([
   // Parse/Lex
@@ -175,12 +196,13 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       fix: 'Wrap the guard condition, for example: when (default()).'
     }
   ],
+  ['parse/leading-separator-value', leadingSeparatorValueText('/')],
   [
-    'parse/leading-separator-value',
+    'parse/arithmetic-outside-expression',
     {
-      summary: 'A Less value cannot start with "/"',
-      reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
-      fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+      summary: '`*` multiplies only inside $( … ).',
+      reason: 'A .jess value computes only inside $( … ), so outside it this `*` would be written as it is, not multiplied.',
+      fix: 'Write the operation inside $( … ), for example $(2 * 3).'
     }
   ],
   [
@@ -189,6 +211,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'A mixin reference is not a value',
       reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
       fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
+    }
+  ],
+  [
+    'parse/deprecated-if-function',
+    {
+      summary: 'Sass\'s if($condition, $if-true, $if-false) is deprecated in favor of CSS if()',
+      reason: 'Dart Sass deprecates its if() function (deprecation "if-function"): CSS if() (css-values-5 §8.3) takes its place, with a sass() condition for one decided when the stylesheet compiles.',
+      fix: 'Write if(sass($condition): $if-true; else: $if-false).'
     }
   ],
   [
@@ -472,6 +502,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${keyword}(` is read by CSS as a function, so this condition never matches — write `${keyword} (` if you meant the keyword',
       reason: 'An identifier glued to "(" is one function token (CSS Syntax 3 §4.3.4), so `${keyword}(` is an unknown function, not the `${keyword}` keyword, and a condition holding it matches nothing (Media Queries 4 §3.2). It is written as authored.',
       fix: 'Write `${keyword} (`, with a space, if you meant the keyword.'
+    }
+  ],
+  [
+    'css/forgiving-selector-item',
+    {
+      summary: '${item} is not a selector; browsers ignore it here',
+      reason: '`:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1): an item that is not a complex selector (an empty item, one that opens with a combinator, or one that is not selector syntax) is dropped and the others still match. It is written as authored.',
+      fix: 'Remove it, or write the selector you meant.'
     }
   ],
   [

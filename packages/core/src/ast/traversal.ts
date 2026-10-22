@@ -128,6 +128,7 @@ export type AstEdge =
   | 'guard.logical.right'
   | 'guard.not.inner'
   | 'guard.truth.value'
+  | 'guard.css.value'
   | 'guard.call.arg';
 
 export interface AstCursor {
@@ -269,6 +270,9 @@ function walkGuard(
       break;
     case 'truth':
       walkValueSlot(guard.value, hooks, 'guard.truth.value', guard, 0, depth + 1);
+      break;
+    case 'css':
+      walkValueSlot(guard.value, hooks, 'guard.css.value', guard, 0, depth + 1);
       break;
     case 'call':
       for (let i = 0; i < guard.args.length; i++) {

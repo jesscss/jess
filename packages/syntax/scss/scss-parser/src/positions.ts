@@ -9,11 +9,20 @@
  */
 import type { Stylesheet } from '@jesscss/core/ast';
 import { scssPositionsGrammar } from './grammar/ast/positions.js';
-import { parseWith } from './parse-with.js';
+import { parseRecoveringWith, parseWith, type ScssParsed } from './parse-with.js';
 
-export { ScssImportPostludeError, ScssParseError } from './parse-error.js';
+export type { ScssParsed } from './parse-with.js';
+export { ScssImportPostludeError, ScssParseError, type ScssRecoveredError } from './parse-error.js';
 
 /** Parse SCSS into the canonical AST v2 document with line/column facts. */
 export function parse(input: string): Stylesheet {
   return parseWith(scssPositionsGrammar, input);
+}
+
+/**
+ * Parse SCSS, keeping the located errors the grammar recovered from (ledger
+ * P45) beside the document instead of raising the first.
+ */
+export function parseRecovering(input: string): ScssParsed {
+  return parseRecoveringWith(scssPositionsGrammar, input);
 }

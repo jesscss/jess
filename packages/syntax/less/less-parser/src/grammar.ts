@@ -29,9 +29,9 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
-import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState } from './parse-state.js';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
@@ -158,7 +158,7 @@ import {
   variableNameText,
   variableValueSlot
 } from './grammar-helpers.js';
-import { selectorCaptureFrom } from './selector-capture.js';
+import { capturedPseudoFrom, selectorCaptureFrom } from './selector-capture.js';
 import { operatorRun, runOperand } from './delim-runs.js';
 import type {
   BodyExtendFact,
@@ -216,7 +216,6 @@ type LessRules = {
   FunctionArgument: Combinator<ValueSlot | LessCallArg>;
   FunctionScalarArgument: Combinator<ValueNode>;
   FunctionKeywordArgument: Combinator<LessCallArg>;
-  ArgumentValueSequence: Combinator<ValueSlot>;
   FunctionCondition: Combinator<ValueSlot>;
   FunctionConditionOr: Combinator<FunctionConditionFact>;
   FunctionConditionAnd: Combinator<FunctionConditionFact>;
@@ -240,6 +239,7 @@ type LessRules = {
   MathValue: Combinator<ValueNode>;
   EscapedParen: Combinator<ValueNode>;
   Paren: Combinator<ValueNode>;
+  ValueRun: Combinator<ValueSlot>;
   ValueSequence: Combinator<ValueSlot>;
   ValueList: Combinator<ValueSlot>;
   VariableValue: Combinator<ValueSlot>;
@@ -294,6 +294,10 @@ type LessRules = {
   /** A media query's term outside parentheses: the CSS base's slot, with Less's `@{…}` / `@name` terms. */
   MediaTypeTerm: Combinator<ValueNode>;
   RoutedQueryFunction: Combinator<FunctionCall | Block>;
+  /** A query feature's name: the CSS base's slot, with Less's `@{…}`. */
+  QueryFeatureName: Combinator<string | Interpolation>;
+  /** What a media feature's contents open with: the CSS base's slot, with a name an interpolation opens. */
+  MediaFeatureOpener: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   /* `style()`, `scroll-state()`, or a function-form general-enclosed routed through its opener. */
   ContainerStyleQuery: Combinator<unknown>;
@@ -344,6 +348,7 @@ type LessRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
+  ForgivingSelectorRest: Combinator<ForgivingRest>;
   SelectorList: Combinator<SelectorList>;
   ExtendTarget: Combinator<ExtendTargetListFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
@@ -393,12 +398,17 @@ type SharedSyntax = {
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
+  // Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list.
+  ForgivingSelectorList: Combinator<SelectorList>;
   // Inherited from the CSS base: the media query list (`@media`, an import postlude).
   QueryPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base: an only-clause or a chain of media terms.
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: a media type, keyword or function term — MediaTypeTerm's last arm.
   QueryIdentOrFunctionTerm: Combinator<ValueNode>;
+  // Inherited from the CSS base: the media feature opener dispatch — MediaFeatureOpener's first arm — and a feature's name and what follows it.
+  mediaFeatureOpener: Combinator<unknown>;
+  queryFeatureName: Combinator<unknown>;
   // Inherited from the CSS base: an and/or connective, or a peeked glued and( / or( operand.
   QueryConnective: Combinator<unknown>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -939,8 +949,8 @@ const functionConditionOperator = regex(/[<>=]*=~|[<>=]+/);
  * `punctuationValueCharacter` run less the characters Less reads itself: `@`,
  * `$`, `#`, `&`, `!`, `%`, `<`, `>`, the math operators, and `:` and `.` (see
  * `gluedDelim`). A `~` that opens an escape (`~"…"`, `~(…)`) is the escape: the
- * value piece is tried first. In a call argument `=` is a comparison
- * (`functionConditionStop` decides first).
+ * value piece is tried first. In a call argument `=` is a comparison (the
+ * value run's stop decides first: `valueRunEndAhead`, `gluedValueBoundary`).
  */
 const delimRun = regex(/[=~|^?]+/);
 
@@ -954,11 +964,11 @@ const gluedDelim = regex(/:|\.(?![0-9])/);
 
 /**
  * What may open a piece glued to the one before it (`gluedValueBoundary`): a
- * Less variable's `@`, a `delimRun`, or a `gluedDelim`. A call argument's set
- * leaves out `=`, its comparison.
+ * Less variable's `@`, a `delimRun`, or a `gluedDelim`. In a call argument `=`
+ * is a comparison, so a value run with a stop reads no glued `=`
+ * (`gluedValueBoundary`).
  */
 const gluedValueStart = regex(/[@=~|^?:.]/);
-const gluedArgumentStart = regex(/[@~|^?:.]/);
 const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
@@ -1824,7 +1834,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (fact === undefined) {
         throw new TypeError('Less function condition lost its fact.');
       }
-      return fact.run ?? condition(fact.guard, fact.src);
+      return fact.css ?? fact.run ?? condition(fact.guard, fact.src);
     }
   );
   /**
@@ -1847,7 +1857,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `not` is an explicit Less condition opener even without a comparison, in
   // BOTH its grouped `not(<cond>)` and its bare `not <operand>` forms — the
   // fixture asserts they behave identically. Without this the bare form is eaten
-  // as a two-keyword value by `ArgumentValueSequence` before `FunctionCondition`
+  // as a two-keyword value by the argument's `ValueSequence` before `FunctionCondition`
   // is tried, so `boolean(not false)` truthiness-tests the value instead of
   // negating. Keep this bounded opener test local: it only distinguishes the
   // condition form from an ordinary function value, and does not inspect an
@@ -1865,9 +1875,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // out of it. `@name:` must open no other operator, keeping `::` out.
   const keywordArgumentKey = regex(/@[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*:(?!:))/);
   const keywordArgumentOperator = regex(/[ \t\n\r\f]*:[ \t\n\r\f]*/);
+  /**
+   * A function argument's value run (`ValueRun`), stopping where a Less
+   * condition would go on, and failing when one follows so the argument is
+   * read as a FunctionCondition. Function bodies use their own argument
+   * delimiters, but comments *inside* an argument are still lexical trivia;
+   * the enclosing argument list owns comma, semicolon, close, and their trivia.
+   */
+  const conditionArgumentValue = withCtx(
+    (state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }),
+    noTrivia(sequence(g.ValueRun, not(functionConditionStop)))
+  );
   const FunctionKeywordArgument = node(
     'FunctionKeywordArgument',
-    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, g.ArgumentValueSequence)),
+    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, conditionArgumentValue)),
     (children, fields) => {
       const value = children.find(isLessValueSlotValue);
       if (value === undefined) {
@@ -1882,7 +1903,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(functionConditionNotAhead, g.FunctionCondition),
       g.FunctionKeywordArgument,
       g.FunctionScalarArgument,
-      g.ArgumentValueSequence,
+      conditionArgumentValue,
       g.FunctionCondition
     ),
     (children) => {
@@ -1909,7 +1930,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // comment after a delimiter is skipped exactly as it is before the first
   // argument. Block comments on argument boundaries stay in that trivia stream
   // and are replayed through ValueLayout; only comments inside a value sequence
-  // still reach ArgumentValueSequence.
+  // still reach the argument's ValueSequence.
   const functionArgumentSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingFunctionArgumentSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
   // A Less function argument: a quoted argument, a detached ruleset (a `{`
@@ -2231,9 +2252,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // value and query grammars share it without a recursive query-value cycle.
   const QueryColonFeature = node(
     'QueryColonFeature',
-    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathValue, literal(')')),
+    sequence(literal('('), g.QueryFeatureName, regex(/:[ \t\n\r\f]*/), g.MathValue, literal(')')),
     (children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(
-      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
+      block(operation(':', queryFeatureNameValue(children[1]), requireValueNode(children[3]), false,
         lessMathOutsideParens(state, ':'))),
       span
     )
@@ -2433,11 +2454,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     regex(/[*+]/),
     children => any(requireTerminalText(children[0]))
   );
+  /**
+   * What ends a value run at the gap before its next piece: a nested at-rule
+   * header, or the run's stop (`LessParseState.valueStop`) — a comparison
+   * operator, and in a function argument `and` or `or` too. The arms dispatch
+   * on the next character, so a run with no stop pays a gate only where an
+   * operator, `and` or `or` could start.
+   */
+  const valueRunEndAhead = choice(
+    nestedAtRuleValueStart,
+    {
+      gate: state => valueStopOf(state) !== undefined,
+      combinator: functionConditionOperator
+    },
+    {
+      gate: state => valueStopOf(state) === 'condition',
+      combinator: choice(functionConditionAnd, functionConditionOr)
+    }
+  );
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
     sequence(
       peek(whitespace),
-      not(nestedAtRuleValueStart),
+      not(valueRunEndAhead),
       choice(g.valuePiece, danglingOperator)
     )
   );
@@ -2450,18 +2489,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * value piece, so a glued escape (`a~"b"`, `a~(b)`) still reaches the escape
    * in `MathValue` before the delim arm; a `:` or `.` is the delim itself, never
    * a piece's start (`a.5em` is not `a` and `.5em`). In a call argument `=` is a
-   * comparison, so its glued set leaves it out.
+   * comparison, so a run with a stop glues no `=`, and neither does an operand
+   * run.
    */
   const gluedPiece = choice(
     sequence(gluedPunctuationDelim, g.valuePiece),
     sequence(not(gluedPunctuationStart), g.valuePiece)
   );
+  /**
+   * A value run's glued piece. `=` opens one too, except in a run with a stop
+   * (`LessParseState.valueStop`), where `=` is the comparison: the lookahead
+   * after the opener refuses an `=` there. It runs only once an opener is
+   * there, and its gate only at an `=`.
+   */
   const gluedValueBoundary = sequence(
     leaf(peek(gluedValueStart), () => ({ kind: 'glued-value-boundary' })),
-    gluedPiece
-  );
-  const gluedArgumentBoundary = sequence(
-    leaf(peek(gluedArgumentStart), () => ({ kind: 'glued-value-boundary' })),
+    not(choice({ gate: state => valueStopOf(state) !== undefined, combinator: literal('=') })),
     gluedPiece
   );
   const gluedBacktickValueBoundary = noTrivia(sequence(
@@ -2473,33 +2516,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     gluedValueBoundary,
     gluedBacktickValueBoundary
   );
-  // Function arguments are the one value context where top-level Less
-  // comparison/logical syntax has a separate continuation. Stop before that
-  // marker so the FunctionArgument family can route it through FunctionCondition;
-  // nested calls are already one value piece and therefore never leak an inner
-  // operator into their parent's decision.
-  const functionArgumentValueTriviaBoundary = sequence(
-    not(functionConditionStop),
-    valueTriviaBoundary
-  );
-  const functionArgumentValueContinuation = choice(
-    functionArgumentValueTriviaBoundary,
-    gluedArgumentBoundary,
-    gluedBacktickValueBoundary
-  );
   /**
    * An operand of a comparison or a paren group: a math run, and the component
    * values after it, read as a function argument reads them — a space run
    * (`1px 2px`), a delim Less gives no meaning and what follows it (`a.b`,
    * `a ~ b`), the run a value reads there (ledger N18) — up to the comparison
-   * operator, `and` or `or` that ends it, so `=` stays the comparison. With
+   * operator, `and` or `or` that ends it, so `=` stays the comparison — the
+   * `condition` stop a function argument's run has, wherever the operand is
+   * read (a paren group, a guard, a function condition). With
    * nothing after it it is the math run itself, left unfolded for its consumer;
    * with more, the run is a value's, so its math run is folded as a value's is
    * (`lessMathInValue`).
    */
   const OperandRun = node(
     'OperandRun',
-    noTrivia(sequence(g.MathSum, many(functionArgumentValueContinuation))),
+    noTrivia(sequence(
+      g.MathSum,
+      withCtx((state: LessParseState | undefined) => ({ ...state, valueStop: 'condition' as const }), many(valueContinuation))
+    )),
     (children, _fields, _span, _rawChildren, triviaLog, state) => runOperand(valuePieceReducerWithTrivia(
       [lessMathInValue(requireMathSum(children), state), ...children.slice(1)],
       triviaLog,
@@ -2529,28 +2563,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // nothing on ordinary values: it fails on its first character unless the next
   // non-space character is `@`, and even then stops at the declaration's own
   // terminator a few characters later.
-  const ValueSequence = node(
+  /**
+   * One value run, wherever it is read; only where it stops differs. A value
+   * has no stop, and a glued `=` joins it (`a=b`). A call argument reads the
+   * same run up to its comparison, which it sets as `LessParseState.valueStop`,
+   * read between the run's pieces: a function argument stops before a
+   * comparison operator, `and` or `or` (and fails when one follows, so the
+   * argument is a FunctionCondition instead); a mixin argument stops before a
+   * comparison operator only, reading `and` / `or` as words.
+   *
+   * A call argument reads the run itself (`ValueRun`). Every other caller
+   * reads `ValueSequence`, which clears a stop it was entered under, so a run
+   * nested inside a piece of an argument's run (`foo(~(a=b) c)`) never reads
+   * its parent's stop.
+   */
+  const ValueRun = node(
     'ValueSequence',
     noTrivia(sequence(g.valuePiece, many(valueContinuation))),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
   /**
-   * Function bodies use their own argument delimiters, but comments *inside*
-   * an argument are still lexical trivia. This local value term therefore uses
-   * the same continuation boundary as ordinary values. The terminal condition
-   * check declines only when the next token belongs to FunctionCondition; the
-   * enclosing argument list owns comma, semicolon, close, and their trivia.
-   * This avoids speculatively parsing and rolling back that parent-owned
-   * boundary in the generated AST and CST tables.
+   * The value run every caller but a call argument reads: `ValueRun`, with any
+   * stop it is entered under cleared (see `ValueRun`).
    */
-  const ArgumentValueSequence = node(
-    'FunctionValueSequence',
-    noTrivia(sequence(
-      g.valuePiece,
-      many(functionArgumentValueContinuation),
-      not(functionConditionStop)
-    )),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
+  const ValueSequence = withCtx(
+    (state: LessParseState | undefined) => state?.valueStop === undefined ? state : { ...state, valueStop: undefined },
+    g.ValueRun
   );
   const ValueList = node(
     'ValueList',
@@ -3589,21 +3627,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  /*
-   * A mixin argument's value, read as a value is, except that it stops before a
-   * comparison operator and glues no `=`, as a call argument's does (its stop
-   * leaves out `and` / `or`, which a mixin argument reads as words).
-   */
-  const callArgumentContinuation = choice(
-    sequence(not(sequence(optional(whitespace), functionConditionOperator)), valueTriviaBoundary),
-    gluedArgumentBoundary,
-    gluedBacktickValueBoundary
-  );
-  const callArgumentSequence = node(
-    'ValueSequence',
-    noTrivia(sequence(g.valuePiece, many(callArgumentContinuation))),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
-  );
   const CallArgumentValue = node(
     'CallArgumentValue',
     /*
@@ -3611,8 +3634,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
      * comparison of two plain values compares (`.m(1 < 2)` binds `true`); a
      * chain, a spelling Less has no operator for, a side that is a delim run
      * or an operator with nothing after it is the CSS run it is (ledger N18).
+     * Its value run stops before a comparison operator and glues no `=` (it
+     * reads `and` / `or` as words).
      */
-    choice(attempt(g.FlatMixinCall), g.ValueBlock, sequence(callArgumentSequence, many(sequence(functionConditionOperator, optional(callArgumentSequence))))),
+    choice(
+      attempt(g.FlatMixinCall),
+      g.ValueBlock,
+      withCtx(
+        (state: LessParseState | undefined) => ({ ...state, valueStop: 'comparison' as const }),
+        sequence(g.ValueRun, many(sequence(functionConditionOperator, optional(g.ValueRun))))
+      )
+    ),
     (children, _fields, _span, rawChildren, triviaLog, state) => {
       const value = children[0];
       if (children.length % 2 === 0) {
@@ -3814,14 +3846,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SupportsFeature',
     sequence(
       literal('('),
-      g.Identifier,
+      g.QueryFeatureName,
       optional(sequence(literal(':'), g.SupportsValue)),
       literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
-      const property = keyword(requireToken(children[1]).value);
-      const value = children.find(isValueNode);
-      return value === undefined
+      const property = queryFeatureNameValue(children[1]);
+      const value = children.findLast(isValueNode);
+      return value === undefined || value === property
         ? block(property)
         : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
     }
@@ -3883,24 +3915,48 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(g.MathValue, g.queryLeaf),
     children => requireValueNode(children[0])
   );
+  /*
+   * A query feature's name, which may be interpolated (`(min-@{d}: 1px)`,
+   * `(@{f}: 1px)`). css's `QueryFeatureName` slot: in css's media opener
+   * dispatch it owns the identifier the dispatch read (`routed`), and anywhere
+   * else, as in the `@container` and `@supports` features here and a media
+   * feature an interpolation opens (`MediaFeatureOpener`), it reads it.
+   */
+  const QueryFeatureName = node(
+    'Property',
+    noTrivia(sequence(
+      routed(choice(g.Identifier, g.Interpolation)),
+      many(choice(g.Interpolation, g.InterpolatedPropertyTail))
+    )),
+    children => queryFeatureNameFrom(children.map(child => isInterpolationFact(child) ? interpolation([{ ref: child.ref, unquote: true }]) : child))
+  );
+
+  /*
+   * css's media opener dispatch, then a name it cannot read: one an
+   * interpolation opens (`(@{f}: @bp)`), read once as the name.
+   */
+  const MediaFeatureOpener = choice(
+    g.mediaFeatureOpener,
+    g.queryFeatureName
+  );
   const QueryBareFeature = node(
     'QueryBareFeature',
-    sequence(literal('('), g.Identifier, literal(')')),
-    children => block(keyword(requireToken(children[1]).value))
+    sequence(literal('('), g.QueryFeatureName, literal(')')),
+    children => block(queryFeatureNameValue(children[1]))
   );
   const QueryComparisonFeature = node(
     'QueryComparisonFeature',
     sequence(
-      literal('('), g.Identifier, g.QueryComparisonOperator, g.MathValue,
+      literal('('), g.QueryFeatureName, g.QueryComparisonOperator, g.MathValue,
       optional(sequence(g.QueryComparisonOperator, g.MathValue)), literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
-      const values = children.filter(isValueNode);
+      const values = children.slice(2).filter(isValueNode);
       const operators = lessQueryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query comparison lost a value or operator.');
       }
-      let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!, false,
+      let comparison = operation(operators[0]!, queryFeatureNameValue(children[1]), values[0]!, false,
         lessMathOutsideParens(state, operators[0]!));
       if (operators.length === 2) {
         if (values[1] === undefined) {
@@ -3915,16 +3971,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryRangeFeature = node(
     'QueryRangeFeature',
     sequence(
-      literal('('), g.MathValue, g.QueryComparisonOperator, g.Identifier,
+      literal('('), g.MathValue, g.QueryComparisonOperator, g.QueryFeatureName,
       optional(sequence(g.QueryComparisonOperator, g.MathValue)), literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
-      const values = children.filter(isValueNode);
+      const values = children.filter(isValueNode).filter(value => value !== children[3]);
       const operators = lessQueryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query range lost a value or operator.');
       }
-      let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value), false,
+      let comparison = operation(operators[0]!, values[0]!, queryFeatureNameValue(children[3]), false,
         lessMathOutsideParens(state, operators[0]!));
       if (operators.length === 2) {
         if (values[1] === undefined) {
@@ -4795,7 +4851,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Keep it local, like CSS's generic pseudo argument: it is an implementation
   // component of the public pseudo production, not a second parser API.
   // Retain the parsed `SelectorList` rather than collapsing it to text. A
-  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // whitelisted selector-function pseudo (`:not`/`:has`/…) keeps it as structured
   // `args`; `PseudoSelector` joins the opaque `:global`/`:local`
   // fallback via `selectorBranchCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
@@ -4855,7 +4911,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * `selector(<selector-list>)` in value position is a selector capture (owner
    * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
-   * `selector(` opener here, and its argument is the `:is()` family's
+   * `selector(` opener here, and its argument is the strict selector pseudos'
    * `pseudoSelectorArgument`, read as `pseudoSelectorRouted` reads it: the
    * padding before `)` is the argument's. It is a selector-valued Less value,
    * not a text capture: the selector grammar owns every branch boundary and the
@@ -4871,14 +4927,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     selectorCaptureRest,
     children => scannedLeaf(children)
   );
-  const SelectorCapture = node(
-    'SelectorCapture',
-    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(
-      optional(pseudoSelectorArgument),
-      optional(InvalidSelectorCaptureArgument),
-      literal(')')
-    ))),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
+  /*
+   * A capture's routed opener and argument, which a selector pseudo inside the
+   * capture reads too (`capturedPseudoRouted`): the selector list as far as it
+   * goes, then any rest to `)`.
+   */
+  const capturedArgument = sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(
+    optional(pseudoSelectorArgument),
+    optional(InvalidSelectorCaptureArgument),
+    literal(')')
+  )));
+  /*
+   * The capture's state is derived once on entry and read by its reducer, so
+   * a selector pseudo in the argument can record what it could not read.
+   */
+  const SelectorCapture = withCtx(
+    (state: LessParseState | undefined) => ({ ...state, selectorCapture: {} }),
+    node(
+      'SelectorCapture',
+      capturedArgument,
+      (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
+    )
   );
   const pseudoOpen = token(noTrivia(sequence(
     regex(/::?(?![ \t\n\r\f])/),
@@ -4898,6 +4967,48 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       requireToken(children[0]).value.slice(0, -1),
       children[1]
     )
+  );
+  /*
+   * The CSS base's rest of a `:is()` / `:where()` item, reading Less's `@{…}`
+   * there as a selector does, so it evaluates in a kept item.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      oneOrMore(choice(
+        g.VariableInterpolation,
+        sequence(
+          not(choice(literal(','), literal(')'), literal('@{'))),
+          scanTo(choice(literal(','), literal(')'), literal('@{')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')] })
+        )
+      ))
+    ),
+    children => forgivingSelectorRest(children.map(child => isInterpolationFact(child) ? interpolation([{ ref: child.ref, unquote: true }]) : child))
+  );
+  /*
+   * `:is()` / `:where()`: the CSS base's forgiving selector list, whose items
+   * are Less selectors, interpolation and all; one that is not a selector is
+   * kept as written, in a capture too.
+   */
+  const forgivingPseudoRouted = node(
+    'PseudoSelector',
+    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(g.ForgivingSelectorList, literal(')')))),
+    children => staticSelectorPseudoFrom(
+      requireToken(children[0]).value.slice(0, -1),
+      children[1]
+    )
+  );
+  /*
+   * Inside a capture, a selector pseudo with a strict argument reads it as the
+   * capture does, so a non-selector or interpolated argument
+   * (`selector(.a:not(@{t}))`) is recovered where it stands and reported by
+   * the capture (P45).
+   */
+  const capturedPseudoRouted = node(
+    'PseudoSelector',
+    capturedArgument,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => capturedPseudoFrom(children, span, state)
   );
   const interpolatedArgumentPseudoRouted = node(
     'InterpolatedArgumentPseudo',
@@ -4947,9 +5058,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const pseudo = dispatch(
     pseudoOpen,
+    caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
-      choice(pseudoSelectorRouted, interpolatedArgumentPseudoRouted)
+      [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
+      choice(
+        { gate: state => selectorCaptureOfState(state) !== undefined, combinator: capturedPseudoRouted },
+        pseudoSelectorRouted,
+        interpolatedArgumentPseudoRouted
+      )
     ),
     caseOf(':lang(', choice(langPseudoRouted, interpolatedArgumentPseudoRouted)),
     caseOf(':dir(', choice(dirPseudoRouted, interpolatedArgumentPseudoRouted)),
@@ -4965,9 +5081,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // selector surface.
   const staticPseudoDispatch = dispatch(
     pseudoOpen,
+    caseOf([':is(', '::is(', ':where(', '::where('], forgivingPseudoRouted),
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
-      pseudoSelectorRouted
+      [':not(', '::not(', ':has(', '::has(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
+      choice(
+        { gate: state => selectorCaptureOfState(state) !== undefined, combinator: capturedPseudoRouted },
+        pseudoSelectorRouted
+      )
     ),
     caseOf(':lang(', langPseudoRouted),
     caseOf(':dir(', dirPseudoRouted),
@@ -5669,7 +5789,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FunctionArgument,
     FunctionScalarArgument,
     FunctionKeywordArgument,
-    ArgumentValueSequence,
     FunctionCondition,
     FunctionConditionOr,
     FunctionConditionAnd,
@@ -5694,6 +5813,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     MathValue,
     EscapedParen,
     Paren,
+    ValueRun,
     ValueSequence,
     ValueList,
     VariableValue,
@@ -5747,6 +5867,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     QueryColonFeature,
     MediaTypeTerm,
     RoutedQueryFunction,
+    QueryFeatureName,
+    MediaFeatureOpener,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,
@@ -5799,6 +5921,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ExtendStatement,
     RulesetWithExtends,
     RelativeSelector,
+    ForgivingSelectorRest,
     NestedRulesetWithExtends,
     Quoted,
     LiteralQuoted,

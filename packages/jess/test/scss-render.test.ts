@@ -75,6 +75,12 @@ describe('scss plugin render-through', () => {
     expect(css).toBe('@font-face {\n  src: local(Foo/Bar/Baz);\n}\na {\n  b: foo(c/d) e/f;\n}\n');
   });
 
+  /* A space after an interpolation separates two values; only a glued chunk continues it. */
+  it('keeps the space after an interpolation in a value', async () => {
+    const css = await new Compiler().renderString('$w: 1px; .a { border: #{$w} solid red; outline: #{ $w } solid red; }', { extension: '.scss' });
+    expect(css).toBe('.a {\n  border: 1px solid red;\n  outline: 1px solid red;\n}\n');
+  });
+
   it('honors an explicitly configured scss plugin', async () => {
     const compiler = new Compiler({
       compile: { plugins: [scssPlugin()] }

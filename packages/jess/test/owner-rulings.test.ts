@@ -199,6 +199,33 @@ describe('owner rulings (Less 5)', () => {
     await expect(render('@supports selector(.a ~ .b) { .x { c: d; } }')).resolves.toBe('@supports selector(.a ~ .b) {\n  .x {\n    c: d;\n  }\n}\n');
   });
 
+  it('P49 (owner 2026-10-20): a selector() capture is the selector list & and selector.parse() are', async () => {
+    await expect(render('@s: selector(.a, .b > .c);\n.x { n: length(@s); v: @s; }')).resolves.toBe('.x {\n  n: 2;\n  v: .a, .b > .c;\n}\n');
+    await expect(compile('$s: selector(.a, .b);\n.a, .b { own: &; captured: $s; }', '.jess')).resolves.toBe('.a,\n.b {\n  own: .a, .b;\n  captured: .a, .b;\n}\n');
+  });
+
+  it('P49, P50 (owner 2026-10-20): a selector list interpolated into a selector groups in every dialect, .scss included', async () => {
+    const grouped = '.toolbar :is(.btn, .button):hover {\n  color: red;\n}\n';
+    await expect(render('@buttons: selector(.btn, .button);\n.toolbar @{buttons}:hover { color: red; }')).resolves.toBe(grouped);
+    await expect(compile('@use "sass:selector";\n$buttons: selector.parse(".btn, .button");\n.toolbar #{$buttons}:hover { color: red; }', '.scss')).resolves.toBe(grouped);
+    await expect(compile('.btn, .button {\n  .toolbar #{&}:hover { color: red; }\n}', '.scss'))
+      .resolves.toBe('.btn,\n.button {\n  .toolbar :is(.btn, .button):hover {\n    color: red;\n  }\n}\n');
+  });
+
+  it('P49, P50 (owner 2026-10-21): a selector value interpolates as & is placed, a plain comma list as text', async () => {
+    await expect(render('@fruits: selector(apple, satsuma);\n.fruit-cap-@{fruits} { c: d; }')).resolves.toBe('.fruit-cap-:is(apple, satsuma) {\n  c: d;\n}\n');
+    await expect(render('@fruits: apple, satsuma;\n.fruit-cap-@{fruits} { c: d; }')).resolves.toBe('.fruit-cap-apple,\n.fruit-cap-satsuma {\n  c: d;\n}\n');
+    await expect(render('@fruits: selector(apple, satsuma);\n@{fruits}-cap { c: d; }')).resolves.toBe('apple-cap,\nsatsuma-cap {\n  c: d;\n}\n');
+    await expect(render('@fruits: apple, satsuma;\n@{fruits}:hover { c: d; }')).resolves.toBe('apple:hover,\nsatsuma:hover {\n  c: d;\n}\n');
+    await expect(compile('.a, .b {\n  #{&}__x { c: d; }\n}', '.scss')).resolves.toBe('.a,\n.b {\n  .a__x,\n  .b__x {\n    c: d;\n  }\n}\n');
+  });
+
+  it('P49 (owner 2026-10-21): a plain comma list standing alone repeats the rule per item; a selector value is one :is() group', async () => {
+    await expect(render('@headings: h2, h3;\n.article @{headings} { margin-top: 0; }')).resolves.toBe('.article h2,\n.article h3 {\n  margin-top: 0;\n}\n');
+    await expect(render('@headings: selector(h2, h3);\n.article @{headings} { margin-top: 0; }')).resolves.toBe('.article :is(h2, h3) {\n  margin-top: 0;\n}\n');
+    await expect(compile('$inline: b, i;\n.copy:not(#{$inline}) { color: red; }', '.scss')).resolves.toBe('.copy:not(:is(b, i)) {\n  color: red;\n}\n');
+  });
+
   it('X3 (owner 2026-10-05): an all extend groups equal-specificity extenders into an :is() at the match', async () => {
     await expect(render('.a .c { color: red; }\n.d:extend(.c all) {}\n#e:extend(.c all) {}'))
       .resolves.toBe('.a :is(.c, .d),\n.a #e {\n  color: red;\n}\n');

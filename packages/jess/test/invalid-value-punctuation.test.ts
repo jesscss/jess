@@ -126,7 +126,10 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['foo(x, a:b)', ':'],
     ['a<b', '<'],
     ['a>b', '>'],
-    ['foo(a<b<c)', '<']
+    ['foo(a<b<c)', '<'],
+    ['(a ~ b)', '~'],
+    ['(3px > 2px and 3px < 5px)', '>'],
+    ['(a : b)', ':']
   ]
 };
 
@@ -284,6 +287,7 @@ describe('a var(), env() or attr() fallback is a value', () => {
     /* Less reads a `var()` fallback written directly as one text node, not a run (a parser shape gap, pinned below). */
     ...(['css', 'scss', 'jess'] as const).flatMap(dialect => ['var(--gap, a.b)', 'var(--x, a.b~c)', 'attr(foo, a.b)', 'env(x, a.b)']
       .map(value => [dialect, `a {\n  margin: ${value};\n}\n`, '.'] as const)),
+    ...(['css', 'scss', 'jess'] as const).map(dialect => [dialect, 'a {\n  margin: var(--x, a:b);\n}\n', ':'] as const),
     ...['attr(foo, a.b)', 'env(x, a.b)'].map(value => ['less', `a {\n  margin: ${value};\n}\n`, '.'] as const),
     ['less', '@gap: a.b;\na {\n  margin: var(--gap, @gap);\n}\n', '.']
   ] as const)('%s: %s fails the compile', async (dialect, source, delim) => {
@@ -301,7 +305,10 @@ describe('a var(), env() or attr() fallback is a value', () => {
   });
 
   it.each([
-    ['css', 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
+    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => [
+      [dialect, 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
+      [dialect, 'a {\n  width: attr(data-w type(<length>),0px);\n}\n', 'width: attr(data-w type(<length>), 0px);']
+    ] as const),
     ...DIALECTS.flatMap(dialect => [
       [dialect, 'a {\n  --y: var(--x, a.b);\n}\n', '--y: var(--x, a.b);'],
       [dialect, 'a {\n  color: var(--brand, red);\n}\n', 'color: var(--brand, red);']
@@ -347,30 +354,14 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     'if(media(width < 600px): a; media(width < 900px): b; else: c)',
     'if(style(--a: 1): red; else: blue)'
   ];
-  for (const dialect of ['css', 'less'] as const) {
+  for (const dialect of DIALECTS) {
     it.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
       expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
     });
   }
 
-  /*
-   * OPEN for the owner (P38, P45): SCSS and `.jess` stop at CSS if(). SCSS reads
-   * `if(` as Sass's if(), and a condition's `and` / `not` with Sass meaning;
-   * `.jess` has no branch list in an ordinary call.
-   */
-  for (const dialect of ['scss', 'jess'] as const) {
-    it.fails.each(CSS_IF)(`${dialect}: a CSS if() condition: %s`, async (value) => {
-      expect(await clean(dialect, sheet(value))).toContain(`x: ${value};`);
-    });
-  }
-
   const IF_AND = 'if(media(print) and supports(display: grid): a; else: b)';
-  it('css: a CSS if() condition joined by `and`', async () => {
-    expect(await clean('css', sheet(IF_AND))).toContain(`x: ${IF_AND};`);
-  });
-
-  /* Less reads `and` between two tests as its own condition (`if(false: a; else: b)`). */
-  it.fails.each(['less', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
+  it.each(['css', 'less', 'scss', 'jess'] as const)('%s: a CSS if() condition joined by `and`', async (dialect) => {
     expect(await clean(dialect, sheet(IF_AND))).toContain(`x: ${IF_AND};`);
   });
 

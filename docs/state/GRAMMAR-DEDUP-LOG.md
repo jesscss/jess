@@ -767,26 +767,26 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
   changes CST nesting, so it needs its own before/after oracle. The former `rulesetBody`
   is now `blockBody` itself: every braced body takes the `ExtendStatement` arm since
   ledger X19 was ruled (2026-10-06).
-- #60 less value sequence: three rules read the same `valuePiece` run and differ only
-  in where they stop — `ValueSequence` (a value: no stop, a glued `=` joins),
-  `ArgumentValueSequence` (`FunctionValueSequence`, a function argument: stops before
-  a comparison operator, `and` or `or`, and fails when one follows) and
-  `callArgumentSequence` (CST `ValueSequence`, a mixin argument: stops before a
-  comparison operator only). The fold is one rule whose stop comes from a context the
-  caller sets (`withCtx` + a gated arm). BLOCKED (2026-10-17, measured): parseman
-  0.54's `withCtx` replaces `ctx.state` for the subtree and every reducer gets a copy
-  of it, so the Less value reductions inside lose `mathMode`, `source`, the function
-  scope and the recovered-error sink (`document`); wrapping a function argument's value
-  in `withCtx` left an inner call with `_fnScope: null`. Needs a parseman `withCtx`
-  form that derives the subtree state from the current one (also the mechanism V35's
-  known gap and the nested `selector()` capture reports need; DESIGN-DECISIONS-NOTES
-  § P45). Parseman releases are the owner's. A second question for the fold: the
-  function-argument rule's CST type is `FunctionValueSequence` and the other two are
-  `ValueSequence`, so one rule moves every function-argument CST node unless the
-  names converge. Done meanwhile (2026-10-17): the function-argument stop
-  (`functionConditionStop`) is composed from the trivia and `functionConditionOperator`,
-  as the mixin-argument stop already was, so the two read a comment before the
-  operator alike.
+- #60 less value sequence — **LANDED 2026-10-19** (parseman `^0.55.1`). The three
+  near-copies (`ValueSequence`, `ArgumentValueSequence` / CST `FunctionValueSequence`,
+  `callArgumentSequence`) are one value-run node whose stop comes from the context the
+  caller sets. parseman 0.55's `withCtx(state => next, c)` derives the subtree state
+  from the current one, so `mathMode`, `source`, `document` and the function scope
+  survive. A call argument sets `LessParseState.valueStop` (`condition` for a function
+  argument, `comparison` for a mixin argument) and reads the run node itself
+  (`ValueRun`); the run reads the stop between pieces (`valueRunEndAhead` at the
+  trivia gap, `gluedValueBoundary` at a glued `=`). Every other caller reads the rule
+  `ValueSequence`, which clears a stop it is entered under, so a run nested inside a
+  piece (`foo(~(a=b) c)`) never reads its parent's. An operand run (`OperandRun`) reads
+  the same continuation under a `condition` stop, which retired its own copy of it
+  (`functionArgumentValueContinuation` and three consts under it). The function argument's "fails when
+  a condition follows" is its own `not(functionConditionStop)` (`conditionArgumentValue`).
+  One CST name: `FunctionValueSequence` → `ValueSequence`. Oracle vs the dev build: zero
+  AST movers over 791 files; 73 CST movers, every one the rename (103 nodes) plus a
+  `state` snapshot carrying the stop on the 4279 CST nodes read inside a call argument's
+  or an operand's run (was `null`) — that snapshot is the measured CST cost (+0.8% marginal
+  instructions on benchmark.less; AST +0.15%, null −0.2%). Not done here: the nested `selector()`
+  capture context (`selector(.a:is(1px))`, V35) — the same mechanism, separate lane.
 - #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
   dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
   and it is in the alpha release preflight (PR CI deliberately skips it — see
@@ -1261,3 +1261,17 @@ now quantified — a big multi-week effort, not a switch.
   side-effect `import 'parseman'`; jess-parser's helpers carried one
   (`import {} from 'parseman'`), which loaded the parseman root runtime in all
   four fused Jess variants; removed.
+
+- **2026-10-21 — query feature name slot (fix/interpolation-parse-gaps).** css
+  now names the feature name in a query feature's contents (`QueryFeatureName`,
+  its routed `Property`) and what a media feature's contents open with
+  (`MediaFeatureOpener`, its dispatch); Less, SCSS and `.jess` override only
+  those two slots to read their interpolation in a name. Their own
+  `@container` / `@supports` `QueryFeature` / `SupportsFeature` productions now
+  read the same name, but they are still per-dialect copies of css's
+  `QueryFeature` (css's reads the name through the same slot): the next
+  convergence step for this family is to drop them for css's, which needs each
+  dialect's padding and value policy to move into css's slots first. `.jess`
+  `:not()` / `:has()` now read css's `SelectorOnlyPseudoArgument`; `.jess`'s
+  `PseudoSelectorList` / `PseudoSelectorComplex` / `PseudoSelectorCompound`
+  remain for `of S`, `selector()`, `$apply` and `$extend`.

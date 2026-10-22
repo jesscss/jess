@@ -64,6 +64,9 @@ import {
   isSelectorBranch,
   anPlusBFrom,
   directionKeyword,
+  forgivingSelectorItem,
+  forgivingSelectorList,
+  forgivingSelectorRest,
   isAnPlusB,
   isNthArgument,
   isSelectorList,
@@ -214,6 +217,7 @@ type GrammarRuleName =
   | 'LeadingDashRawPseudoArgument'
   | 'LangPseudoArgument'
   | 'MediaGeneralValue'
+  | 'GeneralDelim'
   | 'DirPseudoArgument'
   | 'AnPlusB'
   | 'MarginAtRule'
@@ -229,6 +233,10 @@ type GrammarRuleName =
   | 'Property'
   | 'PseudoArgument'
   | 'PseudoSelector'
+  | 'RelativeSelector'
+  | 'ForgivingSelectorRest'
+  | 'ForgivingSelectorItem'
+  | 'ForgivingSelectorList'
   | 'QueryClause'
   | 'QueryFeature'
   | 'QueryFunction'
@@ -308,6 +316,11 @@ type GrammarRuleName =
   | 'calcValueAtom'
   | 'valueAtom'
   | 'queryBoundTail'
+  | 'SelectorOnlyPseudoArgument'
+  | 'QueryFeatureName'
+  | 'queryFeatureName'
+  | 'MediaFeatureOpener'
+  | 'mediaFeatureOpener'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -1367,25 +1380,74 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`, and
-   * the shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is
-   * a compound selector) take a selector-ONLY argument: a (relative) selector
+   * The selector-argument pseudos (`:not`/`:has`/`:matches`, and the
+   * shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is a
+   * compound selector) take a selector-ONLY argument: a (relative) selector
    * list with no general-any text fallback, so `:not(2n+1)` fails the selector
-   * and rejects the whole pseudo. The
+   * and rejects the whole pseudo (`:is()` and `:where()` forgive instead,
+   * `ForgivingSelectorList` below). The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
    * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.
    */
   const SelectorOnlyPseudoArgument = node(
     'SelectorOnlyPseudoArgument',
-    parser(
-      { trivia: interstitialTrivia },
-      oneOrMoreSep(
-        RelativeSelector,
-        literal(',')
-      )
+    oneOrMoreSep(
+      g.RelativeSelector,
+      literal(',')
     ),
     children => selist(...selectorBranches(children))
+  );
+
+  /*
+   * `:is()` and `:where()` take a `<forgiving-selector-list>` (Selectors 4
+   * §4.2, §4.4, §16.1): an item that is not a selector is dropped by a browser
+   * and the others still match, so `.card:is(.active, 1px)` is
+   * `.card:is(.active)` and `.a:is(1px)` / `.a:is()` are valid selectors that
+   * match nothing. Each comma-separated item is read once, at the current
+   * token: the dialect's `RelativeSelector` as far as it goes, then any rest of
+   * the item up to its `,` or `)` — balanced, so a nested group or block is
+   * part of it. The rest's leading `not()` keeps it from matching nothing
+   * (`scanTo` succeeds empty when its sentinel is next); a dialect overrides
+   * the rest to read its interpolation there. An item with a rest, a relative
+   * item and an empty item beside another are kept as written, their structure
+   * kept so their interpolations and `&` evaluate (`forgivingSelectorItem`,
+   * which records them for the compiler's `css/forgiving-selector-item`
+   * warning). Trivia is the caller's: each dialect's pseudo reads this list
+   * under its own selector trivia.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      scanTo(
+        choice(literal(','), literal(')')),
+        {
+          skip: [
+            balanced('(', ')'),
+            balanced('[', ']'),
+            balanced('{', '}')
+          ]
+        }
+      )
+    ),
+    children => forgivingSelectorRest(children)
+  );
+  const ForgivingSelectorItem = node(
+    'ForgivingSelectorItem',
+    sequence(
+      optional(g.RelativeSelector),
+      optional(g.ForgivingSelectorRest)
+    ),
+    (children, _fields, span, _rawChildren, triviaLog, state) => forgivingSelectorItem(children, span, triviaLog, state)
+  );
+  const ForgivingSelectorList = node(
+    'ForgivingSelectorList',
+    oneOrMoreSep(
+      g.ForgivingSelectorItem,
+      literal(',')
+    ),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => forgivingSelectorList(children, state)
   );
 
   /*
@@ -1421,10 +1483,24 @@ const cssFactory = (g: GrammarSelf) => {
           )
         ),
         cssCase(
-          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          ['is(', 'where('],
           sequence(
             routed(),
-            SelectorOnlyPseudoArgument,
+            parser(
+              { trivia: interstitialTrivia },
+              g.ForgivingSelectorList
+            ),
+            literal(')')
+          )
+        ),
+        cssCase(
+          ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          sequence(
+            routed(),
+            parser(
+              { trivia: interstitialTrivia },
+              SelectorOnlyPseudoArgument
+            ),
             literal(')')
           )
         ),
@@ -1583,7 +1659,7 @@ const cssFactory = (g: GrammarSelf) => {
   const NestedSelectorList = node(
     'SelectorList',
     oneOrMoreSep(
-      RelativeSelector,
+      g.RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
@@ -3303,8 +3379,16 @@ const cssFactory = (g: GrammarSelf) => {
     routed(),
     children => tokenText(children[0])
   );
+
+  /*
+   * A feature's name and what follows it. The name is the `QueryFeatureName`
+   * slot, css's routed `Property`: a superset binds its own to read its
+   * interpolation in the name (`(min-${d}: 1px)`, ledger P13 (a)), and the
+   * contents reducer reads an `Interpolation` there as the name.
+   */
+  const QueryFeatureName = RoutedProperty;
   const queryFeatureName = sequence(
-    RoutedProperty,
+    g.QueryFeatureName,
     queryFeatureNameTail
   );
 
@@ -3312,13 +3396,18 @@ const cssFactory = (g: GrammarSelf) => {
    * The component values of a `<general-enclosed>` or an if-test's contents
    * after its query part: comma-separated value runs, and the tokens a value
    * run cannot start with (`,`, `/`, `!`, `;`, a `{}` block), each read once.
+   * A delim is css's value atom, so a css value run reads it; a superset's
+   * value run may not start with one (`supports(: x)`, `media(a : : b)`), so
+   * it is read here, after the run, through `GeneralDelim`: css's delim, which
+   * a superset whose prelude gives a delim meaning (`.jess` `$`) narrows (P45).
    */
   const generalPunctuation = choice(
     literal(','),
     literal('/'),
     literal('!'),
     literal(';'),
-    g.CurlyValue
+    g.CurlyValue,
+    g.GeneralDelim
   );
   const generalRest = many(choice(
     g.ValueSequence,
@@ -3722,10 +3811,18 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     otherwise(queryFeatureName)
   );
+
+  /*
+   * What a media feature's contents open with: css's opener dispatch. A
+   * named slot: a superset whose feature name can open with its interpolation
+   * (`(${f}: 1px)`), which the dispatch's identifier head does not read, binds
+   * the dispatch then `queryFeatureName`, so the name is read once, as a name.
+   */
+  const MediaFeatureOpener = mediaFeatureOpener;
   const MediaFeatureContents = node(
     'QueryFeatureContents',
     choice(
-      mediaFeatureOpener,
+      g.MediaFeatureOpener,
       sequence(
         g.QueryValue,
         g.queryBoundTail
@@ -5158,6 +5255,11 @@ const cssFactory = (g: GrammarSelf) => {
     NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
+    RelativeSelector,
+    ForgivingSelectorRest,
+    ForgivingSelectorItem,
+    ForgivingSelectorList,
+    SelectorOnlyPseudoArgument,
     PseudoArgument,
     OfTypePseudoArgument,
     AnPlusB,
@@ -5250,8 +5352,13 @@ const cssFactory = (g: GrammarSelf) => {
     GluedConnectiveFunction,
     QueryConnective,
     MediaCondition,
+    MediaFeatureOpener,
+    mediaFeatureOpener,
+    QueryFeatureName,
+    queryFeatureName,
     MediaFeatureContents,
     MediaGeneralValue: g.ValueSequence,
+    GeneralDelim: g.PunctuationValue,
     mediaGroupContents,
     queryGroupRest,
     styleGroupContents,

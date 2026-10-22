@@ -10,12 +10,16 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
+  recoveredInTree,
+  selectorStringComponents,
   withSourceSpan,
+  withForgivenSelectorItems,
   withTriviaMap,
+  type ForgivenSelectorItem,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { scssGrammar } from './grammar/ast.js';
-import { ScssParseError } from './parse-error.js';
+import { ScssParseError, type ScssRecoveredError } from './parse-error.js';
 import { commentTriviaLabels } from './trivia-labels.js';
 
 /** The rule map both compiled SCSS AST variants expose. */
@@ -64,7 +68,28 @@ function lineOptions(input: string, span: Span): {
   };
 }
 
+/** A parse that recovered: the document, and the located errors it carried on past (ledger P45). */
+export interface ScssParsed {
+  readonly document: Stylesheet;
+  readonly recovered: readonly ScssRecoveredError[];
+}
+
+/** The document, or the first error the grammar recovered from, raised; a warning does not stop it. */
 export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
+  const { document, recovered } = parseRecoveringWith(grammar, input);
+  const error = recovered.find(problem => !('severity' in problem));
+  if (error !== undefined) {
+    throw error;
+  }
+  return document;
+}
+
+/**
+ * The document with the problems the grammar recovered from (P45: a
+ * well-formed shape SCSS rejects or gives no meaning to is a located error, and
+ * the parse carries on). A shape that is not well-formed still throws.
+ */
+export function parseRecoveringWith(grammar: ScssAstGrammar, input: string): ScssParsed {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -76,12 +101,15 @@ export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
    * record the source bytes it covers: the CSS base's media reducers keep a
    * `<general-enclosed>` query group as written (ledger N14), and an
    * interpolated string (`Quoted`) keeps its authored spelling. A reducer that
-   * does not read the state never copies it.
+   * does not read the state never copies it. `state.diagnostics` collects what
+   * the grammar recovered from (P45).
    */
+  const diagnostics: ScssRecoveredError[] = [];
+  const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const result = run(
     entry,
     input,
-    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input, diagnostics, document: { forgivenSelectorItems } }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*
@@ -144,8 +172,41 @@ export function parseWith(grammar: ScssAstGrammar, input: string): Stylesheet {
     });
   }
 
-  return withTriviaMap(
+  const document = withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.rootTrivia?.index)
-  );
+  ), forgivenSelectorItems);
+  return { document, recovered: inSourceOrder(recoveredInTree(document, diagnostics)) };
+}
+
+/** One report per item, ordered by where it is written: a reducer may run more than once. */
+function inSourceOrder(diagnostics: readonly ScssRecoveredError[]): readonly ScssRecoveredError[] {
+  if (diagnostics.length < 2) {
+    return diagnostics;
+  }
+  const byItem = new Map<string, ScssRecoveredError>();
+  for (const error of diagnostics) {
+    byItem.set(`${error.offset}:${error.endOffset}:${error.message}`, error);
+  }
+  return [...byItem.values()].sort((a, b) => a.offset - b.offset);
+}
+
+/**
+ * `text` read by the grammar's own `SelectorList` production, as Sass's
+ * `selector.parse()` reads a selector string: each branch's compound selectors and
+ * combinators. A
+ * string that is not a whole selector list, or that holds `&`, throws with Dart
+ * Sass's message. The selectors a stylesheet writes and the ones a string holds
+ * are read by the one production.
+ */
+export function parseSelectorWith(grammar: ScssAstGrammar, text: string): string[][] {
+  const entry = grammar.SelectorList;
+  const trivia = grammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('SCSS AST grammar is missing its selector-list entry.');
+  }
+  const source = text.trim();
+  const diagnostics: ScssRecoveredError[] = [];
+  const result = run(entry, source, { trivia, state: { source, diagnostics } });
+  return selectorStringComponents(result.ok && result.unconsumedFrom === null && result.errors.length === 0 && diagnostics.length === 0 ? result.value : undefined);
 }

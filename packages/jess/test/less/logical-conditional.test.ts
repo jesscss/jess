@@ -284,8 +284,8 @@ describe('Less logical / conditional functions', () => {
  * CSS writes the same bytes in every dialect (SEMANTIC-INVARIANTS 4): Less
  * reads it as a condition and writes it as authored, adding no parens. A
  * comparison in it is Less's; css gives `>` and `<` no meaning there, so it is
- * invalid punctuation (ledger P48). `.jess` reads a paren group holding a
- * padded `>` as one text `Any`, not a run, so it writes it as authored.
+ * invalid punctuation (ledger P48), and so does `.jess`, whose paren group
+ * holds the same run.
  */
 describe('a written condition is dialect-invariant valid CSS', () => {
   const source = '.y { a: (a and (b or c)); b: ((a or b) and c); c: (not (1 or 2)); }';

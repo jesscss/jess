@@ -25,13 +25,13 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, withCtx, word } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
-import type { Any, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -105,14 +105,23 @@ import {
   reduceSelectorList,
   dollarValueFromChildren,
   foldCalcOperation,
-  selectorCaptureFrom
+  selectorCaptureFrom,
+  leadingSeparatorValue,
+  noteStar,
+  commaList,
+  callComponentFrom,
+  isIfTest,
+  enterIfTest,
+  leaveIfTest,
+  isTestValue,
+  enterTestValue,
+  genericCallFrom
 } from './grammar-helpers.js';
 import type {
   ExpressionFact,
   JessOperatorFact,
   JessReferenceTail,
   JessComplexTail,
-  JessQueryFeatureName,
   JessAtRuleHeader,
   JessMixinCallArgument,
   JessCallArgument
@@ -132,6 +141,7 @@ type JessRules = {
   ReferenceCallTail: Combinator<JessReferenceTail>;
   DollarValue: Combinator<ValueNode>;
   DollarBrace: Combinator<Interpolation>;
+  DollarBraceValue: Combinator<Interpolation>;
   ExpressionDollarBrace: Combinator<ExpressionFact>;
   DollarInterp: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
@@ -177,7 +187,7 @@ type JessRules = {
   CalcSequence: Combinator<ValueSlot>;
   calcFunctionArguments: Combinator<ValueSlot>;
   MathFunction: Combinator<FunctionCall>;
-  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url | SelectorCapture | Any]>;
+  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url | SelectorCapture | Any | Interpolation | IfValue]>;
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
@@ -208,7 +218,6 @@ type JessRules = {
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
-  PseudoSelectorArgument: Combinator<SelectorList | string>;
   GenericPseudoText: Combinator<string>;
   GenericPseudoComment: Combinator<string>;
   GenericPseudoEscape: Combinator<string>;
@@ -220,6 +229,7 @@ type JessRules = {
   PseudoSelectorComplex: Combinator<SelectorBranch>;
   PseudoSelectorTail: Combinator<SelectorBranch>;
   PseudoSelectorList: Combinator<SelectorList>;
+  ForgivingSelectorRest: Combinator<ForgivingRest>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
   ComplexSelector: Combinator<SelectorBranch>;
   NestedSelectorList: Combinator<SelectorList>;
@@ -250,14 +260,20 @@ type JessRules = {
   HeaderValue: Combinator<ValueSlot>;
   HeaderCallArgument: Combinator<ValueSlot>;
   QueryValue: Combinator<ValueNode>;
-  QueryFeatureName: Combinator<JessQueryFeatureName>;
+  MediaTest: Combinator<FunctionCall>;
+  SupportsTest: Combinator<FunctionCall>;
+  StyleTest: Combinator<FunctionCall>;
+  StyleFeature: Combinator<ValueNode>;
+  QueryFeatureName: Combinator<string | Interpolation>;
+  MediaFeatureOpener: Combinator<unknown>;
   QueryComparisonFeature: Combinator<ValueNode>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
   QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
   AtRulePreludeClause: Combinator<ValueNode>;
-  MediaGeneralValue: Combinator<ValueNode>;
+  MediaGeneralValue: Combinator<unknown>;
+  GeneralDelim: Combinator<unknown>;
   DottedAtRuleKeyword: Combinator<Keyword>;
   AtRulePrelude: Combinator<ValueNode | null>;
   ContainerStyleQuery: Combinator<FunctionCall>;
@@ -273,8 +289,6 @@ type JessRules = {
   GeneralTemplate: Combinator<Interpolation>;
   GeneralTemplateGroup: Combinator<Interpolation>;
   GeneralTemplateQuoted: Combinator<Interpolation>;
-  GeneralQuotedTemplate: Combinator<Interpolation>;
-  GeneralQuotedTemplateGroup: Combinator<Interpolation>;
   Enclosed: Combinator<FunctionCall | Block>;
   SupportsNot: Combinator<Keyword>;
   SupportsLogical: Combinator<Keyword>;
@@ -313,11 +327,34 @@ type SharedSyntax = {
   /* Inherited from the CSS base: a function-form `<general-enclosed>`, kept as written. */
   QueryFunction: Combinator<FunctionCall>;
 
+  /*
+   * Inherited from the CSS base: a selector-only pseudo's argument (`:not()`,
+   * `:has()`), a strict list of this grammar's `RelativeSelector`.
+   */
+  SelectorOnlyPseudoArgument: Combinator<SelectorList>;
+
+  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  mediaFeatureOpener: Combinator<unknown>;
+  queryFeatureName: Combinator<unknown>;
+
+  /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests, and the value run they read. */
+  ValueSequence: Combinator<unknown>;
+  PunctuationValue: Combinator<unknown>;
+  MediaTestBody: Combinator<unknown>;
+  SupportsTestBody: Combinator<unknown>;
+  StyleTestBody: Combinator<unknown>;
+
   /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments and the `<an+b>` fact. */
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
   TypedOfTypePseudoArgument: Combinator<NthArgument>;
+
+  /* Inherited from the CSS base: `:is()` / `:where()`'s forgiving selector list. */
+  ForgivingSelectorList: Combinator<SelectorList>;
+
+  /* Inherited from the CSS base: an optional leading combinator, then this grammar's `ComplexSelector`. */
+  RelativeSelector: Combinator<SelectorBranch>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -787,7 +824,8 @@ const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
  * meaning outside `$( … )`: `alpha(opacity=50)`, `x: a~b`, `foo(a==b)`. It is
  * the css `punctuationValueCharacter` run less the characters `.jess` reads
  * itself: `$` (its execution forms), `@`, `&`, `%`, the `+ - * /` separators
- * and signs, and `:` and `.` (see `gluedDelim`).
+ * and signs (a `*` is its own delim, `starDelim`), and `:` and `.` (see
+ * `gluedDelim`). It may also open a call component (`<length>`).
  */
 const delimRun = regex(/[=<>|~^?]+/);
 
@@ -797,6 +835,13 @@ const delimRun = regex(/[=<>|~^?]+/);
  * stays a declaration and a nested rule (`x: y` + `> b { … }`).
  */
 const paddedDelimRun = regex(/[=<|^?][=<>|~^?]*/);
+
+/**
+ * The same run after whitespace inside a paren group, where no nested rule,
+ * collection entry or named argument can start, so a `>`, `~` or `:` there is
+ * a delim like the rest (`(a ~ b)`, `(3px > 2px)`, `(a : b)`).
+ */
+const groupPaddedDelimRun = regex(/[=<>|~^?:][=<>|~^?]*/);
 
 /**
  * `:` and `.` join a run only glued on both sides, inside one authored
@@ -1021,6 +1066,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ), span), src: raw };
     }
   );
+
+  /**
+   * `&` in a value or an expression is the parent selector, the selector of the
+   * rule it is evaluated in, or `null` outside a rule, as in SCSS (owner
+   * 2026-10-19: "& should also be accepted as a value in .jess IMO").
+   */
+  const ParentSelector = node<Lookup>(
+    'ParentSelector',
+    literal('&'),
+    (_children, _fields, span) => withSourceSpan(parentSelectorReference(), span)
+  );
   const ExpressionCallArgument = node<JessMixinCallArgument>(
     'ExpressionCallArgument',
     choice(
@@ -1109,6 +1165,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       g.ExpressionDeclarationReference,
       g.ExpressionDollarInterp,
+      ParentSelector,
       g.Dimension,
       g.Color,
       g.ExpressionQuoted,
@@ -2119,6 +2176,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return selector;
     }
   );
+
+  /*
+   * The CSS base's rest of a `:is()` / `:where()` item, reading `.jess`'s
+   * `${…}` there as a selector does, so it evaluates in a kept item.
+   */
+  const ForgivingSelectorRest = node(
+    'ForgivingSelectorRest',
+    sequence(
+      not(choice(literal(','), literal(')'))),
+      oneOrMore(choice(
+        g.DollarBrace,
+        sequence(
+          not(choice(literal(','), literal(')'), literal('${'))),
+          scanTo(choice(literal(','), literal(')'), literal('${')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')] })
+        )
+      ))
+    ),
+    children => forgivingSelectorRest(children)
+  );
   const PseudoSelector = node<SimpleToken>(
     'PseudoSelector',
 
@@ -2130,7 +2206,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
      * CSS base's `:lang()` / `:dir()` arguments own their padding themselves.
      * The one glued name/function opener routes nth and selector-only names to
      * their own argument grammars, so `of S` stays child-index-only and
-     * `:not(2n+1)` cannot fall through to general-any text. A bare nth or
+     * `:not(2n+1)` cannot fall through to general-any text; `:is()` and
+     * `:where()` read the CSS base's forgiving selector list. A bare nth or
      * selector-only name rejects rather than becoming a keyword pseudo.
      */
     sequence(
@@ -2158,11 +2235,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           )
         ),
         caseInsensitiveWhen(
-          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          ['is(', 'where('],
           sequence(
             routed(),
             optional(rawWhitespace),
-            g.PseudoSelectorArgument,
+            parser(
+              { trivia: whitespace },
+              g.ForgivingSelectorList
+            ),
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            parser(
+              { trivia: whitespace },
+              g.SelectorOnlyPseudoArgument
+            ),
             optional(rawWhitespace),
             literal(')')
           )
@@ -2314,38 +2407,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * The generic (non-nth) functional-pseudo argument: a static `SelectorList`
-   * only (`:not(.a, .b)`, `:is(.a)`, `:has(> .b)`). The nth families dispatch by
-   * name to their own arguments above; CSS's generic raw pseudo-argument arm is
-   * deliberately NOT used here — it would hide dynamic Jess interpolation as
-   * source text. Retain the parsed `SelectorList` rather than collapsing it to
-   * text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
-   * structured `args` and never canonicalizes at parse (the inner `_canon` memos
-   * stay unpopulated); `PseudoSelector` derives opaque SimpleSelector text otherwise.
-   */
-  const PseudoSelectorArgument = node<SelectorList | string>(
-    'PseudoSelectorArgument',
-    parser(
-      { trivia: whitespace },
-      g.PseudoSelectorList
-    ),
-    (children) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new TypeError('Jess static pseudo argument lost its selector.');
-      }
-      return selector;
-    }
-  );
-
-  /*
    * A functional pseudo this grammar has no typed argument for is still
    * well-formed CSS: Selectors-4 §3.5 gives an unknown functional pseudo-class an
    * `<any-value>` argument, and WHETHER a pseudo exists is a language-service
    * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` keep
    * the whole stylesheet parseable. This is its own structural `<any-value>`
    * production, not a speculative selector parse: only the explicitly routed
-   * selector pseudo names accept `PseudoSelectorArgument`. A top-level `$` ends
+   * selector pseudo names accept `SelectorOnlyPseudoArgument`. A top-level `$` ends
    * this structured argument, so the required `)` then fails and a Jess
    * interpolation cannot become a generic pseudo-argument byte sequence.
    */
@@ -2416,7 +2484,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `selector(<selector-list>)` in value position is a selector capture (owner
    * 2026-10-16, DESIGN-DECISIONS P49): `IdentifierOrFunction` routes the
    * `selector(` opener here, and its argument is the static selector list the
-   * `:is()` family takes, padded the same way. Where the list cannot start or
+   * strict selector pseudos (`:not()`, `:has()`) take, padded the same way. Where the list cannot start or
    * cannot continue (`selector()`, `selector(1px)`, `selector($x)`), the rest
    * of the argument is read to `)` as `InvalidSelectorCaptureArgument` and
    * reported, and the parse carries on (P45). Its leading `not(')')` keeps it
@@ -2441,24 +2509,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children, _fields, span, _rawChildren, _triviaLog, state) => selectorCaptureFrom(children, span, state)
   );
 
+  /**
+   * A delim `.jess` gives no meaning, as the component css builds for it: the
+   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
+   * override of `PunctuationValue` itself would narrow every css rule that
+   * reaches the css value atom.
+   */
+  const punctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    delimRun,
+    children => any(requireToken(children[0]).value)
+  );
+
   /*
    * A call component is one space group; a modern CSS component's slash
    * (`rgb(15 23 42 / .22)`) is the same direct-neighbour slash group a value
    * uses (P33): `[15, 23, 42 / .22]`. `/` stays unavailable as unwrapped Jess
    * arithmetic, and a dangling separator still has no right operand. A delim
    * run (`alpha(opacity=50)`, `foo(a==b)`) is the group's own: comparison stays
-   * inside `$( … )`.
+   * inside `$( … )`. A delim may open a component, as css reads one
+   * (`type(<length>)`, the `attr()` type), except a `*`, which has no left
+   * operand there.
    */
   const CallComponent = node<ValueSlot>(
     'CallComponent',
-    g.ValueSpaceGroup,
-    (children) => {
-      const value = children.find((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
-      if (value === undefined) {
-        throw new TypeError('Jess call component produced unexpected children.');
-      }
-      return value;
-    }
+    choice(
+      g.ValueSpaceGroup,
+      noTrivia(sequence(
+        punctuationDelim,
+        g.ValueSpaceGroup
+      ))
+    ),
+    callComponentFrom
   );
 
   /*
@@ -2476,7 +2558,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(','),
         optional(valueTrivia)
       )),
-      g.CallComponent
+      withCtx(state => leaveIfTest(state), g.CallComponent)
     ),
     (children) => {
       let separator = '';
@@ -2530,7 +2612,35 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )
   );
 
-  /*
+  /**
+   * A call's arguments are `;` groups of comma arguments (css-values-5 §8.3;
+   * inside a function a `;` is an ordinary token). A group's first component
+   * followed by a `:` is a branch, `condition: value` (ledger P38), as css
+   * reads one: a `:` glued on both sides is the delim run's own (`foo(a:b)`,
+   * ledger N18), so the branch colon is one the run stopped at. `$name:` is a
+   * named argument (`genericCallFrom`). The branch value is not a condition.
+   * Not css's `BranchRest` composed: a `.jess` argument is a `CallComponent`
+   * run, whose glued `:` css's `branchLead` would stop at.
+   */
+  const branchValue = sequence(
+    noTrivia(sequence(
+      optional(valueTrivia),
+      literal(':'),
+      optional(valueTrivia)
+    )),
+    optional(withCtx(state => leaveIfTest(state), g.CallComponent))
+  );
+  const argumentSemicolon = noTrivia(sequence(
+    literal(';'),
+    optional(valueTrivia)
+  ));
+  const callArgumentGroup = sequence(
+    g.CallComponent,
+    optional(branchValue),
+    many(g.CallArgument)
+  );
+
+  /**
    * A direct call owns its argument boundaries and recursive call shape. Its
    * components retain the existing Jess value-term contract, including
    * variable-led expressions (documented function arguments); the new slash
@@ -2541,36 +2651,119 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * permits the comma without a following value, so it routes before the
    * generic continuation instead of relaxing every function call.
    */
-  const GenericCall = node<FunctionCall>(
+  const GenericCall = node<FunctionCall | IfValue>(
     'Call',
     sequence(
       routed(),
       optional(valueTrivia),
-      optional(sequence(
-        g.CallComponent,
-        many(g.CallArgument)
-      )),
+      optional(callArgumentGroup),
       optional(valueTrivia),
+      many(sequence(
+        argumentSemicolon,
+        optional(sequence(
+          callArgumentGroup,
+          optional(valueTrivia)
+        ))
+      )),
       literal(')')
     ),
-    (children) => {
-      const args: ValueSlot[] = [];
-      const separators: string[] = [];
-      for (let index = 1; index < children.length - 1; index++) {
-        const child = children[index];
-        if (isJessValueSlotValue(child)) {
-          args.push(child);
-        } else if (isJessCallArgument(child)) {
-          separators.push(child.separator);
-          args.push(child.value);
-        }
-      }
-      const call = funcCall(jessFunctionOpenName(children[0]), args);
-      if (separators.length > 0) {
-        withValueLayout(call.args, separators);
-      }
-      return call;
-    }
+    children => genericCallFrom(children)
+  );
+
+  /**
+   * A CSS `if()` test (css-values-5 §8.3): `media()`, `supports()` or
+   * `style()` in an `if()` condition. Its argument is css's (`MediaTestBody`,
+   * `SupportsTestBody`, `StyleTestBody`): a media query, a supports condition
+   * or a style query, read and written as `.css` reads and writes it, whose
+   * values are `.jess` values, so a `$name` and a `${name}` in a `media()` or
+   * `supports()` test substitute (owner 2026-10-20: "it's in a 'value
+   * position' in the at-rule prelude, so intuitively it can be $bp or
+   * ${bp}"). Outside an `if()` condition the same names are function calls.
+   *
+   * Restated ONLY as the routed shell, as Less restates them: a dialect
+   * dispatch routed to the inherited node never hands over its head. A `.jess`
+   * value runs with trivia cleared, so the shell skips the gap after the
+   * opener (`media( print )`) as css's value run does.
+   * TODO(jess#298): delete the three shells once parseman detects routed()
+   * through a composed rule.
+   */
+  const MediaTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        withCtx(state => enterTestValue(state), g.MediaTestBody)
+      )
+    ),
+    children => ifTestCall(children)
+  );
+  const SupportsTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        withCtx(state => enterTestValue(state), g.SupportsTestBody)
+      )
+    ),
+    children => ifTestCall(children)
+  );
+  const StyleTest = node<FunctionCall>(
+    'Call',
+    parser(
+      { trivia: whitespace },
+      sequence(
+        routed(),
+        g.StyleTestBody
+      )
+    ),
+    children => ifTestCall(children)
+  );
+
+  /**
+   * A style query's `<style-feature>` (css's `StyleFeature` slot): the custom
+   * property css's style contents dispatch read, `:`, and its value, a custom
+   * property's (owner 2026-10-20, on `style(--theme: ${t})`: "yep, that is
+   * correct, it's a custom prop declaration"), so only `${…}` substitutes and
+   * a `$name` is text.
+   */
+  const StyleFeature = node<ValueNode>(
+    'StyleFeature',
+    sequence(
+      routed(),
+      optional(sequence(
+        literal(':'),
+        parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart))
+      ))
+    ),
+
+    /* The name the dispatch read; after it, the `:` and the value's parts, when written. */
+    children => styleFeature([
+      keyword(requireToken(children[0]).value),
+      ...(children.length > 1 ? [customValueFromChildren(children.slice(2))] : [])
+    ])
+  );
+  const mediaTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: MediaTest
+    },
+    GenericCall
+  );
+  const supportsTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: SupportsTest
+    },
+    GenericCall
+  );
+  const styleTestOrCall = choice(
+    {
+      gate: state => isIfTest(state),
+      combinator: StyleTest
+    },
+    GenericCall
   );
   const UrlFunction = node<Url>(
     'Url',
@@ -2750,6 +2943,28 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     caseInsensitiveWhen(
       'selector(',
       g.SelectorCapture
+    ),
+
+    /*
+     * An `if()` call's conditions are CSS `if()` conditions, where these three
+     * names are CSS tests; a comma argument and a branch's value are not
+     * conditions (`CallArgument`, `branchValue`).
+     */
+    caseInsensitiveWhen(
+      'if(',
+      withCtx(state => enterIfTest(state), GenericCall)
+    ),
+    caseInsensitiveWhen(
+      'media(',
+      mediaTestOrCall
+    ),
+    caseInsensitiveWhen(
+      'supports(',
+      supportsTestOrCall
+    ),
+    caseInsensitiveWhen(
+      'style(',
+      styleTestOrCall
     ),
 
     /*
@@ -3128,50 +3343,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * `( … )` in value position — an ordinary css-syntax-3 §5.4.7 simple block, and
-   * CSS, Less and SCSS all accept it (`b: (c)`, `b: (1 + 2)`). Jess accepts it too
-   * (P18(a)): the parens make a plain component-value block, NOT the `$( … )` math
-   * boundary — it is inert and never evaluated. The structured arm parses the
-   * interior as an ordinary Jess `Value`, so `(c)` yields `block(Keyword c)`
-   * byte-for-byte with the base; the raw arm is the §5.4.7 fallback for the one
-   * residual Jess's value model omits — a bare infix operator between numbers
-   * (`(1 + 2)`), which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects)
-   * but which is valid CSS inside a block. The `not` guard preserves Jess's
-   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
-   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
-   * the conservative existing behaviour rather than minting an empty `Any` block
-   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
-   * separate open question, not settled here).
-   */
-  const ParenValue = node<ValueNode>(
-    'ParenValue',
-    choice(
-      noTrivia(sequence(
-        literal('('),
-        optional(valueTrivia),
-        g.Value,
-        optional(valueTrivia),
-        literal(')')
-      )),
-      noTrivia(sequence(
-        literal('('),
-        not(sequence(
-          optional(valueTrivia),
-          literal(')')
-        )),
-        rawParenInner,
-        literal(')')
-      ))
-    ),
-    (children) => {
-      const slot = children.find(isJessValueSlotValue);
-      return slot === undefined
-        ? block(any(requireToken(children[1]).value), 'paren')
-        : block(slot, 'paren');
-    }
-  );
-
-  /*
    * `[a]` in value position — CSS `<line-names>`, and the same bytes Sass spells
    * as a bracketed list. Mirrors the CSS base's `SquareValue` so `.jess` stays a
    * superset; named for the delimiter rather than for grid, because the shape has
@@ -3227,7 +3398,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.IdentifierOrFunction,
     g.Quoted,
     g.Color,
-    g.Dimension
+    g.Dimension,
+    ParentSelector,
+
+    /*
+     * A `media()` or `supports()` test's value takes `${name}` as well as
+     * `$name` (owner 2026-10-20: "it's in a 'value position' in the at-rule
+     * prelude, so intuitively it can be $bp or ${bp}"); any other value
+     * position takes `$name` alone (ledger P13). Last, so no other value pays
+     * for the gate.
+     */
+    {
+      gate: state => isTestValue(state),
+      combinator: g.DollarBraceValue
+    }
   );
   const ValueAtom = node<ValueNode>(
     'ValueAtom',
@@ -3266,19 +3450,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /**
-   * A delim `.jess` gives no meaning, as the component css builds for it: the
-   * `Any` its `PunctuationValue` reduces to (ledger N18). Private: a dialect
-   * override of `PunctuationValue` itself would narrow every css rule that
-   * reaches the css value atom.
+   * A `*`, a delim outside `$( … )` like the others (`a * b`, `2*[3]`), but its
+   * own component and located: between two numbers or variables at a
+   * statement value's top level it is arithmetic `.jess` writes only inside
+   * `$( … )` (ledger P17), an error at the `*` (P45).
    */
-  const punctuationDelim = node<ValueNode>(
+  const starDelim = node<ValueNode>(
     'PunctuationValue',
-    delimRun,
-    children => any(requireToken(children[0]).value)
+    literal('*'),
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => noteStar(span, state)
   );
   const paddedPunctuationDelim = node<ValueNode>(
     'PunctuationValue',
     paddedDelimRun,
+    children => any(requireToken(children[0]).value)
+  );
+
+  /** A padded delim inside a paren group (see `groupPaddedDelimRun`). */
+  const groupPaddedPunctuationDelim = node<ValueNode>(
+    'PunctuationValue',
+    groupPaddedDelimRun,
     children => any(requireToken(children[0]).value)
   );
   const gluedPunctuationDelim = node<ValueNode>(
@@ -3294,14 +3485,36 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ValueTerm
   );
 
+  /**
+   * A delim glued to the group before it and what follows it (`a=b`, `a~ b`),
+   * or, where the run ends there (`)`, `,`, `;`, `}`), nothing: the closing
+   * `>` of `<length>`; or a glued `:`/`.` (see `gluedDelim`).
+   */
+  const gluedRunItem = choice(
+    sequence(
+      choice(
+        punctuationDelim,
+        starDelim
+      ),
+      choice(
+        delimTail,
+        peek(regex(/[),;}]/))
+      )
+    ),
+    sequence(
+      gluedPunctuationDelim,
+      not(literal('{')),
+      g.ValueTerm
+    )
+  );
+
   /*
    * The authored space-adjacency run of slash groups: whitespace then a group
-   * or a padded delim (`a = b`, `foo(a /* c *\/ = b)`), a delim glued to the
-   * group before it (`a=b`, `a~ b`), or a glued `:`/`.` (see `gluedDelim`). The
-   * whitespace is read once, then the next component decides; only a comment
-   * reaches the padded delim's leading padding. A brace block may only be a
-   * value's FIRST atom (see `nonBlockValueAtom`), so a continuation term may
-   * not open one.
+   * or a padded delim (`a = b`, `foo(a /* c *\/ = b)`), or a glued item (see
+   * `gluedRunItem`). The whitespace is read once, then the next component
+   * decides; only a comment reaches the padded delim's leading padding. A
+   * brace block may only be a value's FIRST atom (see `nonBlockValueAtom`), so
+   * a continuation term may not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
@@ -3322,40 +3535,185 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
               optional(valueTrivia),
               paddedPunctuationDelim,
               delimTail
+            ),
+
+            /*
+             * A padded `*` and its operand, unless a block follows: then the
+             * `*` opens a nested rule after a declaration with no `;`
+             * (`color: red` then `* b { … }`), as a `>` or `~` does.
+             */
+            sequence(
+              optional(valueTrivia),
+              starDelim,
+              delimTail,
+              not(sequence(
+                optional(valueTrivia),
+                literal('{')
+              ))
             )
           )
         ),
-        sequence(
-          punctuationDelim,
-          delimTail
-        ),
-        sequence(
-          gluedPunctuationDelim,
-          not(literal('{')),
-          g.ValueTerm
-        )
+        gluedRunItem
       ))
     )),
     children => componentRun(children, isJessValueSlotValue)
   );
+
+  /**
+   * The same run inside a paren group, where a padded `>`, `~` or `:` is a
+   * delim (see `groupPaddedDelimRun`): a run css builds is a run here too, so
+   * its delims are read as css's are (ledger P48).
+   */
+  const groupSpaceGroup = node<ValueSlot>(
+    'ValueSpaceGroup',
+    noTrivia(sequence(
+      g.ValueTerm,
+      many(choice(
+        sequence(
+          field(
+            'separator',
+            regex(/[ \t\n\r\f]+/)
+          ),
+          choice(
+            sequence(
+              not(literal('{')),
+              g.ValueTerm
+            ),
+            sequence(
+              optional(valueTrivia),
+              choice(
+                groupPaddedPunctuationDelim,
+                starDelim
+              ),
+              delimTail
+            )
+          )
+        ),
+        gluedRunItem
+      ))
+    )),
+    children => componentRun(children, isJessValueSlotValue)
+  );
+
+  /**
+   * A `/` or `*` with nothing on its left: a punctuation-led value (ledger
+   * P33), as in Less. It is recognized so the error sits on the value it
+   * leads; the rest is read as custom-property parts and kept as written, and
+   * the parse carries on (P45). A comment opener never matches. The rest stops
+   * at a `{`: a block there belongs to a nested rule (`a:hover, * { … }`), so
+   * the declaration reading fails at it as before.
+   */
+  const LeadingSeparatorValue = node<ValueSlot>(
+    'LeadingSeparatorValue',
+    sequence(
+      regex(/\/(?![*/])|\*/),
+      parser(
+        { trivia: customValueCommentTrivia },
+        many(sequence(
+          not(literal('{')),
+          g.CustomPart
+        ))
+      )
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
+  );
+
+  /** A comma list of runs. */
   const Value = node<ValueSlot>(
     'Value',
     sequence(
       g.ValueSpaceGroup,
       many(sequence(
         literal(','),
-        optional(regex(/[ \t\n\r\f]+/)),
+        optional(rawWhitespace),
         g.ValueSpaceGroup
       ))
     ),
+    commaList
+  );
+
+  /**
+   * A declaration's or a variable's value: `Value`, where any item may be a
+   * punctuation-led value (ledger P33), first or after a comma (`x: a, *[b]`).
+   * A deliberate copy of `Value`: only a statement's value reads one, since a
+   * `var()` fallback's leading `/` is css's to accept (css-variables-1 §2).
+   * Valid input never reaches the separator arms.
+   */
+  const statementValue = node<ValueSlot>(
+    'Value',
+    sequence(
+      choice(
+        g.ValueSpaceGroup,
+        LeadingSeparatorValue
+      ),
+      many(sequence(
+        literal(','),
+        optional(rawWhitespace),
+        choice(
+          g.ValueSpaceGroup,
+          LeadingSeparatorValue
+        )
+      ))
+    ),
+    commaList
+  );
+
+  /** A paren group's comma list of `groupSpaceGroup` runs. */
+  const groupValue = node<ValueSlot>(
+    'Value',
+    sequence(
+      groupSpaceGroup,
+      many(sequence(
+        literal(','),
+        optional(regex(/[ \t\n\r\f]+/)),
+        groupSpaceGroup
+      ))
+    ),
+    commaList
+  );
+
+  /*
+   * `( … )` in value position — an ordinary css-syntax-3 §5.4.7 simple block, and
+   * CSS, Less and SCSS all accept it (`b: (c)`, `b: (1 + 2)`). Jess accepts it too
+   * (P18(a)): the parens make a plain component-value block, NOT the `$( … )` math
+   * boundary — it is inert and never evaluated. The structured arm parses the
+   * interior as a Jess value (`groupValue`, where a padded `>`, `~` or `:` is a
+   * delim, as in css), so `(c)` yields `block(Keyword c)` and `(a ~ b)` the run
+   * css builds; the raw arm is the §5.4.7 fallback for the one residual Jess's
+   * value model omits — a bare infix `+` or `-` between numbers (`(1 + 2)`),
+   * which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects) but which
+   * is valid CSS inside a block. The `not` guard preserves Jess's
+   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
+   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
+   * the conservative existing behaviour rather than minting an empty `Any` block
+   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
+   * separate open question, not settled here).
+   */
+  const ParenValue = node<ValueNode>(
+    'ParenValue',
+    choice(
+      noTrivia(sequence(
+        literal('('),
+        optional(valueTrivia),
+        groupValue,
+        optional(valueTrivia),
+        literal(')')
+      )),
+      noTrivia(sequence(
+        literal('('),
+        not(sequence(
+          optional(valueTrivia),
+          literal(')')
+        )),
+        rawParenInner,
+        literal(')')
+      ))
+    ),
     (children) => {
-      const values = children.filter(isJessValueSlotValue);
-      return values.length === 1
-        ? values[0]!
-        : list(
-            values,
-            ','
-          );
+      const slot = children.find(isJessValueSlotValue);
+      return slot === undefined
+        ? block(any(requireToken(children[1]).value), 'paren')
+        : block(slot, 'paren');
     }
   );
 
@@ -3433,7 +3791,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * Header URLs deliberately retain the CSS-only URL payload. The normal Jess
    * value route replaces this child with its dynamic URL override, but media,
-   * supports, and descriptor headers are not value positions. Routing after the
+   * supports, and descriptor headers keep CSS's URL. Routing after the
    * shared glued opener keeps that narrow override local without a competing
    * `Url` / `Call` / `Keyword` choice.
    */
@@ -3468,6 +3826,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `${name}` as a value, glued to the text after it as one interpolation
+   * (`${bp}px` with `$bp: 600` is `600px`), as Less's `@{bp}px` and SCSS's
+   * `#{$bp}px` splice.
+   */
+  const DollarBraceValue = node<Interpolation>(
+    'DollarBraceValue',
+    noTrivia(sequence(
+      g.DollarBrace,
+      many(choice(
+        interpolatedValueTail,
+        g.DollarBrace
+      ))
+    )),
+    children => children.length === 1
+      ? requireInterpolation(children[0])
+      : interpolationFromTemplateChildren(children)
+  );
+
+  /*
+   * A query feature's value is a value position, in an at-rule prelude and in
+   * a `media()` or `supports()` test alike (owner 2026-10-20: "we resolved in
+   * Less v5 that it's in a 'value position' in the at-rule prelude, so
+   * intuitively it can be $bp or ${bp}"), so it may be a variable, `$name` or
+   * `${name}`. A name in the prelude takes `${…}` only (ledger P13).
+   */
+  const queryValueAtom = choice(
+    g.MathDollarValue,
+    g.DollarBraceValue,
+    g.HeaderValueAtom
+  );
+
+  /*
    * A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
    * `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The constrained header
    * atoms carry no slash of their own, so the query value takes the ratio tail
@@ -3478,12 +3868,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const QueryValue = node<ValueNode>(
     'QueryValue',
     sequence(
-      g.HeaderValueAtom,
+      queryValueAtom,
       optional(sequence(
         optional(rawWhitespace),
         literal('/'),
         optional(rawWhitespace),
-        g.HeaderValueAtom
+        queryValueAtom
       ))
     ),
     (children) => {
@@ -3501,10 +3891,34 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           );
     }
   );
-  const QueryFeatureName = node<JessQueryFeatureName>(
-    'QueryFeatureName',
-    g.Identifier,
-    children => ({ property: keyword(requireToken(children[0]).value) })
+
+  /*
+   * A query feature's name, which may be interpolated (`(${f}: 1px)`,
+   * `(min-${f}: 1px)`): a prelude name takes `${…}` (ledger P13 (a)). css's
+   * `QueryFeatureName` slot: in css's media opener dispatch it owns the
+   * identifier the dispatch read (`routed`), and anywhere else, as in the
+   * `@container` and `@supports` features below and a media feature an
+   * interpolation opens (`MediaFeatureOpener`), it reads it.
+   */
+  const QueryFeatureName = node<string | Interpolation>(
+    'Property',
+    noTrivia(sequence(
+      routed(choice(
+        g.Identifier,
+        g.DollarBraceValue
+      )),
+      optional(g.DollarBraceValue)
+    )),
+    children => queryFeatureNameFrom(children)
+  );
+
+  /*
+   * css's media opener dispatch, then a name it cannot read: one an
+   * interpolation opens (`(${f}: $bp)`), read once as the name.
+   */
+  const MediaFeatureOpener = choice(
+    g.mediaFeatureOpener,
+    g.queryFeatureName
   );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
@@ -3548,12 +3962,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )
     ),
     (children, fields) => {
-      const propertyFact = children.find((child): child is JessQueryFeatureName => typeof child === 'object' && child !== null && 'property' in child);
-      if (propertyFact === undefined) {
-        throw new TypeError('Jess query comparison lost its property.');
-      }
-      const values = children.filter(isValueNode);
-
       /*
        * Read the operators back from the shared terminal's captures. Restating the
        * operator set as a runtime filter would be a second, drift-prone copy of a
@@ -3567,28 +3975,29 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             fields,
             'comparison'
           ).map(capture => typeof capture.value === 'string' ? capture.value : requireToken(capture.value).value);
-      if (values.length === 0 || operators.length === 0) {
+
+      /*
+       * The name (`QueryFeatureName`: an identifier's text or an
+       * `Interpolation`) and the values, in written order: `name op value`,
+       * or `value op name [op value]`, each compared as written.
+       */
+      const operands = children.flatMap(child => isValueNode(child)
+        ? [child]
+        : typeof child === 'string' && !operators.includes(child) ? [queryFeatureNameValue(child)] : []);
+      const first = operands[0];
+      const second = operands[1];
+      const trailing = operands[2];
+      if (first === undefined || second === undefined || operators.length === 0) {
         throw new TypeError('Jess query comparison lost an operand.');
       }
-      const propertyIndex = children.indexOf(propertyFact);
-      const firstValueIndex = children.findIndex(isValueNode);
-      let result = propertyIndex < firstValueIndex
-        ? operation(
-            operators[0]!,
-            propertyFact.property,
-            values[0]!,
-            false,
-            cssBaseMathOutsideParens(operators[0]!)
-          )
-        : operation(
-            operators[0]!,
-            values[0]!,
-            propertyFact.property,
-            false,
-            cssBaseMathOutsideParens(operators[0]!)
-          );
+      let result = operation(
+        operators[0]!,
+        first,
+        second,
+        false,
+        cssBaseMathOutsideParens(operators[0]!)
+      );
       if (operators.length === 2) {
-        const trailing = values.at(-1);
         if (trailing === undefined) {
           throw new TypeError('Jess query comparison lost its range end.');
         }
@@ -3610,7 +4019,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -3621,7 +4030,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(')')
       )
@@ -3681,12 +4090,38 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * A media `<general-enclosed>` group's component values, read as header
    * terms rather than values: an at-rule prelude is an identifier position at
    * every depth (ledger P13/P16), where `${…}` is the only `$` form, so a bare
-   * `$name` there is rejected as it is in the rest of the header.
+   * `$name` there is rejected; only a feature's value takes it. A group
+   * inside a CSS `if()` `media()` test is a value position (owner 2026-10-20),
+   * so there it reads values, as css's slot does (`media((width >= $bp))`).
    */
-  const MediaGeneralValue = node<ValueNode>(
-    'MediaGeneralValue',
-    g.QueryTerm,
-    children => requireValueNode(children[0])
+  /*
+   * css's `GeneralDelim`: a delim in a `<general-enclosed>` group's rest. An
+   * at-rule prelude gives `$` its meaning (ledger P13), so there a delim stops
+   * the group, except a `:`, which a prelude gives none: it follows an
+   * interpolated feature name (`(${f}: 1px)`, a name that takes `${…}`). A
+   * `media()` or `supports()` test reads css's delim (`supports(: x)`).
+   */
+  const GeneralDelim = choice(
+    {
+      gate: state => isTestValue(state),
+      combinator: g.PunctuationValue
+    },
+    node<ValueNode>(
+      'PunctuationValue',
+      literal(':'),
+      () => any(':')
+    )
+  );
+  const MediaGeneralValue = choice(
+    {
+      gate: state => isTestValue(state),
+      combinator: g.ValueSequence
+    },
+    node<ValueNode>(
+      'MediaGeneralValue',
+      g.QueryTerm,
+      children => requireValueNode(children[0])
+    )
   );
 
   /*
@@ -3837,7 +4272,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * The opener is one token so `style(` cannot split across whitespace, and the
    * argument is the same structural custom-property comparison the other
    * dialects build — `funcCall('style', [Operation(':', <name>, <value>)])`,
-   * matching Less rather than an opaque header slice.
+   * matching Less rather than an opaque header slice. Its value is a custom
+   * property's, read with the custom-value parts a `style()` test reads
+   * (`StyleFeature`; ledger P38), so `${…}` substitutes and a `$name` is text.
    */
   const jessStyleFunctionOpener = token(noTrivia(sequence(
     word(
@@ -3853,7 +4290,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       jessStyleFunctionOpener,
       g.CustomPropertyName,
       literal(':'),
-      g.QueryValue,
+      parser({ trivia: customValueCommentTrivia }, many(g.CustomInnerPart)),
       literal(')')
     ),
     children => funcCall(
@@ -3861,7 +4298,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       [operation(
         ':',
         keyword(requireToken(children[1]).value),
-        requireValueNode(children[3]),
+        customValueFromChildren(children.slice(3, -1)),
         false,
         cssBaseMathOutsideParens(':')
       )]
@@ -4119,103 +4556,80 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * `@supports` is not a generic CSS header: its condition grammar owns every
-   * parenthesis and logical connective. Keep this interpolation-free until a
-   * typed model exists for general-enclosed forms such as `selector(...)`.
-   * In particular, do not hide their arguments in Any/raw header bytes.
+   * parenthesis and logical connective. Do not hide the arguments of
+   * general-enclosed forms such as `selector(...)` in Any/raw header bytes.
    * A supported declaration's value is the same plain CSS component value a
    * media feature takes — `@supports (width: min(1px, 2px))` and
    * `@supports (background: url(a.png))` are ordinary CSS. A third private copy
    * of the leaf set is what let those degrade to opaque general-enclosed text.
+   * It is the same value position, so it takes `$name` and `${name}` as a
+   * media feature's value does.
    */
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
-    g.HeaderValueAtom,
+    queryValueAtom,
     children => requireValueNode(children[0])
   );
 
   /*
-   * ── `@supports` general-enclosed template: TWO chains, one per position ──────
+   * ── `@supports` general-enclosed template ──────────────────────────────────
    * The general-enclosed body is an INTERPOLATED position, and every interpolated
    * position takes `${…}` only — `$(…)` is a value-position EXPRESSION, not
-   * interpolation, so it is rejected here (HANDOFF.md: general-enclosed content
-   * admits literal structured bytes plus the dialect's explicit interpolation
-   * syntax). A QUOTED sub-template is a different position — an ordinary Jess
-   * string, which the matrix does permit `$(…)` in, exactly as `Quoted` does
-   * everywhere else in the language.
-   *
-   * Those two positions are entry-disjoint but they RECURSE, which is why this is
-   * two mirrored chains rather than one production with a flag: once inside a
-   * string you stay inside it, so a `(…)` group nested in a quoted sub-template is
-   * still string content and must stay permissive. Rejecting `$(…)` only at the
-   * top level would mean an extra paren unlocks the spelling
-   * (`@supports foo($(x))` rejected but `@supports foo(($(x)))` accepted), so the
-   * strict chain mirrors every non-quoted wrapper and the permissive chain
-   * mirrors every wrapper of its own. Within one chain, delimiter spellings are
-   * first-set-disjoint alternatives of one semantic group or quoted template;
-   * only the `g.Expression` arm distinguishes the two chains.
-   */
-
-  /*
-   * STRICT chain — the general-enclosed body and its non-quoted wrappers. Its
-   * quoted arms hand off to the permissive chain below and never come back.
+   * interpolation, so it is rejected here, at every depth of `(…)`, `[…]` and
+   * `{…}` (ledger P16; general-enclosed content admits literal structured bytes
+   * plus the dialect's explicit interpolation syntax). A QUOTED sub-template is
+   * an ordinary Jess string, which takes `${…}` and `$(…)` exactly as `Quoted`
+   * does everywhere else in the language (P13 (b)): its body is string text, so
+   * a bracket or parenthesis inside it is text (`selector([data-state=")"])`).
    */
   const GeneralTemplateGroup = node<Interpolation>(
     'GeneralTemplateGroup',
-    choice(
+    noTrivia(choice(
       sequence(literal('('), g.GeneralTemplate, literal(')')),
       sequence(literal('['), g.GeneralTemplate, literal(']')),
       sequence(literal('{'), g.GeneralTemplate, literal('}'))
-    ),
+    )),
     interpolationFromTemplateChildren
   );
 
   /*
-   * The single door into the permissive chain, from EITHER side: a string body
-   * is permissive wherever the quote was written, so this rung is chain-
-   * independent and shared. Only the wrappers below actually differ.
+   * A template keeps every byte (`noTrivia`), so `a ${x} b` keeps both spaces;
+   * a `$( … )` hole reads the document's trivia inside its parentheses
+   * (`$( 1 + 1 )`).
    */
+  const templateExpression = parser({ trivia: whitespace }, g.Expression);
   const GeneralTemplateQuoted = node<Interpolation>(
     'GeneralTemplateQuoted',
-    choice(
-      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
-      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
-    ),
+    noTrivia(choice(
+      sequence(
+        literal('"'),
+        many(choice(
+          g.DollarBrace,
+          templateExpression,
+          interpolatedDoubleQuotedText
+        )),
+        literal('"')
+      ),
+      sequence(
+        literal('\''),
+        many(choice(
+          g.DollarBrace,
+          templateExpression,
+          interpolatedSingleQuotedText
+        )),
+        literal('\'')
+      )
+    )),
     interpolationFromTemplateChildren
   );
   const GeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
-    many(choice(
+    noTrivia(many(choice(
       g.DollarBrace,
       g.GeneralTemplateGroup,
       g.GeneralTemplateQuoted,
       generalTemplateText
-    )),
-    interpolationFromTemplateChildren
-  );
-
-  /*
-   * PERMISSIVE chain — everything reachable from inside a quoted sub-template.
-   * Reached ONLY through the two quoted arms above, and closed under its own
-   * wrappers so nesting never escapes back to the strict chain.
-   */
-  const GeneralQuotedTemplateGroup = node<Interpolation>(
-    'GeneralQuotedTemplateGroup',
-    choice(
-      sequence(literal('('), g.GeneralQuotedTemplate, literal(')')),
-      sequence(literal('['), g.GeneralQuotedTemplate, literal(']')),
-      sequence(literal('{'), g.GeneralQuotedTemplate, literal('}'))
-    ),
-    interpolationFromTemplateChildren
-  );
-  const GeneralQuotedTemplate = node<Interpolation>(
-    'GeneralQuotedTemplate',
-    many(choice(
-      g.DollarBrace,
-      g.Expression,
-      g.GeneralQuotedTemplateGroup,
-      g.GeneralTemplateQuoted,
-      generalTemplateText
-    )),
+    ))),
     interpolationFromTemplateChildren
   );
   const Enclosed = node<FunctionCall | Block>(
@@ -4223,15 +4637,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     choice(
       sequence(
         g.Identifier,
-        literal('('),
-        g.GeneralTemplate,
-        literal(')')
+        noTrivia(sequence(
+          literal('('),
+          g.GeneralTemplate,
+          literal(')')
+        ))
       ),
-      sequence(
+      noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
         literal(')')
-      )
+      ))
     ),
     (children, _fields, span) => children.length === 4
       ? withGluedKeywordSpan(funcCall(
@@ -4256,7 +4672,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -4267,7 +4683,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.Identifier,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         literal(')')
       )
@@ -4709,7 +5125,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'VariableDeclaration',
     sequence(
       assignHead,
-      g.Value,
+      statementValue,
       optional(literal(';'))
     ),
     reduceVarDeclaration
@@ -4934,7 +5350,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             g.Identifier
           ),
           literal(':'),
-          g.Value,
+          statementValue,
 
           /*
            * The CSS base's declaration-vs-nested-rule decision, unchanged:
@@ -5759,32 +6175,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A NESTING leading combinator: CSS Nesting lets a nested selector open with a
-   * combinator (`.parent { > .child { … } }`), where `>` relates to the implicit
-   * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
-   * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
-   * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
-   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`. The
-   * `relativeSelectorCombinator` it opens with is shared with the functional-
-   * pseudo argument (defined above with the nth/pseudo selector rules).
-   */
-  const RelativeSelector = node<SelectorBranch>(
-    'RelativeSelector',
-    sequence(
-      optional(relativeSelectorCombinator),
-      g.ComplexSelector
-    ),
-    (children) => {
-      const branch = children.find(isSelectorBranch)!;
-      if (children.length === 1) {
-        return branch;
-      }
-      const lead = jessRelativeCombinator(children[0]);
-      return relativeSelector(lead, branchSegments(branch));
-    }
-  );
-
-  /*
    * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
    * (`SimpleSelector`/`CompoundSelector`/`ComplexSelector`, whatever each item
    * reduces to) and, because this is a nesting context, ADDS `RelativeSelector`
@@ -5792,12 +6182,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * leading combinator. Items MIX freely (`> .a, .b`). The node NAME is the
    * canonical `SelectorList` (only the rules-map KEY differs); the TOP-LEVEL
    * `SelectorList` admits no leading combinator, so a stylesheet-root `> .a` —
-   * with no parent to relate to — is still rejected.
+   * with no parent to relate to — is still rejected. The item is the CSS
+   * base's `RelativeSelector` over this grammar's `ComplexSelector`.
    */
   const NestedSelectorList = node<SelectorList>(
     'SelectorList',
     oneOrMoreSep(
-      RelativeSelector,
+      g.RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
@@ -5976,6 +6367,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ReferenceCallTail,
     DollarValue,
     DollarBrace,
+    DollarBraceValue,
     ExpressionDollarBrace,
     DollarInterp,
     ExpressionDollarInterp,
@@ -6011,7 +6403,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     HeaderValue,
     HeaderCallArgument,
     QueryValue,
+    MediaTest,
+    SupportsTest,
+    StyleTest,
+    StyleFeature,
     QueryFeatureName,
+    MediaFeatureOpener,
     QueryComparisonFeature,
     QueryNonOnlyKeyword,
     QueryTerm,
@@ -6019,6 +6416,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryDashedIdentifier,
     AtRulePreludeClause,
     MediaGeneralValue,
+    GeneralDelim,
     DottedAtRuleKeyword,
     AtRulePrelude,
     ContainerStyleQuery,
@@ -6034,8 +6432,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     GeneralTemplate,
     GeneralTemplateGroup,
     GeneralTemplateQuoted,
-    GeneralQuotedTemplate,
-    GeneralQuotedTemplateGroup,
     Enclosed,
     SupportsNot,
     SupportsLogical,
@@ -6104,7 +6500,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     InterpolatedParentSuffix,
     AttributeSelector,
     PseudoSelector,
-    PseudoSelectorArgument,
     GenericPseudoText,
     GenericPseudoComment,
     GenericPseudoEscape,
@@ -6116,6 +6511,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelectorComplex,
     PseudoSelectorTail,
     PseudoSelectorList,
+    ForgivingSelectorRest,
     SelectorCapture,
     ComplexSelector,
     NestedSelectorList,

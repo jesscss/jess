@@ -13,7 +13,9 @@
  * everything here.
  */
 export {
+  DeprecatedIfFunctionWarning,
   ERR,
+  LeadingSeparatorValueError,
   WARN,
   makeJessError,
   makeJessErrorFromDiagnostic,

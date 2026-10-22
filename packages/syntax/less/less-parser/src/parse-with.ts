@@ -27,10 +27,12 @@ import {
   recoveredInTree,
   sourceStartOf,
   valueLayoutOf,
+  withForgivenSelectorItems,
   withSourceSpan,
   withTriviaMap,
   withValueBoundaryTrivia,
   type AtRuleStatement,
+  type ForgivenSelectorItem,
   type FunctionScope,
   type Stylesheet
 } from '@jesscss/core/ast';
@@ -221,10 +223,11 @@ function parseRecovering(
   }
   const functions: FunctionScope = { ambient: options.moduleMode !== 'modern' };
   const diagnostics: LessRecoveredError[] = [];
+  const forgivenSelectorItems: ForgivenSelectorItem[] = [];
   const state: LessParseState = {
     source: input,
     mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE,
-    document: { functions, diagnostics },
+    document: { functions, diagnostics, forgivenSelectorItems },
     rejectBareVariable
   };
   const result = run(entry, input, {
@@ -291,10 +294,10 @@ function parseRecovering(
     result.value,
     result.rootTrivia === undefined ? undefined : triviaMap
   );
-  const document = withTriviaMap(
+  const document = withForgivenSelectorItems(withTriviaMap(
     withSourceSpan(result.value, result.span),
     triviaMap
-  );
+  ), forgivenSelectorItems);
   return {
     document,
     recovered: inSourceOrder(recoveredInTree(document, diagnostics))

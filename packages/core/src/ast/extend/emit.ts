@@ -437,12 +437,15 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
  * The fixpoint rewrites each seed in place and appends extenders after them, so the
  * first `raw.length` branches are the seeds in authored order; a seed whose segments no
  * longer line up with its raw composition (a span collapsed across the parent) joins no
- * group. Returns `list` itself when nothing folds.
+ * group. Returns `list` itself when nothing folds. A seed an interpolated branch expanded
+ * to is keyed by that authored branch (`units`, `SelectorUnits` in `selector-text.ts`);
+ * the selectors of a lone selector-list interpolation fold as the one `:is()` unit the
+ * serializer writes for it.
  */
-function nestingFold(list: Branch[], s: PlanSubject, raw: Branch[], guarded: boolean): Branch[] {
+function nestingFold(list: Branch[], s: PlanSubject, raw: Branch[], guarded: boolean, units: Int32Array | undefined): Branch[] {
   const own = s.ownLocal;
   const authored = s.rule.selector.selectors;
-  if (own.length < 2 || raw.length !== own.length || authored.length !== own.length || list.length < raw.length) {
+  if (own.length < 2 || raw.length !== own.length || (units?.length ?? authored.length) !== own.length || list.length < raw.length) {
     return list;
   }
   const keys: number[] = [];
@@ -458,7 +461,13 @@ function nestingFold(list: Branch[], s: PlanSubject, raw: Branch[], guarded: boo
     if (cut > 0 && seed.segments.length === raw[i]!.segments.length && seed.segments[cut]!.combinator === ' '
       && (first === undefined || samePrefix(first, seed, cut))) {
       first ??= seed;
-      key = nestingGroupKey(authored[i]!, guarded);
+
+      /* The selectors of one lone list share a group above every specificity. */
+      key = units === undefined
+        ? nestingGroupKey(authored[i]!, guarded)
+        : units[i]! < 0
+          ? Number.MAX_SAFE_INTEGER - ~units[i]!
+          : nestingGroupKey(authored[units[i]!]!, guarded);
     }
     keys.push(key);
     if (key >= 0) {
@@ -1039,7 +1048,13 @@ function lastCompound(b: Branch): Branch {
  * an extended header keeps ({@link nestingFold}); extend's own groups are guarded in
  * every mode.
  */
-export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true, resolved?: ReadonlyMap<SelectorList, SelectorList>): ExtendResults | null {
+export function computeExtends(
+  root: Stylesheet,
+  overlay?: PlanOverlay,
+  guardedNesting = true,
+  resolved?: ReadonlyMap<SelectorList, SelectorList>,
+  units?: ReadonlyMap<SelectorList, Int32Array>
+): ExtendResults | null {
   /*
    * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
    * `:extend()` anywhere) before any subject/instruction plan is built.
@@ -1277,7 +1292,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
      * nested rules render through `nestedPlan`/`hoistHeader`.
      */
     if (changed) {
-      const compacted = groupedBranches(siblingCompact(nestingFold(flat, s, rawOf(s), guardedNesting), false), true);
+      const compacted = groupedBranches(siblingCompact(nestingFold(flat, s, rawOf(s), guardedNesting, units?.get(s.rule.selector)), false), true);
       const projection = projectionFor(s);
 
       /*
@@ -1371,7 +1386,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
       if (!changed || (list.length === own.length && list.every((branch, index) => branchText(branch) === branchText(own[index]!)))) {
         continue;
       }
-      const compacted = groupedBranches(siblingCompact(nestingFold(list, s, rawOf(s), guardedNesting), false), true);
+      const compacted = groupedBranches(siblingCompact(nestingFold(list, s, rawOf(s), guardedNesting, units?.get(s.rule.selector)), false), true);
       (projectionFor(s).bubbleHeaders ??= new Map()).set(b.atRule, compacted.map(branchOut));
       (bubbled ??= new Set()).add(s);
     }
@@ -1594,9 +1609,11 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedN
        * hoisted header = flat solve with sibling :is()-compaction.
        * Flattened nested rule: its hoisted header carries a shared parent-composition
        * prefix, so a child comma-list under one parent DOES compact across segments
-       * (extend-exact `:is(<parent>) :is(.replace, .c)`).
+       * (extend-exact `:is(<parent>) :is(.replace, .c)`). Nested output writes an
+       * interpolated selector list as its selectors, so they fold as written ones do (no
+       * `units`).
        */
-      const hoisted = extendedHeaderTexts(s, groupedBranches(siblingCompact(nestingFold(flatBySubject.get(s)!, s, rawOf(s), guardedNesting), true), true));
+      const hoisted = extendedHeaderTexts(s, groupedBranches(siblingCompact(nestingFold(flatBySubject.get(s)!, s, rawOf(s), guardedNesting, undefined), true), true));
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
 
       /*

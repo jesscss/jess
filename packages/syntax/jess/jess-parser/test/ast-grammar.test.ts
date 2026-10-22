@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { sourceSpanOf, type InterpPart, type SelectorBranch, type SelectorTerm, type Stylesheet, type Ruleset, type SimpleToken } from '@jesscss/core/ast';
+import { forgivenSelectorItemsOf, sourceSpanOf, type InterpPart, type SelectorBranch, type SelectorTerm, type Stylesheet, type Ruleset, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
@@ -1045,9 +1045,15 @@ describe('Jess AST grammar facts', () => {
         ] }
       ]
     });
+
+    /* A `*` is the delim css reads, and between two numbers or variables an error at the `*` (P45), not a stop. */
+    const multiplied = parseRecovering('$w: 2px; .card { x: $w * 2; }');
+    expect(multiplied.recovered.map(error => error.code)).toEqual(['parse/arithmetic-outside-expression']);
+    expect(multiplied.document.rules[1]).toMatchObject({
+      rules: [{ value: [{ type: 'Lookup', name: 'w' }, { type: 'Any', src: '*' }, { type: 'Dimension', src: '2' }] }]
+    });
     for (const invalid of [
       '$w: 2px; .card { x: $w + 1px; }',
-      '$w: 2px; .card { x: $w * 2; }',
       '$w: 2px; .card { x: $w / 2 + 1; }',
       '$w: 2px; .card { x: $w % 2; }',
       '$w: 2px; .card { x: ^w; }',
@@ -1155,9 +1161,32 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  /* P45 residuals, balanced input that still stops the parse; they predate selector() (ledger P49 NOTES). */
-  it.fails.each(['$t: * [.notice];', 'a { b: 2*[3]; }', '$t: selector(.a:not(${t}));', '$t: selector(.a:nth-child(2n+1of .b));', '$t: selector(.a:is(1px));'])('parses `%s`', (source) => {
+  /* Once P45 residuals: a delim-led value and a `*` delim (balanced-value-shapes.test.ts). */
+  it.each(['$t: * [.notice];', 'a { b: 2*[3]; }'])('parses `%s`', (source) => {
     expect(parseRecovering(source).document).toBeDefined();
+  });
+
+  /* P45 residual, balanced input that still stops the parse; it predates selector() (ledger P49 NOTES). */
+  it.fails.each(['$t: selector(.a:nth-child(2n+1of .b));'])('parses `%s`', (source) => {
+    expect(parseRecovering(source).document).toBeDefined();
+  });
+
+  /* A `:not()` argument reads interpolation as a selector does (ledger P21); a capture holds text, so it is the capture's error. */
+  it('parses `$t: selector(.a:not(${t}));` and reports the capture', () => {
+    const { document, recovered } = parseRecovering('$t: selector(.a:not(${t}));');
+    expect(document).toBeDefined();
+    expect(recovered.map(error => error.name)).toEqual(['JessSelectorCaptureArgumentError']);
+  });
+
+  /* `:is()` and `:where()` take a forgiving selector list (Selectors 4 §16.1, owner 2026-10-20): a capture keeps a non-selector item as written. */
+  it.each([
+    ['.a:is(1px) {}', ['1px']],
+    ['$t: selector(.a:is(1px));', ['1px']],
+    ['.a:where() {}', []]
+  ])('parses `%s` and records each item that is not a selector', (source, forgiven) => {
+    const { document, recovered } = parseRecovering(source);
+    expect(recovered).toEqual([]);
+    expect(forgivenSelectorItemsOf(document).map(item => item.written)).toEqual(forgiven);
   });
 
   it('keeps selector() inside an @supports prelude the CSS feature test', () => {
@@ -1247,12 +1276,12 @@ describe('Jess AST grammar facts', () => {
      * An `$[…]` lookup is invalid in a pseudo argument, which is not a static `SelectorList`, so it
      * never reaches the structured path: it stays opaque exactly as before (the
      * Jess selector chain has no typed interpolation for pseudo args yet, so the
-     * rule does not fully parse).
+     * rule does not fully parse). In `:is()`'s forgiving selector list the item
+     * is not a selector, so it is kept as written.
      */
-    for (const interpolated of ['.x:not(.a-$[t]) { c: d; }', '.x:is(.card-$[t]) { c: d; }']) {
-      const rejected = run(jessGrammar.Stylesheet, interpolated, { trivia: jessGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null, interpolated).toBe(false);
-    }
+    const rejected = run(jessGrammar.Stylesheet, '.x:not(.a-$[t]) { c: d; }', { trivia: jessGrammar.whitespace });
+    expect(rejected.ok && rejected.unconsumedFrom === null).toBe(false);
+    expect(forgivenSelectorItemsOf(parse('.x:is(.card-$[t]) { c: d; }')).map(item => item.written)).toEqual(['.card-$[t]']);
   });
 
   it('accepts a leading combinator in a selector-pseudo argument (selectors-4 §4.2)', () => {
@@ -1364,11 +1393,11 @@ describe('Jess AST grammar facts', () => {
      * The selector-argument class keeps its selector-ONLY argument: a failed
      * selector must reject the whole pseudo rather than fall through to the
      * any-value scan, and a Jess interpolation must stay typed rather than being
-     * flattened into opaque argument text.
+     * flattened into opaque argument text. (`:is()` and `:where()` take a
+     * forgiving selector list instead, which keeps a non-selector item.)
      */
     for (const source of [
       '.x:not(2n+1) { color: red; }',
-      '.x:is(2n+1) { color: red; }',
       '.x:has(2n+1) { color: red; }',
       '.x:nth-child(+ n) { color: red; }',
       '.x:nth-child(+ n-5) { color: red; }',
@@ -1559,7 +1588,6 @@ describe('Jess AST grammar facts', () => {
 
     for (const invalid of [
       '@media $screen { .card { color: blue; } }',
-      '@media (min-width: $width) { .card { color: blue; } }',
       '.card { @charset "UTF-8"; }',
       '.card { @import "theme.css"; }',
       '.card { color: blue; } @charset "UTF-8";',
@@ -1840,12 +1868,16 @@ describe('Jess AST grammar facts', () => {
      * `@media` reads the CSS base's media query list, so a group that is no
      * `<mf-range>` is `<general-enclosed>` (media-queries-4 §3.1): valid CSS,
      * emitted as written. Its component values are header terms, so a bare
-     * `$limit` — no `.jess` form in a prelude, where `${…}` is the only one
-     * (ledger P13/P16) — is still rejected.
+     * `$limit` there — no `.jess` form in a prelude's names, where `${…}` is
+     * the only one (ledger P13/P16) — is still rejected. A feature's value is
+     * a value position (owner 2026-10-20), where `$limit` is a variable.
      */
     const generalEnclosed = '@media (width < 80rem < 100rem) {\n  .card {\n    color: blue;\n  }\n}\n';
     expect(serialize(parse(generalEnclosed)).css).toBe(generalEnclosed);
-    expect(() => parse('@media (width >= $limit) { .card { color: blue; } }')).toThrow(SyntaxError);
+    expect(() => parse('@media (width < 1px $limit) { .card { color: blue; } }')).toThrow(SyntaxError);
+    for (const dynamic of ['@media (width >= $limit) { .card { color: blue; } }', '@media (min-width: $limit) { .card { color: blue; } }', '@media (min-width: ${limit}px) { .card { color: blue; } }']) {
+      expect(parse(dynamic).rules[0], dynamic).toMatchObject({ type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', value: { type: 'Operation' } } });
+    }
 
     /*
      * css-contain-3 §3.3 `<style-query>`: a typed container-header function, the
@@ -2176,11 +2208,18 @@ describe('Jess AST grammar facts', () => {
     for (const invalid of [
       '@supports { .card { color: blue; } }',
       '@supports color { .card { color: blue; } }',
-      '@supports (display: $theme) { .card { color: blue; } }',
       '@supports $(display) { .card { color: blue; } }',
       '@supports (display: grid), (color: blue) { .card { color: blue; } }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+
+    /* A supports declaration's value is a value position (owner 2026-10-20): `$name` and `${name}` are variables there. */
+    for (const dynamic of ['@supports (display: $theme) { .card { color: blue; } }', '@supports (display: ${theme}) { .card { color: blue; } }']) {
+      expect(parse(dynamic).rules[0], dynamic).toMatchObject({
+        type: 'AtRuleBlock',
+        prelude: { type: 'Block', value: { type: 'Operation', operator: ':', right: dynamic.includes('${') ? { type: 'Interpolation' } : { type: 'Lookup', name: 'theme' } } }
+      });
     }
   });
 
@@ -3968,10 +4007,12 @@ describe('@layer statement in the document prologue', () => {
 });
 
 /*
- * CSS `if()` (css-values-5 §8.3, ledger P38/P45) should build the tree css
- * builds, and `selector(…)` inside `supports()` stays CSS's feature test, not a
- * capture (ledger P49). OPEN for the owner: `.jess` has no branch list in an
- * ordinary call, so a branch list stops the parse.
+ * CSS `if()` (css-values-5 §8.3, ledger P38) is the value-position conditional
+ * SCSS builds for it (owner 2026-10-19: "parse to the equivalent structure that
+ * would be intepreted the same way in .jess"): a CSS test is a `css` condition
+ * the browser answers, written as authored; `$( … )` is a truth test decided at
+ * compile time; `else` is the branch with no condition. `selector(…)` inside
+ * `supports()` stays CSS's feature test, not a capture (ledger P49).
  */
 describe('CSS if()', () => {
   const declarationValue = (document: Stylesheet): unknown => {
@@ -3979,19 +4020,41 @@ describe('CSS if()', () => {
     return rule !== undefined && 'rules' in rule ? (rule.rules[0] as { value?: unknown } | undefined)?.value : undefined;
   };
 
-  it.fails.each([
+  it.each([
     'if(media(width >= 600px): 1px; else: 2px)',
     'if(supports(display: grid): grid; else: block)',
     'if(style(--theme: dark): white; else: black)',
     'if(supports(selector(.a ~ .b)): a; else: b)',
     'if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px)',
     'if(media(print) and supports(display: grid): a; else: b)'
-  ])('builds the css tree for %s', (value) => {
-    const source = `a { x: ${value}; }`;
-    expect(bare(declarationValue(parse(source)))).toEqual(bare(declarationValue(parseCss(source))));
+  ])('builds an IfValue for %s', (value) => {
+    expect(declarationValue(parse(`a { x: ${value}; }`))).toMatchObject({ type: 'IfValue', _asCall: null });
   });
 
-  it.fails('keeps selector() inside supports() the CSS feature test', () => {
+  /* A test is css's structure, its values `.jess` values (owner 2026-10-20: "intuitively it can be $bp or ${bp}"). */
+  it('reads a test as css reads it, with `.jess` values, and `$( … )` as a truth test', () => {
+    expect(bare(declarationValue(parse('a { x: if(media(width >= $w) and $($a): 1px; else: 2px); }')))).toMatchObject({
+      type: 'IfValue',
+      branches: [
+        {
+          guard: {
+            g: 'and',
+            left: { g: 'css', value: { type: 'FunctionCall', name: 'media', args: [{ value: { type: 'Operation', operator: '>=', left: { type: 'Keyword', src: 'width' }, right: { type: 'Lookup', name: 'w' } } }] }, parens: 0 },
+            right: { g: 'truth', value: { type: 'Lookup', name: 'a' }, parens: 0 },
+            parens: 0
+          },
+          value: { type: 'Dimension', src: '1px' }
+        },
+        { guard: null, value: { type: 'Dimension', src: '2px' } }
+      ]
+    });
+  });
+
+  it('keeps selector() inside supports() the CSS feature test', () => {
     expect(JSON.stringify(parse('a { x: if(supports(selector(.a ~ .b)): a; else: b); }'))).not.toContain('SelectorCapture');
+  });
+
+  it('reads `$name:` in a call as a named argument', () => {
+    expect(declarationValue(parse('a { x: foo($a: 1px); }'))).toMatchObject({ type: 'FunctionCall', name: 'foo', args: [{ name: 'a' }] });
   });
 });

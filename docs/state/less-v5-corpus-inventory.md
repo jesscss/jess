@@ -206,7 +206,7 @@ sequence such as `fade(@color, 50%) 100%` remains one argument when newline or
 comment trivia precedes the final `)`, so `svg-gradient(...)` reaches the Less
 function and emits its data URI instead of surviving as a raw call or becoming
 `false`. The landed shape does **not** extend the rejected zero-width trivia
-probe: `ArgumentValueSequence` declines only a following condition operator,
+probe: `conditionArgumentValue` declines only a following condition operator,
 while the enclosing argument list owns comma, semicolon, close, and their
 trivia. The 3×4 AST/CST matrix pins all three delimiters across adjacent,
 newline, block-comment, and line-comment boundaries; the named parent/candidate

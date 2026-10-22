@@ -49,6 +49,7 @@ export {
   recoveredInTree,
   scannedLeaf,
   selectorCaptureOf,
+  selectorStringComponents,
   semanticGapText,
   withBlockBody
 } from './ast/grammar-helpers.js';
@@ -162,8 +163,11 @@ export {
   withAuthoredSeparators,
   withTriviaGaps
 } from './ast/css-grammar-helpers.js';
+export { adoptForgivenSelectorItems, forgivenSelectorItemsOf, forgivingSelectorItem, forgivingSelectorList, forgivingSelectorRest, withForgivenSelectorItems } from './ast/forgiving-selector.js';
+export type { ForgivenSelectorItem, ForgivingSelectorRest } from './ast/forgiving-selector.js';
 export { componentRun } from './ast/component-run.js';
+export { queryFeatureNameFrom, queryFeatureNameValue } from './ast/query-feature-name.js';
 export type { GuardNode } from './ast/guard-node.js';
-export { inParens } from './ast/guard-node.js';
+export { hasCssTest, inParens, isIfTestCall } from './ast/guard-node.js';
 export type { CallArg } from './ast/mixin-dispatch.js';
 export type { BareVariableRejection, NthArgument } from './ast/css-grammar-helpers.js';

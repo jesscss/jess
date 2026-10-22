@@ -36,15 +36,17 @@
  */
 import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, CollectionItem, ComplexSelector, CompoundSelector,
-  Declaration, Expression, ExtendInstruction, FunctionCall, Interpolation, Lookup, LookupStep, MixinCall,
+  Declaration, Expression, ExtendInstruction, FunctionCall, IfValue, Interpolation, Lookup, LookupStep, MixinCall,
   MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
-import type { GuardNode } from './guard.js';
+import type { GuardNode } from './guard-node.js';
+import { jessBranch, jessIf } from './emit-jess-if.js';
 import { renderCombinator } from './node.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
+import { MEMBER_CALL, moduleImportText, selectorParseLiteral } from './emit-jess-module.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
@@ -182,6 +184,9 @@ class JessPrinter {
 
   /** Set while a property's value prints: a value written to the output, not one a callable reads. */
   #propertyValue = false;
+
+  /** The call names of Sass's `selector.parse()` through each `sass:selector` namespace. */
+  readonly #selectorParse = new Set<string>();
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
@@ -342,20 +347,8 @@ class JessPrinter {
         return `${indent}$while (${this.guard(node.guard, true, false)}) ${this.block(node.rules, 'nested', node, indent)}\n`;
       case 'Apply':
         return `${indent}$apply ${node.selectors.map(term => this.selectorTerm(term)).join(', ')};\n`;
-      case 'ModuleImport': {
-        // `ModuleImport`: `@-use "p" [as ns]` / `@-from "p" import …`.
-        const path = node.path.src;
-        if (node.mode === 'use') {
-          return `${indent}@-use ${path}${node.namespace === null ? '' : ` as ${node.namespace}`};\n`;
-        }
-        const names = node.imports.map(s => (s.alias === null ? s.name : `${s.name} as ${s.alias}`)).join(', ');
-        const what = node.namespace !== null
-          ? `* as ${node.namespace}`
-          : node.defaultImport !== null
-            ? `${node.defaultImport}${names === '' ? '' : `, (${names})`}`
-            : `(${names})`;
-        return `${indent}@-from ${path} import ${what};\n`;
-      }
+      case 'ModuleImport':
+        return `${indent}${moduleImportText(node, this.#selectorParse)}\n`;
       case 'Plugin':
         return gap('Plugin', '`@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from`');
       case 'FunctionCall':
@@ -767,10 +760,7 @@ class JessPrinter {
         if (valueLayoutOf(node)?.some(sep => !/^[ \t]*[,/][ \t]*$/u.test(sep)) === true) {
           return gap('List', 'a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout');
         }
-        if (node.sep === ';') {
-          return gap('List', 'a `;` list from a CSS function body (`if()`): `.jess` call arguments have no `;` separator');
-        }
-        const glue = node.sep === ',' ? ', ' : ' / ';
+        const glue = node.sep === ',' ? ', ' : node.sep === ';' ? '; ' : ' / ';
         return node.value.map(item => this.value(item, at, indent)).join(glue);
       }
       case 'Sequence':
@@ -804,7 +794,7 @@ class JessPrinter {
       case 'Block':
         return this.paren(node, at);
       case 'Branch':
-        return gap('Branch', 'a `condition: value` branch argument (ledger P38): `.jess` call arguments have no branch form (jess#297)');
+        return jessBranch(this.value(node.condition, At.Value, indent), this.value(node.value, At.Value, indent));
       case 'Expression':
         return this.expression(node, at);
       case 'Condition':
@@ -813,7 +803,13 @@ class JessPrinter {
         }
         return this.guard(node.guard, true, false);
       case 'IfValue':
-        return gap('IfValue', 'value-position `$if … $else`: documented on the node, but no `.jess` production builds it');
+        return jessIf(node, {
+          value: slot => this.value(slot, At.Value, indent),
+          expression: expr => this.expression(expr, At.Value),
+          guard: guard => this.guard(guard, true, false),
+          template: interp => this.template(interp, 'string'),
+          gap
+        });
       case 'Interpolation':
         return this.valueInterpolation(node, at);
       case 'AnonymousMixin':
@@ -832,7 +828,7 @@ class JessPrinter {
     }
   }
 
-  /** `VariableReference`: `$name` (live) / `$^name` (scoped). */
+  /** `VariableReference`: `$name` (live) / `$^name` (scoped); the parent selector `&`. */
   lookup(node: Lookup, at: At): string {
     if (at === At.Prelude) {
       return gap('Lookup', 'a variable inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
@@ -841,9 +837,11 @@ class JessPrinter {
       return gap('Lookup', 'Less `$prop` property accessor: `.jess` `$.prop` reads the entry surface, a different lookup');
     }
     if (node.kind !== 'var' || typeof node.name !== 'string') {
-      return gap('Lookup', typeof node.name === 'string'
-        ? `\`${node.kind}\` lookup outside a reference chain`
-        : 'indirect `@@name`: `.jess` `$[$n]` reads the live store only');
+      return node.kind === 'parent'
+        ? '&'
+        : gap('Lookup', typeof node.name === 'string'
+            ? `\`${node.kind}\` lookup outside a reference chain`
+            : 'indirect `@@name`: `.jess` `$[$n]` reads the live store only');
     }
     return `$${node.scope === 'scoped' ? '^' : ''}${node.name}`;
   }
@@ -911,7 +909,16 @@ class JessPrinter {
     if (at === At.Expr) {
       return gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
     }
-    if (!IDENT.test(node.name)) {
+
+    /* The global `selector-parse` is Sass's only when the source dialect's functions have it. */
+    const selectorText = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
+      ? selectorParseLiteral(node)
+      : null;
+    if (selectorText !== null) {
+      return `selector(${selectorText})`;
+    }
+    const member = MEMBER_CALL.test(node.name);
+    if (!member && !IDENT.test(node.name)) {
       return gap('FunctionCall', 'a function name that is not an identifier (Less `%()`)');
     }
     const lower = node.name.toLowerCase();
@@ -930,7 +937,7 @@ class JessPrinter {
     const inner = at === At.Prelude ? At.Prelude : At.Math;
     const alpha = colorAlphaSlash(node);
     if (alpha !== null) {
-      const name = exported === undefined ? node.name : `$${node.name}`;
+      const name = exported === undefined && !member ? node.name : `$${node.name}`;
       return `${name}(${this.colorChannels(node.args[0]!.value, alpha, inner)})`;
     }
     const args = node.args.map((arg) => {
@@ -943,7 +950,7 @@ class JessPrinter {
       }
       return this.value(value, inner);
     });
-    const name = exported === undefined ? node.name : `$${node.name}`;
+    const name = exported === undefined && !member ? node.name : `$${node.name}`;
     return `${name}(${args.join(', ')})`;
   }
 
@@ -1044,8 +1051,10 @@ class JessPrinter {
         continue;
       }
       const ref = part.ref;
-      if (ref.type === 'Expression' && where === 'string') {
-        out += this.expression(ref, At.Value);
+
+      /* A string splices an expression as `$( … )`, SCSS `#{&}` included. */
+      if (where === 'string' && (ref.type === 'Expression' || (ref.type === 'Lookup' && ref.kind === 'parent'))) {
+        out += ref.type === 'Expression' ? this.expression(ref, At.Value) : '$(&)';
         continue;
       }
       if (ref.type !== 'Lookup' || ref.kind !== 'var' || typeof ref.name !== 'string') {
@@ -1146,6 +1155,8 @@ class JessPrinter {
         return `not (${this.guard(node.inner, true, mixin)})`;
       case 'truth':
         return this.value(node.value, At.Expr);
+      case 'css':
+        return gap('GuardNode', 'a CSS `if()` test outside an `if()`');
       case 'default':
         return mixin ? 'default()' : gap('GuardNode', '`default()` outside a mixin guard');
       case 'call': {

@@ -167,10 +167,6 @@ describe('selector() capture', () => {
     await expect(render('.m() when (selector(.a)) { ok: 1; }\n.x { .m(); }\n.y { z: 1; }', false)).resolves.toBe('.y {\n  z: 1;\n}\n');
   });
 
-  it('prints its canonical selector() spelling in a plain value position', async () => {
-    await expect(render('@s: selector( .a>.b ,satsuma );\n.x { v: @s; }', false)).resolves.toBe('.x {\n  v: selector(.a > .b, satsuma);\n}\n');
-  });
-
   /*
    * What selector() cannot capture parses (P45) and is then an error at its
    * span (ledger P49).
@@ -179,6 +175,8 @@ describe('selector() capture', () => {
     ['less', '.x { a: selector(1px); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
     ['less', '.x { a: selector(@v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]],
     ['less', '.x { a: selector(); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 9]],
+    ['less', '.x { a: selector(.a:is(@{t})); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 24]],
+    ['less', '.x { a: selector(.a:not(@{t})); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 25]],
     ['jess', '.x { a: selector($v); }\n.y { b: c; }', 'parse/selector-capture-argument', [1, 18]]
   ] as const)('parses %s `%s`, then reports its error', async (language, source, code, [line, column]) => {
     const result = await new Compiler().renderToResult({ source, filePath: `entry.${language}`, extension: `.${language}` }, { quiet: true });
@@ -189,6 +187,7 @@ describe('selector() capture', () => {
   /* An error-severity diagnostic fails the compile (owner 2026-10-16), a recovered parse error too. */
   it.each([
     ['less', '.x { a: selector(1px); }'],
+    ['less', '.x { a: selector(.a:is(@{t})); }'],
     ['jess', '.x { a: selector(1px); }']
   ] as const)('fails the %s compile of `%s`', async (language, source) => {
     await expect(render(source, false, language)).rejects.toThrow(/selector\(\) takes a selector list/u);
@@ -206,10 +205,10 @@ describe('selector() capture', () => {
     expect(result.errors).toEqual([]);
   });
 
-  /* A capture in a calc() operand or a var() name is an operand like any other: written as authored, no crash. */
-  it('writes a capture read as a calc() operand or a var() name as authored', async () => {
-    await expect(render('.x { a: calc(selector(.a) + 1px); b: var(selector(.c)); }', false)).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n  b: var(selector(.c));\n}\n');
-    await expect(render('.x { a: calc(selector(.a) + 1px); }', false, 'jess')).resolves.toBe('.x {\n  a: calc(selector(.a) + 1px);\n}\n');
+  /* A capture in a calc() operand or a var() name is an operand like any other: its value, the selector list, is written. */
+  it('writes the selectors of a capture read as a calc() operand or a var() name', async () => {
+    await expect(render('.x { a: calc(selector(.a) + 1px); b: var(selector(.c)); }', false)).resolves.toBe('.x {\n  a: calc(.a + 1px);\n  b: var(.c);\n}\n');
+    await expect(render('.x { a: calc(selector(.a) + 1px); }', false, 'jess')).resolves.toBe('.x {\n  a: calc(.a + 1px);\n}\n');
   });
 
   /* A comma list of captures is the list of their branches, as one capture of them is. */
@@ -239,9 +238,91 @@ describe('selector() capture', () => {
     await expect(render('.m(@s) { @{s} { c: d; } }\n.p { .m(selector(.a), selector(.b);); }', false)).resolves.toBe(nested);
   });
 
-  /* Follow-up (P49 NOTES): a variable holding a capture binds a mixin parameter as its text. */
-  it.fails('expands a capture a variable passes as a mixin argument', async () => {
+  it('expands a capture a variable passes as a mixin argument', async () => {
     await expect(render('@t: selector(.a, .b);\n.m(@s) { @{s} { c: d; } }\n.p { .m(@t); }', false)).resolves.toBe('.p {\n  .a,\n  .b {\n    c: d;\n  }\n}\n');
+  });
+
+  /*
+   * A selector list interpolated into a selector is grouped by its value, however the
+   * value is reached (ledger P49, P50; owner 2026-10-20: "variables aren't looser", "we
+   * should be consistent about values"): a variable, an alias of it, a mixin parameter,
+   * `&` and `selector.parse()` give the selector the capture written in place gives.
+   */
+  describe('a selector-list value is the same selector however it is reached', () => {
+    const glued = '.toolbar :is(.btn, .button):hover {\n  color: red;\n}\n';
+
+    it.each([
+      ['less', 'a variable', '@buttons: selector(.btn, .button);\n.toolbar @{buttons}:hover { color: red; }'],
+      ['less', 'an alias', '@buttons: selector(.btn, .button);\n@clickable: @buttons;\n.toolbar @{clickable}:hover { color: red; }'],
+      ['jess', 'a variable', '$buttons: selector(.btn, .button);\n.toolbar ${buttons}:hover { color: red; }'],
+      ['jess', 'an alias', '$buttons: selector(.btn, .button);\n$clickable: $buttons;\n.toolbar ${clickable}:hover { color: red; }'],
+      ['jess', 'selector.parse()', '@-use "#sass/selector";\n$buttons: $selector.parse(".btn, .button");\n.toolbar ${buttons}:hover { color: red; }']
+    ] as const)('%s: %s glued to a selector is one :is() group', async (language, _route, source) => {
+      await expect(render(source, false, language)).resolves.toBe(glued);
+    });
+
+    it.each([false, true])('a mixin parameter, collapseNesting: %s', async (collapseNesting) => {
+      const source = '@buttons: selector(.btn, .button);\n.hover(@targets) { @{targets}:hover { color: red; } }\n.toolbar { .hover(@buttons); }';
+      await expect(render(source, collapseNesting)).resolves.toBe(collapseNesting
+        ? glued
+        : '.toolbar {\n  :is(.btn, .button):hover {\n    color: red;\n  }\n}\n');
+    });
+
+    it.each([false, true])('`&` in .jess, collapseNesting: %s', async (collapseNesting) => {
+      const source = '.btn, .button {\n  $self: &;\n  .toolbar ${self}:hover { color: red; }\n}';
+      await expect(render(source, collapseNesting, 'jess')).resolves.toBe(collapseNesting
+        ? ':is(.btn, .button) .toolbar :is(.btn, .button):hover {\n  color: red;\n}\n'
+        : '.btn,\n.button {\n  .toolbar :is(.btn, .button):hover {\n    color: red;\n  }\n}\n');
+    });
+
+    it.each([false, true])('a whole nested selector from an alias and selector.parse(), collapseNesting: %s', async (collapseNesting) => {
+      const expected = collapseNesting
+        ? '.toolbar :is(.btn, .button) {\n  color: red;\n}\n'
+        : '.toolbar {\n  .btn,\n  .button {\n    color: red;\n  }\n}\n';
+      await expect(render('@buttons: selector(.btn, .button);\n@clickable: @buttons;\n.toolbar { @{clickable} { color: red; } }', collapseNesting)).resolves.toBe(expected);
+      await expect(render('@-use "#sass/selector";\n$buttons: $selector.parse(".btn, .button");\n.toolbar { ${buttons} { color: red; } }', collapseNesting, 'jess')).resolves.toBe(expected);
+    });
+
+    it('a selector value glued after a class is one :is() group', async () => {
+      await expect(render('@buttons: selector(.btn, .button);\n.toolbar@{buttons} { color: red; }', false))
+        .resolves.toBe('.toolbar:is(.btn, .button) {\n  color: red;\n}\n');
+    });
+
+    /*
+     * A plain list glued to a name is text: one branch per item. `#{&}` with a name glued
+     * after it continues that name, as `&__x` does (owner 2026-10-21; the rest of the
+     * table is in `selector-value-interpolation.test.ts`).
+     */
+    describe('a list continuing a name multiplies branches', () => {
+      it.each([
+        ['less', '@sizes: sm, md;\n.col-@{sizes} { float: left; }'],
+        ['jess', '$sizes: sm, md;\n.col-${sizes} { float: left; }']
+      ] as const)('%s: a name prefix', async (language, source) => {
+        await expect(render(source, false, language)).resolves.toBe('.col-sm,\n.col-md {\n  float: left;\n}\n');
+      });
+
+      it('less: a pseudo-class name', async () => {
+        await expect(render('@states: hover, focus;\n.btn:@{states} { outline: none; }', false))
+          .resolves.toBe('.btn:hover,\n.btn:focus {\n  outline: none;\n}\n');
+      });
+
+      it.each([false, true])('scss: #{&} before a BEM suffix under two parents, collapseNesting: %s', async (collapseNesting) => {
+        await expect(render('.card, .panel {\n  #{&}__title { font-weight: bold; }\n}', collapseNesting, 'scss')).resolves.toBe(collapseNesting
+          ? ':is(.card, .panel) .card__title,\n:is(.card, .panel) .panel__title {\n  font-weight: bold;\n}\n'
+          : '.card,\n.panel {\n  .card__title,\n  .panel__title {\n    font-weight: bold;\n  }\n}\n');
+      });
+
+      it('scss: #{&} before a BEM suffix under one parent', async () => {
+        await expect(render('.card {\n  #{&}__title { font-weight: bold; }\n}', false, 'scss'))
+          .resolves.toBe('.card {\n  .card__title {\n    font-weight: bold;\n  }\n}\n');
+      });
+    });
+
+    /* Escaped text is never read as selector syntax (ledger O8, owner 2026-10-09: "everywhere that is text should print AS WRITTEN"). */
+    it('leaves escaped text spliced as written', async () => {
+      await expect(render('@buttons: ~".btn, .button";\n@clickable: @buttons;\n.toolbar @{clickable}:hover { color: red; }', false))
+        .resolves.toBe('.toolbar .btn, .button:hover {\n  color: red;\n}\n');
+    });
   });
 
   /* Follow-up (P49 NOTES): an interpolated selector is not captured yet; today it takes the error path above. */

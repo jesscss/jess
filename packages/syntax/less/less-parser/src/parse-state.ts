@@ -7,7 +7,7 @@
  * third module keeps that a straight line rather than a cycle.
  */
 import type { MathMode } from '@jesscss/core';
-import type { BareVariableRejection, FunctionScope } from '@jesscss/core/ast';
+import type { BareVariableRejection, ForgivenSelectorItem, FunctionScope, SelectorCaptureProblem } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, type LessRecoveredError } from './parse-error.js';
 
 /** What the reducers of one Less parse share and write ({@link LessParseState.document}). */
@@ -26,6 +26,9 @@ export interface LessDocumentFacts {
    * 2026-10-09). A run without it (the raw grammar) raises the problem instead.
    */
   readonly diagnostics: LessRecoveredError[];
+
+  /** Each `:is()` / `:where()` item that is not a selector, for the compiler's warning (`forgivingSelectorItem`). */
+  readonly forgivenSelectorItems?: ForgivenSelectorItem[];
 }
 
 export interface LessParseState extends Partial<BareVariableRejection> {
@@ -54,9 +57,56 @@ export interface LessParseState extends Partial<BareVariableRejection> {
    * parseman hands each state-reading reducer a shallow copy of the state and
    * only a reference carries a write back. One member, not two: the copy is
    * made per reducer call, and a fifth state member outgrows the copy's
-   * in-object slots, which measured +2% on every Less parse.
+   * in-object slots, which measured +2% on every Less parse. The one fifth
+   * member there is, {@link valueStop}, exists only on the states derived
+   * inside a call argument's or an operand's value run, so the document-level
+   * state keeps four; it cost +0.1% AST and +1% CST in marginal instructions
+   * per `benchmark.less` parse (2026-10-19), the CST share being the snapshot
+   * a CST node takes of the state it was parsed under.
    */
   readonly document?: LessDocumentFacts;
+
+  /**
+   * Where a value run stops, set by what reads it and read between the run's
+   * pieces: a function argument's run and an operand run stop before a
+   * comparison operator, `and` or `or` (`condition`); a mixin argument's run
+   * before a comparison operator only (`comparison`). A `ValueSequence` entered under a
+   * stop clears it, so a value nested inside one of the run's pieces reads with
+   * its own stop, never its parent's.
+   */
+  readonly valueStop?: ValueStop;
+
+  /**
+   * Set on the state derived inside a `selector(…)` capture (ledger P49), so a
+   * selector pseudo in its argument reads a non-selector argument and records
+   * it here for the capture to report (P45). Like {@link valueStop}, it exists
+   * only on derived states, so the document-level state keeps four members.
+   */
+  readonly selectorCapture?: SelectorCaptureFacts;
+}
+
+/** What a selector pseudo inside a capture records for it ({@link LessParseState.selectorCapture}). */
+export interface SelectorCaptureFacts {
+  /** The first argument a pseudo in the capture could not read as a selector list. */
+  problem?: SelectorCaptureProblem;
+}
+
+/** The capture being read ({@link LessParseState.selectorCapture}), or `undefined` outside one. */
+export function selectorCaptureOfState(state: unknown): SelectorCaptureFacts | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.selectorCapture;
+}
+
+/** Where a call argument's value run stops ({@link LessParseState.valueStop}). */
+export type ValueStop = 'condition' | 'comparison';
+
+/** The stop of the value run being read ({@link LessParseState.valueStop}), for the grammar's gates. */
+export function valueStopOf(state: unknown): ValueStop | undefined {
+  if (typeof state !== 'object' || state === null || !('valueStop' in state)) {
+    return undefined;
+  }
+  const stop = state.valueStop;
+  return stop === 'condition' || stop === 'comparison' ? stop : undefined;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { ERR, PROGID_IE_SYNTAX, invalidValuePunctuation, invalidValueSyntaxError, nameArguments, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
+import { ERR, PROGID_IE_SYNTAX, makeJessError, invalidValuePunctuation, invalidValueSyntaxError, nameArguments, nameValueIeSyntax, type InvalidValueSyntax } from '@jesscss/core';
 import type { CssCstNode } from '@jesscss/css-parser/cst-host';
 import {
   CUSTOM_DECLARATION_TYPES,
@@ -16,7 +16,7 @@ import type { JessLanguage } from './types.js';
 /** Reports one parse-phase diagnostic at a CST span. */
 type ParseTwinPusher = (
   code: string,
-  severity: 'error',
+  severity: 'error' | 'warning',
   message: string,
   span: CssCstNode['span'],
   details: { readonly phase: 'parse'; readonly reason: string; readonly fix: string }
@@ -239,7 +239,7 @@ function invalidValueSyntaxInCall(node: CssCstNode, language: JessLanguage, sour
     if (at < inner.length && inner[at]!.kind !== 'comma') {
       continue;
     }
-    const arg = index === 0 ? branchColon(inner.slice(from, at)) : inner.slice(from, at);
+    const arg = index === 0 ? branchColon(inner.slice(from, at)) : fallbackColon(inner.slice(from, at), name, language);
     const head = arg[0];
     if (conditions === 0 && index >= names && arg.length === 3 && isAtom(head, 'ident') && isAtom(arg[1], 'delim', '=')) {
       return nameValueIeSyntax(head.text);
@@ -292,6 +292,25 @@ function branchColon(arg: ValueAtom[]): ValueAtom[] {
   return arg;
 }
 
+/*
+ * An SCSS `var()`, `env()` or `attr()` fallback is a value: a `:` after a name
+ * there is no keyword argument's (only a `$` variable names one) but css's
+ * delim, as the compiler reads it (`var(--x, a:b)`).
+ */
+const FALLBACK_CALLS = new Set(['var', 'env', 'attr']);
+
+function fallbackColon(arg: ValueAtom[], name: string, language: JessLanguage): ValueAtom[] {
+  if (language !== 'scss' || !FALLBACK_CALLS.has(name)) {
+    return arg;
+  }
+  for (let i = 1; i < arg.length; i++) {
+    if (arg[i]!.kind === 'colon' && arg[i - 1]!.kind === 'ident') {
+      arg[i] = { kind: 'delim', text: ':' };
+    }
+  }
+  return arg;
+}
+
 /* An argument without its branch conditions: in each `;` group, what comes before a `:`. */
 function branchValues(arg: readonly ValueAtom[]): readonly ValueAtom[] {
   if (!arg.some(atom => atom.kind === 'colon')) {
@@ -326,6 +345,7 @@ export function pushParseTwinDiagnostics(
 ): void {
   const gt = node.grammarType;
   pushSelectorCaptureTwin(node, language, source, push);
+  pushForgivenSelectorItemTwin(node, source, push);
 
   /*
    * Less v5 removes executable backtick values, but the tolerant CST keeps the
@@ -362,11 +382,21 @@ export function pushParseTwinDiagnostics(
   }
 
   /*
-   * Shapes the strict Less AST rejects by name — a slash-led value (ledger
-   * P33) and an uncalled mixin reference (rejected today; ruling OPEN under
+   * Shapes the strict AST rejects by name — a separator-led value (ledger P33)
+   * and a Less uncalled mixin reference (rejected today; ruling OPEN under
    * P33) — are kept as nodes in the tolerant CST, so their twin is reported
    * from the node.
    */
+  if ((language === 'scss' || language === 'jess') && gt === 'LeadingSeparatorValue') {
+    const lead = cstChildrenOf(node)[0];
+    const error = ERR.leadingSeparatorValue(lead?._tag === 'leaf' && lead.value === '/' ? '/' : '*');
+    push('parse/leading-separator-value', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
+  if (language === 'jess' && gt === 'Stylesheet') {
+    pushBareArithmeticTwins(node, source, push);
+  }
+
+  /* Less keeps its own text for a separator-led value until its parser takes the shared one. */
   if (language === 'less' && gt === 'LeadingSeparatorValue') {
     const lead = cstChildrenOf(node)[0];
     const slash = lead?._tag === 'leaf' && lead.value === '/';
@@ -403,10 +433,89 @@ export function pushParseTwinDiagnostics(
 }
 
 /*
+ * A `:is()` / `:where()` item that is not a selector (Selectors 4 §16.1, owner
+ * 2026-10-20), in every dialect: the compiler keeps it as written and warns
+ * (`forgivingSelectorItem`, `@jesscss/core`); the editor underlines the item.
+ * An item is kept when it has a rest past its selector, when its selector opens
+ * with a combinator, or when it is empty beside another item.
+ */
+function pushForgivenSelectorItemTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  if (node.grammarType !== 'ForgivingSelectorList') {
+    return;
+  }
+  const items = cstChildrenOf(node).filter(child => isCstNode(child) && child.grammarType === 'ForgivingSelectorItem').filter(isCstNode);
+  for (const item of items) {
+    const parts = cstChildrenOf(item).filter(isCstNode);
+    const selector = parts[0]?.grammarType === 'RelativeSelector' ? parts[0] : undefined;
+    const relative = selector !== undefined && cstChildrenOf(selector)[0]?._tag === 'leaf';
+    const kept = parts.some(part => part.grammarType === 'ForgivingSelectorRest') || relative || (parts.length === 0 && items.length > 1);
+    if (!kept) {
+      continue;
+    }
+    const at = trimmedSpan(item, source);
+    const written = source.slice(at.start, at.end);
+    const warning = makeJessError({ severity: 'warn', code: 'css/forgiving-selector-item', phase: 'parse', meta: { item: written === '' ? 'An empty item' : `\`${written}\`` } });
+    push('css/forgiving-selector-item', 'warning', warning.message, at, { phase: 'parse', reason: warning.reason, fix: warning.fix });
+  }
+}
+
+/* A CST node's span without the CSS whitespace at its edges (css-syntax-3 §4.2; U+00A0 is not whitespace there). */
+function trimmedSpan(node: CssCstNode, source: string): { start: number; end: number } {
+  const written = source.slice(absoluteStart(node), absoluteEnd(node));
+  const unled = written.replace(/^[ \t\n\r\f]+/u, '');
+  const start = absoluteStart(node) + written.length - unled.length;
+  return { start, end: start + unled.replace(/[ \t\n\r\f]+$/u, '').length };
+}
+
+/*
  * Selector capture (ledger P49), `.less` and `.jess` only: a `selector(…)` whose
  * argument is not a selector list parses as its own CST node, and the compiler
  * fails on it; the editor underlines the argument.
  */
+/* A CST operand `$( … )` would compute with: a number or a variable. */
+const ARITHMETIC_OPERAND_TYPES = new Set(['Num', 'Dimension', 'Percentage', 'DollarValue']);
+
+/* The operand a run component holds, through its one-child `ValueTerm` / `ValueAtom` wrappers. */
+function isArithmeticOperand(node: CssCstNode | undefined): boolean {
+  let current = node;
+  while (current !== undefined && (current.grammarType === 'ValueTerm' || current.grammarType === 'ValueAtom')) {
+    const nodes = cstChildrenOf(current).filter(isCstNode);
+    current = nodes.length === 1 ? nodes[0] : undefined;
+  }
+  return current !== undefined && ARITHMETIC_OPERAND_TYPES.has(current.grammarType);
+}
+
+/* What the compiler does not check for arithmetic: a group or a function's arguments (ledger P18(a)), and text it does not read as a run. */
+const NOT_ARITHMETIC_TYPES = new Set(['ParenValue', 'SquareValue', 'CallComponent', 'CallArgument', 'VarCall', 'CustomDeclaration']);
+
+/*
+ * `.jess` arithmetic outside `$( … )` (ledger P17): the compiler's error at a
+ * `*` between two numbers or variables at a value's top level (not in a
+ * group or a function's arguments), reported at the `*`. Read once, from the
+ * document root.
+ */
+function pushBareArithmeticTwins(root: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const error = ERR.arithmeticOutsideExpression();
+  const stack: CssCstNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const parts = cstChildrenOf(node).filter(isCstNode);
+    if (node.grammarType === 'ValueSpaceGroup') {
+      parts.forEach((part, index) => {
+        if (part.grammarType === 'DeclarationAny' && source.slice(absoluteStart(part), absoluteEnd(part)) === '*'
+          && isArithmeticOperand(parts[index - 1]) && isArithmeticOperand(parts[index + 1])) {
+          push('parse/arithmetic-outside-expression', 'error', error.message, part.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+        }
+      });
+    }
+    for (const part of parts) {
+      if (!NOT_ARITHMETIC_TYPES.has(part.grammarType)) {
+        stack.push(part);
+      }
+    }
+  }
+}
+
 function pushSelectorCaptureTwin(
   node: CssCstNode,
   language: JessLanguage,
@@ -419,16 +528,60 @@ function pushSelectorCaptureTwin(
   if (node.grammarType !== 'SelectorCapture') {
     return;
   }
-  const parts = cstChildrenOf(node).filter(isCstNode);
-  const rest = parts.find(part => part.grammarType === 'InvalidSelectorCaptureArgument');
-  if (parts.length > 0 && rest === undefined) {
+  const problem = firstSelectorCaptureProblem(node, source);
+  if (problem === undefined && cstChildrenOf(node).some(isCstNode)) {
     return;
   }
 
-  /* The rest the selector list could not read, as the compiler reports it; the whole call when the argument holds nothing. */
+  /*
+   * The first argument the capture, or a selector pseudo in it, could not read
+   * as a selector list, as the compiler reports it; the whole call when the
+   * argument holds nothing, the whole pseudo when its argument does.
+   */
   const error = ERR.selectorCaptureArgument();
-  const at = rest === undefined
+  const at = problem === undefined
     ? node.span
-    : { ...rest.span, end: absoluteStart(rest) + source.slice(absoluteStart(rest), absoluteEnd(rest)).trimEnd().length };
+    : problem.grammarType === 'InvalidSelectorCaptureArgument'
+      ? { ...problem.span, end: absoluteStart(problem) + source.slice(absoluteStart(problem), absoluteEnd(problem)).trimEnd().length }
+      : problem.grammarType === 'ForgivingSelectorItem' ? trimmedSpan(problem, source) : problem.span;
   push('parse/selector-capture-argument', 'error', error.message, at, { phase: 'parse', reason: error.reason, fix: error.fix });
+}
+
+/*
+ * In source order, the first rest a capture's selector list could not read,
+ * or the first selector pseudo in it whose parens hold no node (`:is()`, or
+ * a comment alone, which only a capture reads; a bare `:hover` has no parens).
+ */
+function firstSelectorCaptureProblem(capture: CssCstNode, source: string): CssCstNode | undefined {
+  const stack = cstChildrenOf(capture).filter(isCstNode).reverse();
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    const children = cstChildrenOf(node).filter(isCstNode);
+    if (node.grammarType === 'InvalidSelectorCaptureArgument' || (
+      node.grammarType === 'PseudoSelector' && children.length === 0 && source.charAt(absoluteEnd(node) - 1) === ')'
+    )) {
+      return node;
+    }
+    if (node.grammarType === 'ForgivingSelectorItem' && holdsInterpolation(node)) {
+      return innermostInterpolatedItem(node);
+    }
+    stack.push(...children.reverse());
+  }
+  return undefined;
+}
+
+/* Whether a CST subtree reads an interpolation, which a capture cannot hold. */
+function holdsInterpolation(node: CssCstNode): boolean {
+  return cstChildrenOf(node).some(child => isCstNode(child) && (child.grammarType.includes('Interpolat') || child.grammarType === 'DollarBrace' || holdsInterpolation(child)));
+}
+
+/* The innermost `:is()` / `:where()` item holding the interpolation, as the compiler reports it. */
+function innermostInterpolatedItem(item: CssCstNode): CssCstNode {
+  const stack = cstChildrenOf(item).filter(isCstNode);
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    if (node.grammarType === 'ForgivingSelectorItem' && holdsInterpolation(node)) {
+      return innermostInterpolatedItem(node);
+    }
+    stack.push(...cstChildrenOf(node).filter(isCstNode));
+  }
+  return item;
 }

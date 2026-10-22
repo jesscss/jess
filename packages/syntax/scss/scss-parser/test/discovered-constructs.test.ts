@@ -469,16 +469,18 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).toThrow(/requires a quoted module path/);
   });
 
-  it('PINNED DEFECT — rejects a parent selector in value position', () => {
+  it('reads a parent selector in value position as the parent-selector lookup', () => {
     /*
-     * `#{&}` (the whole `spec/libsass/base-level-parent/` family) is blocked
-     * by the interpolation BODY, not by its position: `a { b: & }` fails
-     * identically, and `#{$x}` in the same selector slot now parses. `&` as a
-     * VALUE has no node — Sass evaluates it to the parent selector — so this
-     * needs a model decision, not a grammar arm.
+     * `&` in a value is Sass's parent selector (owner 2026-10-19: "do what sass
+     * does"): the lookup the evaluator answers with the selector of the rule it
+     * is in, in a declaration and in an interpolation body alike (the
+     * `spec/libsass/base-level-parent/` `#{&}` family).
      */
-    expect(() => parse('a { b: & }')).toThrow();
-    expect(() => parse('#{&} { c: d }')).toThrow();
+    const parent = { type: 'Lookup', kind: 'parent', raw: '&' };
+    expect(parse('a { b: & }').rules[0]).toMatchObject({ rules: [{ type: 'Declaration', value: parent }] });
+    expect(parse('#{&} { c: d }').rules[0]).toMatchObject({
+      selector: { selectors: [{ text: null, interp: { parts: [{ ref: parent }] } }] }
+    });
   });
 
   /*

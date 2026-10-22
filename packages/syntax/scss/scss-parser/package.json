@@ -9,7 +9,7 @@
     "access": "public"
   },
   "description": "SCSS parser for Jess, layered on the Jess CSS parser (experimental)",
-  "version": "2.0.0-alpha.28",
+  "version": "2.0.0-alpha.30",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
@@ -116,7 +116,7 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "parseman": "^0.54.0"
+    "parseman": "^0.55.2"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

@@ -60,14 +60,16 @@ const GLUED_SELECTOR_FUNCTION_DEFECT =
   + 'first and as a nested rule only when that fails. Less sends a spaced '
   + '`<ident>: ` straight to the declaration (its early exit) and tries the '
   + 'nested rule first for a glued head, the reading Less sources use most '
-  + '(`a:hover {`). `b:is(` then reads as a type selector with a `:is()` '
+  + '(`a:hover {`). `a:not(` then reads as a type selector with a `:not()` '
   + 'pseudo, the argument fails as a selector, and a failed known case of the '
   + 'pseudo `dispatch()` is a committed failure in parseman, so the declaration '
-  + 'arm never runs. REGRESSION for the `/word/` spellings: until the G37 ruling '
+  + 'arm never runs. (`b:is(` no longer fails there: `:is()` and `:where()` take '
+  + 'a forgiving selector list, which keeps an item that is not a selector.) '
+  + 'REGRESSION for the `/word/` spellings: until the G37 ruling '
   + 'removed slashed-combinator recognition (37d92989a), a `/word/` in the '
-  + 'argument was held as a fact rather than failing it, so these three parsed. '
-  + 'Spellings with no `/word/` never did: `a { b:is(c % d) }` and '
-  + '`@font-face{src:local("Foo")}` fail the same way before and after. '
+  + 'argument was held as a fact rather than failing it, so these parsed. '
+  + 'Spellings with no `/word/` never did: `@font-face{src:local("Foo")}` '
+  + 'fails the same way before and after. '
   + 'The two readings share a prefix of any length (`b:is(c) d;` against '
   + '`b:is(c) d {}`), so no token decides between them before its end and one '
   + 'rewind is unavoidable (jess#304). The fix contains the nested-rule '
@@ -103,10 +105,6 @@ const NESTED_GLUED_SELECTOR_FUNCTION_DEFECT =
   + 'head).';
 
 /* OPEN for the owner (ledger P38, P45). */
-const CSS_IF_DEFECT =
-  'css-values-5 §8.3 if() is a branch list; SCSS reads if( as Sass if() and '
-  + '.jess has no branch list in an ordinary call, so both stop at the first `:`.';
-
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
   {
@@ -663,29 +661,21 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: 'if() with media() branches',
     group: 'value',
     source: 'a { width: if(media(width < 600px): 1px; media(width < 900px): 2px; else: 3px) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'if() with a supports() condition',
     group: 'value',
     source: 'a { display: if(supports(display: grid): grid; else: block) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'if() with a style() condition',
     group: 'value',
     source: 'a { color: if(style(--theme: dark): white; else: black) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'if() with a supports(selector()) condition',
     group: 'value',
     source: 'a { color: if(supports(selector(:has(a))): red; else: blue) }',
-    brokenIn: ['scss', 'jess'],
-    defect: CSS_IF_DEFECT
   },
   {
     id: 'calc() nested in calc()',
@@ -876,9 +866,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'glued colon before a selector-named function',
     group: 'value',
-    source: 'a { b:is(c /d/ e) }',
-    brokenIn: ['less'],
-    defect: GLUED_SELECTOR_FUNCTION_DEFECT
+    source: 'a { b:is(c /d/ e) }'
   },
   {
     id: 'glued colon before local() with slashes',
