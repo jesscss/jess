@@ -675,22 +675,22 @@ const scssFactory = (g: ScssInputRules) => {
   const InterpolatedQuoted = node<Quoted>(
     'Quoted',
     choice(
-      sequence(
+      noTrivia(sequence(
         literal('"'),
         many(choice(
           parser({ trivia: whitespace }, g.SassInterpolation),
           regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('"')
-      ),
-      sequence(
+      )),
+      noTrivia(sequence(
         literal('\''),
         many(choice(
           parser({ trivia: whitespace }, g.SassInterpolation),
           regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
         )),
         literal('\'')
-      )
+      ))
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const src = authoredSource(span, state, 'An interpolated SCSS string');
@@ -845,7 +845,7 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       literal('['),
       optional(valueTrivia),
-      optional(g.Value),
+      optional(parser({ trivia: whitespace }, g.Value)),
       optional(valueTrivia),
       literal(']')
     )),
@@ -3577,7 +3577,7 @@ const scssFactory = (g: ScssInputRules) => {
        * `value op name [op value]`.
        */
       const operands = children.flatMap(child => isScssValue(child) ? [child] : typeof child === 'string' ? [keyword(child)] : []);
-      const operators = children.filter(isToken).map(child => child.value).filter(text => text !== '(' && text !== ')');
+      const operators = children.filter(child => isToken(child) && !isScssValue(child)).map(child => requireToken(child).value).filter(text => text !== '(' && text !== ')');
       let result = requireValue(operands[0]);
       for (let index = 0; index < operators.length; index++) {
         result = operation(
@@ -3726,17 +3726,19 @@ const scssFactory = (g: ScssInputRules) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      noTrivia(sequence(
-        g.Identifier,
-        literal('('),
-        g.GeneralTemplate,
-        literal(')')
-      )),
       sequence(
+        g.Identifier,
+        noTrivia(sequence(
+          literal('('),
+          g.GeneralTemplate,
+          literal(')')
+        ))
+      ),
+      noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
         literal(')')
-      )
+      ))
     ),
     (children, _fields, span) => children.length === 4
       ? withGluedKeywordSpan(funcCall(

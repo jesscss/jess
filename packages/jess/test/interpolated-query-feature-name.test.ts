@@ -28,6 +28,9 @@ const features: ReadonlyArray<readonly [string, Extension, string]> = [
   ['@media screen and (min-width: 600px)', '.scss', '$feature: min-width;\n$breakpoint: 600px;\n@media screen and (#{$feature}: $breakpoint) { .a { b: c; } }'],
   ['@media screen and (min-width: 600px)', '.jess', '$feature: min-width;\n$breakpoint: 600px;\n@media screen and (${feature}: $breakpoint) { .a { b: c; } }'],
 
+  ['@media (400px <= width <= 900px)', '.css', '@media (400px <= width <= 900px) { .a { b: c; } }'],
+  ['@media (400px <= width <= 900px)', '.less', '@dimension: width;\n@media (400px <= @{dimension} <= 900px) { .a { b: c; } }'],
+
   ['@container card (min-width: 400px)', '.css', '@container card (min-width: 400px) { .a { b: c; } }'],
   ['@container card (min-width: 400px)', '.less', '@dimension: width;\n@container card (min-@{dimension}: 400px) { .a { b: c; } }'],
   ['@container card (min-width: 400px)', '.scss', '$dimension: width;\n@container card (min-#{$dimension}: 400px) { .a { b: c; } }'],

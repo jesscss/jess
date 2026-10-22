@@ -1392,12 +1392,9 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const SelectorOnlyPseudoArgument = node(
     'SelectorOnlyPseudoArgument',
-    parser(
-      { trivia: interstitialTrivia },
-      oneOrMoreSep(
-        g.RelativeSelector,
-        literal(',')
-      )
+    oneOrMoreSep(
+      g.RelativeSelector,
+      literal(',')
     ),
     children => selist(...selectorBranches(children))
   );
@@ -1500,7 +1497,10 @@ const cssFactory = (g: GrammarSelf) => {
           ['not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
-            SelectorOnlyPseudoArgument,
+            parser(
+              { trivia: interstitialTrivia },
+              SelectorOnlyPseudoArgument
+            ),
             literal(')')
           )
         ),

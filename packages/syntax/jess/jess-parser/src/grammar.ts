@@ -2252,7 +2252,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           sequence(
             routed(),
             optional(rawWhitespace),
-            g.SelectorOnlyPseudoArgument,
+            parser(
+              { trivia: whitespace },
+              g.SelectorOnlyPseudoArgument
+            ),
             optional(rawWhitespace),
             literal(')')
           )
@@ -4591,10 +4594,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * A template keeps every byte (`noTrivia`), so `a ${x} b` keeps both spaces;
-   * a hole's own braces and parentheses read the document's trivia
-   * (`${ x }`, `$( 1 + 1 )`).
+   * a `$( … )` hole reads the document's trivia inside its parentheses
+   * (`$( 1 + 1 )`).
    */
-  const templateDollarBrace = parser({ trivia: whitespace }, g.DollarBrace);
   const templateExpression = parser({ trivia: whitespace }, g.Expression);
   const GeneralTemplateQuoted = node<Interpolation>(
     'GeneralTemplateQuoted',
@@ -4602,7 +4604,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('"'),
         many(choice(
-          templateDollarBrace,
+          g.DollarBrace,
           templateExpression,
           interpolatedDoubleQuotedText
         )),
@@ -4611,7 +4613,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('\''),
         many(choice(
-          templateDollarBrace,
+          g.DollarBrace,
           templateExpression,
           interpolatedSingleQuotedText
         )),
@@ -4623,7 +4625,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const GeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
     noTrivia(many(choice(
-      templateDollarBrace,
+      g.DollarBrace,
       g.GeneralTemplateGroup,
       g.GeneralTemplateQuoted,
       generalTemplateText
@@ -4633,17 +4635,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      noTrivia(sequence(
-        g.Identifier,
-        literal('('),
-        g.GeneralTemplate,
-        literal(')')
-      )),
       sequence(
+        g.Identifier,
+        noTrivia(sequence(
+          literal('('),
+          g.GeneralTemplate,
+          literal(')')
+        ))
+      ),
+      noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
         literal(')')
-      )
+      ))
     ),
     (children, _fields, span) => children.length === 4
       ? withGluedKeywordSpan(funcCall(
