@@ -72,7 +72,8 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
     });
   });
 
-  it('allows a paren Block to contain an authored space-value slot', () => {
+  /* Parens around a list are list syntax, as Dart Sass reads them (J16, SCSS paren lists, owner 2026-10-22). */
+  it('parses a paren space list as the escaped list group, written without its parens', () => {
     const root = parse('.card { tracks: (1 2); }');
     const body = root.rules[0];
     if (body?.type !== 'Ruleset') {
@@ -85,11 +86,57 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
     expect(bare(declaration.value)).toEqual({
       type: 'Block',
       delimiter: 'paren',
+      escaped: true,
       value: [
         { type: 'Dimension', number: 1, unit: '', src: '1' },
         { type: 'Dimension', number: 2, unit: '', src: '2' }
       ]
     });
-    expect(serialize(root)).toEqual({ css: '.card {\n  tracks: (1 2);\n}\n' });
+    expect(serialize(root)).toEqual({ css: '.card {\n  tracks: 1 2;\n}\n' });
+  });
+});
+
+describe('SCSS paren values', () => {
+  const valueOf = (source: string): unknown => {
+    const body = parse(source).rules[0];
+    const declaration = body?.type === 'Ruleset' ? body.rules[0] : undefined;
+    if (declaration?.type !== 'Declaration') {
+      throw new Error('expected a declaration');
+    }
+    return bare(declaration.value);
+  };
+
+  /* Parens around a list are list syntax (J16, SCSS paren lists, owner 2026-10-22): the escaped group `~( … )` builds. */
+  it('builds the escaped group around a comma list, a trailing-comma list and parens around a list', () => {
+    const commaList = { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }, { type: 'Keyword', src: 'd' }] };
+    expect(valueOf('a {b: (c, d)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: commaList });
+    expect(valueOf('a {b: (c,)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }] } });
+    expect(valueOf('a {b: ((c, d))}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: commaList });
+  });
+
+  /*
+   * Around one value the group is escaped where Dart Sass drops its parens
+   * (owner 2026-10-22), and J16's paren group around math, and around one value
+   * in a Sass calculation or a CSS `if()` condition, where Dart Sass writes them.
+   */
+  it('escapes a group around one value outside a calculation and an if() condition', () => {
+    expect(valueOf('a {b: ($c)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: { type: 'Lookup' } });
+    expect(valueOf('a {b: (10px)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: { type: 'Dimension' } });
+  });
+
+  it('keeps the plain group around math, and around one value in calc() and an if() condition', () => {
+    expect(valueOf('a {b: (1 + 2)}')).toMatchObject({ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+' } });
+    expect(valueOf('a {b: (1 + 2)}')).not.toHaveProperty('escaped');
+    const calc = valueOf('a {b: calc(2 * ($c))}');
+    expect(calc).toMatchObject({ type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', right: { type: 'Block', value: { type: 'Lookup' } } } }] });
+    expect(calc).not.toMatchObject({ args: [{ value: { right: { escaped: true } } }] });
+    expect(valueOf('a {b: if(css(1) and (css(2)): c)}')).toMatchObject({ branches: [{ guard: { right: { parens: 1, value: { type: 'FunctionCall' } } } }] });
+  });
+
+  /* A call that is not a math function, inside one, reads its arguments as plain values again. */
+  it('escapes a group around one value in a call inside calc()', () => {
+    expect(valueOf('a {b: calc(1px + foo((10px)))}')).toMatchObject({
+      args: [{ value: { right: { type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Block', escaped: true } }] } } }]
+    });
   });
 });

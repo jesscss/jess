@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -423,6 +423,26 @@ const gluedDot = regex(/\.(?![0-9])/);
  * @see https://drafts.csswg.org/css-syntax-3/#consume-name
  */
 const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+
+/*
+ * The css-values-4 §10 math functions, as glued function OPENERS — the token a
+ * value dispatch routes on.
+ *
+ * CANONICAL TABLE: `CSS_MATH_FUNCTIONS` in `@jesscss/core/ast`
+ * (`packages/core/src/ast/math-functions.ts`). It is spelled as a literal
+ * because a dispatch key must be macro-visible;
+ * `packages/core/src/ast/__tests__/math-function-table.test.ts` fails if it
+ * drifts from the table.
+ */
+const CSS_MATH_FUNCTION_OPENERS = [
+  'calc(',
+  'min(', 'max(', 'clamp(',
+  'round(', 'mod(', 'rem(',
+  'sin(', 'cos(', 'tan(', 'asin(', 'acos(', 'atan(', 'atan2(',
+  'pow(', 'sqrt(', 'hypot(', 'log(', 'exp(',
+  'abs(', 'sign('
+];
+
 const caseInsensitiveWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
 
 /*
@@ -800,8 +820,10 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * A parenthesized SCSS value can either enforce arithmetic precedence or hold
    * an ordinary list. Try the fully structured arithmetic form first; the list
-   * branch is deliberately separate so `(1 2)` stays a paren Block around a list
-   * rather than being invented as math.
+   * branch is deliberately separate so `(1 2)` is a list rather than being
+   * invented as math. Parens around a list are list syntax, as Dart Sass reads
+   * them, so the list branch builds the escaped group (`parenValue`), and it
+   * takes a trailing comma: `(1,)` is a one-item comma list.
    *
    * The interior padding is spelled for the same reason `Map` above spells it:
    * this ladder runs with trivia cleared, so an interior that admits authored
@@ -810,6 +832,11 @@ const scssFactory = (g: ScssInputRules) => {
    * so a block comment is never ambient here. Without these terms `( c )` was
    * rejected exactly as hard as `(/* c *\/ c)` was.
    */
+  /* A list's trailing comma, before its closing `)`: `(1,)`, `(a: 1,)`. */
+  const listTrailingComma = optional(noTrivia(sequence(
+    optional(valueTrivia),
+    literal(',')
+  )));
   const Paren = node<ValueNode>(
     'Block',
     choice(
@@ -824,11 +851,12 @@ const scssFactory = (g: ScssInputRules) => {
         literal('('),
         optional(valueTrivia),
         parser({ trivia: whitespace }, g.Value),
+        listTrailingComma,
         optional(valueTrivia),
         literal(')')
       ))
     ),
-    children => block(requireValueSlot(children.find(isScssValueSlotValue)))
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => parenValue(children, state)
   );
 
   /*
@@ -906,10 +934,7 @@ const scssFactory = (g: ScssInputRules) => {
           optional(valueTrivia),
           g.MapEntry
         ))),
-        optional(noTrivia(sequence(
-          optional(valueTrivia),
-          literal(',')
-        ))),
+        listTrailingComma,
         optional(valueTrivia),
         literal(')')
       )),
@@ -1264,13 +1289,26 @@ const scssFactory = (g: ScssInputRules) => {
   const IdentifierOrFunction = dispatch(
     identOrFunction,
     caseInsensitive('url(', UrlFunction),
-    caseInsensitive('var(', VarCall),
+
+    /*
+     * A call that is not a math function, `var()` included, and an
+     * interpolation, read their arguments as plain values again: a group in
+     * them drops its parens inside a calculation too (`calc(1px + foo((10px)))`
+     * is `foo(10px)`, as Dart Sass writes it).
+     */
+    caseInsensitive('var(', withCtx(state => leaveCalculation(state), VarCall)),
 
     /* An `if()` call's conditions are CSS `if()` conditions, where these three names are CSS tests. */
     caseInsensitive('if(', IfCall),
 
     /* `sass(…)` holds a Sass expression, not a condition (Dart Sass reads it so); its calls are calls. */
     when('sass(', withCtx(state => leaveIfTest(state), Call)),
+
+    /*
+     * A math function's arguments are a Sass calculation, where a group around
+     * one value keeps its parens as Dart Sass writes it (`parenValue`).
+     */
+    caseInsensitive(CSS_MATH_FUNCTION_OPENERS, withCtx(state => enterCalculation(state), Call)),
     caseInsensitive('media(', mediaTestOrCall),
     caseInsensitive('supports(', supportsTestOrCall),
     caseInsensitive('style(', styleTestOrCall),
@@ -1283,7 +1321,7 @@ const scssFactory = (g: ScssInputRules) => {
      * CSS, so the parity blind spot has no reachable input.)
      */
     when(endsWith('\\('), KeywordOrInterpolatedValue),
-    when(endsWith('('), Call),
+    when(endsWith('('), withCtx(state => leaveCalculation(state), Call)),
     when(matches(/\.\$/), NamespacedVariable),
     otherwise(KeywordOrInterpolatedValue)
   );
@@ -1309,7 +1347,7 @@ const scssFactory = (g: ScssInputRules) => {
     'ValueAtom',
     choice(
       g.Quoted,
-      g.InterpolatedValue,
+      withCtx(state => leaveCalculation(state), g.InterpolatedValue),
       g.VariableReference,
       g.Color,
       g.Dimension,

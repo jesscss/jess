@@ -22273,9 +22273,10 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
        * A group around one value a reference reached is that value
        * ({@link whileReached}): `@a: (10px)` in `(min-width: @a)` is `10px`, where
        * `(10px)` is no `<mf-value>` and the query would never match. A feature
-       * (`@q: (min-width: 640px)`) is no one value and keeps its parens.
+       * (`@q: (min-width: 640px)`) is no one value and keeps its parens. An
+       * escaped group is written without its parens wherever it is.
        */
-      if (e.reached && isParenGroup(node) && groupsOneValue(node)) {
+      if (node.escaped === true || (e.reached && isParenGroup(node) && groupsOneValue(node))) {
         return evalQueryPreludeParts(node.value, frame, e);
       }
       const open = delimiterOpen(node.delimiter);

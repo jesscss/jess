@@ -98,7 +98,9 @@ describe('Less math boundaries', () => {
    * `2 * 1px + 2px` (ledger J16; owner 2026-10-09: text prints as written). The
    * test is the value's type, never its bytes. A variable holding such a group
    * holds the text and the group. In `.scss` an unquoted string is text inside
-   * a `calc()`, and a call's in a group that math reads.
+   * a `calc()`; outside one a group around it is the escaped group (J16's
+   * `.scss` amendment, owner 2026-10-22), and math around it is an open owner
+   * question (DESIGN-DECISIONS-NOTES § J16, 2026-10-22).
    */
   it('keeps the parens around text, however it is reached', async () => {
     expect(await render('@v: e("1px + 2px"); .x { a: calc(2 * (e("1px + 2px"))); b: calc(2 * (@v)); '
@@ -115,7 +117,7 @@ describe('Less math boundaries', () => {
       + 'c: calc(2 * (unquote("foo"))); d: calc(2 * ($k)); e: (unquote("1px + 2px")); f: ($k); g: (unquote("1px + 2px")) * 2; h: $g * 2; i: $g; }';
     expect(await renderIn('.scss', scss))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (foo)); d: calc(2 * (foo)); e: 1px + 2px; f: foo; '
-        + 'g: calc((1px + 2px) * 2); h: calc((1px + 2px) * 2); i: 1px + 2px; }');
+        + 'g: 1px + 2px * 2; h: 1px + 2px * 2; i: 1px + 2px; }');
     expect(await renderJess('@-from "#less" import (e); .x { a: calc(2 * ($e("1px + 2px"))); b: calc(2 * (($e("1px + 2px")))); c: ($e("foo")); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); c: (foo); }');
   });
@@ -138,13 +140,16 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * In `.scss` only a call's unquoted string in a group is text outside a
-   * calculation; any other keyword in a group is an identifier, written as it
-   * is (ledger J16).
+   * In `.scss` a group around one value outside a calculation is the escaped
+   * group (ledger J16, `.scss` amendment, owner 2026-10-22), so math reads what
+   * it holds: a keyword is an identifier, and a call's unquoted string is its
+   * text, written without the group. Dart Sass stops at all four ("Undefined
+   * operation"); which of these `.scss` should write is an open owner question
+   * (DESIGN-DECISIONS-NOTES § J16, 2026-10-22).
    */
   it('reads a .scss keyword in a group outside a calculation as an identifier', async () => {
     expect(await renderIn('.scss', '$g: (foo); $k: foo; .x { a: (foo) * 2; b: $g * 2; c: $k * 2; d: (unquote("1px + 2px")) * 2; }'))
-      .toBe('.x { a: (foo) * 2; b: foo * 2; c: foo * 2; d: calc((1px + 2px) * 2); }');
+      .toBe('.x { a: foo * 2; b: foo * 2; c: foo * 2; d: 1px + 2px * 2; }');
   });
 
   /*
@@ -225,8 +230,9 @@ describe('Less math boundaries', () => {
 
   /*
    * A group is consumed only by what computes in it; a group around one value
-   * nothing computes keeps its parens, in every dialect (SEMANTIC-INVARIANTS 4;
-   * orchestrator judgment under owner delegation 2026-10-06).
+   * nothing computes keeps its parens, in every dialect but `.scss`
+   * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
+   * 2026-10-06; J16's `.scss` amendment, owner 2026-10-22).
    */
   it('emits a paren group around one value identically in every dialect', async () => {
     const src = '.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; '
@@ -234,9 +240,17 @@ describe('Less math boundaries', () => {
     const css = await renderCss(src);
     expect(css).toBe('.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; '
       + 'h: (var(--x)); i: (calc(1px + 1vw)); j: (foo(1)); k: var(--a, (rgb(1, 2, 3))); l: (rgb(1, 2, 3)); }');
-    for (const extension of ['.less', '.scss', '.jess'] as const) {
+    for (const extension of ['.less', '.jess'] as const) {
       expect(await renderIn(extension, src), extension).toBe(css);
     }
+
+    /*
+     * In `.scss` a group whose parens Dart Sass drops is the escaped group
+     * (owner 2026-10-22), so each is written as Dart Sass 1.101.7 writes it,
+     * except `g`, where Dart Sass divides (`5px`) and the slash is a separator.
+     */
+    expect(await renderIn('.scss', src)).toBe('.x { c: 10vh; d: var(--a, 10px); e: calc(var(--a, 5vh)); f: red 1px; g: 10px / 2; '
+      + 'h: var(--x); i: calc(1px + 1vw); j: foo(1); k: var(--a, rgb(1, 2, 3)); l: rgb(1, 2, 3); }');
     expect(await renderJess('.x { w: min((10px), 1px); }')).toBe('.x { w: min((10px), 1px); }');
     expect(await render('@c: foo(1); .x { b: ((10px)); c: (@c); d: (10px) * 2; e: percentage((0.5)); }'))
       .toBe('.x { b: ((10px)); c: (foo(1)); d: 20px; e: 50%; }');
@@ -340,7 +354,7 @@ describe('Less math boundaries', () => {
     expect(await render('@a: (10px) (red); @b: @a; .x { a: @b; w: 1px; v: $w; } .y { w: (1px); v: $w; }'))
       .toBe('.x { a: 10px red; w: 1px; v: 1px; } .y { w: (1px); v: 1px; }');
     expect(await renderIn('.scss', '$a: (10px); @mixin m($x) { a: $x; } .x-#{$a} { @include m((10px)); s: "#{$a}"; m: $a $a; c: (10px); }'))
-      .toBe('.x-10px { a: 10px; s: "10px"; m: 10px 10px; c: (10px); }');
+      .toBe('.x-10px { a: 10px; s: "10px"; m: 10px 10px; c: 10px; }');
     expect(await renderJess('$a: (10px);\n.x { m: $a $a; c: (10px); }')).toBe('.x { m: 10px 10px; c: (10px); }');
     expect(await renderIn('.less', '.m(@x) { b: @x; } .x { .m((0.5px)); c: (0.5px); }', true)).toBe('.x{b:.5px;c:(0.5px)}');
 

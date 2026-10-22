@@ -16,8 +16,8 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -296,6 +296,37 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
   return result;
 }
 
+/**
+ * A Sass paren value. Parens Dart Sass drops when it writes the value are
+ * syntax, not part of it (owner 2026-10-22: *"if they drop parens when
+ * rendering, then those should be parsed as "escaped" when parsing .scss"*,
+ * ledger J16's `.scss` case), so the group is the escaped group a Less
+ * `~( … )` builds, written without its parens and read as what it holds:
+ * around a list (a comma list, a space list, a list with a trailing comma,
+ * `(1,)`), and, outside a math function's arguments, around one value
+ * (`(10px)`, `($l)`). Math in a group (`(1 + 2)`), and a group around one value
+ * inside a Sass calculation (`calc(2 * ($k))`) or a CSS `if()` condition
+ * (`if(css(1) and (css(2)): c)`), whose parens Dart Sass writes, are the paren
+ * group J16 reads.
+ */
+export function parenValue(children: readonly unknown[], state: unknown): Block {
+  const value = requireValueSlot(children.find(isScssValueSlotValue));
+  if (children.some(child => isToken(child) && child.value === ',')) {
+    const items = !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value : list([value], ',');
+    return block(items, 'paren', true);
+  }
+  if (isValueSlotArray(value) || value.type === 'List') {
+    return block(value, 'paren', true);
+  }
+  if (value.type === 'Block' && value.escaped === true) {
+    return value;
+  }
+  return isInCalculation(state) || isIfTest(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'paren', true);
+}
+
+/* What a paren group holds when it is math or a test: the group is J16's, which the math reads and consumes. */
+const GROUP_COMPUTES: ReadonlySet<string> = new Set(['Operation', 'Expression', 'Condition']);
+
 export function isScssValue(value: unknown): value is ValueNode {
   /*
    * Dispatch on the node tag once instead of re-testing typeof/null/`type` in a
@@ -544,6 +575,21 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
  */
 export function isIfTest(state: unknown): boolean {
   return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;
+}
+
+/** Whether the parse is inside a math function's arguments (`calc()`, `min()`, …), a Sass calculation. */
+export function isInCalculation(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'calculation' in state && state.calculation === true;
+}
+
+/** The parse state outside a math function's arguments: unchanged when it was not inside one. */
+export function leaveCalculation(state: unknown): unknown {
+  return isInCalculation(state) && typeof state === 'object' && state !== null ? { ...state, calculation: false } : state;
+}
+
+/** The parse state inside a math function's arguments. */
+export function enterCalculation(state: unknown): object {
+  return typeof state === 'object' && state !== null ? { ...state, calculation: true } : { calculation: true };
 }
 
 /** The parse state inside an `if()` call: its conditions are read as CSS `if()` conditions. */
