@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, parenValue, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -800,8 +800,10 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * A parenthesized SCSS value can either enforce arithmetic precedence or hold
    * an ordinary list. Try the fully structured arithmetic form first; the list
-   * branch is deliberately separate so `(1 2)` stays a paren Block around a list
-   * rather than being invented as math.
+   * branch is deliberately separate so `(1 2)` is a list rather than being
+   * invented as math. Parens around a list are list syntax, as Dart Sass reads
+   * them, so the list branch builds the escaped group (`parenValue`), and it
+   * takes a trailing comma: `(1,)` is a one-item comma list.
    *
    * The interior padding is spelled for the same reason `Map` above spells it:
    * this ladder runs with trivia cleared, so an interior that admits authored
@@ -810,6 +812,11 @@ const scssFactory = (g: ScssInputRules) => {
    * so a block comment is never ambient here. Without these terms `( c )` was
    * rejected exactly as hard as `(/* c *\/ c)` was.
    */
+  /* A list's trailing comma, before its closing `)`: `(1,)`, `(a: 1,)`. */
+  const listTrailingComma = optional(noTrivia(sequence(
+    optional(valueTrivia),
+    literal(',')
+  )));
   const Paren = node<ValueNode>(
     'Block',
     choice(
@@ -824,11 +831,12 @@ const scssFactory = (g: ScssInputRules) => {
         literal('('),
         optional(valueTrivia),
         parser({ trivia: whitespace }, g.Value),
+        listTrailingComma,
         optional(valueTrivia),
         literal(')')
       ))
     ),
-    children => block(requireValueSlot(children.find(isScssValueSlotValue)))
+    parenValue
   );
 
   /*
@@ -906,10 +914,7 @@ const scssFactory = (g: ScssInputRules) => {
           optional(valueTrivia),
           g.MapEntry
         ))),
-        optional(noTrivia(sequence(
-          optional(valueTrivia),
-          literal(',')
-        ))),
+        listTrailingComma,
         optional(valueTrivia),
         literal(')')
       )),

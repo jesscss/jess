@@ -1751,7 +1751,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-Paren">
     <h2><a href="#rule-Paren">§</a> Paren</h2>
     <div class="diagram" data-rule="Paren"></div>
-    <div class="ebnf">Paren ::= &quot;(&quot; WHITESPACE or COMMENT? MathSum WHITESPACE or COMMENT? &quot;)&quot; | &quot;(&quot; WHITESPACE or COMMENT? Value WHITESPACE or COMMENT? &quot;)&quot;</div>
+    <div class="ebnf">Paren ::= &quot;(&quot; WHITESPACE or COMMENT? MathSum WHITESPACE or COMMENT? &quot;)&quot; | &quot;(&quot; WHITESPACE or COMMENT? Value (WHITESPACE or COMMENT? &quot;,&quot;)? WHITESPACE or COMMENT? &quot;)&quot;</div>
   </section>
   <section class="rule" id="rule-MapEntry">
     <h2><a href="#rule-MapEntry">§</a> MapEntry</h2>
@@ -2898,7 +2898,7 @@ svg.railroad-diagram rect {
   { name: "InterpolatedQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), Terminal("/(?:[^\"\\\\#]|\\\\[\\s\\S]|#(?!\\{))+/"))), Terminal("\"")), Sequence(Terminal("'"), ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), Terminal("/(?:[^'\\\\#]|\\\\[\\s\\S]|#(?!\\{))+/"))), Terminal("'")))); } },
   { name: "InterpolatedUrlValue", dsl: function(){ return Diagram(Sequence(Optional(Terminal("/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/")), NonTerminal("SassInterpolation"), ZeroOrMore(Choice(0, Terminal("/(?:[^\\\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F#]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])|#(?!\\{))+/"), NonTerminal("SassInterpolation"))))); } },
   { name: "InterpolatedValue", dsl: function(){ return Diagram(Sequence(NonTerminal("SassInterpolation"), ZeroOrMore(Choice(0, Terminal("NAME"), NonTerminal("SassInterpolation"))))); } },
-  { name: "Paren", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("MathSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("Value"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")))); } },
+  { name: "Paren", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("MathSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("Value"), Optional(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","))), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")))); } },
   { name: "MapEntry", dsl: function(){ return Diagram(Sequence(NonTerminal("MathTopSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(":"), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("ValueTerm"))); } },
   { name: "Map", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("MapEntry"), ZeroOrMore(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("MapEntry"))), Optional(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","))), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")))); } },
   { name: "ReturnRule", dsl: function(){ return Diagram(Sequence(Terminal("@return"), NonTerminal("Value"), Optional(Terminal(";")))); } },

@@ -4,25 +4,31 @@ import { defineFunction, groupItems, isValueGroupArray, selectorValue } from '@j
 /**
  * The text Sass reads a `$selector` argument as: a string, a space list of
  * strings, or a comma list of those (an `&` value, or what `selector.parse()`
- * returned, reads back as the selector it is). Anything else is `null`.
+ * returned, reads back as the selector it is). Anything else, a list nested
+ * deeper included (`((c,),)`), is `null`. `level` is where the value sits: the
+ * argument (0), a comma list's item (1), a space list's item (2, a string).
  */
-function selectorText(value: ValueGroup): string | null {
+function selectorText(value: ValueGroup, level = 0): string | null {
   if (isValueGroupArray(value)) {
-    return joinTexts(value, ' ');
+    return level < 2 ? joinTexts(value, ' ', 2) : null;
   }
   switch (value.type) {
     case 'Quoted': return value.value;
     case 'Keyword': return value.text;
-    case 'List': return value.sep === '/' ? null : joinTexts(value.value, value.sep === ',' ? ', ' : ' ');
-    case 'Block': return value.delimiter === 'paren' ? selectorText(value.value) : null;
+    case 'List':
+      if (value.sep === '/' || level === 2 || (level === 1 && value.sep === ',')) {
+        return null;
+      }
+      return value.sep === ',' ? joinTexts(value.value, ', ', 1) : joinTexts(value.value, ' ', 2);
+    case 'Block': return value.delimiter === 'paren' ? selectorText(value.value, level) : null;
     default: return null;
   }
 }
 
-function joinTexts(items: readonly ValueGroup[], separator: string): string | null {
+function joinTexts(items: readonly ValueGroup[], separator: string, level: number): string | null {
   let text = '';
   for (const item of items) {
-    const part = selectorText(item);
+    const part = selectorText(item, level);
     if (part === null) {
       return null;
     }
