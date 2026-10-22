@@ -297,15 +297,19 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
 }
 
 /**
- * A Sass paren value. Parens around a list are list syntax, not part of the
- * value: Dart Sass reads `(1, 2)` as the list `1, 2` (owner 2026-10-22, ledger
- * J16's SCSS list case). So a comma list, a space list and a list with a
- * trailing comma (`(1,)`, one item) are the escaped group a Less `~( … )`
- * builds, the one-argument list node: written without its parens, and read as
- * the list it holds; parens around that group are the same list (`((1, 2))`).
- * A group around one value is the paren group J16 reads.
+ * A Sass paren value. Parens Dart Sass drops when it writes the value are
+ * syntax, not part of it (owner 2026-10-22: *"if they drop parens when
+ * rendering, then those should be parsed as "escaped" when parsing .scss"*,
+ * ledger J16's `.scss` case), so the group is the escaped group a Less
+ * `~( … )` builds, written without its parens and read as what it holds:
+ * around a list (a comma list, a space list, a list with a trailing comma,
+ * `(1,)`), and, outside a math function's arguments, around one value
+ * (`(10px)`, `($l)`). Math in a group (`(1 + 2)`), and a group around one value
+ * inside a Sass calculation (`calc(2 * ($k))`) or a CSS `if()` condition
+ * (`if(css(1) and (css(2)): c)`), whose parens Dart Sass writes, are the paren
+ * group J16 reads.
  */
-export function parenValue(children: readonly unknown[]): Block {
+export function parenValue(children: readonly unknown[], state: unknown): Block {
   const value = requireValueSlot(children.find(isScssValueSlotValue));
   if (children.some(child => isToken(child) && child.value === ',')) {
     const items = !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value : list([value], ',');
@@ -314,8 +318,14 @@ export function parenValue(children: readonly unknown[]): Block {
   if (isValueSlotArray(value) || value.type === 'List') {
     return block(value, 'paren', true);
   }
-  return value.type === 'Block' && value.escaped === true ? value : block(value);
+  if (value.type === 'Block' && value.escaped === true) {
+    return value;
+  }
+  return isInCalculation(state) || isIfTest(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'paren', true);
 }
+
+/* What a paren group holds when it is math or a test: the group is J16's, which the math reads and consumes. */
+const GROUP_COMPUTES: ReadonlySet<string> = new Set(['Operation', 'Expression', 'Condition']);
 
 export function isScssValue(value: unknown): value is ValueNode {
   /*
@@ -565,6 +575,21 @@ function argumentRun(children: readonly unknown[]): ValueSlot {
  */
 export function isIfTest(state: unknown): boolean {
   return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;
+}
+
+/** Whether the parse is inside a math function's arguments (`calc()`, `min()`, …), a Sass calculation. */
+export function isInCalculation(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'calculation' in state && state.calculation === true;
+}
+
+/** The parse state outside a math function's arguments: unchanged when it was not inside one. */
+export function leaveCalculation(state: unknown): unknown {
+  return isInCalculation(state) && typeof state === 'object' && state !== null ? { ...state, calculation: false } : state;
+}
+
+/** The parse state inside a math function's arguments. */
+export function enterCalculation(state: unknown): object {
+  return typeof state === 'object' && state !== null ? { ...state, calculation: true } : { calculation: true };
 }
 
 /** The parse state inside an `if()` call: its conditions are read as CSS `if()` conditions. */

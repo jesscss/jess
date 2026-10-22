@@ -58,11 +58,39 @@ describe('scss: several paren lists, and the functions that read them', () => {
   });
 });
 
-/* Only `.scss` reads parens around a list as list syntax: `.css` and `.jess` keep the group (J16). */
-describe('a paren group around a list in .css and .jess keeps its parens', () => {
+/*
+ * A group around one value is escaped where Dart Sass drops its parens (owner
+ * 2026-10-22: "if they drop parens when rendering, then those should be parsed
+ * as "escaped" when parsing .scss"). The first two are lines of sass-spec
+ * inputs; the rest are the orchestrator's examples, measured against Dart
+ * Sass 1.101.7, among them the groups Dart Sass keeps: in a Sass calculation
+ * and in a CSS `if()` condition (sass-spec `expressions/if/css.hrx`
+ * `and/2/and_paren`).
+ */
+const oneValue: ReadonlyArray<readonly [name: string, source: string, expected: string]> = [
+  ['non_conformant/colors/basic.hrx', 'p { color: (red) (green) (blue); }', 'p {\n  color: red green blue;\n}\n'],
+  ['non_conformant/scss/null.hrx', 'div { $x: null; j: (null), (null), 3, 4; }', 'div {\n  j: 3, 4;\n}\n'],
+  ['a dimension', '.x { y: (10px); }', '.x {\n  y: 10px;\n}\n'],
+  ['a variable holding a list', '$l: 1, 2; .x { y: ($l); }', '.x {\n  y: 1, 2;\n}\n'],
+  ['a call returning text', '.x { y: (unquote("foo")); }', '.x {\n  y: foo;\n}\n'],
+  ['kept in a Sass calculation', '$k: foo; .x { y: calc(2 * ($k)); }', '.x {\n  y: calc(2 * (foo));\n}\n'],
+  ['dropped in a call inside a calculation', '.x { y: calc(1px + foo((10px))); }', '.x {\n  y: calc(1px + foo(10px));\n}\n'],
+  ['in a media feature', '$d: 10px; @media screen and (min-width: ($d)) { .a { b: c; } }', '@media screen and (min-width: 10px) {\n  .a {\n    b: c;\n  }\n}\n'],
+  ['dropped in an interpolation inside a calculation', '.x { y: calc(1px + #{(10px)}); }', '.x {\n  y: calc(1px + 10px);\n}\n'],
+  ['kept in a CSS if() condition', 'a {b: if(css(1) and (css(2)): c)}', 'a {\n  b: if(css(1) and (css(2)): c);\n}\n']
+];
+
+describe('scss: a group around one value', () => {
+  it.each(oneValue)('%s', async (_name, source, expected) => {
+    await expect(render(source)).resolves.toBe(expected);
+  });
+});
+
+/* Only `.scss` reads these parens as syntax: `.css` and `.jess` keep the group (J16). */
+describe('a paren group in .css and .jess keeps its parens', () => {
   it.each(['css', 'jess'])('%s', async (dialect) => {
-    await expect(new Compiler({}).renderString('.x { y: (1, 2); z: foo((c, d), e); }', { extension: `.${dialect}` }))
-      .resolves.toBe('.x {\n  y: (1, 2);\n  z: foo((c, d), e);\n}\n');
+    await expect(new Compiler({}).renderString('.x { y: (1, 2); z: foo((c, d), e); w: (10px); }', { extension: `.${dialect}` }))
+      .resolves.toBe('.x {\n  y: (1, 2);\n  z: foo((c, d), e);\n  w: (10px);\n}\n');
   });
 });
 
