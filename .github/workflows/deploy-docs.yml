@@ -66,7 +66,11 @@ jobs:
         env:
           SOURCE_SHA: ${{ github.sha }}
         run: |
-          rsync -a --delete --exclude='.git/' source/packages/docs/docs-jess/build/ site/
+          # --checksum: rsync's default quick check skips a file whose size and
+          # whole-second mtime match. deploy-revision.txt is always the same
+          # size and is often written in the same second the Pages checkout
+          # lands, so without it the new revision was silently not copied.
+          rsync -a --checksum --delete --exclude='.git/' source/packages/docs/docs-jess/build/ site/
           cd site
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
