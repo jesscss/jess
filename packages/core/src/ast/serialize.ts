@@ -203,7 +203,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { assertValidValueSyntax, checkedSupportsPrelude, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
+import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
@@ -20586,7 +20586,7 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
   }
   const from = e.chunks.length;
   const marked = e.positions?.length ?? 0;
-  emitAtRuleStatementRaw(node, frame, e, cssImportTarget(node)!);
+  emitAtRuleStatementRaw(node, frame, e, checkedImportTarget(node, cssImportTarget(node)!, e.s));
   e.chunks[slot] = e.chunks.splice(from).join('');
   for (let index = marked; index < (e.positions?.length ?? 0); index++) {
     e.positions![index]!.start = slot;
@@ -20663,7 +20663,7 @@ function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void
   if (isCharset(node)) {
     return;
   }
-  const target = e.s.context === undefined ? null : cssImportTarget(node);
+  const target = e.s.context === undefined ? null : checkedImportTarget(node, cssImportTarget(node), e.s);
   emitAtRuleStatementRaw(node, frame, e, target);
 }
 

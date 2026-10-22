@@ -1891,7 +1891,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ImportSupports">
     <h2><a href="#rule-ImportSupports">§</a> ImportSupports</h2>
     <div class="diagram" data-rule="ImportSupports"></div>
-    <div class="ebnf">ImportSupports ::= &quot;supports&quot; &quot;(&quot; (SupportsCondition | ImportDeclaration) &quot;)&quot;</div>
+    <div class="ebnf">ImportSupports ::= &quot;supports&quot; &quot;(&quot; (ImportDeclaration | SupportsCondition) &quot;)&quot;</div>
   </section>
   <section class="rule" id="rule-ImportQualifier">
     <h2><a href="#rule-ImportQualifier">§</a> ImportQualifier</h2>
@@ -2926,7 +2926,7 @@ svg.railroad-diagram rect {
   { name: "ModuleDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, Sequence(NonTerminal("Quoted"), Optional(NonTerminal("UseNamespace")), Optional(Sequence(Terminal("with"), NonTerminal("Map"))), Terminal(";")), Sequence(NonTerminal("Quoted"), Terminal(";"))))); } },
   { name: "ImportLayer", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("layer"), Terminal("("), NonTerminal("Keyword"), Terminal(")")), Sequence(Terminal("layer"), Sequence(Comment("not"), Terminal("("))))); } },
   { name: "ImportDeclaration", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("QueryFeatureName"), Sequence(Terminal("*"), NonTerminal("Identifier")), NonTerminal("Identifier")), Terminal(":"), NonTerminal("SupportsAtom"))); } },
-  { name: "ImportSupports", dsl: function(){ return Diagram(Sequence(Terminal("supports"), Terminal("("), Choice(0, NonTerminal("SupportsCondition"), NonTerminal("ImportDeclaration")), Terminal(")"))); } },
+  { name: "ImportSupports", dsl: function(){ return Diagram(Sequence(Terminal("supports"), Terminal("("), Choice(0, NonTerminal("ImportDeclaration"), NonTerminal("SupportsCondition")), Terminal(")"))); } },
   { name: "ImportQualifier", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("ImportLayer"), Optional(NonTerminal("ImportSupports"))), NonTerminal("ImportSupports"))); } },
   { name: "MixinParameter", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("..."), Terminal("$"), Terminal("IDENT")), Sequence(Terminal("$"), Terminal("IDENT"), Optional(Sequence(Terminal(":"), NonTerminal("ValueTerm"))), Optional(Terminal("..."))))); } },
   { name: "MixinParameters", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Sequence(NonTerminal("MixinParameter"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("MixinParameter"))), Optional(Terminal(",")))), Terminal(")"))); } },
