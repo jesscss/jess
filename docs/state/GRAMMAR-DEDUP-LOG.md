@@ -1275,3 +1275,16 @@ now quantified — a big multi-week effort, not a switch.
   `:not()` / `:has()` now read css's `SelectorOnlyPseudoArgument`; `.jess`'s
   `PseudoSelectorList` / `PseudoSelectorComplex` / `PseudoSelectorCompound`
   remain for `of S`, `selector()`, `$apply` and `$extend`.
+
+- **2026-10-22 — compared-head slot (fix/parse-gaps-p38-leftovers).** css's
+  value-first range name (`queryRangeName`) now reads the `QueryFeatureName`
+  slot rather than its routed `Property` directly, and what follows a
+  value-first bound's comparison is a named slot, `QueryComparedHead` (css's
+  compared-head dispatch), on the `MediaFeatureOpener` pattern. SCSS and
+  `.jess` override only that slot (the dispatch, then `queryRangeName`), and
+  Less does too: its `@media` features read css's `MediaFeatureContents`. The
+  override is now the same in all three supersets, as `MediaFeatureOpener`'s
+  is; moving it into css needs css's `QueryFeatureName` (a bare `routed()`) to
+  read a name outside a dispatch. SCSS's CSS-import `ImportDeclaration` now reads its name through
+  `QueryFeatureName`, the `@supports` feature's name; it is still an SCSS-only
+  production, because css's import tail is raw text.
