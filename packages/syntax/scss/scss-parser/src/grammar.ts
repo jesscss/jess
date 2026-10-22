@@ -2313,13 +2313,18 @@ const scssFactory = (g: ScssInputRules) => {
       )),
 
       /*
-       * Inside `supports(…)`, as inside a group's parentheses, no identifier
-       * is an operand and `not` takes no chain: an `@import` condition is
-       * written out, with no compile check of its own to report one.
+       * The condition is read as the top of an `@supports` prelude reads it,
+       * with no group state, so an identifier operand (`supports(color)`) and
+       * a `not` chain (`supports(not (a: b) and (c: d))`) parse (ledger P45)
+       * and the compile reports `css/invalid-supports-condition` (owner
+       * 2026-10-22). That condition would read `display` in
+       * `supports(display: grid)` as an identifier, so the declaration form
+       * goes first: its name and `:` decide it, and a name with no `:` after
+       * it is the condition's.
        */
       choice(
-        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
-        g.ImportDeclaration
+        g.ImportDeclaration,
+        g.SupportsCondition
       ),
       literal(')')
     ),

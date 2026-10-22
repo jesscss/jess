@@ -33,9 +33,10 @@ const sheet = (prelude: string): string => `a { b: c; }\n@supports ${prelude} {\
 /*
  * `or not (…)` and `not (…) and (…)` put a connective where an operand
  * belongs (css-conditional-3 needs `or (not (…))` and `(not (…)) and (…)`),
- * and a condition has no comma list.
+ * `and` and `or` do not mix without a group (`((…) and (…)) or (…)`), and a
+ * condition has no comma list.
  */
-const PRELUDES = ['selector (a)', 'color', '(display: grid) or not (display: flex)', 'not (display: grid) and (display: flex)', '(display: grid), (display: flex)'];
+const PRELUDES = ['selector (a)', 'color', '(display: grid) or not (display: flex)', 'not (display: grid) and (display: flex)', '(display: grid) and (display: flex) or (display: block)', '(display: grid), (display: flex)'];
 
 describe('an @supports prelude that is no condition parses', () => {
   for (const dialect of DIALECTS) {
@@ -57,10 +58,37 @@ describe('an @supports prelude that is no condition fails the compile', () => {
   }
 });
 
+/*
+ * A CSS `@import`'s `supports(…)` condition is the same condition. SCSS reads
+ * it as one (the other dialects keep an import's tail as written text), so it
+ * parses and fails the compile the same way, at the import.
+ */
+const IMPORT_CONDITIONS = ['color', 'not (display: grid) and (display: flex)', '(display: grid) and (display: flex) or (display: block)'];
+const importSheet = (condition: string): string => `@import "a.css" supports(${condition});\na { b: c; }\n`;
+
+describe('an scss @import supports() condition that is no condition', () => {
+  it.each(IMPORT_CONDITIONS)('parses: supports(%s)', (condition) => {
+    const result = PLUGINS.scss.safeParse!('/proj/import.scss', importSheet(condition));
+    expect(result.errors).toEqual([]);
+    expect(result.document).toBeDefined();
+  });
+
+  it.each(IMPORT_CONDITIONS)('fails the compile: supports(%s)', async (condition) => {
+    const result = await new Compiler({}).renderToResult({ source: importSheet(condition), filePath: '/proj/import.scss' }, { suppressWarnings: true });
+    expect(result.css).toBe('');
+    expect(result.errors.map(error => [error.code, error.phase, error.line, error.column])).toEqual([[CODE, 'parse', 1, 1]]);
+  });
+
+  it.each(['display: grid', 'selector(a > b)', '(display: grid) or (display: flex)', 'not (display: grid)'])('compiles: supports(%s)', async (condition) => {
+    await expect(new Compiler({}).renderString(importSheet(condition), { filePath: '/proj/import.scss' }))
+      .resolves.toBe(`@import "a.css" supports(${condition});\na {\n  b: c;\n}\n`);
+  });
+});
+
 describe('a supports condition still compiles', () => {
   /* The `selector()` function and a condition joined by a connective are written as `.css` writes them. */
   it.each(DIALECTS)('%s', async (dialect) => {
-    const source = '@supports selector(a > b) and (display: grid) {\n  .a { b: c; }\n}\n';
+    const source = '@supports selector(a > b) and (display: grid) and (display: flex) {\n  .a { b: c; }\n}\n@supports (display: grid) or (display: flex) or (display: block) {\n  .a { b: c; }\n}\n';
     const css = await new Compiler({}).renderString(source, { filePath: '/proj/supports.css' });
     await expect(new Compiler({}).renderString(source, { filePath: `/proj/supports.${dialect}` })).resolves.toBe(css);
   });

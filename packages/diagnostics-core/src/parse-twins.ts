@@ -348,6 +348,8 @@ export function pushParseTwinDiagnostics(
   pushForgivenSelectorItemTwin(node, source, push);
   if (SUPPORTS_BLOCK_TYPES.has(gt)) {
     pushInvalidSupportsConditionTwin(node, source, push);
+  } else if (gt === 'ImportStatement') {
+    pushInvalidImportSupportsTwin(node, source, push);
   }
 
   /*
@@ -459,17 +461,22 @@ function operandIdentifier(term: CssCstNode['children'][number], source: string)
 /*
  * The CST twin of the compiler's `@supports` prelude check
  * (`checkedSupportsPrelude`, `@jesscss/core`; owner 2026-10-22): one
- * condition, `not` and one operand or operands joined by `and` / `or`, and
- * the first identifier out of place, or the `,` of a list.
+ * condition, `not` and one operand or operands joined by one of `and` / `or`,
+ * and the first identifier out of place, or the `,` of a list.
  */
 function strayIdentifierIn(prelude: CssCstNode, source: string): string | undefined {
   const conditions = cstChildrenOf(prelude).filter(child => child._tag === 'node');
   if (conditions.length !== 1) {
     return ',';
   }
-  const terms = cstChildrenOf(conditions[0]!);
+  return strayIdentifierInCondition(conditions[0]!, source);
+}
+
+function strayIdentifierInCondition(condition: CssCstNode, source: string): string | undefined {
+  const terms = cstChildrenOf(condition);
   const head = terms[0];
   const first = terms.length === 2 && head !== undefined && !(head._tag === 'node' && head.grammarType === 'SupportsInParens') && childText(head, source).toLowerCase() === 'not' ? 1 : 0;
+  let connective: string | undefined;
   for (let index = first; index < terms.length; index++) {
     const term = terms[index]!;
     if ((index - first) % 2 === 0) {
@@ -477,9 +484,13 @@ function strayIdentifierIn(prelude: CssCstNode, source: string): string | undefi
       if (name !== undefined) {
         return name;
       }
-    } else if (!['and', 'or'].includes(childText(term, source).toLowerCase())) {
+      continue;
+    }
+    const name = childText(term, source).toLowerCase();
+    if ((name !== 'and' && name !== 'or') || (connective !== undefined && connective !== name)) {
       return childText(term, source);
     }
+    connective = name;
   }
   return (terms.length - first) % 2 === 0 ? childText(terms[terms.length - 1]!, source) : undefined;
 }
@@ -490,7 +501,32 @@ function pushInvalidSupportsConditionTwin(node: CssCstNode, source: string, push
   if (prelude?._tag !== 'node' || prelude.grammarType !== 'SupportsPrelude') {
     return;
   }
-  const what = strayIdentifierIn(prelude, source);
+  pushInvalidSupportsCondition(node, strayIdentifierIn(prelude, source), push);
+}
+
+/*
+ * The same twin for a CSS `@import`'s `supports(…)` condition, which only
+ * SCSS structures (`ImportTail` > `ImportQualifier` > `ImportSupports`), at
+ * the import, where the compiler reports it (`checkedImportTarget`).
+ */
+function pushInvalidImportSupportsTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const tail = cstChildrenOf(node).find(child => child._tag === 'node' && child.grammarType === 'ImportTail');
+  const qualifier = tail?._tag === 'node' ? cstChildrenOf(tail)[0] : undefined;
+  if (qualifier?._tag !== 'node' || qualifier.grammarType !== 'ImportQualifier') {
+    return;
+  }
+  for (const supports of cstChildrenOf(qualifier)) {
+    if (supports._tag !== 'node' || supports.grammarType !== 'ImportSupports') {
+      continue;
+    }
+    const condition = cstChildrenOf(supports).find(child => child._tag === 'node' && child.grammarType === 'SupportsCondition');
+    if (condition?._tag === 'node') {
+      pushInvalidSupportsCondition(node, strayIdentifierInCondition(condition, source), push);
+    }
+  }
+}
+
+function pushInvalidSupportsCondition(node: CssCstNode, what: string | undefined, push: ParseTwinPusher): void {
   if (what !== undefined) {
     const error = ERR.invalidSupportsCondition({ meta: { what } });
     push('css/invalid-supports-condition', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });

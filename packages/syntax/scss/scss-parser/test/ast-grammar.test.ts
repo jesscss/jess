@@ -465,8 +465,19 @@ describe('SCSS canonical-AST grammar', () => {
       ] } }]
     });
 
+    /* No condition, but well-formed: they parse, and the compile reports them (`css/invalid-supports-condition`). */
+    for (const [source, condition] of [
+      ['@import "theme.css" supports(color);', { type: 'Keyword', src: 'color' }],
+      ['@import "theme.css" supports(not (a: b) and (c: d));', { type: 'Sequence', parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block' }, { type: 'Keyword', src: 'and' }, { type: 'Block' }] }]
+    ] as const) {
+      const parsed = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(parsed.unconsumedFrom, source).toBeNull();
+      expect(parsed.value).toMatchObject({ rules: [{ prelude: { parts: [{ type: 'Quoted' }, { type: 'FunctionCall', name: 'supports', args: [{ value: condition }] }] } }] });
+    }
+
     for (const unsupported of [
-      '@import "theme.css" supports(#{$feature});'
+      '@import "theme.css" supports(#{$feature});',
+      '@import "a.css" supports(--a:);'
     ]) {
       const unsupportedResult = run(scssGrammar.Stylesheet, unsupported, { trivia: scssGrammar.whitespace });
       expect(unsupportedResult.ok && unsupportedResult.unconsumedFrom === null && isStylesheet(unsupportedResult.value), unsupported).toBe(false);

@@ -26,6 +26,7 @@ const PRELUDES: ReadonlyArray<readonly [prelude: string, what: string]> = [
   ['color', 'color'],
   ['(display: grid) or not (display: flex)', 'not'],
   ['not (display: grid) and (display: flex)', 'not'],
+  ['(display: grid) and (display: flex) or (display: block)', 'or'],
   ['(display: grid), (display: flex)', ',']
 ];
 
@@ -43,5 +44,25 @@ describe('a supports condition', () => {
   it.each(DIALECTS)('%s: reports nothing', (dialect) => {
     expect(reported(dialect, sheet('not (display: grid)'))).toEqual([]);
     expect(reported(dialect, sheet('selector(a > b) and (display: grid) and (font-tech  color-colrv1)'))).toEqual([]);
+    expect(reported(dialect, sheet('(display: grid) or (display: flex) or (display: block)'))).toEqual([]);
+  });
+});
+
+/* SCSS reads a CSS `@import`'s `supports(…)` condition, and the compile checks it, at the import. */
+const importSheet = (condition: string): string => `@import "a.css" supports(${condition});\na { b: c; }\n`;
+
+describe('an scss @import supports() condition', () => {
+  it.each([
+    ['color', 'color'],
+    ['not (display: grid) and (display: flex)', 'not'],
+    ['(display: grid) and (display: flex) or (display: block)', 'or']
+  ])('supports(%s)', (condition, what) => {
+    expect(reported('scss', importSheet(condition))).toEqual([
+      { code: CODE, phase: 'parse', defaultSeverity: 'error', message: `\`${what}\` is not a supports condition`, line: 1, column: 1 }
+    ]);
+  });
+
+  it.each(['display: grid', 'selector(a > b)', 'not (display: grid)'])('reports nothing: supports(%s)', (condition) => {
+    expect(reported('scss', importSheet(condition))).toEqual([]);
   });
 });
