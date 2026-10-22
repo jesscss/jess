@@ -30,8 +30,12 @@ const CODE = 'css/invalid-supports-condition';
 /** The at-rule sits on line 2, column 1. */
 const sheet = (prelude: string): string => `a { b: c; }\n@supports ${prelude} {\n  .a { b: c; }\n}\n`;
 
-/* `or not (…)` is a connective where an operand belongs: css-conditional-3 needs `or (not (…))`. */
-const PRELUDES = ['selector (a)', 'color', '(display: grid) or not (display: flex)'];
+/*
+ * `or not (…)` and `not (…) and (…)` put a connective where an operand
+ * belongs (css-conditional-3 needs `or (not (…))` and `(not (…)) and (…)`),
+ * and a condition has no comma list.
+ */
+const PRELUDES = ['selector (a)', 'color', '(display: grid) or not (display: flex)', 'not (display: grid) and (display: flex)', '(display: grid), (display: flex)'];
 
 describe('an @supports prelude that is no condition parses', () => {
   for (const dialect of DIALECTS) {
@@ -61,11 +65,18 @@ describe('a supports condition still compiles', () => {
     await expect(new Compiler({}).renderString(source, { filePath: `/proj/supports.${dialect}` })).resolves.toBe(css);
   });
 
-  /* Inside a condition's parentheses an identifier is general-enclosed content, kept as written. */
+  /* Inside a condition's parentheses what is no condition is general-enclosed content, kept as written. */
   it.each(DIALECTS)('%s: a general-enclosed group of identifiers', async (dialect) => {
     const source = '@supports (display: grid) or (font-tech  color-colrv1) {\n  .a { b: c; }\n}\n';
     const css = await new Compiler({}).renderString(source, { filePath: '/proj/supports.css' });
     expect(css).toContain('(font-tech  color-colrv1)');
+    await expect(new Compiler({}).renderString(source, { filePath: `/proj/supports.${dialect}` })).resolves.toBe(css);
+  });
+
+  it.each(DIALECTS)('%s: a general-enclosed `not` chain in a group', async (dialect) => {
+    const source = '@supports (not (display: grid)  and (display: flex)) {\n  .a { b: c; }\n}\n';
+    const css = await new Compiler({}).renderString(source, { filePath: '/proj/supports.css' });
+    expect(css).toContain('(not (display: grid)  and (display: flex))');
     await expect(new Compiler({}).renderString(source, { filePath: `/proj/supports.${dialect}` })).resolves.toBe(css);
   });
 });

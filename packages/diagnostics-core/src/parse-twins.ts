@@ -346,6 +346,9 @@ export function pushParseTwinDiagnostics(
   const gt = node.grammarType;
   pushSelectorCaptureTwin(node, language, source, push);
   pushForgivenSelectorItemTwin(node, source, push);
+  if (SUPPORTS_BLOCK_TYPES.has(gt)) {
+    pushInvalidSupportsConditionTwin(node, source, push);
+  }
 
   /*
    * Less v5 removes executable backtick values, but the tolerant CST keeps the
@@ -429,6 +432,68 @@ export function pushParseTwinDiagnostics(
         fix: `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`
       }
     );
+  }
+}
+
+/* The at-rules whose prelude is a `SupportsPrelude` (css and SCSS, Less, `.jess`). */
+const SUPPORTS_BLOCK_TYPES = new Set(['QueryAtRuleBlock', 'SupportsBlock', 'SupportsAtRuleBlock']);
+
+/* A CST child's authored text. */
+function childText(child: CssCstNode['children'][number], source: string): string {
+  return source.slice(Number(child.span.start), Number(child.span.end));
+}
+
+/*
+ * The identifier a supports condition term reads as an operand: a
+ * `SupportsInParens` that opens with an identifier (`selector (a)`, `color`),
+ * or any term that is no `SupportsInParens` (a connective out of place).
+ */
+function operandIdentifier(term: CssCstNode['children'][number], source: string): string | undefined {
+  if (term._tag !== 'node' || term.grammarType !== 'SupportsInParens') {
+    return childText(term, source);
+  }
+  const head = cstChildrenOf(term)[0];
+  return head?._tag === 'node' && head.grammarType === 'Keyword' ? childText(head, source) : undefined;
+}
+
+/*
+ * The CST twin of the compiler's `@supports` prelude check
+ * (`checkedSupportsPrelude`, `@jesscss/core`; owner 2026-10-22): one
+ * condition, `not` and one operand or operands joined by `and` / `or`, and
+ * the first identifier out of place, or the `,` of a list.
+ */
+function strayIdentifierIn(prelude: CssCstNode, source: string): string | undefined {
+  const conditions = cstChildrenOf(prelude).filter(child => child._tag === 'node');
+  if (conditions.length !== 1) {
+    return ',';
+  }
+  const terms = cstChildrenOf(conditions[0]!);
+  const head = terms[0];
+  const first = terms.length === 2 && head !== undefined && !(head._tag === 'node' && head.grammarType === 'SupportsInParens') && childText(head, source).toLowerCase() === 'not' ? 1 : 0;
+  for (let index = first; index < terms.length; index++) {
+    const term = terms[index]!;
+    if ((index - first) % 2 === 0) {
+      const name = operandIdentifier(term, source);
+      if (name !== undefined) {
+        return name;
+      }
+    } else if (!['and', 'or'].includes(childText(term, source).toLowerCase())) {
+      return childText(term, source);
+    }
+  }
+  return (terms.length - first) % 2 === 0 ? childText(terms[terms.length - 1]!, source) : undefined;
+}
+
+/* The editor twin of `css/invalid-supports-condition`, at the at-rule, where the compiler reports it. */
+function pushInvalidSupportsConditionTwin(node: CssCstNode, source: string, push: ParseTwinPusher): void {
+  const prelude = cstChildrenOf(node)[1];
+  if (prelude?._tag !== 'node' || prelude.grammarType !== 'SupportsPrelude') {
+    return;
+  }
+  const what = strayIdentifierIn(prelude, source);
+  if (what !== undefined) {
+    const error = ERR.invalidSupportsCondition({ meta: { what } });
+    push('css/invalid-supports-condition', 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }
 }
 

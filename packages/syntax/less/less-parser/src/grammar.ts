@@ -424,6 +424,8 @@ type SharedSyntax = {
   SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
   SupportsCondition: Combinator<ValueNode>;
+  // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
+  SupportsPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
   IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
@@ -3867,7 +3869,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SupportsBlock',
     sequence(
       g.SupportsAtKeyword,
-      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsCondition),
+      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsPrelude),
       literal('{'),
       g.blockBody,
       optional(g.Call),

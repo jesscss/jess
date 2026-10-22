@@ -32,12 +32,13 @@ function operandIdentifier(term: ValueSlot): string | undefined {
  * The first identifier out of place in a condition, which is `not` and one
  * operand, or operands joined by `and` / `or` (css-conditional-3 §6). An
  * operand is a parenthesized group or a function: an identifier there, a
- * connective included (`@supports or`, `and (a: b)`, `(a: b) or not (c: d)`),
- * is none, and so is a connective with no operand after it.
+ * connective included (`@supports or`, `and (a: b)`, `(a: b) or not (c: d)`,
+ * `not (a: b) and (c: d)`), is none, and so is a connective with no operand
+ * after it. A condition has no comma list: its `,` is reported.
  */
 function strayIdentifier(condition: ValueSlot): string | undefined {
   if (!isValueSlotArray(condition) && condition.type === 'List') {
-    return condition.value.map(strayIdentifier).find(found => found !== undefined);
+    return ',';
   }
   const terms = !isValueSlotArray(condition) && condition.type === 'Sequence' ? condition.parts : [condition];
   const first = terms.length === 2 && keywordOf(terms[0])?.toLowerCase() === 'not' ? 1 : 0;

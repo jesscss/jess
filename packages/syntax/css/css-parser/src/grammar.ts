@@ -4434,18 +4434,18 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const SupportsCondition = node(
     'SupportsCondition',
-    choice(
-      sequence(
-        g.QueryNot,
+    sequence(
+      choice(
+        sequence(
+          g.QueryNot,
+          supportsOperand
+        ),
         supportsOperand
       ),
-      sequence(
-        supportsOperand,
-        many(sequence(
-          g.QueryConnective,
-          supportsOperand
-        ))
-      )
+      many(sequence(
+        g.QueryConnective,
+        supportsOperand
+      ))
     ),
     children => queryConditionChain(children)
   );
@@ -4791,9 +4791,11 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The existing public grammar currently admits a comma-separated condition
-   * list for all conditional groups, including @supports. Keep the direct path
-   * parity-compatible until that public grammar is intentionally tightened.
+   * An `@supports` prelude: a supports condition, or a comma list of them. A
+   * condition has no comma list (css-conditional-3 §6), but the list is
+   * well-formed, so it parses (ledger P45) and the compile reports its `,`
+   * (`css/invalid-supports-condition`, owner 2026-10-22). Less, SCSS and
+   * `.jess` read this one prelude.
    */
   const SupportsPrelude = node(
     'SupportsPrelude',

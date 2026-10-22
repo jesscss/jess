@@ -1448,12 +1448,9 @@ describe('SCSS canonical-AST grammar', () => {
       expect(query.ok && query.unconsumedFrom === null && isStylesheet(query.value), querySource).toBe(true);
     }
 
-    for (const invalid of [
-      '@supports (display: grid), (color: blue) { .card { color: blue; } }'
-    ]) {
-      const rejected = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), invalid).toBe(false);
-    }
+    /* A comma list is no supports condition: it parses (ledger P45) and the compile reports its `,` (owner 2026-10-22). */
+    const commaList = run(scssGrammar.Stylesheet, '@supports (display: grid), (color: blue) { .card { color: blue; } }', { trivia: scssGrammar.whitespace });
+    expect(commaList.ok && commaList.unconsumedFrom === null && isStylesheet(commaList.value)).toBe(true);
   });
 
   it('constructs descriptor-only @font-face blocks with existing direct declaration values', () => {

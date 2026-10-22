@@ -122,7 +122,6 @@ type ScssRules = {
   SupportsNotKeyword: Combinator<Keyword>;
   SupportsAndOrKeyword: Combinator<Keyword>;
   SupportsCondition: Combinator<ValueNode>;
-  SupportsPrelude: Combinator<ValueNode>;
 
   /** CSS-compatible generic header capture for known passthrough blocks. */
   AtRulePrelude: Combinator<ValueNode | null>;
@@ -200,6 +199,9 @@ type ScssSharedSyntax = {
   queryFeatureName: Combinator<unknown>;
   queryComparedHead: Combinator<unknown>;
   queryRangeName: Combinator<unknown>;
+
+  /* Inherited from the CSS base: the comma list of supports conditions an `@supports` prelude reads. */
+  SupportsPrelude: Combinator<ValueNode>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
   MediaTestBody: Combinator<unknown>;
@@ -2311,13 +2313,13 @@ const scssFactory = (g: ScssInputRules) => {
       )),
 
       /*
-       * The declaration first: a condition's top reads an identifier as its
-       * stray operand (`SupportsInParens`), so `display: grid` would commit to
-       * `display` and fail at the `:`.
+       * Inside `supports(…)`, as inside a group's parentheses, no identifier
+       * is an operand and `not` takes no chain: an `@import` condition is
+       * written out, with no compile check of its own to report one.
        */
       choice(
-        g.ImportDeclaration,
-        g.SupportsCondition
+        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
+        g.ImportDeclaration
       ),
       literal(')')
     ),
@@ -3852,12 +3854,30 @@ const scssFactory = (g: ScssInputRules) => {
     g.QueryAndOr,
     children => keyword(requireToken(children[0]).value)
   );
+
+  /*
+   * At the top of a condition, `not` takes the chain after its operand too:
+   * `not (a) and (b)` is no condition (css-conditional-3 §6 needs
+   * `(not (a)) and (b)`), but it is well-formed, so it parses (ledger P45) and
+   * the compile reports it (owner 2026-10-22). Inside a group's parentheses
+   * the chain is gated off, so the group stays `<general-enclosed>`.
+   */
   const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
       sequence(
         g.SupportsNotKeyword,
-        g.SupportsInParens
+        g.SupportsInParens,
+        many(choice({
+          gate: state => !isInSupportsGroup(state),
+          combinator: sequence(
+            choice(
+              g.SupportsAndOrKeyword,
+              peek(g.QueryGluedConnective)
+            ),
+            g.SupportsInParens
+          )
+        }))
       ),
       sequence(
         g.SupportsInParens,
@@ -3877,11 +3897,6 @@ const scssFactory = (g: ScssInputRules) => {
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
-  );
-  const SupportsPrelude = node<ValueNode>(
-    'SupportsPrelude',
-    g.SupportsCondition,
-    children => requireValue(children[0])
   );
 
   /*
@@ -5374,7 +5389,6 @@ const scssFactory = (g: ScssInputRules) => {
     SupportsNotKeyword,
     SupportsAndOrKeyword,
     SupportsCondition,
-    SupportsPrelude,
     AtRulePrelude,
     AtRulePreludeAtom,
     AtRulePreludeGroup,
