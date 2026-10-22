@@ -276,6 +276,8 @@ svg.railroad-diagram rect {
     <a href="#rule-EnclosedQuoted">EnclosedQuoted</a>
     <a href="#rule-SupportsFeature">SupportsFeature</a>
     <a href="#rule-SupportsInParens">SupportsInParens</a>
+    <a href="#rule-SupportsIdentifier">SupportsIdentifier</a>
+    <a href="#rule-SupportsGroupCondition">SupportsGroupCondition</a>
     <a href="#rule-SupportsCondition">SupportsCondition</a>
     <a href="#rule-SupportsPrelude">SupportsPrelude</a>
     <a href="#rule-ConditionalBlock">ConditionalBlock</a>
@@ -1484,7 +1486,17 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-SupportsInParens">
     <h2><a href="#rule-SupportsInParens">§</a> SupportsInParens</h2>
     <div class="diagram" data-rule="SupportsInParens"></div>
-    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsCondition &quot;)&quot; | SupportsFeature | Enclosed</div>
+    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsCondition &quot;)&quot; | SupportsFeature | Enclosed | Keyword Enclosed?</div>
+  </section>
+  <section class="rule" id="rule-SupportsIdentifier">
+    <h2><a href="#rule-SupportsIdentifier">§</a> SupportsIdentifier</h2>
+    <div class="diagram" data-rule="SupportsIdentifier"></div>
+    <div class="ebnf">SupportsIdentifier ::= Keyword Enclosed?</div>
+  </section>
+  <section class="rule" id="rule-SupportsGroupCondition">
+    <h2><a href="#rule-SupportsGroupCondition">§</a> SupportsGroupCondition</h2>
+    <div class="diagram" data-rule="SupportsGroupCondition"></div>
+    <div class="ebnf">SupportsGroupCondition ::= QueryNot SupportsInParens | SupportsInParens (QueryConnective SupportsInParens)*</div>
   </section>
   <section class="rule" id="rule-SupportsCondition">
     <h2><a href="#rule-SupportsCondition">§</a> SupportsCondition</h2>
@@ -1879,7 +1891,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ImportSupports">
     <h2><a href="#rule-ImportSupports">§</a> ImportSupports</h2>
     <div class="diagram" data-rule="ImportSupports"></div>
-    <div class="ebnf">ImportSupports ::= &quot;supports&quot; &quot;(&quot; (SupportsCondition | ImportDeclaration) &quot;)&quot;</div>
+    <div class="ebnf">ImportSupports ::= &quot;supports&quot; &quot;(&quot; (ImportDeclaration | SupportsCondition) &quot;)&quot;</div>
   </section>
   <section class="rule" id="rule-ImportQualifier">
     <h2><a href="#rule-ImportQualifier">§</a> ImportQualifier</h2>
@@ -2833,7 +2845,9 @@ svg.railroad-diagram rect {
   { name: "EnclosedGroup", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("EnclosedContent"), Terminal(")")), Sequence(Terminal("["), NonTerminal("EnclosedContent"), Terminal("]")), Sequence(Terminal("{"), NonTerminal("EnclosedContent"), Terminal("}")))); } },
   { name: "EnclosedQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), Terminal("DOUBLE-QUOTED BODY"), Terminal("\"")), Sequence(Terminal("'"), Terminal("SINGLE-QUOTED BODY"), Terminal("'")))); } },
   { name: "SupportsFeature", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("QueryFeatureName"), Terminal(")")), Sequence(Terminal("("), NonTerminal("QueryFeatureName"), Terminal(":"), NonTerminal("SupportsAtom"), Terminal(")")))); } },
-  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsCondition"), Terminal(")")), NonTerminal("SupportsFeature"), NonTerminal("Enclosed"))); } },
+  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsCondition"), Terminal(")")), NonTerminal("SupportsFeature"), NonTerminal("Enclosed"), Sequence(NonTerminal("Keyword"), Optional(NonTerminal("Enclosed"))))); } },
+  { name: "SupportsIdentifier", dsl: function(){ return Diagram(Sequence(NonTerminal("Keyword"), Optional(NonTerminal("Enclosed")))); } },
+  { name: "SupportsGroupCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryNot"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(NonTerminal("QueryConnective"), NonTerminal("SupportsInParens")))))); } },
   { name: "SupportsCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsNotKeyword"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(Choice(0, NonTerminal("SupportsAndOrKeyword"), Sequence(Comment("peek"), NonTerminal("QueryGluedConnective"))), NonTerminal("SupportsInParens")))))); } },
   { name: "SupportsPrelude", dsl: function(){ return Diagram(NonTerminal("SupportsCondition")); } },
   { name: "ConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("SassNestedDirective"), NonTerminal("ConditionalBlock"), NonTerminal("StartingStyleBlock"), NonTerminal("LayerBlock"), NonTerminal("ScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("Keyframes"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("AtRuleStatement"), NonTerminal("NestedRuleset"))), Terminal("}")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("SassNestedDirective"), NonTerminal("ConditionalBlock"), NonTerminal("StartingStyleBlock"), NonTerminal("LayerBlock"), NonTerminal("ScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("Keyframes"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("AtRuleStatement"), NonTerminal("NestedRuleset"))), Terminal("}")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("ImportStatement"), NonTerminal("SassNestedDirective"), NonTerminal("ConditionalBlock"), NonTerminal("StartingStyleBlock"), NonTerminal("LayerBlock"), NonTerminal("ScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("Keyframes"), NonTerminal("UnknownAtRuleBlock"), NonTerminal("AtRuleStatement"), NonTerminal("NestedRuleset"))), Terminal("}")))); } },
@@ -2912,7 +2926,7 @@ svg.railroad-diagram rect {
   { name: "ModuleDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, Sequence(NonTerminal("Quoted"), Optional(NonTerminal("UseNamespace")), Optional(Sequence(Terminal("with"), NonTerminal("Map"))), Terminal(";")), Sequence(NonTerminal("Quoted"), Terminal(";"))))); } },
   { name: "ImportLayer", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("layer"), Terminal("("), NonTerminal("Keyword"), Terminal(")")), Sequence(Terminal("layer"), Sequence(Comment("not"), Terminal("("))))); } },
   { name: "ImportDeclaration", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("QueryFeatureName"), Sequence(Terminal("*"), NonTerminal("Identifier")), NonTerminal("Identifier")), Terminal(":"), NonTerminal("SupportsAtom"))); } },
-  { name: "ImportSupports", dsl: function(){ return Diagram(Sequence(Terminal("supports"), Terminal("("), Choice(0, NonTerminal("SupportsCondition"), NonTerminal("ImportDeclaration")), Terminal(")"))); } },
+  { name: "ImportSupports", dsl: function(){ return Diagram(Sequence(Terminal("supports"), Terminal("("), Choice(0, NonTerminal("ImportDeclaration"), NonTerminal("SupportsCondition")), Terminal(")"))); } },
   { name: "ImportQualifier", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("ImportLayer"), Optional(NonTerminal("ImportSupports"))), NonTerminal("ImportSupports"))); } },
   { name: "MixinParameter", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("..."), Terminal("$"), Terminal("IDENT")), Sequence(Terminal("$"), Terminal("IDENT"), Optional(Sequence(Terminal(":"), NonTerminal("ValueTerm"))), Optional(Terminal("..."))))); } },
   { name: "MixinParameters", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Sequence(NonTerminal("MixinParameter"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("MixinParameter"))), Optional(Terminal(",")))), Terminal(")"))); } },

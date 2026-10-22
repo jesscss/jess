@@ -1288,3 +1288,12 @@ now quantified — a big multi-week effort, not a switch.
   read a name outside a dispatch. SCSS's CSS-import `ImportDeclaration` now reads its name through
   `QueryFeatureName`, the `@supports` feature's name; it is still an SCSS-only
   production, because css's import tail is raw text.
+  The 2026-10-22 owner ruling on `@supports selector (a)` added an
+  identifier operand to the top of a supports condition: in css by structure
+  (`SupportsIdentifier`, and `SupportsGroupCondition` inside a group's
+  parentheses, a deliberate copy of `SupportsCondition`'s chain, because a
+  parse-state gate costs css's AST parse about 30%), and in SCSS's and
+  `.jess`'s own `SupportsInParens` copies as an arm gated on a parse-state
+  flag (both grammars already read parse state). It also glued SCSS's and
+  `.jess`'s `Enclosed` function name to its `(`. Converging the SCSS and
+  `.jess` supports copies on css's is still open.

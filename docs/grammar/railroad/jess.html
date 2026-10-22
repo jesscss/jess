@@ -276,6 +276,8 @@ svg.railroad-diagram rect {
     <a href="#rule-EnclosedQuoted">EnclosedQuoted</a>
     <a href="#rule-SupportsFeature">SupportsFeature</a>
     <a href="#rule-SupportsInParens">SupportsInParens</a>
+    <a href="#rule-SupportsIdentifier">SupportsIdentifier</a>
+    <a href="#rule-SupportsGroupCondition">SupportsGroupCondition</a>
     <a href="#rule-SupportsCondition">SupportsCondition</a>
     <a href="#rule-SupportsPrelude">SupportsPrelude</a>
     <a href="#rule-ConditionalBlock">ConditionalBlock</a>
@@ -1527,7 +1529,17 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-SupportsInParens">
     <h2><a href="#rule-SupportsInParens">§</a> SupportsInParens</h2>
     <div class="diagram" data-rule="SupportsInParens"></div>
-    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsCondition &quot;)&quot; | SupportsFeature | Enclosed</div>
+    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsCondition &quot;)&quot; | SupportsFeature | Enclosed | Keyword Enclosed?</div>
+  </section>
+  <section class="rule" id="rule-SupportsIdentifier">
+    <h2><a href="#rule-SupportsIdentifier">§</a> SupportsIdentifier</h2>
+    <div class="diagram" data-rule="SupportsIdentifier"></div>
+    <div class="ebnf">SupportsIdentifier ::= Keyword Enclosed?</div>
+  </section>
+  <section class="rule" id="rule-SupportsGroupCondition">
+    <h2><a href="#rule-SupportsGroupCondition">§</a> SupportsGroupCondition</h2>
+    <div class="diagram" data-rule="SupportsGroupCondition"></div>
+    <div class="ebnf">SupportsGroupCondition ::= QueryNot SupportsInParens | SupportsInParens (QueryConnective SupportsInParens)*</div>
   </section>
   <section class="rule" id="rule-SupportsCondition">
     <h2><a href="#rule-SupportsCondition">§</a> SupportsCondition</h2>
@@ -3091,7 +3103,9 @@ svg.railroad-diagram rect {
   { name: "EnclosedGroup", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("EnclosedContent"), Terminal(")")), Sequence(Terminal("["), NonTerminal("EnclosedContent"), Terminal("]")), Sequence(Terminal("{"), NonTerminal("EnclosedContent"), Terminal("}")))); } },
   { name: "EnclosedQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), Terminal("DOUBLE-QUOTED BODY"), Terminal("\"")), Sequence(Terminal("'"), Terminal("SINGLE-QUOTED BODY"), Terminal("'")))); } },
   { name: "SupportsFeature", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), Optional(Terminal("WHITESPACE")), NonTerminal("QueryFeatureName"), Optional(Terminal("WHITESPACE")), Terminal(":"), Optional(Terminal("WHITESPACE")), NonTerminal("SupportsAtom"), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Terminal("("), Optional(Terminal("WHITESPACE")), NonTerminal("QueryFeatureName"), Optional(Terminal("WHITESPACE")), Terminal(")")))); } },
-  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsCondition"), Terminal(")")), NonTerminal("SupportsFeature"), NonTerminal("Enclosed"))); } },
+  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsCondition"), Terminal(")")), NonTerminal("SupportsFeature"), NonTerminal("Enclosed"), Sequence(NonTerminal("Keyword"), Optional(NonTerminal("Enclosed"))))); } },
+  { name: "SupportsIdentifier", dsl: function(){ return Diagram(Sequence(NonTerminal("Keyword"), Optional(NonTerminal("Enclosed")))); } },
+  { name: "SupportsGroupCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryNot"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(NonTerminal("QueryConnective"), NonTerminal("SupportsInParens")))))); } },
   { name: "SupportsCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsNot"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(Choice(0, NonTerminal("SupportsLogical"), Sequence(Comment("peek"), NonTerminal("QueryGluedConnective"))), NonTerminal("SupportsInParens")))))); } },
   { name: "SupportsPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("SupportsCondition"), Terminal(","))); } },
   { name: "ConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")))); } },
