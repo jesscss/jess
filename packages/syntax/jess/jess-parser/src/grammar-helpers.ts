@@ -594,7 +594,8 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
     throw new TypeError(lostMessage);
   }
   const property = queryFeatureNameValue(name);
-  const value = children.slice(index + 1).find(isValueNode);
+  const last = children.findLast(isValueNode);
+  const value = last === name ? undefined : last;
   return value === undefined
     ? block(property)
     : block(operation(

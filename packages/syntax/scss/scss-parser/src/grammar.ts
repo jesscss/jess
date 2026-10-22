@@ -3765,7 +3765,8 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const property = queryFeatureNameValue(children[1]);
-      const value = children.slice(2).find(isScssValue);
+      const last = children.findLast(isScssValue);
+      const value = last === property ? undefined : last;
       return value === undefined
         ? block(property)
         : block(operation(

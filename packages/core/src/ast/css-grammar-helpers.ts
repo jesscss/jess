@@ -38,6 +38,7 @@ import {
 } from './nodes.js';
 import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
 import { walkAuthoredValue } from './traversal.js';
+import { isInterpolatedName } from './query-feature-name.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
   AnPlusB,
@@ -1021,57 +1022,6 @@ export function queryValueRatio(children: readonly unknown[]): ValueNode {
 }
 
 /**
- * A superset's `QueryFeatureName`: the identifier, as css's routed name gives
- * it, or, with the dialect's interpolation in it, the `Interpolation` of its
- * glued parts (`min-${d}` → `min-` + `$d`).
- */
-export function queryFeatureNameFrom(children: readonly unknown[]): string | Interpolation {
-  if (children.length === 1 && !isInterpolation(children[0])) {
-    return tokenText(children[0]);
-  }
-  const parts: Interpolation['parts'] = [];
-  for (const child of children) {
-    if (!isInterpolation(child)) {
-      appendInterpolationLiteral(parts, tokenText(child));
-      continue;
-    }
-    for (const part of child.parts) {
-      if ('lit' in part) {
-        appendInterpolationLiteral(parts, part.lit);
-      } else {
-        parts.push(part);
-      }
-    }
-  }
-  return interpolation(parts);
-}
-
-/** A `QueryFeatureName` as a value: a `Keyword` for an identifier, else its `Interpolation`. */
-export function queryFeatureNameValue(name: unknown): Keyword | Interpolation {
-  if (typeof name === 'string') {
-    return keyword(name);
-  }
-  if (isInterpolation(name)) {
-    return name;
-  }
-  throw new TypeError('A query feature lost its name.');
-}
-
-/*
- * A superset's interpolated feature name (`QueryFeatureName`: `(${f}: 1px)`,
- * `(min-#{$d} > 1px)`) is a value in the name's place, followed by `:` or a
- * comparison. A value-first range has its name, a string, after the
- * comparison, so an `Interpolation` there is the bound, not the name.
- */
-function isInterpolatedName(head: ValueNode, children: readonly unknown[]): boolean {
-  const next = children[1];
-  return head.type === 'Interpolation'
-    && isTerminalText(next)
-    && (tokenText(next) === ':' || queryComparisonOperators([next]).length === 1)
-    && typeof children[2] !== 'string';
-}
-
-/**
  * A query feature's contents (`QueryFeatureContents`): a name alone, a name
  * with `:` and a value, a name compared with one or two values, or a value
  * compared with the name — the same Operations the four feature forms built.
@@ -1090,9 +1040,8 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
     if (!isRange) {
       return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
     }
-    const property = keyword(tokenText(children[2]));
     const operators = queryComparisonOperators(children);
-    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
+    let result: ValueNode = operation(operators[0]!, head, keyword(tokenText(children[2])), false, cssBaseMathOutsideParens(operators[0]!));
     if (operators.length > 1) {
       const right = children[4];
       if (!isValue(right)) {

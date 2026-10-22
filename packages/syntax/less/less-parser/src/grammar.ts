@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameValue } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -74,7 +74,6 @@ import {
   isFunctionConditionFact,
   isInterp,
   isInterpolationFact,
-  queryFeatureNameOf,
   isLessCallArg,
   isLessEachCallback,
   isMixinCall,
@@ -3853,8 +3852,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const property = queryFeatureNameValue(children[1]);
-      const value = children.slice(2).find(isValueNode);
-      return value === undefined
+      const value = children.findLast(isValueNode);
+      return value === undefined || value === property
         ? block(property)
         : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
     }
@@ -3929,7 +3928,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       routed(choice(g.Identifier, g.Interpolation)),
       many(choice(g.Interpolation, g.InterpolatedPropertyTail))
     )),
-    children => queryFeatureNameOf(children)
+    children => queryFeatureNameFrom(children.map(child => isInterpolationFact(child) ? interpolation([{ ref: child.ref, unquote: true }]) : child))
   );
 
   /*
