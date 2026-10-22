@@ -533,8 +533,8 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     'css/invalid-supports-condition',
     {
       summary: '`${what}` is not a supports condition',
-      reason: '`@supports` takes one condition: parenthesized features and groups and functions such as `selector()`, joined by `and` or `or`, or one of them after `not` (css-conditional-3 §6). `${what}` stands where none of them can (`selector (a)` is the identifier `selector` and a group, not the `selector()` function), so a browser ignores the whole rule.',
-      fix: 'Write a feature `(property: value)`, or a function with no space before its `(` (`selector(a)`).'
+      reason: '`@supports` takes one condition: parenthesized features and groups and functions such as `selector()`, joined by `and` or by `or` (not both), or one of them after `not` (css-conditional-3 §6). `${what}` stands where none of them can (`selector (a)` is the identifier `selector` and a group, not the `selector()` function), so a browser ignores the whole rule.',
+      fix: 'Write a feature `(property: value)`, or a function with no space before its `(` (`selector(a)`); group a mix of `and` and `or` in parentheses.'
     }
   ],
   [

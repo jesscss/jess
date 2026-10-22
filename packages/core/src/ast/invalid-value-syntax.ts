@@ -4,7 +4,7 @@ import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 
-export { checkedSupportsPrelude } from './supports-condition.js';
+export { checkedSupportsPrelude, checkedImportTarget } from './supports-condition.js';
 import type { Any, CallValue, Declaration, ValueSlot } from './nodes.js';
 
 /**

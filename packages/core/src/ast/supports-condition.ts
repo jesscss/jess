@@ -12,7 +12,7 @@
 import type { Context } from '../context.js';
 import { ERR } from '../error/diagnostics.js';
 import { callSiteLocation } from './call-site-location.js';
-import type { AtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { ValueNode, ValueSlot } from './nodes.js';
 
@@ -34,7 +34,9 @@ function operandIdentifier(term: ValueSlot): string | undefined {
  * operand is a parenthesized group or a function: an identifier there, a
  * connective included (`@supports or`, `and (a: b)`, `(a: b) or not (c: d)`,
  * `not (a: b) and (c: d)`), is none, and so is a connective with no operand
- * after it. A condition has no comma list: its `,` is reported.
+ * after it. A condition joins its operands with one connective, so the first
+ * that differs from the one before it is reported (`(a) and (b) or (c)` needs
+ * `((a) and (b)) or (c)`). A condition has no comma list: its `,` is reported.
  */
 function strayIdentifier(condition: ValueSlot): string | undefined {
   if (!isValueSlotArray(condition) && condition.type === 'List') {
@@ -42,12 +44,17 @@ function strayIdentifier(condition: ValueSlot): string | undefined {
   }
   const terms = !isValueSlotArray(condition) && condition.type === 'Sequence' ? condition.parts : [condition];
   const first = terms.length === 2 && keywordOf(terms[0])?.toLowerCase() === 'not' ? 1 : 0;
+  let connective: string | undefined;
   for (let index = first; index < terms.length; index++) {
     const term = terms[index]!;
     const name = (index - first) % 2 === 0 ? operandIdentifier(term) : keywordOf(term);
-    if (name !== undefined && ((index - first) % 2 === 0 || !CONNECTIVES.has(name.toLowerCase()))) {
+    if (name === undefined) {
+      continue;
+    }
+    if ((index - first) % 2 === 0 || !CONNECTIVES.has(name.toLowerCase()) || (connective !== undefined && connective !== name.toLowerCase())) {
       return name;
     }
+    connective = name.toLowerCase();
   }
   return (terms.length - first) % 2 === 0 ? keywordOf(terms[terms.length - 1]) : undefined;
 }
@@ -59,6 +66,29 @@ export function checkedSupportsPrelude(node: AtRuleBlock, prelude: ValueNode, s:
     throw ERR.invalidSupportsCondition({ node, ...callSiteLocation(node, s), meta: { what } });
   }
   return prelude;
+}
+
+/**
+ * A CSS `@import`'s target, after failing the compile when its `supports(…)`
+ * condition is no condition, as {@link checkedSupportsPrelude} does for
+ * `@supports`. Only a condition the parser structured is read (SCSS); a tail
+ * kept as text has none.
+ */
+export function checkedImportTarget<T>(node: AtRuleStatement, target: T, s: { readonly context: Context | undefined }): T {
+  const prelude = node.prelude;
+  if (target === null || prelude === null || prelude.type !== 'Sequence') {
+    return target;
+  }
+  for (let index = 1; index < prelude.parts.length; index++) {
+    const part = prelude.parts[index]!;
+    if (part.type === 'FunctionCall' && part.args.length === 1 && part.name.toLowerCase() === 'supports') {
+      const what = strayIdentifier(part.args[0]!.value);
+      if (what !== undefined) {
+        throw ERR.invalidSupportsCondition({ node, ...callSiteLocation(node, s), meta: { what } });
+      }
+    }
+  }
+  return target;
 }
 
 /**
