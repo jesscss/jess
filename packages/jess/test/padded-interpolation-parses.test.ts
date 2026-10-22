@@ -77,3 +77,39 @@ describe('.jess: a supports selector() and an interpolated pseudo argument', () 
     await expect(render(interpolated, '.jess')).resolves.toBe(css);
   });
 });
+
+describe('.jess: padding inside `${…}`', () => {
+  /* Padding inside the braces changes nothing, wherever `${…}` stands. */
+  it.each([
+    ['a selector', '$size: lg;\n.btn-${size} { b: c; }', '$size: lg;\n.btn-${ size } { b: c; }'],
+    ['a property name', '$property: display;\n.a { ${property}: grid; }', '$property: display;\n.a { ${ property }: grid; }'],
+    ['a string', '$label: Close;\n.a { content: "${label}"; }', '$label: Close;\n.a { content: "${ label }"; }'],
+    ['a custom property value', '$size: 2rem;\n.a { --gap: ${size}; }', '$size: 2rem;\n.a { --gap: ${ size }; }'],
+    ['a query feature name', '$dimension: width;\n@media (min-${dimension}: 600px) { .a { b: c; } }', '$dimension: width;\n@media (min-${ dimension }: 600px) { .a { b: c; } }'],
+    ['a computed key', '$key: label;\n$label: Close;\n.a { content: "${[$key]}"; }', '$key: label;\n$label: Close;\n.a { content: "${ [$key] }"; }'],
+    ['a comment', '$size: lg;\n.btn-${size} { b: c; }', '$size: lg;\n.btn-${ /* lg or sm */ size } { b: c; }']
+  ])('in %s', async (_label, unpadded, padded) => {
+    const css = await render(unpadded, '.jess');
+    await expect(render(padded, '.jess')).resolves.toBe(css);
+  });
+});
+
+describe('scss: a CSS import condition and a comment in a paren list', () => {
+  /* An interpolated name writes what the literal name writes (Dart Sass 1.101.7 agrees). */
+  it('an interpolated declaration name in an import supports()', async () => {
+    const css = await render('@import "a.css" supports(display: grid);', '.scss');
+    await expect(render('$property: display;\n@import "a.css" supports(#{$property}: grid);', '.scss')).resolves.toBe(css);
+  });
+
+  /* A starred name is well-formed and still parses (ledger P45), written as authored. */
+  it('a starred declaration name in an import supports()', async () => {
+    await expect(render('@import "a.css" supports(*zoom: 1);', '.scss')).resolves.toBe('@import "a.css" supports(*zoom: 1);\n');
+  });
+
+  /* A comment before a list comma is trivia, as css reads it there (Dart Sass 1.101.7 agrees). */
+  it('a block comment before a comma in parentheses', async () => {
+    const variables = '$sans: Helvetica;\n$fallback: sans-serif;\n';
+    const css = await render(`${variables}.a { font-family: ($sans, $fallback); }`, '.scss');
+    await expect(render(`${variables}.a { font-family: ( $sans /* primary */ , $fallback ); }`, '.scss')).resolves.toBe(css);
+  });
+});

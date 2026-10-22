@@ -335,7 +335,7 @@
     "statements": 63
   },
   "packages/diagnostics-core/src/tolerant-cst.ts": {
-    "statements": 3464
+    "statements": 3463
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#animationNameReferences": {
     "statements": 81

@@ -943,13 +943,12 @@ describe('CSS canonical-AST grammar', () => {
       name: '@SUPPORTS', prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'NOT' }, { type: 'Block', delimiter: 'paren' }] }
     });
 
-    for (const source of [
-      '@supports color { .grid { display: grid; } }',
-      '@supports { .grid { display: grid; } }'
-    ]) {
-      expect(cstIssueCount(source)).toBeGreaterThan(0);
-      expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
-    }
+    expect(cstIssueCount('@supports { .grid { display: grid; } }')).toBeGreaterThan(0);
+    expect(() => parseAst('@supports { .grid { display: grid; } }')).toThrow('CSS AST grammar did not consume the document');
+
+    /* A bare identifier is no condition; it parses (ledger P45) and the compile reports it (owner 2026-10-22). */
+    expect(cstIssueCount('@supports color { .grid { display: grid; } }')).toBe(0);
+    expect(parseAst('@supports color { .grid { display: grid; } }').rules[0]).toMatchObject({ prelude: { type: 'Keyword', src: 'color' } });
 
     /*
      * General-enclosed forms are an explicitly typed, syntax-preserving payload;
@@ -1114,15 +1113,20 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
-  it('does not unglue public-invalid supports function tokens while adding supports comment trivia', () => {
-    for (const source of [
-      '@supports selector/* glue */(.grid) { .grid { display: grid; } }',
-      '@supports style/* glue */(--theme: dark) { .grid { display: grid; } }'
-    ]) {
-      const cst = parseCssCst(source);
-      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
-      expect(() => parseAst(source), source).toThrow('CSS AST grammar did not consume the document');
-      expect(() => parse(source), source).toThrow(SyntaxError);
+  it('does not glue a supports function name to a paren a comment separates', () => {
+    /*
+     * A comment ends the identifier, so `selector/* glue *\/(.grid)` is no
+     * function token: it is the identifier and a group, which parses (ledger
+     * P45) and the compile reports (owner 2026-10-22).
+     */
+    for (const [source, name] of [
+      ['@supports selector/* glue */(.grid) { .grid { display: grid; } }', 'selector'],
+      ['@supports style/* glue */(--theme: dark) { .grid { display: grid; } }', 'style']
+    ] as const) {
+      expect(cstIssueCount(source), source).toBe(0);
+      expect(parse(source).rules[0], source).toMatchObject({
+        prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: name }, { type: 'Block', delimiter: 'paren' }] }
+      });
     }
   });
 

@@ -2205,11 +2205,12 @@ describe('Jess AST grammar facts', () => {
       '@supports not ((display: grid) and (color)) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
 
+    /* A bare identifier is no supports condition: it parses (ledger P45) and the compile reports it (owner 2026-10-22). */
+    expect(parse('@supports color { .card { color: blue; } }').rules[0]).toMatchObject({ prelude: { type: 'Keyword', src: 'color' } });
+    expect(parse('@supports (display: grid), (color: blue) { .card { color: blue; } }').rules[0]).toMatchObject({ prelude: { type: 'List', sep: ',' } });
     for (const invalid of [
       '@supports { .card { color: blue; } }',
-      '@supports color { .card { color: blue; } }',
-      '@supports $(display) { .card { color: blue; } }',
-      '@supports (display: grid), (color: blue) { .card { color: blue; } }'
+      '@supports $(display) { .card { color: blue; } }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -3471,7 +3472,6 @@ describe('Jess AST grammar facts', () => {
 
       // Malformed bodies must be positioned errors, never raw bytes.
       '.card { ${}: blue; }',
-      '.card { ${ property}: blue; }',
       '.card { ${$property}: blue; }',
       '.card { ${m.key}: blue; }',
       '.card { ${property: blue; }',

@@ -252,6 +252,8 @@ type GrammarRuleName =
   | 'SupportsCondition'
   | 'SupportsFeature'
   | 'SupportsInParens'
+  | 'SupportsIdentifier'
+  | 'SupportsGroupCondition'
   | 'SupportsPrelude'
   | 'TopLevelRuleset'
   | 'TopLevelSelectorList'
@@ -321,6 +323,9 @@ type GrammarRuleName =
   | 'queryFeatureName'
   | 'MediaFeatureOpener'
   | 'mediaFeatureOpener'
+  | 'QueryComparedHead'
+  | 'queryComparedHead'
+  | 'queryRangeName'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -3468,11 +3473,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The range name after a value-first bound's comparison, owning the
-   * identifier the dispatch below read, and an optional second comparison.
+   * The range name after a value-first bound's comparison, and an optional
+   * second comparison. The name is the `QueryFeatureName` slot, owning the
+   * identifier the dispatch below read.
    */
   const queryRangeName = sequence(
-    RoutedProperty,
+    g.QueryFeatureName,
     optional(sequence(
       g.QueryComparisonOperator,
       optional(g.QueryValue)
@@ -3522,6 +3528,15 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * What a value-first bound's comparison is followed by: css's compared-head
+   * dispatch. A named slot, as `MediaFeatureOpener` is: a superset whose range
+   * name can open with its interpolation (`400px <= ${d}`), which the
+   * dispatch's identifier head does not read, binds the dispatch then
+   * `queryRangeName`, so the name is read once, as a name.
+   */
+  const QueryComparedHead = queryComparedHead;
+
+  /*
    * What follows a value-first bound in a media feature or an if-test: a range
    * (`< width`, `< width < 2px`), or other component values, which make the
    * feature `<general-enclosed>` (media-queries-4 §3.1). The comparison is
@@ -3536,7 +3551,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.QueryComparisonOperator,
       optional(choice(
-        queryComparedHead,
+        g.QueryComparedHead,
         boundValues
       ))
     ),
@@ -4262,8 +4277,10 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * A supports condition is deliberately distinct from the media/container
-   * query prelude above. In particular it has no bare-keyword form: `@supports
-   * color {}` must fail rather than being lowered to an opaque Any prelude.
+   * query prelude above. In particular no bare identifier is a condition:
+   * `@supports color {}` parses to the identifier it is, never an opaque Any
+   * prelude, and the compile reports it (`SupportsInParens`, owner
+   * 2026-10-22).
    * General-enclosed carries its own raw-template content model: the payload is
    * one `Interpolation`, so the `FunctionCall` / `Block` it builds is never read
    * as structured call arguments or a parenthesized value expression.
@@ -4365,12 +4382,13 @@ const cssFactory = (g: GrammarSelf) => {
    * can bind its own `@supports` feature without changing `@media`.
    */
   const SupportsFeature = g.QueryFeature;
+
   const SupportsInParens = node(
     'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.SupportsCondition,
+        g.SupportsGroupCondition,
         literal(')')
       ),
       g.SupportsFeature,
@@ -4383,6 +4401,31 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * An identifier where a `<supports-in-parens>` belongs, with the group after
+   * it: `selector (a)` is `selector` and a `(a)` group, never the `selector(`
+   * function token (css-syntax-3 §4.3.4), and `color` is no condition at all.
+   * Both are well-formed, so they parse (ledger P45), and the compile reports
+   * `css/invalid-supports-condition` (owner 2026-10-22). Only the top of a
+   * condition reads one; inside a group's parentheses what is no condition is
+   * `<general-enclosed>` content (`(a and b)`), kept as written.
+   */
+  const SupportsIdentifier = node(
+    'SupportsInParens',
+    sequence(
+      g.Keyword,
+      optional(g.Enclosed)
+    ),
+    (children) => {
+      const values = valueChildren(children);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const supportsOperand = choice(
+    g.SupportsInParens,
+    g.SupportsIdentifier
+  );
+
+  /*
    * `not <supports-in-parens>`, or operands joined by `and`/`or`
    * (css-conditional-3 §6). A glued `not(` / `and(` / `or(` is a
    * `<function-token>`, so it is a `<general-enclosed>` operand, never the
@@ -4390,6 +4433,32 @@ const cssFactory = (g: GrammarSelf) => {
    * `@supports (a: b) and(c: d)` match nothing and are kept as written.
    */
   const SupportsCondition = node(
+    'SupportsCondition',
+    sequence(
+      choice(
+        sequence(
+          g.QueryNot,
+          supportsOperand
+        ),
+        supportsOperand
+      ),
+      many(sequence(
+        g.QueryConnective,
+        supportsOperand
+      ))
+    ),
+    children => queryConditionChain(children)
+  );
+
+  /*
+   * The condition inside a `<supports-in-parens>` group's parentheses: the
+   * same chain over `<supports-in-parens>` alone, with no identifier operand
+   * (`SupportsIdentifier`), so a group that is no condition fails it and is
+   * read as `<general-enclosed>`. DELIBERATE EXCEPTION to one condition rule:
+   * a parse-state gate would say it once, and costs css's AST parse about 30%
+   * (measured 2026-10-22, test-data-css), because css reads no other state.
+   */
+  const SupportsGroupCondition = node(
     'SupportsCondition',
     choice(
       sequence(
@@ -4722,9 +4791,11 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The existing public grammar currently admits a comma-separated condition
-   * list for all conditional groups, including @supports. Keep the direct path
-   * parity-compatible until that public grammar is intentionally tightened.
+   * An `@supports` prelude: a supports condition, or a comma list of them. A
+   * condition has no comma list (css-conditional-3 §6), but the list is
+   * well-formed, so it parses (ledger P45) and the compile reports its `,`
+   * (`css/invalid-supports-condition`, owner 2026-10-22). Less, SCSS and
+   * `.jess` read this one prelude.
    */
   const SupportsPrelude = node(
     'SupportsPrelude',
@@ -5354,6 +5425,9 @@ const cssFactory = (g: GrammarSelf) => {
     MediaCondition,
     MediaFeatureOpener,
     mediaFeatureOpener,
+    QueryComparedHead,
+    queryComparedHead,
+    queryRangeName,
     QueryFeatureName,
     queryFeatureName,
     MediaFeatureContents,
@@ -5390,6 +5464,8 @@ const cssFactory = (g: GrammarSelf) => {
     EnclosedQuoted,
     SupportsFeature,
     SupportsInParens,
+    SupportsIdentifier,
+    SupportsGroupCondition,
     SupportsCondition,
     SupportsPrelude,
     ConditionalBlock,

@@ -298,6 +298,8 @@ type LessRules = {
   QueryFeatureName: Combinator<string | Interpolation>;
   /** What a media feature's contents open with: the CSS base's slot, with a name an interpolation opens. */
   MediaFeatureOpener: Combinator<unknown>;
+  /** What a value-first bound's comparison is followed by: the CSS base's slot, with a range name an interpolation opens. */
+  QueryComparedHead: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   /* `style()`, `scroll-state()`, or a function-form general-enclosed routed through its opener. */
   ContainerStyleQuery: Combinator<unknown>;
@@ -409,6 +411,9 @@ type SharedSyntax = {
   // Inherited from the CSS base: the media feature opener dispatch — MediaFeatureOpener's first arm — and a feature's name and what follows it.
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  // Inherited from the CSS base: the compared-head dispatch — QueryComparedHead's first arm — and a range name and what follows it.
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
   // Inherited from the CSS base: an and/or connective, or a peeked glued and( / or( operand.
   QueryConnective: Combinator<unknown>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -419,6 +424,8 @@ type SharedSyntax = {
   SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
   SupportsCondition: Combinator<ValueNode>;
+  // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
+  SupportsPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
   IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
@@ -3862,7 +3869,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SupportsBlock',
     sequence(
       g.SupportsAtKeyword,
-      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsCondition),
+      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsPrelude),
       literal('{'),
       g.blockBody,
       optional(g.Call),
@@ -3938,6 +3945,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MediaFeatureOpener = choice(
     g.mediaFeatureOpener,
     g.queryFeatureName
+  );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= @{d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
   );
   const QueryBareFeature = node(
     'QueryBareFeature',
@@ -5869,6 +5885,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     RoutedQueryFunction,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,

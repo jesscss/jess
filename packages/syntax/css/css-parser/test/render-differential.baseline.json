@@ -11,11 +11,11 @@
   },
   "counts": {
     "ok": 64,
-    "reject": 56,
-    "emitError": 1
+    "reject": 55,
+    "emitError": 2
   },
   "emittedBytes": 609103,
-  "aggregate": "197116ef0e0f85c4fabd69a25cd25edf3972ed04c6e028b3b35e718946d02b59",
+  "aggregate": "8a69b7b4fb33d14bb1874924d9acccd524c3de3f8b9d46ce25cefd30323658b8",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -569,12 +569,6 @@
       "bytes": null,
       "fingerprint": "7f31a3cf40b74a97"
     },
-    "repo/packages/syntax/css/css-parser/test/css/errors/supports-bare-ident.css": {
-      "bucket": "repo",
-      "status": "reject",
-      "bytes": null,
-      "fingerprint": "7f31a3cf40b74a97"
-    },
     "repo/packages/syntax/css/css-parser/test/css/errors/supports-no-condition.css": {
       "bucket": "repo",
       "status": "reject",
@@ -736,6 +730,12 @@
       "status": "ok",
       "bytes": 50,
       "fingerprint": "3dc7c873c8266f06"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/supports-bare-ident.css": {
+      "bucket": "repo",
+      "status": "emitError",
+      "bytes": null,
+      "fingerprint": "c3ccd0974be2461a"
     },
     "repo/packages/syntax/css/css-parser/test/css/tab.css": {
       "bucket": "repo",

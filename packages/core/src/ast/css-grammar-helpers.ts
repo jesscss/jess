@@ -1034,14 +1034,19 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
       return withAuthoredGeneralEnclosed(withGluedKeywordSpan(head, span), span, state);
     }
 
-    /* A value-first range is exactly `value op name [op value]`; anything else read is general-enclosed. */
-    const isRange = (children.length === 3 || (children.length === 5 && isValue(children[4])))
-      && typeof children[2] === 'string';
+    /*
+     * A value-first range is exactly `value op name [op value]`; anything else
+     * read is general-enclosed. The name is what the `QueryFeatureName` slot
+     * reads: an identifier's text or, in a superset, an `Interpolation`
+     * (`400px <= #{$d}`).
+     */
+    const isRange = (children.length === 3 || (children.length === 5 && isValue(children[4]) && queryComparisonOperators([children[3]]).length === 1))
+      && (typeof children[2] === 'string' || isInterpolation(children[2]));
     if (!isRange) {
       return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
     }
     const operators = queryComparisonOperators(children);
-    let result: ValueNode = operation(operators[0]!, head, keyword(tokenText(children[2])), false, cssBaseMathOutsideParens(operators[0]!));
+    let result: ValueNode = operation(operators[0]!, head, isInterpolation(children[2]) ? children[2] : keyword(tokenText(children[2])), false, cssBaseMathOutsideParens(operators[0]!));
     if (operators.length > 1) {
       const right = children[4];
       if (!isValue(right)) {

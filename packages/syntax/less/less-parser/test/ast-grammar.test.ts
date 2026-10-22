@@ -6335,8 +6335,7 @@ describe('Less AST grammar facts', () => {
     }
     for (const source of [
       '@supports selector(.card { .card { color: red; } }',
-      '@supports selector([.card) { .card { color: red; } }',
-      '@supports (display: grid), (color: red) { .card { color: red; } }'
+      '@supports selector([.card) { .card { color: red; } }'
     ]) {
       const direct = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -6348,6 +6347,12 @@ describe('Less AST grammar facts', () => {
         source
       ).toBe(false);
     }
+
+    /* A comma list is no supports condition: it parses (ledger P45) and the compile reports its `,` (owner 2026-10-22). */
+    const commaList = run(lessGrammar.Document, '@supports (display: grid), (color: red) { .card { color: red; } }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(commaList.ok && commaList.unconsumedFrom === null).toBe(true);
     const genericSupports = run(
       lessGrammar.AtRuleBlock,
       '@supports (display: grid) { .card { color: red; } }',

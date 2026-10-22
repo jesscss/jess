@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -266,6 +266,7 @@ type JessRules = {
   StyleFeature: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  QueryComparedHead: Combinator<unknown>;
   QueryComparisonFeature: Combinator<ValueNode>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
   QueryTerm: Combinator<ValueNode>;
@@ -333,9 +334,18 @@ type SharedSyntax = {
    */
   SelectorOnlyPseudoArgument: Combinator<SelectorList>;
 
-  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  /*
+   * Inherited from the CSS base: the media feature opener dispatch, and a
+   * feature's name and what follows it; the compared-head dispatch after a
+   * value-first bound, and the range name and what follows it.
+   */
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
+
+  /* Inherited from the CSS base: the comma list of supports conditions an `@supports` prelude reads. */
+  SupportsPrelude: Combinator<ValueNode>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests, and the value run they read. */
   ValueSequence: Combinator<unknown>;
@@ -710,42 +720,43 @@ const typeNamespace = regex(/\$type\./);
  * branches again on `$`, a name, or a quote. Those are disjoint continuation
  * sets, so this is structural factoring rather than five competing `${...}`
  * alternatives.
+ *
+ * Trivia inside the braces is padding, as anywhere `.jess` reads trivia
+ * (`${ size }`, `${ /* lg *\/ size }` are `${size}`): the braces read the
+ * document's trivia, and the bracket key is `noTrivia`, so `${[ x ]}`,
+ * `${[$ x]}` and a quoted key's bytes stay exact. `$ {` is no opener.
  */
-const dollarBraceStructure = noTrivia(sequence(
-  literal('${'),
-  choice(
-    sequence(
-      literal('['),
-      choice(
-        sequence(
-          literal('$'),
+const dollarBraceStructure = parser(
+  { trivia: whitespace },
+  sequence(
+    literal('${'),
+    choice(
+      noTrivia(sequence(
+        literal('['),
+        choice(
+          sequence(
+            literal('$'),
+            dollarName
+          ),
           dollarName,
-          literal(']}')
+          sequence(
+            literal('\''),
+            regex(/(?:[^'\\]|\\[\s\S])*/),
+            literal('\'')
+          ),
+          sequence(
+            literal('"'),
+            regex(/(?:[^"\\]|\\[\s\S])*/),
+            literal('"')
+          )
         ),
-        sequence(
-          dollarName,
-          literal(']}')
-        ),
-        sequence(
-          literal('\''),
-          regex(/(?:[^'\\]|\\[\s\S])*/),
-          literal('\''),
-          literal(']}')
-        ),
-        sequence(
-          literal('"'),
-          regex(/(?:[^"\\]|\\[\s\S])*/),
-          literal('"'),
-          literal(']}')
-        )
-      )
+        literal(']')
+      )),
+      dollarName
     ),
-    sequence(
-      dollarName,
-      literal('}')
-    )
+    literal('}')
   )
-));
+);
 
 /*
  * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
@@ -3920,6 +3931,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.mediaFeatureOpener,
     g.queryFeatureName
   );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= ${d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
+  );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
     choice(
@@ -4635,14 +4655,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      sequence(
+      noTrivia(sequence(
         g.Identifier,
-        noTrivia(sequence(
-          literal('('),
-          g.GeneralTemplate,
-          literal(')')
-        ))
-      ),
+        literal('('),
+        g.GeneralTemplate,
+        literal(')')
+      )),
       noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
@@ -4693,31 +4711,68 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       'Jess supports feature lost its property name.'
     )
   );
+
+  /*
+   * css's `<supports-in-parens>` arms, then an identifier where one is
+   * expected, with the group after it: `selector (a)` is `selector` and a
+   * `(a)` group, never the glued `selector(` (css-syntax-3 §4.3.4), and
+   * `color` is no condition. They parse (ledger P45), and the compile reports
+   * `css/invalid-supports-condition` (owner 2026-10-22). Only outside a
+   * condition's parentheses: inside them, `(a and b)` stays general-enclosed.
+   */
   const SupportsInParens = node<ValueNode>(
     'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.SupportsCondition,
+        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
         literal(')')
       ),
       g.SupportsFeature,
-      g.Enclosed
+      g.Enclosed,
+      {
+        gate: state => !isInSupportsGroup(state),
+        combinator: sequence(
+          g.Keyword,
+          optional(g.Enclosed)
+        )
+      }
     ),
     (children) => {
-      const value = children.find(isValueNode);
-      if (value === undefined) {
+      const values = children.filter(isValueNode);
+      if (values.length === 0) {
         throw new TypeError('Jess supports parenthesis lost its typed condition.');
       }
-      return isValueNode(children[0]) ? value : block(value);
+      if (!isValueNode(children[0])) {
+        return block(values[0]!);
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
     }
   );
+
+  /*
+   * At the top of a condition, `not` takes the chain after its operand too:
+   * `not (a) and (b)` is no condition (css-conditional-3 §6 needs
+   * `(not (a)) and (b)`), but it is well-formed, so it parses (ledger P45) and
+   * the compile reports it (owner 2026-10-22). Inside a group's parentheses
+   * the chain is gated off, so the group stays `<general-enclosed>`.
+   */
   const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
       sequence(
         g.SupportsNot,
-        g.SupportsInParens
+        g.SupportsInParens,
+        many(choice({
+          gate: state => !isInSupportsGroup(state),
+          combinator: sequence(
+            choice(
+              g.SupportsLogical,
+              peek(g.QueryGluedConnective)
+            ),
+            g.SupportsInParens
+          )
+        }))
       ),
       sequence(
         g.SupportsInParens,
@@ -4885,7 +4940,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'SupportsAtRuleBlock',
     sequence(
       g.SupportsAtKeyword,
-      g.SupportsCondition,
+      g.SupportsPrelude,
       literal('{'),
       many(atBlockStatement),
       literal('}')
@@ -6409,6 +6464,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     StyleFeature,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryComparisonFeature,
     QueryNonOnlyKeyword,
     QueryTerm,

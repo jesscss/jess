@@ -78,7 +78,8 @@ export type JessErrorCode =
   | 'css/glued-condition-keyword'
   | 'css/forgiving-selector-item'
   | 'css/legacy-ie-syntax'
-  | 'css/invalid-value-punctuation';
+  | 'css/invalid-value-punctuation'
+  | 'css/invalid-supports-condition';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -526,6 +527,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '`${what}` is not valid in any CSS value',
       reason: 'CSS reads `${what}` as a delim token, and no CSS value accepts it, so a browser drops the declaration.',
       fix: '${fix}'
+    }
+  ],
+  [
+    'css/invalid-supports-condition',
+    {
+      summary: '`${what}` is not a supports condition',
+      reason: '`@supports` takes one condition: parenthesized features and groups and functions such as `selector()`, joined by `and` or `or`, or one of them after `not` (css-conditional-3 §6). `${what}` stands where none of them can (`selector (a)` is the identifier `selector` and a group, not the `selector()` function), so a browser ignores the whole rule.',
+      fix: 'Write a feature `(property: value)`, or a function with no space before its `(` (`selector(a)`).'
     }
   ],
   [

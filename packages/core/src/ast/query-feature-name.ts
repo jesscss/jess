@@ -46,8 +46,9 @@ export function queryFeatureNameValue(name: unknown): Keyword | Interpolation {
 /*
  * A superset's interpolated feature name (`QueryFeatureName`: `(${f}: 1px)`,
  * `(min-#{$d} > 1px)`) is a value in the name's place, followed by `:` or a
- * comparison. A value-first range has its name, a string, after the
- * comparison, so an `Interpolation` there is the bound, not the name.
+ * comparison. A value-first range whose name is an identifier has that
+ * name, a string, after the comparison, so an `Interpolation` head followed
+ * by one is the bound, not the name.
  */
 export function isInterpolatedName(head: ValueNode, children: readonly unknown[]): boolean {
   const next = children[1];

@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { conditionWord, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -103,6 +103,7 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  QueryComparedHead: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
   RoutedQueryFunction: Combinator<FunctionCall>;
@@ -121,7 +122,6 @@ type ScssRules = {
   SupportsNotKeyword: Combinator<Keyword>;
   SupportsAndOrKeyword: Combinator<Keyword>;
   SupportsCondition: Combinator<ValueNode>;
-  SupportsPrelude: Combinator<ValueNode>;
 
   /** CSS-compatible generic header capture for known passthrough blocks. */
   AtRulePrelude: Combinator<ValueNode | null>;
@@ -190,9 +190,18 @@ type ScssSharedSyntax = {
   QueryPrelude: Combinator<ValueNode>;
   ContainerPrelude: Combinator<ValueNode>;
 
-  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  /*
+   * Inherited from the CSS base: the media feature opener dispatch, and a
+   * feature's name and what follows it; the compared-head dispatch after a
+   * value-first bound, and the range name and what follows it.
+   */
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
+
+  /* Inherited from the CSS base: the comma list of supports conditions an `@supports` prelude reads. */
+  SupportsPrelude: Combinator<ValueNode>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests. */
   MediaTestBody: Combinator<unknown>;
@@ -1684,9 +1693,16 @@ const scssFactory = (g: ScssInputRules) => {
     (children, _fields, span, _rawChildren, _triviaLog, state) => leadingSeparatorValue(children, span, state)
   );
 
+  /*
+   * A comma and the list item after it. A block comment before the comma is
+   * trivia (`( $a /* c *\/ , $b )`), as css reads it there: the document
+   * trivia names only whitespace and `//`, so the pair spells it, and the
+   * separator starts at the comma.
+   */
   const ValuePair = node<ScssValuePair>(
     'ValuePair',
     noTrivia(sequence(
+      optional(valueTrivia),
       literal(','),
       optional(valueTrivia),
       choice(
@@ -1695,27 +1711,20 @@ const scssFactory = (g: ScssInputRules) => {
       )
     )),
     (children) => {
-      if (children.length !== 2 && children.length !== 3) {
-        throw new TypeError('ValuePair produced unexpected children.');
-      }
-      if (requireToken(children[0]).value !== ',') {
+      const separator = children.slice(0, -1).map(child => requireToken(child).value);
+      const comma = separator.indexOf(',');
+      if (comma === -1) {
         throw new TypeError('ValuePair lost its comma.');
       }
-      const separator = children.length === 3
-        ? `,${requireToken(children[1]).value}`
-        : ',';
-      return { separator, value: requireValueSlot(children[children.length - 1]) };
+      return { separator: separator.slice(comma).join(''), value: requireValueSlot(children[children.length - 1]) };
     }
   );
 
   /*
-   * An argument comma also admits padding BEFORE it, which the value-list comma
-   * must not: at declaration top level the space in `a , b` is already the list
-   * grammar's own boundary, and widening `ValuePair` would re-cut every such
-   * value that parses today. Inside an argument list there is no competing
-   * reading, so `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators.
-   * The separator keeps the authored bytes in authored order, so an argument
-   * list that carried no leading pad records exactly what it recorded before.
+   * An argument comma admits padding BEFORE it, so `f(c , d)` and
+   * `f(c /* z *\/, d)` are plain padded separators. Unlike `ValuePair`'s, the
+   * separator keeps the authored bytes in authored order, so an argument list
+   * that carried no leading pad records exactly what it recorded before.
    */
   const ArgumentPair = node<ScssArgumentPair>(
     'ArgumentPair',
@@ -2272,18 +2281,24 @@ const scssFactory = (g: ScssInputRules) => {
    * In an import condition, CSS permits a single declaration without the
    * parentheses required by a general <supports-condition>
    * (`supports(display: grid)`), and it is written without them, as `.css`
-   * writes it (ledger P38: CSS comes out as `.css` writes it).
+   * writes it (ledger P38: CSS comes out as `.css` writes it). Its name is the
+   * one an `@supports` feature reads (`QueryFeatureName`), so it takes `#{…}`
+   * (`supports(#{$p}: grid)`); a starred name (`*zoom`) is the property
+   * identifier's, as it always was.
    */
   const ImportDeclaration = node<ValueNode>(
     'ImportDeclaration',
     sequence(
-      propertyIdentifier,
+      choice(
+        g.QueryFeatureName,
+        propertyIdentifier
+      ),
       literal(':'),
       g.SupportsAtom
     ),
     children => operation(
       ':',
-      keyword(requireToken(children[0]).value),
+      isToken(children[0]) ? keyword(children[0].value) : queryFeatureNameValue(children[0]),
       requireValue(children[2]),
       false,
       cssBaseMathOutsideParens(':')
@@ -2296,8 +2311,14 @@ const scssFactory = (g: ScssInputRules) => {
         caseInsensitiveWord('supports'),
         literal('(')
       )),
+
+      /*
+       * Inside `supports(…)`, as inside a group's parentheses, no identifier
+       * is an operand and `not` takes no chain: an `@import` condition is
+       * written out, with no compile check of its own to report one.
+       */
       choice(
-        g.SupportsCondition,
+        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
         g.ImportDeclaration
       ),
       literal(')')
@@ -3535,6 +3556,15 @@ const scssFactory = (g: ScssInputRules) => {
     g.mediaFeatureOpener,
     g.queryFeatureName
   );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= #{$d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
+  );
   const QueryFeature = node<ValueNode>(
     'QueryFeature',
     choice(
@@ -3726,14 +3756,12 @@ const scssFactory = (g: ScssInputRules) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      sequence(
+      noTrivia(sequence(
         g.Identifier,
-        noTrivia(sequence(
-          literal('('),
-          g.GeneralTemplate,
-          literal(')')
-        ))
-      ),
+        literal('('),
+        g.GeneralTemplate,
+        literal(')')
+      )),
       noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
@@ -3778,23 +3806,42 @@ const scssFactory = (g: ScssInputRules) => {
           ));
     }
   );
+
+  /*
+   * css's `<supports-in-parens>` arms, then an identifier where one is
+   * expected, with the group after it: `selector (a)` is `selector` and a
+   * `(a)` group, never the glued `selector(` (css-syntax-3 §4.3.4), and
+   * `color` is no condition. They parse (ledger P45), and the compile reports
+   * `css/invalid-supports-condition` (owner 2026-10-22). Only outside a
+   * condition's parentheses: inside them, `(a and b)` stays general-enclosed.
+   */
   const SupportsInParens = node<ValueNode>(
     'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.SupportsCondition,
+        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
         literal(')')
       ),
       g.SupportsFeature,
-      g.Enclosed
+      g.Enclosed,
+      {
+        gate: state => !isInSupportsGroup(state),
+        combinator: sequence(
+          g.Keyword,
+          optional(g.Enclosed)
+        )
+      }
     ),
     (children) => {
-      const value = children.find(isScssValue);
-      if (value === undefined) {
+      const values = children.filter(isScssValue);
+      if (values.length === 0) {
         throw new TypeError('SCSS supports parenthesis lost its typed condition.');
       }
-      return isScssValue(children[0]) ? value : block(value);
+      if (!isScssValue(children[0])) {
+        return block(values[0]!);
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
     }
   );
   const SupportsNotKeyword = node<Keyword>(
@@ -3807,12 +3854,30 @@ const scssFactory = (g: ScssInputRules) => {
     g.QueryAndOr,
     children => keyword(requireToken(children[0]).value)
   );
+
+  /*
+   * At the top of a condition, `not` takes the chain after its operand too:
+   * `not (a) and (b)` is no condition (css-conditional-3 §6 needs
+   * `(not (a)) and (b)`), but it is well-formed, so it parses (ledger P45) and
+   * the compile reports it (owner 2026-10-22). Inside a group's parentheses
+   * the chain is gated off, so the group stays `<general-enclosed>`.
+   */
   const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
       sequence(
         g.SupportsNotKeyword,
-        g.SupportsInParens
+        g.SupportsInParens,
+        many(choice({
+          gate: state => !isInSupportsGroup(state),
+          combinator: sequence(
+            choice(
+              g.SupportsAndOrKeyword,
+              peek(g.QueryGluedConnective)
+            ),
+            g.SupportsInParens
+          )
+        }))
       ),
       sequence(
         g.SupportsInParens,
@@ -3832,11 +3897,6 @@ const scssFactory = (g: ScssInputRules) => {
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
-  );
-  const SupportsPrelude = node<ValueNode>(
-    'SupportsPrelude',
-    g.SupportsCondition,
-    children => requireValue(children[0])
   );
 
   /*
@@ -5310,6 +5370,7 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryFeature,
     QueryFunction,
     RoutedQueryFunction,
@@ -5328,7 +5389,6 @@ const scssFactory = (g: ScssInputRules) => {
     SupportsNotKeyword,
     SupportsAndOrKeyword,
     SupportsCondition,
-    SupportsPrelude,
     AtRulePrelude,
     AtRulePreludeAtom,
     AtRulePreludeGroup,

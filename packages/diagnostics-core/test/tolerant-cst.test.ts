@@ -804,6 +804,17 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('counts a padded .jess ${ … } interpolation as a use of its variable', () => {
+    const source = '$media: print;\n$prefix: btn;\n$key: label;\n$unused: blue;\n@media ${ media } { .${ prefix }-primary { content: "${ [$key] }"; } }';
+    const result = collectTolerantDiagnostics({ source, language: 'jess' });
+
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused variable "$unused"', source.indexOf('$unused'), source.indexOf('$unused') + '$unused'.length]
+    ]);
+  });
+
   it('does not report SCSS !default variables as unused locals', () => {
     const source = '$brand: red !default;\n$local: blue;\n.a { color: white; }';
     const result = collectTolerantDiagnostics({ source, language: 'scss' });

@@ -1062,6 +1062,19 @@ export const ERR = {
     });
   },
 
+  /**
+   * An `@supports` prelude term that is no `<supports-in-parens>` — an
+   * identifier, as in `selector (a)` or `color` — parsed as balanced CSS and
+   * then an error (owner 2026-10-22; ledger P45).
+   */
+  invalidSupportsCondition(args: Common & { meta: { what: string } }) {
+    return makeJessError({
+      code: 'css/invalid-supports-condition',
+      phase: 'parse',
+      ...args
+    });
+  },
+
   // Plugin
   /**
    * A plugin reached for an API this compiler deliberately does not provide

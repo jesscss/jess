@@ -328,7 +328,9 @@ describe('@jesscss/css-parser/cst', () => {
     expect(nodesByGrammarType(namedQuery.tree, 'ContainerQueryClause')).toHaveLength(1);
     expect(nodesByGrammarType(functionQuery.tree, 'QueryFunction')).toHaveLength(1);
     expect(reservedName.errors.length + (reservedName.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
-    expect(supportsWithContainerName.errors.length + (supportsWithContainerName.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
+
+    /* `only` is no supports condition: it parses (ledger P45) and the compile reports it (owner 2026-10-22). */
+    expect(supportsWithContainerName.errors).toHaveLength(0);
   });
 
   it('uses media-specific conditional at-rule preludes', () => {
