@@ -951,6 +951,20 @@ export const ERR = {
       ...args
     });
   },
+
+  /**
+   * An operation on an operand it is not defined on, where the operation
+   * computes (DESIGN-DECISIONS V36): a keyword or a string in every dialect, in
+   * Less also a call written out as-is, in `.scss` and `.jess` also a boolean,
+   * a list and a map. The result would mean nothing, so the compile fails.
+   */
+  invalidOperand(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/invalid-operand',
+      phase: 'eval',
+      ...args
+    });
+  },
   incomparableOperands(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/incomparable-operands',

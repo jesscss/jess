@@ -12,9 +12,9 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type Keyword, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, unitMultisetKey } from './value-units.js';
 
@@ -652,6 +652,89 @@ export function groupAsWritten(v: Value): Value {
     return keptMathKeyword(`(${kept})`, '', v, v);
   }
   return v.type === 'Keyword' && keptAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
+}
+
+/**
+ * What an operand is when an operation is not defined on it (ledger V36), or
+ * `null`. Never one: a number, a colour (a named-colour keyword included),
+ * `null`, math kept as written or in a `calc()`, an unoperated slash (`10px /
+ * 2`, a `/` list, which Less writes as kept math), in Less a value kept as
+ * text that is no escaped string (an unoperated `18 / 2` a mixin argument
+ * binds), and an operation an
+ * unruled operand kept as written (`2 * math.pow(10, -11)` with `sass:math`
+ * not loaded). A keyword (`foo`, `auto`)
+ * and a string, quoted or escaped, are one in every dialect that computes. In
+ * Less a call written out as-is (`var(--x)`) is one too (owner 2026-10-23); in
+ * `.scss` and `.jess` (`sass`) it is not ruled and keeps {@link operate}'s
+ * behaviour, and a boolean, a list and a map are one.
+ */
+function invalidOperand(v: ValueGroup, sass: boolean): string | null {
+  if (isValueGroupArray(v)) {
+    return sass ? 'list' : null;
+  }
+  switch (v.type) {
+    case 'Keyword':
+      if (coerceNamedColorKeyword(v) !== v || keptMathOf(v) !== undefined || calcInner(v.bytes) !== null) {
+        return null;
+      }
+      return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' && !sass ? 'function call' : null;
+    case 'Quoted':
+      return 'string';
+    case 'Any':
+      return v.bytes !== '' && (sass || v.escapedQuote !== '') ? 'string' : null;
+    case 'Url':
+      return sass ? 'string' : 'function call';
+    case 'Bool':
+      return sass ? 'boolean' : 'keyword';
+    case 'List':
+      return sass && v.sep !== '/' ? 'list' : null;
+    case 'Collection':
+      return sass ? 'map' : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The value of an `.scss` string built with `+` whose leading operand is only
+ * known at evaluation (`$prefix + "-x"`; ledger V36): quoted as Dart Sass
+ * quotes it, from that operand. A quoted string gives a quoted result, an
+ * unquoted string or a word an unquoted one; anything else leaves `text` to
+ * the template's own quoting. `lead` is `undefined` for every other template.
+ */
+export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalValue {
+  if (lead === undefined || isLiteral(lead) || isValueGroupArray(lead)) {
+    return text;
+  }
+  if (lead.type === 'Quoted' && !lead.escaped) {
+    return makeQuoted(text, lead.quote, false);
+  }
+  return lead.type === 'Any' || (lead.type === 'Keyword' && invalidOperand(lead, true) === 'keyword') ? makeAny(text) : text;
+}
+
+/**
+ * The operand rule of ledger V36, run where an operation computes, before
+ * {@link operate}: an operand the operation is not defined on
+ * ({@link invalidOperand}) raises {@link InvalidOperandError}, unless
+ * `keepsMath` (an argument of a CSS math function or a call written out
+ * as-is), and a `/` that divides with no group asking it to (Less
+ * `math: always`), which is also CSS's separator (`grid-column: auto / span
+ * 2`): the caller says so in `keepsMath`. In `.scss` and `.jess` (`sass`) it
+ * does not cover `-` and `/`, where Dart Sass writes text; neither is ruled. A
+ * string joins only where `.scss` writes a string literal in a `+` chain,
+ * which its parser reads as an interpolated string. `null` means
+ * {@link operate} decides.
+ */
+export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup, sass: boolean, keepsMath: boolean): null {
+  if (keepsMath || (sass && (op === '-' || op === '/')) || (!isValueGroupArray(left) && left.type === 'Null') || (!isValueGroupArray(right) && right.type === 'Null')) {
+    return null;
+  }
+  const leftKind = invalidOperand(left, sass);
+  const kind = leftKind ?? invalidOperand(right, sass);
+  if (kind !== null) {
+    throw new InvalidOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: \`${op}\` is not defined on a ${kind} (\`${emitValue(leftKind === null ? right : left)}\`).`);
+  }
+  return null;
 }
 
 /**

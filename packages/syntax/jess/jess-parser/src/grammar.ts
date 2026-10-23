@@ -1180,9 +1180,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.Dimension,
       g.Color,
       g.ExpressionQuoted,
+
+      /*
+       * A paren group, or a comma list in one: the `Block` of a `List` a value
+       * position builds for `(1, 2)`. Well-formed input parses (ledger P45);
+       * math on the list is an evaluation error (V36).
+       */
       sequence(
         literal('('),
-        g.ExpressionLogical,
+        oneOrMoreSep(g.ExpressionLogical, literal(',')),
         literal(')')
       ),
 
@@ -1205,8 +1211,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children, _fields, span) => {
       if (isToken(children[0]) && requireToken(children[0]).value === '(') {
-        const inner = requireExpressionFact(children[1]);
-        return { value: block(inner.value), src: `(${inner.src})` };
+        const items = children.filter(isExpressionFact);
+        const value = items.length === 1 ? items[0]!.value : list(items.map(item => item.value), ',');
+        return { value: block(value), src: `(${items.map(item => item.src).join(', ')})` };
       }
       if (isJessReferenceTail(children[1])) {
         const base = requireValueNode(children[0]);

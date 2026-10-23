@@ -1096,7 +1096,7 @@ describe('targeted round trip: a unitless number ± a unit', () => {
  */
 describe('targeted round trip: kept math', () => {
   it('`.less` and its `.jess` lowering agree under every explicit `unitMode`', async () => {
-    const less = '@a: 4px;\n@x: @a + 1em;\n.a {\n  b: (@a + 3em);\n  c: @a - 3em;\n  d: @x;\n  e: calc(@x * 2);\n  f: (foo + 1);\n}\n';
+    const less = '@a: 4px;\n@x: @a + 1em;\n.a {\n  b: (@a + 3em);\n  c: @a - 3em;\n  d: @x;\n  e: calc(@x * 2);\n}\n';
     const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
     const render = async (source: string, extension: '.less' | '.jess', unitMode: 'loose' | 'preserve' | 'strict') => {
       const result = await new Compiler({ compile: { ...PINNED_COMPILE, unitMode, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
@@ -1114,6 +1114,21 @@ describe('targeted round trip: kept math', () => {
     expect(kept.css).toContain('calc(4px + 3em)');
     expect(kept.warnings).toContain('eval/unexpressible-unit');
     expect((await render(less, '.less', 'strict')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+});
+
+/*
+ * Math on a keyword fails the compile where it computes, in `.less` and in its
+ * `.jess` lowering alike (ledger V36; owner 2026-10-23: "if that's the "math"
+ * in Less, it should error").
+ */
+describe('targeted round trip: Less math on a keyword', () => {
+  it.each(['.a {\n  f: (foo + 1);\n}\n', '@w: auto;\n.a {\n  f: (@w + 10px);\n}\n'])('`.less` %j and its `.jess` lowering both fail', async (less) => {
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = (source: string, extension: '.less' | '.jess') =>
+      new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true }).renderString(source, { filePath: `entry${extension}`, extension });
+    await expect(render(less, '.less')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    await expect(render(jess, '.jess')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 });
 

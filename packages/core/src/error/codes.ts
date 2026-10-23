@@ -61,6 +61,7 @@ export type JessErrorCode =
   | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
+  | 'eval/invalid-operand'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -543,6 +544,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Operation on an empty value',
       reason: '${reason}',
       fix: 'Operate on a value: a function that returns nothing (false, true or an empty result) can only stand as a statement.'
+    }
+  ],
+  [
+    'eval/invalid-operand',
+    {
+      summary: 'Operation on an operand it is not defined on',
+      reason: '${reason}',
+      fix: 'Compute with numbers, lengths and colours, and write math the browser computes inside `calc()`. To build a string, interpolate: `"Elapsed: #{$t}"` in `.scss`, `"Elapsed: $($t)"` in `.jess`.'
     }
   ],
   [

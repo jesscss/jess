@@ -536,6 +536,13 @@ export type InterpPart = { lit: string } | { ref: ValueNode; unquote: boolean };
 export interface Interpolation extends SpanSlots {
   readonly type: 'Interpolation';
   readonly parts: InterpPart[];
+
+  /**
+   * Set only on an `.scss` string built with `+` whose leading operand is only
+   * known at evaluation (`$prefix + "-x"`; ledger V36): the string takes its
+   * quoting from that operand's value, as Dart Sass does. Absent otherwise.
+   */
+  readonly leadQuoting?: true;
 }
 
 /**
@@ -1694,6 +1701,14 @@ export const selectorCapture = (branches: readonly string[], components: readonl
 export const color = (src: string): Color => ({ type: 'Color', src });
 export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
   ({ type: 'Quoted', src, value, quote, escaped, interp });
+
+/**
+ * A condition as an operand, bare in a guard or in a paren group (`(1 = 1) + 1`):
+ * its truth, a value the author did not write as a keyword, so the operand rule
+ * (ledger V36) leaves the operation to `operate` (ledger P42).
+ */
+export const isConditionOperand = (node: ValueNode): boolean =>
+  node.type === 'Condition' || (node.type === 'Block' && 'type' in node.value && node.value.type === 'Condition');
 
 /** A string whose content is its authored `value` — one that does not interpolate. */
 export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;

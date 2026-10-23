@@ -99,8 +99,8 @@ describe('Less math boundaries', () => {
    * test is the value's type, never its bytes. A variable holding such a group
    * holds the text and the group. In `.scss` an unquoted string is text inside
    * a `calc()`; outside one a group around it is the escaped group (J16's
-   * `.scss` amendment, owner 2026-10-22), and math around it is an open owner
-   * question (DESIGN-DECISIONS-NOTES § J16, 2026-10-22).
+   * `.scss` amendment, owner 2026-10-22), and math on it is an error (ledger
+   * V36, below).
    */
   it('keeps the parens around text, however it is reached', async () => {
     expect(await render('@v: e("1px + 2px"); .x { a: calc(2 * (e("1px + 2px"))); b: calc(2 * (@v)); '
@@ -108,16 +108,21 @@ describe('Less math boundaries', () => {
       + 'g: calc((e("1px + 2px"))); h: calc(2 * (~"1px + 2px")); k: calc(1px + (e("var(--a, 1px)"))); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (1px + 2px)); d: calc(2 / (1px/2)); '
         + 'f: calc(2 * (foo)); g: calc((1px + 2px)); h: calc(2 * (1px + 2px)); k: calc(1px + (var(--a, 1px))); }');
-    expect(await render('@v: e("1px + 2px"); .x { a: (e("1px + 2px")) * 2; a2: (~"1px + 2px") * 2; b: 2 - (@v); d: (e("1px + 2px")); e: (e("foo")); f: ((~"x")); }'))
-      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: (1px + 2px); e: (foo); f: ((x)); }');
+    expect(await render('@v: e("1px + 2px"); .x { d: (e("1px + 2px")); e: (e("foo")); f: ((~"x")); }'))
+      .toBe('.x { d: (1px + 2px); e: (foo); f: ((x)); }');
+
+    /* Math on a string, outside a math function, fails the compile (ledger V36, owner 2026-10-23). */
+    for (const source of ['.x { a: (e("1px + 2px")) * 2; }', '.x { a2: (~"1px + 2px") * 2; }', '@v: e("1px + 2px"); .x { b: 2 - (@v); }']) {
+      await expect(render(source), source).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    }
     expect(await render('@a: (e("1px + 2px")); @s: ~"a b"; .m(@x) { m: (@x); n: calc(2 * (@x)); } '
       + '.x { a: calc(2 * @a); b: @a; c: (@s); s: ~"@{a}"; t: calc(@a); .m(e("1px + 2px")); .m(~"a b"); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: (1px + 2px); c: (a b); s: 1px + 2px; t: calc((1px + 2px)); m: (1px + 2px); n: calc(2 * (1px + 2px)); m: (a b); n: calc(2 * (a b)); }');
     const scss = '$v: unquote("1px + 2px"); $k: foo; $g: (unquote("1px + 2px")); .x { a: calc(2 * (unquote("1px + 2px"))); b: calc(2 * ($v)); '
-      + 'c: calc(2 * (unquote("foo"))); d: calc(2 * ($k)); e: (unquote("1px + 2px")); f: ($k); g: (unquote("1px + 2px")) * 2; h: $g * 2; i: $g; }';
+      + 'c: calc(2 * (unquote("foo"))); d: calc(2 * ($k)); e: (unquote("1px + 2px")); f: ($k); i: $g; }';
     expect(await renderIn('.scss', scss))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (foo)); d: calc(2 * (foo)); e: 1px + 2px; f: foo; '
-        + 'g: 1px + 2px * 2; h: 1px + 2px * 2; i: 1px + 2px; }');
+        + 'i: 1px + 2px; }');
     expect(await renderJess('@-from "#less" import (e); .x { a: calc(2 * ($e("1px + 2px"))); b: calc(2 * (($e("1px + 2px")))); c: ($e("foo")); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * ((1px + 2px))); c: (foo); }');
   });
@@ -142,14 +147,18 @@ describe('Less math boundaries', () => {
   /*
    * In `.scss` a group around one value outside a calculation is the escaped
    * group (ledger J16, `.scss` amendment, owner 2026-10-22), so math reads what
-   * it holds: a keyword is an identifier, and a call's unquoted string is its
-   * text, written without the group. Dart Sass stops at all four ("Undefined
-   * operation"); which of these `.scss` should write is an open owner question
-   * (DESIGN-DECISIONS-NOTES § J16, 2026-10-22).
+   * it holds: a keyword or a call's unquoted string is text, and math on text
+   * fails the compile (ledger V36, owner 2026-10-22), as Dart Sass stops at all
+   * of these ("Undefined operation").
    */
-  it('reads a .scss keyword in a group outside a calculation as an identifier', async () => {
-    expect(await renderIn('.scss', '$g: (foo); $k: foo; .x { a: (foo) * 2; b: $g * 2; c: $k * 2; d: (unquote("1px + 2px")) * 2; }'))
-      .toBe('.x { a: foo * 2; b: foo * 2; c: foo * 2; d: 1px + 2px * 2; }');
+  it.each([
+    '.x { a: (foo) * 2; }',
+    '$g: (foo); .x { b: $g * 2; }',
+    '$k: foo; .x { c: $k * 2; }',
+    '.x { d: (unquote("1px + 2px")) * 2; }',
+    '$g: (unquote("1px + 2px")); .x { h: $g * 2; }'
+  ])('fails the compile on math on a .scss keyword in a group: %s', async (source) => {
+    await expect(renderIn('.scss', source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
   /*
@@ -266,7 +275,7 @@ describe('Less math boundaries', () => {
       .toBe('.a { b: 1px solid #cc0000; w: 50%; u: 5px; f: a; }');
     expect(await renderIn('.scss', '.a { w: (percentage(0.5)); b: solid (darken(red, 10%)); }'))
       .toBe('.a { w: 50%; b: solid #cc0000; }');
-    expect(await renderJess('.a { a: ($(1px + 2px)); b: ($(foo + 1)); }')).toBe('.a { a: 3px; b: (foo + 1); }');
+    expect(await renderJess('.a { a: ($(1px + 2px)); }')).toBe('.a { a: 3px; }');
     expect(await render('@a: 1px + 2px; .x { b: (@a); }')).toBe('.x { b: 3px; }');
     expect(await render('@a: 1px + 2px; .x { b: (@a); c: @a; }', { mathMode: 'parens' }))
       .toBe('.x { b: 3px; c: 1px + 2px; }');
@@ -334,8 +343,13 @@ describe('Less math boundaries', () => {
    * (ledger V27).
    */
   it('keeps the parens of an operand of math kept as written', async () => {
-    expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; e: foo + (1px); f: (1px) + foo; g: (10px) + 1; }'))
-      .toBe('.x { a: calc((10px) + 1em); c: calc(1em + (10px)); d: calc(((10px)) + 1em); e: foo + (1px); f: (1px) + foo; g: 11px; }');
+    expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; g: (10px) + 1; }'))
+      .toBe('.x { a: calc((10px) + 1em); c: calc(1em + (10px)); d: calc(((10px)) + 1em); g: 11px; }');
+
+    /* Math on a keyword fails the compile where Less computes (ledger V36, owner 2026-10-23). */
+    for (const source of ['.x { e: foo + (1px); }', '.x { f: (1px) + foo; }']) {
+      await expect(render(source), source).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    }
     expect(await render('.x { a: (10px) + 1em; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
   });
 

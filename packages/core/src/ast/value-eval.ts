@@ -631,6 +631,19 @@ export class EmptyOperandError extends Error {
   }
 }
 
+/**
+ * An operation on an operand it is not defined on (ledger V36): a keyword or a
+ * string in every dialect that computes; in Less also a function call written
+ * out as-is; in `.scss` and `.jess` also a boolean, a list and a map. Not a `TypeError`, so the preserve-mode fallback in
+ * `operate` cannot swallow it.
+ */
+export class InvalidOperandError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidOperandError';
+  }
+}
+
 /* --------------------------------------------------------------- seam */
 
 /**
@@ -871,4 +884,13 @@ export interface ValueEvaluator {
    * `calc()` (ledger V32). Absent means `false`.
    */
   readonly sassCalculations?: boolean;
+
+  /**
+   * Whether operations read their operands as `.scss` and `.jess` do (ledger
+   * V36): the operand rule covers `+`, `*` and `%`, leaves a call written out
+   * as-is alone, and rejects a boolean, a list and a map. Absent means
+   * `false`, as in Less: every operator, and a call written out as-is is
+   * rejected.
+   */
+  readonly sassOperands?: boolean;
 }

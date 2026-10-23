@@ -53,7 +53,7 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  * `selector.parse()` (`#sass/selector`) reads a string as `selector(…)` reads its
  * argument.
  */
-const jessValueEvaluator = buildEvaluator(createFnRegistry(), { parseSelector });
+const jessValueEvaluator = buildEvaluator(createFnRegistry(), { sassOperands: true, parseSelector });
 
 /**
  * `.jess` arithmetic is strict about units by default: `$(1px + 3em)` and

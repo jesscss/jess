@@ -26,7 +26,7 @@
 
 import { renderCombinator } from './node.js';
 import type { Combinator, Node, NodeType } from './node.js';
-import {
+import serializerNodes, {
   any,
   callArg,
   collection,
@@ -75,9 +75,9 @@ import {
   textHoldsParentRef,
   branchTextIsPlaceholder,
   isCssColorCall,
+  isConditionOperand,
   colorAlphaSlash
 } from './nodes.js';
-import serializerNodes from './nodes.js';
 import {
   type CompoundIn,
   type SelectorPlace,
@@ -165,6 +165,7 @@ import {
   DivisionByZeroError,
   EmptyOperandError,
   IncomparableOperandsError,
+  InvalidOperandError,
   emitValue,
   readText,
   delimiterClose,
@@ -207,7 +208,7 @@ import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bi
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -4256,6 +4257,14 @@ interface Lane {
   exprBoundary: boolean;
 
   /*
+   * [operand] Inside the arguments of a CSS math function or of a call written
+   * out as-is: an operation on an operand it is not defined on is kept as
+   * written there rather than rejected, as in a calculation (ledger V36). Lane
+   * state, as `calcDepth` is: a value a reference reaches is read here too.
+   */
+  keepsMath: boolean;
+
+  /*
    * [important] Less `importantScope`: while resolving one declaration's value, an
    * `Important`-wrapped variable reference (`@v: @c !important`) sets `hit`, so the
    * enclosing declaration hoists a SINGLE trailing `!important`. Installed per
@@ -4468,6 +4477,10 @@ interface EvalSession {
  * - `noPluginHost`: a plugin function declined the call, so it is evaluated
  *   again without plugins.
  * - `elide`: a ruleset argument's declaration value, with its own `sink`.
+ * - `keepMath` / `checkMath`: a call's arguments, where an operation on an
+ *   operand it is not defined on is kept as written (a CSS math function, a
+ *   call written out as-is) or rejected
+ *   ({@link Lane.keepsMath}).
  * - `guard`: a mixin guard operand, where `default()` is `isDefault`.
  * - `statement`: a condition decided ahead of execution
  *   ({@link preselectControlFlow}). Whatever value is mid-way when that
@@ -4477,7 +4490,7 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath',
   sink?: { elided: boolean },
   isDefault?: () => boolean
 ): Lane {
@@ -4502,6 +4515,7 @@ function deriveLane(
             ? e.parenFrames === undefined ? [false] : [...e.parenFrames, false]
             : change === 'statement' ? undefined : e.parenFrames,
         exprBoundary: change === 'parenBoundary' || change === 'boundary' || change === 'callBoundary' || (change !== 'statement' && e.exprBoundary),
+        keepsMath: change === 'keepMath' || (change !== 'checkMath' && change !== 'statement' && e.keepsMath),
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
         mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
@@ -4805,41 +4819,25 @@ function warnUnexpressibleUnit(value: Value, owner: object, e: Lane): void {
 
 function throwUnitArithmetic(error: unknown, node: object, e: Lane): never {
   if (error instanceof DivisionByZeroError) {
-    throw ERR.divisionByZero({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { expr: error.expr }
-    });
-  }
-  if (error instanceof UnitArithmeticError) {
-    throw ERR.invalidUnitArithmetic({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { reason: error.message }
-    });
+    throw ERR.divisionByZero({ node, ...arithmeticSiteLocation(node, e), meta: { expr: error.expr } });
   }
 
   /*
    * A no-common-ground RELATIONAL comparison (`1px > red`) surfaces through the
    * same site as a unit clash: same operand position, same guard lane, so the
    * author gets the same structured error and location rather than a bare
-   * TypeError out of the public API.
+   * TypeError out of the public API. So do an empty operand and an operand an
+   * operation is not defined on (ledger V36).
    */
-  if (error instanceof EmptyOperandError) {
-    throw ERR.emptyOperand({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { reason: error.message }
-    });
+  const raise = error instanceof UnitArithmeticError
+    ? ERR.invalidUnitArithmetic
+    : error instanceof EmptyOperandError
+      ? ERR.emptyOperand
+      : error instanceof InvalidOperandError ? ERR.invalidOperand : error instanceof IncomparableOperandsError ? ERR.incomparableOperands : undefined;
+  if (raise === undefined || !(error instanceof Error)) {
+    throw error;
   }
-  if (error instanceof IncomparableOperandsError) {
-    throw ERR.incomparableOperands({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { reason: error.message }
-    });
-  }
-  throw error;
+  throw raise({ node, ...arithmeticSiteLocation(node, e), meta: { reason: error.message } });
 }
 
 /**
@@ -6245,10 +6243,20 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
       return combineAll([l, r], (values) => {
-        const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
-        const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
-          return rememberUnitOwner(ev.operate(node.operator, lv, rv, e.modes), node);
+          /*
+           * The operand rule (ledger V36) reads the values, never their written
+           * parens (J16). Inside a `calc()` the math is CSS's (J16, V31); a math
+           * function's and a written-out call's arguments keep such math as
+           * written rather than reject it ({@link Lane.keepsMath}).
+           */
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev.sassOperands === true, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
+            ?? rememberUnitOwner(ev.operate(
+              node.operator,
+              spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e),
+              spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e),
+              e.modes
+            ), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
@@ -6455,9 +6463,10 @@ function evalCollection(
 function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
   const lone = node.parts.length === 1 ? node.parts[0]! : undefined;
   const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression' ? e : spliceCtx(e);
+
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    pieces.push('lit' in part ? part.lit : part.unquote ? unquotedRef(part.ref, frame, ei) : evalValue(part.ref, frame, ei));
+    pieces.push('lit' in part ? part.lit : part.unquote ? evalTyped(part.ref, frame, ei, false, ARG_SPLICE) : evalValue(part.ref, frame, ei));
   }
   return combineAll(pieces, (values) => {
     let bytes = '';
@@ -6500,11 +6509,11 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePro
           return value;
         }
       }
-      bytes += emitSplice(value);
+      bytes += emitSplice(part.unquote && !isLiteral(value) && !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : value);
     }
     return elided && values.length > 0
       ? NULL
-      : literal(resolveEmergentInterp(bytes, frame, ei));
+      : quotedFromLead(node.leadQuoting === true ? values[0] : undefined, literal(resolveEmergentInterp(bytes, frame, ei)));
   });
 }
 
@@ -8880,7 +8889,7 @@ function evalCall(
    * pays one `Set.has` and never walks a frame.
    */
   if (e.s.lambdaFunctionNames?.has(node.name)) {
-    const invoked = evalLambdaCall(node, frame, e, demanded);
+    const invoked = evalLambdaCall(node, frame, e.keepsMath ? deriveLane(e, 'checkMath') : e, demanded);
     if (invoked !== undefined) {
       return invoked;
     }
@@ -9018,9 +9027,14 @@ function dispatchCall(
    */
   const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
   const alpha = colorAlphaSlash(node);
+
+  /* An operation the operand rule rejects is kept as written in a CSS math function or a call written out as-is (ledger V36). */
+  const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === e.keepsMath
+    ? e
+    : deriveLane(e, e.keepsMath ? 'checkMath' : 'keepMath');
   const typed = alpha === null
-    ? node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument))
-    : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+    ? node.args.map(a => evalTypedSlot(a.value, frame, ae, true, argument))
+    : [colorChannels(node.args[0]!.value, alpha, frame, ae, argument)];
   return combineAll(typed, (vals) => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {
@@ -11040,6 +11054,7 @@ function scratchEmit(e: Lane): Emit {
     calcDepth: e.calcDepth,
     parenFrames: undefined,
     exprBoundary: false,
+    keepsMath: e.keepsMath,
     importantSink: undefined,
     elideSink: undefined,
     mergeImportant: undefined,
@@ -14357,6 +14372,7 @@ function createRenderSession(
     calcDepth: 0,
     parenFrames: undefined,
     exprBoundary: false,
+    keepsMath: false,
     importantSink: undefined,
     elideSink: undefined,
     mergeImportant: undefined,

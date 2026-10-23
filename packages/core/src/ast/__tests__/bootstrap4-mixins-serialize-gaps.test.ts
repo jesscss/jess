@@ -151,8 +151,7 @@ describe('bootstrap4/mixins serialize gaps', () => {
     expect(render('.a {\n  appearance: none -moz-appearance;\n}\n', false))
       .toBe('.a {\n  appearance: none -moz-appearance;\n}\n');
 
-    // A genuinely spaced operator is preserved as authored (not glued).
-    expect(render('.a {\n  outline: auto - webkit-x;\n}\n', false))
-      .toBe('.a {\n  outline: auto - webkit-x;\n}\n');
+    // A genuinely spaced operator is math, and math on a keyword fails the compile (ledger V36, owner 2026-10-23).
+    expect(() => render('.a {\n  outline: auto - webkit-x;\n}\n', false)).toThrow(expect.objectContaining({ code: 'eval/invalid-operand' }));
   });
 });

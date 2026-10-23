@@ -29,7 +29,7 @@ describe('Operations — named-color division in math: always', () => {
     const hex = await alwaysCompiler.renderString('.test { color: #ff0000 / 2; }', { language: 'less' });
     expect(hex).toContain('color: #800000');
 
-    // A non-color keyword stays an authored slash list (no fold).
+    // A non-color keyword stays an authored slash list (no fold): `/` is also CSS's separator (ledger V36).
     const plain = await alwaysCompiler.renderString('.test { color: foo / 2; }', { language: 'less' });
     expect(plain).toContain('color: foo / 2');
   });
@@ -452,14 +452,18 @@ describe('Operations — unit arithmetic under each unitMode', () => {
     }
   });
 
-  it('math kept as written keeps its precedence through a variable or a mixin argument (V29)', async () => {
-    const { css } = await render('preserve', '@x: foo + 1; a: @x * 2; b: 2 * @x; c: 10px - @x; e: @x + 1px; f: (@x) * 2;');
-    expect(css).toBe('.a { a: (foo + 1) * 2; b: 2 * (foo + 1); c: 10px - (foo + 1); e: foo + 1 + 1px; f: (foo + 1) * 2; }');
+  /*
+   * Math on a keyword where Less computes fails the compile (ledger V36, owner
+   * 2026-10-23), through a variable or a mixin argument too; inside a math
+   * function the math is CSS's and is kept as written, a kept operand grouped.
+   */
+  it('math on a keyword fails through a variable or a mixin argument, and is kept in a math function (V29, V36)', async () => {
+    const { errors } = await render('preserve', '@x: foo + 1; a: @x * 2;');
+    expect(errors).toEqual(['eval/invalid-operand']);
 
     const mixin = await renderSheet('preserve', '.m(@a) { width: @a * 2; } .a { .m(foo + 1); }');
-    expect(mixin.css).toBe('.a { width: (foo + 1) * 2; }');
+    expect(mixin.errors).toEqual(['eval/invalid-operand']);
 
-    // Inside a math function the operation itself is kept as written, and a kept operand still groups.
     expect((await render('preserve', '@x: foo + 1; a: calc(@x * 2); b: calc(2 - @x);')).css).toBe('.a { a: calc((foo + 1) * 2); b: calc(2 - (foo + 1)); }');
 
   });
