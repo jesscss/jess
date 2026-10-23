@@ -72,10 +72,11 @@ describe('NamedColor→Keyword convergence', () => {
 
   it('coerces a named-color keyword operand in color arithmetic', async () => {
     const compiler = new Compiler();
-    for (const extension of ['.less', '.scss'] as const) {
-      const css = await compiler.renderString('a { color: red + #111; }', { extension, suppressWarnings: true });
-      expect(String(css), extension).toContain('color: #ff1111');
-    }
+    const css = await compiler.renderString('a { color: red + #111; }', { extension: '.less', suppressWarnings: true });
+    expect(String(css)).toContain('color: #ff1111');
+
+    /* `.scss` has no colour math (ledger V36; owner 2026-10-23: "ya keep it an error in .scss"). */
+    await expect(compiler.renderString('a { color: red + #111; }', { extension: '.scss', suppressWarnings: true })).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
   it('keeps a named color a color for Less type predicates', async () => {

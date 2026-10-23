@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
 import { parse as parseJess } from '@jesscss/jess-parser';
 import { parse as parseScss } from '@jesscss/scss-parser';
+import { parse as parseLess } from '@jesscss/less-parser';
 import { Compiler } from '../../src/index.js';
 
 /**
@@ -142,15 +143,15 @@ describe('scss: other math on an operand it is not defined on fails the compile'
 
 /*
  * Math in a CSS math function, or in a call written out as-is, is kept as
- * written; a call (`var(--x)`) is not ruled in `.scss`; `-` and `/` are not
- * ruled. Each is what it was before the operand rule.
+ * written; `/` is not ruled in `.scss` and `.jess` (a separator there, or
+ * unoperated division). Each is what it was before the operand rule.
  */
 const kept: ReadonlyArray<readonly [source: string, expected: string]> = [
   ['.a { b: calc(foo + 1px); }', '.a {\n  b: calc(foo + 1px);\n}\n'],
   ['.a { b: min(foo + 1px, 2px); }', '.a {\n  b: min(foo + 1px, 2px);\n}\n'],
   ['.a { b: calc-size(auto, size + 1px); }', '.a {\n  b: calc-size(auto, size + 1px);\n}\n'],
-  ['.a { b: var(--x) + 1px; }', '.a {\n  b: var(--x) + 1px;\n}\n'],
-  ['.a { b: foo - bar; c: foo / bar; }', '.a {\n  b: foo - bar;\n  c: foo / bar;\n}\n']
+  ['.a { b: calc(var(--x) + 1px); }', '.a {\n  b: calc(var(--x) + 1px);\n}\n'],
+  ['.a { b: foo / bar; }', '.a {\n  b: foo / bar;\n}\n']
 ];
 
 describe('scss: math in a math function or a written-out call is kept', () => {
@@ -235,5 +236,40 @@ describe('less: math on a keyword, a call written out as-is or a string fails wh
   it('leaves math in calc() and math Less does not compute as written', async () => {
     await expect(render('.a { b: calc(foo + 1px); c: min(foo + 1px, 2px); }', '.less')).resolves.toBe('.a {\n  b: calc(foo + 1px);\n  c: min(foo + 1px, 2px);\n}\n');
     await expect(new Compiler({ compile: { mathMode: 'parens' } }).renderString('.a { b: foo + 1; }', { extension: '.less' })).resolves.toBe('.a {\n  b: foo + 1;\n}\n');
+  });
+});
+
+/*
+ * Owner 2026-10-23, asked whether `foo - bar` and `var(--x) + 1px` are errors
+ * in `.scss` and `.jess`: *"yes"*; on colour math, which Dart Sass rejects
+ * ("Undefined operation"): *"ya keep it an error in .scss"*. Less and `.jess`
+ * keep colour math (ledger V36, V13).
+ */
+describe('scss and jess: - on a keyword, a call operand, and .scss colour math', () => {
+  it.each([
+    ['operators/minus.hrx syntax/whitespace/both', 'a {b: c - d}'],
+    ['a keyword and a number', '.a { b: foo - 1px; }'],
+    ['a call written out as-is', '.a { b: var(--x) + 1px; }'],
+    ['non_conformant/sass_4_0/color_arithmetic/addition/color_color.hrx', '$v: #abc + #123; a { b: $v; }'],
+    ['non_conformant/sass_4_0/color_arithmetic/addition/color_number.hrx', '$v: #abc + 1; a { b: $v; }'],
+    ['non_conformant/sass_4_0/color_arithmetic/multiplication/color_number.hrx', '$v: #abc * 1; a { b: $v; }'],
+    ['named colours', '.a { b: black + blue; c: red * 2; }']
+  ])('.scss fails the compile: %s', async (_name, source) => {
+    await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it.each(['.a { b: $(foo - bar); }', '$x: var(--x);\n.a { b: $($x + 1px); }'])('.jess fails the compile: %s', async (source) => {
+    await expect(render(source, '.jess')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  it('keeps colour math in Less and in its .jess lowering', async () => {
+    const less = '.a { b: (black + blue); c: (#111 + 1); }';
+    const expected = '.a {\n  b: #0000ff;\n  c: #121212;\n}\n';
+    await expect(render(less, '.less')).resolves.toBe(expected);
+    await expect(render(emitJess(parseLess(less)), '.jess')).resolves.toBe(expected);
+  });
+
+  it('keeps math in calc() as written', async () => {
+    await expect(render('.a { b: calc(var(--x) + 1px); c: 1px - 2px; d: foo / bar; }')).resolves.toBe('.a {\n  b: calc(var(--x) + 1px);\n  c: -1px;\n  d: foo / bar;\n}\n');
   });
 });
