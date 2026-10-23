@@ -1096,7 +1096,7 @@ describe('targeted round trip: a unitless number ± a unit', () => {
  */
 describe('targeted round trip: kept math', () => {
   it('`.less` and its `.jess` lowering agree under every explicit `unitMode`', async () => {
-    const less = '@a: 4px;\n@x: @a + 1em;\n.a {\n  b: (@a + 3em);\n  c: @a - 3em;\n  d: @x;\n  e: calc(@x * 2);\n  f: (foo + 1);\n}\n';
+    const less = '@a: 4px;\n@x: @a + 1em;\n.a {\n  b: (@a + 3em);\n  c: @a - 3em;\n  d: @x;\n  e: calc(@x * 2);\n}\n';
     const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
     const render = async (source: string, extension: '.less' | '.jess', unitMode: 'loose' | 'preserve' | 'strict') => {
       const result = await new Compiler({ compile: { ...PINNED_COMPILE, unitMode, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
@@ -1114,6 +1114,22 @@ describe('targeted round trip: kept math', () => {
     expect(kept.css).toContain('calc(4px + 3em)');
     expect(kept.warnings).toContain('eval/unexpressible-unit');
     expect((await render(less, '.less', 'strict')).errors).toEqual(['eval/invalid-unit-arithmetic']);
+  });
+});
+
+/*
+ * Less keeps math on text as written (`(foo + 1)` is `(foo + 1)`), while
+ * `.jess` math on text fails the compile (ledger V36, owner 2026-10-22), so a
+ * Less operation on a keyword has no `.jess` spelling yet: its lowering
+ * `$((foo + 1))` errors. OPEN for the owner (V36).
+ */
+describe('targeted round trip: Less text math', () => {
+  it.fails('`.less` `(foo + 1)` and its `.jess` lowering agree', async () => {
+    const less = '.a {\n  f: (foo + 1);\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = (source: string, extension: '.less' | '.jess') =>
+      new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true }).renderString(source, { filePath: `entry${extension}`, extension });
+    expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
   });
 });
 

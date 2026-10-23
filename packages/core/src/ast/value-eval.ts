@@ -631,6 +631,20 @@ export class EmptyOperandError extends Error {
   }
 }
 
+/**
+ * An operation on a value that is not a number where only numbers compute: `+`
+ * with no quoted string on either side, `*` or `%`, on unquoted text, a
+ * boolean, a list or a map, in a dialect whose evaluator sets
+ * {@link ValueEvaluator.textOperands} (ledger V36). Not a `TypeError`, so the
+ * preserve-mode fallback in `operate` cannot swallow it.
+ */
+export class TextOperandError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TextOperandError';
+  }
+}
+
 /* --------------------------------------------------------------- seam */
 
 /**
@@ -871,4 +885,13 @@ export interface ValueEvaluator {
    * `calc()` (ledger V32). Absent means `false`.
    */
   readonly sassCalculations?: boolean;
+
+  /**
+   * Whether an operation on text follows ledger V36, as in `.scss` and `.jess`:
+   * `+` with a quoted string on either side joins the two values' text
+   * (`"Elapsed: " + 10s` is `"Elapsed: 10s"`), and `+`, `*` or `%` on any other
+   * value that is not a number (unquoted text, a boolean, a list, a map) is an
+   * error. Absent means `false`: a Less operation on text is kept as written.
+   */
+  readonly textOperands?: boolean;
 }

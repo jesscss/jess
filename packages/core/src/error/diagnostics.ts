@@ -951,6 +951,20 @@ export const ERR = {
       ...args
     });
   },
+
+  /**
+   * `+` with no quoted string on either side, `*` or `%`, on unquoted text, a
+   * boolean, a list or a map, in `.scss` and `.jess` (DESIGN-DECISIONS V36):
+   * none of them means anything, so the compile fails rather than writing text
+   * glued together.
+   */
+  textOperand(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/text-operand',
+      phase: 'eval',
+      ...args
+    });
+  },
   incomparableOperands(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/incomparable-operands',

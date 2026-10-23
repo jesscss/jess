@@ -122,7 +122,7 @@ const stringify = (v: ValueGroup): string =>
  */
 export function buildEvaluator(
   registry: FnRegistry,
-  options: { readonly sassCalculations?: boolean; readonly parseSelector?: SelectorParse } = {}
+  options: { readonly sassCalculations?: boolean; readonly textOperands?: boolean; readonly parseSelector?: SelectorParse } = {}
 ): ValueEvaluator {
   const { parseSelector } = options;
   const call = (
@@ -209,6 +209,7 @@ export function buildEvaluator(
     compare,
     compareMatch,
     typeCheck,
-    sassCalculations: options.sassCalculations === true
+    sassCalculations: options.sassCalculations === true,
+    textOperands: options.textOperands === true
   };
 }

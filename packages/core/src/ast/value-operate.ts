@@ -12,9 +12,9 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type Keyword, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, TextOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type Keyword, type Quoted, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue, convertible, unitMultisetKey } from './value-units.js';
 
@@ -652,6 +652,95 @@ export function groupAsWritten(v: Value): Value {
     return keptMathKeyword(`(${kept})`, '', v, v);
   }
   return v.type === 'Keyword' && keptAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, '') : v;
+}
+
+/** A quoted string: Sass's quoted string, `.jess`'s `"…"`. */
+const isQuotedString = (v: ValueGroup): v is Quoted => !isValueGroupArray(v) && v.type === 'Quoted' && !v.escaped;
+
+/**
+ * Whether `v` is a value only text math could read: anything but a number, a
+ * colour (a named-colour keyword included), `null`, math kept as written or in
+ * a `calc()`, and a call written out as-is (`var(--x)`, a CSS `if()`), whose
+ * value the browser computes — those keep {@link operate}'s behaviour.
+ */
+function isNonNumeric(v: ValueGroup): boolean {
+  if (isValueGroupArray(v)) {
+    return true;
+  }
+  switch (v.type) {
+    case 'Dimension':
+    case 'Color':
+    case 'Null':
+      return false;
+    case 'Keyword':
+      return coerceNamedColorKeyword(v) === v && keptMathOf(v) === undefined && !keptAsWritten.has(v) && calcInner(v.bytes) === null;
+    default:
+      return true;
+  }
+}
+
+/** An operand's text in a join: a quoted string's content, anything else as it is written. */
+const joinText = (v: ValueGroup): string => (isQuotedString(v) ? v.value : emitValue(v));
+
+/** A quote character in string content that no backslash escapes. */
+const BARE_DOUBLE = /(?<!\\)(?:\\\\)*"/;
+const BARE_SINGLE = /(?<!\\)(?:\\\\)*'/;
+const bareQuote = (text: string, quote: string): boolean => (quote === '"' ? BARE_DOUBLE : BARE_SINGLE).test(text);
+
+/**
+ * A joined string: in `quote` unless its content holds that quote bare (joined
+ * from a string written in the other quote), then in the other quote, as Dart
+ * Sass writes `"a" + 'b"c'` as `'ab"c'`; with both bare, `quote` escaped.
+ */
+function joinedString(text: string, quote: string): Quoted {
+  const other = quote === '"' ? '\'' : '"';
+  if (!bareQuote(text, quote)) {
+    return makeQuoted(text, quote, false);
+  }
+  return bareQuote(text, other)
+    ? makeQuoted(text.replace(quote === '"' ? /(?<!\\)((?:\\\\)*)"/g : /(?<!\\)((?:\\\\)*)'/g, `$1\\${quote}`), quote, false)
+    : makeQuoted(text, other, false);
+}
+
+/**
+ * An operation on text, in a dialect whose evaluator sets
+ * `ValueEvaluator.textOperands` (`.scss`, `.jess`; ledger V36, owner
+ * 2026-10-22). `+` with a quoted string on either side joins the two values'
+ * text: `"Elapsed: " + 10s` is `"Elapsed: 10s"`. The result is quoted unless
+ * the left side is unquoted text, as Dart Sass writes it: `10s + " elapsed"` is
+ * `"10s elapsed"`, `foo + "bar"` is `foobar`. Any other `+`, and `*` and `%`,
+ * on a value that is not a number ({@link isNonNumeric}) raises
+ * {@link TextOperandError}, unless `keepsText` (an argument of a CSS math function
+ * or a call written out as-is), where it is kept as written. `null` is absent and stays {@link operate}'s, as do
+ * numbers and colours: `null` here means "not text math". `-` and `/` are not
+ * ruled for text and keep {@link operate}'s behaviour.
+ *
+ * ponytail: a list holding a quoted string joins with that string's quotes
+ * (`"a" + ("x" 1)`); unquote list items here if a real input needs it.
+ */
+export function textOperation(op: string, left: ValueGroup, right: ValueGroup, keepsText = false): Value | null {
+  if (op !== '+' && op !== '*' && op !== '%') {
+    return null;
+  }
+  const leftNull = !isValueGroupArray(left) && left.type === 'Null';
+  const rightNull = !isValueGroupArray(right) && right.type === 'Null';
+  if (leftNull || rightNull) {
+    return null;
+  }
+  if (op === '+' && isQuotedString(left)) {
+    return joinedString(left.value + joinText(right), left.quote || '"');
+  }
+  if (op === '+' && isQuotedString(right)) {
+    const text = joinText(left) + right.value;
+    const leftIsText = !isValueGroupArray(left) && (left.type === 'Any' || left.type === 'Url' || (left.type === 'Keyword' && isNonNumeric(left)));
+    return leftIsText ? makeKeyword(text) : joinedString(text, right.quote || '"');
+  }
+  if (!keepsText && (isNonNumeric(left) || isNonNumeric(right))) {
+    throw new TextOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: ${op === '+'
+      ? '`+` adds numbers, and joins text only when one side is a quoted string'
+      : `\`${op}\` computes numbers only`}.`);
+  }
+  return null;
 }
 
 /**

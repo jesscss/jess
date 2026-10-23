@@ -772,8 +772,17 @@ class JessPrinter {
       case 'Important':
         return gap('Important', '`!important` inside a value is undecided for `.jess` (inventory row)');
       case 'Operation':
+        /*
+         * An operation that computes where it is written with no `$( … )`
+         * around it (a `.scss` `$a + $b`) is that `$( … )`: `.jess` math reads
+         * numbers and text by the same rule (ledger V36), so the conversion is
+         * one to one. A Less operation that computes already sits in an
+         * `Expression`.
+         */
         if (at !== At.Expr && !(at === At.Math && node.inMathFunction)) {
-          return gap('Operation', 'math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)');
+          return at === At.Value && node.mathOutsideParens && !node.inMathFunction
+            ? `$(${this.value(node, At.Expr, indent)})`
+            : gap('Operation', 'math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)');
         }
         if (!EXPRESSION_OPS.has(node.operator)) {
           return gap('Operation', `operator \`${node.operator}\` is not a \`.jess\` arithmetic operator`);

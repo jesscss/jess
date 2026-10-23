@@ -65,8 +65,11 @@ describe('emitJess never approximates', () => {
       throw new Error('unexpected fixture shape');
     }
 
-    // Bare math — the shape the Less AST carries until ledger P35 lands.
-    rule.rules[0] = { ...rule.rules[0], value: operation('+', dimension(1), dimension(2), false, true) };
+    /*
+     * Bare math that does not compute where it is written (Less `math: parens`
+     * outside parens). Math that computes there (a `.scss` `1 + 2`) is `$( … )`.
+     */
+    rule.rules[0] = { ...rule.rules[0], value: operation('+', dimension(1), dimension(2), false, false) };
     expect(() => emitJess(root)).toThrow(NoJessSpelling);
     expect(() => emitJess(root)).toThrow('NoJessSpelling: Operation (math outside an `Expression`');
   });
