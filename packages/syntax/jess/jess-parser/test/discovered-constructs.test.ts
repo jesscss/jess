@@ -86,13 +86,15 @@ describe('Jess constructs discovered outside the parser suites', () => {
   it.each([
     ['empty', 'a { b: () }'],
     ['whitespace only', 'a { b: ( ) }']
-  ])('keeps an empty parenthesised block a parse error (%s)', (_label, source) => {
+  ])('parses an empty parenthesised block as the empty slot (%s)', (_label, source) => {
     /*
-     * P18(a) settles `(c)` / `( c )` / `(1 + 2)` and is silent on the empty
-     * block. The raw simple-block fallback declines it so `()` stays the clean
-     * rejection Jess already produced, rather than minting an empty `Any`.
+     * The empty block is well-formed (css-syntax-3 §5.4.8), so it parses (ledger
+     * P45). It holds the EMPTY SLOT `[]`, as the css base's does, never an empty
+     * `Any`.
      */
-    expect(() => parse(source)).toThrow();
+    expect(firstRule(source)).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'b', value: { type: 'Block', delimiter: 'paren', value: [] } }]
+    });
   });
 
   it.each([

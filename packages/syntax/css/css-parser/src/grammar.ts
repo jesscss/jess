@@ -75,6 +75,7 @@ import {
   isSimpleToken,
   isValue,
   isValueSlotValue,
+  parenGroupContent,
   keyframeSelectorList,
   keyword,
   list,
@@ -2354,17 +2355,24 @@ const cssFactory = (g: GrammarSelf) => {
    * The padding is spelled for the same reason `GenericFunction` spells it: this
    * interior runs with trivia cleared, so without these terms `( c )` — and every
    * comment form of it — was rejected as hard as `(/* c *\/ e)` was.
+   *
+   * A simple block's content is any run of component values (css-syntax-3
+   * §5.4.8), so `()` and a comma closing the list, `(1,)`, are well-formed:
+   * the empty slot and the list it ends (`parenGroupContent`). `ValueList`
+   * forbids a trailing separator, so at `(1,)` it gives its last `,` back for
+   * `authoredValueComma` to read: one separator, on that path only. Letting
+   * `ValueList` keep it would admit a closing comma in every declaration value.
    */
   const ParenValue = node(
     'ParenValue',
     sequence(
       literal('('),
       optional(cssValueTrivia),
-      optional(g.ValueList),
+      optional(sequence(g.ValueList, optional(authoredValueComma))),
       optional(cssValueTrivia),
       literal(')')
     ),
-    children => block(valueSlotChildren(children)[0] ?? any(''))
+    (children, fields) => block(parenGroupContent(children, fields))
   );
 
   /*
@@ -2386,8 +2394,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `find`, not `valueSlotChildren`: `<line-names>` is `<custom-ident>*`, so `[]`
    * is legal and its interior is empty. `valueSlotChildren` THROWS on an empty
    * match rather than returning `[]`, so the `?? []` a caller writes after it
-   * is unreachable — which is exactly why the paren sibling still crashes on
-   * `a{color:()}` instead of rejecting it. Do not copy that call here.
+   * is unreachable — which is exactly why the paren sibling once crashed on
+   * `a{color:()}`. Do not copy that call here.
    *
    * The empty interior is the EMPTY SLOT `[]`, not `any('')`. A contentless `Any`
    * is a content node minted where the source has no content: it erases the one

@@ -923,11 +923,16 @@ function isDelimPiece(child: unknown): boolean {
   return isValueNode(child) && child.type === 'Any';
 }
 
-function isGluedValueBoundary(child: unknown): boolean {
-  return typeof child === 'object'
-    && child !== null
-    && 'kind' in child
-    && child.kind === 'glued-value-boundary';
+/**
+ * The zero-width marker `adjacentComponentBoundary` leaves between two adjacent
+ * component values: its `leaf` fact, which reaches a reducer with its span.
+ */
+function isAdjacentComponentBoundary(child: unknown): boolean {
+  return isSpannedToken(child)
+    && typeof child.value === 'object'
+    && child.value !== null
+    && 'kind' in child.value
+    && child.value.kind === 'adjacent-component';
 }
 
 /** Shared value-term reduction for grammar branches that keep comments in
@@ -956,7 +961,7 @@ function valuePieceReducerWithTrivia(
       const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
       separators.push(trivia.length > 0
         ? trivia
-        : children.slice(previousValue + 1, index).some(isGluedValueBoundary)
+        : children.slice(previousValue + 1, index).some(isAdjacentComponentBoundary)
           || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index))
           ? ''
           : ' ');
@@ -2578,14 +2583,17 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
 }
 
 /**
- * A value-position `Paren`'s reduction: a paren group around its content. One
- * operand is a math group. Anything more is a group around the condition
- * `if()` and `boolean()` read: terms joined by `and`, which binds tighter, and
- * `or`, folded as `FunctionConditionAnd` / `FunctionConditionOr` fold them, so
- * `(a > b)` replays the same condition source whichever production reads it,
- * and a condition written into a value keeps the group's parens.
+ * A value-position `Paren`'s reduction: what its paren group holds. No operand
+ * is the empty slot (`()`, the item `(1,)` ends). One operand
+ * is a math group, or, as an item of a comma list (`listed`, see
+ * `lessParenListFrom`), a value, its math folded as a value's. Anything more is
+ * the condition `if()` and `boolean()` read: terms joined by `and`, which binds
+ * tighter, and `or`, folded as `FunctionConditionAnd` / `FunctionConditionOr`
+ * fold them, so `(a > b)` replays the same condition source whichever
+ * production reads it, and a condition written into a value keeps the group's
+ * parens.
  */
-function lessParenFrom(children: readonly unknown[], rawChildren: readonly unknown[], span: SourceSpan, state: unknown): ValueNode {
+function lessParenFrom(children: readonly unknown[], rawChildren: readonly unknown[], state: unknown, listed: boolean): ValueSlot {
   /* One walk, allocating nothing: one operand and no `not` or keyword is a math group. */
   let operand: ValueNode | LessMathRun | undefined;
   let conditional = false;
@@ -2597,8 +2605,8 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
       conditional = true;
     }
   }
-  if (!conditional && operand !== undefined) {
-    return withSourceSpan(block(groupContent(lessMathInGroup(operand, state))), span);
+  if (!conditional) {
+    return operand === undefined ? [] : groupContent(listed ? lessMathInValue(operand, state) : lessMathInGroup(operand, state));
   }
   const ors: unknown[] = [];
   let ands: unknown[] = [];
@@ -2624,7 +2632,7 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
   }
   ands.push(parenConditionTermFrom(term, termRaw, state));
   const fact = foldFunctionCondition('or', [...ors, foldFunctionCondition('and', ands)]);
-  return withSourceSpan(block(fact.css ?? fact.run ?? condition(fact.guard, fact.src)), span);
+  return fact.css ?? fact.run ?? condition(fact.guard, fact.src);
 }
 
 /**
@@ -3076,7 +3084,7 @@ export {
   isFor,
   isFunctionCall,
   isFunctionConditionFact,
-  isGluedValueBoundary,
+  isAdjacentComponentBoundary,
   isInterp,
   isInterpolationAccessorFact,
   isInterpolationFact,
