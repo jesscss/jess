@@ -659,8 +659,9 @@ export function groupAsWritten(v: Value): Value {
  * `null`. Never one: a number, `null`, math kept as written or in a `calc()`,
  * an unoperated slash (`10px / 2`, a `/` list, which Less writes as kept
  * math), in Less a value kept as text that is no escaped string (an
- * unoperated `18 / 2` a mixin argument binds), and an operation an unruled
- * operand kept as written. In every dialect that computes: a keyword (`foo`,
+ * unoperated `18 / 2` a mixin argument binds), and an operation kept as
+ * written whose operands the rule did not reject (`foo / bar`). In every
+ * dialect that computes: a keyword (`foo`,
  * `auto`), a string, quoted or escaped, and a call written out as-is
  * (`var(--x)`; owner 2026-10-23). A colour, a named one included (V13), only
  * in `.scss` (`scss`; owner 2026-10-23: *"ya keep it an error in .scss"*):

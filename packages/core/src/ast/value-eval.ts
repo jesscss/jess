@@ -887,10 +887,10 @@ export interface ValueEvaluator {
 
   /**
    * Whether operations read their operands as `.scss` and `.jess` do (ledger
-   * V36): the operand rule covers `+`, `*` and `%`, leaves a call written out
-   * as-is alone, and rejects a boolean, a list and a map. Absent means
-   * `false`, as in Less: every operator, and a call written out as-is is
-   * rejected.
+   * V36): the operand rule covers every operator but `/` and also rejects a
+   * boolean, a list and a map; with {@link sassCalculations} (`.scss`) a
+   * colour too. Absent means `false`, as in Less: every operator `/` divides
+   * included, and colour math computes.
    */
   readonly sassOperands?: boolean;
 }
