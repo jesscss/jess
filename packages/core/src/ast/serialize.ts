@@ -22180,8 +22180,9 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: Lane): May
         [{ bytes: `${node.name}(${content})`, protected: true }]);
     }
     case 'Block': {
-      const open = delimiterOpen(node.delimiter);
-      const close = delimiterClose(node.delimiter);
+      /* A curly list Less wrote `~( … )` keeps the parens it was written here before it was the curly list (ledger P51). */
+      const open = node.escaped === true ? '(' : delimiterOpen(node.delimiter);
+      const close = node.escaped === true ? ')' : delimiterClose(node.delimiter);
       if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
         return mapMaybe(evalBytes(node.value, frame, e), content =>
           [{ bytes: `${open}${content}${close}`, protected: true }]);

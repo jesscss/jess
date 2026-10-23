@@ -1922,10 +1922,11 @@ function mixinListItemShape(capture: MixinInteriorCapture): MixinListItemShape {
  * When the list holds any `;`, `;` separates its arguments and EVERY `,`, before
  * or after the `;`, belongs to a comma-list value; without one, `,` separates
  * arguments. A group of two or more items is ONE argument whose value is the
- * curly list `~( … )` builds (`EscapedParen`), the normalized form: `.m(@a: b, c; d)` holds
- * exactly what `.m(@a: ~(b, c), d)` does. The items the `;` makes invalid are
- * the shared rule's ({@link mixinListProblems}), reported at each item, and the
- * list keeps what it can ({@link mixinCommaListItem}).
+ * curly list `~( … )` builds (`EscapedParen`, ledger P51), the normalized form:
+ * `.m(@a: b, c; d)` holds exactly what `.m(@a: ~(b, c), d)` does. The items
+ * the `;` makes invalid are the shared rule's ({@link mixinListProblems}),
+ * reported at each item, and the list keeps what it can
+ * ({@link mixinCommaListItem}).
  */
 function reassembleMixinInterior<T>(
   interior: MixinInteriorFact,

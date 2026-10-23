@@ -3967,3 +3967,10 @@ describe('dashed spellings of Less at-rules', () => {
     }
   });
 });
+
+/* A curly list in a condition keeps its authored `~( … )` spelling in the condition's source (ledger P51). */
+describe('a `~( … )` list in a condition', () => {
+  it('is spelled as written', () => {
+    expect(parse('@r: boolean(~(a, b));').rules[0]).toMatchObject({ value: { value: { type: 'Condition', src: 'boolean(~(a, b))' } } });
+  });
+});

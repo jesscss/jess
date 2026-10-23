@@ -2200,14 +2200,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       throw new LessInlineJavaScriptError(span.start, span.end);
     }
   );
-  // `~(...)` passes the complete inner list as one value (rather than a math
-  // grouping). It builds the curly list, the one node every dialect's "a list
-  // passed as one value" parses to (owner 2026-10-09 and 2026-10-23: "none of
-  // the languages should be parsing to that, it should be the {} list"; ledger
-  // P46): a `curly` `Block` written without its delimiters, which `.jess` spells
-  // `{ … }`. Read typed it is the inner list, indexable by `each()` and list
-  // functions. Inside the group the gaps are the document's trivia, as in a
-  // value list anywhere else: `~( a, b )` and `~(a /* c */, b)`.
+  /*
+   * `~(...)` passes the complete inner list as one value (rather than a math
+   * grouping). It builds the curly list, the one node every dialect's "a list
+   * passed as one value" parses to (owner 2026-10-09 and 2026-10-23: "none of
+   * the languages should be parsing to that, it should be the {} list"; ledger
+   * P51, P46): a `curly` `Block` written without its delimiters, which `.jess`
+   * spells `{ … }`. Read typed it is the inner list, indexable by `each()` and
+   * list functions. Inside the group the gaps are the document's trivia, as in
+   * a value list anywhere else: `~( a, b )` and `~(a /* c *\/, b)`.
+   */
   const EscapedParen = node(
     'Block',
     noTrivia(sequence(

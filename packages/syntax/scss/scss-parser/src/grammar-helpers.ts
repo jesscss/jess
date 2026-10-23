@@ -323,16 +323,21 @@ export function parenValue(children: readonly unknown[], state: unknown): Block 
   if (value.type === 'Block' && value.escaped === true) {
     return value;
   }
-  return isInCalculation(state) || isIfTest(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'curly', true);
+  return keepsGroup(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'curly', true);
 }
+
+/* Where Dart Sass writes a group's parens: a Sass calculation's arguments and a CSS `if()` condition. */
+const keepsGroup = (state: unknown): boolean => isInCalculation(state) || isIfTest(state);
 
 /**
  * Sass's empty `()`: the empty list, which Dart Sass also accepts wherever a map
  * is expected (owner 2026-10-23: *"a Sass empty `()` would be `{}` (whilst
  * storing the raw, so that Sass functions still work"*). It is the empty curly
- * list, whose span records the authored `()`; `.jess` spells it `{}`.
+ * list, whose span records the authored `()`; `.jess` spells it `{}`. Where
+ * Dart Sass writes a group's parens ({@link parenValue}) it is CSS's own empty
+ * group (`<general-enclosed>` in an `if()` condition, css-values-5 §8.3).
  */
-export const emptyParenList = (): Block => block([], 'curly', true);
+export const emptyParenList = (state: unknown): Block => keepsGroup(state) ? block([]) : block([], 'curly', true);
 
 /* What a paren group holds when it is math or a test: the group is J16's, which the math reads and consumes. */
 const GROUP_COMPUTES: ReadonlySet<string> = new Set(['Operation', 'Expression', 'Condition']);

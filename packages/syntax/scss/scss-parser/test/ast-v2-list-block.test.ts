@@ -106,8 +106,8 @@ describe('SCSS paren values', () => {
     return bare(declaration.value);
   };
 
-  /* Parens around a list are list syntax (J16, SCSS paren lists, owner 2026-10-22): the escaped group `~( … )` builds. */
-  it('builds the escaped group around a comma list, a trailing-comma list and parens around a list', () => {
+  /* Parens around a list are list syntax (J16, SCSS paren lists, owner 2026-10-22): the curly list `~( … )` builds. */
+  it('builds the curly list around a comma list, a trailing-comma list and parens around a list', () => {
     const commaList = { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }, { type: 'Keyword', src: 'd' }] };
     expect(valueOf('a {b: (c, d)}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: commaList });
     expect(valueOf('a {b: (c,)}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }] } });

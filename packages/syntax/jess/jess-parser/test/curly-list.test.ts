@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parse } from '@jesscss/jess-parser';
+import { parse, parseRecovering } from '@jesscss/jess-parser';
 
 /*
  * `.jess` `{ … }` is the curly list, a list passed as one value (owner
@@ -52,13 +52,26 @@ describe('.jess curly list', () => {
     expect(value).not.toMatchObject({ args: [{}, { value: { escaped: true } }, {}] });
   });
 
-  it('reads `#{ … }` as a map, and a bare `{` holding entries is not one', () => {
+  it('reads `#{ … }` as a map', () => {
     expect(valueOf('$m: #{ a: 1; b: 2; };')).toMatchObject({ type: 'Collection', entries: [{ key: { src: 'a' } }, { key: { src: 'b' } }] });
     expect(valueOf('$m: #{};')).toMatchObject({ type: 'Collection', entries: [] });
-    expect(() => parse('$m: { a: 1; };')).toThrow();
   });
 
-  it('no longer reads `~( … )`', () => {
-    expect(() => parse('.x { a: ~(1, 2); }')).toThrow();
+  it('reads a bare `{` holding entries as the map, an error at the block, and carries on (P45)', () => {
+    const source = '$m: { a: 1; };\n.y { b: c; }';
+    const { document, recovered } = parseRecovering(source);
+    expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`)).toEqual(['parse/bare-brace-map { a: 1; }']);
+    expect(document.rules).toMatchObject([{ value: { type: 'Collection', entries: [{ key: { src: 'a' } }] } }, { type: 'Ruleset' }]);
+  });
+
+  it('reads a `#{ … }` inside a CSS call\'s argument as it reads one anywhere else', () => {
+    expect(declarationValue('.x { a: foo(#{ k: {1, 2}; }); }')).toMatchObject({
+      args: [{ value: { type: 'Collection', entries: [{ value: { type: 'Block', delimiter: 'curly', escaped: true } }] } }]
+    });
+  });
+
+  it('keeps CSS\'s braces on a `var()` fallback', () => {
+    expect(declarationValue('.x { a: var(--x, {1, 2}); }')).toMatchObject({ args: [{}, { value: { type: 'Block', delimiter: 'curly' } }] });
+    expect(declarationValue('.x { a: var(--x, {1, 2}); }')).not.toMatchObject({ args: [{}, { value: { escaped: true } }] });
   });
 });

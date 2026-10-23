@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -91,7 +91,6 @@ import {
   urlFromChildren,
   requireLiteralQuoted,
   isJessDeclaration,
-  isCollectionItem,
   requireExactToken,
   reduceGuardTruth,
   reduceIfCompare,
@@ -113,13 +112,11 @@ import {
   isIfTest,
   enterIfTest,
   leaveIfTest,
-  enterCssCall,
-  leaveCssCall,
-  curlyListFrom,
   isTestValue,
   enterTestValue,
   genericCallFrom
 } from './grammar-helpers.js';
+import { collectionFrom, curlyListFrom, enterCssCall, leaveCssCall } from './curly-list.js';
 import type {
   ExpressionFact,
   JessOperatorFact,
@@ -2622,8 +2619,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(','),
         optional(valueTrivia),
 
-        /* An empty fallback is css's empty `Any`, never a missing fallback. */
-        choice(g.Value, g.VarFallbackEmpty),
+        /*
+         * An empty fallback is css's empty `Any`, never a missing fallback. The
+         * fallback is a CSS call's argument, where `{ … }` keeps CSS's braces.
+         */
+        withCtx(state => enterCssCall(state), choice(g.Value, g.VarFallbackEmpty)),
         optional(valueTrivia)
       )),
       literal(')')
@@ -2656,6 +2656,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal(';'),
     optional(valueTrivia)
   ));
+
+  /* A CSS call's arguments, where a `{ … }` keeps CSS's braces (`CurlyList`); a `$` call's reset it (`ReferenceCallTail`). */
   const callArgumentGroup = withCtx(state => enterCssCall(state), sequence(
     g.CallComponent,
     optional(branchValue),
@@ -3101,31 +3103,32 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * A map is `#{ … }` (ledger P31, owner 2026-09-22: *"data blocks / maps need
    * `#{}`"*), so a bare `{ … }` value is the curly list (`CurlyList`; owner
-   * 2026-10-23: *"those need to be separate for Jess syntax (#{} vs {})"*).
+   * 2026-10-23: *"those need to be separate for Jess syntax (#{} vs {})"*). A
+   * bare `{` that opens an entry is still read as the map, an error at the
+   * block (`collectionFrom`), and the parse carries on (P45). Its entries read
+   * their values outside any CSS call's arguments.
    */
+  const collectionItem = choice(
+    g.CollectionSpread,
+    g.CollectionEntry
+  );
   const Collection = node<Collection>(
     'Collection',
     sequence(
-      literal('#{'),
-      parser(
-        { trivia: whitespace },
-        many(choice(
-          g.CollectionSpread,
-          g.CollectionEntry
-        ))
+      choice(
+        sequence(
+          literal('#{'),
+          parser({ trivia: whitespace }, withCtx(state => leaveCssCall(state), many(collectionItem)))
+        ),
+        sequence(
+          literal('{'),
+          parser({ trivia: whitespace }, withCtx(state => leaveCssCall(state), sequence(collectionItem, many(collectionItem))))
+        )
       ),
       optional(rawWhitespace),
       literal('}')
     ),
-    (children) => {
-      const entries: CollectionItem[] = [];
-      for (const child of children) {
-        if (isCollectionItem(child)) {
-          entries.push(child);
-        }
-      }
-      return collection(entries);
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => collectionFrom(children, span, state)
   );
 
   /*

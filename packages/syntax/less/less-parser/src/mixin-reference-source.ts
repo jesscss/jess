@@ -42,7 +42,7 @@ function mixinArgumentSource(value: CallValue): string {
       : value.raw;
     case 'Reference': return value.raw;
     case 'FunctionCall': return `${value.name}(${value.args.map(callArgumentSource).join(', ')})`;
-    /* A curly list written without its braces is Less's `~( … )` (ledger P46). */
+    /* A curly list written without its braces is Less's `~( … )` (ledger P51). */
     case 'Block': return value.escaped === true
       ? `~(${mixinArgumentSource(value.value)})`
       : `${delimiterOpen(value.delimiter)}${mixinArgumentSource(value.value)}${delimiterClose(value.delimiter)}`;

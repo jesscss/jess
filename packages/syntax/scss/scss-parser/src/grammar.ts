@@ -824,7 +824,7 @@ const scssFactory = (g: ScssInputRules) => {
    * an ordinary list. Try the fully structured arithmetic form first; the list
    * branch is deliberately separate so `(1 2)` is a list rather than being
    * invented as math. Parens around a list are list syntax, as Dart Sass reads
-   * them, so the list branch builds the escaped group (`parenValue`), and it
+   * them, so the list branch builds the curly list (`parenValue`), and it
    * takes a trailing comma: `(1,)` is a one-item comma list.
    *
    * The interior padding is spelled for the same reason `Map` above spells it:
@@ -948,9 +948,8 @@ const scssFactory = (g: ScssInputRules) => {
    * `space`), which a map function also takes as the empty map. It is the empty
    * curly list `.jess` spells `{}`, its span recording the authored `()`
    * (owner 2026-10-23: *"a Sass empty `()` would be `{}` (whilst storing the
-   * raw, so that Sass functions still work"*). In a CSS `if()` condition it is
-   * CSS's own empty group (`<general-enclosed>`, css-values-5 §8.3), whose
-   * parens are written, as `parenValue` keeps a group there.
+   * raw, so that Sass functions still work"*); where Dart Sass writes a
+   * group's parens it is the group (`emptyParenList`).
    */
   const EmptyList = node<Block>(
     'EmptyList',
@@ -959,7 +958,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(')')
     )),
-    (_children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(isIfTest(state) ? block([]) : emptyParenList(), span)
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(emptyParenList(state), span)
   );
 
   /*

@@ -4075,130 +4075,73 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-10-16 `Context` stops loading the legacy `tree/` runtime.
-  `context.ts` value-imported four `tree/` modules (`ExtendRootRegistry`,
-  `shouldOperateWithMathFrames`, `CallMap`, `selectorAnalysisFor`), which put
-  the whole `tree/` graph into `@jesscss/core`'s `lib/index.js` although the
-  compiler never runs it. `Context` now imports only `tree/` types: the
-  unused `selectorAnalysis` getter is deleted; `shouldOperate` is a free
-  function in `tree/util/should-operate.ts`; the call-recursion guard and the
-  extend-root registry are per-`Context` `WeakMap` entries owned by
-  `tree/util/recursion-helper.ts` (`callMapOf`) and
-  `tree/util/extend-roots-of.ts` (`extendRootsOf`, re-exported by
-  `extend-roots.ts`). `tree/index.ts` enters its own module cycle through
-  `extend-roots` instead of loading `context.ts` for that side effect.
-- Architecture surface: `context.ts` (fields `extendRoots` and `_callMap`, the
-  `callMap` and `selectorAnalysis` getters, the `shouldOperate` method and five
-  imports deleted); `tree/util/should-operate.ts` (`shouldOperate`);
-  `tree/util/recursion-helper.ts` (`callMapOf`); `tree/util/extend-roots-of.ts`
-  (`extendRootsOf`); read sites in `tree/at-rule.ts`, `tree/extend.ts`,
-  `tree/rules.ts`, `tree/ruleset.ts`, `tree/operation.ts`,
-  `tree/util/callable-candidate-output.ts`; `tree/index.ts` load order.
-- Separation/duplication: none added. Each moved member has one owner on the
-  `tree/` side; `Context` keeps no copy.
-- Cumulative node weight: no node field. `Context` loses two instance fields.
-- New traversal: [loop/traversal] none new; the three flagged `while` lines are
-  the existing extend-root stack unwinds in `tree/at-rule.ts` and
-  `tree/rules.ts`, now reading the registry through `extendRootsOf(context)`.
-- New node/materialization: [node construction] `new ExtendRootRegistry()` and
-  `new CallMap()` move from `Context` into their `WeakMap` helpers (`semantic
-  placement state`, one each per `Context`, created on first `tree/` use
-  instead of in every `Context` constructor). [side map/set] two module-level
-  `WeakMap<Context, …>` replace the two `Context` fields.
-- Render path: unchanged; the AST v2 renderer reads none of these members.
-- Helper/API surface: added `shouldOperate`, `callMapOf`, `extendRootsOf`;
-  deleted `Context.shouldOperate`, `Context.callMap`, `Context.extendRoots`,
-  `Context.selectorAnalysis`.
-- Metadata mutations: [routine error control] none; `extendRootsOf` is a plain
-  get-or-create with no throw. Registry creation is lazy per `Context`. To stay
-  inside the structure ceiling, `extend-roots.ts` merges its two `extend-walk`
-  imports and its two leading early returns in `isInstructionVisibleForRoot`
-  into one guard (same result).
-- Review-flagged diff tokens: [loop/traversal] the existing stack-unwind
-  `while` loops (read site renamed only); [node construction] the two moved
-  constructions; [side map/set] the two `WeakMap`s; [routine error control]
-  `extendRootsOf`, a get-or-create helper.
-- Behavior evidence: core 218 files / 3,491 tests pass; the `tree/` suite (142
-  files / 2,593 tests) passes; `compare-less-builds --corpus` against the
-  b7eae18db build is byte-identical in all six output modes (361 fixtures);
-  `@jesscss/jess` `test:ratchet` passes.
-- Build evidence: `pnpm build:release`; `verify:types`, `verify:core-public-types`,
-  `verify:package-exports`, `verify:jess-api` pass. `lib/index.js` 760,640 →
-  329,466 bytes; 0 of 189 `tree/`-only string literals remain in `lib/*.js`
-  (86 before).
-- Boundary evidence: `@jesscss/core`'s public exports are unchanged
-  (`verify:package-exports`, `verify:core-public-types`, `verify:jess-api`);
-  the deleted `Context` members had no reader outside `tree/` and its tests.
-  The process-global value-layout store in `ast/provenance.ts` still lives in
-  one shared chunk (`lib/guard-node.js` / `.cjs`), as before.
-- Evidence: behavior and build as above; no speed claim. `benchmark.less`
-  render baseline 20.28 ms median (30 pairs), output 123,312 bytes.
-- Verdict: accepted with `performanceClaim: none`.
+- Latest pass: 2026-10-23 the curly list (ledger P51). Less `~( … )` and `;`
+  mixin argument groups, the `.scss` paren groups Dart Sass writes without their
+  parens, Sass's empty `()` and `.jess` `{ … }` parse to one node, an escaped
+  `curly` `Block`; `.jess` maps take `#{ … }`. The evaluator and serializer arms
+  that keyed on the escaped paren delimiter now read the `escaped` fact, so the
+  Less bytes are unchanged (an `@supports` prelude keeps writing `( … )`), and a
+  Sass map function binds an empty list as the empty map.
+- Architecture surface: `nodes.ts` (`Block` JSDoc only); `serialize.ts`
+  (`evalSupportsPrelude` Block arm); `serialize-value.ts`, `compress.ts` (an
+  escaped Block's spelling); `value-truth.ts` (an escaped Block's truth);
+  `value-dispatch.ts` (`EMPTY_COLLECTION` at the bind point); converter
+  `emit-jess.ts` / `emit-jess-list.ts`; the three grammars; `fns` `list.join`
+  and `createSassListResult`.
+- Separation/duplication: one escaped-Block spelling per writer, as before; the
+  converter's map and curly-list spelling moved to `emit-jess-list.ts`.
+- Cumulative node weight: unchanged. `Block` keeps its fields; no new node.
+- New traversal: none. [array helper] `groupItems(value).length` at the bind
+  point runs only for a `Collection`-typed parameter.
+- New node/materialization: one module-level empty `Collection`
+  (`value-dispatch.ts`), built once; no per-call node.
+- Render path: no new node or array on the render path; the `@supports` arm
+  picks its delimiter from the existing `escaped` flag.
+- Helper/API surface: `jessCollection`, `jessCurlyList` moved out of the
+  printer (net zero); `isListShaped` (one predicate at the bind point).
+- Metadata mutations: none.
+- Review-flagged diff tokens: [materialized array/object] the empty
+  `Collection` is a module constant; [array helper] the bind-point length check
+  is gated on the parameter type.
+- Evidence: behavior — jess suite 5728 passed, all package tests, Less corpus
+  byte-identical against dev with a negative control; performance — none
+  claimed (benchmark.less render median 50.95 ms here, 51.87 ms on dev, same
+  output sha256).
+- Verdict: accepted as semantic work, no performance claim.
 - Hot-path cost contracts:
 ```json
 [
   {
-    "id": "core-context-emit-selector-contract",
+    "id": "ast-semantic-runtime-cutover",
     "verdict": "accepted",
     "performanceClaim": "none",
-    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": [
-      "Context-plugin-source-parser-dispatch",
-      "emit-walk-context-output-option",
-      "Ruleset-interpolated-selector-boundary",
-      "selector-match-string-and-node-combinators",
-      "extend-index-tagged-graft-atoms",
-      "Sequence-subclass-preserving-evaluation",
-      "callable-output-root-property-guard",
-      "serializer-at-rule-and-selector-surface"
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
     ],
-    "why": "Context sheds its value imports of the legacy tree runtime: the call-recursion guard and the extend-root registry move to tree-owned per-Context WeakMaps and shouldOperate becomes a tree free function, so the compiler bundle no longer carries tree code it never runs. No output or dispatch semantics change.",
-    "dangerTokensJustification": "Two module-level WeakMaps keyed by Context replace two Context fields; each entry is created once per Context on first tree use, and callers reach it through one get-or-create helper. No new traversal; the flagged while loops are existing stack unwinds with a renamed read.",
-    "behaviorEvidence": "The core suite (218 files, 3491 tests) and tree suite pass; the corpus renders byte-identically to the b7eae18db build in six output modes.",
-    "buildEvidence": "pnpm build:release, verify:types, verify:core-public-types, verify:package-exports and verify:jess-api pass.",
+    "why": "The curly list (ledger P51, owner 2026-10-09 and 2026-10-23) moves Less ~( \u2026 ), Less ; groups and Sass paren lists from an escaped paren Block to an escaped curly Block; the value-domain and serializer arms that keyed on the delimiter must read the escaped fact instead, so the Less bytes stay what they were, and a Sass map function binds an empty list as the empty map as Dart Sass does. This is semantic work on the AST-v2 value owners, not a cost cut.",
+    "dangerTokensJustification": "value-dispatch.ts allocates one module-level empty Collection and binds it only when a Collection-typed parameter receives an empty list; serialize.ts and serialize-value.ts add a branch on the existing escaped flag with no allocation or traversal; compress.ts and value-truth.ts the same. No node construction, copy, traversal or side map is added to the render path.",
+    "behaviorEvidence": "packages/jess suite 5728 passed; Less corpus compare:less:builds --corpus byte-identical against dev 03f231e54 (359 fixtures x 6 modes) with a perturbed-baseline negative control; sass list/map/type matrix test against Dart Sass 1.101.7.",
+    "buildEvidence": "pnpm build:release and pnpm run verify:types (25/25 configs) passed on this worktree.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
-      "currentMedianMs": 20.28,
-      "outputSha256": "6c5df3a12e1514cfd7261047054282b411910c1367bfa0839533193884215161",
-      "outputBytes": 123312
-    }
-  },
-  {
-    "id": "legacy-tree-strict-contract-drain",
-    "verdict": "accepted",
-    "performanceClaim": "none",
-    "owner": "the sixteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, call, and extend owners listed by legacy-tree-strict-contract-drain",
-    "cases": [
-      "declaration-sync-and-async-render-result",
-      "declaration-merge-source-span-exclusion",
-      "default-guard-owned-value",
-      "bitset-inversion-and-disjointness",
-      "string-and-node-combinator-recognition",
-      "selector-list-singleton-collapse",
-      "selector-list-array-or-node-inheritance",
-      "parser-delivered-selector-array-ampersand",
-      "selector-array-ruleset-callable-registration",
-      "selector-array-key-set-analysis",
-      "function-call-silent-preserve",
-      "selector-compose-cache-node-boundary",
-      "ordered-registration-context-restoration",
-      "property-merge-container-scope",
-      "mixin-invisible-sync-render-and-registration-result",
-      "extend-record-selector-surface",
-      "extend-root-composition-selector-surface",
-      "extend-walk-composed-match-selector-surface"
-    ],
-    "why": "The tree extend-root registry, call-recursion guard and math-frame decision are owned by tree modules instead of Context fields and methods, so Context imports only tree types. Tree read sites change from a Context property to a tree helper; registration, scoping and math decisions are unchanged.",
-    "dangerTokensJustification": "extendRootsOf and callMapOf are get-or-create reads of a per-Context WeakMap, replacing a property read; the registry and call map are constructed once per Context as before, lazily. The existing stack-unwind loops only change how they read the registry.",
-    "behaviorEvidence": "The tree suite (142 files, 2593 tests) passes, including the at-rule extend-root tests that patch the registry through extendRootsOf.",
-    "buildEvidence": "pnpm build:release and pnpm --filter @jesscss/core build pass; verify:types passes.",
-    "baseline": {
-      "fixture": "benchmark.less",
-      "phase": "render",
-      "currentMedianMs": 20.28,
-      "outputSha256": "6c5df3a12e1514cfd7261047054282b411910c1367bfa0839533193884215161",
-      "outputBytes": 123312
+      "currentMedianMs": 50.950334,
+      "outputSha256": "bde9af44f72297bd6d175d4191b022e3a7cb3dfb13b4ae889e2a635cc02b735b",
+      "outputBytes": 133014
     }
   }
 ]
