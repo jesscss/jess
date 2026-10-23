@@ -1,7 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { makeColorRgb, defineFunction, HEX } from '@jesscss/core';
 import { hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `hsv(h, s, v)` — `hsva` with alpha 1, emitted in HEX format (byte-faithful to

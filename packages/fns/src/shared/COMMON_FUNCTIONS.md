@@ -41,12 +41,17 @@ This document identifies functions that exist in both Less and Sass with the sam
   - **Status**: Identical behavior - variadic, returns min
   - **Action**: Move to `shared/math/min.ts`
 
-### Trigonometric Functions
+### Trigonometric Functions, `sqrt`, `pow`
 - **sin($number)**, **cos($number)**, **tan($number)**
 - **asin($number)**, **acos($number)**, **atan($number)**
-- **sqrt($number)**
-- **Status**: Identical behavior in both
-- **Action**: Move to `shared/math/`
+- **sqrt($number)**, **pow($base, $exponent)**
+- **Status**: same computation, different unit rules — NOT shared functions.
+  Both dialects compute through `shared/math/math-helper.ts` (`applyMath`);
+  Less reads any non-angle unit as radians and keeps `sqrt`/`pow`'s unit, Dart
+  Sass requires an angle or unitless trig argument and unitless `sqrt`/`pow`/
+  inverse-trig arguments, and answers inverse trig in `deg` where Less answers
+  in `rad`. Each dialect keeps its own wrapper (`less/*.ts`,
+  `sass/math/{trig,pow,sqrt}.ts`).
 
 ## Color Functions (Identical Behavior)
 

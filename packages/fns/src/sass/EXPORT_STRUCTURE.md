@@ -87,17 +87,21 @@ Functions available in `sass:math` module.
 
 ### Available Functions
 - `abs()`, `ceil()`, `floor()`, `round()`, `max()`, `min()`
-
-### TODO: Module Functions
-- `percentage()`, `unit()`, `unitless()`, `compatible()`
+- `percentage()`, `unit()`, `is-unitless()`, `compatible()`, `random()`
 - `sqrt()`, `pow()`, `log()`, `hypot()`
 - `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`, `atan2()`
 - `clamp()`, `div()`
 
-### TODO: Module Variables
+`sqrt()`, `pow()` and the trig functions compute through the kernel Less's
+functions of the same names use (`shared/math/math-helper.ts`); each states its
+own unit rule.
+
+### Module Variables
 - `$e`, `$pi`, `$epsilon`
-- `$max-safe-integer`, `$min-safe-integer`
-- `$max-number`, `$min-number`
+- `$max-safe-integer`, `$min-safe-integer`, `$max-number`, `$min-number`
+
+A module's non-function exports are its variables (`sass/math/constants.ts`);
+the hyphenated ones are entries of its member table export, `$members`.
 
 ## String Module (`sass/string/index.ts`)
 

@@ -1,7 +1,7 @@
 import type { Color, ValueGroup, Fn } from '@jesscss/core';
 import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `hsl` / `hsla` (alias) — CONSTRUCT an HSL-format color, or REFORMAT a color to

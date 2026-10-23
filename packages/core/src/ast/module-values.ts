@@ -4,6 +4,7 @@
  */
 import { mapMaybe } from '@jesscss/awaitable-pipe';
 import type { Fn } from './functions/types.js';
+import { formatNumber } from './format-number.js';
 import { sniffLiteral } from './literal-tag.js';
 import { collection, collectionEntry, dimension, keyword, list, NULL_NODE } from './nodes.js';
 import type { ValueSlot } from './nodes.js';
@@ -71,7 +72,8 @@ export function moduleAstValue(value: unknown, name: string, seen: Set<object> |
     return keyword(value);
   }
   if (typeof value === 'number') {
-    return dimension(value);
+    /* A JS number has no authored spelling: write it as every computed number is (ledger V4). */
+    return dimension(value, '', Number.isFinite(value) ? formatNumber(value) : `${value}`);
   }
   if (typeof value === 'boolean') {
     return keyword(value ? 'true' : 'false');
@@ -94,6 +96,36 @@ export function moduleAstValue(value: unknown, name: string, seen: Set<object> |
     return collection(entries);
   }
   throw new TypeError(`Module export "${name}" is not a supported stylesheet value.`);
+}
+
+/**
+ * The export holding a module's members whose names a JS identifier cannot
+ * spell (`sass:math`'s `$max-number`): a plain object whose own string keys are
+ * member names. Its entries are bound as if each were an export; the table
+ * itself is not a member.
+ */
+export const MEMBER_TABLE = '$members';
+
+const isMemberTable = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** A module's members by the names a stylesheet reads them under. */
+export function moduleMembers(module: Readonly<Record<string, unknown>>): [string, unknown][] {
+  const members = Object.entries(module).filter(([name]) => name !== MEMBER_TABLE);
+  const table = module[MEMBER_TABLE];
+  return isMemberTable(table) ? members.concat(Object.entries(table)) : members;
+}
+
+/** The member a stylesheet names `name`: an export, else an entry of the member table. */
+export function requireModuleMember(module: Readonly<Record<string, unknown>>, name: string): unknown {
+  const table = module[MEMBER_TABLE];
+  if (name !== MEMBER_TABLE && Object.prototype.hasOwnProperty.call(module, name)) {
+    return module[name];
+  }
+  if (isMemberTable(table) && Object.prototype.hasOwnProperty.call(table, name)) {
+    return table[name];
+  }
+  throw new TypeError(`Module has no export named "${name}".`);
 }
 
 /**

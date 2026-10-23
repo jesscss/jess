@@ -79,8 +79,11 @@ export { round } from './ast/round.js';
 // --- shared value COMPARISON primitive (§5.1) ---
 export { compareOrder } from './ast/value-guards.js';
 
+// --- the binary operators (`+ - * /`) every dialect computes with ---
+export { operate } from './ast/value-operate.js';
+
 // --- unit table / conversion ---
-export { groupOf, unify, unitFactor } from './ast/value-units.js';
+export { convertValue, groupOf, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
 export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
