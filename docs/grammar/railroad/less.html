@@ -2068,7 +2068,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-FormatFunction">
     <h2><a href="#rule-FormatFunction">§</a> FormatFunction</h2>
     <div class="diagram" data-rule="FormatFunction"></div>
-    <div class="ebnf">FormatFunction ::= &quot;%(&quot; (!&quot;{&quot; ValueSequence)? (/,[ \t\n\r\f]*/ !&quot;{&quot; ValueSequence)* &quot;)&quot;</div>
+    <div class="ebnf">FormatFunction ::= &quot;%(&quot; (!&quot;{&quot; ValueSequence)? (/,[ \t\n\r\f]*/ !&quot;{&quot; ValueSequence)* /,[ \t\n\r\f]*/? &quot;)&quot;</div>
   </section>
   <section class="rule" id="rule-CallArgumentValue">
     <h2><a href="#rule-CallArgumentValue">§</a> CallArgumentValue</h2>
@@ -3408,7 +3408,7 @@ svg.railroad-diagram rect {
   { name: "FunctionConditionParen", dsl: function(){ return Diagram(Sequence(Terminal("("), NonTerminal("FunctionConditionOr"), Terminal(")"))); } },
   { name: "Call", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal("calc("), Terminal("url("))), NonTerminal("InterpolatedValueStart"), Terminal("("), NonTerminal("FunctionArguments"), Terminal(")"))); } },
   { name: "CallArgumentFunction", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal("calc("), Terminal("url("))), NonTerminal("InterpolatedValueStart"), Terminal("("), Optional(Sequence(OneOrMore(NonTerminal("CallArgumentValue"), Terminal("/[;,][ \\t\\n\\r\\f]*/")), Optional(Terminal("/[;,][ \\t\\n\\r\\f]*/")))), Terminal(")"))); } },
-  { name: "FormatFunction", dsl: function(){ return Diagram(Sequence(Terminal("%("), Optional(Sequence(Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueSequence"))), ZeroOrMore(Sequence(Terminal("/,[ \\t\\n\\r\\f]*/"), Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueSequence"))), Terminal(")"))); } },
+  { name: "FormatFunction", dsl: function(){ return Diagram(Sequence(Terminal("%("), Optional(Sequence(Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueSequence"))), ZeroOrMore(Sequence(Terminal("/,[ \\t\\n\\r\\f]*/"), Sequence(Comment("not"), Terminal("{")), NonTerminal("ValueSequence"))), Optional(Terminal("/,[ \\t\\n\\r\\f]*/")), Terminal(")"))); } },
   { name: "CallArgumentValue", dsl: function(){ return Diagram(Choice(0, NonTerminal("FlatMixinCall"), NonTerminal("ValueBlock"), Sequence(NonTerminal("ValueRun"), ZeroOrMore(Sequence(Terminal("/[<>=]*=~|[<>=]+/"), Optional(NonTerminal("ValueRun"))))))); } },
   { name: "FunctionStatement", dsl: function(){ return Diagram(Sequence(NonTerminal("InterpolatedValueStart"), Optional(Terminal("(")), Choice(0, NonTerminal("EachFunctionStatement"), NonTerminal("IfFunctionStatement"), Sequence(NonTerminal("CallArgumentFunction"), Terminal(";")), Sequence(NonTerminal("GenericFunction"), Sequence(Comment("peek"), Sequence(Optional(NonTerminal("whitespace")), Choice(0, Terminal("}"), Sequence(Comment("not"), Terminal("/[\\s\\S]/"))))))))); } },
   { name: "SelectorCapture", dsl: function(){ return Diagram(Sequence(Optional(NonTerminal("PseudoArgumentSelector")), Optional(Sequence(Sequence(Comment("not"), Terminal(")")), Comment("…"))), Terminal(")"))); } },
