@@ -937,6 +937,27 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: 'a { b: foo((c, d), e) }'
   },
   {
+    id: 'an empty paren group',
+    group: 'value',
+    source: 'a { b: () }'
+  },
+  {
+    id: 'a paren group whose comma list a comma closes',
+    group: 'value',
+    source: 'a { b: (1,) }'
+  },
+  /* Adjacent component values need no whitespace between them (css-syntax-3 §5.4.7). */
+  {
+    id: 'an identifier glued after a paren group',
+    group: 'value',
+    source: 'a { b: (1)px }',
+    brokenIn: ['scss', 'jess'],
+    defect:
+      'css and Less read `(1)px` as two adjacent component values. SCSS and '
+      + '.jess stop at the `px` glued after the group: neither value grammar '
+      + 'admits a piece glued after a `)`.'
+  },
+  {
     id: '!important with interior whitespace',
     group: 'value',
     source: 'a { color: red !  important }'

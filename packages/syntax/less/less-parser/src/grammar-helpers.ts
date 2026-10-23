@@ -923,11 +923,16 @@ function isDelimPiece(child: unknown): boolean {
   return isValueNode(child) && child.type === 'Any';
 }
 
-function isGluedValueBoundary(child: unknown): boolean {
-  return typeof child === 'object'
-    && child !== null
-    && 'kind' in child
-    && child.kind === 'glued-value-boundary';
+/**
+ * The zero-width marker `adjacentComponentBoundary` leaves between two adjacent
+ * component values: its `leaf` fact, which reaches a reducer with its span.
+ */
+function isAdjacentComponentBoundary(child: unknown): boolean {
+  return isSpannedToken(child)
+    && typeof child.value === 'object'
+    && child.value !== null
+    && 'kind' in child.value
+    && child.value.kind === 'adjacent-component';
 }
 
 /** Shared value-term reduction for grammar branches that keep comments in
@@ -956,7 +961,7 @@ function valuePieceReducerWithTrivia(
       const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
       separators.push(trivia.length > 0
         ? trivia
-        : children.slice(previousValue + 1, index).some(isGluedValueBoundary)
+        : children.slice(previousValue + 1, index).some(isAdjacentComponentBoundary)
           || ((isDelimPiece(child) || isDelimPiece(children[previousValue])) && !hasTriviaAtInsertIndex(triviaLog, index))
           ? ''
           : ' ');
@@ -2578,7 +2583,8 @@ function parenConditionTermFrom(children: readonly unknown[], rawChildren: reado
 }
 
 /**
- * A value-position `Paren`'s reduction: what its paren group holds. One operand
+ * A value-position `Paren`'s reduction: what its paren group holds. No operand
+ * is the empty slot (`()`, the item `(1,)` ends). One operand
  * is a math group, or, as an item of a comma list (`listed`, see
  * `lessParenListFrom`), a value, its math folded as a value's. Anything more is
  * the condition `if()` and `boolean()` read: terms joined by `and`, which binds
@@ -2599,8 +2605,8 @@ function lessParenFrom(children: readonly unknown[], rawChildren: readonly unkno
       conditional = true;
     }
   }
-  if (!conditional && operand !== undefined) {
-    return groupContent(listed ? lessMathInValue(operand, state) : lessMathInGroup(operand, state));
+  if (!conditional) {
+    return operand === undefined ? [] : groupContent(listed ? lessMathInValue(operand, state) : lessMathInGroup(operand, state));
   }
   const ors: unknown[] = [];
   let ands: unknown[] = [];
@@ -3078,7 +3084,7 @@ export {
   isFor,
   isFunctionCall,
   isFunctionConditionFact,
-  isGluedValueBoundary,
+  isAdjacentComponentBoundary,
   isInterp,
   isInterpolationAccessorFact,
   isInterpolationFact,
