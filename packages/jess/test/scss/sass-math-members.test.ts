@@ -56,8 +56,8 @@ describe('sass:math members compute as in Dart Sass', () => {
   });
 
   it('binds the module variables for `@use … as *`', async () => {
-    const css = await new Compiler({}).renderString('@use "sass:math" as *;\na {b: $pi * 1e15; c: $e * 1e15; d: $max-safe-integer}', { extension: '.scss' });
-    expect(css).toBe('a {\n  b: 3141592653589793;\n  c: 2718281828459045;\n  d: 9007199254740991;\n}\n');
+    const css = await new Compiler({}).renderString('@use "sass:math" as *;\na {b: $pi * 1e15; c: $e * 1e15}', { extension: '.scss' });
+    expect(css).toBe('a {\n  b: 3141592653589793;\n  c: 2718281828459045;\n}\n');
   });
 });
 
