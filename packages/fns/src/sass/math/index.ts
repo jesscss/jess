@@ -27,11 +27,16 @@ export { compatible } from './compatible.js';
 export { percentage } from './percentage.js';
 export { unit } from './unit.js';
 export { random } from './random.js';
+export { pow } from './pow.js';
+export { sqrt } from './sqrt.js';
+export { log } from './log.js';
+export { hypot } from './hypot.js';
+export { clamp } from './clamp.js';
+export { div } from './div.js';
+export { sin, cos, tan, asin, acos, atan, atan2 } from './trig.js';
 
 /*
- * TODO: Implement remaining math module functions
- * - math.sqrt(), math.pow(), math.log(), math.hypot(), math.clamp(), math.div()
- * - the trig family: sin/cos/tan/asin/acos/atan/atan2
- * Math module variables (math.$e, math.$pi, math.$epsilon, math.$max-number, …)
- * are not functions and need a variable-export mechanism, not an entry here.
+ * The module variables (`math.$pi`, …): a module's non-function exports are its
+ * variables.
  */
+export * from './constants.js';

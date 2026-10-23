@@ -4,6 +4,11 @@
  * to a one-liner over. Pulled once if ANY math fn is used; a stylesheet that calls
  * none never ships it.
  *
+ * Shared by Less and Sass: Less `sqrt`/`pow`/`sin`/`cos`/`tan`/`asin`/`atan` and
+ * the `sass:math` members of those names compute through {@link applyMath}. What
+ * differs between the dialects is which units a call accepts and the unit of an
+ * inverse-trig result; each dialect's wrapper states that, never this kernel.
+ *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
 import { isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core';

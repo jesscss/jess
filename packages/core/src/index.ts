@@ -131,6 +131,7 @@ export {
   serializeValue,
   round,
   compareOrder,
+  operate,
   groupOf,
   unify,
   unitFactor,

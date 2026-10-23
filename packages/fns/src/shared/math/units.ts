@@ -1,5 +1,5 @@
 import type { Dimension } from '@jesscss/core';
-import { groupOf } from '@jesscss/core';
+import { groupOf, unitFactor } from '@jesscss/core';
 
 /**
  * Unit-multiset helpers shared by every dialect. Nothing here is Sass-specific:
@@ -57,4 +57,28 @@ export function compatibleUnits(a: Dimension, b: Dimension): boolean {
   const left = unitsOf(a);
   const right = unitsOf(b);
   return sameKeys(left.numerator, right.numerator) && sameKeys(left.denominator, right.denominator);
+}
+
+const factorOf = (unit: string): number => unitFactor(unit) ?? 1;
+
+const ratio = (from: readonly string[], to: readonly string[]): number => {
+  const left = [...from].sort((a, b) => unitKey(a).localeCompare(unitKey(b)));
+  const right = [...to].sort((a, b) => unitKey(a).localeCompare(unitKey(b)));
+  let result = 1;
+  for (let index = 0; index < left.length; index++) {
+    result *= factorOf(left[index]!) / factorOf(right[index]!);
+  }
+  return result;
+};
+
+/**
+ * `value`'s number in `target`'s units, for two dimensions {@link compatibleUnits}
+ * accepts with units on both sides (`1in` in `px` is `96`). Each unit converts
+ * within its own conversion group; a unit outside every group converts only to
+ * itself.
+ */
+export function convertNumber(value: Dimension, target: Dimension): number {
+  const from = unitsOf(value);
+  const to = unitsOf(target);
+  return value.number * ratio(from.numerator, to.numerator) / ratio(from.denominator, to.denominator);
 }

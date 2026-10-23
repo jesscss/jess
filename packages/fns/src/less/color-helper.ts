@@ -8,7 +8,7 @@
  */
 import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, serializeColor, textOf, type Color, type Value } from '@jesscss/core';
 import { clamp01 } from './color-ctor-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 export function requireColor(value: Value): Color {
   if (value.type !== 'Color') {

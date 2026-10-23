@@ -1,6 +1,6 @@
 import type { Fn } from '@jesscss/core';
 import { makeDimension, defineFunction } from '@jesscss/core';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /** `mod(a, b)` — `a % b`, keeping `a`'s unit. */
 export const mod: Fn = defineFunction('mod', {

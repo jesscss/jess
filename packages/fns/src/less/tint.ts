@@ -1,7 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { makeColorRgb, defineFunction, RGB } from '@jesscss/core';
 import { mixColors, reformatColor, requireColor, snapAlpha } from './color-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `tint(color, amount = 50%)` — mix with white, preserve the input's format.

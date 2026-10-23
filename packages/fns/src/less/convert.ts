@@ -1,6 +1,6 @@
 import type { Fn } from '@jesscss/core';
 import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jesscss/core';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `convert(value, unit)` — convert `value` to `unit` when they share a group; else

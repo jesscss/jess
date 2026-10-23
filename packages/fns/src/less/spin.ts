@@ -1,7 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { colorHsl, makeColorHsl, defineFunction } from '@jesscss/core';
 import { requireColor } from './color-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /** `spin(color, amount)` — rotate hue by `amount` degrees (wrapped 0-360). Byte-faithful to `less/spin`. */
 export const spin: Fn = defineFunction('spin', {

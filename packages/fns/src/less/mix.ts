@@ -1,7 +1,7 @@
 import { defineFunction } from '@jesscss/core';
 import type { Fn } from '@jesscss/core';
 import { mixColors, requireColor } from './color-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /** `mix(color1, color2, weight?)` — weighted blend (default 50%). Byte-faithful to `less/mix`. */
 export const mix: Fn = defineFunction('mix', {
