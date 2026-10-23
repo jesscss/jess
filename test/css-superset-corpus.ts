@@ -916,6 +916,26 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
       + '(`Expected: ")"`), which is also why a nested `li:nth-child(2n+1)` '
       + 'rule fails in .jess (see the nested-rule pins).'
   },
+  /*
+   * A paren group is a simple block (css-syntax-3 §5.4.8), and a comma is a
+   * component value like any other inside one, so a group around a comma list
+   * is well-formed wherever a value is (ledger P45).
+   */
+  {
+    id: 'a paren group around a comma list',
+    group: 'value',
+    source: 'a { b: (1, 2) }'
+  },
+  {
+    id: 'a paren group around a comma list of space lists',
+    group: 'value',
+    source: 'a { b: (c d, e f) }'
+  },
+  {
+    id: 'a paren group around a comma list as a function argument',
+    group: 'value',
+    source: 'a { b: foo((c, d), e) }'
+  },
   {
     id: '!important with interior whitespace',
     group: 'value',
