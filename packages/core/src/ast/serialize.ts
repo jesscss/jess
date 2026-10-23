@@ -212,7 +212,7 @@ import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAs
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
-import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMember, moduleMemberName, moduleMembers, type ModuleCallable } from './module-values.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
@@ -1525,14 +1525,6 @@ function bindModuleCallable(
   (e.s.moduleReferenceValues ??= new Map()).set(marker, name.toLowerCase());
 }
 
-function requireModuleExport(module: Readonly<Record<string, unknown>>, name: string): unknown {
-  const member = moduleMember(module, name);
-  if (member === undefined) {
-    throw new TypeError(`Module has no export named "${name}".`);
-  }
-  return member.value;
-}
-
 function bindModuleNamespace(
   module: Readonly<Record<string, unknown>>,
   namespace: string,
@@ -1582,7 +1574,7 @@ function bindModuleImport(
     bindModuleNamespace(module, node.namespace, frame, e);
   }
   if (node.defaultImport !== null) {
-    const value = requireModuleExport(module, 'default');
+    const value = requireModuleMember(module, 'default');
     if (isModuleCallable(value)) {
       bindModuleCallable(frame, node.defaultImport, value, e);
     } else {
@@ -1590,7 +1582,7 @@ function bindModuleImport(
     }
   }
   for (const specifier of node.imports) {
-    const value = requireModuleExport(module, specifier.name);
+    const value = requireModuleMember(module, specifier.name);
     const localName = specifier.alias ?? specifier.name;
     if (isModuleCallable(value)) {
       bindModuleCallable(frame, localName, value, e);

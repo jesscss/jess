@@ -117,15 +117,15 @@ export function moduleMembers(module: Readonly<Record<string, unknown>>): [strin
 }
 
 /** The member a stylesheet names `name`: an export, else an entry of the member table. */
-export function moduleMember(module: Readonly<Record<string, unknown>>, name: string): { readonly value: unknown } | undefined {
-  if (name === MEMBER_TABLE) {
-    return undefined;
-  }
-  if (Object.prototype.hasOwnProperty.call(module, name)) {
-    return { value: module[name] };
-  }
+export function requireModuleMember(module: Readonly<Record<string, unknown>>, name: string): unknown {
   const table = module[MEMBER_TABLE];
-  return isMemberTable(table) && Object.prototype.hasOwnProperty.call(table, name) ? { value: table[name] } : undefined;
+  if (name !== MEMBER_TABLE && Object.prototype.hasOwnProperty.call(module, name)) {
+    return module[name];
+  }
+  if (isMemberTable(table) && Object.prototype.hasOwnProperty.call(table, name)) {
+    return table[name];
+  }
+  throw new TypeError(`Module has no export named "${name}".`);
 }
 
 /**
