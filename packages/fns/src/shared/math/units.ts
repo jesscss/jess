@@ -1,5 +1,5 @@
 import type { Dimension } from '@jesscss/core';
-import { groupOf, unitFactor } from '@jesscss/core';
+import { convertValue, groupOf } from '@jesscss/core';
 
 /**
  * Unit-multiset helpers shared by every dialect. Nothing here is Sass-specific:
@@ -59,26 +59,12 @@ export function compatibleUnits(a: Dimension, b: Dimension): boolean {
   return sameKeys(left.numerator, right.numerator) && sameKeys(left.denominator, right.denominator);
 }
 
-const factorOf = (unit: string): number => unitFactor(unit) ?? 1;
-
-const ratio = (from: readonly string[], to: readonly string[]): number => {
-  const left = [...from].sort((a, b) => unitKey(a).localeCompare(unitKey(b)));
-  const right = [...to].sort((a, b) => unitKey(a).localeCompare(unitKey(b)));
-  let result = 1;
-  for (let index = 0; index < left.length; index++) {
-    result *= factorOf(left[index]!) / factorOf(right[index]!);
-  }
-  return result;
-};
-
 /**
- * `value`'s number in `target`'s units, for two dimensions {@link compatibleUnits}
- * accepts with units on both sides (`1in` in `px` is `96`). Each unit converts
- * within its own conversion group; a unit outside every group converts only to
- * itself.
+ * `value`'s number in `target`'s unit, for two dimensions {@link compatibleUnits}
+ * accepts with units on both sides (`1in` in `px` is `96`), through core's one
+ * conversion (`convertValue`).
  */
 export function convertNumber(value: Dimension, target: Dimension): number {
-  const from = unitsOf(value);
-  const to = unitsOf(target);
-  return value.number * ratio(from.numerator, to.numerator) / ratio(from.denominator, to.denominator);
+  // ponytail: one unit each side; a compound unit converts only to the same units. Convert per unit when a caller needs it.
+  return convertValue(value.number, value.unit, target.unit);
 }

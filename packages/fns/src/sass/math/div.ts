@@ -1,8 +1,8 @@
-import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Value, type ValueGroup } from '@jesscss/core';
+import { defineFunction, emitValue, groupItems, isValueGroupArray, operate, type Dimension, type ValueGroup } from '@jesscss/core';
 
-const operand = (item: ValueGroup): Value => {
-  if (isValueGroupArray(item)) {
-    throw new TypeError(`${emitValue(item)} is not a number.`);
+const number = (item: ValueGroup, name: string): Dimension => {
+  if (isValueGroupArray(item) || item.type !== 'Dimension') {
+    throw new TypeError(`$${name}: ${emitValue(item)} is not a number.`);
   }
   return item;
 };
@@ -19,6 +19,18 @@ const operand = (item: ValueGroup): Value => {
  *   math.div(6px, 3px)  → 2
  *   math.div($number2: 3, $number1: 6) → 2
  * (sass-spec `core_functions/math/div.hrx`.)
+ *
+ * Both arguments must be numbers. Dart Sass 1.101.7 still divides other values
+ * into a slash-separated pair with a deprecation warning ("math.div() will only
+ * support number arguments in a future release"), and computes nothing on a
+ * colour (`math.div(red, 2)` → `Undefined operation`). Requiring numbers keeps
+ * `.scss` colour math an error here as V36 has it for operators, where the
+ * shared `/` would compute `red / 2`.
+ *
+ * Compatible units do not cancel (`math.div(6in, 3px)` → `calc(6in / 3px)`,
+ * Dart Sass `192`): that is the `.scss` `/` operator's rule, shared, and not
+ * decided here. A division by zero fails the call (ledger V7), where Dart Sass
+ * writes `calc(infinity)`.
  */
 const div = defineFunction('div', {
   params: [
@@ -31,7 +43,7 @@ const div = defineFunction('div', {
     if (items.length !== 2) {
       throw new TypeError(items.length < 2 ? `Missing argument $number${items.length + 1}.` : `Only 2 arguments allowed, but ${items.length} were passed.`);
     }
-    return operate('/', operand(items[0]!), operand(items[1]!), ctx.modes);
+    return operate('/', number(items[0]!, 'number1'), number(items[1]!, 'number2'), ctx.modes);
   }
 });
 

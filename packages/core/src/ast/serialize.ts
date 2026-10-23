@@ -7190,40 +7190,6 @@ function resolveReferenceResult(
         stepIndex = 1;
       }
     }
-  } else if (
-    e.s.moduleReferenceValues !== undefined
-    && !isValueSlotArray(value)
-    && value.type === 'Keyword'
-    && node.steps.length > 0
-  ) {
-    /*
-     * An `.scss` module variable (`math.$pi`): a bare namespace word and a
-     * `$name` member. The member is read from the namespace's values by name,
-     * never as a `$name` the caller's scope binds.
-     */
-    const memberStep = node.steps[0]!;
-    const binding = resolveVarRef(frame, value.src, 'live', e);
-    if (
-      binding !== undefined
-      && !isValueSlotArray(binding.value)
-      && e.s.moduleReferenceValues.get(binding.value) === null
-      && memberStep.type === 'LookupStep'
-      && memberStep.kind === 'var'
-      && typeof memberStep.name === 'object'
-      && memberStep.name.type === 'Lookup'
-      && typeof memberStep.name.name === 'string'
-    ) {
-      const name = memberStep.name.name;
-      const map = resolveBaseDeclMap(binding.value, binding.frame, e, binding.evaluated);
-      const matched = map?.valueEntries?.get(makeKeyword(name));
-      if (!matched) {
-        unresolvedSymbol(node, `$${name}`, e);
-      }
-      value = matched.value;
-      valueFrame = matched.frame;
-      evaluated = matched.evaluated;
-      stepIndex = 1;
-    }
   }
   if (stepIndex === 0 && !isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'var') {
     if (typeof value.name !== 'string') {

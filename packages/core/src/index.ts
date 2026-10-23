@@ -135,6 +135,7 @@ export {
   groupOf,
   unify,
   unitFactor,
+  convertValue,
   parseHex,
   sniffLiteral,
   coerceNamedColorKeyword,
