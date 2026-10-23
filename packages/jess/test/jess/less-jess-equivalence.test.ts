@@ -1272,6 +1272,25 @@ describe('targeted round trip: a `;` mixin list converts as its `~( … )` spell
   });
 });
 
+/*
+ * A paren group around a comma list is the css group in both dialects (ledgers
+ * P45, J16): the converter writes it as authored and both arms keep its parens.
+ */
+describe('targeted round trip: a paren group around a comma list', () => {
+  it('both arms write it as authored', async () => {
+    const less = '@l: (1, 2);\n.x {\n  a: (1, 2);\n  b: foo((c, d), e);\n  c: (a b, c d);\n  d: var(--x, (1, 2));\n  e: @l;\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = async (source: string, extension: '.less' | '.jess') => {
+      const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+      expect(result.errors).toEqual([]);
+      return result.css.replace(/\s+/g, ' ').trim();
+    };
+    expect(await render(less, '.less')).toBe('.x { a: (1, 2); b: foo((c, d), e); c: (a b, c d); d: var(--x, (1, 2)); e: (1, 2); }');
+    expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
+  });
+});
+
 describe('equivalence ratchet', () => {
   it('every fixture matches its KNOWN entry (or passes when unlisted)', () => {
     const drift: string[] = [];

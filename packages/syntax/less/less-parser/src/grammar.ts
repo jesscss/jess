@@ -160,6 +160,7 @@ import {
 } from './grammar-helpers.js';
 import { capturedPseudoFrom, selectorCaptureFrom } from './selector-capture.js';
 import { operatorRun, runOperand } from './delim-runs.js';
+import { lessParenListFrom } from './paren-list.js';
 import type {
   BodyExtendFact,
   CustomValuePart,
@@ -2198,6 +2199,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       span
     )
   );
+  /** The `,` between the items of a value comma list, and the gap after it. */
+  const commaSeparator = field('separator', regex(/,[ \t\n\r\f]*/));
   /*
    * A bare `(...)` is a math grouping in Less. Function/mixin argument lists
    * have their own productions above; do not widen this value position into a
@@ -2220,7 +2223,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * the `and` / `or` after it are matched where they start. `and` and `or` are
    * their own facts, so the reduction folds them without reading their bytes;
    * a group with neither, nor a comparison or `not`, is the ordinary math group
-   * and its tree is unchanged.
+   * and its tree is unchanged. A comma after the first term makes it a group
+   * around a comma list instead (`parenListRest`).
    */
   const parenConditionCompared = many(sequence(functionConditionOperator, optional(whitespace), g.OperandRun, optional(whitespace)));
   const parenConditionTerm = sequence(
@@ -2239,6 +2243,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     lessCaseWord('or'),
     (children, _fields, span) => parenLogicalFrom('or', children, span)
   );
+  /** One item of a paren group: its terms, joined by `and` / `or`. */
+  const parenTerms = sequence(
+    parenConditionTerm,
+    many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm))
+  );
+  /**
+   * The items after a paren group's first, each behind `commaSeparator`:
+   * `(1, 2)`, `(a b, c d)`, `foo((c, d), e)` — the css paren group around a
+   * comma list, well-formed in every dialect (ledger P45). Every item is read as
+   * the first is, so the same bytes build the same item in any position; the
+   * gap after a comma is ambient trivia, so its comments reach the trivia log
+   * the list's layout reads, as they do in `ValueList`. The first item is read
+   * once; a `,` after it decides.
+   */
+  const parenListRest = parser({ trivia: whitespace }, many(sequence(commaSeparator, noTrivia(parenTerms))));
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
@@ -2247,11 +2266,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(
       literal('('),
       optional(whitespace),
-      parenConditionTerm,
-      many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm)),
+      parenTerms,
+      parenListRest,
       literal(')')
     )),
-    (children, _fields, span, rawChildren, _triviaLog, state) => lessParenFrom(children, rawChildren, span, state)
+    (children, fields, span, rawChildren, triviaLog, state) => withSourceSpan(
+      block(fields?.separator === undefined
+        ? lessParenFrom(children, rawChildren, state, false)
+        : lessParenListFrom(children, rawChildren, fields, triviaLog, state)),
+      span
+    )
   );
   // A parenthesized `feature: value` is an ordinary typed Less value as well
   // as a media/container query fact: `@tablet: (min-width: @size)`.  Keep the
@@ -2604,10 +2628,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required accessor fact has been established.
       attempt(sequence(g.MixinReferenceChain, not(choice(productOperator, sumOperator)))),
-      oneOrMoreSep(
-        g.ValueSequence,
-        field('separator', regex(/,[ \t\n\r\f]*/))
-      )
+      oneOrMoreSep(g.ValueSequence, commaSeparator)
     ),
     (children, fields, _span, _rawChildren, triviaLog, state) => {
       const referenceValue = children.find(isReference);
@@ -2624,10 +2645,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'VariableValue',
     sequence(
       optional(whitespace),
-      oneOrMoreSep(
-        g.ValueSequence,
-        field('separator', regex(/,[ \t\n\r\f]*/))
-      ),
+      oneOrMoreSep(g.ValueSequence, commaSeparator),
       optional(sequence(literal(','), optional(whitespace)))
     ),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
@@ -4242,10 +4260,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const ContainerQueryPrelude = node(
     'ContainerQueryPrelude',
-    oneOrMoreSep(
-      ContainerConditionItem,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
+    oneOrMoreSep(ContainerConditionItem, commaSeparator),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
       commaListWithComments(children, fields, triviaLog, state, isValueNode)
   );
@@ -4435,10 +4450,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const AtRulePreludeValue = node(
     'AtRulePreludeValue',
-    oneOrMoreSep(
-      g.AtRulePreludeValueTerm,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
+    oneOrMoreSep(g.AtRulePreludeValueTerm, commaSeparator),
     (children, fields) => {
       const values = children.filter(isValueNode);
       if (values.length === 1) {
