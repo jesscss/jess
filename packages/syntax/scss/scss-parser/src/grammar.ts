@@ -948,7 +948,9 @@ const scssFactory = (g: ScssInputRules) => {
    * `space`), which a map function also takes as the empty map. It is the empty
    * curly list `.jess` spells `{}`, its span recording the authored `()`
    * (owner 2026-10-23: *"a Sass empty `()` would be `{}` (whilst storing the
-   * raw, so that Sass functions still work"*).
+   * raw, so that Sass functions still work"*). In a CSS `if()` condition it is
+   * CSS's own empty group (`<general-enclosed>`, css-values-5 §8.3), whose
+   * parens are written, as `parenValue` keeps a group there.
    */
   const EmptyList = node<Block>(
     'EmptyList',
@@ -957,7 +959,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(')')
     )),
-    (_children, _fields, span) => withSourceSpan(emptyParenList(), span)
+    (_children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(isIfTest(state) ? block([]) : emptyParenList(), span)
   );
 
   /*

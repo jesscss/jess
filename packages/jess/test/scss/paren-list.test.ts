@@ -127,6 +127,20 @@ describe('scss: the empty () is the empty list', () => {
     await expect(render(source)).resolves.toBe(expected);
   });
 
+  /*
+   * In a CSS `if()` condition `()` is CSS's empty group (`<general-enclosed>`,
+   * css-values-5 §8.3), written as it is, as a group there keeps its parens.
+   * Dart Sass rejects these sass-spec inputs (`expressions/if/css.hrx`) with
+   * "Expected identifier."; Jess wrote the first as `if({}: c)` and stopped on
+   * the second with an internal error before.
+   */
+  it.each([
+    ['a {b: if((): c)}', 'a {\n  b: if((): c);\n}\n'],
+    ['a {b: if(not not(): d)}', 'a {\n  b: if(not not (): d);\n}\n']
+  ])('keeps an empty group in a CSS if() condition: %s', async (source, expected) => {
+    await expect(render(source)).resolves.toBe(expected);
+  });
+
   it('configures nothing with an empty `with ()`', async () => {
     await expect(render('@use "sass:math" with (); .x { a: 1; }')).resolves.toBe('.x {\n  a: 1;\n}\n');
   });
