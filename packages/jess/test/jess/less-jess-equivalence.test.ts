@@ -1289,6 +1289,16 @@ describe('targeted round trip: a paren group around a comma list', () => {
     expect(await render(less, '.less')).toBe('.x { a: (1, 2); b: foo((c, d), e); c: (a b, c d); d: var(--x, (1, 2)); e: (1, 2); }');
     expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
   });
+
+  it('an empty group and a list a comma closes convert, and both arms agree', async () => {
+    const less = '.x {\n  a: ();\n  b: (1,);\n  c: foo((), (1, 2,));\n}\n';
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    const render = async (source: string, extension: '.less' | '.jess') =>
+      (await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+        .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true })).css.replace(/\s+/g, ' ').trim();
+    expect(await render(less, '.less')).toBe('.x { a: (); b: (1, ); c: foo((), (1, 2, )); }');
+    expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
+  });
 });
 
 describe('equivalence ratchet', () => {

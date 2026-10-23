@@ -382,7 +382,7 @@ describe('Less AST grammar facts', () => {
 
     const statement = run(
       lessGrammar.Document,
-      '@arbitrary value after ();',
+      '@arbitrary value after [];',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
     expect(statement.ok).toBe(true);
@@ -393,7 +393,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'AtRuleStatement',
           name: '@arbitrary',
-          prelude: { type: 'Any', src: 'value after ()' }
+          prelude: { type: 'Any', src: 'value after []' }
         }
       ]
     });
@@ -2331,14 +2331,23 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
-    for (const invalid of [
-      '.card { text: %foo; }',
-      '.card { text: %("x",); }'
-    ]) {
-      const direct = run(lessGrammar.Document, invalid, {
+
+    /*
+     * Neither is a percent-format call: `%foo` is a `%` delim and an adjacent
+     * identifier, and `%("x",)` a `%` and an adjacent paren group (css-syntax-3
+     * §5.4.7), which parse (ledger P45) as the run they are.
+     */
+    for (const [source, second] of [
+      ['.card { text: %foo; }', { type: 'Keyword', src: 'foo' }],
+      ['.card { text: %("x",); }', { type: 'Block', delimiter: 'paren' }]
+    ] as const) {
+      const adjacent = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
-      expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
+      expect(adjacent.ok && adjacent.unconsumedFrom === null, source).toBe(true);
+      expect(adjacent.value, source).toMatchObject({
+        rules: [{ rules: [{ value: [{ type: 'Keyword', src: '%' }, second] }] }]
+      });
     }
   });
 

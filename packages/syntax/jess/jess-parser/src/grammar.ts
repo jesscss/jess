@@ -3693,12 +3693,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * css builds; the raw arm is the §5.4.7 fallback for the one residual Jess's
    * value model omits — a bare infix `+` or `-` between numbers (`(1 + 2)`),
    * which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects) but which
-   * is valid CSS inside a block. The `not` guard preserves Jess's
-   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
-   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
-   * the conservative existing behaviour rather than minting an empty `Any` block
-   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
-   * separate open question, not settled here).
+   * is valid CSS inside a block. The empty `()` / `( )` block is well-formed too
+   * (ledger P45): the structured arm reads it as the EMPTY SLOT `[]`, as the css
+   * base does, never a contentless `Any`, so the raw arm (its `raw` field) always
+   * holds text.
    */
   const ParenValue = node<ValueNode>(
     'ParenValue',
@@ -3706,26 +3704,22 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       noTrivia(sequence(
         literal('('),
         optional(valueTrivia),
-        groupValue,
+        optional(groupValue),
         optional(valueTrivia),
         literal(')')
       )),
       noTrivia(sequence(
         literal('('),
-        not(sequence(
-          optional(valueTrivia),
-          literal(')')
-        )),
-        rawParenInner,
+        field('raw', rawParenInner),
         literal(')')
       ))
     ),
-    (children) => {
-      const slot = children.find(isJessValueSlotValue);
-      return slot === undefined
-        ? block(any(requireToken(children[1]).value), 'paren')
-        : block(slot, 'paren');
-    }
+    (children, fields) => block(
+      fields?.raw === undefined
+        ? children.find(isJessValueSlotValue) ?? []
+        : any(requireToken(children[1]).value),
+      'paren'
+    )
   );
 
   /*

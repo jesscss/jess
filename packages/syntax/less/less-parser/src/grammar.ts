@@ -977,6 +977,13 @@ const gluedDelim = regex(/:|\.(?![0-9])/);
  * (`gluedValueBoundary`).
  */
 const gluedValueStart = regex(/[@=~|^?:.]/);
+/**
+ * What may open a component value glued after a piece that ends where it cannot
+ * continue it (`adjacentComponentBoundary`): an identifier or a `(`.
+ */
+const adjacentComponentStart = regex(/[(_a-zA-Z\u0080-\uffff\\]/);
+/** Either glued opener: one test decides there is a glued piece at all (`gluedContinuation`). */
+const gluedStart = regex(/[@=~|^?:.(_a-zA-Z\u0080-\uffff\\]/);
 const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
@@ -2191,11 +2198,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // evaluation behavior for that typed list: a computed list loses its outer
   // parentheses, while the inner list remains indexable by `each()` and list
   // functions.  This is grammar construction, not a raw source-value escape.
+  // Inside the group the gaps are the document's trivia, as in a value list
+  // anywhere else: `~( a, b )` and `~(a /* c */, b)`.
   const EscapedParen = node(
     'Block',
-    noTrivia(sequence(literal('~('), g.ValueList, literal(')'))),
+    noTrivia(sequence(
+      literal('~('),
+      optional(whitespace),
+      parser({ trivia: whitespace }, sequence(g.ValueList, literal(')')))
+    )),
     (children, _fields, span) => withSourceSpan(
-      block(requireValueSlot(children[1]), 'paren', true),
+      block(requireValueSlot(children.find(isLessValueSlotValue)), 'paren', true),
       span
     )
   );
@@ -2255,9 +2268,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * the first is, so the same bytes build the same item in any position; the
    * gap after a comma is ambient trivia, so its comments reach the trivia log
    * the list's layout reads, as they do in `ValueList`. The first item is read
-   * once; a `,` after it decides.
+   * once; a `,` after it decides. An item may be empty, as a simple block's
+   * content may (css-syntax-3 §5.4.8): a comma closing the list, `(1,)`, ends
+   * it with an empty slot.
    */
-  const parenListRest = parser({ trivia: whitespace }, many(sequence(commaSeparator, noTrivia(parenTerms))));
+  const parenListRest = parser({ trivia: whitespace }, many(sequence(commaSeparator, optional(noTrivia(parenTerms)))));
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
@@ -2266,8 +2281,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(
       literal('('),
       optional(whitespace),
-      parenTerms,
-      parenListRest,
+      optional(sequence(parenTerms, parenListRest)),
+      optional(whitespace),
       literal(')')
     )),
     (children, fields, span, rawChildren, triviaLog, state) => withSourceSpan(
@@ -2538,13 +2553,37 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     not(choice({ gate: state => valueStopOf(state) !== undefined, combinator: literal('=') })),
     gluedPiece
   );
+  /**
+   * An identifier or a `(` glued after a piece that ends where neither can
+   * continue it: adjacent component values (css-syntax-3 §5.4.7), `(1)px`,
+   * `(1, 2)px`, `foo(a)(b)`, written as authored, with no space (the
+   * `adjacent-component` marker). In a run with the `condition` stop a glued
+   * `and` / `or` is the keyword (`(a)and(b)`), not a piece; the gate runs only
+   * there.
+   */
+  const adjacentComponentBoundary = sequence(
+    leaf(peek(adjacentComponentStart), () => ({ kind: 'adjacent-component' })),
+    not(choice({
+      gate: state => valueStopOf(state) === 'condition',
+      combinator: choice(functionConditionAnd, functionConditionOr)
+    })),
+    g.valuePiece
+  );
   const gluedBacktickValueBoundary = noTrivia(sequence(
     BacktickJavaScript,
     optional(g.valuePiece)
   ));
+  /*
+   * A glued piece of either kind, behind one test, so a value's end pays one
+   * failed peek for both.
+   */
+  const gluedContinuation = sequence(
+    peek(gluedStart),
+    choice(gluedValueBoundary, adjacentComponentBoundary)
+  );
   const valueContinuation = choice(
     valueTriviaBoundary,
-    gluedValueBoundary,
+    gluedContinuation,
     gluedBacktickValueBoundary
   );
   /**
