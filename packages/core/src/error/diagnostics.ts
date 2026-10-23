@@ -953,14 +953,14 @@ export const ERR = {
   },
 
   /**
-   * `+` with no quoted string on either side, `*` or `%`, on unquoted text, a
-   * boolean, a list or a map, in `.scss` and `.jess` (DESIGN-DECISIONS V36):
-   * none of them means anything, so the compile fails rather than writing text
-   * glued together.
+   * An operation on an operand it is not defined on, where the operation
+   * computes (DESIGN-DECISIONS V36): a keyword or a string in every dialect, in
+   * Less also a call written out as-is, in `.scss` and `.jess` also a boolean,
+   * a list and a map. The result would mean nothing, so the compile fails.
    */
-  textOperand(args: Common & { meta: { reason: string } }) {
+  invalidOperand(args: Common & { meta: { reason: string } }) {
     return makeJessError({
-      code: 'eval/text-operand',
+      code: 'eval/invalid-operand',
       phase: 'eval',
       ...args
     });

@@ -1118,18 +1118,17 @@ describe('targeted round trip: kept math', () => {
 });
 
 /*
- * Less keeps math on text as written (`(foo + 1)` is `(foo + 1)`), while
- * `.jess` math on text fails the compile (ledger V36, owner 2026-10-22), so a
- * Less operation on a keyword has no `.jess` spelling yet: its lowering
- * `$((foo + 1))` errors. OPEN for the owner (V36).
+ * Math on a keyword fails the compile where it computes, in `.less` and in its
+ * `.jess` lowering alike (ledger V36; owner 2026-10-23: "if that's the "math"
+ * in Less, it should error").
  */
-describe('targeted round trip: Less text math', () => {
-  it.fails('`.less` `(foo + 1)` and its `.jess` lowering agree', async () => {
-    const less = '.a {\n  f: (foo + 1);\n}\n';
+describe('targeted round trip: Less math on a keyword', () => {
+  it.each(['.a {\n  f: (foo + 1);\n}\n', '@w: auto;\n.a {\n  f: (@w + 10px);\n}\n'])('`.less` %j and its `.jess` lowering both fail', async (less) => {
     const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
     const render = (source: string, extension: '.less' | '.jess') =>
       new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true }).renderString(source, { filePath: `entry${extension}`, extension });
-    expect(await render(jess, '.jess')).toBe(await render(less, '.less'));
+    await expect(render(less, '.less')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    await expect(render(jess, '.jess')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 });
 

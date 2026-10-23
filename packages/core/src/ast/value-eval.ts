@@ -632,16 +632,15 @@ export class EmptyOperandError extends Error {
 }
 
 /**
- * An operation on a value that is not a number where only numbers compute: `+`
- * with no quoted string on either side, `*` or `%`, on unquoted text, a
- * boolean, a list or a map, in a dialect whose evaluator sets
- * {@link ValueEvaluator.textOperands} (ledger V36). Not a `TypeError`, so the
- * preserve-mode fallback in `operate` cannot swallow it.
+ * An operation on an operand it is not defined on (ledger V36): a keyword or a
+ * string in every dialect that computes; in Less also a function call written
+ * out as-is; in `.scss` and `.jess` also a boolean, a list and a map. Not a `TypeError`, so the preserve-mode fallback in
+ * `operate` cannot swallow it.
  */
-export class TextOperandError extends Error {
+export class InvalidOperandError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'TextOperandError';
+    this.name = 'InvalidOperandError';
   }
 }
 
@@ -887,11 +886,11 @@ export interface ValueEvaluator {
   readonly sassCalculations?: boolean;
 
   /**
-   * Whether an operation on text follows ledger V36, as in `.scss` and `.jess`:
-   * `+` with a quoted string on either side joins the two values' text
-   * (`"Elapsed: " + 10s` is `"Elapsed: 10s"`), and `+`, `*` or `%` on any other
-   * value that is not a number (unquoted text, a boolean, a list, a map) is an
-   * error. Absent means `false`: a Less operation on text is kept as written.
+   * Whether operations read their operands as `.scss` and `.jess` do (ledger
+   * V36): the operand rule covers `+`, `*` and `%`, leaves a call written out
+   * as-is alone, and rejects a boolean, a list and a map. Absent means
+   * `false`, as in Less: every operator, and a call written out as-is is
+   * rejected.
    */
-  readonly textOperands?: boolean;
+  readonly sassOperands?: boolean;
 }

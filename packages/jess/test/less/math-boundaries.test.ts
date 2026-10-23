@@ -108,8 +108,13 @@ describe('Less math boundaries', () => {
       + 'g: calc((e("1px + 2px"))); h: calc(2 * (~"1px + 2px")); k: calc(1px + (e("var(--a, 1px)"))); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: calc(2 * (1px + 2px)); c: calc(2 * (1px + 2px)); d: calc(2 / (1px/2)); '
         + 'f: calc(2 * (foo)); g: calc((1px + 2px)); h: calc(2 * (1px + 2px)); k: calc(1px + (var(--a, 1px))); }');
-    expect(await render('@v: e("1px + 2px"); .x { a: (e("1px + 2px")) * 2; a2: (~"1px + 2px") * 2; b: 2 - (@v); d: (e("1px + 2px")); e: (e("foo")); f: ((~"x")); }'))
-      .toBe('.x { a: calc((1px + 2px) * 2); a2: calc((1px + 2px) * 2); b: calc(2 - (1px + 2px)); d: (1px + 2px); e: (foo); f: ((x)); }');
+    expect(await render('@v: e("1px + 2px"); .x { d: (e("1px + 2px")); e: (e("foo")); f: ((~"x")); }'))
+      .toBe('.x { d: (1px + 2px); e: (foo); f: ((x)); }');
+
+    /* Math on a string, outside a math function, fails the compile (ledger V36, owner 2026-10-23). */
+    for (const source of ['.x { a: (e("1px + 2px")) * 2; }', '.x { a2: (~"1px + 2px") * 2; }', '@v: e("1px + 2px"); .x { b: 2 - (@v); }']) {
+      await expect(render(source), source).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    }
     expect(await render('@a: (e("1px + 2px")); @s: ~"a b"; .m(@x) { m: (@x); n: calc(2 * (@x)); } '
       + '.x { a: calc(2 * @a); b: @a; c: (@s); s: ~"@{a}"; t: calc(@a); .m(e("1px + 2px")); .m(~"a b"); }'))
       .toBe('.x { a: calc(2 * (1px + 2px)); b: (1px + 2px); c: (a b); s: 1px + 2px; t: calc((1px + 2px)); m: (1px + 2px); n: calc(2 * (1px + 2px)); m: (a b); n: calc(2 * (a b)); }');
@@ -153,7 +158,7 @@ describe('Less math boundaries', () => {
     '.x { d: (unquote("1px + 2px")) * 2; }',
     '$g: (unquote("1px + 2px")); .x { h: $g * 2; }'
   ])('fails the compile on math on a .scss keyword in a group: %s', async (source) => {
-    await expect(renderIn('.scss', source)).rejects.toMatchObject({ code: 'eval/text-operand' });
+    await expect(renderIn('.scss', source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
   /*
@@ -338,8 +343,13 @@ describe('Less math boundaries', () => {
    * (ledger V27).
    */
   it('keeps the parens of an operand of math kept as written', async () => {
-    expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; e: foo + (1px); f: (1px) + foo; g: (10px) + 1; }'))
-      .toBe('.x { a: calc((10px) + 1em); c: calc(1em + (10px)); d: calc(((10px)) + 1em); e: foo + (1px); f: (1px) + foo; g: 11px; }');
+    expect(await render('.x { a: (10px) + 1em; c: 1em + (10px); d: ((10px)) + 1em; g: (10px) + 1; }'))
+      .toBe('.x { a: calc((10px) + 1em); c: calc(1em + (10px)); d: calc(((10px)) + 1em); g: 11px; }');
+
+    /* Math on a keyword fails the compile where Less computes (ledger V36, owner 2026-10-23). */
+    for (const source of ['.x { e: foo + (1px); }', '.x { f: (1px) + foo; }']) {
+      await expect(render(source), source).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+    }
     expect(await render('.x { a: (10px) + 1em; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
   });
 

@@ -46,7 +46,7 @@ import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { renderCombinator } from './node.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
-import { MEMBER_CALL, moduleImportText, selectorParseLiteral } from './emit-jess-module.js';
+import { MEMBER_CALL, moduleImportText, selectorParseCall, unquoteLiteral } from './emit-jess-module.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
@@ -915,16 +915,17 @@ class JessPrinter {
   }
 
   call(node: FunctionCall, at: At): string {
+    const escaped = unquoteLiteral(node, this.#functions?.names.has('unquote') ?? true);
     if (at === At.Expr) {
-      return gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
+      return escaped ?? gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
     }
 
     /* The global `selector-parse` is Sass's only when the source dialect's functions have it. */
-    const selectorText = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
-      ? selectorParseLiteral(node)
-      : null;
-    if (selectorText !== null) {
-      return `selector(${selectorText})`;
+    const lowered = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
+      ? selectorParseCall(node)
+      : escaped;
+    if (lowered !== null) {
+      return lowered;
     }
     const member = MEMBER_CALL.test(node.name);
     if (!member && !IDENT.test(node.name)) {
@@ -944,9 +945,9 @@ class JessPrinter {
       this.calledFunctions.set(lower, exported);
     }
     const inner = at === At.Prelude ? At.Prelude : At.Math;
+    const name = exported === undefined && !member ? node.name : `$${node.name}`;
     const alpha = colorAlphaSlash(node);
     if (alpha !== null) {
-      const name = exported === undefined && !member ? node.name : `$${node.name}`;
       return `${name}(${this.colorChannels(node.args[0]!.value, alpha, inner)})`;
     }
     const args = node.args.map((arg) => {
@@ -959,7 +960,6 @@ class JessPrinter {
       }
       return this.value(value, inner);
     });
-    const name = exported === undefined && !member ? node.name : `$${node.name}`;
     return `${name}(${args.join(', ')})`;
   }
 
