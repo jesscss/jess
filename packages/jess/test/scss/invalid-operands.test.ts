@@ -172,6 +172,17 @@ describe('jess: no string +', () => {
     await expect(render(source, '.jess')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
   });
 
+  /*
+   * An unoperated slash (`10px / 2`) is division kept as written, not a list
+   * operand: `.jess` writes it as Less does (less.js
+   * `operations-advanced.less`: `@div-op * 2` with `@div-op: 10px / 2`).
+   */
+  it('keeps math on an unoperated slash as Less does', async () => {
+    const compile = { unitMode: 'preserve' as const };
+    await expect(new Compiler({ compile }).renderString('$d: 10px / 2; .a { r: $($d * 2); }', { extension: '.jess' })).resolves.toBe('.a {\n  r: calc(10px / 2 * 2);\n}\n');
+    await expect(new Compiler({ compile }).renderString('@d: 10px / 2; .a { r: @d * 2; }', { extension: '.less' })).resolves.toBe('.a {\n  r: calc(10px / 2 * 2);\n}\n');
+  });
+
   it('builds the string by interpolation', async () => {
     await expect(render('$t: 10s;\n.a { b: "Elapsed: $($t)"; }', '.jess')).resolves.toBe('.a {\n  b: "Elapsed: 10s";\n}\n');
   });

@@ -75,6 +75,7 @@ import serializerNodes, {
   textHoldsParentRef,
   branchTextIsPlaceholder,
   isCssColorCall,
+  isConditionOperand,
   colorAlphaSlash
 } from './nodes.js';
 import {
@@ -6249,7 +6250,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          return checkedOperation(node.operator, values[0]!, values[1]!, ev.sassOperands === true, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens))
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev.sassOperands === true, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
             ?? rememberUnitOwner(ev.operate(
               node.operator,
               spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e),

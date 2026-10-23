@@ -657,7 +657,8 @@ export function groupAsWritten(v: Value): Value {
 /**
  * What an operand is when an operation is not defined on it (ledger V36), or
  * `null`. Never one: a number, a colour (a named-colour keyword included),
- * `null`, math kept as written or in a `calc()`, in Less a value kept as
+ * `null`, math kept as written or in a `calc()`, an unoperated slash (`10px /
+ * 2`, a `/` list, which Less writes as kept math), in Less a value kept as
  * text that is no escaped string (an unoperated `18 / 2` a mixin argument
  * binds), and an operation an
  * unruled operand kept as written (`2 * math.pow(10, -11)` with `sass:math`
@@ -686,7 +687,7 @@ function invalidOperand(v: ValueGroup, sass: boolean): string | null {
     case 'Bool':
       return sass ? 'boolean' : 'keyword';
     case 'List':
-      return sass ? 'list' : null;
+      return sass && v.sep !== '/' ? 'list' : null;
     case 'Collection':
       return sass ? 'map' : null;
     default:
