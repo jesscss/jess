@@ -6307,7 +6307,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
 /**
  * A {@link Collection} reaching a value/arg position — an SCSS map literal
  * (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a function, or
- * the authorable Jess collection `$m: { a: 1; b: 2 }` — evaluates to the
+ * the authorable Jess collection `$m: #{ a: 1; b: 2 }` — evaluates to the
  * value-domain map (`value-eval.ts` `Collection`). SCSS nested-property syntax
  * uses a distinct `NestedPropertyBlock`; it never projects structural entries
  * into this data-only value type.

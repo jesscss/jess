@@ -113,6 +113,9 @@ import {
   isIfTest,
   enterIfTest,
   leaveIfTest,
+  enterCssCall,
+  leaveCssCall,
+  curlyListFrom,
   isTestValue,
   enterTestValue,
   genericCallFrom
@@ -191,6 +194,7 @@ type JessRules = {
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
+  CurlyList: Combinator<Block>;
   ParenValue: Combinator<ValueNode>;
   SquareValue: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
@@ -2652,11 +2656,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal(';'),
     optional(valueTrivia)
   ));
-  const callArgumentGroup = sequence(
+  const callArgumentGroup = withCtx(state => enterCssCall(state), sequence(
     g.CallComponent,
     optional(branchValue),
     many(g.CallArgument)
-  );
+  ));
 
   /**
    * A direct call owns its argument boundaries and recursive call shape. Its
@@ -3093,10 +3097,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => collectionSpread(requireValueSlot(children[1]))
   );
+
+  /*
+   * A map is `#{ … }` (ledger P31, owner 2026-09-22: *"data blocks / maps need
+   * `#{}`"*), so a bare `{ … }` value is the curly list (`CurlyList`; owner
+   * 2026-10-23: *"those need to be separate for Jess syntax (#{} vs {})"*).
+   */
   const Collection = node<Collection>(
     'Collection',
     sequence(
-      literal('{'),
+      literal('#{'),
       parser(
         { trivia: whitespace },
         many(choice(
@@ -3183,10 +3193,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(oneOrMoreSep(
+        optional(withCtx(state => leaveCssCall(state), oneOrMoreSep(
           g.MixinCallArgument,
           literal(',')
-        ))
+        )))
       ),
       optional(rawWhitespace),
       literal(')')
@@ -3392,6 +3402,34 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `{ … }` in value position: the curly list, a list passed as one value
+   * (owner 2026-10-09: *"We should interpret Sass / Less value lists as a
+   * curly list. So ~(1px, 2px) would be parsed as `{1px, 2px}`"*, and
+   * *"`~()` would no longer be valid in .jess"*), the css-values-5 §3.1.1
+   * `{}`-wrapped argument. A map is `#{ … }` and a detached ruleset `@{ … }`, so
+   * a bare `{` here is free (owner 2026-10-23: *"those need to be separate for
+   * Jess syntax (#{} vs {})"*). The interior is optional, as `SquareValue`'s is:
+   * `{}` is the empty list; a trailing comma makes a comma list of what it
+   * holds, so `{1,}` is the one-item comma list Sass writes `(1,)`. Like
+   * `Collection`, it may only be a value's first atom (see `nonBlockValueAtom`).
+   */
+  const CurlyList = node<Block>(
+    'CurlyList',
+    noTrivia(sequence(
+      literal('{'),
+      optional(valueTrivia),
+      optional(sequence(
+        g.Value,
+        optional(valueTrivia),
+        optional(literal(','))
+      )),
+      optional(valueTrivia),
+      literal('}')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => curlyListFrom(children, span, state)
+  );
+
+  /*
    * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
@@ -3435,6 +3473,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'ValueAtom',
     choice(
       g.Collection,
+      g.CurlyList,
       nonBlockValueAtom
     ),
     children => requireValueNode(children[0])
@@ -5189,13 +5228,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * A block-valued assignment AUTO-TERMINATES at its closing brace: the block is
-   * its own unambiguous end, so `$foo: { … }`, `$foo: @{ … }`, and
+   * its own unambiguous end, so `$foo: #{ … }`, `$foo: @{ … }`, and
    * `$foo: @() > { … }` need no `;` and whatever follows the brace begins a new
    * statement. Less has the same rule for a detached ruleset bound to a variable.
    * The block must be the WHOLE value — a value can never precede it (there is no
    * `ValueBlock` arm in the space-group continuation), because that is
    * exactly the case where the value's end would be ambiguous. Compose instead:
-   * bind the block first (`$foo: {}`), then use it (`$bar: $foo bar;`).
+   * bind the block first (`$foo: #{}`), then use it (`$bar: $foo bar;`).
    */
   const ValueBlockDeclaration = node<VariableDeclaration>(
     'ValueBlockDeclaration',
@@ -6529,6 +6568,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     CollectionEntry,
     CollectionSpread,
     Collection,
+    CurlyList,
     ParenValue,
     SquareValue,
     InterpolatedValue,

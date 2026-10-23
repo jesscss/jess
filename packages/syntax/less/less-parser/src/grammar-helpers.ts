@@ -1921,8 +1921,8 @@ function mixinListItemShape(capture: MixinInteriorCapture): MixinListItemShape {
  * Less's `;` rule for mixin calls and definitions (owner 2026-10-09, ledger P46).
  * When the list holds any `;`, `;` separates its arguments and EVERY `,`, before
  * or after the `;`, belongs to a comma-list value; without one, `,` separates
- * arguments. A group of two or more items is ONE argument whose value is the node
- * `~( … )` builds (`EscapedParen`), the normalized form: `.m(@a: b, c; d)` holds
+ * arguments. A group of two or more items is ONE argument whose value is the
+ * curly list `~( … )` builds (`EscapedParen`), the normalized form: `.m(@a: b, c; d)` holds
  * exactly what `.m(@a: ~(b, c), d)` does. The items the `;` makes invalid are
  * the shared rule's ({@link mixinListProblems}), reported at each item, and the
  * list keeps what it can ({@link mixinCommaListItem}).
@@ -1972,7 +1972,7 @@ function reassembleMixinInterior<T>(
         withValueLayout(value, interior.separatorLayout.slice(first, last));
       }
       out.push(commaList(name, withSourceSpan(
-        block(value, 'paren', true),
+        block(value, 'curly', true),
         { start: items[first]!.span.start, end: items[last]!.span.end }
       )));
     }
@@ -2297,7 +2297,9 @@ function functionConditionSource(value: ValueSlot): string {
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;
     /* A query's `name: value` (an if-test's `supports(x: y)`) is spelled as a query spells it. */
     case 'Operation': return `${functionConditionSource(node.left)}${node.operator === ':' ? '' : ' '}${node.operator} ${functionConditionSource(node.right)}`;
-    case 'Block': return `${delimiterOpen(node.delimiter)}${functionConditionSource(node.value)}${delimiterClose(node.delimiter)}`;
+    case 'Block': return node.escaped === true
+      ? `~(${functionConditionSource(node.value)})`
+      : `${delimiterOpen(node.delimiter)}${functionConditionSource(node.value)}${delimiterClose(node.delimiter)}`;
     case 'Branch': return `${functionConditionSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${functionConditionSource(node.value)}`}`;
     /*
      * A nested `boolean(…)`/`if(…)` condition is replayed with the enclosing

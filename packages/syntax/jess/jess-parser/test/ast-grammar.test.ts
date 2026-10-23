@@ -510,7 +510,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('parses declaration-member lookups without treating them as property-only accessors', () => {
-    const source = '$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); namespaced: $tokens.tone; normal: $.tokens.tone; decimal: $(.1); }';
+    const source = '$tokens: #{ tone: blue; }; .card { value: $(.type.isnumber(.math.e)); namespaced: $tokens.tone; normal: $.tokens.tone; decimal: $(.1); }';
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
@@ -663,7 +663,7 @@ describe('Jess AST grammar facts', () => {
     expect(parse('.card { value: .1; }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{ value: { type: 'Dimension', number: 0.1, src: '.1' } }] }]
     });
-    expect(parse('$tokens: { tone: blue; }; .card { root: $($.tokens.tone); ns: $($tokens.tone); }')).toMatchObject({
+    expect(parse('$tokens: #{ tone: blue; }; .card { root: $($.tokens.tone); ns: $($tokens.tone); }')).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'tokens' },
         { type: 'Ruleset', rules: [
@@ -675,12 +675,12 @@ describe('Jess AST grammar facts', () => {
 
     const evaluator = buildEvaluator(makeLessRegistry());
     const render = (text: string): string | undefined => serialize(parse(text), { evaluator }).css;
-    expect(render('$tokens: { tone: blue; }; .card { $local: blue; tone: red; $w: 3px; base: 2px; from-ns: $tokens.tone; from-root: $.tokens.tone; expr-ns: $($tokens.tone); expr-root: $($.tokens.tone); from-var: $.local; from-prop: $.tone; width: $(.w + .base); decimal: $(.1); }')).toBe(
+    expect(render('$tokens: #{ tone: blue; }; .card { $local: blue; tone: red; $w: 3px; base: 2px; from-ns: $tokens.tone; from-root: $.tokens.tone; expr-ns: $($tokens.tone); expr-root: $($.tokens.tone); from-var: $.local; from-prop: $.tone; width: $(.w + .base); decimal: $(.1); }')).toBe(
       '.card {\n  tone: red;\n  base: 2px;\n  from-ns: blue;\n  from-root: blue;\n  expr-ns: blue;\n  expr-root: blue;\n  from-var: blue;\n  from-prop: red;\n  width: 5px;\n  decimal: 0.1;\n}\n'
     );
     expect(() => render('.card { $same: blue; same: red; value: $.same; }'))
       .toThrow(/Ambiguous reference member: same/);
-    expect(() => render('.card { $same: { tone: blue; }; same: red; value: $same.tone; }'))
+    expect(() => render('.card { $same: #{ tone: blue; }; same: red; value: $same.tone; }'))
       .toThrow(/Ambiguous reference member: same/);
   });
 
@@ -863,7 +863,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('reads a collection member in condition position exactly as in value position', () => {
-    const source = '$c: { x: 4px; }; $if ($c.x > 0) { .a { width: $($c.x * 2); } }';
+    const source = '$c: #{ x: 4px; }; $if ($c.x > 0) { .a { width: $($c.x * 2); } }';
     expect(parse(source)).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'c' },
@@ -874,7 +874,7 @@ describe('Jess AST grammar facts', () => {
       '.a {\n  width: 8px;\n}\n'
     );
 
-    const truthyMember = '$flags: { enableShadow: true; }; $if ($flags.enableShadow) { .a { color: blue; } }';
+    const truthyMember = '$flags: #{ enableShadow: true; }; $if ($flags.enableShadow) { .a { color: blue; } }';
     expect(parse(truthyMember)).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'flags' },
@@ -3020,7 +3020,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs a documented Jess collection RHS for public bracket $for rendering', () => {
-    const source = '$collection: { header: red; footer: blue; }; $for ([$key, $value] of $collection) { .box-${key} { color: $value; } }';
+    const source = '$collection: #{ header: red; footer: blue; }; $for ([$key, $value] of $collection) { .box-${key} { color: $value; } }';
     const legacy = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -3049,7 +3049,7 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse(source)).css).toBe(
       '.box-header {\n  color: red;\n}\n.box-footer {\n  color: blue;\n}\n'
     );
-    expect(parse('$collection: { slot: @{ color: red; }; };')).toMatchObject({
+    expect(parse('$collection: #{ slot: @{ color: red; }; };')).toMatchObject({
       rules: [{
         value: {
           type: 'Collection',
@@ -3064,7 +3064,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs computed collection keys and ordered spread items', () => {
-    const source = '$key: accent; $defaults: { red: 1; }; $collection: { ...$defaults; [red]: 2; [#c6538c]: 3; [$key]: 4; };';
+    const source = '$key: accent; $defaults: #{ red: 1; }; $collection: #{ ...$defaults; [red]: 2; [#c6538c]: 3; [$key]: 4; };';
     const legacy = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -3098,7 +3098,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('keeps nested collection values and direct collection spread operands structural', () => {
-    const source = '$collection: { nested: { inner: 1; }; direct: { ...{ a: 1; }; b: 2; }; };';
+    const source = '$collection: #{ nested: #{ inner: 1; }; direct: #{ ...#{ a: 1; }; b: 2; }; };';
     const legacy = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -3135,7 +3135,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('requires a semicolon to delimit a collection spread from the next item', () => {
-    const source = '$defaults: { a: 1; }; $map: { ...$defaults b: 2; };';
+    const source = '$defaults: #{ a: 1; }; $map: #{ ...$defaults b: 2; };';
     const legacy = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
@@ -3145,7 +3145,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('iterates the effective later-wins entries of a spread collection', () => {
-    const source = '$left: { a: 1; b: 2; }; $right: { a: 3; c: 4; }; $map: { ...$left; ...$right; b: 5; }; $for ([$key, $value] of $map) { .${key} { value: $value; } }';
+    const source = '$left: #{ a: 1; b: 2; }; $right: #{ a: 3; c: 4; }; $map: #{ ...$left; ...$right; b: 5; }; $for ([$key, $value] of $map) { .${key} { value: $value; } }';
 
     expect(serialize(parse(source)).css).toBe(
       '.a {\n  value: 3;\n}\n.b {\n  value: 5;\n}\n.c {\n  value: 4;\n}\n'
@@ -3704,9 +3704,9 @@ describe('Jess AST grammar facts', () => {
      * A Jess `{ ... }` value is collection data, not a detached ruleset. It can
      * be assigned, aliased, and serialized as a declaration value.
      */
-    expect(render('$dr: { color: red; }\n.box { width: $dr; }'))
+    expect(render('$dr: #{ color: red; }\n.box { width: $dr; }'))
       .toBe('.box {\n  width: { color: red };\n}\n');
-    expect(render('$dr: { color: red; }\n$a: $dr;\n.box { width: $a; }'))
+    expect(render('$dr: #{ color: red; }\n$a: $dr;\n.box { width: $a; }'))
       .toBe('.box {\n  width: { color: red };\n}\n');
 
     /*
@@ -3726,14 +3726,14 @@ describe('Jess AST grammar facts', () => {
    */
   it('auto-terminates a block-valued assignment and rejects a value before the block', () => {
     for (const source of [
-      '$foo: { }', '$foo: @{}', '$foo: @() > { }',
-      '$foo: { };', '$foo: @{};', '$foo: @() > { };'
+      '$foo: #{ }', '$foo: @{}', '$foo: @() > { }',
+      '$foo: #{ };', '$foo: @{};', '$foo: @() > { };'
     ]) {
       expect(() => parse(source), source).not.toThrow();
     }
 
     // Whatever follows the closing brace begins a NEW statement.
-    expect(parse('$foo: {} $bar: 1;')).toMatchObject({
+    expect(parse('$foo: #{} $bar: 1;')).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'foo', value: { type: 'Collection' } },
         { type: 'VariableDeclaration', name: 'bar' }
@@ -3742,7 +3742,7 @@ describe('Jess AST grammar facts', () => {
 
     /*
      * Nothing may precede the block — with OR without a `;`. Compose instead:
-     * `$foo: {}` then `$bar: $foo bar;`.
+     * `$foo: #{}` then `$bar: $foo bar;`.
      */
     for (const source of ['$foo: bar { }', '$foo: bar @() > { }', '$foo: bar @() > { };', '$foo: bar { };']) {
       expect(() => parse(source), source).toThrow(SyntaxError);
@@ -3777,7 +3777,7 @@ describe('Jess AST grammar facts', () => {
        * block auto-terminates at `}`, so its `;` is optional. (A CSS property
        * declaration takes no block value, so the exception cannot arise there.)
        */
-      '$m: { family: serif; }\n.a { color: red; }',
+      '$m: #{ family: serif; }\n.a { color: red; }',
       '$mx: @() { color: red; }\n.a { $mx(); }',
 
       // A trailing separator is allowed and an empty declaration is skipped.

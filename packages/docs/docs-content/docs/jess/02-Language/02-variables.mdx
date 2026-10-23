@@ -140,7 +140,7 @@ assignments are the exception: a variable can be bound to a
 The trailing `;` is optional even when another declaration follows:
 
 ```less
-$colors: {
+$colors: #{
   primary: #06c;
 }
 $mixin: @{
@@ -158,7 +158,7 @@ Block values stand on their own as the assigned value. To combine data from a
 block with other values, bind the block first and compose from the binding:
 
 ```less
-$shadow: {
+$shadow: #{
   blur: 4px;
 }
 $rule: 0 0 $shadow.blur #000;

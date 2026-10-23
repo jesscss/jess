@@ -2086,7 +2086,7 @@ describe('lintText', () => {
   it('applies policy to duplicate Jess collection keys without rejecting the source', async () => {
     const result = await lintText(
       {
-        source: '$tokens: { tone: blue; [tone]: red; };',
+        source: '$tokens: #{ tone: blue; [tone]: red; };',
         filePath: '/tmp/input.jess'
       },
       {
@@ -2105,7 +2105,7 @@ describe('lintText', () => {
     ]);
 
     const disabled = await lintText(
-      { source: '$tokens: { tone: blue; [tone]: red; };', filePath: '/tmp/input.jess' },
+      { source: '$tokens: #{ tone: blue; [tone]: red; };', filePath: '/tmp/input.jess' },
       { lintConfig: { rules: { [LINT_RULE_NAMES.duplicateCollectionKeys]: 'off' } } }
     );
     expect(disabled.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)).toBe(false);

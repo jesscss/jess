@@ -63,7 +63,7 @@ function firstRule(source: string): unknown {
 describe('SCSS constructs discovered outside the parser suites', () => {
   it('accepts a parenthesised component value with no interior whitespace', () => {
     expect(firstRule('a { b: (c) }')).toMatchObject({
-      rules: [{ type: 'Declaration', name: 'b', value: { type: 'Block', delimiter: 'paren' } }]
+      rules: [{ type: 'Declaration', name: 'b', value: { type: 'Block', delimiter: 'curly', escaped: true } }]
     });
   });
 

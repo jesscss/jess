@@ -131,7 +131,9 @@ export function emitCompressed(v: EvalValue): string {
 
     /* The group's own value compressed, as it is written bare (`[a, b]` → `[a,b]`). */
     case 'Block':
-      return `${v.escaped ? '~' : ''}${delimiterOpen(v.delimiter)}${emitCompressed(v.value)}${delimiterClose(v.delimiter)}`;
+      return v.escaped === true
+        ? `~(${emitCompressed(v.value)})`
+        : `${delimiterOpen(v.delimiter)}${emitCompressed(v.value)}${delimiterClose(v.delimiter)}`;
     case 'Any':
       return writtenText(v);
     default:

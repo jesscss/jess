@@ -1236,54 +1236,84 @@ describe('targeted round trip: a glued condition keyword and `@container size(�
 
 /*
  * Less's `;` rule (owner 2026-10-09, ledger P46) stores each comma run of a `;`
- * mixin list as the node `~( … )` builds, so a `;` list converts exactly as its
- * escaped spelling does. `.jess` has no spelling for that node yet and the
- * converter names it, so these round trips are held by that one gap, not by the
- * `;` form: the `.less` arm renders, and both spellings name the same gap.
+ * mixin list as the curly list `~( … )` builds, which `.jess` spells `{ … }`
+ * (owner 2026-10-23: "it should be the {} list"). So a `;` list converts
+ * exactly as its `~( … )` spelling does, and the `.jess` arm writes the same CSS.
  */
 describe('targeted round trip: a `;` mixin list converts as its `~( … )` spelling', () => {
   const TAKES = '.t1(@a) { one: @a; }\n.t2(@a; @b) { one: @a; two: @b; }\n';
-  const gapsOf = (source: string): string[] => {
-    try {
-      emitJess(parseLess(source), { functions: LESS_FUNCTIONS });
-      return [];
-    } catch (error) {
-      if (!(error instanceof NoJessSpelling)) {
-        throw error;
-      }
-      return error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
-    }
-  };
-  const render = async (source: string) => {
-    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin()] }, quiet: true })
-      .renderToResult({ source, filePath: 'entry.less', extension: '.less' }, { quiet: true });
+  const render = async (source: string, extension: '.less' | '.jess') => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
     expect(result.errors).toEqual([]);
     return result.css.replace(/\s+/g, ' ').trim();
   };
-  const ESCAPED_BLOCK_GAP = 'Block: escaped `~( … )` block: no `.jess` production';
 
   it.each([
-    ['.x { .t2(@a : a; @b : b, c); }', '.x { .t2(@a: a, @b: ~(b, c)); }', '.x { one: a; two: b, c; }'],
-    ['.x { .t2(@a : d, e; @b : f); }', '.x { .t2(@a: ~(d, e), @b: f); }', '.x { one: d, e; two: f; }'],
-    ['.x { .t2(o, p; q); }', '.x { .t2(~(o, p), q); }', '.x { one: o, p; two: q; }'],
-    ['.x { .t2(r, s; t;); }', '.x { .t2(~(r, s), t); }', '.x { one: r, s; two: t; }'],
-    ['.x { .t1(m, n;); }', '.x { .t1(~(m, n)); }', '.x { one: m, n; }'],
+    ['.x { .t2(@a : a; @b : b, c); }', '.x { .t2(@a: a, @b: ~(b, c)); }', '.x { one: a; two: b, c; }', '$ > .t2($a: a, $b: {b, c});'],
+    ['.x { .t2(@a : d, e; @b : f); }', '.x { .t2(@a: ~(d, e), @b: f); }', '.x { one: d, e; two: f; }', '$ > .t2($a: {d, e}, $b: f);'],
+    ['.x { .t2(o, p; q); }', '.x { .t2(~(o, p), q); }', '.x { one: o, p; two: q; }', '$ > .t2({o, p}, q);'],
+    ['.x { .t2(r, s; t;); }', '.x { .t2(~(r, s), t); }', '.x { one: r, s; two: t; }', '$ > .t2({r, s}, t);'],
+    ['.x { .t1(m, n;); }', '.x { .t1(~(m, n)); }', '.x { one: m, n; }', '$ > .t1({m, n});'],
     [
       '.d(@c; @p; @m: 2, 2, 2, 2) { margin: @m; }\n.x { .d(#33acfe; 4); }',
       '.d(@c, @p, @m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(#33acfe, 4); }',
-      '.x { margin: 2, 2, 2, 2; }'
+      '.x { margin: 2, 2, 2, 2; }',
+      '$m: {2, 2, 2, 2}'
     ],
-    ['.d(@m: 2, 2, 2, 2;) { margin: @m; }\n.x { .d(); }', '.d(@m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(); }', '.x { margin: 2, 2, 2, 2; }']
-  ])('%s', async (semicolons, escaped, expected) => {
-    expect(await render(TAKES + semicolons)).toBe(expected);
-    expect(await render(TAKES + escaped)).toBe(expected);
-    expect(gapsOf(TAKES + semicolons)).toEqual([ESCAPED_BLOCK_GAP]);
-    expect(gapsOf(TAKES + escaped)).toEqual([ESCAPED_BLOCK_GAP]);
+    ['.d(@m: 2, 2, 2, 2;) { margin: @m; }\n.x { .d(); }', '.d(@m: ~(2, 2, 2, 2)) { margin: @m; }\n.x { .d(); }', '.x { margin: 2, 2, 2, 2; }', '$m: {2, 2, 2, 2}']
+  ])('%s', async (semicolons, escaped, expected, spelling) => {
+    const jess = emitJess(parseLess(TAKES + semicolons), { functions: LESS_FUNCTIONS });
+    expect(emitJess(parseLess(TAKES + escaped), { functions: LESS_FUNCTIONS })).toBe(jess);
+    expect(jess).toContain(spelling);
+    expect(await render(TAKES + semicolons, '.less')).toBe(expected);
+    expect(await render(TAKES + escaped, '.less')).toBe(expected);
+    expect(await render(jess, '.jess')).toBe(expected);
   });
 
   it('converts a `;` list that holds no comma run', () => {
     expect(emitJess(parseLess(`${TAKES}.x { .t2(@a: h; @b: i;); }`), { functions: LESS_FUNCTIONS }))
       .toBe(emitJess(parseLess(`${TAKES}.x { .t2(@a: h, @b: i); }`), { functions: LESS_FUNCTIONS }));
+  });
+});
+
+/*
+ * Less `~( … )` passes a list as one value: the curly list `.jess` spells
+ * `{ … }` (owner 2026-10-09: "~(1px, 2px) would be parsed as `{1px, 2px}`";
+ * 2026-10-23: "Less v5 would still use `~()`" … "(but would parse as `{...}` of
+ * course)"). The `.less` arm writes what it wrote before the curly list, and the
+ * `.jess` arm writes the same.
+ */
+describe('targeted round trip: a `~( … )` list converts to the curly list `{ … }`', () => {
+  const render = async (source: string, extension: '.less' | '.jess') => {
+    const result = await new Compiler({ compile: { ...PINNED_COMPILE, plugins: [lessPlugin(), jessPlugin()] }, quiet: true })
+      .renderToResult({ source, filePath: `entry${extension}`, extension }, { quiet: true });
+    expect(result.errors).toEqual([]);
+    return result.css.replace(/\s+/g, ' ').trim();
+  };
+
+  it.each([
+    ['.x { a: ~(1, 2); b: ~(1 2); c: ~(1); }', '.x { a: 1, 2; b: 1 2; c: 1; }', 'a: {1, 2};'],
+    ['@l: ~(1, 2, 3);\n.x { a: @l; b: length(@l); c: extract(@l, 2); }', '.x { a: 1, 2, 3; b: 3; c: 2; }', '$l: {1, 2, 3};'],
+    ['.x { b: length(~(1, 2, 3)); }', '.x { b: 3; }', '$length({1, 2, 3})'],
+    ['.m(@a) { a: @a; n: length(@a); }\n.x { .m(~(1, 2)); }', '.x { a: 1, 2; n: 2; }', '$ > .m({1, 2});']
+  ])('%s', async (less, expected, spelling) => {
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    expect(jess).toContain(spelling);
+    expect(await render(less, '.less')).toBe(expected);
+    expect(await render(jess, '.jess')).toBe(expected);
+  });
+
+  /*
+   * In a call Less writes out as-is, Less writes the list's items as the call's
+   * arguments (`foo(1, 2, 3)`), where `.jess` reads `{ … }` as CSS's own argument
+   * braces (css-values-5 §3.1.1) and writes them. No owner ruling says which a
+   * CSS call writes, so the converter names it.
+   */
+  it('names a curly list in a call written out as-is', async () => {
+    expect(await render('.x { d: foo(~(1, 2), 3); }', '.less')).toBe('.x { d: foo(1, 2, 3); }');
+    expect(() => emitJess(parseLess('.x { d: foo(~(1, 2), 3); }'), { functions: LESS_FUNCTIONS })).toThrow(/a curly list in a CSS call written out as-is/);
+    expect(await render('.x { d: foo({1, 2}, 3); }', '.jess')).toBe('.x { d: foo({ 1, 2 }, 3); }');
   });
 });
 

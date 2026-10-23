@@ -8,9 +8,6 @@
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
   },
-  "packages/core/src/ast/emit-jess.ts": {
-    "statements": 531
-  },
   "packages/core/src/ast/emit-jess.ts#JessPrinter.node": {
     "statements": 49
   },

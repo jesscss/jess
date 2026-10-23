@@ -42,7 +42,10 @@ function mixinArgumentSource(value: CallValue): string {
       : value.raw;
     case 'Reference': return value.raw;
     case 'FunctionCall': return `${value.name}(${value.args.map(callArgumentSource).join(', ')})`;
-    case 'Block': return `${value.escaped ? '~' : ''}${delimiterOpen(value.delimiter)}${mixinArgumentSource(value.value)}${delimiterClose(value.delimiter)}`;
+    /* A curly list written without its braces is Less's `~( … )` (ledger P46). */
+    case 'Block': return value.escaped === true
+      ? `~(${mixinArgumentSource(value.value)})`
+      : `${delimiterOpen(value.delimiter)}${mixinArgumentSource(value.value)}${delimiterClose(value.delimiter)}`;
     case 'Branch': return `${mixinArgumentSource(value.condition)}:${isValueSlotArray(value.value) && value.value.length === 0 ? '' : ` ${mixinArgumentSource(value.value)}`}`;
     case 'Operation': return `${mixinArgumentSource(value.left)} ${value.operator} ${mixinArgumentSource(value.right)}`;
     case 'Sequence': return value.parts.map(mixinArgumentSource).join(' ');

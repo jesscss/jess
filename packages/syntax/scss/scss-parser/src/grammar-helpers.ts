@@ -300,8 +300,10 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
  * A Sass paren value. Parens Dart Sass drops when it writes the value are
  * syntax, not part of it (owner 2026-10-22: *"if they drop parens when
  * rendering, then those should be parsed as "escaped" when parsing .scss"*,
- * ledger J16's `.scss` case), so the group is the escaped group a Less
- * `~( … )` builds, written without its parens and read as what it holds:
+ * ledger J16's `.scss` case), so the group is the curly list a Less `~( … )`
+ * builds (owner 2026-10-23: *"none of the languages should be parsing to that,
+ * it should be the {} list"*), written without its delimiters and read as what
+ * it holds:
  * around a list (a comma list, a space list, a list with a trailing comma,
  * `(1,)`), and, outside a math function's arguments, around one value
  * (`(10px)`, `($l)`). Math in a group (`(1 + 2)`), and a group around one value
@@ -313,16 +315,24 @@ export function parenValue(children: readonly unknown[], state: unknown): Block 
   const value = requireValueSlot(children.find(isScssValueSlotValue));
   if (children.some(child => isToken(child) && child.value === ',')) {
     const items = !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value : list([value], ',');
-    return block(items, 'paren', true);
+    return block(items, 'curly', true);
   }
   if (isValueSlotArray(value) || value.type === 'List') {
-    return block(value, 'paren', true);
+    return block(value, 'curly', true);
   }
   if (value.type === 'Block' && value.escaped === true) {
     return value;
   }
-  return isInCalculation(state) || isIfTest(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'paren', true);
+  return isInCalculation(state) || isIfTest(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'curly', true);
 }
+
+/**
+ * Sass's empty `()`: the empty list, which Dart Sass also accepts wherever a map
+ * is expected (owner 2026-10-23: *"a Sass empty `()` would be `{}` (whilst
+ * storing the raw, so that Sass functions still work"*). It is the empty curly
+ * list, whose span records the authored `()`; `.jess` spells it `{}`.
+ */
+export const emptyParenList = (): Block => block([], 'curly', true);
 
 /* What a paren group holds when it is math or a test: the group is J16's, which the math reads and consumes. */
 const GROUP_COMPUTES: ReadonlySet<string> = new Set(['Operation', 'Expression', 'Condition']);

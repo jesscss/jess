@@ -109,7 +109,7 @@ Returns `true` when the value is an anonymous mixin or a collection (in Less
 source, a detached ruleset), `false` otherwise. The argument is evaluated lazily.
 
 ```css
-$rules: {
+$rules: #{
   color: red;
 };
 .box {

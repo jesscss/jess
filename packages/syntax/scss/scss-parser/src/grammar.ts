@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, emptyParenList, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
 import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
@@ -44,6 +44,7 @@ type ScssRules = {
   Paren: Combinator<ValueNode>;
   MapEntry: Combinator<CollectionEntry>;
   Map: Combinator<Collection>;
+  EmptyList: Combinator<Block>;
   ReturnRule: Combinator<Declaration>;
   FunctionRule: Combinator<VariableDeclaration>;
   Square: Combinator<ValueNode>;
@@ -916,36 +917,47 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * A Sass map literal `(a: 1, b: 2)` lowers to the data-only shared
-   * `Collection`; SCSS nested properties use `NestedPropertyBlock` instead.
-   * Maps are disambiguated from a paren value-list `(1 2 3)` by the `key: value`
-   * entry shape. Empty `()` and a single `(a: 1)` are both maps. This arm sits before `Paren` in the
+   * `Collection` (`.jess` `#{a: 1; b: 2}`); SCSS nested properties use
+   * `NestedPropertyBlock` instead. Maps are disambiguated from a paren
+   * value-list `(1 2 3)` by the `key: value` entry shape, so a single `(a: 1)`
+   * is a map and `()` is not (`EmptyList`). This arm sits before `Paren` in the
    * value-atom choice; when no entry carries a colon it backtracks to the paren
    * list/arithmetic form.
    */
   const Map = node<Collection>(
     'Collection',
-    choice(
-      noTrivia(sequence(
-        literal('('),
+    noTrivia(sequence(
+      literal('('),
+      optional(valueTrivia),
+      g.MapEntry,
+      many(noTrivia(sequence(
         optional(valueTrivia),
-        g.MapEntry,
-        many(noTrivia(sequence(
-          optional(valueTrivia),
-          literal(','),
-          optional(valueTrivia),
-          g.MapEntry
-        ))),
-        listTrailingComma,
+        literal(','),
         optional(valueTrivia),
-        literal(')')
-      )),
-      noTrivia(sequence(
-        literal('('),
-        optional(valueTrivia),
-        literal(')')
-      ))
-    ),
+        g.MapEntry
+      ))),
+      listTrailingComma,
+      optional(valueTrivia),
+      literal(')')
+    )),
     children => collection(children.filter(isCollectionEntry))
+  );
+
+  /*
+   * Sass's empty `()` is the empty list (Dart Sass: `list.separator(())` is
+   * `space`), which a map function also takes as the empty map. It is the empty
+   * curly list `.jess` spells `{}`, its span recording the authored `()`
+   * (owner 2026-10-23: *"a Sass empty `()` would be `{}` (whilst storing the
+   * raw, so that Sass functions still work"*).
+   */
+  const EmptyList = node<Block>(
+    'EmptyList',
+    noTrivia(sequence(
+      literal('('),
+      optional(valueTrivia),
+      literal(')')
+    )),
+    (_children, _fields, span) => withSourceSpan(emptyParenList(), span)
   );
 
   /*
@@ -1356,6 +1368,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.UnicodeRange,
       IdentifierOrFunction,
       g.Map,
+      g.EmptyList,
       g.Paren,
       g.Square,
       ParentSelector
@@ -2530,20 +2543,20 @@ const scssFactory = (g: ScssInputRules) => {
    * the map production would be the copy the standing brief forbids. It lands in
    * the shared, generic `options` carrier that `@import (inline)` also uses; a
    * per-dialect `with` field would be one boolean per quirk, one level down.
+   * `()` is the empty list (`EmptyList`), not a map.
    */
   const WithClause = node<Collection>(
     'WithClause',
     sequence(
       caseInsensitiveWord('with'),
-      g.Map
+      choice(
+        g.Map,
+        g.EmptyList
+      )
     ),
-    (children) => {
-      const config = children[1];
-      if (!isCollection(config)) {
-        throw new TypeError('SCSS @use with-clause requires a configuration map.');
-      }
-      return config;
-    }
+
+    /* An empty `with ()` configures nothing (Dart Sass rejects it; the parse continues, P45). */
+    children => isCollection(children[1]) ? children[1] : collection([])
   );
   const UseRule = node<StyleImport | ModuleImport>(
     'UseRule',
@@ -5354,6 +5367,7 @@ const scssFactory = (g: ScssInputRules) => {
     Paren,
     MapEntry,
     Map,
+    EmptyList,
     ReturnRule,
     FunctionRule,
     Square,

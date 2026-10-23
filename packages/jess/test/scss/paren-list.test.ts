@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { emitJess } from '@jesscss/core';
+import { parse as parseScss } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 
 /**
  * In `.scss`, parens around a list are list syntax, not part of the value: the
- * parser builds the escaped group a Less `~( … )` builds, so the value is the
+ * parser builds the curly list a Less `~( … )` builds, so the value is the
  * list Dart Sass reads (ledger J16, SCSS paren lists; owner 2026-10-22: *"such
  * that we can emulate dart-sass by parsing it into the right structure"*). A
  * group around one value keeps J16's rule.
@@ -106,5 +108,48 @@ describe('scss: selector.parse() rejects a list nested too deep', () => {
   ])('%s', async (_name, source) => {
     await expect(new Compiler({ compile: { functionMode: 'error' } }).renderString(source, { extension: '.scss' }))
       .rejects.toMatchObject({ reason: expect.stringContaining('is not a valid selector: it must be a string, a list of strings, or a list of lists of strings.') });
+  });
+});
+
+/*
+ * Sass's empty `()` is the empty list (owner 2026-10-23: *"a Sass empty `()`
+ * would be `{}` (whilst storing the raw, so that Sass functions still work"*):
+ * Dart Sass's `list.separator(())` is `space`, `type-of(())` is `list`, and a map
+ * function takes it as the empty map. `(a: 1)` is a map.
+ */
+describe('scss: the empty () is the empty list', () => {
+  it.each([
+    ['@use "sass:list"; .x { a: list.separator(()); b: list.length(()); c: type-of(()); }', '.x {\n  a: space;\n  b: 0;\n  c: list;\n}\n'],
+    ['@use "sass:map"; .x { a: map.has-key((), a); b: type-of(map.merge((), (z: 9))); c: map.has-key(map.merge((), (z: 9)), z); }', '.x {\n  a: false;\n  b: map;\n  c: true;\n}\n'],
+    ['@use "sass:list"; .x { a: list.separator(list.join((), (8, 9))); b: list.join([], (8, 9)); }', '.x {\n  a: comma;\n  b: [8, 9];\n}\n'],
+    ['$e: (); .x { a: length($e); b: type-of((a: 1)); }', '.x {\n  a: 0;\n  b: map;\n}\n']
+  ])('%s', async (source, expected) => {
+    await expect(render(source)).resolves.toBe(expected);
+  });
+
+  it('configures nothing with an empty `with ()`', async () => {
+    await expect(render('@use "sass:math" with (); .x { a: 1; }')).resolves.toBe('.x {\n  a: 1;\n}\n');
+  });
+});
+
+/*
+ * `.scss` → `.jess` → CSS writes what `.scss` → CSS writes: a paren list Dart
+ * Sass drops converts to `{ … }`, `(1,)` to `{1,}`, `()` to `{}` and a map to
+ * `#{ … }` (owner 2026-10-23: *"those need to be separate for Jess syntax (#{}
+ * vs {})"*).
+ */
+describe('scss → .jess → css: paren lists, the empty list and maps', () => {
+  it.each([
+    ['$a: 1; $b: 2; .x { y: ($a, $b); }', 'y: {$a, $b};'],
+    ['.x { y: ((1, 2), (3, 4)); }', 'y: {{1, 2}, {3, 4}};'],
+    ['@use "sass:list"; .x { a: list.separator((1,)); b: list.append((1,), 2); }', '$list.separator({1,})'],
+    ['@use "sass:list"; $e: (); .x { a: list.separator($e); b: list.length(()); }', '$e: {};'],
+    ['@use "sass:map"; $m: (a: 1, b: (c: 2)); .x { a: map.has-key($m, b); b: map.get($m, b, c); }', '$m: #{'],
+    ['@use "sass:list"; $l: (1, 2); .x { a: $l; b: list.length($l); c: list.index($l, 2); }', '$l: {1, 2};'],
+    ['@mixin m($x) { m: $x; } .x { @include m((1, 2)); }', '$ > m({1, 2});']
+  ])('%s', async (scss, spelling) => {
+    const jess = emitJess(parseScss(scss));
+    expect(jess).toContain(spelling);
+    await expect(new Compiler({}).renderString(jess, { extension: '.jess' })).resolves.toBe(await render(scss));
   });
 });

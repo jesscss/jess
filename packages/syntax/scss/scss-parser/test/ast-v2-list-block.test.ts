@@ -85,7 +85,7 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
     }
     expect(bare(declaration.value)).toEqual({
       type: 'Block',
-      delimiter: 'paren',
+      delimiter: 'curly',
       escaped: true,
       value: [
         { type: 'Dimension', number: 1, unit: '', src: '1' },
@@ -109,9 +109,9 @@ describe('SCSS paren values', () => {
   /* Parens around a list are list syntax (J16, SCSS paren lists, owner 2026-10-22): the escaped group `~( … )` builds. */
   it('builds the escaped group around a comma list, a trailing-comma list and parens around a list', () => {
     const commaList = { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }, { type: 'Keyword', src: 'd' }] };
-    expect(valueOf('a {b: (c, d)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: commaList });
-    expect(valueOf('a {b: (c,)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }] } });
-    expect(valueOf('a {b: ((c, d))}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: commaList });
+    expect(valueOf('a {b: (c, d)}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: commaList });
+    expect(valueOf('a {b: (c,)}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'c' }] } });
+    expect(valueOf('a {b: ((c, d))}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: commaList });
   });
 
   /*
@@ -120,8 +120,8 @@ describe('SCSS paren values', () => {
    * in a Sass calculation or a CSS `if()` condition, where Dart Sass writes them.
    */
   it('escapes a group around one value outside a calculation and an if() condition', () => {
-    expect(valueOf('a {b: ($c)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: { type: 'Lookup' } });
-    expect(valueOf('a {b: (10px)}')).toMatchObject({ type: 'Block', delimiter: 'paren', escaped: true, value: { type: 'Dimension' } });
+    expect(valueOf('a {b: ($c)}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'Lookup' } });
+    expect(valueOf('a {b: (10px)}')).toMatchObject({ type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'Dimension' } });
   });
 
   it('keeps the plain group around math, and around one value in calc() and an if() condition', () => {

@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { JessArithmeticOutsideExpressionError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
 import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg, queryFeatureNameValue } from '@jesscss/core/ast';
-import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, FunctionCall, IfValue, IfValueBranch } from '@jesscss/core/ast';
+import type { Any, Block, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, FunctionCall, IfValue, IfValueBranch } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string; readonly start: number };
@@ -1058,6 +1058,40 @@ function enterTestValue(state: unknown): object {
   return typeof state === 'object' && state !== null ? { ...state, testValue: true } : { testValue: true };
 }
 
+/**
+ * Whether the parse is reading a CSS call's arguments (a call written without
+ * `$`), where a `{ … }` argument is CSS's own (css-values-5 §3.1.1) and keeps
+ * its braces when the call is written out.
+ */
+function isCssCall(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'cssCall' in state && state.cssCall === true;
+}
+
+/** The parse state inside a CSS call's arguments. */
+function enterCssCall(state: unknown): object {
+  return typeof state === 'object' && state !== null ? { ...state, cssCall: true } : { cssCall: true };
+}
+
+/** The parse state of a `.jess` call's or a mixin call's arguments: the state it had outside, unchanged when it was not set. */
+function leaveCssCall(state: unknown): unknown {
+  return isCssCall(state) && typeof state === 'object' && state !== null ? { ...state, cssCall: false } : state;
+}
+
+/**
+ * `{ … }`: the curly list, a list passed as one value (owner 2026-10-09 and
+ * 2026-10-23; ledger P46), the node Less `~( … )` and a Sass paren list build.
+ * Its braces are pass syntax, so it is written as what it holds, except as an
+ * argument of a CSS call, where they are CSS's own (css-values-5 §3.1.1) and are
+ * written. `{}` is the empty list, and a trailing comma makes a comma list
+ * (`{1,}`).
+ */
+function curlyListFrom(children: readonly unknown[], span: Span, state: unknown): Block {
+  const value = children.find(isJessValueSlotValue) ?? [];
+  const comma = children.some(child => isToken(child) && child.value === ',');
+  const items = comma && (isValueSlotArray(value) || value.type !== 'List' || value.sep !== ',') ? list([value], ',') : value;
+  return withSourceSpan(block(items, 'curly', !isCssCall(state)), span);
+}
+
 /** The parse state of a value inside an `if()` call that is not a condition: the state it had outside, unchanged when it was not set. */
 function leaveIfTest(state: unknown): unknown {
   return isIfTest(state) && typeof state === 'object' && state !== null ? { ...state, ifTest: false } : state;
@@ -1260,6 +1294,9 @@ export {
   isIfTest,
   enterIfTest,
   leaveIfTest,
+  enterCssCall,
+  leaveCssCall,
+  curlyListFrom,
   isTestValue,
   enterTestValue,
   genericCallFrom,

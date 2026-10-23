@@ -4581,7 +4581,7 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               value: {
                 type: 'Block',
-                delimiter: 'paren',
+                delimiter: 'curly',
                 escaped: true,
                 value: {
                   type: 'List',
@@ -4598,7 +4598,7 @@ describe('Less AST grammar facts', () => {
               type: 'For',
               iterable: {
                 type: 'Block',
-                delimiter: 'paren',
+                delimiter: 'curly',
                 escaped: true,
                 value: [
                   { type: 'Dimension' },
@@ -6880,7 +6880,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: {
                     type: 'Block',
-                    delimiter: 'paren',
+                    delimiter: 'curly',
                     escaped: true,
                     value: {
                       type: 'List',
@@ -6896,7 +6896,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: {
                     type: 'Block',
-                    delimiter: 'paren',
+                    delimiter: 'curly',
                     escaped: true,
                     value: {
                       type: 'List',

@@ -238,7 +238,7 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
     ['scss', '%p { c: d; }\na { @extend %p; }\n'],
     ['css', sheet('attr(data-x type(<length> | <percentage>), 0px)')],
     ['jess', 'a { x: $(1 == 2); }\n'],
-    ['jess', '$m: { a: 1 };\na { x: $m.a; }\n'],
+    ['jess', '$m: #{ a: 1 };\na { x: $m.a; }\n'],
     ['jess', '$a: 2;\na { x: $($a > 1); }\n'],
     ['jess', sheet('foo(a:b)')]
   ] as const)('%s: %s', (dialect, source) => {

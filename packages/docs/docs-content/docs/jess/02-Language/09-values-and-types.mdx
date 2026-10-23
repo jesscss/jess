@@ -58,6 +58,24 @@ A URL is a unique value that's different from a CSS function because it has spec
 - Type: `<number>#`
 - Example: `1, 2, 3`
 
+### Curly list
+
+A list passed as **one** value, wherever a comma would otherwise separate arguments: `{1px, 2px}`.
+The braces are syntax, not part of the value, so a curly list is written as what it holds
+(`a: {1, 2}` writes `a: 1, 2`) and a function or mixin reads it as one list argument
+(`$length({1, 2, 3})` is `3`). `{}` is the empty list, and a trailing comma makes a one-item comma list
+(`{1,}`).
+
+- Type: `<list>`
+- Example: `$ > shadow({0 1px 2px black, 0 0 4px red});`
+
+This is the CSS syntax for a comma-containing argument
+([CSS Values 5 §3.1.1](https://drafts.csswg.org/css-values-5/#component-function-commas);
+[CSS Custom Functions and Mixins 1](https://drafts.csswg.org/css-mixins-1/#using-custom-functions):
+`--max-plus-x({ 1px, 7px, 2px }, 3px)`). In a plain CSS call, such as a custom function, Jess writes the
+braces as you wrote them. The same list is written `~(1px, 2px)` in Less and `(1px, 2px)` in Sass, and
+all three parse to the same node. A map is a [collection](#collection), `#{ … }`, never `{ … }`.
+
 ## Jess value types
 
 ### Bool
@@ -79,10 +97,10 @@ By design, a collection sits in a perfect syntax space between a JS object and a
 - Type: `<collection>`
 - Example:
 ```
-{
+#{
   a: 1;
   b: 2;
-  c: {
+  c: #{
     d: 3;
     e: 4;
     f: 5;
