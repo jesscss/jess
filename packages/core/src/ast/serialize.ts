@@ -212,7 +212,7 @@ import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAs
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
-import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMember, moduleMemberName, moduleMembers, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
@@ -1526,10 +1526,11 @@ function bindModuleCallable(
 }
 
 function requireModuleExport(module: Readonly<Record<string, unknown>>, name: string): unknown {
-  if (!Object.prototype.hasOwnProperty.call(module, name)) {
+  const member = moduleMember(module, name);
+  if (member === undefined) {
     throw new TypeError(`Module has no export named "${name}".`);
   }
-  return module[name];
+  return member.value;
 }
 
 function bindModuleNamespace(
@@ -1539,7 +1540,7 @@ function bindModuleNamespace(
   e: Lane
 ): void {
   const values: Record<string, unknown> = {};
-  for (const [name, value] of Object.entries(module)) {
+  for (const [name, value] of moduleMembers(module)) {
     if (isModuleCallable(value)) {
       addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`), e);
     } else {
@@ -1564,7 +1565,7 @@ function bindModuleImport(
       throw new TypeError(`@-use "${node.path.value}" cannot derive a namespace; add an explicit "as <name>".`);
     }
     if (namespace === '*') {
-      for (const [name, value] of Object.entries(module)) {
+      for (const [name, value] of moduleMembers(module)) {
         if (isModuleCallable(value)) {
           bindModuleCallable(frame, name, value, e);
         } else {

@@ -170,18 +170,55 @@ function cancel(u: UnitSet): void {
 }
 
 /**
- * Compose `b`'s unit multiset into `a`'s under `*` or `/`, then cancel — the
- * shared half of `*`/`/` unit arithmetic.
+ * Cancel each of `nums` against a unit of `dens` that `match` accepts, removing
+ * both; returns the factor the value takes (`in` over `px` is `96`).
  */
-function composeUnits(u: UnitSet, bu: UnitSet, op: string): void {
-  if (op === '*') {
-    u.num = u.num.concat(bu.num);
-    u.den = u.den.concat(bu.den);
-  } else {
-    u.num = u.num.concat(bu.den);
-    u.den = u.den.concat(bu.num);
+function cancelAcross(nums: string[], dens: string[], match: (n: string, d: string) => boolean): number {
+  let factor = 1;
+  for (let i = 0; i < nums.length;) {
+    const n = nums[i]!;
+    const j = dens.findIndex(d => match(n, d));
+    if (j === -1) {
+      i++;
+      continue;
+    }
+    factor *= convertValue(1, n, dens[j]!);
+    nums.splice(i, 1);
+    dens.splice(j, 1);
   }
+  return factor;
+}
+
+const sameUnit = (n: string, d: string): boolean => n === d;
+
+/**
+ * Dart Sass's unit cancellation: a unit cancels the same unit first, then a
+ * different unit of its conversion group (`1px * 1pt / 1px` is `1pt`,
+ * `6in / 3px` is `192`).
+ */
+function cancelConvertible(num: string[], den: string[], incomingNum: string[], incomingDen: string[]): number {
+  cancelAcross(num, incomingDen, sameUnit);
+  cancelAcross(incomingNum, den, sameUnit);
+  return cancelAcross(num, incomingDen, convertible) * cancelAcross(incomingNum, den, convertible);
+}
+
+/**
+ * Compose `b`'s unit multiset into `a`'s under `*` or `/`, then cancel — the
+ * shared half of `*`/`/` unit arithmetic. Returns the factor the value takes.
+ *
+ * With `sassUnits` (`.scss`, ledger V32: SCSS computation follows Dart Sass) a
+ * unit also cancels against a different unit of its conversion group, as
+ * Dart Sass's `/` and `*` do (`6in / 3px` → `192`). Elsewhere only the same
+ * unit cancels (V18): `6in / 3px` has no CSS unit.
+ */
+function composeUnits(u: UnitSet, bu: UnitSet, op: string, sassUnits: boolean): number {
+  const num = op === '*' ? bu.num.slice() : bu.den.slice();
+  const den = op === '*' ? bu.den.slice() : bu.num.slice();
+  const factor = sassUnits ? cancelConvertible(u.num, u.den, num, den) : 1;
+  u.num = u.num.concat(num);
+  u.den = u.den.concat(den);
   cancel(u);
+  return factor;
 }
 
 /**
@@ -303,7 +340,7 @@ export function findFinalValue(value: ValueGroup, test: (value: Value) => boolea
  * `strictUnits` and Sass do: `strict` rejects only two different real units
  * (owner 2026-10-06, ledger V27).
  */
-function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
+function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes, sassUnits: boolean): Dimension {
   const isStrict = modes.unitMode === 'strict';
   if (b.number === 0 && op === '/') {
     throw new DivisionByZeroError(`${a.bytes} / ${b.bytes}`);
@@ -339,7 +376,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       throw incompatibleUnits(a, b);
     }
   } else if (op === '*' || op === '/') {
-    composeUnits(u, bu, op);
+    value *= composeUnits(u, bu, op, sassUnits);
   }
 
   const unit = displayUnit(u);
@@ -746,7 +783,8 @@ export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup
 }
 
 /**
- * Binary operation. Guard order (byte-faithful):
+ * Binary operation. `sassUnits` is `.scss`'s unit rule for `*` and `/`
+ * ({@link composeUnits}). Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc);
  *      kept math splices its arithmetic ({@link keptMath}),
  *   2. an un-operable keyword operand → preserve source `l op r`,
@@ -759,7 +797,7 @@ export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup
  * as written), and any other operation — inside a `$( … )` or a variable that a
  * `calc()` reads — answers `unitMode` exactly as it does anywhere else.
  */
-export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
+export function operate(op: string, left: Value, right: Value, modes: EvalModes, sassUnits = false): Value {
   /*
    * Guard 1: calc-wrapper keyword operand → flat calc splice.
    * byte-faithful: opaque operand, no structured node — at the seam a calc
@@ -835,7 +873,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
    */
   try {
     if (left.type === 'Dimension' && right.type === 'Dimension') {
-      return dimensionOperate(left, right, op, modes);
+      return dimensionOperate(left, right, op, modes, sassUnits);
     }
     if (left.type === 'Dimension' && right.type === 'Color') {
       return dimensionAsColor(left, right, op);

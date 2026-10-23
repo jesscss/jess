@@ -98,13 +98,10 @@ own unit rule.
 
 ### Module Variables
 - `$e`, `$pi`, `$epsilon`
+- `$max-safe-integer`, `$min-safe-integer`, `$max-number`, `$min-number`
 
-A module's non-function exports are its variables (`sass/math/constants.ts`).
-
-### TODO: Module Variables
-- `$max-safe-integer`, `$min-safe-integer`, `$max-number`, `$min-number`: a
-  hyphenated export name needs `export { x as 'max-number' }`, which published
-  declarations cannot carry for TypeScript before 5.6.
+A module's non-function exports are its variables (`sass/math/constants.ts`);
+the hyphenated ones are entries of its member table export, `$members`.
 
 ## String Module (`sass/string/index.ts`)
 

@@ -43,7 +43,8 @@ const computes: ReadonlyArray<readonly [section: string, source: string, expecte
   ['div.hrx § unitless/named', 'math.div($number2: 3, $number1: 6)', '2'],
   ['div.hrx § unit/numerator', 'math.div(6px, 3)', '2px'],
   ['div.hrx § unit/denominator', 'math.div(6, 3px) * 1px', '2'],
-  ['div.hrx § unit/same', 'math.div(6px, 3px)', '2']
+  ['div.hrx § unit/same', 'math.div(6px, 3px)', '2'],
+  ['div.hrx § unit/compatible', 'math.div(6in, 3px)', '192']
 ];
 
 describe('sass:math members compute as in Dart Sass', () => {
@@ -55,9 +56,34 @@ describe('sass:math members compute as in Dart Sass', () => {
     await expect(render('10 + math.pow(10, -11)')).resolves.toBe('a {\n  b: 10;\n}\n');
   });
 
+  /* variables.hrx's values, read through `@use … as *` (the spec reads them as `math.$e`). */
   it('binds the module variables for `@use … as *`', async () => {
-    const css = await new Compiler({}).renderString('@use "sass:math" as *;\na {b: $pi * 1e15; c: $e * 1e15}', { extension: '.scss' });
-    expect(css).toBe('a {\n  b: 3141592653589793;\n  c: 2718281828459045;\n}\n');
+    const source = '@use "sass:math" as *;\na {b: $pi * 1e15; c: $e * 1e15; d: $max-safe-integer; e: $min-safe-integer; f: $max-number}';
+    await expect(new Compiler({}).renderString(source, { extension: '.scss' })).resolves.toBe(
+      `a {\n  b: 3141592653589793;\n  c: 2718281828459045;\n  d: 9007199254740991;\n  e: -9007199254740991;\n  f: 1797693134862315${'7'.padEnd(293, '0')};\n}\n`
+    );
+  });
+});
+
+/*
+ * `.scss` `/` and `*` cancel units of one conversion group as Dart Sass does
+ * (ledger V32); Less keeps a ratio of two different units as written (V18).
+ * Inputs from sass-spec `libsass/units/conversion/size.hrx`.
+ */
+describe('.scss cancels units of one conversion group', () => {
+  it.each([
+    ['(4.2px / 1pt)', '3.15'],
+    ['(4.2px * 1pt / 1px)', '4.2pt'],
+    ['(4.2pc / 1px)', '67.2'],
+    ['(4.2px / 1in)', '0.04375']
+  ])('%s', async (source, expected) => {
+    await expect(new Compiler({}).renderString(`.result {output: ${source}}`, { extension: '.scss', suppressWarnings: true }))
+      .resolves.toBe(`.result {\n  output: ${expected};\n}\n`);
+  });
+
+  it('Less keeps (4.2px / 1pt) as written', async () => {
+    await expect(new Compiler({}).renderString('.result {output: (4.2px / 1pt)}', { extension: '.less', suppressWarnings: true }))
+      .resolves.toBe('.result {\n  output: calc(4.2px / 1pt);\n}\n');
   });
 });
 

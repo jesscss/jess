@@ -12,8 +12,8 @@ const number = (item: ValueGroup, name: string): Dimension => {
  * is the `/` operator.
  *
  * Dart Sass defines `math.div` as its `/` operator, so this is the same
- * division an `.scss` `/` that computes performs (`operate`), under the
- * compile's unit mode:
+ * division an `.scss` `/` that computes performs (`operate` with `.scss`'s unit
+ * rule), under the compile's unit mode:
  *   math.div(6, 5)      → 1.2
  *   math.div(6px, 3)    → 2px
  *   math.div(6px, 3px)  → 2
@@ -27,10 +27,9 @@ const number = (item: ValueGroup, name: string): Dimension => {
  * `.scss` colour math an error here as V36 has it for operators, where the
  * shared `/` would compute `red / 2`.
  *
- * Compatible units do not cancel (`math.div(6in, 3px)` → `calc(6in / 3px)`,
- * Dart Sass `192`): that is the `.scss` `/` operator's rule, shared, and not
- * decided here. A division by zero fails the call (ledger V7), where Dart Sass
- * writes `calc(infinity)`.
+ * Units of one conversion group cancel, as in the `.scss` `/` (ledger V32):
+ * `math.div(6in, 3px)` → `192`. A division by zero fails the call (ledger V7),
+ * where Dart Sass writes `calc(infinity)`.
  */
 const div = defineFunction('div', {
   params: [
@@ -43,7 +42,7 @@ const div = defineFunction('div', {
     if (items.length !== 2) {
       throw new TypeError(items.length < 2 ? `Missing argument $number${items.length + 1}.` : `Only 2 arguments allowed, but ${items.length} were passed.`);
     }
-    return operate('/', number(items[0]!, 'number1'), number(items[1]!, 'number2'), ctx.modes);
+    return operate('/', number(items[0]!, 'number1'), number(items[1]!, 'number2'), ctx.modes, true);
   }
 });
 
