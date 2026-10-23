@@ -56,9 +56,9 @@ function escapeBareQuote(text: string, quote: string): string {
  * left: the operands before the first literal stay one sum (`1 + 2 + "a"` is
  * `"$(1 + 2)a"`), each one after it is interpolated (`"a" + 1 + 2` is
  * `"a$(1)$(2)"`). The result is quoted as its first literal, unless a word or
- * an interpolation before it makes it unquoted; that is decided here, so a
- * variable before the literal that holds an unquoted string still gives a
- * quoted result. The quote is the first literal's, or the other one where a
+ * an interpolation before it makes it unquoted; a leading operand only
+ * evaluation knows (`$prefix + "-x"`) decides it there (`leadQuoting`).
+ * The quote is the first literal's, or the other one where a
  * literal holds that one bare and not the other. A chain with `-`, with no
  * literal, or inside a math function's arguments (a calculation) is math
  * ({@link scssFoldOperation}; ledger V36).
@@ -94,5 +94,7 @@ export function scssSum(children: readonly unknown[], span: AstSourceSpan, state
       }
     }
   }
-  return quoted(authoredSource(span, state, 'An SCSS string built with +'), texts.join(''), quote, unquoted, interpolation(parts));
+  const template = interpolation(parts);
+  const leadQuoting = first === 1 && lead.type !== 'Keyword' && lead.type !== 'Interpolation' && lead.type !== 'Dimension' && lead.type !== 'Color' && lead.type !== 'Null';
+  return quoted(authoredSource(span, state, 'An SCSS string built with +'), texts.join(''), quote, unquoted, leadQuoting ? { ...template, leadQuoting: true } : template);
 }

@@ -737,8 +737,10 @@ class JessPrinter {
          * hold a `$` that `.jess` would read as one.
          */
         const text = node.interp === null ? node.value : node.interp.parts.map(part => 'lit' in part ? part.lit : '').join('');
-        if (/\$[[({]/u.test(text)) {
-          return gap('Quoted', 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
+        if (/\$[[({]/u.test(text) || node.interp?.leadQuoting === true) {
+          return gap('Quoted', node.interp?.leadQuoting === true
+            ? 'an `.scss` string built with `+` that takes its quoting from a value known at evaluation: `.jess` strings have their own quotes'
+            : 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
         }
         return node.interp === null
           ? node.src

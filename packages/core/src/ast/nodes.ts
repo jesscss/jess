@@ -536,6 +536,13 @@ export type InterpPart = { lit: string } | { ref: ValueNode; unquote: boolean };
 export interface Interpolation extends SpanSlots {
   readonly type: 'Interpolation';
   readonly parts: InterpPart[];
+
+  /**
+   * Set only on an `.scss` string built with `+` whose leading operand is only
+   * known at evaluation (`$prefix + "-x"`; ledger V36): the string takes its
+   * quoting from that operand's value, as Dart Sass does. Absent otherwise.
+   */
+  readonly leadQuoting?: true;
 }
 
 /**

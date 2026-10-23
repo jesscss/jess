@@ -207,7 +207,7 @@ import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bi
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -6249,7 +6249,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
            * function's and a written-out call's arguments keep such math as
            * written rather than reject it ({@link Lane.keepsMath}).
            */
-          return checkedOperation(node.operator, values[0]!, values[1]!, ev.sassOperands === true, e.keepsMath || (e.calcDepth ?? 0) > 0)
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev.sassOperands === true, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens))
             ?? rememberUnitOwner(ev.operate(
               node.operator,
               spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e),
@@ -6465,7 +6465,7 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePro
 
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    pieces.push('lit' in part ? part.lit : part.unquote ? unquotedRef(part.ref, frame, ei) : evalValue(part.ref, frame, ei));
+    pieces.push('lit' in part ? part.lit : part.unquote ? evalTyped(part.ref, frame, ei, false, ARG_SPLICE) : evalValue(part.ref, frame, ei));
   }
   return combineAll(pieces, (values) => {
     let bytes = '';
@@ -6508,11 +6508,11 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePro
           return value;
         }
       }
-      bytes += emitSplice(value);
+      bytes += emitSplice(part.unquote && !isLiteral(value) && !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : value);
     }
     return elided && values.length > 0
       ? NULL
-      : literal(resolveEmergentInterp(bytes, frame, ei));
+      : quotedFromLead(node.leadQuoting === true ? values[0] : undefined, literal(resolveEmergentInterp(bytes, frame, ei)));
   });
 }
 

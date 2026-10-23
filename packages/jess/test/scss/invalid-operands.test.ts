@@ -49,6 +49,23 @@ describe('scss: a + chain with a string literal is the string it builds', () => 
     expect(shape(scss.rules[0].value)).toEqual(shape(jess.rules[0].value));
   });
 
+  /*
+   * A leading operand only evaluation knows gives the quoting, as in Dart Sass:
+   * an unquoted string an unquoted result, a quoted one a quoted result.
+   */
+  it.each([
+    ['$prefix: btn; .a { b: $prefix + "-primary"; }', '.a {\n  b: btn-primary;\n}\n'],
+    ['$prefix: "btn"; .a { b: $prefix + "-primary"; }', '.a {\n  b: "btn-primary";\n}\n'],
+    ['$gap: 1rem; .a { b: $gap + " auto"; }', '.a {\n  b: "1rem auto";\n}\n'],
+    ['$open: "("; .a { b: $open + unquote("x"); }', '.a {\n  b: "(x";\n}\n']
+  ])('takes its quoting from a leading variable: %s', async (source, expected) => {
+    await expect(render(source)).resolves.toBe(expected);
+  });
+
+  it('has no .jess spelling when a leading variable decides its quoting', () => {
+    expect(() => emitJess(parseScss('$prefix: btn; .a { b: $prefix + "-primary"; }'))).toThrow(/quoting from a value known at evaluation/);
+  });
+
   it('writes a quote a literal holds in the other quote', async () => {
     await expect(render(`.a { b: "a" + 'b"c'; c: 'it' + "'s"; }`)).resolves.toBe(`.a {\n  b: 'ab"c';\n  c: "it's";\n}\n`);
   });
@@ -169,7 +186,7 @@ describe('jess: no string +', () => {
 describe('scss → jess: a built string is the .jess interpolated string', () => {
   it.each([
     ['$t: 10s; .a { b: "Elapsed: " + $t; }', '"Elapsed: $($t)"'],
-    ['$a: 0.75rem; $b: 2px; .a { b: $a + unquote(" + ") + $b; }', '~"$($a) + $($b)"'],
+    ['$b: 2px; .a { b: 0.75rem + unquote(" + ") + $b; }', '~"$(0.75rem) + $($b)"'],
     ['$b: 2px; .a { b: unquote("(") + $b + unquote(")"); }', '~"($($b))"'],
     ['.a { b: unquote("x"); }', '~"x"'],
     ['$t: 10s; .a { c: $t * 2; d: ($t + 1s) * 2; }', '$($t * 2)']
@@ -187,9 +204,21 @@ describe('less: math on a keyword, a call written out as-is or a string fails wh
     '.a { b: (var(--x) + 1px); }',
     '.a { b: (~"a" + 1); }',
     '.a { b: ("a" + 1); }',
-    '.a { b: (foo * 2); }'
+    '.a { b: (foo * 2); }',
+    '.a { b: (1 + true); }',
+    '.a { b: (url(a.png) + 1); }',
+    '.a { b: (foo / 2); }',
+    '.a { b: (foo - 1); }'
   ])('%s', async (source) => {
     await expect(render(source, '.less')).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+
+  /* Where a slash is CSS's separator it is not division (less.js `css-grid`, `css-3` under `math: always`). */
+  it('leaves a separating slash alone', async () => {
+    const source = '.a { grid-column: container-left / span 1; background: url(x.svg) 0 0 / contain; }';
+    const expected = '.a {\n  grid-column: container-left / span 1;\n  background: url(x.svg) 0 0 / contain;\n}\n';
+    await expect(render(source, '.less')).resolves.toBe(expected);
+    await expect(new Compiler({ compile: { mathMode: 'always' } }).renderString(source, { extension: '.less' })).resolves.toBe(expected);
   });
 
   it('leaves math in calc() and math Less does not compute as written', async () => {
