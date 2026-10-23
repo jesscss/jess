@@ -605,12 +605,14 @@ describe('OPERATIONS §4.4 — truthiness is EMPTINESS, not zero-ness', () => {
 
     /*
      * The `()` row. §12.6 rules that in `.jess` a paren is a literal paren and
-     * NOT a list — `(1 2)` lowers to bare `1 2` — so the empty list/map this row
-     * means is spelled `{}`, the empty Collection, and `()` itself is a parse
-     * error in value position. `.scss` still spells it `()`, and that row is
-     * asserted in the Sass+ table below.
+     * NOT a list — `(1 2)` lowers to bare `1 2` — so the empty list this row
+     * means is spelled `{}`, the empty curly list, and the empty map `#{}`
+     * (ledger P31); `()` itself is a parse error in value position. `.scss`
+     * still spells it `()`, the same empty curly list, and that row is asserted
+     * in the Sass+ table below.
      */
     await expect(jessTruthy('{}')).resolves.toBe(false);
+    await expect(jessTruthy('#{}')).resolves.toBe(false);
 
     /*
      * The `[]` row (§12.6c). A bracketed list is a list, so the EMPTY one is
@@ -624,7 +626,7 @@ describe('OPERATIONS §4.4 — truthiness is EMPTINESS, not zero-ness', () => {
   });
 
   it('`.jess` — `0` and every other non-empty value is TRUTHY', async () => {
-    for (const v of ['true', '0', '0px', '0%', '"0"', '1', '-1', '0.0', '1em', 'red', '#000', 'transparent', 'rgba(0,0,0,0)', 'none', 'a', 'inherit', '"false"', '{a: b}']) {
+    for (const v of ['true', '0', '0px', '0%', '"0"', '1', '-1', '0.0', '1em', 'red', '#000', 'transparent', 'rgba(0,0,0,0)', 'none', 'a', 'inherit', '"false"', '#{a: b}', '{a, b}']) {
       await expect(jessTruthy(v), `${v} must be truthy`).resolves.toBe(true);
     }
   });

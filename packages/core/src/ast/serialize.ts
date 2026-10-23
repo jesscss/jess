@@ -166,6 +166,7 @@ import {
   EmptyOperandError,
   IncomparableOperandsError,
   InvalidOperandError,
+  EmptyListValueError,
   emitValue,
   readText,
   delimiterClose,
@@ -227,6 +228,7 @@ import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, 
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
+import { writtenListValue, writtenResult } from './empty-list.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
@@ -6030,7 +6032,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * escapes the delimiters at emission time.
        */
       if (node.escaped) {
-        return evalValueSlot(node.value, frame, e);
+        return evalValueSlot(writtenListValue(node, e.s), frame, e);
       }
       const computation = node.delimiter === 'paren' ? groupComputation(node, frame, e) : null;
       const reached = node.delimiter === 'paren' && e.reached && groupsOneValue(node);
@@ -6262,8 +6264,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
         }
       });
     }
+
+    /* An empty list a call or a reference yields in `.scss` and `.jess` writes no CSS value (ledger P51). */
     case 'FunctionCall':
-      return evalCall(node, frame, e, false);
+      return e.ev?.sassOperands === true ? mapMaybe(evalCall(node, frame, e, false), value => writtenResult(value, node, e.s)) : evalCall(node, frame, e, false);
     case 'IfValue': {
       const unlowered = unloweredCall(node);
       if (unlowered !== null) {
@@ -6280,7 +6284,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Interpolation':
       return evalInterp(node, frame, e);
     case 'Reference':
-      return evalReference(node, frame, e);
+      return e.ev?.sassOperands === true ? mapMaybe(evalReference(node, frame, e), value => writtenResult(value, node, e.s)) : evalReference(node, frame, e);
     case 'Range': {
       const values = [evalValue(node.start, frame, e), evalValue(node.end, frame, e)];
       if (node.step !== null) {
@@ -6307,7 +6311,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
 /**
  * A {@link Collection} reaching a value/arg position — an SCSS map literal
  * (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a function, or
- * the authorable Jess collection `$m: { a: 1; b: 2 }` — evaluates to the
+ * the authorable Jess collection `$m: #{ a: 1; b: 2 }` — evaluates to the
  * value-domain map (`value-eval.ts` `Collection`). SCSS nested-property syntax
  * uses a distinct `NestedPropertyBlock`; it never projects structural entries
  * into this data-only value type.
@@ -9393,15 +9397,10 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   if (error instanceof JessError) {
     throw error;
   }
-  const reason = error instanceof JessError
-    ? error.message
-    : error instanceof Error
-      ? error.message
-      : String(error);
-  throw ERR.invalidFunction({
+  throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
     ...callSiteLocation(node, e.s),
-    meta: { name: node.name, reason }
+    meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
   });
 }
 
@@ -22180,8 +22179,9 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: Lane): May
         [{ bytes: `${node.name}(${content})`, protected: true }]);
     }
     case 'Block': {
-      const open = delimiterOpen(node.delimiter);
-      const close = delimiterClose(node.delimiter);
+      /* A curly list Less wrote `~( … )` keeps the parens it was written here before it was the curly list (ledger P51). */
+      const open = node.escaped === true ? '(' : delimiterOpen(node.delimiter);
+      const close = node.escaped === true ? ')' : delimiterClose(node.delimiter);
       if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
         return mapMaybe(evalBytes(node.value, frame, e), content =>
           [{ bytes: `${open}${content}${close}`, protected: true }]);

@@ -129,7 +129,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
         { name: 'result', value: { type: 'Operation', operator: '+', right: { type: 'Operation', operator: '*' } } },
         { name: 'neg', value: { type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' } } },
-        { name: 'pos', value: { type: 'Block', delimiter: 'paren', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' } } },
+        { name: 'pos', value: { type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' } } },
         { name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { name: 'ratio', value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } },
         { name: 'grouped', value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } } },

@@ -769,7 +769,7 @@ describe('collectTolerantDiagnostics', () => {
   it('reports same-file unused variables in dialect stylesheets', () => {
     const less = '@used: red; @unused: blue; .a { color: @used; }';
     const scss = '$used_name: red; $used-name: green; $unused: blue; .a { color: $used-name; }';
-    const jess = '$used: red; $unused: blue; $tokens: { tone: blue; }; .a { color: $used; }';
+    const jess = '$used: red; $unused: blue; $tokens: #{ tone: blue; }; .a { color: $used; }';
 
     const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
     const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
@@ -991,7 +991,7 @@ describe('collectTolerantDiagnostics', () => {
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';
-    const jess = '$tokens: { tone: blue; gap: 1px; };\n.a { color: $tokens[0]; bg: $tokens[tone]; dyn: $tokens[$key]; }\n$tokens: red;\n.b { color: $tokens[0]; }';
+    const jess = '$tokens: #{ tone: blue; gap: 1px; };\n.a { color: $tokens[0]; bg: $tokens[tone]; dyn: $tokens[$key]; }\n$tokens: red;\n.b { color: $tokens[0]; }';
 
     const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
     const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
@@ -1015,7 +1015,7 @@ describe('collectTolerantDiagnostics', () => {
   });
 
   it('warns for provable duplicate Jess collection keys without guessing about spreads or dynamic keys', () => {
-    const source = '$m: { a: 1; [a]: 2; ["a"]: 3; [#c6538c]: 4; [#fff]: 5; [#ffffff]: 6; [1]: 7; [1.0]: 8; ["red"]: 9; red: 10; [#ff0000]: 11; null: 12; [null]: 13; [null]: 14; [$key]: 15; [$key]: 16; ["${key}"]: 17; ["${key}"]: 18; ...$other; };';
+    const source = '$m: #{ a: 1; [a]: 2; ["a"]: 3; [#c6538c]: 4; [#fff]: 5; [#ffffff]: 6; [1]: 7; [1.0]: 8; ["red"]: 9; red: 10; [#ff0000]: 11; null: 12; [null]: 13; [null]: 14; [$key]: 15; [$key]: 16; ["${key}"]: 17; ["${key}"]: 18; ...$other; };';
     const result = collectTolerantDiagnostics({ source, language: 'jess' });
     const duplicates = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys);
 
@@ -1032,7 +1032,7 @@ describe('collectTolerantDiagnostics', () => {
 
     /* Each key is read from the typed node the grammar built, never re-classified from its text. */
     expect(collectTolerantDiagnostics({
-      source: '$m: { [1px]: 1; [-1px]: 2; [1PX]: 3; [50%]: 4; [50%]: 5; [1e3]: 6; [1000]: 7; [a b]: 8; [a b]: 9; };',
+      source: '$m: #{ [1px]: 1; [-1px]: 2; [1PX]: 3; [50%]: 4; [50%]: 5; [1e3]: 6; [1000]: 7; [a b]: 8; [a b]: 9; };',
       language: 'jess'
     }).diagnostics
       .filter(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)

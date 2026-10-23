@@ -1,8 +1,8 @@
 $value: something;
 
-$collection: {
-  foo: {
-    bar: {
+$collection: #{
+  foo: #{
+    bar: #{
       deeper: collection;
     };
   };

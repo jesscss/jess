@@ -403,13 +403,28 @@ export function colorAlphaSlash(node: FunctionCall): Operation | null {
 /**
  * A delimiter-bearing value, e.g. `(#aaa * 3)`, `[a, b]` or the css-values-5
  * §3.1.1 `{}`-wrapped argument `{a, b}` (`curly`).
+ *
+ * A `curly` Block is the CURLY LIST: a list passed as one value or argument.
+ * Every dialect's spelling of that parses to it (owner 2026-10-09: *"we need a
+ * CurlyList AST node, sounds like... or a curly option for a List node"*;
+ * 2026-10-23: *"none of the languages should be parsing to that, it should be
+ * the {} list"*): css's `{a, b}` argument, Less `~(a, b)` and a `;` mixin
+ * argument group (P46), a Sass paren list Dart Sass writes without its parens
+ * and Sass's empty `()`, and `.jess` `{a, b}`. Delimiters are a `Block` fact,
+ * never a {@link List} flag, so the curly list is this node rather than a second
+ * list shape.
  */
 export interface Block extends SpanSlots {
   readonly type: 'Block';
   readonly value: ValueSlot;
   readonly delimiter: BlockDelimiter;
 
-  /** Less `~(...)` emits without the authored delimiters. */
+  /**
+   * The delimiters are pass syntax, not part of the value: the group is written
+   * as what it holds and read as that. Set on a curly list whose braces are not
+   * CSS's own (Less `~( … )`, a `;` group, a Sass paren list, `.jess` `{ … }`
+   * outside a CSS call's arguments); css's `{a, b}` argument keeps its braces.
+   */
   readonly escaped?: boolean;
 }
 

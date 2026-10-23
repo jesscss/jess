@@ -115,7 +115,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'mixins', name: 'guard: default()', src: '.m($x) when (default()) { w: $x; }', supported: true, origin: 'less' },
   { group: 'mixins', name: 'default parameter value', src: '.m($x: dark) { c: black; }', supported: true, origin: 'less' },
   { group: 'mixins', name: 'namespaced call', src: '#ns() { .m() { c: red; } }\n.a { $ > #ns > .m(); }', supported: true, origin: 'less' },
-  { group: 'mixins', name: 'anonymous-mixin declaration', src: '$d: { color: red; };', supported: true, origin: 'less' },
+  { group: 'mixins', name: 'anonymous-mixin declaration', src: '$d: #{ color: red; };', supported: true, origin: 'less' },
   {
     group: 'mixins',
     name: 'guard calling a function',
@@ -151,7 +151,7 @@ const CONSTRUCTS: Construct[] = [
   {
     group: 'mixins',
     name: 'anonymous-mixin call',
-    src: '$d: { color: red; };\n.a { $ > $d(); }',
+    src: '$d: #{ color: red; };\n.a { $ > $d(); }',
     supported: false,
     origin: 'less',
     scope: 'gap',
@@ -176,9 +176,9 @@ const CONSTRUCTS: Construct[] = [
   { group: 'values', name: 'selector interpolation', src: '$s: foo;\n.${s} { color: red; }', supported: true, origin: 'less' },
   { group: 'values', name: 'string interpolation', src: '$n: a;\n.a { content: "${n}"; }', supported: true, origin: 'less' },
   { group: 'values', name: 'indirect reference $[$n]', src: '$n: color;\n$color: red;\n.a { c: $[$n]; }', supported: true, origin: 'less' },
-  { group: 'values', name: 'collection lookup $m[k]', src: '$m: { k: 1; };\n.a { w: $m[k]; }', supported: true, origin: 'sass' },
-  { group: 'values', name: 'collection computed key [expr]', src: '$key: accent;\n$m: { [$key]: 1; [#c6538c]: 2; };', supported: true, origin: 'sass' },
-  { group: 'values', name: 'collection shallow spread', src: '$base: { a: 1; };\n$m: { ...$base; a: 2; };', supported: true, origin: 'sass' },
+  { group: 'values', name: 'collection lookup $m[k]', src: '$m: #{ k: 1; };\n.a { w: $m[k]; }', supported: true, origin: 'sass' },
+  { group: 'values', name: 'collection computed key [expr]', src: '$key: accent;\n$m: #{ [$key]: 1; [#c6538c]: 2; };', supported: true, origin: 'sass' },
+  { group: 'values', name: 'collection shallow spread', src: '$base: #{ a: 1; };\n$m: #{ ...$base; a: 2; };', supported: true, origin: 'sass' },
   { group: 'values', name: '@media prelude via ${…}', src: '$m: screen;\n@media ${m} { .a { c: red; } }', supported: true, origin: 'less' },
   {
     group: 'values',

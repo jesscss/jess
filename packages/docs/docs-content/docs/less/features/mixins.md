@@ -238,6 +238,11 @@ Parameters can be comma-separated or semicolon-separated. Semicolons are often u
 .name(~(1, 2, 3))                // one comma-list argument (escaped)
 ```
 
+`~( … )` and a `;`-separated group are the same thing: a list passed as one argument. Both parse to
+the node `.jess` writes as a curly list, `{1, 2, 3}`, the CSS syntax for a comma-containing argument
+([CSS Values 5 §3.1.1](https://drafts.csswg.org/css-values-5/#component-function-commas)). Less keeps
+writing it `~( … )`; bound to a variable it is the list, so `length(~(1, 2, 3))` is `3`.
+
 ### Overloading and named parameters
 
 Less allows multiple mixins with the same name and different arities/patterns. Matching definitions are merged.
