@@ -41,20 +41,24 @@ export function jessCollection(node: Collection, indent: string, p: ListSpeller)
  * `CurlyList`: `{ … }`, a list passed as one value (ledger P51) — Less `~( … )`
  * and a `;` group (P46), a Sass paren list and Sass's empty `()` (`{}`), and
  * css's `{a, b}` argument. `.jess` reads its braces as CSS's own in a CSS call's
- * arguments and as pass syntax everywhere else, so each spelling converts where
- * `.jess` reads it the same way. A one-item comma list keeps its comma (Sass
- * `(1,)`).
+ * arguments and as pass syntax everywhere else. In a CSS call written out as-is
+ * a Less or Sass list writes its items (`foo(~(1, 2), 3)` is `foo(1, 2, 3)`),
+ * so it converts to its items written in the call (orchestrator's reading of
+ * P51, 2026-10-23). A one-item comma list keeps its comma (Sass `(1,)`).
  */
 export function jessCurlyList(node: Block, place: 'prelude' | 'css-call' | 'value', p: ListSpeller): string {
   if (place === 'prelude') {
     return p.gap('Block', 'a curly list in an at-rule prelude');
   }
-  if ((node.escaped === true) === (place === 'css-call')) {
-    return p.gap('Block', place === 'css-call'
-      ? 'a curly list in a CSS call written out as-is: `.jess` writes `{ … }` there as CSS\'s own braces'
-      : 'a css `{}` argument outside a CSS call: `.jess` reads `{ … }` there as a list passed as one value');
-  }
   const value = node.value;
+  if (node.escaped === true && place === 'css-call') {
+    return isSlotArray(value) && value.length === 0
+      ? p.gap('Block', 'an empty list in a CSS call: it has no CSS spelling')
+      : p.value(value, '');
+  }
+  if (node.escaped !== true && place !== 'css-call') {
+    return p.gap('Block', 'a css `{}` argument outside a CSS call: `.jess` reads `{ … }` there as a list passed as one value');
+  }
   if (isSlotArray(value)) {
     return value.length === 0 ? '{}' : `{${p.value(value, '')}}`;
   }

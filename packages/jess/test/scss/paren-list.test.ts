@@ -128,17 +128,22 @@ describe('scss: the empty () is the empty list', () => {
   });
 
   /*
-   * In a CSS `if()` condition `()` is CSS's empty group (`<general-enclosed>`,
-   * css-values-5 §8.3), written as it is, as a group there keeps its parens.
-   * Dart Sass rejects these sass-spec inputs (`expressions/if/css.hrx`) with
-   * "Expected identifier."; Jess wrote the first as `if({}: c)` and stopped on
-   * the second with an internal error before.
+   * An empty list written where CSS needs a value fails the compile, as Dart
+   * Sass's "() isn't a valid CSS value" does: a declaration's value, a call
+   * written out as-is, a CSS `if()` condition (sass-spec
+   * `expressions/if/css.hrx`), and a list a function returns (orchestrator's
+   * reading of P51 and P37, 2026-10-23). A function still reads it.
    */
   it.each([
-    ['a {b: if((): c)}', 'a {\n  b: if((): c);\n}\n'],
-    ['a {b: if(not not(): d)}', 'a {\n  b: if(not not (): d);\n}\n']
-  ])('keeps an empty group in a CSS if() condition: %s', async (source, expected) => {
-    await expect(render(source)).resolves.toBe(expected);
+    '.x { a: (); }',
+    '$e: (); .x { a: $e; }',
+    '.x { a: foo((), 3); }',
+    '$e: (); .x { a: foo($e, 3); }',
+    'a {b: if((): c)}',
+    'a {b: if(not not(): d)}',
+    '@use "sass:list"; .x { a: list.zip(()); }'
+  ])('fails on an empty list written as a value: %s', async (source) => {
+    await expect(render(source)).rejects.toMatchObject({ code: 'eval/empty-list-value' });
   });
 
   it('configures nothing with an empty `with ()`', async () => {
@@ -160,7 +165,9 @@ describe('scss → .jess → css: paren lists, the empty list and maps', () => {
     ['@use "sass:list"; $e: (); .x { a: list.separator($e); b: list.length(()); }', '$e: {};'],
     ['@use "sass:map"; $m: (a: 1, b: (c: 2)); .x { a: map.has-key($m, b); b: map.get($m, b, c); }', '$m: #{'],
     ['@use "sass:list"; $l: (1, 2); .x { a: $l; b: list.length($l); c: list.index($l, 2); }', '$l: {1, 2};'],
-    ['@mixin m($x) { m: $x; } .x { @include m((1, 2)); }', '$ > m({1, 2});']
+    ['@mixin m($x) { m: $x; } .x { @include m((1, 2)); }', '$ > m({1, 2});'],
+    ['.x { y: foo((c, d), e); z: var(--x, (1, 2)); }', 'y: foo(c, d, e);'],
+    ['$l: (c, d); .x { y: foo($l, e); }', 'y: foo($l, e);']
   ])('%s', async (scss, spelling) => {
     const jess = emitJess(parseScss(scss));
     expect(jess).toContain(spelling);

@@ -103,15 +103,20 @@ const DART_SASS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string,
  */
 const NOT_IMPLEMENTED = new Set(['list.slash', 'map.deep-remove', 'inspect']);
 const divergence = (fn: string, input: string, wrap: 'value' | 'type', [value, type]: readonly [string, string]): string | undefined => {
-  /* `inspect()` returns a string, as a call written out as-is is typed. */
-  if (NOT_IMPLEMENTED.has(fn) && !(fn === 'inspect' && wrap === 'type')) {
+  /*
+   * A call to a function Jess lacks is written out as-is, which is typed a
+   * string, as `inspect()` returns; written out with an empty list it fails, as
+   * Dart Sass fails `map.deep-remove((), a)`.
+   */
+  const writtenAsIs = fn === 'inspect' && wrap === 'type' ? input !== '()' : fn === 'map.deep-remove' && wrap === 'value' && input === '()';
+  if (NOT_IMPLEMENTED.has(fn) && !writtenAsIs) {
     return 'not implemented in Jess';
   }
   if ((fn === 'map.get' || fn === 'map-get') && (input === '()' || input === '[]')) {
     return 'a missing key is an error in Jess (the `$m[k]` accessor), `null` in Dart Sass';
   }
-  if (wrap === 'value' && value === 'ERROR' && (type === 'map' || type === 'list')) {
-    return 'Jess writes a map or an empty list as a declaration value, which Dart Sass rejects';
+  if (wrap === 'value' && value === 'ERROR' && type === 'map' && !NOT_IMPLEMENTED.has(fn)) {
+    return 'Jess writes a map as a declaration value, which Dart Sass rejects';
   }
   return undefined;
 };

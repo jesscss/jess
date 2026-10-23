@@ -4080,33 +4080,61 @@ involved.
   parens, Sass's empty `()` and `.jess` `{ … }` parse to one node, an escaped
   `curly` `Block`; `.jess` maps take `#{ … }`. The evaluator and serializer arms
   that keyed on the escaped paren delimiter now read the `escaped` fact, so the
-  Less bytes are unchanged (an `@supports` prelude keeps writing `( … )`), and a
-  Sass map function binds an empty list as the empty map.
+  Less bytes are unchanged (an `@supports` prelude keeps writing `( … )`). In
+  `.scss` and `.jess` an empty list written as a declaration value or into a
+  call written out as-is fails the compile (`eval/empty-list-value`), and a Sass
+  map function binds an empty list as the empty map.
 - Architecture surface: `nodes.ts` (`Block` JSDoc only); `serialize.ts`
-  (`evalSupportsPrelude` Block arm); `serialize-value.ts`, `compress.ts` (an
-  escaped Block's spelling); `value-truth.ts` (an escaped Block's truth);
-  `value-dispatch.ts` (`EMPTY_COLLECTION` at the bind point); converter
+  (`evalSupportsPrelude` Block arm, the escaped Block arm, the `FunctionCall`
+  and `Reference` arms of `evalValue` under `sassOperands`,
+  `invalidFunctionCall`), with the checks in `empty-list.ts`
+  (`writtenListValue`, `writtenResult`) so the serializer does not grow; `serialize-value.ts`, `compress.ts` (an escaped
+  Block's spelling); `value-truth.ts` (an escaped Block's truth);
+  `value-dispatch.ts` (`EMPTY_COLLECTION` at the bind point); `value-eval.ts`
+  (`EmptyListValueError`, `isEmptyList`); `evaluator.ts` (`WrittenCall`: the
+  written-out branches take one record in place of two optional parameters);
+  `error/codes.ts`, `error/diagnostics.ts` (`eval/empty-list-value`); converter
   `emit-jess.ts` / `emit-jess-list.ts`; the three grammars; `fns` `list.join`
   and `createSassListResult`.
 - Separation/duplication: one escaped-Block spelling per writer, as before; the
-  converter's map and curly-list spelling moved to `emit-jess-list.ts`.
+  converter's map and curly-list spelling moved to `emit-jess-list.ts`. The
+  empty-list check has one owner, `empty-list.ts`, read at the escaped Block arm
+  and the two `evalValue` arms that write a call's or a reference's result; the
+  evaluator's written-call branch raises it for an argument.
 - Cumulative node weight: unchanged. `Block` keeps its fields; no new node.
-- New traversal: none. [array helper] `groupItems(value).length` at the bind
-  point runs only for a `Collection`-typed parameter.
+- New traversal: [loop/traversal] none new. [array helper]
+  `groupItems(value).length` at the bind point runs only for a
+  `Collection`-typed parameter; `groupItems(args).some(isEmptyList)` runs only on
+  a call written out as-is in `.scss` / `.jess`.
 - New node/materialization: one module-level empty `Collection`
-  (`value-dispatch.ts`), built once; no per-call node.
+  (`value-dispatch.ts`), built once; the `WrittenCall` record only on the
+  written-out and recovery branches.
 - Render path: no new node or array on the render path; the `@supports` arm
   picks its delimiter from the existing `escaped` flag.
 - Helper/API surface: `jessCollection`, `jessCurlyList` moved out of the
-  printer (net zero); `isListShaped` (one predicate at the bind point).
+  printer (net zero); `isListShaped` (one predicate at the bind point);
+  `isEmptyList` and `EmptyListValueError` (one rule, read at three sites).
 - Metadata mutations: none.
 - Review-flagged diff tokens: [materialized array/object] the empty
-  `Collection` is a module constant; [array helper] the bind-point length check
-  is gated on the parameter type.
-- Evidence: behavior — jess suite 5728 passed, all package tests, Less corpus
-  byte-identical against dev with a negative control; performance — none
-  claimed (benchmark.less render median 50.95 ms here, 51.87 ms on dev, same
-  output sha256).
+  `Collection` is a module constant, and the `WrittenCall` record is built only
+  on the written-out branches; [array helper] the bind-point length check is
+  gated on the parameter type and the written-call check on `.scss` / `.jess`;
+  [array spread/materialization] none: no array is spread or materialized on
+  the render path; [node construction] none: no AST or value node is built per
+  call (the empty `Collection` is built once at module load); [routine error
+  control] the new `EmptyListValueError` is thrown only for an empty list that
+  would be written, and translated once in `invalidFunctionCall`; the
+  synchronous dispatch keeps its existing `try` with no new handler.
+- Behavior evidence: jess suite 5749 passed, all package tests, Less corpus
+  byte-identical against dev with a negative control, the Sass function matrix
+  against Dart Sass 1.101.7, the sass-spec render diff with 0 inputs moved away
+  from Dart Sass.
+- Build evidence: `pnpm build:release` and `pnpm run verify:types` (25/25).
+- Boundary evidence: the public error surface gains one code,
+  `eval/empty-list-value`, raised as a `JessError` with the call or reference's
+  location; no export, option or plugin ABI changes.
+- Evidence: behavior as above; performance — none claimed (benchmark.less
+  render median 46.46 ms here, same output sha256 as dev).
 - Verdict: accepted as semantic work, no performance claim.
 - Hot-path cost contracts:
 ```json
@@ -4132,14 +4160,33 @@ involved.
       "recursive-ValueGroup-final-unit-validation",
       "async-declaration-dedup-output-order"
     ],
-    "why": "The curly list (ledger P51, owner 2026-10-09 and 2026-10-23) moves Less ~( \u2026 ), Less ; groups and Sass paren lists from an escaped paren Block to an escaped curly Block; the value-domain and serializer arms that keyed on the delimiter must read the escaped fact instead, so the Less bytes stay what they were, and a Sass map function binds an empty list as the empty map as Dart Sass does. This is semantic work on the AST-v2 value owners, not a cost cut.",
-    "dangerTokensJustification": "value-dispatch.ts allocates one module-level empty Collection and binds it only when a Collection-typed parameter receives an empty list; serialize.ts and serialize-value.ts add a branch on the existing escaped flag with no allocation or traversal; compress.ts and value-truth.ts the same. No node construction, copy, traversal or side map is added to the render path.",
-    "behaviorEvidence": "packages/jess suite 5728 passed; Less corpus compare:less:builds --corpus byte-identical against dev 03f231e54 (359 fixtures x 6 modes) with a perturbed-baseline negative control; sass list/map/type matrix test against Dart Sass 1.101.7.",
+    "why": "The curly list (ledger P51, owner 2026-10-09 and 2026-10-23) moves Less ~( \u2026 ), Less ; groups and Sass paren lists from an escaped paren Block to an escaped curly Block; the value-domain and serializer arms that keyed on the delimiter read the escaped fact instead, so the Less bytes stay what they were. In .scss and .jess an empty list written where CSS needs a value fails the compile (eval/empty-list-value, P37), and a Sass map function binds an empty list as the empty map. This is semantic work on the AST-v2 value owners, not a cost cut.",
+    "dangerTokensJustification": "value-dispatch.ts allocates one module-level empty Collection and binds it only for a Collection-typed parameter receiving an empty list; serialize.ts adds branches on the existing escaped flag and, only when the evaluator reads .scss/.jess operands, one closure on a call's or a reference's emitted result; value-eval.ts adds an Error class and a predicate. No node construction, copy, traversal or side map is added to the render path.",
+    "behaviorEvidence": "packages/jess suite 5749 passed; Less corpus compare:less:builds --corpus byte-identical against dev 03f231e54 (359 fixtures x 6 modes) with a perturbed-baseline negative control; sass list/map/type matrix test against Dart Sass 1.101.7; sass-spec render diff moved away from Dart Sass 0.",
     "buildEvidence": "pnpm build:release and pnpm run verify:types (25/25 configs) passed on this worktree.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
-      "currentMedianMs": 50.950334,
+      "currentMedianMs": 46.4645,
+      "outputSha256": "bde9af44f72297bd6d175d4191b022e3a7cb3dfb13b4ae889e2a635cc02b735b",
+      "outputBytes": 133014
+    }
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "unresolved-optional-function-call",
+      "registered-sync-call-failure",
+      "registered-async-call-failure"
+    ],
+    "why": "A call written out as-is (a registry miss, or a selected callable whose failure functionMode preserves) in .scss and .jess fails when an argument is an empty list, which has no CSS spelling (ledger P51; Dart Sass: () isn't a valid CSS value), instead of writing nothing in its place (P37). The policy stays at the evaluator's written-call branch; the registered call result is unchanged.",
+    "dangerTokensJustification": "The written-call facts (arguments as written, keywords, and the .scss/.jess empty-list rule) travel as one record built only on the written-out branches: the unknown-call fallback, a synchronous failure's catch, and an asynchronous result's recovery. The synchronous dispatch path builds no record and returns the dispatched result directly.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 46.4645,
       "outputSha256": "bde9af44f72297bd6d175d4191b022e3a7cb3dfb13b4ae889e2a635cc02b735b",
       "outputBytes": 133014
     }

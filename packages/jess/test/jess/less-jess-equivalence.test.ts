@@ -1305,14 +1305,23 @@ describe('targeted round trip: a `~( … )` list converts to the curly list `{ �
   });
 
   /*
-   * In a call Less writes out as-is, Less writes the list's items as the call's
-   * arguments (`foo(1, 2, 3)`), where `.jess` reads `{ … }` as CSS's own argument
-   * braces (css-values-5 §3.1.1) and writes them. No owner ruling says which a
-   * CSS call writes, so the converter names it.
+   * In a call written out as-is, Less writes a `~( … )` list's items as the
+   * call's arguments (`foo(1, 2, 3)`); a `.jess` `{ … }` written there is CSS's
+   * own braces, while a list a reference yields writes its items, as in Less.
+   * So the converter writes a literal list's items in the call and a variable
+   * as the variable (orchestrator's reading of P51, 2026-10-23).
    */
-  it('names a curly list in a call written out as-is', async () => {
-    expect(await render('.x { d: foo(~(1, 2), 3); }', '.less')).toBe('.x { d: foo(1, 2, 3); }');
-    expect(() => emitJess(parseLess('.x { d: foo(~(1, 2), 3); }'), { functions: LESS_FUNCTIONS })).toThrow(/a curly list in a CSS call written out as-is/);
+  it.each([
+    ['.x { d: foo(~(1, 2), 3); e: foo(~(a b), c); }', '.x { d: foo(1, 2, 3); e: foo(a b, c); }', 'd: foo(1, 2, 3);'],
+    ['@l: ~(1, 2);\n.x { d: foo(@l, 3); }', '.x { d: foo(1, 2, 3); }', 'd: foo($^l, 3);']
+  ])('converts a list in a call written out as-is: %s', async (less, expected, spelling) => {
+    const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+    expect(jess).toContain(spelling);
+    expect(await render(less, '.less')).toBe(expected);
+    expect(await render(jess, '.jess')).toBe(expected);
+  });
+
+  it('keeps CSS\'s braces on a `{ … }` written in a `.jess` CSS call', async () => {
     expect(await render('.x { d: foo({1, 2}, 3); }', '.jess')).toBe('.x { d: foo({ 1, 2 }, 3); }');
   });
 });

@@ -64,7 +64,9 @@ A list passed as **one** value, wherever a comma would otherwise separate argume
 The braces are syntax, not part of the value, so a curly list is written as what it holds
 (`a: {1, 2}` writes `a: 1, 2`) and a function or mixin reads it as one list argument
 (`$length({1, 2, 3})` is `3`). `{}` is the empty list, and a trailing comma makes a one-item comma list
-(`{1,}`).
+(`{1,}`). A list a variable holds is written as its items in a CSS call too (`foo($l, 3)` with
+`$l: {1, 2}` is `foo(1, 2, 3)`). The empty list has no CSS spelling: writing it as a declaration value or
+into a CSS call is an error.
 
 - Type: `<list>`
 - Example: `$ > shadow({0 1px 2px black, 0 0 4px red});`
