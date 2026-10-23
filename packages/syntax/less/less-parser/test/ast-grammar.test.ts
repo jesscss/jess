@@ -2332,23 +2332,26 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
+    /* A comma closing the argument list leaves it the call (ledger A5). */
+    const trailing = run(lessGrammar.Document, '.card { text: %("x",); }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(trailing.ok && trailing.unconsumedFrom === null).toBe(true);
+    expect(trailing.value).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'FunctionCall', name: '%', args: [{ value: { type: 'Quoted', value: 'x' } }] } }] }]
+    });
+
     /*
-     * Neither is a percent-format call: `%foo` is a `%` delim and an adjacent
-     * identifier, and `%("x",)` a `%` and an adjacent paren group (css-syntax-3
+     * `%foo` is no call: a `%` delim and an adjacent identifier (css-syntax-3
      * §5.4.7), which parse (ledger P45) as the run they are.
      */
-    for (const [source, second] of [
-      ['.card { text: %foo; }', { type: 'Keyword', src: 'foo' }],
-      ['.card { text: %("x",); }', { type: 'Block', delimiter: 'paren' }]
-    ] as const) {
-      const adjacent = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      });
-      expect(adjacent.ok && adjacent.unconsumedFrom === null, source).toBe(true);
-      expect(adjacent.value, source).toMatchObject({
-        rules: [{ rules: [{ value: [{ type: 'Keyword', src: '%' }, second] }] }]
-      });
-    }
+    const adjacent = run(lessGrammar.Document, '.card { text: %foo; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(adjacent.ok && adjacent.unconsumedFrom === null).toBe(true);
+    expect(adjacent.value).toMatchObject({
+      rules: [{ rules: [{ value: [{ type: 'Keyword', src: '%' }, { type: 'Keyword', src: 'foo' }] }] }]
+    });
   });
 
   it('keeps a static Less escaped quote inside percent-format arguments', () => {

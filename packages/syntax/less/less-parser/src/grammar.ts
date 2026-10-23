@@ -2020,9 +2020,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
+  // A comma may close its argument list (`%("x",)`): it is still the call.
   const FormatFunction = node(
     'Call',
-    sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.ValueSequence)), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))), literal(')')),
+    sequence(
+      noTrivia(literal('%(')),
+      optional(sequence(not(literal('{')), g.ValueSequence)),
+      many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))),
+      optional(noTrivia(regex(/,[ \t\n\r\f]*/))),
+      literal(')')
+    ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       withFunctionScope(funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue)), functionScopeOf(state))
   );
