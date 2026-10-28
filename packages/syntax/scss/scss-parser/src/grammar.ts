@@ -1476,7 +1476,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathProduct
       ))
     )),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => scssSum(children, span, state)
+    (children, _fields, span, rawChildren, _triviaLog, state) => scssSum(children, span, state, rawChildren)
   );
   const MathTopProduct = node<ValueNode>(
     'MathTopProduct',
@@ -1498,7 +1498,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathTopProduct
       ))
     )),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => scssSum(children, span, state)
+    (children, _fields, span, rawChildren, _triviaLog, state) => scssSum(children, span, state, rawChildren)
   );
 
   /*

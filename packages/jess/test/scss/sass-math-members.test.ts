@@ -121,3 +121,24 @@ describe('sass:math members reject what Dart Sass rejects', () => {
     await expect(render('math.sqrt(1px)')).resolves.toBe('a {\n  b: math.sqrt(1px);\n}\n');
   });
 });
+
+/*
+ * `Q` is the quarter-millimetre (css-values-4 §6.2: 1Q = 0.25mm), a length that
+ * converts with the others. The `.scss` inputs reduce sass-spec
+ * `core_functions/math/hypot.hrx § compatible_units` (`5q * 40`) to results
+ * Dart Sass 1.101.7 writes exactly.
+ */
+describe('Q converts with the other absolute lengths', () => {
+  it.each([
+    ['math.hypot(3mm, 16q)', '5mm'],
+    ['1q + 1mm', '5q'],
+    ['math.div(1cm, 1q)', '40']
+  ])('.scss %s', async (source, expected) => {
+    await expect(render(source)).resolves.toBe(`a {\n  b: ${expected};\n}\n`);
+  });
+
+  it('reads CSS\'s spelling `Q` as well', async () => {
+    await expect(new Compiler({}).renderString('.a { b: (4Q + 1mm); c: convert(1cm, Q); }', { extension: '.less' }))
+      .resolves.toBe('.a {\n  b: 8Q;\n  c: 40Q;\n}\n');
+  });
+});

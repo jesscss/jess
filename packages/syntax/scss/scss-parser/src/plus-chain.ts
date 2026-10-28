@@ -2,7 +2,7 @@
  * The `.scss` sum reducer: a `+` chain with a string literal is the
  * interpolated string it builds (ledger V36, owner 2026-10-23).
  */
-import { appendInterpolationLiteral, authoredSource, cssBaseMathOutsideParens, expression, interpolation, isToken, isMathOperator, isValueSlotArray, operation, quoted } from '@jesscss/core/ast';
+import { appendInterpolationLiteral, authoredSource, expression, interpolation, isToken, isMathOperator, isValueSlotArray, quoted } from '@jesscss/core/ast';
 import type { AstSourceSpan, Interpolation, ValueNode } from '@jesscss/core/ast';
 import { isInCalculation, isScssValue, scssFoldOperation } from './grammar-helpers.js';
 
@@ -63,12 +63,12 @@ function escapeBareQuote(text: string, quote: string): string {
  * literal, or inside a math function's arguments (a calculation) is math
  * ({@link scssFoldOperation}; ledger V36).
  */
-export function scssSum(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+export function scssSum(children: readonly unknown[], span: AstSourceSpan, state: unknown, rawChildren: readonly unknown[]): ValueNode {
   const operands = children.filter(isScssValue);
   const literals = operands.map(plusStringLiteral);
   const first = literals.findIndex(literal => literal !== null);
   if (first === -1 || operands.length < 2 || isInCalculation(state) || children.some(child => isToken(child) && isMathOperator(child.value) && child.value !== '+')) {
-    return scssFoldOperation(children);
+    return scssFoldOperation(children, undefined, span, rawChildren);
   }
   const head = literals[first]!;
   const lead = operands[0]!;
@@ -78,7 +78,9 @@ export function scssSum(children: readonly unknown[], span: AstSourceSpan, state
   const quote = texts.some(text => holdsBareQuote(text, head.quote)) && !texts.some(text => holdsBareQuote(text, other)) ? other : head.quote;
   const parts: Interpolation['parts'] = [];
   if (first > 0) {
-    parts.push({ ref: expression(operands.slice(1, first).reduce<ValueNode>((sum, operand) => operation('+', sum, operand, false, cssBaseMathOutsideParens('+')), lead)), unquote: true });
+    /* The operands before the first literal stay one sum, folded (and spanned) as math is. */
+    const end = children.indexOf(operands[first - 1]) + 1;
+    parts.push({ ref: expression(scssFoldOperation(children.slice(0, end), undefined, span, rawChildren.slice(0, end))), unquote: true });
   }
   for (let index = first; index < operands.length; index += 1) {
     const literal = literals[index];

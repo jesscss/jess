@@ -16,8 +16,8 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isSpannedToken, sourceSpanOf, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -251,6 +251,11 @@ export function isFunctionCall(value: unknown): value is FunctionCall {
     && Array.isArray(value.args);
 }
 
+/** An operand's authored span: its spanned raw child, else the span the node carries. */
+function operandSpan(operand: ValueNode, raw: unknown): SourceSpan | undefined {
+  return isSpannedToken(raw) ? raw.span : sourceSpanOf(operand);
+}
+
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
  * to the caller's product/sum production, never to a source-text recovery.
  *
@@ -258,15 +263,26 @@ export function isFunctionCall(value: unknown): value is FunctionCall {
  * padding interleaved. The pads are their own terms, so an operator no longer
  * sits a constant distance from its operand and the fold reads the shape rather
  * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
- * defeat any attempt to recover the operator from the padded text. */
-export function scssFoldOperation(children: readonly unknown[]): ValueNode {
-  const first = children.find(isScssValue);
-  if (first === undefined) {
+ * defeat any attempt to recover the operator from the padded text.
+ *
+ * Each operation spans its operands as written, from the chain's first operand
+ * to its right operand, so an error in it is reported at its operator. Parseman
+ * hands the operands' spans in `rawChildren`, as Less's math run reads them. */
+export function scssFoldOperation(
+  children: readonly unknown[],
+  _fields: unknown,
+  _span: unknown,
+  rawChildren: readonly unknown[]
+): ValueNode {
+  const firstIndex = children.findIndex(isScssValue);
+  const first = children[firstIndex];
+  if (!isScssValue(first)) {
     throw new TypeError('SCSS arithmetic grammar produced no operand.');
   }
+  const start = operandSpan(first, rawChildren[firstIndex])?.start;
   let result = first;
   let operator: string | undefined;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
+  for (let index = firstIndex + 1; index < children.length; index += 1) {
     const child = children[index];
     if (isScssValue(child)) {
       if (operator === undefined) {
@@ -279,6 +295,10 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
         false,
         cssBaseMathOutsideParens(operator)
       );
+      const end = operandSpan(child, rawChildren[index])?.end;
+      if (start !== undefined && end !== undefined) {
+        withSourceSpan(result, { start, end });
+      }
       operator = undefined;
       continue;
     }
