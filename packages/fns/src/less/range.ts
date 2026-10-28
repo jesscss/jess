@@ -1,6 +1,6 @@
 import type { Value, Fn } from '@jesscss/core';
 import { makeDimension, defineFunction } from '@jesscss/core';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `range(start)` / `range(start, end)` / `range(start, end, step)` — an inclusive

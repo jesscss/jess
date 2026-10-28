@@ -1,4 +1,4 @@
-import { unaryMath } from './math-helper.js';
+import { unaryMath } from '../shared/math/math-helper.js';
 import { defineFunction } from '@jesscss/core';
 import type { Fn } from '@jesscss/core';
 

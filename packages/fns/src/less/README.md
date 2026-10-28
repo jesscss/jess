@@ -14,8 +14,9 @@ node, no re-parse, no `render()` walk).
   index's exports.
 - **`registry.ts`** — `makeLessRegistry()`. Lives here, not in the package root,
   so a Less-only consumer never pulls the Sass index into its bundle.
-- **`math-helper.ts`** — the shared math kernel (`applyMath` + the `unaryMath`
-  spec builder) most number/unit math fns reduce to a one-liner over.
+- **`../shared/math/math-helper.ts`** — the math kernel (`applyMath` + the
+  `unaryMath` spec builder) most number/unit math fns reduce to a one-liner
+  over; `sass:math`'s `sqrt`/`pow`/trig members compute through it too.
 - **`color-helper.ts` / `color-ctor-helper.ts`** — the shared color kernels
   (`mixColors`, `colorBlend`, `getLuma`, `toHsv`, channel clamping) the mixers,
   blend modes, readers and constructors reduce to. Each Photoshop-style blend fn

@@ -1,6 +1,6 @@
 import type { Fn } from '@jesscss/core';
 import { makeDimension, textOf, defineFunction } from '@jesscss/core';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `unit(dimension, unit?)` — replace (or, with no/empty second arg, STRIP) the

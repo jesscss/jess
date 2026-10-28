@@ -1,5 +1,5 @@
 import type { Dimension } from '@jesscss/core';
-import { groupOf } from '@jesscss/core';
+import { convertValue, groupOf } from '@jesscss/core';
 
 /**
  * Unit-multiset helpers shared by every dialect. Nothing here is Sass-specific:
@@ -57,4 +57,14 @@ export function compatibleUnits(a: Dimension, b: Dimension): boolean {
   const left = unitsOf(a);
   const right = unitsOf(b);
   return sameKeys(left.numerator, right.numerator) && sameKeys(left.denominator, right.denominator);
+}
+
+/**
+ * `value`'s number in `target`'s unit, for two dimensions {@link compatibleUnits}
+ * accepts with units on both sides (`1in` in `px` is `96`), through core's one
+ * conversion (`convertValue`).
+ */
+export function convertNumber(value: Dimension, target: Dimension): number {
+  // ponytail: one unit each side; a compound unit converts only to the same units. Convert per unit when a caller needs it.
+  return convertValue(value.number, value.unit, target.unit);
 }

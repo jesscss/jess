@@ -213,7 +213,8 @@ export function buildEvaluator(
   };
 
   return {
-    operate,
+    /* `.scss` computes `*` and `/` units as Dart Sass does (ledger V32). */
+    operate: options.sassCalculations === true ? (op, left, right, modes) => operate(op, left, right, modes, true) : operate,
     call,
     paramNames,
     has: name => registry.has(name),
