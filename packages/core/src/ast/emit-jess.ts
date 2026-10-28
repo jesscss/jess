@@ -1081,9 +1081,11 @@ class JessPrinter {
       }
       const ref = part.ref;
 
-      /* A string splices an expression as `$( … )`, SCSS `#{&}` included. */
-      if (where === 'string' && (ref.type === 'Expression' || (ref.type === 'Lookup' && ref.kind === 'parent'))) {
-        out += ref.type === 'Expression' ? this.expression(ref, At.Value) : '$(&)';
+      /* A string splices an expression as `$( … )`, SCSS `#{&}` and `#{ns.$name}` included. */
+      if (where === 'string' && (ref.type === 'Expression' || ref.type === 'Reference' || (ref.type === 'Lookup' && ref.kind === 'parent'))) {
+        out += ref.type === 'Expression'
+          ? this.expression(ref, At.Value)
+          : ref.type === 'Reference' ? `$(${this.reference(ref, At.Value)})` : '$(&)';
         continue;
       }
       if (ref.type !== 'Lookup' || ref.kind !== 'var' || typeof ref.name !== 'string') {
