@@ -63,12 +63,12 @@ function escapeBareQuote(text: string, quote: string): string {
  * literal, or inside a math function's arguments (a calculation) is math
  * ({@link scssFoldOperation}; ledger V36).
  */
-export function scssSum(children: readonly unknown[], span: AstSourceSpan, state: unknown, rawChildren: readonly unknown[]): ValueNode {
+export function scssSum(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
   const operands = children.filter(isScssValue);
   const literals = operands.map(plusStringLiteral);
   const first = literals.findIndex(literal => literal !== null);
   if (first === -1 || operands.length < 2 || isInCalculation(state) || children.some(child => isToken(child) && isMathOperator(child.value) && child.value !== '+')) {
-    return scssFoldOperation(children, undefined, span, rawChildren);
+    return scssFoldOperation(children);
   }
   const head = literals[first]!;
   const lead = operands[0]!;
@@ -79,8 +79,7 @@ export function scssSum(children: readonly unknown[], span: AstSourceSpan, state
   const parts: Interpolation['parts'] = [];
   if (first > 0) {
     /* The operands before the first literal stay one sum, folded (and spanned) as math is. */
-    const end = children.indexOf(operands[first - 1]) + 1;
-    parts.push({ ref: expression(scssFoldOperation(children.slice(0, end), undefined, span, rawChildren.slice(0, end))), unquote: true });
+    parts.push({ ref: expression(scssFoldOperation(children.slice(0, children.indexOf(operands[first - 1]) + 1))), unquote: true });
   }
   for (let index = first; index < operands.length; index += 1) {
     const literal = literals[index];
