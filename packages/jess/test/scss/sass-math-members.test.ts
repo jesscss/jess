@@ -8,9 +8,8 @@ import { Compiler } from '../../src/index.js';
  * outputs are sass-spec's (`spec/core_functions/math/**`, section named), which
  * Dart Sass 1.101.7 writes the same. Not pinned here: sass-spec sections whose
  * numbers Jess writes with V4's tolerance rather than Dart Sass's 10 decimal
- * places (`sin.hrx § turn`), whose result is not finite (V7), or that read a
- * variable as `math.$pi` (the `.scss` parse gives that the shape of
- * `map-get(math, $pi)`; not resolved yet).
+ * places (`sin.hrx § turn`) or whose result is not finite (V7). `variables.hrx`
+ * read as `math.$pi` is pinned in `namespace-member-lookup.test.ts`.
  */
 const render = (source: string): Promise<string> =>
   new Compiler({}).renderString(`@use "sass:math";\na {b: ${source}}`, { extension: '.scss', suppressWarnings: true });

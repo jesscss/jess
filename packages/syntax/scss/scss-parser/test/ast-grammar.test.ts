@@ -2658,14 +2658,16 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('lowers a @use-namespaced variable read to the shared $[…] accessor', () => {
+  it('builds a @use-namespaced variable read as the member lookup `.jess` writes `$theme.primary`', () => {
     expect(parse('a { b: theme.$primary; }').rules[0]).toMatchObject({
       rules: [{
         value: {
           type: 'Reference',
-          base: { type: 'Keyword', src: 'theme' },
-          steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'primary', raw: '@primary', scope: 'live' }, kind: 'var' }],
-          raw: 'theme.$primary'
+          base: { type: 'Lookup', kind: 'entry', _s: 7, _e: 12 },
+          steps: [{ type: 'LookupStep', kind: 'member', name: 'theme' }, { type: 'LookupStep', kind: 'member', name: 'primary' }],
+          raw: 'theme.$primary',
+          _s: 7,
+          _e: 21
         }
       }]
     });
