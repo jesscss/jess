@@ -122,6 +122,8 @@ $value2: unquote("(") + $value2 + unquote(")");
 
 const errors: ReadonlyArray<readonly [name: string, source: string]> = [
   ['operators/plus.hrx syntax/whitespace/both', 'a {b: c + d}'],
+  ['operators/plus.hrx syntax/whitespace/left/space', 'a {b: c +d}'],
+  ['operators/plus.hrx syntax/whitespace/right', 'a {b: c+ d}'],
   ['a keyword and a number', '.a { b: foo + 1px; }'],
   ['a number and a keyword', '.a { b: 1px + foo; }'],
   ['a boolean', '.a { b: true + 1; }'],
@@ -138,6 +140,20 @@ const errors: ReadonlyArray<readonly [name: string, source: string]> = [
 describe('scss: other math on an operand it is not defined on fails the compile', () => {
   it.each(errors)('%s', async (_name, source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/invalid-operand' });
+  });
+});
+
+/* The error names the operator of the operation that fails, in every dialect. */
+describe('an invalid operand is reported at its operator', () => {
+  it.each([
+    ['operators/plus.hrx syntax/whitespace/both', 'a {b: c + d}', '.scss', 1, 9],
+    ['the last operator of a chain', '.a {\n  b: 1 + 2 - foo;\n}', '.scss', 2, 12],
+    ['an operator inside a group', '.a {\n  c: 1px * (2 + bar);\n}', '.scss', 2, 15],
+    ['a sum before a string literal', '.a { b: true + 1 + "x"; }', '.scss', 1, 14],
+    ['Less', '.a { b: foo + 1px; }', '.less', 1, 13],
+    ['.jess', '.a { b: $(1 + 2 - foo); }', '.jess', 1, 17]
+  ] as const)('%s', async (_name, source, extension, line, column) => {
+    await expect(render(source, extension)).rejects.toMatchObject({ code: 'eval/invalid-operand', line, column });
   });
 });
 

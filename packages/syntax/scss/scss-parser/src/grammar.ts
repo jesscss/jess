@@ -25,9 +25,9 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, emptyParenList, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, emptyParenList, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
-import type { ConditionWord, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
+import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -50,6 +50,9 @@ type ScssRules = {
   Square: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
+  MathProductOperator: Combinator<MathOperatorFact>;
+  MathTopProductOperator: Combinator<MathOperatorFact>;
+  MathSumOperator: Combinator<MathOperatorFact>;
   MathProduct: Combinator<ValueNode>;
   MathSum: Combinator<ValueNode>;
   MathTopProduct: Combinator<ValueNode>;
@@ -1452,12 +1455,19 @@ const scssFactory = (g: ScssInputRules) => {
    * including slash division. At top level slash remains a Sass slash-list
    * separator, so the top-level product intentionally excludes it below.
    */
+  /*
+   * An operator with its padding is a fact that carries where it is written, so
+   * the fold can place each operation, and an error in it, at its operator.
+   */
+  const MathProductOperator = node<MathOperatorFact>('MathProductOperator', noTrivia(productOperator), mathOperatorFact);
+  const MathTopProductOperator = node<MathOperatorFact>('MathTopProductOperator', noTrivia(topProductOperator), mathOperatorFact);
+  const MathSumOperator = node<MathOperatorFact>('MathSumOperator', sumOperator, mathOperatorFact);
   const MathProduct = node<ValueNode>(
     'MathProduct',
     noTrivia(sequence(
       g.MathUnary,
       many(sequence(
-        productOperator,
+        g.MathProductOperator,
         g.MathUnary
       ))
     )),
@@ -1468,7 +1478,7 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.MathProduct,
       many(sequence(
-        sumOperator,
+        g.MathSumOperator,
         g.MathProduct
       ))
     )),
@@ -1479,7 +1489,7 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.MathUnary,
       many(sequence(
-        topProductOperator,
+        g.MathTopProductOperator,
         g.MathUnary
       ))
     )),
@@ -1490,7 +1500,7 @@ const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.MathTopProduct,
       many(sequence(
-        sumOperator,
+        g.MathSumOperator,
         g.MathTopProduct
       ))
     )),
@@ -5369,6 +5379,9 @@ const scssFactory = (g: ScssInputRules) => {
     Square,
     ValueAtom,
     MathUnary,
+    MathProductOperator,
+    MathTopProductOperator,
+    MathSumOperator,
     MathProduct,
     MathSum,
     MathTopProduct,

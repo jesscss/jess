@@ -17,7 +17,7 @@
  */
 
 import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -251,43 +251,62 @@ export function isFunctionCall(value: unknown): value is FunctionCall {
     && Array.isArray(value.args);
 }
 
+/** A math operator with its padding: the operator, and where the two are written. */
+export type MathOperatorFact = Token & { readonly start: number; readonly end: number };
+
+export function isMathOperatorFact(value: unknown): value is MathOperatorFact {
+  return isToken(value) && 'start' in value && typeof value.start === 'number' && 'end' in value && typeof value.end === 'number';
+}
+
+/** `MathProductOperator` / `MathSumOperator`'s reduction: the one operator among its pads. */
+export function mathOperatorFact(children: readonly unknown[], _fields: unknown, span: SourceSpan): MathOperatorFact {
+  const operator = children.find(child => isToken(child) && isMathOperator(child.value));
+  if (!isToken(operator)) {
+    throw new TypeError('SCSS math operator lost its operator.');
+  }
+  return { value: operator.value, start: span.start, end: span.end };
+}
+
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
  * to the caller's product/sum production, never to a source-text recovery.
  *
- * Operands and operator characters arrive in authored order with the operators'
- * padding interleaved. The pads are their own terms, so an operator no longer
- * sits a constant distance from its operand and the fold reads the shape rather
- * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
- * defeat any attempt to recover the operator from the padded text. */
+ * Operands and operator facts arrive in authored order. An operator fact holds
+ * its padding, which can hold a comment whose own `/` and `*` would defeat any
+ * attempt to recover the operator from the padded text.
+ *
+ * An operation's span runs from the chain's first operator to the next
+ * operator, or to the end of its own: the operands carry no span, and this one
+ * is what places an error in the operation at its operator. The fold reads no
+ * span of its own, which every value would pay for (a value is a product). */
 export function scssFoldOperation(children: readonly unknown[]): ValueNode {
-  const first = children.find(isScssValue);
-  if (first === undefined) {
+  const firstIndex = children.findIndex(isScssValue);
+  const first = children[firstIndex];
+  if (!isScssValue(first)) {
     throw new TypeError('SCSS arithmetic grammar produced no operand.');
   }
   let result = first;
-  let operator: string | undefined;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
+  let operator: MathOperatorFact | undefined;
+  let start: number | undefined;
+  for (let index = firstIndex + 1; index < children.length; index += 1) {
     const child = children[index];
     if (isScssValue(child)) {
       if (operator === undefined) {
         throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
       }
-      result = operation(
-        operator,
+      const next = children[index + 1];
+      result = withSourceSpan(operation(
+        operator.value,
         result,
         child,
         false,
-        cssBaseMathOutsideParens(operator)
-      );
+        cssBaseMathOutsideParens(operator.value)
+      ), { start: start ?? operator.start, end: isMathOperatorFact(next) ? next.start : operator.end });
+      start ??= operator.start;
       operator = undefined;
       continue;
     }
-    if (child === undefined || child === null) {
-      continue;
-    }
-    const text = requireToken(child).value;
-    if (isMathOperator(text)) {
-      operator = text;
+    if (isMathOperatorFact(child)) {
+      operator = child;
     }
   }
   if (operator !== undefined) {

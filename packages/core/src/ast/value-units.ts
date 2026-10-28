@@ -9,9 +9,13 @@
 
 export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2 }
 
-/** Per-group conversion factors: unit → factor relative to the group base. */
+/**
+ * Per-group conversion factors: unit → factor relative to the group base.
+ * `Q` is the quarter-millimetre (css-values-4 §6.2), spelled `Q` by CSS and `q`
+ * by Sass, so both spellings are listed.
+ */
 const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
-  { m: 1, cm: 0.01, mm: 0.001, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
+  { m: 1, cm: 0.01, mm: 0.001, q: 0.001 / 4, Q: 0.001 / 4, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
   { s: 1, ms: 0.001 },
   { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 }
 ];
