@@ -122,6 +122,8 @@ $value2: unquote("(") + $value2 + unquote(")");
 
 const errors: ReadonlyArray<readonly [name: string, source: string]> = [
   ['operators/plus.hrx syntax/whitespace/both', 'a {b: c + d}'],
+  ['operators/plus.hrx syntax/whitespace/left/space', 'a {b: c +d}'],
+  ['operators/plus.hrx syntax/whitespace/right', 'a {b: c+ d}'],
   ['a keyword and a number', '.a { b: foo + 1px; }'],
   ['a number and a keyword', '.a { b: 1px + foo; }'],
   ['a boolean', '.a { b: true + 1; }'],

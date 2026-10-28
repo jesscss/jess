@@ -6154,9 +6154,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * here where the spans still exist. `namedColor` right operands stay on the
        * arithmetic path (V13 color coercion). ponytail: "glued" is span-width
        * (one authored space before the sign); a rare double-space before falls
-       * back to the spaced form, which Less would collapse anyway.
+       * back to the spaced form, which Less would collapse anyway. Where
+       * operands are read as `.scss` and `.jess` read them (V36) a keyword
+       * operand is an error, and those grammars already read a glued sign:
+       * `.scss` `c +d` is an operation by its grammar's choice.
        */
       if ((node.operator === '-' || node.operator === '+')
+        && e.ev?.sassOperands !== true
         && node.right.type === 'Keyword'
         && namedColor(node.right.src) === undefined
         && operationSignGlued(node)) {
