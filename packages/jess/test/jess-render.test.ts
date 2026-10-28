@@ -123,7 +123,7 @@ describe('Jess parser plugin render-through', () => {
 
   it('renders documented collection member and list-index references through the Jess plugin', async () => {
     const css = await new Compiler().renderString(
-      '$theme: { colors: { primary: #06c; }; }; $sizes: 10px, 20px, 30px; .entry { color: $theme.colors.primary; first: $sizes[0]; padding: $sizes[-1]; }',
+      '$theme: #{ colors: #{ primary: #06c; }; }; $sizes: 10px, 20px, 30px; .entry { color: $theme.colors.primary; first: $sizes[0]; padding: $sizes[-1]; }',
       { filePath: 'entry.jess', extension: '.jess' }
     );
 

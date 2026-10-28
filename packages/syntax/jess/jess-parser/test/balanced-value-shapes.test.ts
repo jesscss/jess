@@ -123,7 +123,7 @@ describe('arithmetic outside $( … )', () => {
     ['a { x: 2 * 3; }', 'a { x: 2 * 3; }'],
     ['$w: 2px; a { x: $w * 2; }', null],
     ['$v: 1px * 2px;', null],
-    ['$sizes: { gap: 2 * 4px };', null]
+    ['$sizes: #{ gap: 2 * 4px };', null]
   ])('%s', (source, css) => {
     const { document, recovered } = parseRecovering(source);
     expect(recovered.map(error => `${error.code} ${source.slice(error.offset, error.endOffset)}`)).toEqual(['parse/arithmetic-outside-expression *']);

@@ -12,7 +12,7 @@ import { jessPositionsGrammar } from './grammar/ast/positions.js';
 import { parseRecoveringWith, parseWith, type JessParsed, type JessParseOptions } from './parse-with.js';
 
 export type { JessParseOptions, JessParsed } from './parse-with.js';
-export { JessArithmeticOutsideExpressionError, JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
+export { JessArithmeticOutsideExpressionError, JessBareBraceMapError, JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
 
 /** Parse Jess into the canonical AST v2 document with line/column facts. */
 export function parse(input: string, options: JessParseOptions = {}): Stylesheet {

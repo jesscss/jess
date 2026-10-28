@@ -14,7 +14,7 @@ import { jessGrammar } from './grammar/ast.js';
 import { parseRecoveringWith, parseSelectorWith, parseWith, type JessParsed, type JessParseOptions } from './parse-with.js';
 
 export type { JessParseOptions, JessParsed } from './parse-with.js';
-export { JessArithmeticOutsideExpressionError, JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
+export { JessArithmeticOutsideExpressionError, JessBareBraceMapError, JessParseError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
 
 /**
  * Parse Jess directly into the canonical AST v2 document.

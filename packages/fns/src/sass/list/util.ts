@@ -86,7 +86,7 @@ export function createSassListResult(
   bracketed: boolean
 ): ValueGroup {
   const group = sep === ' '
-    ? values.length === 1 ? values[0]! : values
+    ? values
     : makeList(values, sep);
   return bracketed ? makeBlock(group, 'square') : group;
 }

@@ -644,6 +644,23 @@ export class InvalidOperandError extends Error {
   }
 }
 
+/**
+ * An empty list written where CSS needs a value, in `.scss` and `.jess`: an
+ * argument of a call written out as-is, or a declaration's value (ledger P51;
+ * Dart Sass: "() isn't a valid CSS value"). Writing nothing would lose the
+ * authored `()` (P37), so the compile fails.
+ */
+export class EmptyListValueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmptyListValueError';
+  }
+}
+
+/** An empty list: the value an empty `()` / `{}` is read as, or a list a function built with no items (a bracketed `[]` is written). */
+export const isEmptyList = (value: ValueGroup): boolean =>
+  isValueGroupArray(value) ? value.length === 0 : value.type === 'List' && value.value.length === 0;
+
 /* --------------------------------------------------------------- seam */
 
 /**

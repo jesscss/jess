@@ -31,7 +31,7 @@ describe('reserved $-names (jess)', () => {
     expect(() => parse('a { $content := red; }')).toThrow();
     expect(() => parse('a { $content ::= red; }')).toThrow();
     expect(() => parse('a { $content ?: red; }')).toThrow();
-    expect(() => parse('a { $content: { color: red; } }')).toThrow();
+    expect(() => parse('a { $content: #{ color: red; } }')).toThrow();
   });
 
   it('allows non-reserved names, including reserved-name prefixes and other casings', () => {

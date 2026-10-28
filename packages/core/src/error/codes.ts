@@ -61,6 +61,7 @@ export type JessErrorCode =
   | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
+  | 'eval/empty-list-value'
   | 'eval/invalid-operand'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
@@ -544,6 +545,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Operation on an empty value',
       reason: '${reason}',
       fix: 'Operate on a value: a function that returns nothing (false, true or an empty result) can only stand as a statement.'
+    }
+  ],
+  [
+    'eval/empty-list-value',
+    {
+      summary: 'An empty list is not a CSS value',
+      reason: '${reason}',
+      fix: 'Write a value, or leave the declaration or argument out when the list is empty.'
     }
   ],
   [

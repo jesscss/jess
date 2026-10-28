@@ -887,7 +887,7 @@ describe('SCSS canonical-AST grammar', () => {
           }, right: { src: '2' }
         } },
         { type: 'VariableDeclaration', name: 'spaced-positive', value: {
-          type: 'Block', delimiter: 'paren', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
+          type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
         } },
         { type: 'VariableDeclaration', name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { type: 'VariableDeclaration', name: 'legacy-plus', value: { type: 'Operation', operator: '+' } },
@@ -2571,8 +2571,13 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    // Empty `()` and a single `(a: 1)` are maps too.
-    expect(parse('$m: ();').rules[0]).toMatchObject({ value: { type: 'Collection', entries: [] } });
+    /*
+     * A single `(a: 1)` is a map too; the empty `()` is the empty curly list (owner 2026-10-23),
+     * its span recording the authored `()`.
+     */
+    const empty = parse('$m: ();').rules[0];
+    expect(empty).toMatchObject({ value: { type: 'Block', delimiter: 'curly', escaped: true, value: [] } });
+    expect(empty).toMatchObject({ value: { _s: 4, _e: 6 } });
     expect(parse('$m: (a: 1);').rules[0]).toMatchObject({ value: { type: 'Collection', entries: [{ type: 'CollectionEntry', key: { type: 'Keyword', src: 'a' } }] } });
 
     /*
@@ -2583,8 +2588,8 @@ describe('SCSS canonical-AST grammar', () => {
       value: { type: 'Collection', entries: [{ type: 'CollectionEntry', key: { type: 'Quoted', value: 'k' }, value: [{ type: 'Dimension', src: '1px' }, { type: 'Keyword', src: 'solid' }] }] }
     });
 
-    // A paren value-list (no `key:` entry) stays a Block list, never a Collection.
-    expect(parse('$m: (1 2 3);').rules[0]).toMatchObject({ value: { type: 'Block', delimiter: 'paren' } });
+    // A paren value-list (no `key:` entry) is the curly list, never a Collection.
+    expect(parse('$m: (1 2 3);').rules[0]).toMatchObject({ value: { type: 'Block', delimiter: 'curly', escaped: true } });
     expect(parse('$m: (1 + 2);').rules[0]).toMatchObject({ value: { type: 'Block', value: { type: 'Operation' } } });
   });
 

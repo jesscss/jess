@@ -953,6 +953,19 @@ export const ERR = {
   },
 
   /**
+   * An empty list written where CSS needs a value: a declaration value or an
+   * argument of a call written out as-is (ledger P51; Dart Sass: "() isn't a
+   * valid CSS value"). Writing nothing would lose the authored `()` (P37).
+   */
+  emptyListValue(args: Common & { meta: { name?: string; reason: string } }) {
+    return makeJessError({
+      code: 'eval/empty-list-value',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
    * An operation on an operand it is not defined on, where the operation
    * computes (DESIGN-DECISIONS V36): a keyword or a string in every dialect, in
    * Less also a call written out as-is, in `.scss` and `.jess` also a boolean,

@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -91,7 +91,6 @@ import {
   urlFromChildren,
   requireLiteralQuoted,
   isJessDeclaration,
-  isCollectionItem,
   requireExactToken,
   reduceGuardTruth,
   reduceIfCompare,
@@ -117,6 +116,7 @@ import {
   enterTestValue,
   genericCallFrom
 } from './grammar-helpers.js';
+import { collectionFrom, curlyListFrom, enterCssCall, leaveCssCall } from './curly-list.js';
 import type {
   ExpressionFact,
   JessOperatorFact,
@@ -191,6 +191,7 @@ type JessRules = {
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
+  CurlyList: Combinator<Block>;
   ParenValue: Combinator<ValueNode>;
   SquareValue: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
@@ -2618,8 +2619,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(','),
         optional(valueTrivia),
 
-        /* An empty fallback is css's empty `Any`, never a missing fallback. */
-        choice(g.Value, g.VarFallbackEmpty),
+        /*
+         * An empty fallback is css's empty `Any`, never a missing fallback. The
+         * fallback is a CSS call's argument, where `{ … }` keeps CSS's braces.
+         */
+        withCtx(state => enterCssCall(state), choice(g.Value, g.VarFallbackEmpty)),
         optional(valueTrivia)
       )),
       literal(')')
@@ -2652,11 +2656,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal(';'),
     optional(valueTrivia)
   ));
-  const callArgumentGroup = sequence(
+
+  /* A CSS call's arguments, where a `{ … }` keeps CSS's braces (`CurlyList`); a `$` call's reset it (`ReferenceCallTail`). */
+  const callArgumentGroup = withCtx(state => enterCssCall(state), sequence(
     g.CallComponent,
     optional(branchValue),
     many(g.CallArgument)
-  );
+  ));
 
   /**
    * A direct call owns its argument boundaries and recursive call shape. Its
@@ -3093,29 +3099,36 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => collectionSpread(requireValueSlot(children[1]))
   );
+
+  /*
+   * A map is `#{ … }` (ledger P31, owner 2026-09-22: *"data blocks / maps need
+   * `#{}`"*), so a bare `{ … }` value is the curly list (`CurlyList`; owner
+   * 2026-10-23: *"those need to be separate for Jess syntax (#{} vs {})"*). A
+   * bare `{` that opens an entry is still read as the map, an error at the
+   * block (`collectionFrom`), and the parse carries on (P45). Its entries read
+   * their values outside any CSS call's arguments.
+   */
+  const collectionItem = choice(
+    g.CollectionSpread,
+    g.CollectionEntry
+  );
   const Collection = node<Collection>(
     'Collection',
     sequence(
-      literal('{'),
-      parser(
-        { trivia: whitespace },
-        many(choice(
-          g.CollectionSpread,
-          g.CollectionEntry
-        ))
+      choice(
+        sequence(
+          literal('#{'),
+          parser({ trivia: whitespace }, withCtx(state => leaveCssCall(state), many(collectionItem)))
+        ),
+        sequence(
+          literal('{'),
+          parser({ trivia: whitespace }, withCtx(state => leaveCssCall(state), sequence(collectionItem, many(collectionItem))))
+        )
       ),
       optional(rawWhitespace),
       literal('}')
     ),
-    (children) => {
-      const entries: CollectionItem[] = [];
-      for (const child of children) {
-        if (isCollectionItem(child)) {
-          entries.push(child);
-        }
-      }
-      return collection(entries);
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => collectionFrom(children, span, state)
   );
 
   /*
@@ -3183,10 +3196,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(oneOrMoreSep(
+        optional(withCtx(state => leaveCssCall(state), oneOrMoreSep(
           g.MixinCallArgument,
           literal(',')
-        ))
+        )))
       ),
       optional(rawWhitespace),
       literal(')')
@@ -3392,6 +3405,34 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `{ … }` in value position: the curly list, a list passed as one value
+   * (owner 2026-10-09: *"We should interpret Sass / Less value lists as a
+   * curly list. So ~(1px, 2px) would be parsed as `{1px, 2px}`"*, and
+   * *"`~()` would no longer be valid in .jess"*), the css-values-5 §3.1.1
+   * `{}`-wrapped argument. A map is `#{ … }` and a detached ruleset `@{ … }`, so
+   * a bare `{` here is free (owner 2026-10-23: *"those need to be separate for
+   * Jess syntax (#{} vs {})"*). The interior is optional, as `SquareValue`'s is:
+   * `{}` is the empty list; a trailing comma makes a comma list of what it
+   * holds, so `{1,}` is the one-item comma list Sass writes `(1,)`. Like
+   * `Collection`, it may only be a value's first atom (see `nonBlockValueAtom`).
+   */
+  const CurlyList = node<Block>(
+    'CurlyList',
+    noTrivia(sequence(
+      literal('{'),
+      optional(valueTrivia),
+      optional(sequence(
+        g.Value,
+        optional(valueTrivia),
+        optional(literal(','))
+      )),
+      optional(valueTrivia),
+      literal('}')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => curlyListFrom(children, span, state)
+  );
+
+  /*
    * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
@@ -3435,6 +3476,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'ValueAtom',
     choice(
       g.Collection,
+      g.CurlyList,
       nonBlockValueAtom
     ),
     children => requireValueNode(children[0])
@@ -5189,13 +5231,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * A block-valued assignment AUTO-TERMINATES at its closing brace: the block is
-   * its own unambiguous end, so `$foo: { … }`, `$foo: @{ … }`, and
+   * its own unambiguous end, so `$foo: #{ … }`, `$foo: @{ … }`, and
    * `$foo: @() > { … }` need no `;` and whatever follows the brace begins a new
    * statement. Less has the same rule for a detached ruleset bound to a variable.
    * The block must be the WHOLE value — a value can never precede it (there is no
    * `ValueBlock` arm in the space-group continuation), because that is
    * exactly the case where the value's end would be ambiguous. Compose instead:
-   * bind the block first (`$foo: {}`), then use it (`$bar: $foo bar;`).
+   * bind the block first (`$foo: #{}`), then use it (`$bar: $foo bar;`).
    */
   const ValueBlockDeclaration = node<VariableDeclaration>(
     'ValueBlockDeclaration',
@@ -6529,6 +6571,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     CollectionEntry,
     CollectionSpread,
     Collection,
+    CurlyList,
     ParenValue,
     SquareValue,
     InterpolatedValue,
