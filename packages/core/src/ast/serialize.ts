@@ -7231,6 +7231,19 @@ function resolveReferenceResult(
     value = resolved.value;
     valueFrame = resolved.frame;
     evaluated = resolved.evaluated;
+
+    /*
+     * An argument bound by eager snapshot (a `@function` parameter) is opaque
+     * bytes with its typed value carried beside it ({@link carrySnapshot}); a
+     * member read on it reads that value when it is a map, as a read of the
+     * variable it came from would.
+     */
+    if (evaluated === null && !isValueSlotArray(value) && value.type === 'Any') {
+      const carried = e.s.snapshotValues?.get(value);
+      if (carried !== undefined && isCollection(carried)) {
+        evaluated = carried;
+      }
+    }
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
