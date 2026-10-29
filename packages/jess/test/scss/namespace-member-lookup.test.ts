@@ -85,6 +85,104 @@ describe('.scss ns.$name is the .jess member lookup', () => {
   });
 });
 
+/*
+ * A module namespace is bound only at the root, where no property can be
+ * declared, so it is never ambiguous with a property of the rule that reads
+ * it (owner 2026-10-28, ledger R17). Expected values are Dart Sass 1.101.7's,
+ * or sass-spec's where the section is named, in Jess's nested output.
+ */
+describe('a module namespace beside a same-named property', () => {
+  const colors = (input: string): string => files([['_colors.scss', '$primary: red;\n'], ['input.scss', input]]);
+
+  it.each([
+    ['a { color: color.$primary; }', 'a {\n  color: red;\n}\n'],
+    ['a { background: color.$primary; }', 'a {\n  background: red;\n}\n'],
+    ['a { color: blue; background: color.$primary; }', 'a {\n  color: blue;\n  background: red;\n}\n'],
+    ['a { color: blue; b { background: color.$primary; } }', 'a {\n  color: blue;\n  b {\n    background: red;\n  }\n}\n']
+  ])('.scss %s reads the namespace', async (rule, expected) => {
+    await expect(render(colors(`@use "colors" as color;\n${rule}\n`), 'input.scss')).resolves.toBe(expected);
+  });
+
+  it('.jess $color.primary reads the composed namespace', async () => {
+    const dir = files([
+      ['_colors.scss', '$primary: red;\n'],
+      ['input.jess', '@-compose "./_colors.scss" as color;\na { color: blue; background: $color.primary; }\n']
+    ]);
+    await expect(render(dir, 'input.jess')).resolves.toBe('a {\n  color: blue;\n  background: red;\n}\n');
+  });
+
+  it('converts to .jess and renders the same CSS', async () => {
+    const scss = '@use "./colors.scss" as color;\na { color: color.$primary; }\n';
+    const jess = emitJess(parseScss(scss));
+    expect(jess).toContain('color: $color.primary;');
+    const dir = files([['colors.scss', '$primary: red;\n'], ['input.scss', scss], ['input.jess', jess]]);
+    await expect(render(dir, 'input.jess')).resolves.toBe('a {\n  color: red;\n}\n');
+    await expect(render(dir, 'input.scss')).resolves.toBe('a {\n  color: red;\n}\n');
+  });
+
+  it('directives/use/with/multi_load.hrx § transitive', async () => {
+    const dir = files([
+      ['input.scss', '@use "midstream1" with ($a: overridden 1);\n@use "midstream2" with ($a: overridden 2);\n\nb {\n  midstream1: midstream1.$a;\n  midstream2: midstream2.$a;\n}\n'],
+      ['_midstream1.scss', '@use "upstream";\n$a: default 1 !default;\n'],
+      ['_midstream2.scss', '@use "upstream";\n$a: default 2 !default;\n'],
+      ['_upstream.scss', 'c {d: e}\n']
+    ]);
+    await expect(render(dir, 'input.scss')).resolves.toBe('c {\n  d: e;\n}\nb {\n  midstream1: overridden 1;\n  midstream2: overridden 2;\n}\n');
+  });
+
+  it('directives/use/with/multi_load.hrx § unused_configuration', async () => {
+    const dir = files([
+      ['input.scss', '@use "forwarded";\n@use "midstream" with ($a: overridden);\n\nb {\n  midstream: midstream.$a;\n}\n'],
+      ['_midstream.scss', '@forward "forwarded";\n\n$a: default !default;\n'],
+      ['_forwarded.scss', '// This file defines no variables.\n']
+    ]);
+    await expect(render(dir, 'input.scss')).resolves.toBe('b {\n  midstream: overridden;\n}\n');
+  });
+
+  it('keeps a variable and a property in one surface ambiguous, as a coded diagnostic at the read', async () => {
+    await expect(new Compiler({}).renderString('$x: 1;\na {\n  x: 2;\n  y: $.x;\n}\n', { extension: '.jess' })).rejects.toMatchObject({
+      code: 'resolve/ambiguous-member',
+      line: 4,
+      column: 6
+    });
+    await expect(new Compiler({}).renderString('$m: @{\n  color: blue;\n  $color: green;\n};\na {\n  b: $m.color;\n}\n', { extension: '.jess' })).rejects.toMatchObject({
+      code: 'resolve/ambiguous-member',
+      line: 6,
+      column: 6
+    });
+  });
+});
+
+/*
+ * A local variable of the module's name hides the module, by ordinary scoping;
+ * a member read that then fails names both (owner 2026-10-29, ledger R18).
+ */
+describe('a local variable hiding a module namespace', () => {
+  it('.scss: a local $math hides sass:math, reported at the read', async () => {
+    await expect(renderScss('@use "sass:math";\na { $math: 2; b: math.$pi; }\n')).rejects.toMatchObject({
+      code: 'resolve/namespace-shadowed',
+      reason: 'Local `$math` hides the module `math` (bound at 1:1), so this read looks in the local value.',
+      line: 2,
+      column: 18
+    });
+  });
+
+  it('.jess: a local $math hides a composed module, reported at the read', async () => {
+    const dir = files([['_m.scss', '$pi: 3.14;\n'], ['input.jess', '@-compose "./_m.scss" as math;\na { $math: 2; b: $math.pi; }\n']]);
+    await expect(render(dir, 'input.jess')).rejects.toMatchObject({
+      code: 'resolve/namespace-shadowed',
+      reason: 'Local `$math` hides the module `math` (bound at 1:1), so this read looks in the local value.',
+      line: 2,
+      column: 18
+    });
+  });
+
+  it('.jess: a local $math map that has the member is read, with no error', async () => {
+    const dir = files([['_m.scss', '$pi: 3.14;\n'], ['input.jess', '@-compose "./_m.scss" as math;\na { $math: #{ pi: 3 }; b: $math.pi; }\n']]);
+    await expect(render(dir, 'input.jess')).resolves.toBe('a {\n  b: 3;\n}\n');
+  });
+});
+
 describe('.scss ns.$name converts to .jess $ns.name', () => {
   it('writes sass:math reads as $math.name and renders the same CSS', async () => {
     const scss = '@use "sass:math";\n.a { b: math.$pi; c: #{math.$pi}; d: "x#{math.$e}"; e: math.round(math.$e); }\n';

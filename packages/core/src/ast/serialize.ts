@@ -1528,6 +1528,7 @@ function bindModuleCallable(
 }
 
 function bindModuleNamespace(
+  node: ModuleImport,
   module: Readonly<Record<string, unknown>>,
   namespace: string,
   frame: Frame,
@@ -1544,6 +1545,7 @@ function bindModuleNamespace(
   const binding = bindModuleValue(frame, namespace, values, e);
   if (!isValueSlotArray(binding)) {
     (e.s.moduleReferenceValues ??= new Map()).set(binding, null);
+    (e.s.namespaceImports ??= new WeakMap()).set(binding, node);
   }
 }
 
@@ -1568,12 +1570,12 @@ function bindModuleImport(
       }
       return;
     }
-    bindModuleNamespace(module, namespace, frame, e);
+    bindModuleNamespace(node, module, namespace, frame, e);
     return;
   }
 
   if (node.namespace !== null) {
-    bindModuleNamespace(module, node.namespace, frame, e);
+    bindModuleNamespace(node, module, node.namespace, frame, e);
   }
   if (node.defaultImport !== null) {
     const value = requireModuleMember(module, 'default');
@@ -4383,6 +4385,9 @@ interface EvalSession {
    * without admitting module functions into bare CSS call lookup. */
   moduleReferenceValues: Map<object, string | null> | undefined;
 
+  /** Each module namespace binding (`@use … as ns`, `@-compose … as ns`) → the import that bound it. */
+  namespaceImports: WeakMap<object, object> | undefined;
+
   /** Compile-loaded script/data modules keyed by their canonical import fact. */
   plannedModuleImports: Map<ModuleImport, PreparedModule> | null | undefined;
 
@@ -6759,14 +6764,24 @@ function looseMemberLookup(
 }
 
 function resolveDeclarationMember(
+  node: Reference,
   frame: Frame | null,
   name: string,
   e: Lane
 ): DeclEntry | undefined {
-  const prop = resolvePropRef(frame, name, e);
+  let prop = resolvePropRef(frame, name, e);
   const variable = resolveVarRef(frame, name, 'scoped', e);
   if (prop && variable) {
-    throw new Error(`Ambiguous reference member: ${name}`);
+    /*
+     * A module namespace (`@use … as color`, `@-compose … as color`) is bound
+     * only at the root, where no property can be declared, so a namespace and a
+     * property are never two candidates for one name: the namespace is read
+     * (owner 2026-10-28, ledger R17).
+     */
+    if (e.s.namespaceImports?.has(variable.value) !== true) {
+      throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: name } });
+    }
+    prop = undefined;
   }
   if (prop) {
     return {
@@ -7212,7 +7227,7 @@ function resolveReferenceResult(
       if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
         return null;
       }
-      const matched = resolveDeclarationMember(valueFrame, step.name, e);
+      const matched = resolveDeclarationMember(node, valueFrame, step.name, e);
       if (!matched) {
         unresolvedSymbol(node, step.name, e);
       }
@@ -7398,7 +7413,7 @@ function resolveReferenceResult(
         : map.valueEntries.get(looseValueKey);
       const variable = map.unified ? undefined : map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
       if (prop && variable) {
-        throw new Error(`Ambiguous reference member: ${step.name}`);
+        throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: step.name } });
       }
       matched = prop ?? variable;
     } else if (step.kind !== 'index' && typeof step.name !== 'number') {
@@ -7486,7 +7501,7 @@ function resolveReferenceResult(
             const prop = map.byProp.get(key);
             const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
             if (prop && variable) {
-              throw new Error(`Ambiguous reference member: ${key}`);
+              throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: key } });
             }
             matched = prop ?? variable;
           } else {
@@ -7656,6 +7671,29 @@ function evalModuleReferenceCall(
 function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): EvalValue {
   if (!e.optional) {
     const base = node.base;
+    const head = node.steps[0];
+
+    /*
+     * A local variable that hides a module namespace of the same name (`$math`
+     * beside `@use "sass:math"`) is read as the local, by ordinary scoping;
+     * when that read fails, the failure names both (owner 2026-10-29, ledger R18).
+     */
+    if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'entry'
+      && head?.type === 'LookupStep' && typeof head.name === 'string' && e.s.namespaceImports !== undefined) {
+      const local = resolveVarRef(frame, head.name, 'scoped', e);
+      const outer = local === undefined || e.s.namespaceImports.has(local.value)
+        ? undefined
+        : resolveVarRef(local.frame.parent, head.name, 'scoped', e);
+      const site = outer === undefined ? undefined : e.s.namespaceImports.get(outer.value);
+      if (site !== undefined) {
+        const bound = callSiteLocation(site, e.s);
+        throw ERR.namespaceShadowed({
+          node,
+          ...callSiteLocation(node, e.s),
+          meta: { name: head.name, at: bound.line === undefined ? 'the root' : `${bound.line}:${bound.column}` }
+        });
+      }
+    }
     let symbol = node.raw;
     if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
       && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
@@ -11025,6 +11063,7 @@ function scratchEmit(e: Lane): Emit {
       io: e.s.io, // [io] preserve the file-read capability
       moduleFns: e.s.moduleFns,
       moduleReferenceValues: e.s.moduleReferenceValues,
+      namespaceImports: e.s.namespaceImports,
       plannedModuleImports: e.s.plannedModuleImports,
       pendingPlannedModuleImports: undefined,
       preparedImportsOwnedByCaller: false,
@@ -14341,6 +14380,7 @@ function createRenderSession(
       io: options?.io, // [io] per-render file-read capability for the IO built-ins
       moduleFns: undefined,
       moduleReferenceValues: undefined,
+      namespaceImports: undefined,
       plannedModuleImports: entry.plannedModuleImports,
       pendingPlannedModuleImports: entry.pendingPlannedModuleImports,
       preparedImportsOwnedByCaller: entry.preparedImportsOwnedByCaller,
@@ -21140,6 +21180,7 @@ function publishComposedModule(
     );
   }
   const block = anonymousMixin(children);
+  (e.s.namespaceImports ??= new WeakMap()).set(block, node);
   publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }), rank);
   bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
 }
