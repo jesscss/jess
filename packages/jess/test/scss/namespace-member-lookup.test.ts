@@ -208,6 +208,35 @@ describe('a local variable hiding a module namespace', () => {
   });
 });
 
+/*
+ * R18 is about a member READ (`math.$pi`). A call through a module (`map.get`,
+ * `color.adjust`, `list.nth`) resolves the module whatever local shares its
+ * name, so a parameter or loop variable named after the module is never
+ * reported. Expected values are Dart Sass 1.101.7's.
+ */
+describe('a function call through a module beside a local of its name', () => {
+  it('map.get($map, …) in a @function whose parameter is $map', async () => {
+    await expect(renderScss('@use "sass:map";\n$cfg: (x: 1);\n@function pick($map) { @return map.get($map, x); }\na { c: pick($cfg); }\n'))
+      .resolves.toBe('a {\n  c: 1;\n}\n');
+  });
+
+  it('map.get($map, …) in an @each over $map', async () => {
+    await expect(renderScss('@use "sass:map";\n$cfgs: (x: 1), (x: 2);\n@each $map in $cfgs { .a { c: map.get($map, x); } }\n'))
+      .resolves.toBe('.a {\n  c: 1;\n}\n.a {\n  c: 2;\n}\n');
+  });
+
+  /* color.adjust has no kernel yet (fns `sass/color/index.ts`), so it is written as is; only the absence of a shadow diagnostic is pinned. */
+  it('color.adjust($color, …) in a @function whose parameter is $color', async () => {
+    await expect(renderScss('@use "sass:color";\n@function tint($color) { @return color.adjust($color, $lightness: 10%); }\na { c: tint(#336699); }\n'))
+      .resolves.toBeTypeOf('string');
+  });
+
+  it('list.nth($list, …) in a @function whose parameter is $list', async () => {
+    await expect(renderScss('@use "sass:list";\n@function second($list) { @return list.nth($list, 2); }\na { c: second(1 2 3); }\n'))
+      .resolves.toBe('a {\n  c: 2;\n}\n');
+  });
+});
+
 describe('.scss ns.$name converts to .jess $ns.name', () => {
   it('writes sass:math reads as $math.name and renders the same CSS', async () => {
     const scss = '@use "sass:math";\n.a { b: math.$pi; c: #{math.$pi}; d: "x#{math.$e}"; e: math.round(math.$e); }\n';

@@ -7186,7 +7186,12 @@ function resolveReferenceResult(
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
 
-  /* [R18] The member step read on a head that is a variable but no namespace: its name, spelling and frame. */
+  /*
+   * [R18] The member step read on a head that is a variable but no namespace:
+   * its name, spelling and frame. Only a member READ (`math.$pi`, `$ns.name`,
+   * `@ns.name`): a call through the head (`$ns.fn()`) and a bracket key (`$m[k]`,
+   * which `map.get($m, k)` lowers to) are not.
+   */
   let shadowStep = -1;
   let shadowName = '';
   let shadowSpelling = '';
@@ -7222,7 +7227,9 @@ function resolveReferenceResult(
     if (!resolved) {
       return null;
     }
-    if (e.s.namespaceImports !== undefined && !e.s.namespaceImports.has(resolved.value)) {
+    const memberStep = node.steps[0];
+    if (e.s.namespaceImports !== undefined && memberStep?.type === 'LookupStep' && typeof memberStep.name === 'string'
+      && node.steps[1]?.type !== 'Call' && !e.s.namespaceImports.has(resolved.value)) {
       shadowStep = 0;
       shadowName = value.name;
       shadowSpelling = value.raw;
@@ -7257,7 +7264,8 @@ function resolveReferenceResult(
       if (!matched) {
         unresolvedSymbol(node, step.name, e);
       }
-      if (stepIndex === 0 && e.s.namespaceImports !== undefined && !e.s.namespaceImports.has(matched.value)) {
+      if (stepIndex === 0 && e.s.namespaceImports !== undefined && node.steps[2]?.type !== 'Call'
+        && !e.s.namespaceImports.has(matched.value)) {
         shadowStep = 1;
         shadowName = step.name;
         shadowSpelling = `$${step.name}`;
@@ -7616,9 +7624,10 @@ function namespaceShadowed(node: Reference, name: string, spelling: string, loca
     return;
   }
   const bound = callSiteLocation(site, e.s);
+  const read = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
   throw ERR.namespaceShadowed({
-    node,
-    ...callSiteLocation(node, e.s),
+    node: read,
+    ...callSiteLocation(read, e.s),
     meta: { local: spelling, name, at: bound.line === undefined ? 'the root' : `${bound.line}:${bound.column}` }
   });
 }
