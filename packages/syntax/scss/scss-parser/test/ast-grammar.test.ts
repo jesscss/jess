@@ -2595,8 +2595,9 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('lowers SCSS map-get to the shared $[…] accessor read', () => {
     /*
-     * `map-get($m, a)` => `$m[a]`: a Reference whose single BracketLookup step
-     * carries the key (member lookup for a value key, var lookup for `$k`).
+     * `map-get($m, a)` => `$m[a]`: a Reference whose single member step carries
+     * a word or string key. Any other key keeps the call: in `$m[…]` a number is
+     * a position (ledger P15), and a variable or expression may hold one.
      */
     expect(parse('.x { color: map-get($m, a); }').rules[0]).toMatchObject({
       type: 'Ruleset',
@@ -2611,9 +2612,15 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    expect(parse('.x { color: map-get($m, $k); }').rules[0]).toMatchObject({
-      rules: [{ value: { type: 'Reference', steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'k', raw: '@k' }, kind: 'var' }], raw: '$m[$k]' } }]
+    expect(parse('.x { color: map-get($m, "a"); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'Reference', steps: [{ type: 'LookupStep', name: { type: 'Quoted', value: 'a' }, kind: 'member' }] } }]
     });
+
+    for (const key of ['$k', '1px', '#fff', '$k + 1', '"#{$k}"']) {
+      expect(parse(`.x { color: map-get($m, ${key}); }`).rules[0]).toMatchObject({
+        rules: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
+      });
+    }
 
     // A non-canonical arity stays a plain FunctionCall for `fns` routing.
     expect(parse('.x { color: map-get($m); }').rules[0]).toMatchObject({
