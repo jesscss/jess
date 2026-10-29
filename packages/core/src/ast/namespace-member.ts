@@ -15,14 +15,11 @@ import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { CallValue, Reference } from './nodes.js';
 import { NO_SPAN, sourceStartOf } from './provenance.js';
 import type { Frame } from './serialize.js';
-import { isCollection } from './value-collection.js';
-import type { ValueGroup } from './value-eval.js';
 
 /** What these decisions read from the render session. */
 export interface NamespaceSession {
   /** Each module namespace binding (`@use … as ns`, `@-compose … as ns`) → the import that bound it. */
   namespaceImports: WeakMap<object, object> | undefined;
-  readonly snapshotValues: WeakMap<CallValue, ValueGroup> | undefined;
   readonly context: Context | undefined;
 }
 
@@ -61,20 +58,6 @@ export function readsNamespaceMember(node: Reference, binding: CallValue, s: Nam
 /** [R7] Two candidates for one member name in one surface: a coded diagnostic at the read. */
 export function ambiguousMember(node: object, symbol: string, s: NamespaceSession): never {
   throw ERR.ambiguousMember({ node, ...callSiteLocation(node, s), meta: { symbol } });
-}
-
-/**
- * A head's value as a member read takes it. An argument bound by eager snapshot
- * (a `@function` or `@mixin` parameter) is opaque bytes with its typed value
- * carried beside it; when that value is a map, the read takes the map, as a
- * read of the variable it came from would.
- */
-export function carriedMap(s: NamespaceSession, value: CallValue, evaluated: ValueGroup | null): ValueGroup | null {
-  if (evaluated !== null || isValueSlotArray(value) || value.type !== 'Any') {
-    return evaluated;
-  }
-  const carried = s.snapshotValues?.get(value);
-  return carried !== undefined && isCollection(carried) ? carried : null;
 }
 
 /**
