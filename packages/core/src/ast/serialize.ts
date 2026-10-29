@@ -213,7 +213,8 @@ import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAs
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
-import { ambiguousMember, carriedMap, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -1263,17 +1264,6 @@ export function activationOf(frame: Frame): FrameActivation {
     statementIndex: undefined,
     declMapMemo: undefined
   };
-}
-
-/**
- * The typed value a mixin argument's byte snapshot kept beside it: `'value'` for
- * its evaluated value, `'url'` for a URL-bearing one. The activation that bound
- * the argument holds it; until an activation takes it, the render does.
- */
-function snapshotOf(node: Binding, frame: Frame | null | undefined, e: Lane, kind: 'value' | 'url'): ValueGroup | undefined {
-  return kind === 'value'
-    ? frame?.activation?.mixinValueBindings?.get(node) ?? e.s.mixinValueBindings?.get(node)
-    : frame?.activation?.mixinUrlBindings?.get(node) ?? e.s.mixinUrlBindings?.get(node);
 }
 
 function sourceOwnerForBody(rules: object, frame: Frame, e: Lane): object | null {
@@ -3490,7 +3480,9 @@ function lookupVar(frame: Frame | null, name: string, e?: Lane): Binding | undef
  * the cycle guard: `@a: @a + 1` excludes its own node → skips it → falls back to
  * an earlier `@a` (or misses); `@a: @b; @b: @a` accumulates both exclusions and
  * terminates at any depth. There is NO depth cap. The value is returned with its
- * OWNING frame so it evaluates in its declaration scope.
+ * OWNING frame so it evaluates in its declaration scope. A binding that is an
+ * eager snapshot of a map reads as that map ({@link carriedMap}), so every
+ * reader — `@each`, a member read, a function argument — gets the same value.
  *
  * Both stores must therefore keep the EARLIER same-name bindings, or the skip has
  * nothing to land on. `scoped` reads get that from `declIndex`, a source-order
@@ -3499,9 +3491,9 @@ function lookupVar(frame: Frame | null, name: string, e?: Lane): Binding | undef
  * $i: $i - 1` reported a false `Recursive reference` — the read correctly skipped
  * its own node and then found nothing behind it. */
 function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane): BindingHit | undefined {
-  return lookup === 'live'
+  return carriedMap(e.s, lookup === 'live'
     ? lookupLiveCell(frame, name, e)
-    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e);
+    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e));
 }
 
 function hasExcludedVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane): boolean {
@@ -4428,9 +4420,10 @@ interface EvalSession {
    * The typed value an eager argument snapshot was evaluated to
    * ({@link eagerSnapshot}). A typed position reads a scalar one instead of
    * re-reading the snapshot's bytes, so an argument keeps the type the parser
-   * gave it across the mixin boundary; a structured one (a list, a block, a
-   * map) still reads there as its bytes ({@link carrySnapshot}). Created with
-   * the render, so every derived context shares it.
+   * gave it across the mixin boundary; a list or a block still reads there as
+   * its bytes ({@link carrySnapshot}), and a variable read of a map reads the
+   * map ({@link carriedMap}). Created with the render, so every derived
+   * context shares it.
    */
   snapshotValues: WeakMap<Binding, ValueGroup> | undefined;
 
@@ -7211,7 +7204,7 @@ function resolveReferenceResult(
     }
     value = resolved.value;
     valueFrame = resolved.frame;
-    evaluated = carriedMap(e.s, value, resolved.evaluated);
+    evaluated = resolved.evaluated;
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
