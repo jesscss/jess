@@ -1,13 +1,14 @@
 /**
- * The SINGLE unit-conversion table for the value domain: length / duration / angle
- * units and their factors relative to each group's base. Consumed by dimension
+ * The SINGLE unit-conversion table for the value domain: length / duration / angle /
+ * frequency / resolution units (css-values-4 §6.2, §7.1-§7.4; `x` is an alias of
+ * `dppx`) and their factors relative to each group's base. Consumed by dimension
  * arithmetic (`value-operate`), comparison (`value-guards`), and the `convert()` /
  * min-max unify fns.
  *
  * HARD MODULE BOUNDARY: pure data + pure lookups, imports nothing.
  */
 
-export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2 }
+export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2, Frequency = 3, Resolution = 4 }
 
 /**
  * Per-group conversion factors: unit → factor relative to the group base. Keys
@@ -16,11 +17,16 @@ export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2 }
 const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
   { m: 1, cm: 0.01, mm: 0.001, q: 0.001 / 4, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
   { s: 1, ms: 0.001 },
-  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 }
+  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 },
+  { hz: 1, khz: 1000 },
+  { dppx: 1, x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 }
 ];
 
-/** The canonical unit each group unifies TO (`Dimension.unify`): length→px, duration→s, angle→rad. */
-const GROUP_CANONICAL = ['px', 's', 'rad'] as const;
+/**
+ * The canonical unit each group unifies TO (`Dimension.unify`): length→px, duration→s,
+ * angle→rad, frequency→hz, resolution→dppx.
+ */
+const GROUP_CANONICAL = ['px', 's', 'rad', 'hz', 'dppx'] as const;
 
 /** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call. */
 const GROUP_CANONICAL_FACTOR = GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
