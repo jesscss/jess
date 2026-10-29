@@ -11,14 +11,14 @@
  *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
-import { isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core';
+import { foldUnit, isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core';
 
 /**
- * Angle → radians normalization (`deg`/`grad`/`turn`), else the raw number.
+ * Angle → radians normalization (`deg`/`grad`/`turn`, any ASCII case), else the raw number.
  * Byte-identical to legacy `mathHelper`'s per-operand normalize step.
  */
 const normalizeAngle = (d: Dimension): number => {
-  switch (d.unit) {
+  switch (foldUnit(d.unit)) {
     case 'deg': return d.number * Math.PI / 180;
     case 'grad': return d.number * Math.PI / 200;
     case 'turn': return d.number * 2 * Math.PI;

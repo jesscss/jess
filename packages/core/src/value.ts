@@ -83,7 +83,7 @@ export { compareOrder } from './ast/value-guards.js';
 export { operate } from './ast/value-operate.js';
 
 // --- unit table / conversion ---
-export { convertValue, groupOf, unify, unitFactor } from './ast/value-units.js';
+export { convertValue, foldUnit, groupOf, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
 export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
