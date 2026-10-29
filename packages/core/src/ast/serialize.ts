@@ -212,6 +212,7 @@ import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortes
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
+import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, carriedMap, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
@@ -7097,29 +7098,12 @@ function declMapFromMixinCall(
   return { byVar, byProp, list, unified: false, valueEntries: null, varFrames, activation: null };
 }
 
-/** The value yielded by a called value-lambda: the LAST top-level `result:`
- *  declaration in its body (the lowered form of an SCSS `@return`). A function
- *  has no early return — it is "a mixin whose final assignment to a property
- *  named `result` is its value" — so a later `result:` overrides an earlier one,
- *  exactly as a repeated declaration does everywhere else. A `result:` nested
- *  inside a `$if`/`@if`/`$for` branch is not surfaced here; only a top-level one
- *  yields. */
-function lambdaResultValue(rules: Statement[]): ValueSlot | undefined {
-  for (let index = rules.length - 1; index >= 0; index -= 1) {
-    const statement = rules[index]!;
-    if (statement.type === 'Declaration' && statement.name === 'result') {
-      return statement.value;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Invoke a value-position lambda ({@link AnonymousMixin} carrying `params`, e.g.
  * the lowered SCSS user `@function`) called as `$f(args)`. Binds args→params with
  * the SAME rules as a MixinDefinition call (positional/named/default/rest, via
  * {@link bindArgs}) — args resolve in the CALLER frame, param defaults in the
- * lambda's DEFINITION frame — then activates the body and returns the value of its
+ * lambda's DEFINITION frame — then runs the body and returns the value of its
  * `result:` entry, evaluated later in the activation frame. Returns `null` when the
  * args cannot bind or the body yields no `result:` (caller falls back to `raw`).
  */
@@ -7162,6 +7146,17 @@ function invokeValueLambda(
     activation.fallback = callerFrame;
     activation.callerFallback = true;
   }
+
+  /*
+   * The body runs before `result:` is read, in source order, as a mixin body
+   * does: a local (`$q: 1`), a parameter reassigned in an `@if`, and a loop's
+   * accumulator are written to the activation's live cells. The walk skips
+   * the body's `result:` declarations (`lambdaBody`): that value is checked
+   * where the call writes it. Anything else it places goes to a sink nobody reads.
+   */
+  const body = makePlacement(null, [], MOOT_FLUSH, activation);
+  body.lambdaBody = true;
+  settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
   return { value: result, frame: activation };
 }
 
@@ -16830,6 +16825,13 @@ interface Placement {
 
   /** The body is a `$apply`'d rule's: its declarations are marked `fromApply`. */
   readonly applyExpansion: boolean;
+
+  /**
+   * The body is a called value lambda's ({@link invokeValueLambda}): its
+   * `result:` declarations are the call's value, checked where the call writes
+   * it, so the walk skips them.
+   */
+  readonly lambdaBody: boolean;
   readonly expandBubbledSelectorList: boolean;
   readonly bodyTrivia: BodyTriviaReplay | undefined;
 
@@ -16870,6 +16872,7 @@ function makePlacement(
     important: false,
     propertyScope,
     applyExpansion: false,
+    lambdaBody: false,
     expandBubbledSelectorList: false,
     bodyTrivia: undefined,
     nested: false,
@@ -16900,6 +16903,7 @@ function splicePlacement(
   body.partition = at.partition;
   body.important = at.important;
   body.applyExpansion = at.applyExpansion;
+  body.lambdaBody = at.lambdaBody;
   body.bodyTrivia = bodyTrivia;
   body.nested = at.nested;
   body.hoist = inline === undefined ? at.hoist : undefined;
@@ -16946,7 +16950,7 @@ const NOOP_TRAILING_TRIVIA = (): void => {};
 function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
   const {
     composed, group, flush, partition, important: imp, propertyScope,
-    applyExpansion, nested, hoist, source, sharedLeaves, owner
+    applyExpansion, lambdaBody, nested, hoist, source, sharedLeaves, owner
   } = at;
   let bodyTrivia = at.bodyTrivia;
 
@@ -17074,7 +17078,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * Lookup publication, nested-property expansion, and the monomorphic
            * placement shape are evaluator facts shared by both output projections.
            */
-          if (nested && e.referenceImportDepth > 0) {
+          if ((nested && e.referenceImportDepth > 0) || (lambdaBody && node.type === 'Declaration' && node.name === 'result')) {
             break;
           }
           evaluateLeafStatement(
