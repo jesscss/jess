@@ -132,6 +132,7 @@ export {
   round,
   compareOrder,
   operate,
+  foldUnit,
   groupOf,
   unify,
   unitFactor,

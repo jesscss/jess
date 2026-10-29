@@ -1037,6 +1037,7 @@ describe('collectTolerantDiagnostics', () => {
     }).diagnostics
       .filter(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)
       .map(diagnostic => diagnostic.message)).toEqual([
+      'Duplicate collection key "1PX"; the later value wins',
       'Duplicate collection key "50%"; the later value wins',
       'Duplicate collection key "1000"; the later value wins'
     ]);
