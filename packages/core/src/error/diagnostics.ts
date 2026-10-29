@@ -776,6 +776,20 @@ export const ERR = {
       ...args
     });
   },
+  ambiguousMember(args: Common & { meta: { symbol: string } }) {
+    return makeJessError({
+      code: 'resolve/ambiguous-member',
+      phase: 'resolve',
+      ...args
+    });
+  },
+  namespaceShadowed(args: Common & { meta: { local: string; name: string; at: string } }) {
+    return makeJessError({
+      code: 'resolve/namespace-shadowed',
+      phase: 'resolve',
+      ...args
+    });
+  },
   circularCompose(args: Common & { meta: { chain: string } }) {
     return makeJessError({
       code: 'import/circular-compose',

@@ -33,6 +33,8 @@ export type JessErrorCode =
   | 'parse/arithmetic-outside-expression'
   | 'parse/deprecated-if-function'
   | 'resolve/name-not-found'
+  | 'resolve/ambiguous-member'
+  | 'resolve/namespace-shadowed'
   | 'import/circular-compose'
   | 'compose/not-top-level'
   | 'import/cycle'
@@ -280,6 +282,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Name not found',
       reason: 'Symbol "${symbol}" is undefined in this scope.',
       fix: 'Define "${symbol}" or import a file that provides it.'
+    }
+  ],
+  [
+    'resolve/ambiguous-member',
+    {
+      summary: 'Ambiguous member',
+      reason: 'Member "${symbol}" names both a variable and a property here, so the read has two candidates.',
+      fix: 'Rename the variable or the property so that "${symbol}" names one of them.'
+    }
+  ],
+  [
+    'resolve/namespace-shadowed',
+    {
+      summary: 'Module hidden by a local variable',
+      reason: 'Local `${local}` hides the module `${name}` (bound at ${at}), so this read looks in the local value.',
+      fix: 'Rename the local variable, or bind the module under another name with `as`.'
     }
   ],
   [

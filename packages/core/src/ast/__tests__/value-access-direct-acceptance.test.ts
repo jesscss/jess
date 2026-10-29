@@ -238,14 +238,20 @@ describe('direct canonical value access', () => {
         decl('same', keyword('red')),
         decl('value', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'same' }], '$.same'))
       ])
-    ]))).toThrow(/Ambiguous reference member: same/);
+    ]))).toThrow(expect.objectContaining({
+      code: 'resolve/ambiguous-member',
+      reason: 'Member "same" names both a variable and a property here, so the read has two candidates.'
+    }));
     expect(() => render(stylesheet([
       rule('.card', [
         variableDeclaration('same', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
         decl('same', keyword('red')),
         decl('value', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'same' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$same.tone'))
       ])
-    ]))).toThrow(/Ambiguous reference member: same/);
+    ]))).toThrow(expect.objectContaining({
+      code: 'resolve/ambiguous-member',
+      reason: 'Member "same" names both a variable and a property here, so the read has two candidates.'
+    }));
   });
 
   it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {

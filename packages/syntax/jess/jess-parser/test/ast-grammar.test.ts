@@ -678,10 +678,18 @@ describe('Jess AST grammar facts', () => {
     expect(render('$tokens: #{ tone: blue; }; .card { $local: blue; tone: red; $w: 3px; base: 2px; from-ns: $tokens.tone; from-root: $.tokens.tone; expr-ns: $($tokens.tone); expr-root: $($.tokens.tone); from-var: $.local; from-prop: $.tone; width: $(.w + .base); decimal: $(.1); }')).toBe(
       '.card {\n  tone: red;\n  base: 2px;\n  from-ns: blue;\n  from-root: blue;\n  expr-ns: blue;\n  expr-root: blue;\n  from-var: blue;\n  from-prop: red;\n  width: 5px;\n  decimal: 0.1;\n}\n'
     );
-    expect(() => render('.card { $same: blue; same: red; value: $.same; }'))
-      .toThrow(/Ambiguous reference member: same/);
-    expect(() => render('.card { $same: #{ tone: blue; }; same: red; value: $same.tone; }'))
-      .toThrow(/Ambiguous reference member: same/);
+    const ambiguity = (text: string): unknown => {
+      try {
+        render(text);
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+    expect(ambiguity('.card { $same: blue; same: red; value: $.same; }'))
+      .toMatchObject({ code: 'resolve/ambiguous-member' });
+    expect(ambiguity('.card { $same: #{ tone: blue; }; same: red; value: $same.tone; }'))
+      .toMatchObject({ code: 'resolve/ambiguous-member' });
   });
 
   it('lowers Jess live/scoped references and lookup-bearing writes directly', () => {
