@@ -18883,15 +18883,16 @@ function bindForEntry(
     bindings.set(binding.names[0], key ?? index);
     bindings.set(binding.names[1], value);
   } else if (destructured !== null) {
-    for (let i = 0; i < binding.names.length && i < destructured.length; i++) {
-      bindings.set(binding.names[i]!, EVALUATED_BINDING);
+    // A tuple name past the item's last value binds null (`@each $a, $b, $c in (1 2)`).
+    for (let i = 0; i < binding.names.length; i++) {
+      bindings.set(binding.names[i]!, i < destructured.length ? EVALUATED_BINDING : NULL_NODE);
     }
   } else {
     const values = isValueSlotArray(value)
       ? value
       : value.type === 'Sequence' ? value.parts : value.type === 'List' ? value.value : [value];
-    for (let i = 0; i < binding.names.length && i < values.length; i++) {
-      bindings.set(binding.names[i]!, values[i]!);
+    for (let i = 0; i < binding.names.length; i++) {
+      bindings.set(binding.names[i]!, values[i] ?? NULL_NODE);
     }
   }
   return bindings;
@@ -19004,10 +19005,15 @@ function forIterations(
         const item = collectionEntry === undefined ? plainItems?.[i] ?? null : null;
         const evaluatedItem = collectionEntry === undefined ? evaluatedItems?.[i] ?? null : null;
         const index = dimension(i + 1);
+
+        /*
+         * A map iterates as its list of `key value` pairs ({@link groupItems}), so a
+         * tuple destructures the pair: `@each $k, $v in (a: 1)` binds the key, then the value.
+         */
         const destructured = node.binding.kind !== 'tuple'
           ? null
           : collectionEntry !== undefined
-            ? groupItems(collectionEntry.value)
+            ? [collectionEntry.key, collectionEntry.value]
             : evaluatedItem !== null
               ? groupItems(evaluatedItem)
               : null;
