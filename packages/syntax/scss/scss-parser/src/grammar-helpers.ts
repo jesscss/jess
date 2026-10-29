@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStaticQuoted, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
@@ -487,7 +487,7 @@ export function contentArgRaw(arg: ScssCallArg): string {
 }
 
 /** `map.get` is the `sass:map` module spelling of the global `map-get`. Both are
- *  the same function, so both lower to the same accessor read — a grammar that
+ *  the same function, so both lower to the same tree — a grammar that
  *  accepted only one spelling into the accessor form would emit two different
  *  trees for one semantics. */
 export const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
@@ -716,14 +716,22 @@ export function scssValueTail(children: readonly unknown[]): ScssValueTail {
   return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}`, glued: null };
 }
 
+/**
+ * The key of a `map-get($m, k)` that the shared `$[…]` accessor reads with the
+ * same meaning: a word or a string with no interpolation, which `.jess` writes
+ * `$m[k]` / `$m["k"]` (ledger P14). Any other key keeps the call, which matches
+ * the key by value where it is written. In a `[…]` subscript a number is a
+ * position (ledger P15), and a variable or an expression may hold one, so
+ * `map.get($m, 1px)` and `map.get($m, $k)` are not `$m[…]` reads.
+ */
+function isMapGetAccessorKey(key: ValueNode): key is Keyword | Quoted {
+  return key.type === 'Keyword' || isStaticQuoted(key);
+}
+
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
- *  whose single LookupStep carries the key. A `$var` key selects the
- *  variable-namespace lookup; every other key is a value-equality member lookup
- *  (map keys compare by value, never by position, so `index` is never used). */
-export function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
-  const step: ReferenceStep = key.type === 'Lookup' && key.kind === 'var'
-    ? { type: 'LookupStep', kind: 'var', name: key }
-    : { type: 'LookupStep', kind: 'member', name: key };
+ *  whose single member LookupStep carries the key, compared by value. */
+export function lowerMapGet(base: ValueNode, key: Keyword | Quoted): Reference {
+  const step: ReferenceStep = { type: 'LookupStep', kind: 'member', name: key };
   const baseRaw = base.type === 'Reference' ? base.raw : referenceKeyRaw(base);
   return reference(
     base,
@@ -964,7 +972,8 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
     name,
     args
   );
-  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isScssValue(args[0]!.value) && isScssValue(args[1]!.value)) {
+  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isScssValue(args[0]!.value) && isScssValue(args[1]!.value)
+    && isMapGetAccessorKey(args[1]!.value)) {
     return lowerMapGet(
       args[0]!.value,
       args[1]!.value
