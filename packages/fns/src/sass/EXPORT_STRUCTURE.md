@@ -42,7 +42,8 @@ These are the legacy global functions that Sass provides for backward compatibil
 - `lighten()`, `darken()`, `saturate()`, `desaturate()`
 - `grayscale()`, `adjust-hue()`, `opacify()`, `fade-in()`, `transparentize()`, `fade-out()`
 - `complement()`, `ie-hex-str()`, `invert()`
-- TODO: `hue()`, `saturation()`, `lightness()`, `opacity()`, `color()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `adjust-color()`, `scale-color()`, `change-color()`
+- `adjust-color()`, `scale-color()`, `change-color()` (rgb, hsl and hwb channels)
+- TODO: `hue()`, `saturation()`, `lightness()`, `opacity()`, `color()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`
 
 ### Global String Functions
 - TODO: All string functions

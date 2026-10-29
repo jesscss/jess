@@ -67,6 +67,9 @@ export {
   hsl,
   hsla
 } from './color/index.js';
+export { adjustColor } from './color/adjust.js';
+export { scaleColor } from './color/scale.js';
+export { changeColor } from './color/change.js';
 
 /*
  * TODO: Implement remaining global color functions
@@ -76,9 +79,6 @@ export {
  * - lch()
  * - oklab()
  * - oklch()
- * - adjust-color()
- * - scale-color()
- * - change-color()
  */
 
 // Global Meta Functions (Deprecated - use meta.* module instead)

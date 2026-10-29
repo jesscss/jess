@@ -214,6 +214,16 @@ function checkedLazy(
   };
 }
 
+/**
+ * Whether `input` is core's absent value: an implicit `null`, never one the
+ * author wrote. A call that names a later parameter by keyword fills each
+ * parameter it skipped with it (`orderKeywordArgs`), so an optional parameter
+ * reads it as an argument that was not passed. Checked by shape, not identity:
+ * a provided module may run on a second copy of core.
+ */
+const isAbsent = (input: DirectInput): boolean =>
+  typeof input !== 'function' && !isValueGroupArray(input) && input.type === 'Null' && !input.explicit;
+
 function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
@@ -232,7 +242,7 @@ function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly
       continue;
     }
     const input = inputs[offset++];
-    if (input === undefined) {
+    if (input === undefined || ((param.optional || param.default !== undefined) && isAbsent(input))) {
       if (param.default !== undefined) {
         out.push(param.default);
         continue;
