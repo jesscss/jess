@@ -434,14 +434,8 @@ build `@-export` semantics** beyond parsing/accepting the node; flag as owner-op
 > `R4-interpolation-detached-merge-namespaces.md` §R4.6 (cross-linked below).
 > Built: namespace data reads (`@ns.x`, `@ns[@x]`, chained), script-module
 > function calls, the value-position error for `.name(args)` on a `@compose`
-> namespace, and the statement-position `@compose` member mixin call in its `.`
-> form (`@elevate.lift(3px);`, pinned in
-> `packages/jess/test/less/less-modules.test.ts`, "calls a mixin through the
-> compose namespace in statement position"). A `@compose` module's mixins are
-> reached with `>`, as a Less namespace's are (D.6, owner 2026-10-29); that form is
-> not built: measured 2026-10-29, `@theme > .elevate();` parses as an unknown
-> at-rule and is written out as is, and `#theme > .elevate();` is
-> `resolve/name-not-found` (no `#theme` ruleset).
+> namespace, and the `@compose` mixin calls listed in D.6 as built. D.6 also
+> lists the intended `.jess` and Less mixin-call forms that are not built yet.
 >
 > **Blocked on / see [`REFERENCE-CALL-PLAN.md`](../REFERENCE-CALL-PLAN.md)** — the
 > core Reference-call machinery (grammar member-call chain + node + eval dispatch
@@ -581,19 +575,38 @@ The namespace name a module binds to differs by facing:
 (`@compose` binding follows §C's module-scope rules; the `as`-triple detail above
 is specified for `@use`.)
 
-### D.6 Separators — `.` for members, `>` for `@compose` mixins
+### D.6 Separators — `.` for members, `>` for `@compose` mixins in `.jess`
 
 The member separator is **`.`** (`@theme.x`, `@fns.double()`), owner-confirmed — it
-reuses R4.4's `MixinCall.path` segment model (`R4-…-namespaces.md:727-739`). A
-`@compose` module's **mixins are reached with `>`**, as a Less namespace's are
-(`#ns > .mixin();`). Owner 2026-10-29, verbatim: *"in terms of `@compose`, we
-already access mixins with `>`"*. This replaces the earlier line that no
-`>`-style descend token is introduced for module member calls.
+reuses R4.4's `MixinCall.path` segment model (`R4-…-namespaces.md:727-739`).
 
-Built today (measured 2026-10-29): the `.` form `@elevate.lift(3px);` calls the
-module's `.lift` mixin (`packages/jess/test/less/less-modules.test.ts`). The `>`
-form is not built: `@theme > .elevate();` parses as an unknown at-rule and is
-written out as is.
+How a `@compose` module's **mixins** are called. The owner, 2026-10-29, verbatim
+and in order:
+
+1. *"in terms of `@compose`, we already access mixins with `>`"*
+2. *"only if namespaced"*
+3. *"well... if not namespaced they would still be $ >"*
+4. *"in .jess"*
+5. on Less, a module with no namespace: *"just how they would normally"*
+
+So in `.jess` a module mixin is always reached with `>`: `$ns > .elevate();` for a
+namespaced module, and `$ > .elevate();` (the bare `$` head every `.jess` mixin call
+uses) for one composed `as *`. In Less a namespaced module's mixin is called on its
+namespace, and a mixin of a module composed `as *` is called the way any Less mixin
+is: `.elevate();`. This replaces the earlier line that no `>`-style descend token is
+introduced for module member calls.
+
+| dialect | module | form | today (measured 2026-10-29) |
+|---|---|---|---|
+| `.jess` | namespaced (`@-compose "./m.jess" as theme;`) | `$theme > .elevate();` | **not built**: a `parse/syntax-error` at the rule (`$theme.elevate();` is one too) |
+| `.jess` | `as *` | `$ > .elevate();` | works; `packages/jess/test/jess-compose-modules.test.ts`, "calls an `as *` module mixin with `$ > .name()`" |
+| Less | namespaced (`@compose "./elevate.less";` or `… as theme;`) | `@elevate.lift(3px);` | works; `packages/jess/test/less/less-modules.test.ts`, "calls a mixin through the compose namespace in statement position" |
+| Less | namespaced | `@theme > .elevate();` | not built: parsed as an unknown at-rule and written out as is. Whether Less takes this spelling is not in the record. |
+| Less | `as *` | `.lift(3px);` | works; `packages/jess/test/less/less-modules.test.ts`, "calls an `as *` module mixin directly" |
+
+A `@compose` with no `as` takes its namespace from the file name (§D.5), so it is a
+namespaced module: `@compose "./theme.less"; .a { .elevate(); }` is
+`resolve/name-not-found`, and `@theme.elevate();` calls the mixin.
 
 ### D.7 Cross-link — interpolation body widening
 
