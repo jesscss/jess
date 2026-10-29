@@ -212,6 +212,7 @@ import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortes
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
+import { ambiguousMember, carriedMap, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -1545,7 +1546,7 @@ function bindModuleNamespace(
   const binding = bindModuleValue(frame, namespace, values, e);
   if (!isValueSlotArray(binding)) {
     (e.s.moduleReferenceValues ??= new Map()).set(binding, null);
-    (e.s.namespaceImports ??= new WeakMap()).set(binding, node);
+    recordNamespace(e.s, binding, node);
   }
 }
 
@@ -6769,20 +6770,16 @@ function resolveDeclarationMember(
   name: string,
   e: Lane
 ): DeclEntry | undefined {
-  let prop = resolvePropRef(frame, name, e);
   const variable = resolveVarRef(frame, name, 'scoped', e);
+
+  /*
+   * A module namespace (`@use … as color`, `@-compose … as color`) is bound
+   * only at the root, where no property can be declared, so a namespace head
+   * and a property are never two candidates for one name (ledger R17).
+   */
+  const prop = variable !== undefined && readsNamespaceMember(node, variable.value, e.s) ? undefined : resolvePropRef(frame, name, e);
   if (prop && variable) {
-    /*
-     * A module namespace (`@use … as color`, `@-compose … as color`) is bound
-     * only at the root, where no property can be declared, so a namespace and a
-     * property are never two candidates for one name: a namespace head is read
-     * (owner 2026-10-28, ledger R17). A bare `$.color` reads no member of it and
-     * stays R7's ambiguity.
-     */
-    if (node.steps.length < 2 || e.s.namespaceImports?.has(variable.value) !== true) {
-      throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: name } });
-    }
-    prop = undefined;
+    ambiguousMember(node, name, e.s);
   }
   if (prop) {
     return {
@@ -7186,16 +7183,6 @@ function resolveReferenceResult(
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
 
-  /*
-   * [R18] The member step read on a head that is a variable but no namespace:
-   * its name, spelling and frame. Only a member READ (`math.$pi`, `$ns.name`,
-   * `@ns.name`): a call through the head (`$ns.fn()`) and a bracket key (`$m[k]`,
-   * which `map.get($m, k)` lowers to) are not.
-   */
-  let shadowStep = -1;
-  let shadowName = '';
-  let shadowSpelling = '';
-  let shadowFrame: Frame | null = null;
   if (
     e.s.moduleReferenceValues !== undefined
     && !isValueSlotArray(value)
@@ -7227,30 +7214,9 @@ function resolveReferenceResult(
     if (!resolved) {
       return null;
     }
-    const memberStep = node.steps[0];
-    if (e.s.namespaceImports !== undefined && memberStep?.type === 'LookupStep' && typeof memberStep.name === 'string'
-      && node.steps[1]?.type !== 'Call' && !e.s.namespaceImports.has(resolved.value)) {
-      shadowStep = 0;
-      shadowName = value.name;
-      shadowSpelling = value.raw;
-      shadowFrame = resolved.frame;
-    }
     value = resolved.value;
     valueFrame = resolved.frame;
-    evaluated = resolved.evaluated;
-
-    /*
-     * An argument bound by eager snapshot (a `@function` parameter) is opaque
-     * bytes with its typed value carried beside it ({@link carrySnapshot}); a
-     * member read on it reads that value when it is a map, as a read of the
-     * variable it came from would.
-     */
-    if (evaluated === null && !isValueSlotArray(value) && value.type === 'Any') {
-      const carried = e.s.snapshotValues?.get(value);
-      if (carried !== undefined && isCollection(carried)) {
-        evaluated = carried;
-      }
-    }
+    evaluated = carriedMap(e.s, value, resolved.evaluated);
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
@@ -7263,13 +7229,6 @@ function resolveReferenceResult(
       const matched = resolveDeclarationMember(node, valueFrame, step.name, e);
       if (!matched) {
         unresolvedSymbol(node, step.name, e);
-      }
-      if (stepIndex === 0 && e.s.namespaceImports !== undefined && node.steps[2]?.type !== 'Call'
-        && !e.s.namespaceImports.has(matched.value)) {
-        shadowStep = 1;
-        shadowName = step.name;
-        shadowSpelling = `$${step.name}`;
-        shadowFrame = matched.frame;
       }
       if (matched.important) {
         if (e.importantSink) {
@@ -7404,10 +7363,7 @@ function resolveReferenceResult(
     }
     const map = resolveBaseDeclMap(value, valueFrame, e, evaluated);
     if (!map) {
-      if (stepIndex === shadowStep && !e.optional) {
-        namespaceShadowed(node, shadowName, shadowSpelling, shadowFrame, e);
-      }
-      return null;
+      return hiddenNamespace({ node, frame, lookup: resolveVarRef, optional: e.optional }, stepIndex, e);
     }
     const calleeMember = value.type === 'MixinCall';
 
@@ -7456,7 +7412,7 @@ function resolveReferenceResult(
         : map.valueEntries.get(looseValueKey);
       const variable = map.unified ? undefined : map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
       if (prop && variable) {
-        throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: step.name } });
+        ambiguousMember(node, step.name, e.s);
       }
       matched = prop ?? variable;
     } else if (step.kind !== 'index' && typeof step.name !== 'number') {
@@ -7544,7 +7500,7 @@ function resolveReferenceResult(
             const prop = map.byProp.get(key);
             const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
             if (prop && variable) {
-              throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: key } });
+              ambiguousMember(node, key, e.s);
             }
             matched = prop ?? variable;
           } else {
@@ -7588,10 +7544,7 @@ function resolveReferenceResult(
       }
     }
     if (!matched) {
-      if (stepIndex === shadowStep) {
-        namespaceShadowed(node, shadowName, shadowSpelling, shadowFrame, e);
-      }
-      unresolvedSymbol(node, missingSymbol, e);
+      memberNotFound({ node, frame, lookup: resolveVarRef, optional: false }, stepIndex, missingSymbol, e);
     }
     if (matched.important) {
       if (e.importantSink) {
@@ -7610,26 +7563,6 @@ function resolveReferenceResult(
     }
   }
   return { value, frame: valueFrame, evaluated, sourceOwner };
-}
-
-/**
- * [R18] A member read that failed on a variable which hides a module namespace
- * of the same name (`$math: 2` under `@use "sass:math"`) names both, at the
- * read (owner 2026-10-29). Resolution is unchanged: the local is what was read.
- */
-function namespaceShadowed(node: Reference, name: string, spelling: string, local: Frame | null, e: Lane): void {
-  const outer = local?.parent ? resolveVarRef(local.parent, name, 'scoped', e) : undefined;
-  const site = outer === undefined ? undefined : e.s.namespaceImports?.get(outer.value);
-  if (site === undefined) {
-    return;
-  }
-  const bound = callSiteLocation(site, e.s);
-  const read = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
-  throw ERR.namespaceShadowed({
-    node: read,
-    ...callSiteLocation(read, e.s),
-    meta: { local: spelling, name, at: bound.line === undefined ? 'the root' : `${bound.line}:${bound.column}` }
-  });
 }
 
 function moduleReferenceCall(
@@ -21136,29 +21069,6 @@ function rejectComposedMemberCall(node: Reference, member: DeclEntry | undefined
   });
 }
 
-/* A usable module namespace identifier (the same ident shape the grammars use). */
-const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
-
-/**
- * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
- * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
- * path). Take the last `/`-segment, strip a trailing file extension, strip a
- * leading `_` partial marker or `#` package-import marker. `./foo.less` → `foo`,
- * `#sass/map` → `map`, `#less` → `less`, `@co/design-tokens` → `design-tokens`,
- * `./_theme.scss` → `theme`. Returns
- * `null` when the result is not a usable identifier — the author must then
- * spell an explicit `as <name>`.
- */
-function deriveModuleNamespace(specifier: string): string | null {
-  /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
-     dot) and a leading `_` or `#` marker. Regex-based to keep `serialize.ts` free
-     of `lastIndexOf` (the diagnostic cold-path guard bans it). */
-  const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
-  const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
-  const base = withoutExt.startsWith('_') || withoutExt.startsWith('#') ? withoutExt.slice(1) : withoutExt;
-  return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
-}
-
 /**
  * Expose a composed module's OWN top-level members to the importer per its `as`
  * clause, WITHOUT splicing its body into the importer frame (that emission is a
@@ -21223,7 +21133,7 @@ function publishComposedModule(
     );
   }
   const block = anonymousMixin(children);
-  (e.s.namespaceImports ??= new WeakMap()).set(block, node);
+  recordNamespace(e.s, block, node);
   publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }), rank);
   bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
 }
