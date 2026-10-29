@@ -16,7 +16,7 @@ import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithm
 import { HEX } from './color.js';
 import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { convertValue, convertible, unitMultisetKey } from './value-units.js';
+import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
@@ -146,7 +146,12 @@ function unitsOf(d: Dimension): UnitSet {
   return { num: d.unit ? [d.unit] : [], den: [], backup: d.unit || undefined };
 }
 
-/** less.js `Unit.cancel`: remove numerator/denominator units that appear on both sides. */
+/**
+ * less.js `Unit.cancel`: remove numerator/denominator units that appear on both
+ * sides. A unit cancels its own spelling first, then another spelling of it
+ * (`foldUnit`, ledger V37: `10PX / 2px` is `5`), so a surviving unit keeps the
+ * spelling it was written in.
+ */
 function cancel(u: UnitSet): void {
   const counter = new Map<string, number>();
   for (const n of u.num) {
@@ -167,6 +172,9 @@ function cancel(u: UnitSet): void {
   }
   u.num = num.sort();
   u.den = den.sort();
+  if (num.length !== 0 && den.length !== 0) {
+    cancelAcross(num, den, sameFoldedUnit);
+  }
 }
 
 /**
@@ -190,6 +198,8 @@ function cancelAcross(nums: string[], dens: string[], match: (n: string, d: stri
 }
 
 const sameUnit = (n: string, d: string): boolean => n === d;
+
+const sameFoldedUnit = (n: string, d: string): boolean => foldUnit(n) === foldUnit(d);
 
 /**
  * Dart Sass's unit cancellation: a unit cancels the same unit first, then a
