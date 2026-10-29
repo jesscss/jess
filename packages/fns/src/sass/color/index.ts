@@ -45,6 +45,11 @@ export { fadeIn } from './fade-in.js';
 export { transparentize } from './transparentize.js';
 export { fadeOut } from './fade-out.js';
 
+// Channel updates by keyword (`$red`…`$blackness`, `$alpha`, `$space`).
+export { adjust } from './adjust.js';
+export { scale } from './scale.js';
+export { change } from './change.js';
+
 // Output formatting.
 export { ieHexStr } from './ie-hex-str.js';
 
@@ -62,5 +67,6 @@ export { hsla } from './hsla.js';
  * Not implemented — each needs a colour-space model jess does not have yet:
  * color.hwb / lab / lch / oklab / oklch, color.space / to-space / channel /
  * same / is-legacy / is-missing / is-in-gamut / to-gamut / is-powerless,
- * color.whiteness / blackness, color.adjust / scale / change.
+ * color.whiteness / blackness. `adjust` / `scale` / `change` cover the rgb, hsl
+ * and hwb spaces only; another `$space`, and a `none` channel, are errors.
  */

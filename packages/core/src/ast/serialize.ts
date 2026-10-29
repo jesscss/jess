@@ -9293,21 +9293,21 @@ function writtenBlockBody(
  * mismatch. Guessing a position for a name the definition never declared is the
  * silent wrong lowering this exists to prevent.
  */
-function orderKeywordArgs<T>(
+function orderKeywordArgs(
   args: readonly CallArg<ValueSlot>[],
-  vals: T[],
+  vals: ValueGroup[],
   ev: ValueEvaluator,
   name: string,
   scopedFn: Fn | undefined,
   ambient: boolean
-): T[] {
+): ValueGroup[] {
   const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
   }
 
-  const slots = new Array<T | undefined>(params.length);
-  const positional: T[] = [];
+  const slots = new Array<ValueGroup | undefined>(params.length);
+  const positional: ValueGroup[] = [];
   for (let i = 0; i < args.length; i++) {
     const argName = args[i]!.name;
     if (argName === undefined) {
@@ -9322,21 +9322,20 @@ function orderKeywordArgs<T>(
   }
 
   /* Positional arguments keep their authored order and fill the slots the
-   * keywords did not claim — Less and Sass both allow the two forms to mix. */
-  const out: T[] = [];
+   * keywords did not claim — Less and Sass both allow the two forms to mix. A
+   * parameter skipped before the last bound one gets the core-minted absent
+   * value, {@link NULL}, which an optional parameter binds as not passed, so
+   * every keyword stays at its own parameter's position:
+   * `color.adjust($c, $lightness: 10%)` never reads `10%` as `$red`, and
+   * `string.slice("abcd", $end-at: 2)` does not bind `2` to `$start-at`. */
   let next = 0;
-  for (let at = 0; at < slots.length; at++) {
-    const bound = slots[at];
-    if (bound !== undefined) {
-      out.push(bound);
-    } else if (next < positional.length) {
-      out.push(positional[next++]!);
-    }
+  for (let at = 0; at < slots.length && next < positional.length; at++) {
+    slots[at] ??= positional[next++];
   }
-  for (; next < positional.length; next++) {
-    out.push(positional[next]!);
+  while (slots.length > 0 && slots[slots.length - 1] === undefined) {
+    slots.pop();
   }
-  return out;
+  return Array.from(slots, slot => slot ?? NULL).concat(positional.slice(next));
 }
 
 /**

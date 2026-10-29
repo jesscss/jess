@@ -1,10 +1,11 @@
 /**
  * The `sass:color` kernels — value-domain only, and deliberately Sass-local.
  *
- * These are NOT re-used from `less/color-helper.ts`: Sass and Less disagree on
- * argument scale, clamping, format preservation and rounding, so a shared kernel
- * would only be shared by coincidence. Every rule below is pinned to an executed
- * case in the `sass-spec` conformance corpus (see `color-sass-spec.test.ts`).
+ * Where the math is the same in Less, the kernel lives in `shared/color/kernels.ts`
+ * (`clamp01`, `percentOf`, `rotateHue`). What stays here is where Sass and Less
+ * disagree: argument scale, clamping, format preservation and rounding. Every
+ * rule below is pinned to an executed case in the `sass-spec` conformance corpus
+ * (see `color-sass-spec.test.ts`).
  *
  * Precision rule (owner ruling): channels carry FULL precision internally and are
  * quantized only at the output boundary. dart-sass's legacy fns round channels
@@ -14,6 +15,7 @@
  */
 import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core';
 import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core';
+import { clamp01, percentOf } from '../../shared/color/kernels.js';
 
 export function requireColor(value: Value): Color {
   if (value.type !== 'Color') {
@@ -42,8 +44,7 @@ export function noExcess(extra: ValueGroup | undefined, allowed: number): void {
   }
 }
 
-/** Clamp to 0-1 (alpha, and the hsl channels the adjusters write back). */
-export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+export { clamp01 };
 
 /**
  * A Sass `$amount` on the PERCENTAGE scale (`lighten`/`darken`/`saturate`/
@@ -137,18 +138,6 @@ export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: Value[]) => V
 }
 
 /**
- * Rotate hue by `degrees`, wrapped to 0-360, preserving alpha + format. The
- * kernel behind `adjust-hue` and `complement` (`complement` is a fixed 180).
- * dart-sass: `adjust-hue(#800, 45)` → `#886600`, `adjust-hue(#800, -45)` →
- * `#880066`, `complement(hsl(10,90%,50%))` → `hsl(190, 90%, 50%)`.
- */
-export function rotateHue(color: Color, degrees: number): Color {
-  const [h, s, l] = colorHsl(color);
-  const hue = (h + degrees) % 360;
-  return makeColorHsl([hue < 0 ? hue + 360 : hue, s, l], color.alpha, color.format);
-}
-
-/**
  * Sass `mix`'s weighted blend. Identical alpha-aware weighting to Less's, but
  * over the RAW (unrounded) channels and always emitted in rgb format — dart-sass
  * `mix(#f00, #00f)` → `rgb(127.5, 0, 127.5)` (not Less's hex-quantized
@@ -172,10 +161,6 @@ export function mixColors(c1: Color, c2: Color, weight: number): Color {
 }
 
 /* ------------------------------------------------ constructor kernels */
-
-/** `percentOf(base)`: a `%` dimension → `number * base / 100`; else its number. */
-const percentOf = (d: Dimension, base: number): number =>
-  d.unit === '%' ? (d.number * base) / 100 : d.number;
 
 /**
  * An angle in DEGREES. A true angle unit converts — `adjust_hue/units.hrx` has

@@ -1,6 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { defineFunction } from '@jesscss/core';
-import { noExcess, requireColor, rotateHue } from './kernels.js';
+import { noExcess, requireColor } from './kernels.js';
+import { rotateHue } from '../../shared/color/kernels.js';
 
 /**
  * `color.complement(color)` — the hue rotated by 180 degrees.
