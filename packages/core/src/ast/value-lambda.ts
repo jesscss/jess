@@ -16,20 +16,3 @@ export function lambdaResultValue(rules: readonly Statement[]): ValueSlot | unde
   }
   return undefined;
 }
-
-const bodyWrites = new WeakMap<readonly Statement[], Statement[]>();
-
-/**
- * The statements a call of a value-lambda runs before it reads its `result:`:
- * the body without its top-level `result:` declarations. A `result:` is a
- * value, checked where the call writes it, never a declaration the body writes.
- * Computed once per body.
- */
-export function lambdaBodyWrites(rules: readonly Statement[]): Statement[] {
-  let writes = bodyWrites.get(rules);
-  if (writes === undefined) {
-    writes = rules.filter(statement => statement.type !== 'Declaration' || statement.name !== 'result');
-    bodyWrites.set(rules, writes);
-  }
-  return writes;
-}

@@ -212,7 +212,7 @@ import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortes
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
-import { lambdaBodyWrites, lambdaResultValue } from './value-lambda.js';
+import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, carriedMap, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
@@ -7150,11 +7150,13 @@ function invokeValueLambda(
   /*
    * The body runs before `result:` is read, in source order, as a mixin body
    * does: a local (`$q: 1`), a parameter reassigned in an `@if`, and a loop's
-   * accumulator are written to the activation's live cells. Its top-level
-   * `result:` is not walked: that value is checked where the call writes it.
-   * Anything the walk places goes to a sink nobody reads.
+   * accumulator are written to the activation's live cells. The walk skips
+   * the body's `result:` declarations (`lambdaBody`): that value is checked
+   * where the call writes it. Anything else it places goes to a sink nobody reads.
    */
-  settled(walkBody(lambdaBodyWrites(lambda.rules), activation, makePlacement(null, [], MOOT_FLUSH, activation), scratchEmit(e)), 'value-lambda body', lambda, e);
+  const body = makePlacement(null, [], MOOT_FLUSH, activation);
+  body.lambdaBody = true;
+  settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
   return { value: result, frame: activation };
 }
 
@@ -16823,6 +16825,13 @@ interface Placement {
 
   /** The body is a `$apply`'d rule's: its declarations are marked `fromApply`. */
   readonly applyExpansion: boolean;
+
+  /**
+   * The body is a called value lambda's ({@link invokeValueLambda}): its
+   * `result:` declarations are the call's value, checked where the call writes
+   * it, so the walk skips them.
+   */
+  readonly lambdaBody: boolean;
   readonly expandBubbledSelectorList: boolean;
   readonly bodyTrivia: BodyTriviaReplay | undefined;
 
@@ -16863,6 +16872,7 @@ function makePlacement(
     important: false,
     propertyScope,
     applyExpansion: false,
+    lambdaBody: false,
     expandBubbledSelectorList: false,
     bodyTrivia: undefined,
     nested: false,
@@ -16893,6 +16903,7 @@ function splicePlacement(
   body.partition = at.partition;
   body.important = at.important;
   body.applyExpansion = at.applyExpansion;
+  body.lambdaBody = at.lambdaBody;
   body.bodyTrivia = bodyTrivia;
   body.nested = at.nested;
   body.hoist = inline === undefined ? at.hoist : undefined;
@@ -16939,7 +16950,7 @@ const NOOP_TRAILING_TRIVIA = (): void => {};
 function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
   const {
     composed, group, flush, partition, important: imp, propertyScope,
-    applyExpansion, nested, hoist, source, sharedLeaves, owner
+    applyExpansion, lambdaBody, nested, hoist, source, sharedLeaves, owner
   } = at;
   let bodyTrivia = at.bodyTrivia;
 
@@ -17067,7 +17078,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * Lookup publication, nested-property expansion, and the monomorphic
            * placement shape are evaluator facts shared by both output projections.
            */
-          if (nested && e.referenceImportDepth > 0) {
+          if ((nested && e.referenceImportDepth > 0) || (lambdaBody && node.type === 'Declaration' && node.name === 'result')) {
             break;
           }
           evaluateLeafStatement(
