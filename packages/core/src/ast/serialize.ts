@@ -6775,10 +6775,11 @@ function resolveDeclarationMember(
     /*
      * A module namespace (`@use … as color`, `@-compose … as color`) is bound
      * only at the root, where no property can be declared, so a namespace and a
-     * property are never two candidates for one name: the namespace is read
-     * (owner 2026-10-28, ledger R17).
+     * property are never two candidates for one name: a namespace head is read
+     * (owner 2026-10-28, ledger R17). A bare `$.color` reads no member of it and
+     * stays R7's ambiguity.
      */
-    if (e.s.namespaceImports?.has(variable.value) !== true) {
+    if (node.steps.length < 2 || e.s.namespaceImports?.has(variable.value) !== true) {
       throw ERR.ambiguousMember({ node, ...callSiteLocation(node, e.s), meta: { symbol: name } });
     }
     prop = undefined;
@@ -7184,6 +7185,12 @@ function resolveReferenceResult(
   let evaluated: ValueGroup | null = null;
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
+
+  /* [R18] The member step read on a head that is a variable but no namespace: its name, spelling and frame. */
+  let shadowStep = -1;
+  let shadowName = '';
+  let shadowSpelling = '';
+  let shadowFrame: Frame | null = null;
   if (
     e.s.moduleReferenceValues !== undefined
     && !isValueSlotArray(value)
@@ -7215,6 +7222,12 @@ function resolveReferenceResult(
     if (!resolved) {
       return null;
     }
+    if (e.s.namespaceImports !== undefined && !e.s.namespaceImports.has(resolved.value)) {
+      shadowStep = 0;
+      shadowName = value.name;
+      shadowSpelling = value.raw;
+      shadowFrame = resolved.frame;
+    }
     value = resolved.value;
     valueFrame = resolved.frame;
     evaluated = resolved.evaluated;
@@ -7230,6 +7243,12 @@ function resolveReferenceResult(
       const matched = resolveDeclarationMember(node, valueFrame, step.name, e);
       if (!matched) {
         unresolvedSymbol(node, step.name, e);
+      }
+      if (stepIndex === 0 && e.s.namespaceImports !== undefined && !e.s.namespaceImports.has(matched.value)) {
+        shadowStep = 1;
+        shadowName = step.name;
+        shadowSpelling = `$${step.name}`;
+        shadowFrame = matched.frame;
       }
       if (matched.important) {
         if (e.importantSink) {
@@ -7364,6 +7383,9 @@ function resolveReferenceResult(
     }
     const map = resolveBaseDeclMap(value, valueFrame, e, evaluated);
     if (!map) {
+      if (stepIndex === shadowStep && !e.optional) {
+        namespaceShadowed(node, shadowName, shadowSpelling, shadowFrame, e);
+      }
       return null;
     }
     const calleeMember = value.type === 'MixinCall';
@@ -7545,6 +7567,9 @@ function resolveReferenceResult(
       }
     }
     if (!matched) {
+      if (stepIndex === shadowStep) {
+        namespaceShadowed(node, shadowName, shadowSpelling, shadowFrame, e);
+      }
       unresolvedSymbol(node, missingSymbol, e);
     }
     if (matched.important) {
@@ -7564,6 +7589,25 @@ function resolveReferenceResult(
     }
   }
   return { value, frame: valueFrame, evaluated, sourceOwner };
+}
+
+/**
+ * [R18] A member read that failed on a variable which hides a module namespace
+ * of the same name (`$math: 2` under `@use "sass:math"`) names both, at the
+ * read (owner 2026-10-29). Resolution is unchanged: the local is what was read.
+ */
+function namespaceShadowed(node: Reference, name: string, spelling: string, local: Frame | null, e: Lane): void {
+  const outer = local?.parent ? resolveVarRef(local.parent, name, 'scoped', e) : undefined;
+  const site = outer === undefined ? undefined : e.s.namespaceImports?.get(outer.value);
+  if (site === undefined) {
+    return;
+  }
+  const bound = callSiteLocation(site, e.s);
+  throw ERR.namespaceShadowed({
+    node,
+    ...callSiteLocation(node, e.s),
+    meta: { local: spelling, name, at: bound.line === undefined ? 'the root' : `${bound.line}:${bound.column}` }
+  });
 }
 
 function moduleReferenceCall(
@@ -7671,29 +7715,6 @@ function evalModuleReferenceCall(
 function unresolvedReference(node: Reference, frame: Frame | null, e: Lane): EvalValue {
   if (!e.optional) {
     const base = node.base;
-    const head = node.steps[0];
-
-    /*
-     * A local variable that hides a module namespace of the same name (`$math`
-     * beside `@use "sass:math"`) is read as the local, by ordinary scoping;
-     * when that read fails, the failure names both (owner 2026-10-29, ledger R18).
-     */
-    if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'entry'
-      && head?.type === 'LookupStep' && typeof head.name === 'string' && e.s.namespaceImports !== undefined) {
-      const local = resolveVarRef(frame, head.name, 'scoped', e);
-      const outer = local === undefined || e.s.namespaceImports.has(local.value)
-        ? undefined
-        : resolveVarRef(local.frame.parent, head.name, 'scoped', e);
-      const site = outer === undefined ? undefined : e.s.namespaceImports.get(outer.value);
-      if (site !== undefined) {
-        const bound = callSiteLocation(site, e.s);
-        throw ERR.namespaceShadowed({
-          node,
-          ...callSiteLocation(node, e.s),
-          meta: { name: head.name, at: bound.line === undefined ? 'the root' : `${bound.line}:${bound.column}` }
-        });
-      }
-    }
     let symbol = node.raw;
     if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
       && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
@@ -15236,7 +15257,7 @@ function preselectControlFlow(frame: Frame, e: Lane): void {
     try {
       body = selectedIfBody(statement, frame, ctx);
     } catch (error) {
-      if (error instanceof JessError && error.code === 'resolve/name-not-found') {
+      if (error instanceof JessError && (error.code === 'resolve/name-not-found' || error.code === 'resolve/namespace-shadowed')) {
         return;
       }
       throw error;
@@ -21677,7 +21698,7 @@ function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
   } catch (error) {
     if (
       error instanceof ReferenceError
-      || (error instanceof JessError && error.code === 'resolve/name-not-found')
+      || (error instanceof JessError && (error.code === 'resolve/name-not-found' || error.code === 'resolve/namespace-shadowed'))
     ) {
       throw new ImportPathNotReady(error);
     }

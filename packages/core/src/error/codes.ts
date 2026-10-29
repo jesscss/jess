@@ -296,7 +296,7 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     'resolve/namespace-shadowed',
     {
       summary: 'Module hidden by a local variable',
-      reason: 'Local `$${name}` hides the module `${name}` (bound at ${at}), so this read looks in the local value.',
+      reason: 'Local `${local}` hides the module `${name}` (bound at ${at}), so this read looks in the local value.',
       fix: 'Rename the local variable, or bind the module under another name with `as`.'
     }
   ],

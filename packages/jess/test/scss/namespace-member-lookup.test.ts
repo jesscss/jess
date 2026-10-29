@@ -139,6 +139,11 @@ describe('a module namespace beside a same-named property', () => {
     await expect(render(dir, 'input.scss')).resolves.toBe('b {\n  midstream: overridden;\n}\n');
   });
 
+  it('keeps a bare $.color beside a color property ambiguous: it reads no member of the module', async () => {
+    const dir = files([['_c.scss', '$primary: red;\n'], ['input.jess', '@-compose "./_c.scss" as color;\na {\n  color: blue;\n  b: $.color;\n}\n']]);
+    await expect(render(dir, 'input.jess')).rejects.toMatchObject({ code: 'resolve/ambiguous-member', line: 4, column: 6 });
+  });
+
   it('keeps a variable and a property in one surface ambiguous, as a coded diagnostic at the read', async () => {
     await expect(new Compiler({}).renderString('$x: 1;\na {\n  x: 2;\n  y: $.x;\n}\n', { extension: '.jess' })).rejects.toMatchObject({
       code: 'resolve/ambiguous-member',
@@ -180,6 +185,26 @@ describe('a local variable hiding a module namespace', () => {
   it('.jess: a local $math map that has the member is read, with no error', async () => {
     const dir = files([['_m.scss', '$pi: 3.14;\n'], ['input.jess', '@-compose "./_m.scss" as math;\na { $math: #{ pi: 3 }; b: $math.pi; }\n']]);
     await expect(render(dir, 'input.jess')).resolves.toBe('a {\n  b: 3;\n}\n');
+  });
+
+  it('.jess: a local $math map without the member names the module too', async () => {
+    const dir = files([['_m.scss', '$pi: 3.14;\n'], ['input.jess', '@-compose "./_m.scss" as math;\na { $math: #{ e: 3 }; b: $math.pi; }\n']]);
+    await expect(render(dir, 'input.jess')).rejects.toMatchObject({ code: 'resolve/namespace-shadowed', line: 2, column: 26 });
+  });
+
+  it('a failure past the member read is not about the module', async () => {
+    const dir = files([['_m.scss', '$pi: 3.14;\n'], ['input.jess', '@-compose "./_m.scss" as math;\na { $math: #{ pi: 3 }; b: $math.pi.x; }\n']]);
+    await expect(render(dir, 'input.jess')).rejects.toMatchObject({ code: 'resolve/name-not-found', line: 2, column: 27 });
+  });
+
+  it('.less: a local @theme hides a composed module the same way', async () => {
+    const dir = files([['t.less', '@primary: red;\n'], ['input.less', '@compose "./t.less" as theme;\n.a {\n  @theme: 2;\n  b: @theme.primary;\n}\n']]);
+    await expect(render(dir, 'input.less')).rejects.toMatchObject({
+      code: 'resolve/namespace-shadowed',
+      reason: 'Local `@theme` hides the module `theme` (bound at 1:1), so this read looks in the local value.',
+      line: 4,
+      column: 6
+    });
   });
 });
 

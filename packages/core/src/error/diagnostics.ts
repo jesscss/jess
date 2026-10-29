@@ -783,7 +783,7 @@ export const ERR = {
       ...args
     });
   },
-  namespaceShadowed(args: Common & { meta: { name: string; at: string } }) {
+  namespaceShadowed(args: Common & { meta: { local: string; name: string; at: string } }) {
     return makeJessError({
       code: 'resolve/namespace-shadowed',
       phase: 'resolve',
