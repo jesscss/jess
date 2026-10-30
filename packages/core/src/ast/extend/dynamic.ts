@@ -13,7 +13,7 @@
  * evaluated: the moved and copied bytes are the ones the walk wrote.
  */
 
-import { branchTextIsPlaceholder, selectorBranchHasInterp } from '../nodes.js';
+import { branchTextIsPlaceholder, selectorBranchHasAmpersand, selectorBranchHasInterp } from '../nodes.js';
 import type { ExtendInstruction, Ruleset, SelectorList, Stylesheet } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
 import type { SelectorUnits } from '../selector-text.js';
@@ -159,11 +159,29 @@ export interface BlockExtent {
 
 /**
  * Whether an extend can split `rule` off or take its declarations: its own selector
- * shares an atom with a known target, or is interpolated, which the walk resolves. The fast-reject the planner applies, at walk
- * time; a rule it rejects keeps the header the walk wrote if the fold would split it.
+ * shares an atom with a known target, or holds a `&`, which composes its parent's, or
+ * is interpolated, which the walk resolves. The
+ * fast-reject the planner applies, at walk time; a rule it rejects keeps the header the
+ * walk wrote if the fold would split it. A rule the static plan holds reads the level
+ * the planner built for it (`planned`, read into {@link DynamicExtendState.ownLevels}
+ * once); only a rule the walk records builds its own.
  */
-export function mayBeTarget(dyn: DynamicExtendState, rule: Ruleset): boolean {
-  return rule.selector.selectors.some(selectorBranchHasInterp) || ownLevelOf(dyn, rule).some(branch => branchSharesAtom(branch, dyn.targetAtoms));
+export function mayBeTarget(dyn: DynamicExtendState, rule: Ruleset, planned: ExtendResults | null): boolean {
+  if (dyn.targetAtoms.size === 0) {
+    return false;
+  }
+  if (rule.selector.selectors.some(branch => selectorBranchHasInterp(branch) || selectorBranchHasAmpersand(branch))) {
+    return true;
+  }
+  if (!dyn.plannedLevels) {
+    dyn.plannedLevels = true;
+    for (const subject of planned?.subjects ?? []) {
+      if (!dyn.ownLevels.has(subject.rule)) {
+        dyn.ownLevels.set(subject.rule, subject.ownLocal);
+      }
+    }
+  }
+  return ownLevelOf(dyn, rule).some(branch => branchSharesAtom(branch, dyn.targetAtoms));
 }
 
 /** The extents of the first `count` blocks of `open`, the blocks a rule is written in, outermost first, kept on each block once made. */
@@ -705,6 +723,9 @@ export interface DynamicExtendState {
 
   /** The atoms of every extend target the graph is known to hold before the walk (static and placed). */
   targetAtoms: Set<string>;
+
+  /** {@link ownLevels} holds the levels the static plan built ({@link mayBeTarget}). */
+  plannedLevels: boolean;
 
   /** The extend pre-pass's resolved selector lists ({@link EvalSession.resolvedSelectors}). */
   resolvedSelectors: ReadonlyMap<SelectorList, SelectorList>;

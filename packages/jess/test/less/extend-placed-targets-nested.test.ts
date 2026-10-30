@@ -30,7 +30,7 @@ async function render(source: string, ext: 'less' | 'scss' | 'jess', collapseNes
  * [name, dialect, placed source, the same rules written where they are placed (null where
  * no source writes a hidden rule in place), nested output, flat output]
  */
-const cases: Array<[string, 'less' | 'scss' | 'jess', string, string | null, string, string]> = [
+const cases: Array<[string, 'less' | 'scss' | 'jess', string, string | null, string | null, string | null]> = [
   [
     'a mixin call (jess#390, Less): the exact extender splits off the target with children',
     'less',
@@ -152,6 +152,22 @@ const cases: Array<[string, 'less' | 'scss' | 'jess', string, string | null, str
     '.a .b,\n.q {\n  y: 1;\n  --z: 2;\n}\n.a .b .c {\n  x: 1;\n}\n'
   ],
   [
+    'a mixin\'s `&` block: an exact extender of the rule it lands in splits off a target with children',
+    'less',
+    '.n(){ & { y: 1; .c { x: 1 } } } .a .b { .n(); } .q:extend(.a .b){}',
+    '.a .b { & { y: 1; .c { x: 1 } } } .q:extend(.a .b){}',
+    '.a .b {\n  & {\n    y: 1;\n    .c {\n      x: 1;\n    }\n  }\n}\n.q {\n  y: 1;\n}\n',
+    '.a .b,\n.q {\n  y: 1;\n}\n.a .b .c {\n  x: 1;\n}\n'
+  ],
+  [
+    'a mixin\'s guarded `&` block (#button-size): an exact extender keeps both declaration blocks',
+    'less',
+    '#bs(@r) { p: 1; & when (true) { br: @r; .c { x: 1 } } } .btn-lg { #bs(2); } .g:extend(.btn-lg) {}',
+    '.btn-lg { p: 1; & when (true) { br: 2; .c { x: 1 } } } .g:extend(.btn-lg) {}',
+    null,
+    null
+  ],
+  [
     'a placed target nothing extends stays nested',
     'less',
     '.m(){ .b{ y:1; .c{ x:1; } } } .a{ .m(); } .q:extend(.zz){}',
@@ -174,12 +190,16 @@ describe('placed extend targets in nested output (X22)', () => {
 
   for (const [name, ext, placed, written, nested, flat] of cases) {
     it(name, async () => {
-      await expect(render(placed, ext, false)).resolves.toBe(nested);
+      if (nested !== null) {
+        await expect(render(placed, ext, false)).resolves.toBe(nested);
+      }
       if (written !== null) {
-        await expect(render(written, ext, false)).resolves.toBe(nested);
+        await expect(render(written, ext, false)).resolves.toBe(nested ?? await render(placed, ext, false));
         await expect(render(placed, ext, false, true)).resolves.toBe(await render(written, ext, false, true));
       }
-      await expect(render(placed, ext, true)).resolves.toBe(flat);
+      if (flat !== null) {
+        await expect(render(placed, ext, true)).resolves.toBe(flat);
+      }
     });
   }
 });

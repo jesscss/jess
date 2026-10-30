@@ -14455,6 +14455,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerEnds: [],
         staticRules,
         targetAtoms: e.extends === null ? dynamicAtoms : new Set([...dynamicAtoms, ...e.extends.targetAtoms]),
+        plannedLevels: false,
         resolvedSelectors: e.s.resolvedSelectors,
         resolvedUnits: e.s.resolvedUnits,
         walkPlacements: null,
@@ -23626,7 +23627,7 @@ function trackForFold(e: Emit, block: OpenBlock, at: Placement, depth: number): 
   const recorded = !placedStatically(block.rule!, e) || reachedViaMixinSplice(block.frame!);
   const parent = recorded && at.source !== null ? nestedSubjectParent(dyn, depth) : null;
   block.slot = parent !== false;
-  block.leaves = block.slot && (e.compress === true || e.referenceImportDepth > 0 || mayBeTarget(dyn, block.rule!)) ? null : undefined;
+  block.leaves = block.slot && (e.compress === true || e.referenceImportDepth > 0 || mayBeTarget(dyn, block.rule!, e.extends)) ? null : undefined;
   if (recorded) {
     recordOpenRule(dyn, block.rule!, block.frame!, e, parent);
   }
