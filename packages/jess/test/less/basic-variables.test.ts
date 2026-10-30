@@ -105,29 +105,23 @@ describe('Less variable references through the public AST route', () => {
   });
 
   /*
-   * PINNED (jess#236). lessc 4.9.1 keeps `@foo: .a;` as permissive text and
-   * only raises on `@foo()`. Less 5 rejects the declaration at parse time, and
-   * whether it should is OPEN: ledger P33 settles the leading `/` but leaves
-   * `.a` open. Until that is ruled this pins today's rejection; what is fixed
-   * is the diagnostic, which names the uncalled mixin reference on its own
-   * token, with the called and escaped spellings as the fix. Kept here because
-   * it is an absence-of-diagnostics case that no render fixture can express.
+   * jess#236. `@foo: .a;` holds a mixin reference (owner 2026-10-29: "No,
+   * it's a mixin reference."). Unused, it emits nothing and reports nothing.
+   * Kept here because it is an absence-of-diagnostics case that no render
+   * fixture can express.
    */
-  it('PINNED (P33 `.a` OPEN) — rejects an uncalled mixin reference held in a variable, naming it', async () => {
+  it.each([
+    '@foo: .a;\n.bar { color: red; }',
+    '@foo: #ns.a;\n.bar { color: red; }',
+    '@foo: #ns > .a;\n.bar { color: red; }'
+  ])('keeps an unused mixin reference held in a variable silent: %j', async (source) => {
     const result = await new Compiler().renderToResult(
-      { source: '@foo: .a;\n.bar { color: red; }', filePath: 'entry.less', extension: '.less' },
+      { source, filePath: 'entry.less', extension: '.less' },
       { breakOnError: false }
     );
 
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({
-      code: 'parse/uncalled-mixin-reference',
-      message: 'A mixin reference is not a value.',
-      fix: 'Call it as .a() to use its result, or write ~".a" to keep it as text.',
-      line: 1,
-      column: 7,
-      endLine: 1,
-      endColumn: 9
-    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.css).toBe('.bar {\n  color: red;\n}\n');
   });
 });

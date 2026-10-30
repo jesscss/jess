@@ -273,13 +273,52 @@ describe('Less parser errors through the public AST route', () => {
     expect(valid.errors).toEqual([]);
   });
 
-  it('reports an uncalled mixin alias on its reference without leaking atom internals', async () => {
+  it('reports an uncalled mixin reference in a property on the reference without leaking atom internals', async () => {
     /*
-     * `@alias: .theme;` (the tests-error namespacing-3 shape) used to fail on
-     * the `:` at line 6, column 9, summarized as a selector/mixin-call/block
-     * frame. The rejection itself is pinned while its ruling is OPEN (ledger
-     * P33 leaves `.a` open; jess#236), but the diagnostic now sits on `.theme`
-     * and names it. The no-leak requirement below is unchanged.
+     * A property value that only names a mixin is rejected (ledger P33), and
+     * the diagnostic sits on `.theme` and names it. The no-leak requirement
+     * below holds for every frame.
+     */
+    const source = [
+      '.theme() {',
+      '  foo: bar;',
+      '}',
+      '',
+      '.val {',
+      '  foo: .theme;',
+      '}'
+    ].join('\n');
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'namespacing.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/uncalled-mixin-reference',
+      phase: 'parse',
+      message: 'A mixin reference is not a value.',
+      fix: 'Call it as .theme() to use its result, or write ~".theme" to keep it as text.',
+      line: 6,
+      column: 8,
+      endLine: 6,
+      endColumn: 14,
+      file: { source }
+    });
+
+    // The hard requirement: no parser internals reach the user, for any frame.
+    expect(result.errors[0]?.reason).not.toContain('NumberToken');
+    expect(result.errors[0]?.reason).not.toContain('not(peek)');
+    expect(result.errors[0]?.reason).not.toContain('[.#]');
+    expect(result.errors[0]?.reason).not.toContain('u0080');
+    expect(result.errors[0]?.reason).not.toContain('The parser expected');
+  });
+
+  it('looks up through a variable that holds an uncalled mixin reference (jess#236)', async () => {
+    /*
+     * `@alias: .theme;` (the tests-error namespacing-3 shape) is a mixin
+     * reference held in a variable (owner 2026-10-29: "No, it's a mixin
+     * reference."), so the lookup through it reads the mixin's `foo`.
      */
     const source = [
       '.theme() {',
@@ -296,25 +335,8 @@ describe('Less parser errors through the public AST route', () => {
       { breakOnError: false }
     );
 
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({
-      code: 'parse/uncalled-mixin-reference',
-      phase: 'parse',
-      message: 'A mixin reference is not a value.',
-      fix: 'Call it as .theme() to use its result, or write ~".theme" to keep it as text.',
-      line: 6,
-      column: 11,
-      endLine: 6,
-      endColumn: 17,
-      file: { source }
-    });
-
-    // The hard requirement: no parser internals reach the user, for any frame.
-    expect(result.errors[0]?.reason).not.toContain('NumberToken');
-    expect(result.errors[0]?.reason).not.toContain('not(peek)');
-    expect(result.errors[0]?.reason).not.toContain('[.#]');
-    expect(result.errors[0]?.reason).not.toContain('u0080');
-    expect(result.errors[0]?.reason).not.toContain('The parser expected');
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.val {\n  foo: bar;\n}\n');
   });
 
   it('summarizes missing closing delimiters without raw expected-token text', async () => {

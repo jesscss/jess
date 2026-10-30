@@ -70,6 +70,11 @@ describe('scss: a + chain with a string literal is the string it builds', () => 
   it('writes a quote a literal holds in the other quote', async () => {
     await expect(render(`.a { b: "a" + 'b"c'; c: 'it' + "'s"; }`)).resolves.toBe(`.a {\n  b: 'ab"c';\n  c: "it's";\n}\n`);
   });
+
+  /* Dart Sass 1.101.7: the quote follows the text the string builds, a value's included. */
+  it('chooses the quote from the text a value adds', async () => {
+    await expect(render(`$x: 'b"c'; $p: 'a'; .a { b: "a" + $x; c: $p + "'s"; }`)).resolves.toBe(`.a {\n  b: 'ab"c';\n  c: "a's";\n}\n`);
+  });
 });
 
 /*
