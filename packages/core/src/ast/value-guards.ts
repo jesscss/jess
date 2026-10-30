@@ -767,6 +767,15 @@ function groupBytes(v: ValueGroup): string {
 }
 
 /**
+ * The Less type predicates, which ask what a value is (`isruleset` is answered
+ * from the binding, not here). `isdefined` asks whether a name is bound, not
+ * what it holds, so it is not one.
+ */
+export const TYPE_PREDICATES: ReadonlySet<string> = new Set([
+  'iscolor', 'isnumber', 'isstring', 'iskeyword', 'isurl', 'ispixel', 'ispercentage', 'isem', 'isunit', 'isruleset'
+]);
+
+/**
  * Guard type-predicate (`iscolor(@a)` / `isnumber(@a)` / …) evaluated directly by
  * kind. Covers the foundation's predicate set; predicates that key off legacy
  * machinery are out of foundation scope (return `false`).

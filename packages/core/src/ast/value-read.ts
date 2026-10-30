@@ -21,6 +21,7 @@ import type { CallValue, MixinCall, Reference } from './nodes.js';
 import type { Any } from './value-eval.js';
 import { NO_SPAN, sourceEndOf, sourceStartOf } from './provenance.js';
 import { makeAny } from './value-factory.js';
+import { TYPE_PREDICATES } from './value-guards.js';
 
 /** The lane facts a read keeps (serialize.ts `Lane`). */
 export interface ReadLane {
@@ -37,14 +38,6 @@ export interface ReadLane {
 
 /** {@link ReadLane.readAt} of a guard, a condition or a type predicate's arguments. */
 export const ASKED: object = Object.freeze({});
-
-/**
- * The Less type predicates, which ask what a value is. `isdefined` asks
- * whether a name is bound, not what its value is, so it is not one.
- */
-const TYPE_PREDICATES: ReadonlySet<string> = new Set([
-  'iscolor', 'isnumber', 'isstring', 'iskeyword', 'isurl', 'ispixel', 'ispercentage', 'isem', 'isunit', 'isruleset'
-]);
 
 /** Whether a call (by name) is a type predicate, which only asks about its arguments. */
 export function asksType(name: string): boolean {
@@ -68,10 +61,20 @@ export function asksType(name: string): boolean {
  * carry the flag through the continuation if a plugin value needs it.
  */
 export function whileReached<T>(e: ReadLane, run: () => T, reader?: object): T {
-  if (e.reached) {
-    return run();
-  }
   const outer = e.readAt;
+  if (e.reached) {
+    if (outer !== undefined || reader === undefined) {
+      return run();
+    }
+
+    /* A caller that names no read set `reached`: this is the first read that does. */
+    e.readAt = reader;
+    try {
+      return run();
+    } finally {
+      e.readAt = undefined;
+    }
+  }
   e.reached = true;
   e.readAt = outer ?? reader;
   try {
@@ -93,10 +96,10 @@ export function isMixinReference(value: CallValue): boolean {
  * question holds for; written out, it is `eval/uncalled-mixin-reference` at
  * the outermost read that writes it.
  */
-export function readMixinReference(e: ReadLane, reader: object): Any {
+export function readMixinReference(e: ReadLane, reader: object, held: CallValue): Any {
   const at = e.readAt ?? reader;
   if (at === ASKED) {
-    return makeAny(spelling(reader));
+    return makeAny(!isValueSlotArray(held) && held.type === 'Reference' ? held.raw : spelling(reader));
   }
   throw ERR.uncalledMixinReference({ node: at, ...callSiteLocation(at, e.s), meta: { name: spelling(at) } });
 }

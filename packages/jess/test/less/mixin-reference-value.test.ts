@@ -34,6 +34,7 @@ describe('a mixin reference held in a Less variable', () => {
     ['an if() branch', '@foo: .a;\n.b { b: if(true, @foo, 1); }', 18],
     ['a variable variable', '@foo: .a;\n@n: foo;\n.b { b: @@n; }', 9],
     ['a media query', '@foo: .a;\n@media (min-width: @foo) { .b { c: 1; } }', 20],
+    ['a media query through an alias', '@foo: .a;\n@bar: @foo;\n@media (min-width: @bar) { .b { c: 1; } }', 20],
     ['an each() iterable', '@foo: .a;\n.b { each(@foo, { c: @value; }); }', 11],
     ['a variable that aliases it', '@foo: .a;\n@bar: @foo;\n.b { b: @bar; }', 9],
     ['a variable whose list holds it', '@foo: .a;\n@bar: 1 @foo;\n.b { b: @bar; }', 9],

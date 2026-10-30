@@ -4460,6 +4460,11 @@ interface EvalSession {
  *   happens is not the condition's, so its exclusions, optional probe,
  *   `calc()` and paren nesting and declaration sinks are reset; the policy, the
  *   byte lane and {@link Lane.reached} are kept.
+ * - `asked`: a ruleset guard's operands and a type predicate's arguments, which
+ *   are only asked about ({@link Lane.readAt} is `ASKED`); P48 checks are kept.
+ * - `condition`: a value-position condition (`if()`, `boolean()`), asked about
+ *   as `asked` is and, as `unchecked`, not checked as a written value.
+ * `guard` and `statement` lanes are asked about too.
  */
 function deriveLane(
   e: Lane,
@@ -4479,7 +4484,7 @@ function deriveLane(
         pluginHost: change === 'noPluginHost' ? undefined : e.pluginHost,
         writtenFrom: change === 'written' ? e : e.writtenFrom,
         reached: change === 'unreached' ? false : e.reached,
-        readAt: change === 'asked' || change === 'condition' || change === 'guard' ? ASKED : change === 'statement' ? undefined : e.readAt,
+        readAt: change === 'asked' || change === 'condition' || change === 'guard' || change === 'statement' ? ASKED : e.readAt,
         excluded: change === 'statement' ? new Set<Binding>() : e.excluded,
         optional: change === 'statement' ? false : e.optional,
         calcDepth: change === 'calc' ? e.calcDepth + 1 : change === 'statement' ? 0 : e.calcDepth,
@@ -5079,7 +5084,7 @@ function evalTyped(
         return hit.evaluated !== null
           ? reachedEvaluated(e, hit.evaluated)
           : isMixinReference(bound)
-            ? readMixinReference(e, node)
+            ? readMixinReference(e, node, bound)
             : withExcluded(e, bound, () => isMixinCallValue(bound)
                 ? force(literal(''))
                 : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node);
@@ -5101,7 +5106,7 @@ function evalTyped(
       }
       const member = resolved.value;
       return isMixinReference(member) || isMixinReference(node)
-        ? readMixinReference(e, node)
+        ? readMixinReference(e, node, member)
         : isMixinCallValue(member)
           ? force(literal(node.raw))
           : resolved.evaluated !== null
@@ -5926,7 +5931,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
           return hit.evaluated !== null
             ? reachedEvaluated(e, hit.evaluated)
             : isMixinReference(hit.value)
-              ? readMixinReference(e, node)
+              ? readMixinReference(e, node, hit.value)
               : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e), node);
         });
       }
@@ -7651,7 +7656,7 @@ function evalReference(node: Reference, frame: Frame | null, e: Lane): MaybeProm
   }
   const member = resolved.value;
   return isMixinReference(member) || isMixinReference(node)
-    ? readMixinReference(e, node)
+    ? readMixinReference(e, node, member)
     : isMixinCallValue(member)
       ? literal(node.raw)
       : resolved.evaluated !== null
@@ -18794,7 +18799,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
    * (a `@plugin` result, a module-provided list). It resolves in place when it is
    * already settled, so the ordinary `each()` never becomes awaitable.
    */
-  return mapMaybe(isMixinReference(base) ? readMixinReference(e, node) : evalTypedSlot(base, baseFrame, e, true), (v) => {
+  return mapMaybe(isMixinReference(base) ? readMixinReference(e, node, base) : evalTypedSlot(base, baseFrame, e, true), (v) => {
     if (isCollection(v)) {
       return v;
     }
@@ -22335,7 +22340,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
         if (hit.evaluated !== null) {
           return typedPreludeParts(hit.evaluated, e.compress === true);
         }
-        return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
+        return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e), node);
       });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
@@ -22345,7 +22350,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
       const member = resolved.value;
       return resolved.evaluated !== null
         ? typedPreludeParts(resolved.evaluated, e.compress === true)
-        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e));
+        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e), node);
     }
     default:
       /*
