@@ -233,6 +233,7 @@ import {
   mayBeTarget,
   mayRevealPlaceholder,
   nestedSlotHeader,
+  ownSharesAtom,
   nestedSubjectParent,
   openDynamicPath,
   PATH_NESTED,
@@ -15036,7 +15037,7 @@ function hiddenRulesToReveal(
     if (!s.hidden
       || (!(s.parent !== null && rules.has(s.parent.rule))
         && importing?.has(s.rule) !== true
-        && !s.ownLocal.some(b => branchSharesAtom(b, atoms)))) {
+        && !ownSharesAtom(s, atoms))) {
       continue;
     }
     rules.add(s.rule);
