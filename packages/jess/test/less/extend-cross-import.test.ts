@@ -521,4 +521,18 @@ describe('extend across @import', () => {
     expect(await renderFile(file)).toBe(expected);
     expect(await renderFile(file, false)).toBe(expected);
   });
+
+  /*
+   * A hidden `(reference)` copy shows only what an extend adds: the extender, never the
+   * `:is()` arms it was appended to (ledger X13; EXTEND-SEMANTICS §11, jess#501). The
+   * visible copy takes the extender into its list (§5).
+   */
+  it.each([
+    ['is-arms-reference-then-plain-main.less', '.x .k {\n  color: red;\n}\n:is(.sm, .p, .x) .k {\n  color: red;\n}'],
+    ['is-arms-reference-main.less', '.x .k {\n  color: red;\n}'],
+    ['is-arms-reference-two-extenders-main.less', '.x .k,\n.y .k {\n  color: red;\n}']
+  ])('shows only the extender of a hidden :is() arm (%s)', async (file, expected) => {
+    expect(await renderFile(file)).toBe(expected);
+    expect(await renderFile(file, false)).toBe(expected);
+  });
 });

@@ -770,6 +770,7 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
     return null;
   }
   const list: Branch[] = [];
+  const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
   if (added === null) {
     for (const arm of kept) {
       list.push(arm!);
@@ -784,7 +785,6 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
       }
       listSpecificity = Math.max(listSpecificity, s);
     }
-    const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
     let next = 0;
     for (const arm of kept) {
       if (arm !== null) {
@@ -803,8 +803,11 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
     }
   }
   const out: Branch[] = [];
-  pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
-  const unit = arms.length === 1 && !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
+
+  /* Every arm left the list (a hidden seed's own arms are not shown): its members stand alone. */
+  if (list.length > 0) {
+    pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
+  }
   for (const alternative of alone ?? []) {
     /*
      * Written where the `:is()` stood, by X3's placement ({@link spliceMember}), except
@@ -813,7 +816,7 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
      * author's — and written in place it would change what the selector matches
      * (`.c :is(#z .b)` is not `.c #z .b`; owner 2026-10-09, ledger J13).
      */
-    if (unit && alternative.segments.length > 1) {
+    if (arms.length === 1 && compoundOnly && alternative.segments.length > 1) {
       pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [mkBranch(alternative.segments)], fold: false }), root, k, p + 1);
       continue;
     }
