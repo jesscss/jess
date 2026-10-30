@@ -437,6 +437,26 @@ describe('Config Merging', () => {
       .rejects.toMatchObject({ code: 'plugin/invalid-option', filePath: undefined });
   });
 
+  it('a render-time output overrides a styles.config output list, as an object or as a list entry (jess#368)', async () => {
+    const source = '.a { .b { c: d; } }\n';
+    const fileIn = (name: string, output: string): string => {
+      const dir = path.join(tempDir, name);
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'styles.config.cjs'), `module.exports = { output: ${output} };\n`);
+      fs.writeFileSync(path.join(dir, 'test.less'), source);
+      return path.join(dir, 'test.less');
+    };
+
+    const perFile = fileIn('per-file', '[{ file: \'{name}.css\', collapseNesting: false }]');
+    expect(await new Compiler({ output: { collapseNesting: 'native', compress: true } }).render(perFile)).toBe('.a .b{c:d}');
+    expect(await new Compiler().render(perFile, { output: { collapseNesting: 'native', compress: true } })).toBe('.a .b{c:d}');
+    expect(await new Compiler().render(perFile, { output: [{ collapseNesting: 'native', compress: true }] })).toBe('.a .b{c:d}');
+
+    const fileLess = fileIn('file-less', '[{ collapseNesting: false, compress: true }]');
+    expect(await new Compiler().render(fileLess, { output: [{ collapseNesting: 'native' }] })).toBe('.a .b{c:d}');
+    expect(await new Compiler().render(fileLess, { output: { collapseNesting: 'native', compress: false } })).toBe('.a .b {\n  c: d;\n}\n');
+  });
+
   it('does not warn when dumpLineNumbers is unset or off', async () => {
     const testFile = path.join(tempDir, 'test.less');
     fs.writeFileSync(testFile, '.a { color: red; }');

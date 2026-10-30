@@ -1,9 +1,6 @@
 {
   "packages/compiler/src/index.ts": {
-    "statements": 546
-  },
-  "packages/compiler/src/index.ts#Compiler.resolveEffectiveConfig": {
-    "statements": 51
+    "statements": 539
   },
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
