@@ -161,6 +161,7 @@ import {
 import { capturedPseudoFrom, selectorCaptureFrom } from './selector-capture.js';
 import { operatorRun, runOperand } from './delim-runs.js';
 import { lessParenListFrom } from './paren-list.js';
+import { plainUrlBodyFrom } from './url-argument.js';
 import type {
   BodyExtendFact,
   CustomValuePart,
@@ -601,6 +602,14 @@ const compoundSelectorTrivia = classifiedTrivia({
   blockComment
 });
 const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
+/*
+ * The trivia of a `@supports selector(…)` argument. General-enclosed content
+ * is otherwise read with no trivia, its `//` kept as written (F13: a custom
+ * property's `//` is value text). A `selector(` argument is a
+ * `<complex-selector>` (css-conditional-4 §6.1), and in a Less selector a `//`
+ * line comment is trivia, so there it never reaches the output.
+ */
+const enclosedTrivia = classifiedTrivia({ lineComment });
 const customValueCommentTrivia = classifiedTrivia({ blockComment: customValueBlockCommentRun });
 // The trivia before a custom-property value — after a declaration's `:`, a
 // `var()` fallback's `,`, a style query's `:` — is only the whitespace
@@ -1020,8 +1029,11 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 // General-enclosed content is a raw template assembled by Parseman: structural
 // delimiters, strings, comments, and `@{…}` each have their own grammar arm.
 // This terminal owns only the remaining literal bytes; no completed source span
-// is scanned or re-parsed after recognition.
-const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+// is scanned or re-parsed after recognition. A run stops before `//`, which is
+// read on its own (`enclosedDoubleSlash`) so that where the content is a
+// selector, the trivia read between items sees it first (`enclosedTrivia`).
+const enclosedText = regex(/(?:\\[\s\S]|\/(?![*/])|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+const enclosedDoubleSlash = literal('//');
 const enclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const enclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
 const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
@@ -1243,25 +1255,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => quotedFromChildren(children, true)
   );
+  /**
+   * What follows a `url(` opener: the address, quoted or not, to its `)`. Its
+   * edge whitespace is not the Less `whitespace` production, so a `//` in it is
+   * address, not a comment. Every function whose argument is an address reads
+   * it (`url(`, and `@document`'s `url-prefix(` and `domain(`).
+   */
+  const plainUrlArgument = sequence(
+    optional(urlBoundaryWhitespace),
+    optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
+    optional(urlBoundaryWhitespace),
+    literal(')')
+  );
   const PlainUrl = node(
     'Url',
     noTrivia(sequence(
       urlFunctionOpen,
-      optional(urlBoundaryWhitespace),
-      optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
-      optional(urlBoundaryWhitespace),
-      literal(')')
+      plainUrlArgument
     )),
-    (_children, fields, span) => {
-      const captured = fields?.body;
-      if (Array.isArray(captured)) {
-        throw new TypeError('Less plain URL produced repeated body facts.');
-      }
-      const body = captured?.value;
-      return withSourceSpan(url(body === undefined
-        ? any('')
-        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
-    }
+    (_children, fields, span) => withSourceSpan(url(plainUrlBodyFrom(fields) ?? any('')), span)
   );
   // Bare `@name` and `@{name}` URL bodies are structural Less values, not
   // opaque URL text. The interpolation branch retains its literal suffixes as
@@ -1288,21 +1300,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'Url',
     noTrivia(sequence(
       routed(),
-      optional(urlBoundaryWhitespace),
-      optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
-      optional(urlBoundaryWhitespace),
-      literal(')')
+      plainUrlArgument
     )),
-    (_children, fields, span) => {
-      const captured = fields?.body;
-      if (Array.isArray(captured)) {
-        throw new TypeError('Less routed plain URL produced repeated body facts.');
-      }
-      const body = captured?.value;
-      return withSourceSpan(url(body === undefined
-        ? any('')
-        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
-    }
+    (_children, fields, span) => withSourceSpan(url(plainUrlBodyFrom(fields) ?? any('')), span)
   );
   const UrlTarget = choice(g.VariableUrl, g.PlainUrl);
   const ImportOption = node(
@@ -3876,7 +3876,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const enclosedRaw = node(
     'EnclosedRaw',
-    noTrivia(choice(g.BlockCommentToken, enclosedText)),
+    noTrivia(choice(g.BlockCommentToken, enclosedText, enclosedDoubleSlash)),
     children => requireToken(children[0]).value
   );
   const EnclosedQuoted = node(
@@ -3896,26 +3896,52 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     enclosedInterpolationFromChildren
   );
+  const enclosedContentItems = many(choice(
+    g.BareVariableInterpolation,
+    enclosedRaw,
+    g.VariableInterpolation,
+    g.EnclosedQuoted,
+    g.EnclosedGroup
+  ));
   const EnclosedContent = node(
     'EnclosedContent',
-    noTrivia(many(choice(
-      g.BareVariableInterpolation,
-      enclosedRaw,
-      g.VariableInterpolation,
-      g.EnclosedQuoted,
-      g.EnclosedGroup
-    ))),
+    noTrivia(enclosedContentItems),
     enclosedInterpolationFromChildren
   );
+  /*
+   * The same content, read with the trivia of the place that reads it: a
+   * `selector(` argument's `enclosedTrivia`. It is not a rule because a rule
+   * reads with its own trivia, which is why `EnclosedContent` spells
+   * `noTrivia`. Its nested groups are `EnclosedGroup`s, so a `//` inside one
+   * (`selector(:is(a // c⏎))`) is still read as text.
+   */
+  const SelectorEnclosedContent = node(
+    'EnclosedContent',
+    enclosedContentItems,
+    enclosedInterpolationFromChildren
+  );
+  const enclosedFunctionOpen = token(noTrivia(sequence(g.QueryFunctionName, literal('('))));
   const EnclosedFunctionName = node(
     'EnclosedFunctionName',
-    token(noTrivia(sequence(g.QueryFunctionName, literal('(')))),
+    routed(),
     children => ({ name: functionNameFromOpener(children[0]) })
   );
+  /*
+   * A function-form `<general-enclosed>` reads its content with no trivia,
+   * except a `selector(` argument, which reads Less's `//` line comment as
+   * trivia (`enclosedTrivia`).
+   */
   const Enclosed = node(
     'Enclosed',
     choice(
-      noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))),
+      dispatch(
+        enclosedFunctionOpen,
+        caseOf(
+          'selector(',
+          parser({ trivia: enclosedTrivia }, sequence(g.EnclosedFunctionName, SelectorEnclosedContent, literal(')')))
+        ),
+        otherwise(noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))))
+      ),
       noTrivia(sequence(literal('('), g.EnclosedContent, literal(')')))
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => enclosedFrom(
@@ -4497,9 +4523,33 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     token(g.PagePseudoRun),
     children => any(requireToken(children[0]).value)
   );
+  /**
+   * `url-prefix(` and `domain(` are the `@document` URL-matching functions
+   * (css-conditional-3, 2012 WD, §7). Their argument is an address, written
+   * quoted or unquoted as `url(`'s is (Gecko, their one implementation, reads
+   * both forms), so it is read as `url(`'s argument is, and a `//` in it
+   * (`url-prefix(http://example.com/)`) is part of the address, never a Less
+   * line comment. `regexp(` takes only a `<string>`, so it needs no case.
+   * An argument that is no address (`url-prefix(@{base}/a)`) is an ordinary
+   * call's, as `url(`'s variable forms are.
+   */
+  const RoutedUrlMatchFunction = node(
+    'Call',
+    noTrivia(sequence(
+      routed(),
+      plainUrlArgument
+    )),
+    (children, fields, span, _rawChildren, _triviaLog, state) => {
+      const address = plainUrlBodyFrom(fields);
+      const call = funcCall(functionNameFromOpener(children[0]), address === undefined ? [] : [address]);
+      return withSourceSpan(withFunctionScope(call, functionScopeOf(state)), span);
+    }
+  );
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
     caseOf('url(', RoutedPlainUrl),
+    caseOf('url-prefix(', choice(RoutedUrlMatchFunction, g.GenericFunction)),
+    caseOf('domain(', choice(RoutedUrlMatchFunction, g.GenericFunction)),
     caseOf('calc(', g.CalcFunction),
     when(endsWith('('), g.GenericFunction),
     when(matches(/:/), RoutedPageSelector),
