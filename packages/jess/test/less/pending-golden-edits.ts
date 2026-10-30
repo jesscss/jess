@@ -23,7 +23,14 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
    * divides once it's used in math").
    */
   ['tests-unit/operations/operations-advanced.less', [['  result: calc(10px / 2 * 2);', '  result: 10px;']]],
-  ['tests-config/math-parens-division/mixins-args.less', [['  depth: 18 / 2 - 1%;', '  depth: 8%;']]]
+  ['tests-config/math-parens-division/mixins-args.less', [['  depth: 18 / 2 - 1%;', '  depth: 8%;']]],
+
+  /*
+   * Math beside a slash that does not divide is kept as written (P35, owner
+   * 2026-10-30: "it should be as-written if they have parens-division. They
+   * stated that as their intent!!"); the group `(1 + 1)` still computes.
+   */
+  ['tests-config/math-parens-division/parens.less', [['  border-radius-keep: 8px / 7px;', '  border-radius-keep: 4px * 2 / 4 + 3px;']]]
 ]);
 
 export function applyPendingGoldenEdits(file: string, golden: string): string {

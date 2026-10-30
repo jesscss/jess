@@ -125,20 +125,20 @@ const isRest = (param: ParamSpec): boolean => param.rest === true;
 /**
  * A parameter typed as a number (it accepts a `Dimension` and not a `List`)
  * expects a number, so a slash list passed to it is its quotient
- * ({@link numberOperand}; ledger P35, owner 2026-10-30): `percentage(@d)` with
- * `@d: 10px/2` is `500%`. A parameter that accepts any value, or a list,
- * receives the list, and so does every argument in `inPlace`: a slash the call
- * wrote in place (`percentage(16/17)`), which the math mode decides (P34).
- * Each argument is governed by its own parameter, then by the `rest`
- * parameter, or a variadic function's last one.
+ * ({@link numberOperand}; ledger P35, owner 2026-10-30), whether a reference
+ * delivers it (`percentage(@d)` with `@d: 10px/2` is `500%`) or the call writes
+ * it in place (`percentage(16/17)` is `94.11764706%`). A parameter that accepts
+ * any value, or a list, receives the list (`length(16/17)` is `2`). Each
+ * argument is governed by its own parameter, then by the `rest` parameter, or
+ * a variadic function's last one.
  */
-export function numberArguments(fn: Fn, args: ValueGroup, ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes, inPlace: ReadonlySet<ValueGroup> | undefined): ValueGroup {
+export function numberArguments(fn: Fn, args: ValueGroup, ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes): ValueGroup {
   const items = groupItems(args);
   let out: ValueGroup[] | undefined;
   const tail = fn.variadic === true ? fn.params.at(-1) : fn.params.find(isRest);
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
-    if (isValueGroupArray(item) || item.type !== 'List' || item.sep !== '/' || inPlace?.has(item) === true) {
+    if (isValueGroupArray(item) || item.type !== 'List' || item.sep !== '/') {
       continue;
     }
     const param = fn.params[index] ?? tail;

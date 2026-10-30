@@ -218,9 +218,6 @@
   "packages/jess/test/less/extend-public-contract.test.ts": [
     "Cross-import closure and reference-import visibility already live in `extend-cross-import.test.ts` with real files and Less 4 output oracles."
   ],
-  "packages/jess/test/less/function-mode.test.ts": [
-    "Default `'preserve'` keeps it as a call, silently, with its arguments evaluated and canonically spaced (`unit(80/16,rem)` → `unit(80 / 16, rem)`); `'error'` throws the underlying error (Less 4.x parity)."
-  ],
   "packages/jess/test/less/functions.test.ts": [
     "it('rounds an exact tie away from zero, as Less 4.x does', async () => {",
     "Expected bytes are lessc 4.9.1 output for the same input."

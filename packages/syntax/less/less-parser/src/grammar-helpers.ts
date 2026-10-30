@@ -2894,9 +2894,9 @@ const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
  * Fold `operands[from..to]` left-associatively, product before sum. Each folded
  * pair records whether Less's configured `math:` policy computes it with no
  * enclosing math context, so the evaluator never reads that policy from ambient
- * config (§12.6b).
+ * config (§12.6b). With `kept`, no pair computes: the run is kept as written.
  */
-function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown): ValueNode {
+function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown, kept: boolean): ValueNode {
   if (from === to) {
     return run.operands[from]!;
   }
@@ -2918,7 +2918,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
       const left = nextOperands.pop()!;
       const leftSpan = nextSpans.pop();
       const rightSpan = spans[index + 1];
-      const folded = operation(operator, left, operands[index + 1]!, false, lessMathOutsideParens(state, operator));
+      const folded = operation(operator, left, operands[index + 1]!, false, !kept && lessMathOutsideParens(state, operator));
       const span = leftSpan === undefined || rightSpan === undefined
         ? undefined
         : { start: leftSpan.start, end: rightSpan.end };
@@ -2938,7 +2938,7 @@ function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown
  * product-before-sum precedence.
  */
 function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueNode {
-  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state) : value;
+  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state, false) : value;
 }
 
 /**
@@ -2948,12 +2948,14 @@ function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueN
  * - where the policy divides a bare slash (`math: always`), the slash is a
  *   division at product precedence like every other operator;
  * - where it does not, the slash binds LOOSEST of the math operators —
- *   everything on each side of it is that side's own math (P35), so
+ *   everything on each side of it is that side's own operand (P35), so
  *   `4 / 2 + 5em` is `4` and `2 + 5em`, and the result is a slash-separated
- *   `List` of the two sides. That list sits INSIDE a space-separated value
- *   (`font: 12px/1.5 Arial` is `[12px / 1.5, Arial]`), where the css slash
- *   rung sits above the space level (`12px / [1.5 Arial]`); which level is
- *   right for Less is an open question for the owner, not decided here.
+ *   `List` of the two sides. Math beside that slash does not compute: the
+ *   run is kept as written (`4 / 2 + 5em`). That list sits INSIDE a
+ *   space-separated value (`font: 12px/1.5 Arial` is `[12px / 1.5, Arial]`),
+ *   where the css slash rung sits above the space level
+ *   (`12px / [1.5 Arial]`); which level is right for Less is an open question
+ *   for the owner, not decided here.
  */
 function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueNode {
   if (!isLessMathRun(value)) {
@@ -2961,17 +2963,25 @@ function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueN
   }
   const last = value.operands.length - 1;
   if (lessMathOutsideParens(state, '/')) {
-    return lessComputation(foldLessMath(value, 0, last, state));
+    return lessComputation(foldLessMath(value, 0, last, state, false));
   }
+
+  /*
+   * A slash the policy does not divide, written beside other math, makes that
+   * math ambiguous (`12px / 1 + 1`: is it `12px / 2`, or `13px`?), so none of
+   * the run computes and it is kept as written (ledger P35, owner 2026-10-30:
+   * *"it should be as-written if they have parens-division. They stated that
+   * as their intent!!"*). A run with no slash computes as usual.
+   */
   let sides: ValueNode[] | undefined;
   let from = 0;
   for (let index = 0; index < value.operators.length; index += 1) {
     if (value.operators[index] === '/') {
-      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state)));
+      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state, true)));
       from = index + 1;
     }
   }
-  const tail = lessComputation(foldLessMath(value, from, last, state));
+  const tail = lessComputation(foldLessMath(value, from, last, state, sides !== undefined));
   if (sides === undefined) {
     return tail;
   }

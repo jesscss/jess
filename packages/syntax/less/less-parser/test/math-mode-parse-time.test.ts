@@ -95,14 +95,16 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
   /*
    * One division rule reads every slash; the mode picks its shape (P34/P35).
    * Where the mode does not divide, the slash is the value's loosest separator
-   * and each side keeps its own arithmetic — `4 / 2 + 5em` is `4` and `2 + 5em`,
-   * and that `+` computes like any bare `+` under the mode. Under `always` the
-   * slash is a division at product precedence.
+   * — `4 / 2 + 5em` is `4` and `2 + 5em` — and math beside it is ambiguous, so
+   * it does not compute: the run is kept as written (ledger P35, owner
+   * 2026-10-30: "it should be as-written if they have parens-division"). Under
+   * `always` the slash is a division at product precedence.
    */
-  it('a non-dividing slash separates two sides that keep their own math', () => {
+  it('a non-dividing slash keeps the math beside it as written', () => {
     const slash = parseValue('.a { k: 4 / 2 + 5em; }', 'parens-division');
     expect(slash).toMatchObject({ type: 'List', sep: '/' });
-    expect(requireOperation(slash).mathOutsideParens).toBe(true);
+    expect(requireOperation(slash).mathOutsideParens).toBe(false);
+    expect(parseOperation('.a { k: 2 + 5em; }', 'parens-division').mathOutsideParens).toBe(true);
     expect(parseValue('.a { k: 4 / 2 + 5em; }', 'strict')).toMatchObject({ type: 'List', sep: '/' });
     expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'always')).toMatchObject({
       operator: '+',

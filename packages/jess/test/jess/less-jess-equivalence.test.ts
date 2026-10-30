@@ -540,6 +540,16 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements'
   }],
+  ['all-less:tests-config/units/loose/loose.less', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: '`test-division: 4 / 2 + 5em` is kept as written under `parens-division` (math beside a slash that does not divide; ledger P35, owner 2026-10-30), and `.jess` has no spelling for math kept outside `$( … )`'
+  }],
+  ['all-less:tests-config/units/no-strict/no-strict.less', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: '`test-division: 4 / 2 + 5em` is kept as written under `parens-division` (math beside a slash that does not divide; ledger P35, owner 2026-10-30), and `.jess` has no spelling for math kept outside `$( … )`'
+  }],
   ['all-less:tests-config/url-args/urls.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',

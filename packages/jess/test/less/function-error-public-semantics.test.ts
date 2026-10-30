@@ -4,14 +4,14 @@ import lessPlugin from '@jesscss/plugin-less';
 
 const invalidCalls = [
   ['invalid color text', 'color("NOT A COLOR")'],
-  ['non-number percentage expression', 'percentage(16/17)'],
+  ['non-number percentage expression', 'percentage(12px/normal)'],
   ['invalid svg-gradient direction', 'svg-gradient(horizontal, black, white)'],
   ['invalid svg-gradient stop shape', 'svg-gradient(to bottom, black, orange, 45%, white)'],
   ['missing svg-gradient direction', 'svg-gradient(black, orange)'],
   ['invalid svg-gradient list direction', 'svg-gradient(horizontal, @colors)', '@colors: black, white;'],
   ['invalid svg-gradient list stop shape', 'svg-gradient(to bottom, @colors)', '@colors: black, orange, 45%, white;'],
   ['missing svg-gradient direction in list form', 'svg-gradient(black, @colors)', '@colors: orange;'],
-  ['non-number unit expression', 'unit(80/16, rem)'],
+  ['non-number unit expression', 'unit(12px/normal, rem)'],
   ['invalid rgba single numeric argument', 'rgba(1)'],
   ['invalid rgba two-argument numeric call', 'rgba(1, 2)']
 ] as const;
