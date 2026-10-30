@@ -12235,7 +12235,8 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
   return out;
 }
 
-function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
+/** Write the document's leading comments, or queue them onto `owner`'s next leaf. */
+function emitLeadingDocumentBlockComments(e: Emit, indent = '', owner?: Leaf[]): void {
   const trivia = e.s.trivia;
   if (trivia === undefined) {
     return;
@@ -12253,8 +12254,11 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
     return;
   }
   e.emittedBlockTrivia.addIndex(table, 0);
+  const write = owner === undefined
+    ? (comment: string) => putBlockComment(e, indent, comment)
+    : (comment: string) => queueLeafBlockComments(e, owner, [comment]);
   for (let c = table.commentAt[0]!; c < table.commentAt[1]!; c++) {
-    putBlockComment(e, indent, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
+    write(src.slice(table.commentStart[c]!, table.commentEnd[c]!));
   }
 }
 
@@ -16888,13 +16892,14 @@ function makePlacement(
 function splicePlacement(
   at: Placement,
   inline: NestedLeafBuffer | undefined,
-  bodyTrivia: BodyTriviaReplay | undefined
+  bodyTrivia: BodyTriviaReplay | undefined,
+  applyExpansion = at.applyExpansion
 ): PlacementDraft {
   const body = makePlacement(at.composed, at.group, at.flush, at.propertyScope);
   body.ancestor = at.ancestor;
   body.partition = at.partition;
   body.important = at.important;
-  body.applyExpansion = at.applyExpansion;
+  body.applyExpansion = applyExpansion;
   body.lambdaBody = at.lambdaBody;
   body.bodyTrivia = bodyTrivia;
   body.nested = at.nested;
@@ -16902,6 +16907,19 @@ function splicePlacement(
   body.source = at.source;
   body.sharedLeaves = inline;
   return body;
+}
+
+/**
+ * Run a sheet imported in a rule as that rule's body: its leaves join the
+ * rule's own (`inline` is the nested buffer; a collapsed body shares
+ * `at.group`), and its leading comments wait for its first leaf.
+ * {@link expandStyleImport} leaves those comments to this dispatcher.
+ */
+function importedSheet(at: Placement, inline: NestedLeafBuffer | undefined, e: Emit) {
+  return (document: Stylesheet, importFrame: Frame): MaybePromise<void> => {
+    emitLeadingDocumentBlockComments(e, '', inline?.leaves ?? (at.nested ? undefined : at.group));
+    return walkBody(document.rules, importFrame, splicePlacement(at, inline, undefined, false), e);
+  };
 }
 
 /**
@@ -17376,7 +17394,15 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         case 'StyleImport': {
           if (nested) {
-            flushBuf();
+            /*
+             * A sheet imported in a rule runs as that rule's body (jess#358), so its
+             * declarations join this buffer like a mixin's, and a `+:` in it merges with
+             * the rule's own (ledger R10). A `(reference)` sheet writes none of its own.
+             */
+            const reference = e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference');
+            if (source === null || reference) {
+              flushBuf();
+            }
             emitBeforeRootStatement(node);
 
             /*
@@ -17389,13 +17415,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
               frame,
               e,
               e.importDocument,
-              e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
-                ? undefined
-                : (document, importFrame) => {
-                    const sheet = splicePlacement(at, undefined, undefined);
-                    sheet.applyExpansion = false;
-                    return walkBody(document.rules, importFrame, sheet, e);
-                  },
+              reference ? undefined : importedSheet(at, source === null ? undefined : inlineLeaves, e),
               source !== null
             );
             if (isThenable(imported)) {
@@ -17459,19 +17479,21 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
                  * stay hidden in a leaf group nothing writes.
                  */
                 ? (document: Stylesheet, importFrame: Frame) => {
-                    const hidden = splicePlacement(at, undefined, undefined);
+                    const hidden = splicePlacement(at, undefined, undefined, false);
                     hidden.group = [];
                     hidden.flush = MOOT_FLUSH;
                     hidden.partition = null;
-                    hidden.applyExpansion = false;
                     return walkBody(document.rules, importFrame, hidden, e);
                   }
-                : (document: Stylesheet, importFrame: Frame) => {
-                    const sheet = splicePlacement(at, undefined, undefined);
-                    sheet.applyExpansion = false;
-                    return walkBody(document.rules, importFrame, sheet, e);
-                  };
-            const flushed = flush();
+                : importedSheet(at, undefined, e);
+
+            /*
+             * The sheet's declarations join this rule's group, so they stay one block
+             * with the declarations around the import, and a `+:` merges across it
+             * (ledger R10). A `(reference)` sheet's declarations stay hidden; its rules
+             * still write after the declarations before it.
+             */
+            const flushed = composed === null || importOptionWords(node.options).includes('reference') ? flush() : undefined;
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument, emitLoaded, emitLoaded !== undefined),
@@ -21547,7 +21569,7 @@ function expandStyleImport(
                  * bootstrap4 shape: a one-line entry that only `@import`s the framework)
                  * was left unemitted here and swept to the output tail.
                  */
-                if (e.referenceImportDepth === 0) {
+                if (e.referenceImportDepth === 0 && (!inRule || emitLoaded === undefined)) {
                   emitLeadingDocumentBlockComments(e, INDENT.repeat(e.depth));
                 }
                 return emit();

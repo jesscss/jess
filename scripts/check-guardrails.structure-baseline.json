@@ -191,10 +191,10 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "statements": 314
+    "statements": 309
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "statements": 258
+    "statements": 253
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
     "statements": 78,
