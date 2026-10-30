@@ -160,6 +160,20 @@ jobs:
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
 
+      # check:macro only proves nothing fell back to the interpreter. A table
+      # with no precompiled assembly is "fully compiled" and still slow: that is
+      # how Less, SCSS and .jess lost their fast path on 2026-08-31 with every
+      # gate green (jesscss/jess#508). This gate counts each grammar artifact's
+      # precompiled assembly and bytes per source byte (parseman's 5x budget)
+      # against scripts/grammar-artifacts.baseline.json; growth, lost assembly
+      # and unnamed debt fail. The canaries show each failure class going red,
+      # starting with the real css ast.js stripped to `a: []`.
+      - name: Grammar gate canaries
+        run: node --test scripts/__tests__/grammar-gates.test.mjs
+
+      - name: Gate — grammar artifact size + precompiled assembly
+        run: node scripts/check-grammar-artifacts.mjs
+
       # A dialect composes onto css's compose base from the matching build:
       # compiled over compiled, interpreter over interpreter, and never through
       # css's own parse grammar.
@@ -280,6 +294,23 @@ jobs:
       # site fails the PR instead of first surfacing in the release preflight.
       - name: Gate — parser runtime boundary
         run: pnpm run verify:parser-runtime-boundary
+
+      # Per-grammar parse cost: marginal instructions per AST parse, counted by
+      # Valgrind (GitHub-hosted runners expose no hardware instruction counter),
+      # against scripts/grammar-speed.baseline.json. Instruction counts depend on
+      # the Node version, so this step pins it; bumping the pin re-records the
+      # baseline in the same reviewed change. Kept last: it switches Node for the
+      # steps after it.
+      - name: Install Valgrind (grammar speed gate)
+        run: sudo apt-get install -y -qq valgrind > /dev/null && valgrind --version
+
+      - name: Pin Node for the grammar speed gate
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+
+      - name: Gate — grammar speed (marginal instructions per parse)
+        run: node scripts/grammar-speed-gate.mjs --require-env
 
   # Build-free source tests, run IN PARALLEL with `verify`. vitest source-aliases
   # every `@jesscss/*` to `src`, so this suite does not need the full build — only

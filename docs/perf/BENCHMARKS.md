@@ -47,6 +47,8 @@ which is a harness limitation, not a syntax one.)
 | jess vs Less 4.x / PostCSS / dart-sass (**PARSE only**) | `pnpm run perf:gate:report` | jess PARSE time as a ratio vs each reference parser. Parse only — not the priority metric right now; postcss/sass comparators must be installed to resolve. |
 | jess vs an OLD jess commit (parse) | `pnpm run perf:ab:prepare <commit>` then `pnpm run perf:ab:compare --case benchmark.less` | current worktree vs `~/git/worktrees/jess/bench-b` parked on `<commit>`; bias-controlled ratios. |
 | jess parser parse-bench | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
+| **per-grammar parse cost, CI-gated** | `pnpm run check:grammar-speed` | marginal instructions per AST parse for each grammar against `scripts/grammar-speed.baseline.json`. See §6. |
+| **per-grammar artifact size + precompiled assembly, CI-gated** | `pnpm run check:grammar-artifacts` | bytes per source byte (parseman's 5× budget) and precompiled-assembly count per `lib/grammar/*.js`. See §6. |
 | **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
 `measure:less:hotpath` is the canonical jess total-render harness. `perf:gate`
@@ -97,6 +99,22 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 - Two builds: `--corpus --before-root <other checkout> [--after-root <dir>]`. Fixture inputs always come from the checkout running the script, so both builds render the same files.
 - `--filter <regex>` narrows fixtures by name (a baseline is narrowed the same way); `--json` prints the diff. The corpus root is `$LESS_TEST_DATA_ROOT`, else `@less/test-data`, else `../less.js/packages/test-data`.
 - A full run is about 6 s per build on an M-series laptop (359 fixtures × 6 modes).
+
+## 6. Grammar gates — size and speed per grammar, enforced in CI
+
+Both run in the CI `verify` job. Their canaries are in `scripts/__tests__/grammar-gates.test.mjs` (`pnpm run test:grammar-gates`).
+
+- **`check:grammar-artifacts`** (`scripts/check-grammar-artifacts.mjs`, about 1 s) reads every `lib/grammar/**/*.js` of the four parsers. For each one it records the bytes, the bytes per byte of `src/grammar.ts` and the number of precompiled functions in its `a: [{ factory }]` inventory.
+  - It fails on size growth, on lost assembly, and on any artifact over 5× or tables-only grammar that has no named debt entry.
+  - Over-5× debt applies only under the parseman version it was recorded with (`debtParseman`). Under any other version, every artifact must be within 5×.
+  - Wins must be pinned with `--ratchet`, which never raises a ceiling.
+  - Baseline: `scripts/grammar-artifacts.baseline.json`.
+- **`check:grammar-speed`** (`scripts/grammar-speed-gate.mjs`) runs each grammar's own `test/parse-bench.mjs` under an instruction counter and takes the marginal per parse.
+  - The fixtures are `benchmark.css` (CSS, and `.jess`, which has no committed `.jess` fixture large enough to measure), `benchmark.less` (Less) and `gen-workload` (SCSS, the committed generator's default output).
+  - On Linux the counter is Valgrind's Cachegrind, because GitHub-hosted runners expose no hardware instruction counter. On macOS it is `/usr/bin/time -l`.
+  - It runs V8's interpreter (`--jitless`). The script header gives the JIT measurements that ruled the JIT out on CI, and what the interpreter does not see.
+  - The baseline (`scripts/grammar-speed.baseline.json`) records its environment: counter, platform, Node version and method. It is compared only under that environment. CI pins Node for the step and passes `--require-env`.
+  - A faster result must be banked with `--lower`. Raising a value is a reviewed edit. `--propose` writes `<baseline>.new` for a new environment.
 
 ## Fixtures (the standard inputs)
 

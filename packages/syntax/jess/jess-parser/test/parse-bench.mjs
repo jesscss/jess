@@ -58,7 +58,15 @@ function find(dir, pattern) {
 const CASES = {
   'jess-parser-data': find('packages/syntax/jess/jess-parser/test/data', '*.jess'),
   'jess-parser-errors': find('packages/syntax/jess/jess-parser/test/errors', '*.jess'),
-  'jess-package-files': find('packages/jess/test/files', '*.jess')
+  'jess-package-files': find('packages/jess/test/files', '*.jess'),
+
+  /**
+   * One large real stylesheet. Valid CSS is valid Jess, and no committed `.jess`
+   * fixture is large enough to measure (the three above total under 6 KB), so
+   * the `.jess` row of `scripts/grammar-speed-gate.mjs` parses this through the
+   * Jess grammar's ported CSS productions.
+   */
+  'benchmark.css': [resolve(repo, 'packages/jess/benchmark/benchmark.css')]
 };
 
 const label = process.argv[2] ?? 'run';
@@ -71,6 +79,7 @@ const timed = Number(process.argv[4] ?? 25);
  * of an A/B must always use the same filter.
  */
 const only = process.env.BENCH_CASES ? new Set(process.env.BENCH_CASES.split(',')) : null;
+const surfaceFilter = process.env.BENCH_SURFACES ? new Set(process.env.BENCH_SURFACES.split(',')) : null;
 
 const out = {};
 for (const [name, files] of Object.entries(CASES)) {
@@ -90,11 +99,18 @@ for (const [name, files] of Object.entries(CASES)) {
 
   const bytes = sources.reduce((n, s) => n + Buffer.byteLength(s), 0);
   for (const [surface, fn] of surfaces) {
+    if (surfaceFilter && !surfaceFilter.has(surface)) {
+      continue;
+    }
+    let thrown = 0;
     const once = () => {
       for (const s of sources) {
         try {
           fn(s);
-        } catch { /* deliberate corpus errors are part of the workload */ }
+        } catch {
+          /* deliberate corpus errors are part of the workload */
+          thrown++;
+        }
       }
     };
 
@@ -112,6 +128,7 @@ for (const [name, files] of Object.entries(CASES)) {
     out[`${name}/${surface}`] = {
       files: sources.length,
       kb: +(bytes / 1024).toFixed(1),
+      thrown,
       median: +samples[Math.floor(samples.length / 2)].toFixed(4),
       min: +samples[0].toFixed(4),
       max: +samples[samples.length - 1].toFixed(4),

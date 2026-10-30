@@ -209,6 +209,16 @@ SCSS output passed while a clean rebuild failed.
 missing-rule and runtime-fallback output. It is also part of the PR-quality
 workflow.
 
+"Fully compiled" is not the same as "fast". A table artifact with no
+precompiled assembly (`a: []`) has no interpreter fallback, and every parse
+still runs on the closure table engine (R9). Three CI gates cover this:
+
+- `check:grammar-artifacts` counts each artifact's precompiled assembly and its
+  bytes per source byte against `scripts/grammar-artifacts.baseline.json`.
+- `check:grammar-speed` gates marginal instructions per parse for each grammar
+  against `scripts/grammar-speed.baseline.json`.
+- `check:macro` says which grammars run on tables only.
+
 ## 10. Source-derived facts are constructed once, then read
 
 **RULE:** every fact derived from source bytes—line starts, code-frame lines,
@@ -307,6 +317,7 @@ diff reintroduces each applicable shape.
 | R6 | **compose-integrity / stale-build degrade** | 9 | A grammar/macro change that falls back to the runtime interpreter or references a missing rule, masked by stale generated output. |
 | R7 | **repeated source derivation / eager suppressed diagnostics** | 10 | Constructing a warning, locating its source, splitting its code frame, or otherwise rediscovering a source-derived fact after an owner could have carried it. |
 | R8 | **speculative lookahead CST publication** | 5, 11 | A positive parser assertion whose terminals publish captured leaves/spans and then roll them back. Inspect the exact generated AST and CST functions; prefer parent-owned delimiter consumption or a proven capture-free recognizer. |
+| R9 | **lost precompiled assembly** (2026-08-31, [#508](https://github.com/jesscss/jess/issues/508)) | 9 | A grammar change that keeps its artifact a "fully compiled" table but drops the precompiled assembly (`a: [{ factory }]` → `a: []`). In `385c8b300` (Less), `dc96a98a7` (SCSS) and `ba25f5c92` (`.jess`), each grammar's entry moved from `composeLeaf()` to `compose()`, and parseman precompiles only a terminal `composeLeaf()`. Less AST parse of `benchmark.less` went from 16.9 to 27.6 ms, and its `ast.js` went from 1,217 precompiled functions to 0. Every gate missed it. `check:macro` counts only interpreter fallbacks, and a closure-only table is not one. The perf drift gate is disabled and has no baseline. Nothing counted the assembly or gated per-grammar parse cost. The artifacts also got smaller, which reads as a win. Detectors: `check:grammar-artifacts` and `check:grammar-speed`. |
 
 When a new performance regression is fixed, add a row and, where possible, a
 deterministic detector. The catalogue and detector set must remain grounded in

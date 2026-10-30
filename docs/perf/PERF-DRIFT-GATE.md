@@ -3,7 +3,12 @@
 **Status: LANDED, DISABLED. `PERF_GATE` defaults to `off`.**
 
 Enabling it is an owner decision and must not happen before the
-[enablement checklist](#enablement-checklist-owner) is satisfied. The spec this
+[enablement checklist](#enablement-checklist-owner) is satisfied. Per-grammar parse
+cost against a fixed baseline is gated in CI separately, by
+`check:grammar-speed` (`docs/perf/BENCHMARKS.md` §6), which counts
+instructions and needs no comparator or null calibration. What only this gate
+measures is jess's parse time as a ratio to a reference parser (lessc 4.x,
+PostCSS, dart-sass). The spec this
 implements is `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` §"The drift
 gate"; that section remains the authority on intent.
 
