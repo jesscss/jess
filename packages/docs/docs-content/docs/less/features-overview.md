@@ -211,6 +211,21 @@ background-color: (#FFFFFF / 16); //results is #101010
 ```
 You can change the [Math](./usage/less-options#math) setting to a more eager mode, but the `parens-division` default is recommended because `/` is often ambiguous in CSS values. With the default, division only happens when you express it explicitly (for example with parentheses), which avoids accidental transforms of valid CSS syntax.
 
+Outside parentheses a slash list stays as written (`font: 12px/1.5`, `grid-area: 1 / 2`, or `@f: 12px/1.5; font: @f`), except where a number is unambiguously expected. There it is converted to its quotient:
+
+```less
+@d: 10px/2;
+.a {
+  width: @d * 2;              // 10px: an operand of math
+  top: percentage(16/17);     // 94.11764706%: a parameter that takes a number
+  left: unit(80/16, rem);     // 5rem
+  right: percentage(@d);      // 500%
+  color: if(@d > 4px, a, b);  // a: a comparison, for a stored slash
+}
+```
+
+A condition written in place is not converted (`when (10px/2 = 5px)` follows the parentheses rule and does not match), and neither is an argument to a function that accepts any value (`length(16/17)` is `2`), a slash written directly in a CSS function such as `calc()` or `clamp()`, or a slash written out as a value.
+
 ## calc() exception
 
 _Released [v3.0.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)_

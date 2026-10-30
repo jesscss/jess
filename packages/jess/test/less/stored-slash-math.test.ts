@@ -12,7 +12,7 @@ import { Compiler } from '../../src/index.js';
  * P35, FIXTURES): "A stored `10px/2` divides once it's used in math, so
  * `r: 10px`." Read anywhere else it stays the list.
  */
-type MathMode = 'parens-division' | 'parens';
+type MathMode = 'parens-division' | 'parens' | 'strict' | 'always';
 type UnitMode = 'strict' | 'loose' | 'preserve';
 
 async function render(source: string, mathMode: MathMode, unitMode: UnitMode = 'preserve', extension = '.less'): Promise<string> {
@@ -123,11 +123,39 @@ describe('a slash list is its quotient where a number is expected', () => {
       .toBe('.x { p: 500%; h: y; r: 10px / 2; }');
   });
 
-  it('leaves a slash written where the number is expected to the math mode', async () => {
-    expect(await render('.x { a: percentage(16/17); b: unit(80/16, rem); c: if(10px/2 = 5px, y, n); }', 'parens-division'))
-      .toBe('.x { a: percentage(16 / 17); b: unit(80 / 16, rem); c: n; }');
-    expect(await render('.x { a: percentage((16/17)); c: if((10px/2) = 5px, y, n); }', 'parens-division')).toBe('.x { a: 94.11764706%; c: y; }');
+  /*
+   * Owner 2026-10-30, on `percentage(16/17)` staying as written: "Since
+   * functions can specify types, it seems like we could use type hints to
+   * auto-convert here? since obviously percentage() does not accept a slash
+   * list?" A slash written in place converts where its parameter takes a
+   * number, by the same conversion a stored slash takes.
+   */
+  it('converts a slash written in place where the parameter takes a number', async () => {
+    for (const mathMode of ['parens-division', 'parens', 'strict', 'always'] as const) {
+      expect(await render('.x { a: percentage(16/17); b: unit(80/16, rem); c: round(10px/3); d: min(10px/2, 4px); e: max(10px/2, 4px); }', mathMode))
+        .toBe('.x { a: 94.11764706%; b: 5rem; c: 3px; d: 4px; e: 5px; }');
+    }
+    await expect(new Compiler({ compile: { functionMode: 'error' } }).renderString('.x { a: percentage(16/17); b: unit(80/16, rem); }', { extension: '.less' }))
+      .resolves.toBe('.x {\n  a: 94.11764706%;\n  b: 5rem;\n}\n');
+  });
+
+  it('keeps a slash written in place where nothing expects a number', async () => {
+    expect(await render('.x { a: length(16/17); b: extract(16/17, 1); c: calc(10px/2); d: clamp(1px, 10px/2, 9px); e: foo(10px/2); r: 10px/2; }', 'parens-division'))
+      .toBe('.x { a: 2; b: 16; c: calc(10px / 2); d: clamp(1px, 10px / 2, 9px); e: foo(10px / 2); r: 10px / 2; }');
+    expect(await render('.x { a: percentage(1/0); b: percentage(12px/normal); }', 'parens-division'))
+      .toBe('.x { a: percentage(1 / 0); b: percentage(12px / normal); }');
+  });
+
+  /*
+   * Owner 2026-10-30, on `when (10px/2 = 5px)`: "the second case with when is
+   * more ambiguous so yes i agree we wouldn't compare". A slash written in
+   * place in a comparison is the math mode's (V35).
+   */
+  it('leaves a slash written in place in a comparison to the math mode', async () => {
+    expect(await render('.x { c: if(10px/2 = 5px, y, n); d: boolean(10px/2 = 5px); }', 'parens-division')).toBe('.x { c: n; d: false; }');
+    expect(await render('.x { c: if((10px/2) = 5px, y, n); }', 'parens-division')).toBe('.x { c: y; }');
     expect(await render('.m() when (10px/2 = 5px) { g: yes; } .m() when (default()) { g: no; } .x { .m(); }', 'parens-division')).toBe('.x { g: no; }');
+    expect(await render('.m() when ((10px/2) = 5px) { g: yes; } .m() when (default()) { g: no; } .x { .m(); }', 'parens-division')).toBe('.x { g: yes; }');
   });
 
   it('keeps a slash list with no quotient, as any value that is not a number', async () => {
@@ -155,7 +183,8 @@ describe('a slash list is its quotient where a number is expected', () => {
     const pairs = [
       ['@d: 10px/2em; .x { a: percentage(@d); b: round(@d); c: unit(@d, em); }', '.x { a: percentage((10px/2em)); b: round((10px/2em)); c: unit((10px/2em), em); }'],
       ['@d: 10px/2em; .x { a: if(@d > 4px, y, n); }', '.x { a: if((10px/2em) > 4px, y, n); }'],
-      [guarded('@d: 10px/2em; .x { .m(@d); }'), guarded('.x { .m((10px/2em)); }')]
+      [guarded('@d: 10px/2em; .x { .m(@d); }'), guarded('.x { .m((10px/2em)); }')],
+      ['.x { a: percentage(10px/2em); b: round(10px/2em); c: unit(10px/2em, em); }', '.x { a: percentage((10px/2em)); b: round((10px/2em)); c: unit((10px/2em), em); }']
     ] as const;
     for (const unitMode of ['strict', 'loose', 'preserve'] as const) {
       for (const [stored, written] of pairs) {
@@ -175,6 +204,13 @@ describe('a slash list is its quotient where a number is expected', () => {
       .toBe('.x { a: 500%; b: 5px; r: 10px / 2; }');
   });
 
+  it('converts a slash written in place in .scss and .jess as in Less', async () => {
+    expect(await render('@use "sass:math"; .x { a: percentage(16 / 17); b: round(10px / 3); c: min(10px / 2, 4px); d: math.unit(80 / 16); e: math.max(10px / 2, 4px); f: length(16 / 17); g: calc(10px / 2); r: 10px / 2; }', 'parens-division', 'preserve', '.scss'))
+      .toBe('.x { a: 94.11764706%; b: 3px; c: 4px; d: ""; e: 5px; f: 2; g: calc(10px / 2); r: 10px / 2; }');
+    expect(await render('@-from "#less" import (percentage, unit, round, length); .x { a: $percentage(16 / 17); b: $unit(80 / 16, rem); c: $round(10px / 3); d: $length(16 / 17); e: min(10px / 2, 4px); f: calc(10px / 2); r: 10px / 2; }', 'parens-division', 'preserve', '.jess'))
+      .toBe('.x { a: 94.11764706%; b: 5rem; c: 3px; d: 2; e: min(10px / 2, 4px); f: calc(10px / 2); r: 10px / 2; }');
+  });
+
   it('gives the same CSS through .jess', async () => {
     const LESS_FUNCTIONS = {
       from: '#less',
@@ -184,7 +220,8 @@ describe('a slash list is its quotient where a number is expected', () => {
     const sources = [
       '@d: 10px/2; @f: 12px/1.5; .x { a: percentage(@d); b: round(@d); c: unit(@d, em); d: min(@d, 4px); r: @d; font: @f; }',
       guarded('@d: 10px/2; .x { .m(@d); }'),
-      '@d: 10px/2; .m(@a) when (@a >= 5px) and (@a <= 5px) and (@a = 5px) { g: yes; } .x { .m(@d); }'
+      '@d: 10px/2; .m(@a) when (@a >= 5px) and (@a <= 5px) and (@a = 5px) { g: yes; } .x { .m(@d); }',
+      '.x { a: percentage(16/17); b: unit(80/16, rem); c: round(10px/3); d: min(10px/2, 4px); e: length(16/17); f: calc(10px/2); r: 10px/2; }'
     ];
     for (const less of sources) {
       const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });

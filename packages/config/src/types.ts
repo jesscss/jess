@@ -162,7 +162,7 @@ export interface LessOptions {
   /**
    * How to handle an optional/global function call that matched a registered
    * function but couldn't be evaluated (no matching signature, or it threw) —
-   * e.g. `unit(80/16)`, `color("x")`. Mirrors {@link unitMode}.
+   * e.g. `unit(red)`, `color("x")`. Mirrors {@link unitMode}.
    * - 'preserve': render the call as-is (like an unknown CSS function) + warn
    * - 'error': throw the underlying function error (Less 4.x behavior)
    * Unknown function names always render as-is regardless.

@@ -530,6 +530,36 @@ through the explicit module binding:
 - The `./` division operator is removed: `2px ./ 2` is a parse error. Write `(2px / 2)`.
 - **Breaking change** under `math: 'parens'` (and `strict`): parentheses around a function call do not reach its arguments. `(foo(1 + 2))` stays `(foo(1 + 2))`, where Less 4.x computed it (`foo(3)`). Put the parentheses inside the call to compute the argument: `(foo((1 + 2)))` is `(foo(3))`. Under `parens-division` (the default) and `always`, nothing changes.
 - Under `math: 'parens'` (and `strict`), the arguments of `if()`, `boolean()`, `not()`, `and()` and `or()` follow the math mode like any function argument: `boolean(1 + 2 = 3)` is `false`, while parentheses written inside the call are a paren group, so `boolean((1 + 2 = 3))` is `true` and `if((1 + 2 = 3), a, b)` is `a`. The outermost parentheses of each condition of a guard's `when ( … )` are not a paren group, and every pair inside them is: `when (1 + 2 = 3)` does not match, while `when ((1 + 2 = 3))` and `when ((1 + 2) = 3)` do.
+- Under `parens-division` (the default), a `/` divides inside parentheses, and outside them a slash list stays as written (`font: 12px/1.5`, `grid-area: 1 / 2`, `@f: 12px/1.5; font: @f`). Where a number is unambiguously expected, a slash list is converted to its quotient: as an operand of math (`@d: 10px/2; @d * 2` is `10px`), as an argument to a function whose parameter takes a number, written in place or stored (`percentage(16/17)` is `94.11764706%`, `unit(80/16, rem)` is `5rem`), and in a comparison, for a stored slash only (`@d > 4px` is true). It is not converted in a condition written in place (`when (10px/2 = 5px)` follows the parentheses rule and does not match), by a function that accepts any value (`length(16/17)` is `2`), directly in a CSS function such as `calc()` or `clamp()`, or where it is written out as a value.
+
+```less
+@f: 12px/1.5;
+@d: 10px/2;
+.a {
+  font: @f;
+  width: @d * 2;
+  top: percentage(16/17);
+  left: unit(80/16, rem);
+  right: percentage(@d);
+  z-index: length(16/17);
+  bottom: calc(10px/2);
+  color: if(@d > 4px, a, b);
+}
+```
+
+<!-- v5-example -->
+```css
+.a {
+  font: 12px / 1.5;
+  width: 10px;
+  top: 94.11764706%;
+  left: 5rem;
+  right: 500%;
+  z-index: 2;
+  bottom: calc(10px / 2);
+  color: a;
+}
+```
 
 Example:
 

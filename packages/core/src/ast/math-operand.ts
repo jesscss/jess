@@ -8,10 +8,13 @@
  * proceeds under the active `unitMode` exactly as the same division written
  * in a group does. `@d: 10px/2; r: @d * 2` is `10px`; `percentage(@d)` is
  * `500%`; `@d > 4px` is true; `font: @f` with `@f: 12px/1.5` stays
- * `12px / 1.5`. A slash written where the number is expected is not divided
- * in place (`percentage(16/17)`, `when (10px/2 = 5px)`): the math mode decides
- * it (P34, V35). Math written inside a math function never computes, so it
- * never reaches here.
+ * `12px / 1.5`. A slash written in place as a function argument converts the
+ * same way where its parameter takes a number (`percentage(16/17)` is
+ * `94.11764706%`; owner 2026-10-30: *"since obviously percentage() does not
+ * accept a slash list"*). A slash written in place in a comparison is not
+ * divided there (`when (10px/2 = 5px)`): the math mode decides it (P34, V35;
+ * owner 2026-10-30: *"we wouldn't compare"*). Math written inside a math
+ * function never computes, so it never reaches here.
  *
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
@@ -93,7 +96,8 @@ export function numberOperand(value: ValueGroup, ev: Divider, modes: EvalModes):
 
 /**
  * Whether `node`, a value as written, is a slash list: a slash written in
- * place, which the math mode decides (P34, V35), never converted here.
+ * place in a comparison, which the math mode decides (P34, V35), never
+ * converted there.
  */
 export function isWrittenSlash(node: object): boolean {
   return 'type' in node && node.type === 'List' && 'sep' in node && node.sep === '/';

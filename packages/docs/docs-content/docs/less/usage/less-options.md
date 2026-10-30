@@ -152,6 +152,21 @@ Outputs:
 }
 ```
 
+A `/` divides inside parentheses. Outside them, a slash list stays as written: `font: 12px/1.5` and `grid-area: 1 / 2` are left alone, and so is a stored slash written out, as in `@f: 12px/1.5; font: @f`.
+
+Where a number is unambiguously expected, a slash list is converted to its quotient:
+
+- as an operand of math: `@d: 10px/2; width: @d * 2` gives `10px`;
+- as an argument to a function whose parameter takes a number, whether written in place or stored: `percentage(16/17)` gives `94.11764706%`, and `unit(80/16, rem)` gives `5rem`;
+- in a comparison, for a stored slash only: with `@d: 10px/2`, `if(@d > 4px, a, b)` gives `a`.
+
+It is not converted:
+
+- in a condition written in place, such as a guard's `when (10px/2 = 5px)`, which follows the parentheses rule and does not match (write `when ((10px/2) = 5px)`);
+- by a function that accepts any value: `length(16/17)` is `2`;
+- as a direct argument to a CSS function such as `calc()` or `clamp()`: `calc(10px/2)` stays `calc(10px / 2)`;
+- where it is written out as a value.
+
 **strict**
 ```less
 .math {
