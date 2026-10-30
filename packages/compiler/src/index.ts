@@ -346,11 +346,17 @@ const createBaseConfig = (): ConfigOptions => ({
 });
 
 /**
- * Customizer for mergeWith that concatenates arrays instead of replacing them
+ * Customizer for mergeWith that concatenates arrays instead of replacing them.
+ * `output` is one options object or a list of entries: merged with a list, an
+ * object joins it as a file-less entry, in merge order, so a later one still
+ * wins (`readOutput`). An empty object adds nothing.
  */
-function arrayConcatCustomizer(objValue: unknown, srcValue: unknown): unknown {
+function arrayConcatCustomizer(objValue: unknown, srcValue: unknown, key: string): unknown {
   if (isArray(objValue) && isArray(srcValue)) {
     return [...objValue, ...srcValue];
+  }
+  if (key === 'output' && (isArray(objValue) || isArray(srcValue))) {
+    return [objValue, srcValue].flat().filter(entry => isObjectRecord(entry) && Object.keys(entry).length > 0);
   }
   return undefined;
 }
@@ -734,12 +740,13 @@ export class Compiler {
 
     /*
      * Resolve one `output` option, honored whether or not an `outputFile`
-     * selects a specific array entry. A render-time output (an object, or the
-     * file-less array entry the config merge appends) overrides a file-local
-     * config the same way for EVERY key — collapseNesting, compress, and
-     * sourceMap alike — so the projection/serialization options can be combined
-     * in one render. Returns undefined when nothing sets the key; the caller
-     * applies its own fallback.
+     * selects a specific array entry. Entries apply in order and a later one
+     * wins, as the config's own entries do (styles-config `getMatchingOptions`):
+     * a file-less entry applies to every output, a `file` entry to the output it
+     * names. A render-time output follows the config's entries
+     * (`arrayConcatCustomizer`), so it overrides them for EVERY key —
+     * collapseNesting, compress, and sourceMap alike. Returns undefined when
+     * nothing sets the key; the caller applies its own fallback.
      */
     const readOutput = <K extends keyof OutputOptions>(key: K): OutputOptions[K] | undefined => {
       const output = effectiveConfig.output;
@@ -748,37 +755,22 @@ export class Compiler {
       }
       const isObj = (e: OutputOptions | undefined): e is OutputOptions =>
         !!e && typeof e === 'object';
-      const defaults = output.find(e => isObj(e) && !('file' in e));
-
-      if (resolvedOutputFilePath) {
-        const dir = filePath ? path.dirname(filePath) : '.';
-        const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
-        for (const entry of output) {
-          if (!isObj(entry) || !('file' in entry)) {
-            continue;
-          }
-          const pattern = String(entry.file ?? '{name}.css');
-          if (path.join(dir, pattern.replace('{name}', name)) === resolvedOutputFilePath) {
-            if (key in entry) {
-              return entry[key];
-            }
-            return defaults?.[key];
-          }
-        }
-        return undefined;
+      const dir = filePath ? path.dirname(filePath) : '.';
+      const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
+      const applies = (entry: OutputOptions): boolean => !('file' in entry) || (resolvedOutputFilePath !== undefined
+        && path.join(dir, String(entry.file ?? '{name}.css').replace('{name}', name)) === resolvedOutputFilePath);
+      const set = output.filter((e): e is OutputOptions => isObj(e) && key in e);
+      const last = set.findLast(applies);
+      if (last !== undefined || resolvedOutputFilePath) {
+        return last?.[key];
       }
 
       /*
-       * No target selects an entry. `activeOptions` already absorbs file-less
-       * defaults entries (via getMatchingOptions), but not `file`-bearing ones —
-       * so honor a file-less default here, else a lone file entry's flag. Stay
-       * out of it when several file entries disagree (fall to the default).
+       * No target selects a `file` entry and no file-less entry sets the key:
+       * a lone file entry's flag applies. Stay out of it when several file
+       * entries disagree (fall to the default).
        */
-      if (defaults && key in defaults) {
-        return defaults[key];
-      }
-      const flagged = output.filter(e => isObj(e) && 'file' in e && key in e);
-      return flagged.length === 1 ? flagged[0]![key] : undefined;
+      return set.length === 1 ? set[0]![key] : undefined;
     };
 
     /*
