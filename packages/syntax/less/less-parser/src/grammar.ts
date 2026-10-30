@@ -38,7 +38,6 @@ import {
   atRulePreludeFrom,
   argumentFunctionFromChildren,
   lessBranchSegments,
-  callArgumentSource,
   combinatorTailReducer,
   selectorBranchFactFrom,
   queryListHasImportCondition,
@@ -159,6 +158,7 @@ import {
   variableValueSlot
 } from './grammar-helpers.js';
 import { capturedPseudoFrom, selectorCaptureFrom } from './selector-capture.js';
+import { mixinReferenceBaseFrom } from './mixin-reference-base.js';
 import { operatorRun, runOperand } from './delim-runs.js';
 import { lessParenListFrom } from './paren-list.js';
 import { plainUrlBodyFrom } from './url-argument.js';
@@ -1723,31 +1723,41 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return [operator, requireValueNode(children[1])];
     }
   );
-  /*
+  /**
    * A mixin reference that is the whole value, neither called nor looked up
    * (jess#236): the called and looked-up forms are value arms ahead of this
-   * one, so it only names a reference that ends the value. Less 5 rejects it,
-   * in a variable as in a property (owner ruling P33, 2026-09-23). A lone `#`
-   * and hex digits there is a mistyped colour (`#fffff`), not a reference, so
-   * it keeps the ordinary value failure.
+   * one, so it only names a reference that ends the value. It is the chain
+   * `MixinReference` builds, with no steps: in a variable it is the value
+   * (owner 2026-10-29, ledger P33). A lone `#` and hex digits there is a
+   * mistyped colour (`#fffff`), not a reference, so it keeps the ordinary
+   * value failure.
    */
-  const UncalledMixinReference = node(
-    'UncalledMixinReference',
+  const MixinReferenceValue = node(
+    'MixinReference',
     sequence(
       not(regex(/#[0-9a-fA-F]+[ \t\n\r\f]*[;}!]/)),
       mixinName,
       many(MixinPathTail),
       peek(regex(/[;}!]/))
     ),
+    (children, _fields, span) => {
+      const base = mixinReferenceBaseFrom(children);
+      return withSourceSpan(referenceWithTails(base.call, base.raw, []), span);
+    }
+  );
+  /** In a property the same reference is rejected (ledger P33, 2026-09-23). */
+  const UncalledMixinReference = node(
+    'UncalledMixinReference',
+    MixinReferenceValue,
     (children, _fields, span, _rawChildren, _triviaLog, state) => {
-      const name = sourceFromState(state)?.slice(span.start, span.end) ?? requireToken(children[0]).value;
+      const name = sourceFromState(state)?.slice(span.start, span.end) ?? (isReference(children[0]) ? children[0].raw : '');
       throw new LessUncalledMixinReferenceError(span.start, span.end, name);
     }
   );
   const rejectedValueStart = choice(LeadingSeparatorValue, UncalledMixinReference);
   const VarDeclaration = node(
     'VariableDeclaration',
-    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue), rejectedValueStart), declarationEnd),
+    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue), LeadingSeparatorValue, MixinReferenceValue), declarationEnd),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -3349,17 +3359,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         literal(')')
       ))
     ),
-    (children) => {
-      const head = requireToken(children[0]).value;
-      const tails = children.filter(isMixinPathTail);
-      const terminal = tails.at(-1);
-      const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
-      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
-      const withPath = tails.length === 0 ? call : { ...call, path };
-      const hasCall = children.some(child => isLessTerminalText(child, '('));
-      const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(callArgumentSource).join(', ')})` : ''}`;
-      return { call: withPath, raw };
-    }
+    children => mixinReferenceBaseFrom(children)
   );
   /*
    * Overrides the CSS base `Color`. In Less a `#` head is shared with namespace
