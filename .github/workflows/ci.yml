@@ -274,6 +274,13 @@ jobs:
       - name: Gate — hot-path antipattern inventory (shrink-only)
         run: pnpm run verify:hot-path
 
+      # The four parsers recognize source only through Parseman grammar: a
+      # handwritten scan of source text in a parser package fails here. Its debt
+      # ledger (scripts/parser-runtime-boundary-debt.json) is empty, so a new
+      # site fails the PR instead of first surfacing in the release preflight.
+      - name: Gate — parser runtime boundary
+        run: pnpm run verify:parser-runtime-boundary
+
   # Build-free source tests, run IN PARALLEL with `verify`. vitest source-aliases
   # every `@jesscss/*` to `src`, so this suite does not need the full build — only
   # a cheap prime:

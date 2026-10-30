@@ -35,7 +35,14 @@ const acceptedDivergences = new Map<string, string>([
    * `.fruit-quoted-&` under `~'apple, satsuma, banana, pear'` is
    * `.fruit-quoted-apple, satsuma, banana, pear`.
    */
-  ['tests-error/eval/ampersand-merge-template-invalid.less', 'escaped text is written as written (owner 2026-10-09) and never stops the pipeline (P45)']
+  ['tests-error/eval/ampersand-merge-template-invalid.less', 'escaped text is written as written (owner 2026-10-09) and never stops the pipeline (P45)'],
+
+  /*
+   * `@alias: .theme;` holds a mixin reference (owner 2026-10-29, asked whether
+   * `@foo: .a;` should stay an error: "No, it's a mixin reference."; ledger
+   * P33, jess#236), so `@alias[foo]` reads the mixin's `foo`.
+   */
+  ['tests-error/eval/namespacing-3.less', 'a variable that names a mixin holds a mixin reference (owner 2026-10-29, P33)']
 ]);
 
 const rootCallFunctionFixtures = new Set([
