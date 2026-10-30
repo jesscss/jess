@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parse } from '@jesscss/less-parser';
+import { parse, safeParse } from '@jesscss/less-parser';
 
 /** The typed failure `parse()` throws, or `undefined` when the source parses. */
 function failureOf(source: string): unknown {
@@ -62,6 +62,32 @@ describe('punctuation-led Less values are rejected at their first token', () => 
         steps: []
       }
     });
+  });
+
+  /*
+   * Owner 2026-10-29: "I think .a !important is meaningless as a construction".
+   * It parses (P45), and the error sits on the `!important`, not the `:`.
+   */
+  it.each([
+    ['a mixin reference', '.m() { a: b; }\n@foo: .a !important;', 2, 10, 20],
+    ['a mixin call', '.m() { a: b; }\n@foo: .a() !important;', 2, 12, 22],
+    ['a spaced priority', '@foo: .a ! important;', 1, 10, 21],
+    ['a namespaced mixin reference', '@foo: #ns.a !important;', 1, 13, 23]
+  ])('reports !important after %s in a variable at the !important', (_label, source, line, column, endColumn) => {
+    const result = safeParse('entry.less', source);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/important-on-mixin-reference',
+      message: 'A mixin reference or mixin call cannot carry !important.',
+      line,
+      column,
+      endLine: line,
+      endColumn
+    });
+  });
+
+  it('keeps a mixin call marked important as a statement', () => {
+    expect(failureOf('.m() { a: b; }\n.x { .m() !important; }')).toBeUndefined();
   });
 
   it.each([

@@ -435,6 +435,10 @@ export function pushParseTwinDiagnostics(
       }
     );
   }
+  if (language === 'less' && gt === 'MixinValueImportant') {
+    const error = makeJessError({ code: 'parse/important-on-mixin-reference', phase: 'parse' });
+    push(error.code, 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
+  }
 }
 
 /* The at-rules whose prelude is a `SupportsPrelude` (css and SCSS, Less, `.jess`). */

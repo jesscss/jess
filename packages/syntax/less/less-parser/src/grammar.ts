@@ -32,7 +32,7 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   atRulePreludeFrom,
@@ -394,6 +394,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: the `!important` priority marker, read by MixinValueImportant.
+  Important: Combinator<unknown>;
   // Inherited from the CSS base: a `[…]` simple block in a value (grid line names), over Less's ValueList.
   SquareValue: Combinator<ValueNode>;
   // Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal.
@@ -1755,16 +1757,46 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   const rejectedValueStart = choice(LeadingSeparatorValue, UncalledMixinReference);
+  /**
+   * `!important` after a mixin reference or mixin call that is a variable's
+   * whole value: the owner ruled the construction meaningless (2026-10-29,
+   * ledger P33). It parses (P45); the declaration reports it at this span.
+   * CSS's `Important` reduces to `true` with no span, so this node wraps it
+   * only to give the diagnostic and its language-service twin that span.
+   */
+  const MixinValueImportant = node(
+    'MixinValueImportant',
+    g.Important,
+    (_children, _fields, span) => ({ value: '!important', span })
+  );
+  /** `@name: value;` — the value arms in order, each a complete value. */
   const VarDeclaration = node(
     'VariableDeclaration',
-    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue), LeadingSeparatorValue, MixinReferenceValue), declarationEnd),
-    (children, _fields, span) => {
+    sequence(
+      variableName,
+      literal(':'),
+      choice(
+        sequence(g.NamespacedMixinValue, mixinValueWithoutLookup),
+        g.ImportantValue,
+        sequence(g.FlatMixinCall, mixinValueWithoutLookup, optional(MixinValueImportant)),
+        sequence(not(literal('{')), g.VariableValue),
+        LeadingSeparatorValue,
+        sequence(MixinReferenceValue, optional(MixinValueImportant))
+      ),
+      declarationEnd
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
-      return withSourceSpan(
+      const declaration = withSourceSpan(
         variableDeclaration(name, isMixinCall(value) ? value : variableValueSlot(value), { mode: 'declare' }),
         span
       );
+      const tail = children[3];
+      if (isSpannedToken(tail) && tail.value === '!important') {
+        reportRecovered(new LessImportantMixinReferenceError(tail.span.start, tail.span.end, declaration), state);
+      }
+      return declaration;
     }
   );
   const ValueBlockDeclaration = node(

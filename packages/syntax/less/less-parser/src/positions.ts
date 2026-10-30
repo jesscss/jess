@@ -21,6 +21,7 @@ export {
   LessConditionKeywordCaseError,
   LessSelectorCaptureArgumentError,
   LessDynamicCharsetError,
+  LessImportantMixinReferenceError,
   LessImportPostludeError,
   LessInlineJavaScriptError,
   LessLeadingSeparatorValueError,
