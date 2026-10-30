@@ -99,7 +99,9 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['(a=b=c)', '='],
     ['foo((a=b=c))', '='], // a paren group of the run, as `(a=b=c)` is anywhere in a value
     ['a.b alpha(opacity=50)', '.'], // Less reads `alpha(opacity=50)` as a comparison (V11)
-    ['foo(a<b<c)', '<'] // one comparison is Less's (V11); a chain is the run
+    ['foo(a<b<c)', '<'], // one comparison is Less's (V11); a chain is the run
+    ['<length>', '<'], // a `<syntax>` type name compares nothing
+    ['foo(a<b>c)', '<'] // a glued `<b>` after an operand stays the comparison's run
   ],
   scss: [
     ['f(a.b)', '.'],
@@ -305,7 +307,7 @@ describe('a var(), env() or attr() fallback is a value', () => {
   });
 
   it.each([
-    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => [
+    ...DIALECTS.flatMap(dialect => [
       [dialect, 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
       [dialect, 'a {\n  width: attr(data-w type(<length>),0px);\n}\n', 'width: attr(data-w type(<length>), 0px);']
     ] as const),
@@ -374,8 +376,8 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     expect(await clean('jess', sheet('foo(a:b)'))).toContain('x: foo(a:b);');
   });
 
-  it('css: a typed attr()', async () => {
-    await clean('css', sheet('attr(data-x type(<length> | <percentage>), 0px)'));
+  it.each(['css', 'less'] as const)('%s: a typed attr()', async (dialect) => {
+    await clean(dialect, sheet('attr(data-x type(<length> | <percentage>), 0px)'));
   });
 
   it.each([

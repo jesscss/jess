@@ -961,6 +961,19 @@ const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
 const functionConditionOperator = regex(/[<>=]*=~|[<>=]+/);
 
 /**
+ * The `<` of a `<syntax>` type name (css-values-5 §3.3,
+ * `'<' <syntax-type-name> '>'`): a `<` glued to a name and its `>`. Where a
+ * value run could stop at a comparison, one is not (`valueRunEndAhead`).
+ */
+const syntaxTypeOpen = regex(/<(?=-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*>)/);
+/**
+ * The `>` that closes a `<syntax>` type name, with its `<syntax-multiplier>`,
+ * `#` or `+`, unless that `#` or `+` starts a hash or a number
+ * (`<length>+1` is `>` and `+1`, css-syntax-3 §4.3.1).
+ */
+const syntaxTypeClose = regex(/>(?:[#+](?![-_a-zA-Z0-9.\u0080-\uffff\\]))?/);
+
+/**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
  * gives no meaning, glued or padded: `x: a=b`, `x: a ~ b`. It is the css
  * `punctuationValueCharacter` run less the characters Less reads itself: `@`,
@@ -2482,6 +2495,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
 
   /** A delim piece and the piece glued after it: `x: a = b`, `x: a=b`. */
   const delimValue = sequence(punctuationDelim, optional(g.valuePiece));
+  /** The `<` of a `<syntax>` type name, as the delim css reads it. */
+  const syntaxTypeOpenDelim = node(
+    'PunctuationValue',
+    syntaxTypeOpen,
+    children => any(requireTerminalText(children[0]))
+  );
+  /** Its `>`, and the multiplier on it, as the delim css reads it. */
+  const syntaxTypeCloseDelim = node(
+    'PunctuationValue',
+    syntaxTypeClose,
+    children => any(requireTerminalText(children[0]))
+  );
+  /**
+   * A `<syntax>` type name, `<number>` or `<length>+`, as the argument of
+   * `attr()`'s `type()` spells it (css-values-5 §3.3): the three component
+   * values css reads it as, a `<` delim, the name and a `>` delim, written as
+   * authored (ledger N18). Neither bracket is a comparison here. In a
+   * declaration value its delims are the invalid-value-punctuation error, as in
+   * css (P48); `attr()`'s `type()` is not a value, so there they are not.
+   */
+  const syntaxTypeName = noTrivia(sequence(syntaxTypeOpenDelim, g.Keyword, syntaxTypeCloseDelim));
 
   /*
    * Value pieces are separated by grammar-owned whitespace. Keeping that token
@@ -2491,8 +2525,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * No bare `literal('/')` arm: a slash is only ever reachable BETWEEN two
    * operands, through the division operator in `MathSum`. So `p: / 1` fails for
    * the same structural reason a leading `,` does (DESIGN-DECISIONS P33/P34).
+   * A `<` reaches a piece only as a `<syntax>` type name (`syntaxTypeName`);
+   * anywhere else it is a comparison.
    */
-  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'), delimValue);
+  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'), syntaxTypeName, delimValue);
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
   /**
    * A `*` or `+` with no operand after it (`x: a *`): the delim it is in a CSS
@@ -2521,7 +2557,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     nestedAtRuleValueStart,
     {
       gate: state => valueStopOf(state) !== undefined,
-      combinator: functionConditionOperator
+      combinator: sequence(not(syntaxTypeOpen), functionConditionOperator)
     },
     {
       gate: state => valueStopOf(state) === 'condition',
