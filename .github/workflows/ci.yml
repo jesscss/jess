@@ -303,11 +303,13 @@ jobs:
   # against scripts/grammar-speed.baseline.json. Its own job, in parallel with
   # `verify`, so its 2-4 minutes of counting stay off the critical path. It
   # builds only the four parsers and what they depend on. Instruction counts
-  # depend on the Node version, so the job pins it; bumping the pin re-records
-  # the baseline in the same reviewed change. Add it to branch protection too.
+  # depend on the OS image, the Valgrind build and the Node version, so the job
+  # pins the image and Node and the baseline records all three; changing any of
+  # them re-records the baseline (`--propose`, on CI) in the same reviewed
+  # change. Add it to branch protection too.
   grammar-speed:
     name: Grammar speed (instructions per parse)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

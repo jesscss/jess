@@ -18,7 +18,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { BASELINE as ARTIFACT_BASELINE, GRAMMARS, compareArtifacts, measureGrammars, ratchetArtifacts } from '../check-grammar-artifacts.mjs';
-import { COUNTERS, compareSpeed, selfTest } from '../grammar-speed-gate.mjs';
+import { COUNTERS, compareSpeed, envDiff, environment, selfTest } from '../grammar-speed-gate.mjs';
 import { precompiledAssembly } from '../parseman-fallback-detector.mjs';
 
 const root = resolve(fileURLToPath(import.meta.url), '../../..');
@@ -188,4 +188,17 @@ test('both counters read their tool output', () => {
   assert.equal(COUNTERS.linux.read('==123== \n==123== I refs:        12,345,678,901\n'), '12345678901');
   assert.equal(COUNTERS.darwin.read('        10315021308  instructions retired\n'), '10315021308');
   assert.equal(COUNTERS.linux.read('valgrind: failed to start'), undefined);
+});
+
+test('an environment change is caught field by field: runner image, Valgrind, Node', () => {
+  const recorded = JSON.parse(readFileSync(join(root, 'scripts/grammar-speed.baseline.json'), 'utf8')).env;
+  assert.deepEqual(envDiff(structuredClone(recorded), recorded), []);
+  for (const [field, value] of [['runnerImage', 'ubuntu28'], ['os', 'ubuntu-28.04'], ['valgrind', 'valgrind-3.27.0'], ['node', 'v24.23.0']]) {
+    const moved = { ...recorded, [field]: value };
+    const diff = envDiff(moved, recorded);
+    assert.equal(diff.length, 1, diff.join('\n'));
+    assert.match(diff[0], new RegExp(`^${field}: `));
+  }
+  assert.ok(envDiff({ ...recorded, valgrind: undefined }, recorded).some(d => d.startsWith('valgrind: ')), 'a missing field is a change');
+  assert.ok(['counter', 'platform', 'os', 'runnerImage', 'valgrind', 'node', 'method'].every(k => k in environment()));
 });

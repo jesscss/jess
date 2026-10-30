@@ -36,10 +36,11 @@
  * JIT-only costs (deopts, megamorphic inline caches); those need hardware
  * counters on a self-hosted runner, or `BENCHMARKS.md`'s local method.
  *
- * Instruction counts depend on the CPU architecture, the counter, the Node
- * version and the method, so the baseline records that environment and is
- * only compared under the same one. The CI `grammar-speed` job pins Node;
- * `--require-env` (CI) fails on any other environment. The parseman version is
+ * Instruction counts depend on the CPU architecture, the counter and its
+ * version, the OS image, the Node version and the method, so the baseline
+ * records that environment and is only compared under the same one. The CI
+ * `grammar-speed` job pins the runner image and Node; `--require-env` (CI)
+ * fails on any other environment before measuring anything. The parseman version is
  * NOT part of the environment: a parseman release is measured against the
  * baseline it replaces, and must be no slower.
  *
@@ -63,7 +64,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { availableParallelism } from 'node:os';
+import { availableParallelism, release } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -107,13 +108,50 @@ export const COUNTERS = {
   }
 };
 
+function valgrindVersion() {
+  try {
+    return execFileSync('valgrind', ['--version'], { encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** `ubuntu-26.04` from `/etc/os-release`, else `<platform>-<kernel release>`. */
+function osRelease() {
+  try {
+    const fields = Object.fromEntries(readFileSync('/etc/os-release', 'utf8').split('\n')
+      .map(line => line.split('=')).filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, v.replace(/^"|"$/g, '')]));
+    return `${fields.ID}-${fields.VERSION_ID}`;
+  } catch {
+    return `${process.platform}-${release()}`;
+  }
+}
+
+/**
+ * Everything the counts depend on. The runner image is recorded by its OS
+ * family (`ImageOS`, which the CI job pins through `runs-on`) and its OS
+ * release, not by `ImageVersion`: that changes weekly with package patches,
+ * and recording it would fail the gate on an unchanged checkout every week.
+ * Valgrind comes from apt, so its version is recorded on its own.
+ */
 export function environment(counter = COUNTERS[process.platform]) {
   return {
     counter: counter?.id ?? 'unsupported',
     platform: `${process.platform}-${process.arch}`,
+    os: osRelease(),
+    runnerImage: process.env.ImageOS ?? null,
+    valgrind: process.platform === 'linux' ? valgrindVersion() : null,
     node: process.version,
     method: METHOD
   };
+}
+
+/** The environment fields that differ from the baseline's, as `field: this run vs baseline` lines. */
+export function envDiff(env, baselineEnv = {}) {
+  return [...new Set([...Object.keys(env), ...Object.keys(baselineEnv)])]
+    .filter(key => JSON.stringify(env[key]) !== JSON.stringify(baselineEnv[key]))
+    .map(key => `${key}: ${JSON.stringify(env[key])} (baseline ${JSON.stringify(baselineEnv[key])})`);
 }
 
 function runOne(counter, grammar, parses) {
@@ -226,24 +264,26 @@ export function selfTest(measured, baseline) {
     && all.every(g => faster.unbanked.some(f => f.startsWith(`${g}: faster`)));
 }
 
-const sameEnv = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
 async function main() {
   const baselinePath = join(ROOT, BASELINE);
   const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
   const env = environment();
-  if (process.platform === 'linux') {
-    try {
-      execFileSync('valgrind', ['--version'], { stdio: 'ignore' });
-    } catch {
-      console.error('grammar speed gate: valgrind is not installed (`sudo apt-get install -y valgrind`).');
-      process.exit(1);
-    }
+  if (process.platform === 'linux' && env.valgrind === null) {
+    console.error('grammar speed gate: valgrind is not installed (`sudo apt-get install -y valgrind`).');
+    process.exit(1);
+  }
+  const mismatch = envDiff(env, baseline.env);
+  const propose = process.argv.includes('--propose');
+  if (mismatch.length > 0 && !propose && process.argv.includes('--require-env')) {
+    console.error(`✗ ENVIRONMENT CHANGED — the baseline was recorded under a different environment:\n${mismatch.map(m => `    ${m}`).join('\n')}\n`
+      + 'Grammar speed gate FAILED before measuring: counts from another environment are not comparable. '
+      + 'Re-record on CI with `--propose` and commit the reviewed result together with the change.');
+    process.exit(1);
   }
   const started = Date.now();
   const measured = await measureSpeed(arg('grammars', Object.keys(GRAMMARS).join(',')).split(','));
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
-  const envMatches = sameEnv(env, baseline.env);
+  const envMatches = mismatch.length === 0;
 
   console.log(`Grammar speed — marginal instructions per AST parse, (I(N${METHOD.n2}) − I(N${METHOD.n1}))/${METHOD.n2 - METHOD.n1}, median of ${METHOD.reps}, ${env.counter}, ${env.platform}, node ${env.node} (${seconds}s):`);
   for (const [grammar, m] of Object.entries(measured)) {
@@ -252,7 +292,7 @@ async function main() {
     console.log(`  ${grammar.padEnd(5)} ${GRAMMARS[grammar].case.padEnd(15)} ${String(m.marginal).padStart(12)}  spread ${m.spreadPct}%  reps ${m.reps.join(' ')}${delta}`);
   }
 
-  if (process.argv.includes('--propose')) {
+  if (propose) {
     const proposal = {
       ...baseline,
       env,
@@ -264,12 +304,7 @@ async function main() {
   }
 
   if (!envMatches) {
-    const message = `This environment does not match the baseline's:\n  this run  ${JSON.stringify(env)}\n  baseline  ${JSON.stringify(baseline.env)}`;
-    if (process.argv.includes('--require-env')) {
-      console.error(`\n✗ ${message}\nGrammar speed gate FAILED: nothing was graded. The CI job pins Node; a pin change re-records the baseline in the same reviewed edit.`);
-      process.exit(1);
-    }
-    console.log(`\n${message}\nReport only — not graded.`);
+    console.log(`\nThis environment does not match the baseline's:\n${mismatch.map(m => `    ${m}`).join('\n')}\nReport only — not graded.`);
     return;
   }
 
