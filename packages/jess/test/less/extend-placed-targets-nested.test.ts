@@ -162,6 +162,16 @@ const cases: Array<[string, 'less' | 'scss' | 'jess', string, string | null, str
 ];
 
 describe('placed extend targets in nested output (X22)', () => {
+  /*
+   * PINNED DEFECT DF11: a multi-line value in a block the fold moves keeps the
+   * continuation indent of the depth it was written at; written in place it takes the
+   * landing depth's (`    "b"`).
+   */
+  it('keeps a moved multi-line value\'s continuation indent (DF11)', async () => {
+    await expect(render('@d: { .b { grid-template-areas: "a"\n   "b"; } }; .w { .a { @d(); } } .q:extend(.w .a .b){}', 'less', false))
+      .resolves.toBe('.w .a .b,\n.q {\n  grid-template-areas: "a"\n        "b";\n}\n');
+  });
+
   for (const [name, ext, placed, written, nested, flat] of cases) {
     it(name, async () => {
       await expect(render(placed, ext, false)).resolves.toBe(nested);

@@ -580,7 +580,7 @@ imported in a rule is written as a reserved block and goes when nothing reveals 
 under one an extender reveals is written under the extender (`.wrap { @import (reference)
 "t.less"; } .x:extend(.wrap .sm all) {}` with `.sm { b: 2; .in { c: 3; } }` gives
 `.x { b: 2; .in { c: 3; } }`). A moved block keeps the indent the writer gave a value's
-continuation lines where it was written.
+continuation lines where it was written (PINNED-DEFECTS-AUDIT DF11).
 
 ### 7b. Exact-extender-into-children SPLIT (LANDED)
 

@@ -229,6 +229,7 @@ import {
   arraysEqualText,
   dynamicPathAt,
   enclosingExtents,
+  mayBeTarget,
   nestedSlotHeader,
   nestedSubjectParent,
   openDynamicPath,
@@ -14453,6 +14454,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         containerStarts: [],
         containerEnds: [],
         staticRules,
+        targetAtoms: e.extends === null ? dynamicAtoms : new Set([...dynamicAtoms, ...e.extends.targetAtoms]),
         resolvedSelectors: e.s.resolvedSelectors,
         resolvedUnits: e.s.resolvedUnits,
         walkPlacements: null,
@@ -23607,8 +23609,9 @@ function emitTransparentShells(
 /**
  * [extend/dynamic] Record the rule `block` opens, at open depth `depth`, if the walk
  * reached it through a placing body or a mixin call, and keep what the deferred fold
- * needs to split or move it ({@link restructureNestedSlots}): its child blocks, and for
- * a recorded rule under a rule block, where it lands if it rises out of each, reserved
+ * needs to split or move it ({@link restructureNestedSlots}): its declarations, where an
+ * extend can reach it ({@link mayBeTarget}), it is hidden, or a `;` before a block the
+ * fold drops may need dropping under compress; and for a recorded rule under a rule block, where it lands if it rises out of each, reserved
  * in the hoist queues it would rise through. It nests under the subject of the rule it
  * is written in, as a rule written there does (ledger X22); under an opaque level it is
  * no rewritable slot, so no target, and its own extends still record. Returns 1 for a
@@ -23623,7 +23626,7 @@ function trackForFold(e: Emit, block: OpenBlock, at: Placement, depth: number): 
   const recorded = !placedStatically(block.rule!, e) || reachedViaMixinSplice(block.frame!);
   const parent = recorded && at.source !== null ? nestedSubjectParent(dyn, depth) : null;
   block.slot = parent !== false;
-  block.leaves = block.slot ? null : undefined;
+  block.leaves = block.slot && (e.compress === true || e.referenceImportDepth > 0 || mayBeTarget(dyn, block.rule!)) ? null : undefined;
   if (recorded) {
     recordOpenRule(dyn, block.rule!, block.frame!, e, parent);
   }

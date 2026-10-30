@@ -157,6 +157,15 @@ export interface BlockExtent {
   tail: number;
 }
 
+/**
+ * Whether an extend can split `rule` off or take its declarations: its own selector
+ * shares an atom with a known target, or is interpolated, which the walk resolves. The fast-reject the planner applies, at walk
+ * time; a rule it rejects keeps the header the walk wrote if the fold would split it.
+ */
+export function mayBeTarget(dyn: DynamicExtendState, rule: Ruleset): boolean {
+  return rule.selector.selectors.some(selectorBranchHasInterp) || ownLevelOf(dyn, rule).some(branch => branchSharesAtom(branch, dyn.targetAtoms));
+}
+
 /** The extents of the first `count` blocks of `open`, the blocks a rule is written in, outermost first, kept on each block once made. */
 export function enclosingExtents(
   open: ReadonlyArray<{ rule: unknown; mark: number; body: number; idt: string; extent: BlockExtent | null }>,
@@ -329,7 +338,7 @@ export function restructureNestedSlots(out: NestedOutput, slots: readonly DynExt
     at: new Map(),
     header: new Map(),
     ids: 0,
-    headers: new Set(slots.flatMap(slot => (slot.nested ? [slot.chunkIndex] : [])))
+    headers: nestedHeaders(slots)
   };
   for (const slot of slots) {
     if (!slot.nested || slot.walked === null || (!resolved && !slot.hiddenRef)) {
@@ -366,6 +375,17 @@ export function restructureNestedSlots(out: NestedOutput, slots: readonly DynExt
   if (edits !== null) {
     rebuild(out, edits);
   }
+}
+
+/** The header chunks of the nested slots. */
+function nestedHeaders(slots: readonly DynExtendSlot[]): Set<number> {
+  const headers = new Set<number>();
+  for (const slot of slots) {
+    if (slot.nested) {
+      headers.add(slot.chunkIndex);
+    }
+  }
+  return headers;
 }
 
 /**
@@ -437,7 +457,7 @@ function splitOff(out: NestedOutput, slot: DynExtendSlot, plan: NestedRulePlan, 
     return;
   }
   if (slot.leaves === undefined || (roots.length > 0 && slot.landing === null)) {
-    /* ponytail: the walk kept no record to split from; the header it wrote stands, extender and all. */
+    /* ponytail: no record to split from (no known target reached the rule while the walk wrote it): the header the walk wrote stands. Recording every block would cost an array per block. */
     out.chunks[slot.chunkIndex] = writer.selectors(slot.emitted, slot.indent);
     return;
   }
@@ -467,18 +487,41 @@ function splitOff(out: NestedOutput, slot: DynExtendSlot, plan: NestedRulePlan, 
   }
 }
 
-/** Carry positions over to the rebuilt chunks (`remap`); one inside a copied run (`[from, to)` copied at `at`) is copied with it. */
-function carryPositions(positions: Array<{ start: number; end: number }>, copied: ReadonlyArray<[from: number, to: number, at: number]>, remap: (start: number, end: number) => [number, number]): void {
-  const extra: Array<{ start: number; end: number }> = [];
-  for (const p of positions) {
-    for (const [from, to, at] of copied) {
-      if (p.start >= from && p.end <= to && p.end > p.start) {
-        extra.push({ ...p, start: at + p.start - from, end: at + p.end - from });
+/**
+ * Carry positions over to the rebuilt chunks (`map`, old chunk to new). A position
+ * inside a copied run is copied with it: the runs are kept by first chunk, sorted, and
+ * each position looks its run up by binary search.
+ */
+function carryPositions(positions: Array<{ start: number; end: number }>, copied: ReadonlyArray<[from: number, to: number, at: number]>, map: Int32Array, size: number): void {
+  const runs = [...copied].sort((a, b) => a[0] - b[0]);
+  const count = positions.length;
+  for (let index = 0; index < count; index++) {
+    const p = positions[index]!;
+    let lo = 0;
+    let hi = runs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (runs[mid]![0] <= p.start) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
       }
     }
-    [p.start, p.end] = remap(p.start, p.end);
+    for (let k = lo - 1; k >= 0 && runs[k]![0] === runs[lo - 1]![0]; k--) {
+      const [from, to, at] = runs[k]!;
+      if (p.end <= to && p.end > p.start) {
+        positions.push({ ...p, start: at + p.start - from, end: at + p.end - from });
+      }
+    }
+    remapRange(p, map, size);
   }
-  positions.push(...extra);
+}
+
+/** Move `range` from old chunk indices to new ones through `map`; a range whose chunks are gone collapses where they were. */
+function remapRange(range: { start: number; end: number }, map: Int32Array, size: number): void {
+  const start = map[range.start]! < 0 ? size : map[range.start]!;
+  range.end = range.end <= range.start || map[range.end - 1]! < 0 ? start : map[range.end - 1]! + 1;
+  range.start = start;
 }
 
 /**
@@ -494,6 +537,7 @@ function rebuild(out: NestedOutput, edits: Edits): void {
   const chunks: string[] = [];
   const map = new Int32Array(old.length + 1).fill(-1);
   const copied: Array<[from: number, to: number, at: number]> = [];
+  const strips = new Map<number, RegExp>();
   let lastNewline = true;
   const push = (text: string): void => {
     chunks.push(text);
@@ -504,7 +548,11 @@ function rebuild(out: NestedOutput, edits: Edits): void {
 
   /* `id` -1 writes the chunks where they were written, a positive id the run of the block that moved, 0 a copy. */
   const writeRun = (from: number, to: number, levels: number, id: number): void => {
-    const strip = levels > 0 ? new RegExp(`(^|\\n) {${levels * 2}}`, 'g') : null;
+    let strip: RegExp | null = null;
+    if (levels > 0) {
+      strip = strips.get(levels) ?? new RegExp(`(^|\\n) {${levels * 2}}`, 'g');
+      strips.set(levels, strip);
+    }
     for (let i = from; i < to; i++) {
       const gone = edits.gone[i]!;
       const write = id === 0 || gone === (id < 0 ? 0 : id);
@@ -534,15 +582,14 @@ function rebuild(out: NestedOutput, edits: Edits): void {
   };
   writeRun(0, old.length, 0, -1);
   map[old.length] = chunks.length;
-  const remap = (start: number, end: number): [number, number] => {
-    const s = map[start]! < 0 ? chunks.length : map[start]!;
-    return [s, end <= start || map[end - 1]! < 0 ? s : map[end - 1]! + 1];
-  };
   if (out.positions !== null) {
-    carryPositions(out.positions, copied, remap);
+    carryPositions(out.positions, copied, map, chunks.length);
   }
   for (const block of out.splitBlocks ?? []) {
-    [block.header, block.end] = remap(block.header, block.end);
+    const range = { start: block.header, end: block.end };
+    remapRange(range, map, chunks.length);
+    block.header = range.start;
+    block.end = range.end;
   }
   out.chunks = chunks;
 }
@@ -655,6 +702,9 @@ export interface DynamicExtendState {
   /** Rules already accounted for statically (main + static imported preflight); a
    * rule outside this set is a dynamic emission whose facts are recorded at emit. */
   staticRules: Set<Ruleset>;
+
+  /** The atoms of every extend target the graph is known to hold before the walk (static and placed). */
+  targetAtoms: Set<string>;
 
   /** The extend pre-pass's resolved selector lists ({@link EvalSession.resolvedSelectors}). */
   resolvedSelectors: ReadonlyMap<SelectorList, SelectorList>;
