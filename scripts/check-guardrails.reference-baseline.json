@@ -123,9 +123,6 @@
   "packages/core/src/ast/css-grammar-helpers.ts": [
     "Contents that read a binding — the dialect's interpolation (SCSS `(#{$q})`, Less `(foo: @{x} baz)`) or a variable reference (SCSS `(foo: $bar baz)`) — have no authored bytes to print: the binding is evaluated (P16), so the value stays structured and the emitter substitutes it, as dart-sass and lessc 4.9.1 write `(foo: 1px baz)`."
   ],
-  "packages/core/src/ast/evaluator.ts": [
-    "This mirrors less.js, which keeps such calls verbatim."
-  ],
   "packages/core/src/ast/extend/ir.ts": [
     "Chaining an extend off a HIDDEN extender branch yields a hidden result (matching less.js's per-chain `visibilityInfo`), whereas an extend off an original hidden seed keeps the extender's own visibility — so the two must be told apart."
   ],
