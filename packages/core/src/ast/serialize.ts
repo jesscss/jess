@@ -5034,7 +5034,10 @@ function evalTyped(
        * keep the typed value beside that exact identity for OPEN V15. Other
        * retained grouping is exposed only by the function/plugin argument
        * projections, so guards and declarations retain their established
-       * eager-byte semantics.
+       * eager-byte semantics. A slash list is the exception wherever it is
+       * only asked about (a guard, a condition, a type predicate): it is the
+       * list it was evaluated to, as one a variable holds, so a comparison
+       * reads it as a number (ledger P35, owner 2026-10-30).
        */
       if (projectMixinValues) {
         const carried = snapshotOf(node, frame, e, 'value') ?? e.s.compressedBindings?.get(node);
@@ -5044,7 +5047,7 @@ function evalTyped(
       }
       {
         const snapshot = e.s.snapshotValues?.get(node);
-        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || argument === ARG_OPERAND || (argument === ARG_SELECTOR && (isCommaList(snapshot) || isSelectorItem(snapshot)))) ? snapshot : undefined)
+        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || argument === ARG_OPERAND || (e.readAt === ASKED && !isValueGroupArray(snapshot) && snapshot.type === 'List' && snapshot.sep === '/') || (argument === ARG_SELECTOR && (isCommaList(snapshot) || isSelectorItem(snapshot)))) ? snapshot : undefined)
           ?? snapshotOf(node, frame, e, 'url')
           ?? materializeNode(node, e);
       }
