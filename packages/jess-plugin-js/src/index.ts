@@ -649,6 +649,14 @@ export class JsPlugin extends AbstractPlugin {
       server.listen(socketPath, () => resolve());
     });
     server.unref();
+
+    /*
+     * Deno opens one broker connection at startup and keeps it, so the path is
+     * needed only until then. Unlinking it there leaves nothing in /tmp when the
+     * host dies without running its exit handlers (SIGTERM, SIGINT, SIGKILL —
+     * Vitest stops its forks with SIGTERM).
+     */
+    server.once('connection', () => this.unlinkBrokerPath(socketPath));
     this.brokerServer = server;
     this.brokerSocketPath = socketPath;
     return socketPath;
@@ -683,31 +691,7 @@ export class JsPlugin extends AbstractPlugin {
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.onWorkerStdout(chunk));
-    child.on('exit', () => {
-      this.worker = undefined;
-      if (this.shuttingDown) {
-        this.shuttingDown = false;
-        return;
-      }
-      const err = new Error('Deno worker exited unexpectedly.');
-      this.rejectAllPending(err);
-      if (this.runtimeState.status === 'disposed') {
-        return;
-      }
-
-      /*
-       * An unexpected exit (a script calling `Deno.exit()`, an OOM, a panic)
-       * must not brick the plugin: reset to `idle` so the next call starts a
-       * clean worker, exactly as the request-timeout path does. A worker that
-       * dies on every start would otherwise spin-restart forever, so after
-       * MAX_WORKER_DEATHS consecutive deaths with no successful reply in between
-       * we latch to `failed`. The counter resets on the next delivered reply.
-       */
-      this.consecutiveWorkerDeaths++;
-      this.runtimeState = this.consecutiveWorkerDeaths > MAX_WORKER_DEATHS
-        ? { status: 'failed', error: err }
-        : { status: 'idle' };
-    });
+    child.on('exit', () => this.onWorkerExit());
     return new Promise<void>((resolve, reject) => {
       let stderrText = '';
       const timer = setTimeout(() => {
@@ -760,6 +744,33 @@ export class JsPlugin extends AbstractPlugin {
           : 'Deno worker exited during startup.'));
       });
     });
+  }
+
+  private onWorkerExit() {
+    this.worker = undefined;
+    if (this.shuttingDown) {
+      this.shuttingDown = false;
+      return;
+    }
+    const err = new Error('Deno worker exited unexpectedly.');
+    this.closeBroker();
+    this.rejectAllPending(err);
+    if (this.runtimeState.status === 'disposed') {
+      return;
+    }
+
+    /*
+     * An unexpected exit (a script calling `Deno.exit()`, an OOM, a panic)
+     * must not brick the plugin: reset to `idle` so the next call starts a
+     * clean worker, exactly as the request-timeout path does. A worker that
+     * dies on every start would otherwise spin-restart forever, so after
+     * MAX_WORKER_DEATHS consecutive deaths with no successful reply in between
+     * we latch to `failed`. The counter resets on the next delivered reply.
+     */
+    this.consecutiveWorkerDeaths++;
+    this.runtimeState = this.consecutiveWorkerDeaths > MAX_WORKER_DEATHS
+      ? { status: 'failed', error: err }
+      : { status: 'idle' };
   }
 
   private async startRuntime(): Promise<void> {
@@ -890,20 +901,29 @@ export class JsPlugin extends AbstractPlugin {
       this.worker.kill('SIGKILL');
     }
     this.worker = undefined;
+    this.closeBroker();
+  }
+
+  private closeBroker() {
     if (this.brokerServer) {
       this.brokerServer.close();
       this.brokerServer = undefined;
     }
-    if (this.brokerSocketPath && process.platform !== 'win32') {
-      try {
-        if (fs.existsSync(this.brokerSocketPath)) {
-          fs.unlinkSync(this.brokerSocketPath);
-        }
-      } catch {
-        // ignore
-      }
+    if (this.brokerSocketPath) {
+      this.unlinkBrokerPath(this.brokerSocketPath);
     }
     this.brokerSocketPath = undefined;
+  }
+
+  private unlinkBrokerPath(socketPath: string) {
+    if (process.platform === 'win32') {
+      return;
+    }
+    try {
+      fs.unlinkSync(socketPath);
+    } catch {
+      // already gone
+    }
   }
 
   dispose() {
