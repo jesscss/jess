@@ -24,6 +24,7 @@ export type JessErrorCode =
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
   | 'parse/uncalled-mixin-reference'
+  | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
@@ -218,6 +219,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'A mixin reference is not a value',
       reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
       fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
+    }
+  ],
+  [
+    'parse/important-on-mixin-reference',
+    {
+      summary: 'A mixin reference cannot carry !important.',
+      reason: 'A mixin reference names a mixin without calling it, so it has no declarations for !important to mark.',
+      fix: 'Remove !important, or call the mixin: .mixin() !important.'
     }
   ],
   [

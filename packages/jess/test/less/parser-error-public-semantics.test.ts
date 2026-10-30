@@ -339,6 +339,49 @@ describe('Less parser errors through the public AST route', () => {
     expect(result.css).toBe('.val {\n  foo: bar;\n}\n');
   });
 
+  /*
+   * Owner 2026-10-29: "I think .a !important is meaningless as a construction"
+   * (ledger P33), about the uncalled reference. The error sits on the
+   * `!important` and fails the compile; it used to be "Missing semicolon." at
+   * the `:`.
+   */
+  it.each([
+    ['a mixin reference', '@foo: .a !important;', 12, 22],
+    ['a namespaced mixin reference', '@foo: #ns > .a !important;', 18, 28]
+  ])('reports !important after %s held by a variable at the !important', async (_label, declaration, column, endColumn) => {
+    const source = `.a() { color: red; }\n#ns { .a() { color: red; } }\n\n.x {\n  ${declaration}\n  @foo();\n}`;
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'entry.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/important-on-mixin-reference',
+      phase: 'parse',
+      message: 'A mixin reference cannot carry !important.',
+      line: 5,
+      column,
+      endLine: 5,
+      endColumn,
+      file: { source }
+    });
+    expect(result.css).toBe('');
+  });
+
+  it.each([
+    ['a mixin call marked important as a statement', '.a() {\n  color: red;\n}\n.x {\n  .a() !important;\n}', '.x {\n  color: red !important;\n}\n'],
+    ['a variable holding a mixin reference', '.a() {\n  color: red;\n}\n.x {\n  @foo: .a;\n  @foo();\n}', '.x {\n  color: red;\n}\n']
+  ])('still compiles %s', async (_label, source, css) => {
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'entry.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(css);
+  });
+
   it('summarizes missing closing delimiters without raw expected-token text', async () => {
     const source = '.entry { color: rgb(1,2; }';
     const result = await new Compiler().renderToResult(
