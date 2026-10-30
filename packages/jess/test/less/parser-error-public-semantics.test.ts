@@ -341,14 +341,15 @@ describe('Less parser errors through the public AST route', () => {
 
   /*
    * Owner 2026-10-29: "I think .a !important is meaningless as a construction"
-   * (ledger P33). The error sits on the `!important` and fails the compile; it
-   * used to be "Missing semicolon." at the `:`.
+   * (ledger P33), about the uncalled reference. The error sits on the
+   * `!important` and fails the compile; it used to be "Missing semicolon." at
+   * the `:`.
    */
   it.each([
     ['a mixin reference', '@foo: .a !important;', 12, 22],
-    ['a mixin call', '@foo: .a() !important;', 14, 24]
+    ['a namespaced mixin reference', '@foo: #ns > .a !important;', 18, 28]
   ])('reports !important after %s held by a variable at the !important', async (_label, declaration, column, endColumn) => {
-    const source = `.a() {\n  color: red;\n}\n.x {\n  ${declaration}\n  @foo();\n}`;
+    const source = `.a() { color: red; }\n#ns { .a() { color: red; } }\n\n.x {\n  ${declaration}\n  @foo();\n}`;
     const result = await new Compiler().renderToResult(
       { source, filePath: 'entry.less', extension: '.less' },
       { breakOnError: false }
@@ -358,7 +359,7 @@ describe('Less parser errors through the public AST route', () => {
     expect(result.errors[0]).toMatchObject({
       code: 'parse/important-on-mixin-reference',
       phase: 'parse',
-      message: 'A mixin reference or mixin call cannot carry !important.',
+      message: 'A mixin reference cannot carry !important.',
       line: 5,
       column,
       endLine: 5,

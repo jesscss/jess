@@ -219,21 +219,21 @@ export class LessUncalledMixinReferenceError extends SyntaxError {
 }
 
 /**
- * `!important` after a mixin reference or mixin call that is a variable's whole
- * value (ledger P33): parsed, then an error at the `!important` (P45).
+ * `!important` after a mixin reference that is a variable's whole value
+ * (ledger P33): parsed, then an error at the `!important` (P45).
  */
 export class LessImportantMixinReferenceError extends SyntaxError {
   readonly code = 'parse/important-on-mixin-reference' as const;
   readonly offset: number;
   readonly endOffset: number;
-  readonly reason = '!important sets the priority of a declaration. A variable holding a mixin reference or call is not a declaration, so !important has nothing to mark.';
-  readonly fix = 'Remove !important. To make the declarations a mixin outputs important, call it as a statement: .mixin() !important;';
+  readonly reason = 'A mixin reference names a mixin without calling it, so it has no declarations for !important to mark.';
+  readonly fix = 'Remove !important, or call the mixin: .mixin() !important.';
 
   /** The declaration the parse kept for it; a report whose declaration is not in the accepted tree is dropped. */
   readonly recoveredValue: object;
 
   constructor(offset: number, endOffset: number, recoveredValue: object) {
-    super('A mixin reference or mixin call cannot carry !important.');
+    super('A mixin reference cannot carry !important.');
     this.name = 'LessImportantMixinReferenceError';
     this.offset = offset;
     this.endOffset = endOffset;

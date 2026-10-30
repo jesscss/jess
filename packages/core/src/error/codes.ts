@@ -223,9 +223,9 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'parse/important-on-mixin-reference',
     {
-      summary: 'A mixin reference or mixin call cannot carry !important.',
-      reason: '!important sets the priority of a declaration. A variable holding a mixin reference or call is not a declaration, so !important has nothing to mark.',
-      fix: 'Remove !important. To make the declarations a mixin outputs important, call it as a statement: .mixin() !important;'
+      summary: 'A mixin reference cannot carry !important.',
+      reason: 'A mixin reference names a mixin without calling it, so it has no declarations for !important to mark.',
+      fix: 'Remove !important, or call the mixin: .mixin() !important.'
     }
   ],
   [

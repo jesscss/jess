@@ -2027,7 +2027,14 @@ describe('public Less parse()', () => {
       serialize(namespaced, { evaluator: buildEvaluator(makeLessRegistry()) })
         .css
     ).toBe('.lookup {\n  color: blue;\n}\n.call {\n  tone: blue;\n}\n');
-    expect(() => parse('@map: .make-map() !important;')).toThrow(SyntaxError);
+
+    /* A priority marks the call, flat or namespaced (tests-config/namespacing/namespacing-5.less). */
+    for (const source of ['@map: .make-map() !important;', '@map: .make-map() ! important;']) {
+      expect(parse(source).rules[0]).toMatchObject({
+        type: 'VariableDeclaration',
+        value: { type: 'MixinCall', name: '.make-map', path: [], important: true }
+      });
+    }
   });
 
   it('lowers empty Less namespace access to the existing final bracket index', () => {

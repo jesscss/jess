@@ -435,7 +435,7 @@ export function pushParseTwinDiagnostics(
       }
     );
   }
-  if (language === 'less' && gt === 'MixinValueImportant') {
+  if (language === 'less' && gt === 'MixinReferenceImportant') {
     const error = makeJessError({ code: 'parse/important-on-mixin-reference', phase: 'parse' });
     push(error.code, 'error', error.message, node.span, { phase: 'parse', reason: error.reason, fix: error.fix });
   }

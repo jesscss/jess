@@ -265,7 +265,7 @@ type LessRules = {
   SelectorBranchTail: Combinator<SelectorBranchFact>;
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
-  NamespacedMixinValue: Combinator<MixinCall>;
+  MixinCallValue: Combinator<MixinCall>;
   MixinReference: Combinator<ValueNode>;
   MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
@@ -394,7 +394,7 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
-  // Inherited from the CSS base: the `!important` priority marker, read by MixinValueImportant.
+  // Inherited from the CSS base: the `!important` priority marker, read by MixinCallValue and MixinReferenceImportant.
   Important: Combinator<unknown>;
   // Inherited from the CSS base: a `[…]` simple block in a value (grid line names), over Less's ValueList.
   SquareValue: Combinator<ValueNode>;
@@ -1605,12 +1605,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(plugin(target, optionValue), span);
     }
   );
-  // A call arm here is a COMPLETE variable value, so it must not claim the call
-  // half of a lookup-bearing mixin reference (`#m(@a)[]`). Without this the
-  // choice commits to the bare call and the trailing `[…]` can never be read,
-  // even though Value already recognizes the whole reference —
-  // which is why the same value parsed in property position and not here.
-  const mixinValueWithoutLookup = not(noTrivia(literal('[')));
   // `;` separates block-list items, so the final item in a braced body may omit
   // it — `.a { @o: 3 }` and `.a { o: 3 }` are both Less. The omission is allowed
   // ONLY against the block's own `}`: `@o: 3` at end-of-stylesheet stays a parse
@@ -1758,30 +1752,33 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const rejectedValueStart = choice(LeadingSeparatorValue, UncalledMixinReference);
   /**
-   * `!important` after a mixin reference or mixin call that is a variable's
-   * whole value: the owner ruled the construction meaningless (2026-10-29,
-   * ledger P33). It parses (P45); the declaration reports it at this span.
-   * CSS's `Important` reduces to `true` with no span, so this node wraps it
-   * only to give the diagnostic and its language-service twin that span.
+   * `!important` after a mixin reference that is a variable's whole value: the
+   * owner ruled the construction meaningless (2026-10-29, ledger P33). It
+   * parses (P45); the declaration reports it at this span. CSS's `Important`
+   * reduces to `true` with no span, so this node wraps it only to give the
+   * diagnostic and its language-service twin that span.
    */
-  const MixinValueImportant = node(
-    'MixinValueImportant',
+  const MixinReferenceImportant = node(
+    'MixinReferenceImportant',
     g.Important,
     (_children, _fields, span) => ({ value: '!important', span })
   );
-  /** `@name: value;` — the value arms in order, each a complete value. */
+  /**
+   * `@name: value;` — the value arms in order. A mixin call is the value only
+   * when the declaration ends after it; a lookup or call chain on it
+   * (`.m()[x]`, `.m().n`, `.m()()`) is read by the value arms.
+   */
   const VarDeclaration = node(
     'VariableDeclaration',
     sequence(
       variableName,
       literal(':'),
       choice(
-        sequence(g.NamespacedMixinValue, mixinValueWithoutLookup),
+        sequence(g.MixinCallValue, peek(declarationEnd)),
         g.ImportantValue,
-        sequence(g.FlatMixinCall, mixinValueWithoutLookup, optional(MixinValueImportant)),
         sequence(not(literal('{')), g.VariableValue),
         LeadingSeparatorValue,
-        sequence(MixinReferenceValue, optional(MixinValueImportant))
+        sequence(MixinReferenceValue, optional(MixinReferenceImportant))
       ),
       declarationEnd
     ),
@@ -3309,10 +3306,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     when('.', ReferenceDotTailFromRouted),
     when('(', ReferenceCallTailFromRouted)
   );
-  // This is the existing callable-value fact shared by `each(.mixin(), …)` and
-  // `@name: .mixin()`. Keep it narrower than an ordinary MixinCall: namespace
-  // paths, dynamic names, and call-level modifiers have no approved binding
-  // contract in this direct slice.
+  // The callable value `each(.mixin(), …)` iterates. Keep it narrower than an
+  // ordinary MixinCall: namespace paths, dynamic names, and call-level
+  // modifiers have no approved binding contract in this direct slice. A
+  // variable's call value is MixinCallValue.
   const FlatMixinCall = node(
     'MixinCall',
     sequence(
@@ -3351,33 +3348,33 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       };
     }
   );
-  // A variable can retain a namespaced mixin call as its lazy map value. This
-  // differs from the `each()` iterable route above because Less permits a
-  // call-level `!important` modifier here; the established MixinCall flag
-  // carries it without a raw-value recovery or a new AST node family.
-  const NamespacedMixinValue = node(
-    'NamespacedMixinValue',
+  /**
+   * A mixin call that is a variable's whole value, flat (`.m()`) or namespaced
+   * (`#ns.m()`), kept as the lazy map its lookups read. A priority after it
+   * marks the call (`important: true`), so every value read through the
+   * variable is `!important`: the owner-maintained fixture
+   * tests-config/namespacing/namespacing-5.less (`@theme-colors:
+   * #theme.dark.navbar.colors() !important;`) and its golden. The priority is
+   * CSS's `Important`, so `! important` reads as `!important` does.
+   */
+  const MixinCallValue = node(
+    'MixinCallValue',
     sequence(
       mixinName,
-      oneOrMore(MixinPathTail),
+      many(MixinPathTail),
       literal('('),
       optional(g.MixinArguments),
       literal(')'),
-      optional(literal('!important'))
+      optional(g.Important)
     ),
     (children) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
-      if (last === undefined) {
-        throw new TypeError('Less namespaced variable value lost its final mixin name.');
-      }
-      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
-      const call = {
-        ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
-        path
-      };
-      return children.some(child => isLessTerminalText(child, '!important')) ? { ...call, important: true } : call;
+      const args = mixinArgumentsFromChildren(children);
+      const path: MixinCall['path'] = last === undefined ? [] : [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
+      const call = { ...mixinCall(last === undefined ? head : last.selector, args), path };
+      return children.at(-1) === true ? { ...call, important: true } : call;
     }
   );
   const MixinReferenceBase = node(
@@ -6032,7 +6029,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     SelectorBranchTail,
     FlatMixinCall,
     NamespacedMixinCall,
-    NamespacedMixinValue,
+    MixinCallValue,
     Color,
     MixinReference,
     MixinReferenceChain,

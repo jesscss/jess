@@ -70,15 +70,15 @@ describe('punctuation-led Less values are rejected at their first token', () => 
    */
   it.each([
     ['a mixin reference', '.m() { a: b; }\n@foo: .a !important;', 2, 10, 20],
-    ['a mixin call', '.m() { a: b; }\n@foo: .a() !important;', 2, 12, 22],
     ['a spaced priority', '@foo: .a ! important;', 1, 10, 21],
-    ['a namespaced mixin reference', '@foo: #ns.a !important;', 1, 13, 23]
+    ['a namespaced mixin reference', '@foo: #ns.a !important;', 1, 13, 23],
+    ['a child-combined namespaced mixin reference', '@foo: #ns > .a !important;', 1, 16, 26]
   ])('reports !important after %s in a variable at the !important', (_label, source, line, column, endColumn) => {
     const result = safeParse('entry.less', source);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({
       code: 'parse/important-on-mixin-reference',
-      message: 'A mixin reference or mixin call cannot carry !important.',
+      message: 'A mixin reference cannot carry !important.',
       line,
       column,
       endLine: line,
@@ -86,8 +86,12 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     });
   });
 
-  it('keeps a mixin call marked important as a statement', () => {
-    expect(failureOf('.m() { a: b; }\n.x { .m() !important; }')).toBeUndefined();
+  it.each([
+    ['a mixin call marked important as a statement', '.m() { a: b; }\n.x { .m() !important; }'],
+    ['a variable holding a mixin call marked important', '.m() { a: b; }\n@foo: .m() !important;'],
+    ['a variable holding a namespaced mixin call marked important', '@foo: #ns.m() ! important;']
+  ])('keeps %s', (_label, source) => {
+    expect(failureOf(source)).toBeUndefined();
   });
 
   it.each([
@@ -115,6 +119,12 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     '@foo: .a();',
     '@foo: #ns.a();',
     '@foo: .a[@x];',
+    '@x: .a().b !important;',
+    '@x: .a().b() !important;',
+    '@x: .a() .b !important;',
+    '@x: .a()() !important;',
+    '@x: .a() ( 1 ) !important;',
+    '@x: .a()[x] !important;',
     '.x { p: 12px/1.5; }'
   ])('still parses the valid neighbour %j', (source) => {
     expect(failureOf(source)).toBeUndefined();
