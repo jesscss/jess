@@ -539,9 +539,9 @@ describe('Operations — unit arithmetic under each unitMode', () => {
     expect((await render('strict', '@w: 4px; a: if((@w + 3em) > 5px, y, n);')).errors).toEqual(['eval/invalid-unit-arithmetic']);
   });
 
-  it('a non-dividing slash keeps each side its own math: `4 / 2 + 5em` (P35)', async () => {
+  it('a non-dividing slash keeps the math beside it as written: `4 / 2 + 5em` (P35)', async () => {
     for (const unitMode of ['loose', 'preserve', 'strict'] as const) {
-      expect((await render(unitMode, 'a: 4 / 2 + 5em;', 'parens-division')).css, unitMode).toBe('.a { a: 4 / 7em; }');
+      expect((await render(unitMode, 'a: 4 / 2 + 5em;', 'parens-division')).css, unitMode).toBe('.a { a: 4 / 2 + 5em; }');
       expect((await render(unitMode, 'a: 4 / 2 + 5em;', 'always')).css, unitMode).toBe('.a { a: 7em; }');
     }
   });

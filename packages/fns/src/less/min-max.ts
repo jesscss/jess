@@ -50,11 +50,11 @@ export function minMax(isMin: boolean, list: ValueGroup): Value {
 
   /*
    * A comma or space list argument spreads into candidates. A slash list does
-   * not: `min(12px / 1.5, 2px)` has two arguments. A slash list of numbers a
-   * reference delivers arrives as its quotient (ledger P35), so `min(@f, 2px)`
-   * with `@f: 12px/1.5` is `2px`; a slash written in the call, and any slash
-   * list that is not all numbers, is not a number, so the call fails and is
-   * preserved like any other non-numeric one.
+   * not: `min(12px / 1.5, 2px)` has two arguments. A slash list of numbers
+   * arrives as its quotient (ledger P35), written in the call or delivered by
+   * a reference, so `min(10px/2, 4px)` is `4px`, and `min(@f, 2px)` with
+   * `@f: 12px/1.5` is `2px`; a slash list that is not all numbers is not a
+   * number, so the call fails and is preserved like any other non-numeric one.
    */
   const args = groupItems(list).flatMap(arg => isSlashList(arg) ? [arg] : groupItems(arg));
   if (args.length === 0) {

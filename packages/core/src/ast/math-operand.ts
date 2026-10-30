@@ -1,20 +1,19 @@
 /**
  * A slash list (`10px / 2`, a slash the math mode did not divide where it was
- * written) is a list wherever it is written or output, and its quotient
- * wherever math or a number is expected — ledger P35, owner 2026-10-30: *"if
- * it's a math calculation or expects a number, then the slash list should
- * have an auto-converting method"*. {@link slashQuotient} is that one
- * conversion: the slash list divides there, left to right, and the division
- * proceeds under the active `unitMode` exactly as the same division written
- * in a group does. `@d: 10px/2; r: @d * 2` is `10px`; `percentage(@d)` is
- * `500%`; `@d > 4px` is true; `font: @f` with `@f: 12px/1.5` stays
- * `12px / 1.5`. A slash written in place as a function argument converts the
- * same way where its parameter takes a number (`percentage(16/17)` is
- * `94.11764706%`; owner 2026-10-30: *"since obviously percentage() does not
- * accept a slash list"*). A slash written in place in a comparison is not
- * divided there (`when (10px/2 = 5px)`): the math mode decides it (P34, V35;
- * owner 2026-10-30: *"we wouldn't compare"*). Math written inside a math
- * function never computes, so it never reaches here.
+ * written) is a list wherever it is written or output, and its quotient only
+ * where its use is unambiguous — ledger P35, owner 2026-10-30: *"the only time
+ * we can do division is when the use is unambiguous"*. {@link slashQuotient}
+ * is that one conversion: the slash list divides there, left to right, and the
+ * division proceeds under the active `unitMode` exactly as the same division
+ * written in a group does. It is unambiguous in two places: as one operand of
+ * math, which a reference always is (`@d: 1/2; percentage(@d + 1)` is `150%`,
+ * {@link mathOperand}), and as the whole argument of a parameter typed as a
+ * number (`percentage(16/17)` is `94.11764706%`, {@link numberOperand}).
+ * Nowhere else: `font: @f` with `@f: 12px/1.5` stays `12px / 1.5`, and a
+ * comparison never converts (`when (@d = 0.5)` does not match `@d: 1/2`). A
+ * slash written in place beside other math is kept as written by the parser
+ * (`12px / 1 + 1`), so it never reaches here as a number. Math written inside
+ * a math function never computes, so it never reaches here either.
  *
  * HARD MODULE BOUNDARY: the value domain and the operand rule only.
  */
@@ -74,11 +73,11 @@ const numeric = (value: ValueGroup): boolean =>
   !isValueGroupArray(value) && (value.type === 'Dimension' || (value.type === 'List' && value.sep === '/' && value.value.every(numeric)));
 
 /**
- * A value where a number is expected — a parameter typed as a number, a
- * comparison operand: a slash list of numbers is its {@link slashQuotient}.
- * Any other slash list (`12px / normal`), and one with no quotient (`1 / 0`),
- * stays the list, and the site answers it as it answers any other value that
- * is not a number: a guard does not match, a call falls to `functionMode`.
+ * The whole argument of a parameter typed as a number: a slash list of
+ * numbers is its {@link slashQuotient}. Any other slash list (`12px / normal`,
+ * `1 / 2 + 1` kept as written), and one with no quotient (`1 / 0`), stays the
+ * list, and the call answers it as it answers any other value that is not a
+ * number: it falls to `functionMode`.
  */
 export function numberOperand(value: ValueGroup, ev: Divider, modes: EvalModes): ValueGroup {
   if (isValueGroupArray(value) || value.type !== 'List' || value.sep !== '/' || !numeric(value)) {
@@ -92,13 +91,4 @@ export function numberOperand(value: ValueGroup, ev: Divider, modes: EvalModes):
     }
     throw error;
   }
-}
-
-/**
- * Whether `node`, a value as written, is a slash list: a slash written in
- * place in a comparison, which the math mode decides (P34, V35), never
- * converted there.
- */
-export function isWrittenSlash(node: object): boolean {
-  return 'type' in node && node.type === 'List' && 'sep' in node && node.sep === '/';
 }

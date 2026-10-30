@@ -56,7 +56,9 @@ function unwrapInterpolatedExpression(value: unknown): unknown {
 const ROWS: Row[] = [
   { less: '@w: @a * 2;', jess: '$w: $($a * 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: @a + 2;', jess: '$w: $($a + 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
-  { less: '@w: @a * 2 / @b;', jess: '$w: $($a * 2) / $b;', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
+
+  /* Bare math beside a slash that does not divide is kept as written (P35, owner 2026-10-30), so only a group computes: `@a * 2 / @b` has no `.jess` spelling. */
+  { less: '@w: (@a * 2) / @b;', jess: '$w: $($a * 2) / $b;', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: (@a * 2 / @b);', jess: '$w: $($a * 2 / $b);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: 'a { font: 12px/1.5 Arial; }', jess: 'a { font: 12px/1.5 Arial; }' },
   { less: '@a: 1px; a { width: calc(100% - @a); }', jess: '$a: 1px; a { width: calc(100% - $a); }' },

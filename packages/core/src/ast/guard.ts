@@ -24,7 +24,6 @@ import type { IfValueBranch, ValueSlot } from './nodes.js';
 import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
 import { holdsKeptOperation } from './value-operate.js';
-import { isWrittenSlash, numberOperand } from './math-operand.js';
 import { isTruthy } from './value-truth.js';
 import { hasCssTest, onlyCssTests, type GuardNode } from './guard-node.js';
 
@@ -152,17 +151,15 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps, outer?: boolean)
        * (`warnConsumedKept`); `strict` raised at the operation already
        * (orchestrator judgment under owner delegation 2026-10-06).
        *
-       * A comparison expects numbers, so a slash list a reference or a call
-       * delivers is its quotient ({@link numberOperand}; ledger P35, owner
-       * 2026-10-30). A slash written in the condition itself is the math
-       * mode's to divide or not (P34, V35): `when (10px/2 = 5px)`.
+       * A comparison never converts a slash list, stored or written: whether
+       * `1/2` means `0.5` there is ambiguous (ledger P35, owner 2026-10-30:
+       * *"the second case with when is more ambiguous so yes i agree we
+       * wouldn't compare"*; *"so 'does match' cannot resolve, we should roll
+       * that rule back"*).
        */
-      const compare = (left: ValueGroup, right: ValueGroup): boolean => {
-        const a = isWrittenSlash(node.left) ? left : numberOperand(left, ev, deps.modes);
-        const b = isWrittenSlash(node.right) ? right : numberOperand(right, ev, deps.modes);
-        return !holdsKeptOperation(a) && !holdsKeptOperation(b)
-          && (node.g === 'match' ? ev.compareMatch(node.op, a, b, deps.modes) : ev.compare(node.op, a, b, deps.modes));
-      };
+      const compare = (a: ValueGroup, b: ValueGroup): boolean =>
+        !holdsKeptOperation(a) && !holdsKeptOperation(b)
+        && (node.g === 'match' ? ev.compareMatch(node.op, a, b, deps.modes) : ev.compare(node.op, a, b, deps.modes));
       return isThenable(left) || isThenable(right)
         ? Promise.all([left, right]).then(([a, b]) => compare(a, b))
         : compare(left, right);
