@@ -136,7 +136,12 @@ export function solveComposed(
   if (reachable.length === 0) {
     return { list: seed, changed: false };
   }
-  return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable, contribMemo));
+
+  /* A subject every instruction reaches folds the plan's instructions alike, so it shares one grouping. */
+  const groups = reachable.length === plan.instructions.length
+    ? plan.groups ??= groupInstructions(reachable, buildContribs(reachable, contribMemo))
+    : groupInstructions(reachable, buildContribs(reachable, contribMemo));
+  return runFixpoint(seed.map(cloneBranch), groups);
 }
 
 /**
@@ -206,7 +211,7 @@ export function groupInstructions(reachable: PlanInstruction[], contribs: Contri
   return [...byKey.values()];
 }
 
-export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contribs: ContribMap): SolveResult {
+export function runFixpoint(seed: Branch[], groups: readonly InstGroup[]): SolveResult {
   let list = seed;
 
   /*
@@ -231,7 +236,6 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
    * changed nothing, so a non-null result IS the change signal — the IR is threaded
    * through every step and only the final list is serialized by the emit layer.
    */
-  const groups = groupInstructions(reachable, contribs);
   const fired = new Set<InstGroup>();
   const guardMax = (groups.length + 2) * (groups.length + 2);
   let rounds = 0;

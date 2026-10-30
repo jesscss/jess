@@ -190,6 +190,10 @@ describe('extend operation-counter budgets', () => {
     expect(counters['astExtend.documentHasExtend.noFeatureMisses'] ?? 0).toBe(calls);
     expect(counters['astExtend.documentHasExtend.featureBearingCalls'] ?? 0).toBe(0);
 
+    // ...the document was classified once and its walk facts never built...
+    expect(counters['astExtend.document.classifyWalks']).toBe(1);
+    expect(counters['astExtend.document.walkFactWalks'] ?? 0).toBe(0);
+
     // ...so the planner never built a subject/instruction plan...
     expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
 
@@ -204,6 +208,29 @@ describe('extend operation-counter budgets', () => {
     expect(counters['astExtend.documentHasExtend.noFeatureMisses'] ?? 0).toBe(0);
     expect(counters['astExtend.plan.calls'] ?? 0).toBeGreaterThanOrEqual(1);
     expect(counters['astExtend.match.branchComparisons'] ?? 0).toBeGreaterThan(0);
+  });
+
+  it('derives a parsed document\'s extend facts and selector IR once, however often it renders', () => {
+    /*
+     * A static extend and a mixin call that places a rule, so the walk recorder is
+     * armed and reads the document's spine and placing-body facts too. Every one of
+     * those facts depends on the parse alone, so a second render reads them back.
+     */
+    const base = ast.rule('.base', [ast.decl('color', ast.keyword('red'))]);
+    const document = ast.stylesheet([
+      ast.mixinDef('.m', [], [ast.rule('.placed', [ast.decl('a', ast.keyword('1'))])]),
+      base,
+      ast.rule('.x', [ast.mixinCall('.m')], [{ target: ast.selist(ast.sel('.base')), partial: false }])
+    ]);
+    const first = serialize(document, { collapseNesting: true }).css;
+    const level = base.selector._level;
+    expect(first).toContain('.base,\n.x');
+    expect(level).toBeDefined();
+
+    expect(serialize(document, { collapseNesting: true }).css).toBe(first);
+    expect(counters['astExtend.document.classifyWalks']).toBe(1);
+    expect(counters['astExtend.document.walkFactWalks']).toBe(1);
+    expect(base.selector._level).toBe(level);
   });
 
   if (DISCOVER) {

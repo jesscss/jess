@@ -19,8 +19,8 @@ import type { AtRuleBlock } from '../at-rule.js';
 import type { SelectorUnits } from '../selector-text.js';
 import { computeExtends } from './emit.js';
 import type { ExtendPlacementResults, ExtendResults, NestedRulePlan } from './emit.js';
-import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './ir.js';
-import type { Branch, Level } from './ir.js';
+import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, selectorLevel, textSimple } from './ir.js';
+import type { Level } from './ir.js';
 import { plannedParent, recordAstExtendProfile } from './plan.js';
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 
@@ -701,10 +701,9 @@ export interface DynamicExtendState {
   /** The subject recorded for an open rule the nested writer records, or a stand-in for a planned one ({@link nestedSubjectParent}). */
   pathSubjects: Array<PlanSubject | undefined>;
 
-  /** Selector IR built once per canonical node, however often the walk places it: a
-   * rule's own level, and an `:extend()`'s target branches. */
+  /** A rule's own level, however often the walk places it: the one the static plan read
+   * for it, else its selector's ({@link selectorLevel}). */
   ownLevels: Map<Ruleset, Level>;
-  targetBranches: Map<ExtendInstruction, Branch[]>;
 
   /** Hidden `(reference)` rules a walk-recorded extend may still reveal, and the
    * hidden rules enclosing them (#355). Null when nothing can be revealed. */
@@ -719,7 +718,7 @@ export interface DynamicExtendState {
 
   /** Rules already accounted for statically (main + static imported preflight); a
    * rule outside this set is a dynamic emission whose facts are recorded at emit. */
-  staticRules: Set<Ruleset>;
+  staticRules: ReadonlySet<Ruleset>;
 
   /** The atoms of every extend target the graph is known to hold before the walk (static and placed). */
   targetAtoms: Set<string>;
@@ -859,7 +858,7 @@ export function nestedSubjectParent(dyn: DynamicExtendState, depth: number): Pla
 export function ownLevelOf(dyn: DynamicExtendState, rule: Ruleset): Level {
   let own = dyn.ownLevels.get(rule);
   if (own === undefined) {
-    own = levelFromSelectorList(dyn.resolvedSelectors.get(rule.selector) ?? rule.selector);
+    own = selectorLevel(dyn.resolvedSelectors.get(rule.selector) ?? rule.selector);
     dyn.ownLevels.set(rule, own);
   }
   return own;
@@ -910,7 +909,7 @@ export function recordDynamicExtendFacts(
        */
       const at = inst.subject && resolved !== undefined ? rule.selector.selectors.indexOf(inst.subject.selectors[0]!) : -1;
       const extenderPath = inst.subject && structured
-        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : levelFromSelectorList(dyn.resolvedSelectors.get(inst.subject) ?? inst.subject)]
+        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : selectorLevel(dyn.resolvedSelectors.get(inst.subject) ?? inst.subject)]
         : path;
       recordDynamicInstruction(dyn, inst, extenderPath, hidden);
     }
@@ -920,12 +919,7 @@ export function recordDynamicExtendFacts(
 /** [extend/dynamic] Record one `:extend()` the walk reached, extended by `extenderPath`
  * at the walk's current scope and sheet boundary. */
 export function recordDynamicInstruction(dyn: DynamicExtendState, inst: ExtendInstruction, extenderPath: Level[], hidden: boolean): void {
-  let targets = dyn.targetBranches.get(inst);
-  if (targets === undefined) {
-    targets = (dyn.resolvedSelectors.get(inst.target) ?? inst.target).selectors.map(branchFromSelector);
-    dyn.targetBranches.set(inst, targets);
-  }
-  for (const target of targets) {
+  for (const target of selectorLevel(dyn.resolvedSelectors.get(inst.target) ?? inst.target)) {
     dyn.instructions.push({
       target,
       partial: inst.partial,

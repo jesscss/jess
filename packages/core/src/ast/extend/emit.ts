@@ -40,14 +40,13 @@ import {
   cloneBranch,
   cloneSeg,
   cloneSimple,
+  compoundHitsLevel,
   compoundText,
   descendantBranch,
   isSimple,
   mkBranch,
-  multisetSubset,
   simpleText,
-  textSimple,
-  textSimpleTokens
+  textSimple
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import type { Combinator } from '../node.js';
@@ -55,9 +54,10 @@ import { branchHasAmp, composePath } from './compose.js';
 import { mergeCompound, NO_SIMPLES, placeComplex } from './conflict.js';
 import { extendBranchSpecificity, irPseudoElementCarriesSuffix, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
-import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
+import { boundaryReaches, collectPlan, reaches, recordAstExtendProfile } from './plan.js';
+import { documentHasExtend } from './document.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
-import { buildContribs, runFixpoint, solveComposed } from './solve.js';
+import { buildContribs, groupInstructions, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
 import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import { branchTextIsPlaceholder } from '../nodes.js';
@@ -229,22 +229,6 @@ function dropLeadingSegs(b: Branch, n: number): Branch {
     out.hidden = true;
   }
   return out;
-}
-
-/** True when `target`'s text-value are ⊆ some compound in `level`. */
-function compoundHitsLevel(target: Compound, level: Level): boolean {
-  const need = textSimpleTokens(target);
-  if (need.length === 0) {
-    return false;
-  }
-  for (const b of level) {
-    for (const seg of b.segments) {
-      if (multisetSubset(need, textSimpleTokens(seg.compound))) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 /** True when composed branch text `b` descends from (nests under) some parent
@@ -1059,8 +1043,8 @@ export function computeExtends(
   units?: ReadonlyMap<SelectorList, Int32Array>
 ): ExtendResults | null {
   /*
-   * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
-   * `:extend()` anywhere) before any subject/instruction plan is built.
+   * Zero-cost gate: the document's classified extend surface short-circuits the common
+   * case (no `:extend()` on its static spine) before any subject/instruction plan is built.
    */
   if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) {
     return null;
@@ -1718,7 +1702,7 @@ export function computeExtends(
          * (`.attribute-test`), not the double-prefixed full path.
          */
         .map(inst => relativizeExtender(inst, s, false));
-      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list.map(nestedExtenderUnit);
+      header = runFixpoint(s.ownLocal.map(cloneBranch), groupInstructions(applied, buildContribs(applied))).list.map(nestedExtenderUnit);
 
       /*
        * A match of the rule's whole composed selector by an extender nested under the

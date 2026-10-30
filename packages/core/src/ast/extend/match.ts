@@ -7,12 +7,12 @@
  */
 
 import {
+  branchHasAtom,
   branchSharesAtom,
   branchText,
   cloneBranch,
   cloneSeg,
   cloneSimple,
-  collectBranchAtoms,
   descendantBranch,
   isOrPlainSimpleTokens,
   mkBranch,
@@ -52,8 +52,13 @@ export function applyInstruction(
   outerBefore: readonly string[] = NO_TEXT,
   outerAfter: readonly string[] = NO_TEXT
 ): Branch[] | null {
-  const out: Branch[] = [];
-  const appends: Branch[] = [];
+  /*
+   * `out` is the rewritten list, allocated at the first branch a sub-match rewrites (or
+   * once appends need deduping); until then every branch is the input's own. Most
+   * applications change nothing, and then nothing is allocated.
+   */
+  let out: Branch[] | null = null;
+  let appends: Branch[] | null = null;
   let changed = false;
   let exactSelfExtender: boolean | undefined;
 
@@ -69,7 +74,9 @@ export function applyInstruction(
     ? nonConflictingExtenders(outerBefore, outerAfter, extenders)
     : extenders;
 
-  for (const b of list) {
+  for (let index = 0; index < list.length; index++) {
+    const b = list[index]!;
+
     /*
      * Core matcher comparison: one candidate branch tested against the target.
      * Opt-in, import-time-captured counter (undefined in production → no call, no
@@ -98,9 +105,9 @@ export function applyInstruction(
      * as a lone-graft segment expanding (`:is(.a .b, .c) .d` by `.a .b .d`).
      */
     if (branchWholeMatch(b, target, false)) {
-      out.push(b);
+      out?.push(b);
       for (const e of appendExtenders) {
-        pushExtender(appends, e, chainHidden);
+        pushExtender(appends ??= [], e, chainHidden);
       }
       continue;
     }
@@ -126,9 +133,9 @@ export function applyInstruction(
        * (`substituteMultiCompound`).
        */
       if (branchWholeMatch(b, target, true) && sameCompoundSizes(b, target)) {
-        out.push(b);
+        out?.push(b);
         for (const e of appendExtenders) {
-          pushExtender(appends, e, chainHidden);
+          pushExtender(appends ??= [], e, chainHidden);
         }
         continue;
       }
@@ -145,8 +152,8 @@ export function applyInstruction(
         const retainMatched = b.hidden !== true;
         if (!retainMatched && exactSelfExtender === undefined) {
           exactSelfExtender = false;
-          for (let index = 0; index < extenders.length; index++) {
-            if (branchWholeMatch(extenders[index]!, target, false)) {
+          for (const extender of extenders) {
+            if (branchWholeMatch(extender, target, false)) {
               exactSelfExtender = true;
               break;
             }
@@ -165,6 +172,7 @@ export function applyInstruction(
           exactSelfExtender === true
         );
         if (rewritten) {
+          out ??= list.slice(0, index);
           if (!retainMatched) {
             /* Keep the authored hidden seed for chaining, beside its visible product. */
             out.push(b);
@@ -175,24 +183,31 @@ export function applyInstruction(
         }
       }
     }
-    out.push(b);
+    out?.push(b);
   }
 
-  if (appends.length > 0) {
+  if (appends !== null) {
+    out ??= list.slice();
+
     /*
      * Build the presence index ONCE per apply (i.e. once per group per pass — the
      * fold collapses a target's N instructions into one call), not once per queued
      * extender. `appendDeduped` then folds every whole-branch append through it.
      */
-    const present = new Map<string, number>();
-    for (let index = 0; index < out.length; index++) {
-      present.set(branchText(out[index]!), index);
-    }
-    if (appendDeduped(out, appends, present)) {
+    if (appendDeduped(out, appends, presenceIndex(out))) {
       changed = true;
     }
   }
   return changed ? out : null;
+}
+
+/** Each branch text of `out`, mapped to its index: the presence index {@link appendDeduped} reads. */
+function presenceIndex(out: readonly Branch[]): Map<string, number> {
+  const present = new Map<string, number>();
+  for (let index = 0; index < out.length; index++) {
+    present.set(branchText(out[index]!), index);
+  }
+  return present;
 }
 
 /** True when `b` and `target` have compounds of the same sizes, segment by segment. */
@@ -450,13 +465,13 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
    * ATOM FAST-REJECT (grafted base): every atom the target REQUIRES (its plain-text
    * value across all segments) must be suppliable by the base — its bare text value
    * plus every atom reachable inside a crossable graft. A required atom no branch
-   * supplies is unmatchable, so bail before exploring any OR-path.
+   * supplies is unmatchable, so bail before exploring any OR-path. Each required atom
+   * is looked up in the base directly: a target holds a handful, so building the
+   * base's atom set per comparison costs more than it saves.
    */
-  const baseAtoms = new Set<string>();
-  collectBranchAtoms(b, baseAtoms);
   for (const seg of target.segments) {
     for (const s of seg.compound.value) {
-      if (s.t === 'text' && !baseAtoms.has(s.text)) {
+      if (s.t === 'text' && !branchHasAtom(b, s.text)) {
         return false;
       }
     }

@@ -15,7 +15,7 @@
     "statements": 61
   },
   "packages/core/src/ast/extend/emit.ts": {
-    "statements": 714
+    "statements": 706
   },
   "packages/core/src/ast/extend/emit.ts#nestingFold": {
     "statements": 50
@@ -55,7 +55,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9325
+    "statements": 9242
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -146,7 +146,7 @@
     "params": 10
   },
   "packages/core/src/ast/serialize.ts#planImportedFacts": {
-    "statements": 204,
+    "statements": 203,
     "params": 6
   },
   "packages/core/src/ast/serialize.ts#planImportedFacts.planImported": {
@@ -160,7 +160,7 @@
     "statements": 86
   },
   "packages/core/src/ast/serialize.ts#serialize": {
-    "statements": 58
+    "statements": 57
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
     "statements": 186

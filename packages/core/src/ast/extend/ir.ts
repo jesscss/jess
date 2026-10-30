@@ -65,13 +65,14 @@ export interface Branch {
   segments: SelectorPart[];
 
   /**
-   * Memoized `branchText(this)`. PRE-DECLARED (initialized `undefined`) by the sole
-   * `mkBranch` factory so every branch is born with this field, and `branchText`'s
-   * `b.key = out` write is an in-place value store — never a `{segments}`→`{segments,key}`
-   * hidden-class transition (V8 invariant 1 / R4). Sound because branches are never
-   * mutated in place: every transform builds a FRESH branch, so a branch's `segments`
-   * (hence its text) is fixed for its lifetime. `hidden`/`ext` are provenance only
-   * and ignored by `branchText`, so stamping them after a text read cannot stale it. */
+   * Memoized `branchText(this)`. PRE-DECLARED by the sole `mkBranch` factory so every
+   * branch is born with this field, and `branchText`'s `b.key = out` write is an in-place
+   * value store — never a `{segments}`→`{segments,key}` hidden-class transition (V8
+   * invariant 1 / R4). Sound because branches are never mutated in place: every transform
+   * builds a FRESH branch, so a branch's `segments` (hence its text) is fixed for its
+   * lifetime, and a clone (same text) is born with its source's key. `hidden`/`ext` are
+   * provenance only and ignored by `branchText`, so stamping them after a text read
+   * cannot stale it. */
   key?: string;
 
   /**
@@ -97,12 +98,12 @@ export interface Branch {
 }
 
 /**
- * The SOLE Branch factory. Every branch is born `{ segments, key: undefined }` so the
- * `branchText` memo write lands on a pre-declared field (one hidden class on the
- * fixpoint's hot path). `hidden`/`ext` are stamped after construction by the
- * provenance-carrying sites (`cloneBranch`, `buildContribs`), exactly as before. */
-export function mkBranch(segments: SelectorPart[]): Branch {
-  return { segments, key: undefined, bnd: undefined };
+ * The SOLE Branch factory. Every branch is born with all five fields — `key` (the
+ * `branchText` memo, or the text a clone already knows), `bnd`, `hidden`, `ext` — so
+ * the memo write and the provenance stamps (`cloneBranch`, `buildContribs`) land on
+ * declared fields: one hidden class on the fixpoint's hot path. */
+export function mkBranch(segments: SelectorPart[], key?: string): Branch {
+  return { segments, key, bnd: undefined, hidden: undefined, ext: undefined };
 }
 
 /** A selector list level (a rule's own-local alternatives / an `:is()` arg). */
@@ -241,7 +242,7 @@ export function cloneBranch(b: Branch): Branch {
    * [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
    * every clone so a branch's visibility survives compose/solve/compaction unchanged.
    */
-  const out: Branch = mkBranch(b.segments.map(cloneSeg));
+  const out: Branch = mkBranch(b.segments.map(cloneSeg), b.key);
 
   /*
    * [&-boundary] `bnd` is per-segment origin provenance, not text — carry it across
@@ -391,6 +392,17 @@ export function levelFromSelectorList(list: SelectorList): Level {
   return list.selectors.map(branchFromSelector);
 }
 
+/**
+ * `list`'s IR, built the first time extend reads it and kept on the list
+ * ({@link SelectorList._level}): a parsed selector's IR depends on the parse alone, so
+ * the planner, the walk recorder and every later render of the document share it. The
+ * IR is never edited in place (every transform builds fresh branches), which is what
+ * makes sharing it sound.
+ */
+export function selectorLevel(list: SelectorList): Level {
+  return list._level ??= levelFromSelectorList(list);
+}
+
 /* --------------------------------------------------------------------- atoms */
 
 /** Multiset of a compound's plain-text simple tokens (ignores `:is` grafts). */
@@ -441,12 +453,79 @@ export function branchSharesAtom(b: Branch, atoms: Set<string>): boolean {
         if (atoms.has(s.text)) {
           return true;
         }
-      } else if (s.branches.some(inner => branchSharesAtom(inner, atoms))) {
+      } else {
+        for (const inner of s.branches) {
+          if (branchSharesAtom(inner, atoms)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * True when `text` is one of `b`'s atoms, by the extraction {@link collectBranchAtoms}
+ * uses (grafts walked). Answers one membership question without building the atom set.
+ */
+export function branchHasAtom(b: Branch, text: string): boolean {
+  for (const seg of b.segments) {
+    for (const s of seg.compound.value) {
+      if (s.t === 'text') {
+        if (s.text === text) {
+          return true;
+        }
+      } else {
+        for (const inner of s.branches) {
+          if (branchHasAtom(inner, text)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * True when `target` has plain-text simples and they are a sub-multiset of some
+ * compound in `level` — `multisetSubset(textSimpleTokens(target), textSimpleTokens(c))`
+ * for each compound `c`, answered without building either list.
+ */
+export function compoundHitsLevel(target: Compound, level: Level): boolean {
+  if (!target.value.some(s => s.t === 'text')) {
+    return false;
+  }
+  for (const b of level) {
+    for (const seg of b.segments) {
+      if (compoundCovers(seg.compound, target)) {
         return true;
       }
     }
   }
   return false;
+}
+
+/** True when every plain-text simple of `need` occurs in `have` at least as often. */
+function compoundCovers(have: Compound, need: Compound): boolean {
+  for (const s of need.value) {
+    if (s.t === 'text' && textCount(have, s.text) < textCount(need, s.text)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** How many plain-text simples of `c` are `text`. */
+function textCount(c: Compound, text: string): number {
+  let count = 0;
+  for (const s of c.value) {
+    if (s.t === 'text' && s.text === text) {
+      count++;
+    }
+  }
+  return count;
 }
 
 /** True when `need` (multiset) ⊆ `have` (multiset). */

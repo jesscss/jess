@@ -37,8 +37,11 @@ describe('a render leaves the parsed document as parsed', () => {
   });
 
   it('keeps an interpolated selector and an inline extend subject as parsed', () => {
-    /* The serializer's lazy memos (`_hasInterp`, `_canon`, `_hasAmp`) are caches, not the document. */
-    const parsed = (document: Stylesheet): string => JSON.stringify(document, (key, value: unknown) => (/^_(hasInterp|canon|hasAmp)$/u.test(key) ? undefined : value));
+    /*
+     * The serializer's lazy memos (`_hasInterp`, `_canon`, `_hasAmp`) and the extend
+     * engine's parse-derived facts (`_level`, `_extend`) are caches, not the document.
+     */
+    const parsed = (document: Stylesheet): string => JSON.stringify(document, (key, value: unknown) => (/^_(hasInterp|canon|hasAmp|level|extend)$/u.test(key) ? undefined : value));
     const root = parseLess('@v: 1; .c-@{v} { m: 1; } @s: ~".q"; @{s}:extend(.c-1) {}');
     const before = parsed(root);
     expect(serialize(root, { evaluator, collapseNesting: true }).css).toBe('.c-1,\n.q {\n  m: 1;\n}\n');

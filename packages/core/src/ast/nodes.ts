@@ -1289,6 +1289,12 @@ export const selectorBranchHasInterp = (branch: SelectorBranch): boolean =>
 export interface SelectorList extends SpanSlots {
   readonly type: 'SelectorList';
   readonly selectors: SelectorBranch[];
+
+  /**
+   * The list's extend IR, one branch per selector, built the first time extend reads it
+   * (`selectorLevel`) and shared by every later reader. Declared by {@link selist}.
+   */
+  _level?: Level;
 }
 
 /* -------------------------------------------------------------- statements */
@@ -1668,6 +1674,9 @@ export interface Stylesheet extends SpanSlots, TriviaSlot {
    * (`withForgivenSelectorItems`).
    */
   _forgiven?: readonly ForgivenSelectorItem[];
+
+  /** The document's extend facts, built on the first read (`documentExtendClass`). Declared by {@link stylesheet}. */
+  _extend?: ExtendClass;
 }
 
 /*
@@ -1675,6 +1684,8 @@ export interface Stylesheet extends SpanSlots, TriviaSlot {
  * nodes.ts free of a runtime dependency on the sibling at-rule module.
  */
 import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
+import type { ExtendClass } from './extend/document.js';
+import type { Level } from './extend/ir.js';
 
 export type Statement =
   | Ruleset
@@ -1893,7 +1904,7 @@ export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...Selec
   const [first, second, ...rest] = segments;
   return second === undefined ? first.term : complexSelector([first, second, ...rest]);
 };
-export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors, _s: NO_SPAN, _e: NO_SPAN });
+export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors, _s: NO_SPAN, _e: NO_SPAN, _level: undefined });
 
 export const decl = (
   name: string | Interpolation,
@@ -2237,4 +2248,4 @@ export const moduleImport = (
   imports: readonly ModuleImportSpecifier[] = [],
   defaultImport: string | null = null
 ): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports, _s: NO_SPAN, _e: NO_SPAN });
-export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules, _s: NO_SPAN, _e: NO_SPAN, _trivia: undefined });
+export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules, _s: NO_SPAN, _e: NO_SPAN, _trivia: undefined, _extend: undefined });
