@@ -112,7 +112,7 @@ export function nestedSlotHeader(ext: ExtendResults | null, slot: DynExtendSlot)
   const projection = ext === null ? null : placementProjection(ext, slot.token);
   const plan = projection?.nestedPlan.get(slot.rule);
   if (plan === undefined || plan.flatten) {
-    return slot.hiddenRef && plan === undefined ? null : slot.emitted;
+    return slot.reserved && plan === undefined ? null : slot.emitted;
   }
   if (!slot.hiddenRef) {
     return withoutPlaceholders(plan.header);
@@ -183,6 +183,15 @@ export function mayBeTarget(dyn: DynamicExtendState, rule: Ruleset, planned: Ext
     }
   }
   return ownLevelOf(dyn, rule).some(branch => branchSharesAtom(branch, dyn.targetAtoms));
+}
+
+/**
+ * Whether an extend may reveal a placeholder rule the walk records: it, or a rule open
+ * around it, may be an extend target ({@link mayBeTarget}). A placeholder no known target
+ * can name is never written, so it leaves nothing for the fold to drop.
+ */
+export function mayRevealPlaceholder(dyn: DynamicExtendState, rule: Ruleset, planned: ExtendResults | null): boolean {
+  return mayBeTarget(dyn, rule, planned) || dyn.pathRules.some(open => mayBeTarget(dyn, open, planned));
 }
 
 /** The extents of the first `count` blocks of `open`, the blocks a rule is written in, outermost first, kept on each block once made. */
@@ -360,12 +369,20 @@ export function restructureNestedSlots(out: NestedOutput, slots: readonly DynExt
     headers: nestedHeaders(slots)
   };
   for (const slot of slots) {
-    if (!slot.nested || slot.walked === null || (!resolved && !slot.hiddenRef)) {
+    if (!slot.nested || (!resolved && !slot.reserved)) {
+      continue;
+    }
+    if (slot.walked === null) {
+      /* A part of a placeholder rule that a risen `&` child split goes when nothing extends the rule. */
+      if (slot.reserved && !slot.hiddenRef && nestedSlotHeader(out.extends, slot) === null) {
+        hide(out, slot, start());
+        dropEmptied(out, edits!, blocksAround(slot, slots));
+      }
       continue;
     }
     const projection = out.extends === null ? null : placementProjection(out.extends, slot.token);
     const plan = projection?.nestedPlan.get(slot.rule);
-    let shown = slot.hiddenRef ? nestedSlotHeader(out.extends, slot) : slot.emitted;
+    let shown = slot.reserved ? nestedSlotHeader(out.extends, slot) : slot.emitted;
     if (slot.hiddenRef && plan !== undefined && !plan.flatten && underShown(slot, revealed ??= revealedHidden(out.extends, slots))) {
       /* Under a hidden rule an extender revealed, the rule's own selector is written: it composes with the extender. */
       shown = withoutPlaceholders(plan.header);
@@ -394,6 +411,20 @@ export function restructureNestedSlots(out: NestedOutput, slots: readonly DynExt
   if (edits !== null) {
     rebuild(out, edits);
   }
+}
+
+/**
+ * The rule blocks of `slots` written around `part`, a block a risen `&` child split off
+ * (it keeps no enclosing extents of its own), outermost first.
+ *
+ * ponytail: scans every slot, and only a hidden placeholder part asks; keep the
+ * enclosing extents on the part when this shows in a profile.
+ */
+function blocksAround(part: DynExtendSlot, slots: readonly DynExtendSlot[]): BlockExtent[] {
+  return slots
+    .filter(s => s.nested && s.mark < part.mark && s.blockEnd >= part.blockEnd)
+    .sort((a, b) => a.mark - b.mark)
+    .map(s => ({ rule: true, mark: s.mark, body: s.body, end: s.blockEnd, idt: s.indent, leaves: undefined, scan: s.body, tail: -1 }));
 }
 
 /** The header chunks of the nested slots. */
@@ -447,10 +478,11 @@ function underShown(slot: DynExtendSlot, shown: ReadonlySet<number>): boolean {
  * Drop a hidden `(reference)` rule nothing revealed: its declarations, and the block
  * itself, with the blocks it leaves empty, unless a rule in it was revealed — that
  * rule stays written under it, as the flat writer composes it under its hidden
- * ancestors.
+ * ancestors. A placeholder rule nothing extends goes whole: every rule in it composes
+ * with the placeholder, so none is shown.
  */
 function hide(out: NestedOutput, slot: DynExtendSlot, edits: Edits): void {
-  const leaves = slot.leaves;
+  const leaves = slot.hiddenRef ? slot.leaves : undefined;
   for (let k = 0; leaves && k < leaves.length; k += 3) {
     take(edits, leaves[k]!, leaves[k + 1]!, -++edits.ids);
   }
@@ -637,8 +669,9 @@ export interface DynExtendSlot {
    * visible extender branches only. */
   hiddenRef: boolean;
 
-  /** The hidden rule had no visible branch when the walk emitted it: its block is
-   * RESERVED for an extend the fold may still fold in, and blanked when none does. */
+  /** The rule had no visible branch when the walk emitted it (a hidden `(reference)`
+   * rule, or a placeholder rule): its block is RESERVED for an extend the fold may
+   * still fold in, and blanked when none does. */
   reserved: boolean;
 
   /** Exclusive end of the block's chunk range (for blanking a hidden-ref rule the
