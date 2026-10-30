@@ -274,7 +274,7 @@
     "params": 12
   },
   "packages/core/src/ast/serialize.ts#writeNestedRule": {
-    "statements": 97
+    "statements": 96
   },
   "packages/core/src/ast/serialize.ts#writeNestedAtRuleBlock": {
     "params": 7

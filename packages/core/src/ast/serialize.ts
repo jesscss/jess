@@ -226,6 +226,7 @@ import { atRuleScope, recordAstExtendProfile } from './extend/plan.js';
 import {
   arraysEqualText,
   dynamicPathAt,
+  enclosingExtents,
   nestedSlotHeader,
   nestedSubjectParent,
   openDynamicPath,
@@ -241,7 +242,7 @@ import {
   visibleHeaderCore,
   withoutPlaceholders
 } from './extend/dynamic.js';
-import type { DynamicExtendState, DynExtendSlot, NestedLanding } from './extend/dynamic.js'; // [extend/selector-interp]
+import type { BlockExtent, DynamicExtendState, DynExtendSlot, NestedLanding } from './extend/dynamic.js'; // [extend/selector-interp]
 import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
@@ -15415,7 +15416,7 @@ function recordDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, emitted: stri
     nested: false,
     mark: -1,
     body: -1,
-    kids: undefined,
+    leaves: undefined,
     enclosing: null,
     landing: null,
     walked: null
@@ -15432,10 +15433,6 @@ function recordNestedDynExtendSlot(e: Emit, block: OpenBlock, emitted: string[],
   if (!dyn) {
     return;
   }
-  let enclosing: number[] | null = null;
-  for (let i = 0; block.landing !== null && i < e.openCount; i++) {
-    (enclosing ??= []).push(e.openBlocks![i]!.mark, e.openBlocks![i]!.body);
-  }
   dyn.slots.push({
     rule: block.rule!,
     token: innermostExtendPlacement(block.frame, e),
@@ -15449,8 +15446,8 @@ function recordNestedDynExtendSlot(e: Emit, block: OpenBlock, emitted: string[],
     nested: true,
     mark: block.mark,
     body: block.body,
-    kids: block.kids,
-    enclosing,
+    leaves: block.leaves,
+    enclosing: block.landing === null ? null : enclosingExtents(e.openBlocks!, e.openCount),
     landing: block.landing,
     walked
   });
@@ -15502,7 +15499,7 @@ function foldDynamicExtends(e: Emit): void {
        * in emits nothing: blank the block it was emitted into. A non-reference rule
        * never resolves to null here, so this only fires for hidden reference blocks.
        */
-      if (slot.hiddenRef) {
+      if (slot.hiddenRef && !slot.nested) {
         for (let i = slot.chunkIndex; i < slot.blockEnd; i++) {
           e.chunks[i] = '';
         }
@@ -15575,7 +15572,13 @@ function foldDynamicExtends(e: Emit): void {
       }
     }
   }
-  restructureNestedSlots(e.chunks, dyn.slots, e.extends, e.compress === true);
+  restructureNestedSlots(e, dyn.slots, resolved !== null, {
+    indent: e.compress === true ? '' : INDENT,
+    open: blockOpen(e),
+    selectors: (own, idt) => composeSelectorHeader(e, own, idt, null),
+    atRule: (name, prelude) => atRuleHead(e, name, prelude),
+    close: idt => (e.compress === true ? '}' : `${idt}}\n`)
+  });
 }
 
 /**
@@ -23127,11 +23130,14 @@ interface OpenBlock {
   headerChunk: number;
   body: number;
 
-  /** [extend/dynamic] The first chunk of each child block, while the deferred fold may split the block; undefined when untracked. */
-  kids: number[] | null | undefined;
+  /** [extend/dynamic] `start, end, custom` of each declaration the block holds, while the deferred fold may split it; undefined when untracked. */
+  leaves: number[] | null | undefined;
 
   /** [extend/dynamic] Where the block lands if the deferred fold moves it out of the blocks it is written in. */
   landing: NestedLanding | null;
+
+  /** [extend/dynamic] The block's extent, kept once a rule the fold may move is written in it. */
+  extent: BlockExtent | null;
 }
 
 /** Record the block whose header and `{` were just written, its body starting here; `e.openCount--` ends it, its record read until the next block opens. */
@@ -23150,13 +23156,9 @@ function openBlock(
   headerChunk: number
 ): OpenBlock {
   const pool = e.openBlocks ??= [];
-  const host = pool[e.openCount - 1];
-  if (host?.kids !== undefined) {
-    (host.kids ??= []).push(mark);
-  }
   let block = pool[e.openCount];
   if (block === undefined) {
-    block = { atRule, prelude, idt, depth: e.depth, rule, frame, own, slot, split, mark, markPos, headerChunk, body: e.chunks.length, kids: undefined, landing: null };
+    block = { atRule, prelude, idt, depth: e.depth, rule, frame, own, slot, split, mark, markPos, headerChunk, body: e.chunks.length, leaves: undefined, landing: null, extent: null };
     pool.push(block);
   } else {
     block.atRule = atRule;
@@ -23172,8 +23174,9 @@ function openBlock(
     block.markPos = markPos;
     block.headerChunk = headerChunk;
     block.body = e.chunks.length;
-    block.kids = undefined;
+    block.leaves = undefined;
     block.landing = null;
+    block.extent = null;
   }
   e.openCount++;
   return block;
@@ -23181,10 +23184,6 @@ function openBlock(
 
 /** Drop the current part of `block`, which wrote nothing: its header and `{`. */
 function dropBlockPart(block: OpenBlock, e: Emit): void {
-  const host = e.openBlocks![e.openCount - 1];
-  if (host?.kids?.[host.kids.length - 1] === block.mark) {
-    host.kids.pop();
-  }
   e.chunks.length = block.mark;
   if (e.positions) {
     e.positions.length = block.markPos;
@@ -23201,11 +23200,12 @@ function putBlockHeader(block: OpenBlock, idt: string, e: Emit): void {
     put(e, composeSelectorHeader(e, block.own!, idt, null));
     return;
   }
-  put(e, atRule.name);
-  if (block.prelude.length > 0) {
-    put(e, e.compress === true && block.prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
-    put(e, block.prelude);
-  }
+  put(e, atRuleHead(e, atRule.name, block.prelude));
+}
+
+/** `name prelude`: the header of an at-rule block, as the nested writer writes it. */
+function atRuleHead(e: Lane, name: string, prelude: string): string {
+  return prelude.length === 0 ? name : `${name}${e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' '}${prelude}`;
 }
 
 /** Open `block` again at `e.depth`, a new part of it. */
@@ -23361,6 +23361,25 @@ function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): Mayb
   return emitHoisted(h.rule, h.frame, e, h.source);
 }
 
+/** [extend/dynamic] Keep the chunks `[start, end)` of a declaration the open block holds, and whether it is a custom property, while the deferred fold may split that block ({@link OpenBlock.leaves}). */
+function noteLeaf(e: Emit, start: number, custom: boolean): void {
+  const host = e.openBlocks?.[e.openCount - 1];
+  if (host?.leaves !== undefined && e.chunks.length > start) {
+    (host.leaves ??= []).push(start, e.chunks.length, custom ? 1 : 0);
+  }
+}
+
+/** Note where the part of `block` just closed ends: for its pseudo-element split ({@link SplitBlock}), and for its extent, which a rule the deferred fold may move is written in. */
+function closeExtent(block: OpenBlock, e: Emit): void {
+  if (block.split !== null) {
+    block.split.end = e.chunks.length;
+  }
+  if (block.extent !== null) {
+    block.extent.end = e.chunks.length;
+    block.extent.leaves = block.leaves;
+  }
+}
+
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
 function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   const sourceOwner = leaf.frame.sourceOwner;
@@ -23407,6 +23426,7 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, declEnd(e));
     finishDrop(e, mark, deferred);
+    noteLeaf(e, start, isCustom);
   } else if (node.type === 'Comment') {
     if (!keepComment(e, node.text)) {
       return;
@@ -23560,6 +23580,7 @@ function emitTransparentShells(
           dropBlockPart(block, e);
         } else {
           emitBlockClose(e, block.idt);
+          closeExtent(block, e);
         }
       };
       const body = nestedPlacement(source, callFrame);
@@ -23599,7 +23620,7 @@ function trackForFold(e: Emit, block: OpenBlock, at: Placement, depth: number): 
   const recorded = !placedStatically(block.rule!, e) || reachedViaMixinSplice(block.frame!);
   const parent = recorded && at.source !== null ? nestedSubjectParent(dyn, depth) : null;
   block.slot = parent !== false;
-  block.kids = block.slot ? null : undefined;
+  block.leaves = block.slot ? null : undefined;
   if (recorded) {
     recordOpenRule(dyn, block.rule!, block.frame!, e, parent);
   }
@@ -23758,9 +23779,7 @@ function writeNestedRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit, pl
         dropBlockPart(block, e);
       } else {
         emitBlockClose(e, block.idt, lb);
-        if (block.split !== null) {
-          block.split.end = e.chunks.length;
-        }
+        closeExtent(block, e);
         if (e.positions) {
           e.positions.push({ node: rule, type: rule.type, start: block.mark, end: e.chunks.length, source: srcFile(e) });
         }
@@ -23924,11 +23943,7 @@ function nestedAtRuleShell(
     put(e, idt);
   }
   const headerChunk = e.chunks.length;
-  put(e, node.name);
-  if (prelude.length > 0) {
-    put(e, e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
-    put(e, prelude);
-  }
+  put(e, atRuleHead(e, node.name, prelude));
   put(e, blockOpen(e));
   const block = openBlock(e, node, prelude, idt, null, null, null, false, null, markChunks, markPos, headerChunk);
   e.depth++;
@@ -23941,6 +23956,7 @@ function nestedAtRuleShell(
       return;
     }
     emitBlockClose(e, block.idt);
+    closeExtent(block, e);
     if (e.positions) {
       e.positions.push({ node, type: node.type, start: block.mark, end: e.chunks.length, source: srcFile(e) });
     }

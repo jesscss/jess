@@ -16,10 +16,11 @@ import { Compiler } from '../../src/index.js';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-x22-'));
 fs.writeFileSync(path.join(dir, 't.less'), '.y { &:extend(.w .k); }\n.k { k: 1; }\n');
 fs.writeFileSync(path.join(dir, 'r.less'), '.sm { b: 2; }\n');
+fs.writeFileSync(path.join(dir, 'r2.less'), '.sm { b: 2; .in { c: 3; } }\n.other { o: 1; }\n');
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-async function render(source: string, ext: 'less' | 'scss' | 'jess', collapseNesting: boolean): Promise<string> {
-  return new Compiler({ output: { collapseNesting } }).renderString(source, {
+async function render(source: string, ext: 'less' | 'scss' | 'jess', collapseNesting: boolean, compress = false): Promise<string> {
+  return new Compiler({ output: { collapseNesting, compress } }).renderString(source, {
     filePath: path.join(dir, `entry.${ext}`),
     extension: `.${ext}`
   });
@@ -103,6 +104,54 @@ const cases: Array<[string, 'less' | 'scss' | 'jess', string, string | null, str
     '.b,\n.q {\n  y: 1;\n}\n.b .c {\n  x: 1;\n}\n'
   ],
   [
+    'a (reference) @import inside a rule whose rules nest: only the extender is written',
+    'less',
+    '.wrap { @import (reference) "r2.less"; } .x:extend(.wrap .sm) {}',
+    null,
+    '.x {\n  b: 2;\n}\n',
+    '.x {\n  b: 2;\n}\n'
+  ],
+  [
+    'a (reference) @import inside a rule: a rule under the hidden rule an `all` extender reveals is written under the extender',
+    'less',
+    '.wrap { @import (reference) "r2.less"; } .x:extend(.wrap .sm all) {}',
+    null,
+    '.x {\n  b: 2;\n  .in {\n    c: 3;\n  }\n}\n',
+    '.x {\n  b: 2;\n}\n.x .in {\n  c: 3;\n}\n'
+  ],
+  [
+    'a (reference) @import inside a rule nothing reveals writes nothing, and the rules after it stay outside it',
+    'less',
+    '.wrap { @import (reference) "r2.less"; } .after { a: 1; } .x:extend(.nope) {}',
+    null,
+    '.after {\n  a: 1;\n}\n',
+    '.after {\n  a: 1;\n}\n'
+  ],
+  [
+    'a moved block keeps the bytes of a string written over lines',
+    'less',
+    '@d: { .b { content: "a\\\n        b"; } }; .z { .a { @d(); } } .q:extend(.z .a .b){}',
+    '.z { .a { .b { content: "a\\\n        b"; } } } .q:extend(.z .a .b){}',
+    '.z .a .b,\n.q {\n  content: "a\\\n        b";\n}\n',
+    '.z .a .b,\n.q {\n  content: "a\\\n        b";\n}\n'
+  ],
+  [
+    'a split keeps a comment inside a custom property value, and leaves a statement comment',
+    'less',
+    '.m(){ .b { /* s */ --x: a\n/* c */\nb; y: 1; .c { x: 1 } } } .a { .m(); } .q:extend(.a .b){}',
+    '.a { .b { /* s */ --x: a\n/* c */\nb; y: 1; .c { x: 1 } } } .q:extend(.a .b){}',
+    '.a {\n  .b {\n    --x: a\n/* c */\nb;\n    /* s */\n    y: 1;\n    .c {\n      x: 1;\n    }\n  }\n}\n.q {\n  --x: a\n/* c */\nb;\n  y: 1;\n}\n',
+    '.a .b,\n.q {\n  --x: a\n/* c */\nb;\n  /* s */\n  y: 1;\n}\n.a .b .c {\n  x: 1;\n}\n'
+  ],
+  [
+    'a split ending in a custom property keeps its `;` under compress',
+    'less',
+    '.m(){ .b { y: 1; --z: 2; .c { x: 1 } } } .a { .m(); } .q:extend(.a .b){}',
+    '.a { .b { y: 1; --z: 2; .c { x: 1 } } } .q:extend(.a .b){}',
+    '.a {\n  .b {\n    y: 1;\n    --z: 2;\n    .c {\n      x: 1;\n    }\n  }\n}\n.q {\n  y: 1;\n  --z: 2;\n}\n',
+    '.a .b,\n.q {\n  y: 1;\n  --z: 2;\n}\n.a .b .c {\n  x: 1;\n}\n'
+  ],
+  [
     'a placed target nothing extends stays nested',
     'less',
     '.m(){ .b{ y:1; .c{ x:1; } } } .a{ .m(); } .q:extend(.zz){}',
@@ -118,6 +167,7 @@ describe('placed extend targets in nested output (X22)', () => {
       await expect(render(placed, ext, false)).resolves.toBe(nested);
       if (written !== null) {
         await expect(render(written, ext, false)).resolves.toBe(nested);
+        await expect(render(placed, ext, false, true)).resolves.toBe(await render(written, ext, false, true));
       }
       await expect(render(placed, ext, true)).resolves.toBe(flat);
     });

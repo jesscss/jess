@@ -28,6 +28,7 @@ interface AuditResult {
   readonly css: string;
   readonly count: number;
   readonly sourcesSeen: Set<string>;
+  readonly mappedLines: Set<number>;
 }
 
 type Rendered = { css: string; map?: string };
@@ -37,6 +38,7 @@ function audit(entry: string, r: Rendered): AuditResult {
   const map = JSON.parse(r.map!) as { sources: string[]; sourcesContent: string[]; mappings: string };
   const mappings = decodeSourceMapMappings(map.mappings);
   const sourcesSeen = new Set<string>();
+  const mappedLines = new Set<number>();
   const genLines = css.split('\n');
 
   /* Each embedded source is the file as authored — nothing injected ahead of it. */
@@ -53,8 +55,9 @@ function audit(entry: string, r: Rendered): AuditResult {
       `${path.basename(entry)}: gen(${gl! + 1}:${gc}) "${tokenAt(gen, gc!)}" (line: ${JSON.stringify(gen)}) does not map to ${path.basename(map.sources[si!]!)}(${sl! + 1}:${sc}) "${tokenAt(src, sc!)}"`
     ).toBeDefined();
     sourcesSeen.add(path.basename(map.sources[si!]!));
+    mappedLines.add(gl!);
   }
-  return { css, count: mappings.length, sourcesSeen };
+  return { css, count: mappings.length, sourcesSeen, mappedLines };
 }
 
 async function auditRoundTrip(
@@ -115,6 +118,21 @@ describe('source map round-trip is mathematically correct', () => {
         const r = await auditRoundTrip(path.join(fixtures, 'late-extend.less'), collapseNesting, compress);
         expect(r.count).toBeGreaterThanOrEqual(5);
       }
+    });
+
+    /*
+     * A rule a detached ruleset places, moved out of its parent block by an extend, and
+     * the block an exact extender splits off a rule a mixin places, keep their mappings
+     * in nested output (ledger X22): the moved block and the split's declarations map to
+     * where they are written in the definitions.
+     */
+    it(`placed extend targets moved or split in nested output stay mapped (collapseNesting=${collapseNesting})`, async () => {
+      const r = await auditRoundTrip(path.join(fixtures, 'placed-extend.less'), collapseNesting);
+      const lines = r.css.split('\n');
+      const unmapped = lines.flatMap((line, index) => /^\s*[yz]: /.test(line) && !r.mappedLines.has(index) ? [line] : []);
+      expect(lines.filter(line => /^\s*[yz]: /.test(line)).length).toBe(collapseNesting ? 2 : 3);
+      expect(unmapped).toEqual([]);
+      expect((await auditRoundTrip(path.join(fixtures, 'placed-extend.less'), collapseNesting, true)).count).toBeGreaterThan(0);
     });
 
     /*

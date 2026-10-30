@@ -84,7 +84,9 @@ walk emits selector headers as addressable slots into the render buffer and reco
 extend facts inline; after the single walk completes, the extend engine folds each
 extender's compiled selector into the target slots (held **by reference** — a
 nested `&` holds a reference to the parent's composed selector, it is not
-re-flattened per rule); then the buffer is stringified. Match-time flattening is
+re-flattened per rule); then the buffer is stringified. In nested output the same rewrite also moves and
+copies blocks the walk wrote, where a placed rule's re-solved plan restructures it
+(ledger X22, §7a); it evaluates nothing. Match-time flattening is
 lazy and cached, and only for the selectors that actually participate in a match.
 
 This law is enforced by `extend-evaluator-isolation.test.ts` (a source-frontier
@@ -450,7 +452,7 @@ pinned"):
   .z {…} } } .y { .m(); }` gives `.z, &` as `.y { @media print { &:extend(.y .z); .z {…} } }`
   does, and a rule of a `(reference)` sheet imported inside a ruleset is revealed under its
   extender (`.wrap { @import (reference) "t.less"; }` + `.x:extend(.wrap .sm) {}` →
-  `.x { b: 2; }`). Still open: a rule the walk wrote STATICALLY that only a walk-recorded
+  `.x { b: 2; }`). Still open (DF9): a rule the walk wrote STATICALLY that only a walk-recorded
   extender flattens, or splits off at the top, keeps the header the walk wrote
   (`.m(){ &:extend(.a .b); } .a { .b { y: 1 } } .x { .m(); }` keeps `.a { .b {…} }`; flat
   `.a .b, .x`).
@@ -569,10 +571,16 @@ is evaluation, which does not depend on nesting (V19); nested output re-nests th
 result, so where a rule came from cannot change it; the source gives the author no way to
 tell the two apart; a dropped extender changes what the CSS matches in one output mode
 only; and the static target already flattens to the same shape. The placed rule's plan is
-known only once the deferred fold has re-solved, so the fold restructures the text the one
-walk wrote, evaluating nothing (§1a): the walk reserves, in each hoist queue the rule could
-rise through, the chunk where it lands, and records where its block and its child blocks
-start (`extend/dynamic.ts`).
+known only once the deferred fold has re-solved, so the fold restructures the output the
+one walk wrote, evaluating nothing (§1a): the walk reserves, in each hoist queue the rule
+could rise through, the chunk where it lands, and records its block's extent and its
+declarations' chunk ranges; the fold moves and copies those chunks and rebuilds the output
+once, source-map positions carried (`extend/dynamic.ts`). A rule of a `(reference)` sheet
+imported in a rule is written as a reserved block and goes when nothing reveals it; a rule
+under one an extender reveals is written under the extender (`.wrap { @import (reference)
+"t.less"; } .x:extend(.wrap .sm all) {}` with `.sm { b: 2; .in { c: 3; } }` gives
+`.x { b: 2; .in { c: 3; } }`). A moved block keeps the indent the writer gave a value's
+continuation lines where it was written.
 
 ### 7b. Exact-extender-into-children SPLIT (LANDED)
 

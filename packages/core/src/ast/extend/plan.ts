@@ -242,7 +242,12 @@ function appendOverlaySubjects(subjects: PlanSubject[], overlay: readonly PlanSu
     const s = overlay[index]!;
     if (s.parent?.placement === PLANNED_PARENT) {
       /* ponytail: by rule alone; a rule a `(multiple)` import plans twice nests its walk-placed children under its last placement. */
-      planned ??= new Map(subjects.map(p => [p.rule, p]));
+      if (planned === undefined) {
+        planned = new Map();
+        for (const p of subjects) {
+          planned.set(p.rule, p);
+        }
+      }
       s.parent = planned.get(s.parent.rule) ?? s.parent;
     }
     subjects.push(s);

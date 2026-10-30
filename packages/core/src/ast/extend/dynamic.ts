@@ -17,15 +17,12 @@ import { branchTextIsPlaceholder, selectorBranchHasInterp } from '../nodes.js';
 import type { ExtendInstruction, Ruleset, SelectorList, Stylesheet } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
 import type { SelectorUnits } from '../selector-text.js';
-import { compressSelectorHeader } from '../compress.js';
 import { computeExtends } from './emit.js';
 import type { ExtendPlacementResults, ExtendResults, NestedRulePlan } from './emit.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './ir.js';
 import type { Branch, Level } from './ir.js';
 import { plannedParent, recordAstExtendProfile } from './plan.js';
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
-
-const INDENT = '  ';
 
 /** The chunks reserved where a rule rising out of `k + 1` enclosing rule blocks lands, innermost first. */
 export interface NestedLanding {
@@ -105,15 +102,20 @@ export function visibleHeaderCore(
  * The header the deferred rewrite writes for a nested slot: its re-solved own-local
  * header, or null for a hidden `(reference)` rule left with no visible branch. A
  * flattened plan keeps the header the walk wrote: {@link restructureNestedSlots} moves
- * the block where it lands.
+ * the block where it lands. A hidden rule's own branches are the ones the walk wrote,
+ * so they are dropped by text: the hidden mask lines up with the flat header, not the
+ * own-local one.
  */
-export function nestedSlotHeader(ext: ExtendResults, slot: DynExtendSlot): string[] | null {
-  const projection = placementProjection(ext, slot.token);
-  const plan = projection?.nestedPlan.get(slot.rule);
+export function nestedSlotHeader(ext: ExtendResults | null, slot: DynExtendSlot): string[] | null {
+  const plan = ext === null ? undefined : placementProjection(ext, slot.token)?.nestedPlan.get(slot.rule);
   if (plan === undefined || plan.flatten) {
     return slot.hiddenRef && plan === undefined ? null : slot.emitted;
   }
-  return slot.hiddenRef ? visibleHeaderCore(slot.rule, plan.header, projection, true) : withoutPlaceholders(plan.header);
+  if (!slot.hiddenRef) {
+    return withoutPlaceholders(plan.header);
+  }
+  const shown = plan.header.filter(branch => !slot.emitted.includes(branch));
+  return shown.length > 0 ? withoutPlaceholders(shown) : null;
 }
 
 /** Reserve, at the current block depth, the chunk a rule rising this far lands in. */
@@ -127,98 +129,167 @@ export function reserveLanding(landing: NestedLanding | null, chunks: string[], 
   chunks.push('');
 }
 
-const isClose = (chunk: string): boolean => chunk === '}\n' || chunk === '}';
-const isBlank = (chunk: string): boolean => chunk.trim() === '';
+/**
+ * The extent of a block a rule the fold may move is written in: its first chunk, its
+ * body's, the chunk after its close (-1 while open), its indent, its declarations
+ * ({@link DynExtendSlot.leaves}), and how far its body is known to be empty.
+ */
+export interface BlockExtent {
+  rule: boolean;
+  mark: number;
+  body: number;
+  end: number;
+  idt: string;
+  leaves: number[] | null | undefined;
+  scan: number;
+}
 
-/** The chunk after the block that starts at `from`. */
-function blockEndFrom(chunks: readonly string[], from: number): number {
-  let depth = 0;
-  for (let i = from; i < chunks.length; i++) {
-    const chunk = chunks[i]!;
-    if (chunk === ' {\n' || chunk === '{') {
-      depth++;
-    } else if (isClose(chunk) && --depth === 0) {
-      return i + 1;
-    }
+/** The extents of the first `count` blocks of `open`, the blocks a rule is written in, outermost first, kept on each block once made. */
+export function enclosingExtents(
+  open: ReadonlyArray<{ rule: unknown; mark: number; body: number; idt: string; extent: BlockExtent | null }>,
+  count: number
+): BlockExtent[] {
+  const extents: BlockExtent[] = [];
+  for (let i = 0; i < count; i++) {
+    const block = open[i]!;
+    extents.push(block.extent ??= { rule: block.rule !== null, mark: block.mark, body: block.body, end: -1, idt: block.idt, leaves: undefined, scan: block.body });
   }
-  return chunks.length;
+  return extents;
 }
 
-/** `text` with `levels` indent levels taken off each line that has them. */
-function dedent(text: string, levels: number): string {
-  return levels <= 0 ? text : text.replace(new RegExp(`(^|\\n)${INDENT.repeat(levels)}`, 'g'), '$1');
+/** How the nested writer writes a block's open and close, so the fold writes what it would ({@link restructureNestedSlots}). */
+export interface NestedWriter {
+  /** One indent level, and a block's `{`. */
+  indent: string;
+  open: string;
+
+  /** A rule's selector header at indent `idt`. */
+  selectors(own: string[], idt: string): string;
+
+  /** An at-rule block's `name prelude`. */
+  atRule(name: string, prelude: string): string;
+
+  /** A block's `}` at indent `idt`. */
+  close(idt: string): string;
 }
 
-/** A block's bytes as the nested writer writes them at indent `idt`. */
-function blockText(header: readonly string[], body: string, idt: string, compress: boolean): string {
-  return compress
-    ? `${compressSelectorHeader(header.join(','))}{${body.endsWith(';') ? body.slice(0, -1) : body}}`
-    : `${idt}${header.join(',\n' + idt)} {\n${body}${idt}}\n`;
-}
-
-/** The rule's direct declarations and comments: its body without its child blocks. */
-function directText(chunks: readonly string[], slot: DynExtendSlot, compress: boolean): string {
-  const close = slot.blockEnd - (slot.indent !== '' && !compress ? 2 : 1);
-  let text = '';
-  let k = 0;
-  for (let i = slot.body; i < close; i++) {
-    if (slot.kids![k] === i) {
-      i = blockEndFrom(chunks, i) - 1;
-      k++;
-    } else {
-      text += chunks[i]!;
-    }
-  }
-
-  /* A statement comment is trivia (ledger G24), not one of the declarations a split carries. */
-  return compress ? text : text.replace(/^ *\/\*[\s\S]*?\*\/\n/gm, '');
+/** The output the fold restructures: the writer's chunks, the positions and pseudo-element split blocks recorded against them. */
+export interface NestedOutput {
+  chunks: string[];
+  positions: Array<{ start: number; end: number }> | null;
+  splitBlocks: Array<{ header: number; end: number }> | null;
+  compress?: boolean;
+  extends: ExtendResults | null;
 }
 
 /**
- * Blank the blocks the moved range `[from, to)` leaves empty, innermost first. Under
- * compress, a block it leaves ending in a declaration drops that declaration's `;`,
- * as the writer drops the last one before a `}`.
+ * What the fold writes after one chunk: bytes it composed, or a run of the walk's
+ * chunks `levels` indent levels out — the run of block `id` that moved there, or with
+ * `id` 0 a copy of declarations.
  */
-function dropEmptied(chunks: string[], enclosing: readonly number[], from: number, to: number, compress: boolean): void {
-  for (let k = enclosing.length - 2; k >= 0; k -= 2) {
-    let close = to;
-    while (close < chunks.length && isBlank(chunks[close]!)) {
-      close++;
+type Piece = { from: number; to: number; levels: number; id: number } | string;
+
+/**
+ * The edits of one fold. `gone` marks each chunk a block moved out of (by the block's
+ * positive id) or dropped (by a negative id) where it was written; `at` holds what is
+ * written after a chunk; `header` the header a moved block is written with. The output
+ * is rebuilt once, from them ({@link rebuild}).
+ */
+interface Edits {
+  gone: Int32Array;
+  at: Map<number, Piece[]>;
+  header: Map<number, string>;
+  ids: number;
+}
+
+/** Mark `[from, to)` gone as block `id`, but for what an earlier edit already took. */
+function take(edits: Edits, from: number, to: number, id: number): void {
+  for (let i = from; i < to; i++) {
+    if (edits.gone[i] === 0) {
+      edits.gone[i] = id;
     }
-    let last = from - 1;
-    while (last >= enclosing[k + 1]! && isBlank(chunks[last]!)) {
-      last--;
-    }
-    if (close === chunks.length || !isClose(chunks[close]!) || last >= enclosing[k + 1]!) {
-      if (compress && isClose(chunks[close] ?? '') && chunks[last] === ';') {
-        /* ponytail: a custom property keeps its last `;` where the writer closes the block; one moved out from after it does not. */
-        chunks[last] = '';
-      }
-      return;
-    }
-    from = enclosing[k]!;
-    to = close + 1;
-    chunks.fill('', from, to);
   }
 }
 
-/** Write `text`, a block `slot` wrote, where its landing is reserved for a rule rising `bubble` blocks. */
-function land(chunks: string[], slot: DynExtendSlot, bubble: number, text: string, compress: boolean): void {
-  const landing = slot.landing!;
-  const depth = slot.indent.length / INDENT.length;
-  const level = Math.min(bubble, landing.at.length) - 1;
-  const wrappers = landing.wrappers[level] ?? [];
-  const base = landing.depth[level]!;
-  let open = '';
-  let close = '';
-  for (let w = 0; w < wrappers.length; w++) {
-    const idt = compress ? '' : INDENT.repeat(base + w);
-    const { node, prelude } = wrappers[w]!;
-    const sep = prelude === '' ? '' : compress && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ';
-    open += `${idt}${node.name}${sep}${prelude}${compress ? '{' : ' {\n'}`;
-    close = `${idt}${compress ? '}' : '}\n'}${close}`;
+/** The chunk ends the walk's run of blank chunks. */
+function isBlank(chunk: string): boolean {
+  for (let i = 0; i < chunk.length; i++) {
+    const code = chunk.charCodeAt(i);
+    if (code !== 0x20 && code !== 0x0A) {
+      return false;
+    }
   }
-  chunks[landing.at[level]!] += open + (compress ? text : dedent(text, depth - base - wrappers.length)) + close;
+  return true;
+}
+
+function insertAt(edits: Edits, chunk: number, pieces: Piece[]): void {
+  const list = edits.at.get(chunk);
+  if (list === undefined) {
+    edits.at.set(chunk, pieces);
+  } else {
+    list.push(...pieces);
+  }
+}
+
+/**
+ * Drop the blocks the chunks `[from, to)` leave empty, innermost first. Each extent
+ * keeps how far its body is known to be empty, so no chunk is read twice. Under
+ * compress, a block left ending in a declaration other than a custom property drops
+ * that declaration's `;`, as the writer drops the last one before a `}`.
+ */
+function dropEmptied(out: NestedOutput, edits: Edits, enclosing: readonly BlockExtent[]): void {
+  const { chunks } = out;
+  for (let k = enclosing.length - 1; k >= 0; k--) {
+    const block = enclosing[k]!;
+    const close = block.end - (block.idt === '' ? 1 : 2);
+    while (block.scan < close && (edits.gone[block.scan] !== 0 || (isBlank(chunks[block.scan]!) && !edits.at.has(block.scan)))) {
+      block.scan++;
+    }
+    if (block.scan < close) {
+      if (out.compress === true) {
+        dropLastSemicolon(chunks, edits, block, close);
+      }
+      return;
+    }
+    take(edits, block.mark, block.end, -++edits.ids);
+  }
+}
+
+function dropLastSemicolon(chunks: readonly string[], edits: Edits, block: BlockExtent, close: number): void {
+  const leaves = block.leaves;
+  if (!leaves) {
+    return;
+  }
+  let last = close - 1;
+  while (last >= block.scan && (edits.gone[last] !== 0 || chunks[last] === '')) {
+    last--;
+  }
+  for (let k = leaves.length - 3; k >= 0; k -= 3) {
+    if (leaves[k + 1] === last + 1 && chunks[last] === ';' && leaves[k + 2] === 0) {
+      edits.gone[last] = -++edits.ids;
+      return;
+    }
+  }
+}
+
+/** The pieces that write `pieces` where `slot`'s landing reserved for a rule rising `bubble` blocks, `levels` set from the slot's depth. */
+function landing(slot: DynExtendSlot, bubble: number, writer: NestedWriter, make: (depth: number, levels: number) => Piece[]): [number, Piece[]] {
+  const { indent } = writer;
+  const land = slot.landing!;
+  const level = Math.min(bubble, land.at.length) - 1;
+  const wrappers = land.wrappers[level] ?? [];
+  const base = land.depth[level]!;
+  const depth = base + wrappers.length;
+  const pieces: Piece[] = [];
+  const closes: string[] = [];
+  for (let w = 0; w < wrappers.length; w++) {
+    const idt = indent.repeat(base + w);
+    const { node, prelude } = wrappers[w]!;
+    pieces.push(`${idt}${writer.atRule(node.name, prelude)}${writer.open}`);
+    closes.unshift(writer.close(idt));
+  }
+  pieces.push(...make(depth, indent === '' ? 0 : slot.indent.length / indent.length - depth), ...closes);
+  return [land.at[level]!, pieces];
 }
 
 /**
@@ -227,60 +298,230 @@ function land(chunks: string[], slot: DynExtendSlot, bubble: number, text: strin
  * header; an exact extender that cannot carry the block's child rules gets a block of
  * its own with the block's direct declarations (§7b), beside the block or, for one
  * that shares no level with the block's ancestors, where the block would land at the
- * top. A slot the walk did not track keeps what the walk wrote, header included.
+ * top; a hidden `(reference)` rule nothing revealed goes. A block that leaves its
+ * enclosing blocks empty drops them. The chunks are rebuilt once, positions and
+ * pseudo-element split blocks carried with them. A slot the walk did not track keeps
+ * what the walk wrote. `resolved` — the fold re-solved; without it only hidden rules
+ * can change.
  */
-export function restructureNestedSlots(chunks: string[], slots: readonly DynExtendSlot[], ext: ExtendResults | null, compress: boolean): void {
+export function restructureNestedSlots(out: NestedOutput, slots: readonly DynExtendSlot[], resolved: boolean, writer: NestedWriter): void {
+  let edits: Edits | null = null;
+  let revealed: Set<number> | null = null;
+  const start = (): Edits => edits ??= { gone: new Int32Array(out.chunks.length + 1), at: new Map(), header: new Map(), ids: 0 };
   for (const slot of slots) {
-    if (slot.hiddenRef && slot.nested && chunks[slot.chunkIndex] === '') {
-      /* A hidden `(reference)` block the fold revealed nothing in goes, with the blocks it leaves empty. */
-      chunks.fill('', slot.mark, slot.blockEnd);
-      if (slot.enclosing !== null) {
-        dropEmptied(chunks, slot.enclosing, slot.mark, slot.blockEnd, compress);
-      }
+    if (!slot.nested || slot.walked === null || (!resolved && !slot.hiddenRef)) {
       continue;
     }
-    const projection = ext !== null && slot.nested && slot.walked !== null ? placementProjection(ext, slot.token) : null;
+    const projection = out.extends === null ? null : placementProjection(out.extends, slot.token);
+    const plan = projection?.nestedPlan.get(slot.rule);
+    let shown = slot.hiddenRef ? nestedSlotHeader(out.extends, slot) : slot.emitted;
+    if (slot.hiddenRef && plan !== undefined && !plan.flatten && underShown(slot, revealed ??= revealedHidden(out.extends, slots))) {
+      /* Under a hidden rule an extender revealed, the rule's own selector is written: it composes with the extender. */
+      shown = withoutPlaceholders(plan.header);
+      out.chunks[slot.chunkIndex] = shown === null ? out.chunks[slot.chunkIndex]! : writer.selectors(shown, slot.indent);
+    }
+    if (plan?.flatten === true && slot.walked?.flatten !== true && slot.landing !== null) {
+      const header = visibleHeaderCore(slot.rule, plan.hoistNested ? plan.header : projection!.hoistHeader.get(slot.rule) ?? [], projection, slot.hiddenRef);
+      const ed = start();
+      const id = ++ed.ids;
+      take(ed, slot.mark, slot.blockEnd, header === null ? -id : id);
+      if (header !== null) {
+        ed.header.set(slot.chunkIndex, writer.selectors(header, slot.indent));
+        const [chunk, pieces] = landing(slot, plan.hoistBubble ?? 1, writer, (_depth, levels) => [{ from: slot.mark, to: slot.blockEnd, levels, id }]);
+        insertAt(ed, chunk, pieces);
+      }
+      dropEmptied(out, ed, slot.enclosing!);
+      continue;
+    }
+    if (plan !== undefined && !plan.flatten && (plan.splits.length > 0 || (plan.rootSplits?.length ?? 0) > 0)) {
+      splitOff(out, slot, plan, writer, start);
+    }
+    if (shown === null || (slot.hiddenRef && plan?.flatten === true)) {
+      hide(out, slot, start());
+    }
+  }
+  if (edits !== null) {
+    rebuild(out, edits);
+  }
+}
+
+/**
+ * The first chunks of the hidden `(reference)` rules an extender reveals, the
+ * outermost first so a rule's parent is decided before it: a rule written with a
+ * visible branch, or one written under such a rule, whose own selector then composes
+ * with the extender.
+ */
+function revealedHidden(ext: ExtendResults | null, slots: readonly DynExtendSlot[]): Set<number> {
+  const shown = new Set<number>();
+  for (let i = slots.length - 1; ext !== null && i >= 0; i--) {
+    const slot = slots[i]!;
+    const projection = slot.nested && slot.hiddenRef ? placementProjection(ext, slot.token) : null;
     const plan = projection?.nestedPlan.get(slot.rule);
     if (plan === undefined) {
       continue;
     }
-    if (plan.flatten) {
-      if (slot.walked?.flatten !== true && slot.landing !== null) {
-        const header = visibleHeaderCore(slot.rule, plan.hoistNested ? plan.header : projection!.hoistHeader.get(slot.rule) ?? [], projection, slot.hiddenRef);
-        chunks[slot.chunkIndex] = header === null ? '' : compress ? compressSelectorHeader(header.join(',')) : header.join(',\n' + slot.indent);
-        const text = header === null ? '' : chunks.slice(slot.mark, slot.blockEnd).join('');
-        chunks.fill('', slot.mark, slot.blockEnd);
-        if (text !== '') {
-          land(chunks, slot, plan.hoistBubble ?? 1, text, compress);
-        }
-        dropEmptied(chunks, slot.enclosing!, slot.mark, slot.blockEnd, compress);
-      } else if (slot.hiddenRef && slot.walked?.flatten !== true) {
-        chunks.fill('', slot.mark, slot.blockEnd);
-      }
-      continue;
-    }
-    const known = new Set([...slot.walked?.splits ?? [], ...slot.walked?.rootSplits ?? []].map(h => h.join(',')));
-    const splits = plan.splits.filter(h => !known.has(h.join(',')));
-    const roots = (plan.rootSplits ?? []).filter(h => !known.has(h.join(',')));
-    if (splits.length === 0 && roots.length === 0) {
-      continue;
-    }
-    if (slot.kids === undefined || (roots.length > 0 && slot.landing === null)) {
-      /* ponytail: no record to split from; the walk's header stands, extender and all. */
-      chunks[slot.chunkIndex] = compress ? compressSelectorHeader(slot.emitted.join(',')) : slot.emitted.join(',\n' + slot.indent);
-      continue;
-    }
-    const direct = directText(chunks, slot, compress);
-    if (isBlank(direct)) {
-      continue;
-    }
-    for (const header of splits) {
-      chunks[slot.blockEnd - 1] += blockText(header, direct, slot.indent, compress);
-    }
-    for (const header of roots) {
-      land(chunks, slot, Number.MAX_SAFE_INTEGER, blockText(header, direct, slot.indent, compress), compress);
+    const visible = plan.flatten
+      ? visibleHeaderCore(slot.rule, plan.hoistNested ? plan.header : projection!.hoistHeader.get(slot.rule) ?? [], projection, true) !== null
+      : underShown(slot, shown) || nestedSlotHeader(ext, slot) !== null;
+    if (visible) {
+      shown.add(slot.mark);
     }
   }
+  return shown;
+}
+
+/** Whether the rule block `slot` is written in directly is one of `shown`. */
+function underShown(slot: DynExtendSlot, shown: ReadonlySet<number>): boolean {
+  const enclosing = slot.enclosing;
+  for (let k = (enclosing?.length ?? 0) - 1; k >= 0; k--) {
+    if (enclosing![k]!.rule) {
+      return shown.has(enclosing![k]!.mark);
+    }
+  }
+  return false;
+}
+
+/**
+ * Drop a hidden `(reference)` rule nothing revealed: its declarations, and the block
+ * itself, with the blocks it leaves empty, unless a rule in it was revealed — that
+ * rule stays written under it, as the flat writer composes it under its hidden
+ * ancestors.
+ */
+function hide(out: NestedOutput, slot: DynExtendSlot, edits: Edits): void {
+  const leaves = slot.leaves;
+  for (let k = 0; leaves && k < leaves.length; k += 3) {
+    take(edits, leaves[k]!, leaves[k + 1]!, -++edits.ids);
+  }
+  const own: BlockExtent = { rule: true, mark: slot.mark, body: slot.body, end: slot.blockEnd, idt: slot.indent, leaves: null, scan: slot.body };
+  dropEmptied(out, edits, leaves === undefined ? [] : [own]);
+  if (leaves === undefined) {
+    take(edits, slot.mark, slot.blockEnd, -++edits.ids);
+  } else if (edits.gone[slot.mark] === 0) {
+    return;
+  }
+  if (slot.enclosing !== null) {
+    dropEmptied(out, edits, slot.enclosing);
+  }
+}
+
+/** Write the exact extenders `plan` splits off the block of `slot` that the walk did not, each a block of the block's declarations (§7b). */
+function splitOff(out: NestedOutput, slot: DynExtendSlot, plan: NestedRulePlan, writer: NestedWriter, start: () => Edits): void {
+  const walked = slot.walked;
+  const known = walked ? new Set([...walked.splits, ...walked.rootSplits ?? []].map(h => h.join(','))) : null;
+  const splits = known === null ? plan.splits : plan.splits.filter(h => !known.has(h.join(',')));
+  const roots = known === null ? plan.rootSplits ?? [] : (plan.rootSplits ?? []).filter(h => !known.has(h.join(',')));
+  if (splits.length === 0 && roots.length === 0) {
+    return;
+  }
+  if (slot.leaves === undefined || (roots.length > 0 && slot.landing === null)) {
+    /* ponytail: the walk kept no record to split from; the header it wrote stands, extender and all. */
+    out.chunks[slot.chunkIndex] = writer.selectors(slot.emitted, slot.indent);
+    return;
+  }
+  const leaves = slot.leaves;
+  if (leaves === null) {
+    return;
+  }
+
+  /* A block of `header` at indent `idt` holding the declarations, `levels` levels out. Under compress its last `;` goes, but a custom property's. */
+  const block = (header: readonly string[], idt: string, levels: number): Piece[] => {
+    const pieces: Piece[] = [`${idt}${writer.selectors([...header], idt)}${writer.open}`];
+    for (let k = 0; k < leaves.length; k += 3) {
+      const to = leaves[k + 1]!;
+      const last = k === leaves.length - 3 && out.compress === true && out.chunks[to - 1] === ';' && leaves[k + 2] === 0;
+      pieces.push({ from: leaves[k]!, to: last ? to - 1 : to, levels, id: 0 });
+    }
+    pieces.push(writer.close(idt));
+    return pieces;
+  };
+  const ed = start();
+  for (const header of splits) {
+    insertAt(ed, slot.blockEnd - 1, block(header, slot.indent, 0));
+  }
+  for (const header of roots) {
+    const [chunk, pieces] = landing(slot, Number.MAX_SAFE_INTEGER, writer, (depth, levels) => block(header, writer.indent.repeat(depth), levels));
+    insertAt(ed, chunk, pieces);
+  }
+}
+
+/** Carry positions over to the rebuilt chunks (`remap`); one inside a copied run (`[from, to)` copied at `at`) is copied with it. */
+function carryPositions(positions: Array<{ start: number; end: number }>, copied: ReadonlyArray<[from: number, to: number, at: number]>, remap: (start: number, end: number) => [number, number]): void {
+  const extra: Array<{ start: number; end: number }> = [];
+  for (const p of positions) {
+    for (const [from, to, at] of copied) {
+      if (p.start >= from && p.end <= to && p.end > p.start) {
+        extra.push({ ...p, start: at + p.start - from, end: at + p.end - from });
+      }
+    }
+    [p.start, p.end] = remap(p.start, p.end);
+  }
+  positions.push(...extra);
+}
+
+/**
+ * Rebuild the chunks from `edits`: each chunk where it was written unless it is gone,
+ * then what is written after it. A moved run is written where it lands, with its
+ * indent chunks and headers `levels` levels out and what is written inside it with
+ * it; a copied run is written as it is. The positions and split blocks recorded
+ * against the old chunks are carried over; a position inside a copied run is copied
+ * with it.
+ */
+function rebuild(out: NestedOutput, edits: Edits): void {
+  const old = out.chunks;
+  const chunks: string[] = [];
+  const map = new Int32Array(old.length + 1).fill(-1);
+  const copied: Array<[from: number, to: number, at: number]> = [];
+  let lastNewline = true;
+  const push = (text: string): void => {
+    chunks.push(text);
+    if (text !== '') {
+      lastNewline = text.endsWith('\n');
+    }
+  };
+
+  /* `id` -1 writes the chunks where they were written, a positive id the run of the block that moved, 0 a copy. */
+  const writeRun = (from: number, to: number, levels: number, id: number): void => {
+    const strip = levels > 0 ? new RegExp(`(^|\\n) {${levels * 2}}`, 'g') : null;
+    for (let i = from; i < to; i++) {
+      const gone = edits.gone[i]!;
+      const write = id === 0 || gone === (id < 0 ? 0 : id);
+      if (id !== 0 && map[i] === -1 && (write || (id < 0 && gone < 0))) {
+        map[i] = chunks.length;
+      }
+      if (!write) {
+        continue;
+      }
+      let text = edits.header.get(i) ?? old[i]!;
+      if (strip !== null && ((lastNewline && text !== '' && isBlank(text)) || edits.header.has(i))) {
+        text = text.replace(strip, '$1');
+      }
+      push(text);
+      for (const piece of id === 0 ? [] : edits.at.get(i) ?? []) {
+        if (typeof piece === 'string') {
+          push(strip === null ? piece : piece.replace(strip, '$1'));
+          continue;
+        }
+        const at = chunks.length;
+        writeRun(piece.from, piece.to, piece.levels + levels, piece.id);
+        if (piece.id === 0) {
+          copied.push([piece.from, piece.to, at]);
+        }
+      }
+    }
+  };
+  writeRun(0, old.length, 0, -1);
+  map[old.length] = chunks.length;
+  const remap = (start: number, end: number): [number, number] => {
+    const s = map[start]! < 0 ? chunks.length : map[start]!;
+    return [s, end <= start || map[end - 1]! < 0 ? s : map[end - 1]! + 1];
+  };
+  if (out.positions !== null) {
+    carryPositions(out.positions, copied, remap);
+  }
+  for (const block of out.splitBlocks ?? []) {
+    [block.header, block.end] = remap(block.header, block.end);
+  }
+  out.chunks = chunks;
 }
 
 /**
@@ -320,11 +561,16 @@ export interface DynExtendSlot {
    * header), not the flat composed header. */
   nested: boolean;
 
-  /** [nesting] What the deferred fold restructures a nested block from ({@link restructureNestedSlots}); -1, null and undefined for a flat slot. */
+  /**
+   * [nesting] What the deferred fold restructures a nested block from
+   * ({@link restructureNestedSlots}): its first chunk and its body's, `start, end,
+   * custom` of each declaration it holds (undefined when untracked), and the blocks it is
+   * written in. -1, undefined and null for a flat slot.
+   */
   mark: number;
   body: number;
-  kids: number[] | null | undefined;
-  enclosing: number[] | null;
+  leaves: number[] | null | undefined;
+  enclosing: BlockExtent[] | null;
   landing: NestedLanding | null;
   walked: NestedRulePlan | null | undefined;
 }
@@ -507,8 +753,11 @@ export function nestedSubjectParent(dyn: DynamicExtendState, depth: number): Pla
   if (kind !== PATH_NESTED || above === PATH_OPAQUE || above === PATH_OPAQUE_NESTED) {
     return false;
   }
-  return dyn.pathSubjects[depth - 1]
-    ?? (dyn.staticRules.has(dyn.pathRules[depth - 1]!) ? plannedParent(dyn.pathRules[depth - 1]!, dynamicPathAt(dyn, depth - 1)) : false);
+  const parent = dyn.pathRules[depth - 1]!;
+  if (dyn.pathSubjects[depth - 1] === undefined && dyn.staticRules.has(parent)) {
+    dyn.pathSubjects[depth - 1] = plannedParent(parent, dynamicPathAt(dyn, depth - 1));
+  }
+  return dyn.pathSubjects[depth - 1] ?? false;
 }
 
 /** [extend/dynamic] A rule's own selector level, built once per canonical rule. The
