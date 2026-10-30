@@ -24,7 +24,7 @@ import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import { evalGuard, guardUsesDefault, type GuardEvalDeps, type ValueResolver } from './guard.js';
-import { isMixinReference } from './mixin-reference-value.js';
+import { isMixinReference } from './value-read.js';
 
 /** The call-argument shape now lives with the nodes that carry it — a
  *  {@link CallArg} is the same node for a mixin call and a function call, so it

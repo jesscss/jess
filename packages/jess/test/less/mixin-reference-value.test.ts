@@ -7,7 +7,9 @@ import { Compiler } from '../../src/index.js';
  * written into a value it has nothing to write, so the read that writes it is
  * `eval/uncalled-mixin-reference` and the compile fails (owner 2026-10-29:
  * "we are supposed to mark things as being errors when materialized in
- * certain places").
+ * certain places"). The error sits on the outermost read that writes the
+ * value; a condition or a type predicate only asks about it, so there it is
+ * never an error and no type question holds for it.
  */
 async function render(source: string) {
   return new Compiler().renderToResult(
@@ -31,8 +33,15 @@ describe('a mixin reference held in a Less variable', () => {
     ['an unknown function\'s argument', '@foo: .a;\n.b { b: foo(@foo); }', 13],
     ['an if() branch', '@foo: .a;\n.b { b: if(true, @foo, 1); }', 18],
     ['a variable variable', '@foo: .a;\n@n: foo;\n.b { b: @@n; }', 9],
-    ['a media query', '@foo: .a;\n@media (min-width: @foo) { .b { c: 1; } }', 20]
-  ])('writing it into %s is an error at the read', async (_route, written, column) => {
+    ['a media query', '@foo: .a;\n@media (min-width: @foo) { .b { c: 1; } }', 20],
+    ['an each() iterable', '@foo: .a;\n.b { each(@foo, { c: @value; }); }', 11],
+    ['a variable that aliases it', '@foo: .a;\n@bar: @foo;\n.b { b: @bar; }', 9],
+    ['a variable whose list holds it', '@foo: .a;\n@bar: 1 @foo;\n.b { b: @bar; }', 9],
+    ['a variable whose calc() holds it', '@foo: .a;\n@bar: calc(@foo + 1);\n.b { b: @bar; }', 9],
+    ['an each() iterable through an alias', '@foo: .a;\n@bar: @foo;\n.b { each(@bar, { c: @value; }); }', 11],
+    ['a mixin\'s rest parameter', '@foo: .a;\n.m(@rest...) { d: @rest; }\n.b { .m(@foo); }', 19, 4],
+    ['a mixin\'s @arguments', '@foo: .a;\n.m(@x) { d: @arguments; }\n.b { .m(@foo); }', 13, 4]
+  ])('writing it into %s is an error at the read that writes it', async (_route, written, column, line?: number) => {
     const source = mixin + written;
     const result = await render(source);
 
@@ -41,26 +50,19 @@ describe('a mixin reference held in a Less variable', () => {
     expect(result.errors[0]).toMatchObject({
       code: 'eval/uncalled-mixin-reference',
       phase: 'eval',
-      line: source.split('\n').length,
+      line: line ?? source.split('\n').length,
       column
     });
   });
 
-  it('names the variable it reads in the reason and the fix', async () => {
-    const result = await render(mixin + '@foo: .a;\n.b { b: @foo; }');
+  it('names the read that writes it in the reason', async () => {
+    const result = await render(mixin + '@foo: .a;\n@bar: @foo;\n.b { b: @bar; }');
 
     expect(result.errors[0]).toMatchObject({
       message: 'A mixin reference is not a value',
-      reason: '@foo is a mixin reference, neither called nor looked up here, so it has no value to write.',
-      fix: 'Call the mixin in statement position, for example @foo();, or look up one of its members, for example @foo[name].'
+      reason: '@bar writes out a mixin reference, which is neither called nor looked up, so it has no value.',
+      fix: 'Call the mixin in statement position, or look up one of its members (`@ref[name]`), instead of writing the reference into a value.'
     });
-  });
-
-  it('reports a variable that aliases it at the alias\'s read', async () => {
-    const result = await render(mixin + '@foo: .a;\n@bar: @foo;\n.b { b: @bar; }');
-
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({ code: 'eval/uncalled-mixin-reference', line: 4, column: 7 });
   });
 
   it('reports a member that holds one at the lookup', async () => {
@@ -98,6 +100,32 @@ describe('a mixin reference held in a Less variable', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ code: 'eval/uncalled-mixin-reference', line: 4, column: 13 });
+  });
+
+  it('answers false to every type predicate in a value, with no error', async () => {
+    const result = await render(mixin + '@foo: .a;\n.b { a: iscolor(@foo); b: isnumber(@foo); c: isstring(@foo); d: iskeyword(@foo); e: isurl(@foo); f: ispixel(@foo); g: ispercentage(@foo); h: isem(@foo); i: isunit(@foo, px); j: isruleset(@foo); }');
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('.b {\n  a: false;\n  b: false;\n  c: false;\n  d: false;\n  e: false;\n  f: false;\n  g: false;\n  h: false;\n  i: false;\n  j: false;\n}\n');
+  });
+
+  it.each([
+    ['a mixin guard on it', '@foo: .a;\n.g() when (isruleset(@foo)) { r: yes; }\n.g() when (default()) { r: no; }\n.b { .g(); }'],
+    ['a mixin guard on a parameter holding it', '@foo: .a;\n.g(@x) when (isruleset(@x)) { @x(); }\n.g(@x) when (default()) { r: no; }\n.b { .g(@foo); }'],
+    ['every type predicate in a mixin guard', '@foo: .a;\n.g(@x) when (iscolor(@x)), (iskeyword(@x)), (isnumber(@x)), (isstring(@x)), (isurl(@x)), (isunit(@x, px)) { r: yes; }\n.g(@x) when (default()) { r: no; }\n.b { .g(@foo); }'],
+    ['an if() condition', '@foo: .a;\n.b { r: if(iskeyword(@foo), yes, no); }']
+  ])('asks, and does not write, in %s', async (_case, written) => {
+    const result = await render(mixin + written);
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('.b {\n  r: no;\n}\n');
+  });
+
+  it('asks, and does not write, in a ruleset guard', async () => {
+    const result = await render(mixin + '@foo: .a;\n.b when (iskeyword(@foo)) { r: yes; }');
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).not.toContain('.b');
   });
 
   it.each([

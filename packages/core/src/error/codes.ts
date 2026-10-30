@@ -434,8 +434,8 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     'eval/uncalled-mixin-reference',
     {
       summary: 'A mixin reference is not a value',
-      reason: '${name} is a mixin reference, neither called nor looked up here, so it has no value to write.',
-      fix: 'Call the mixin in statement position, for example ${name}();, or look up one of its members, for example ${name}[name].'
+      reason: '${name} writes out a mixin reference, which is neither called nor looked up, so it has no value.',
+      fix: 'Call the mixin in statement position, or look up one of its members (`@ref[name]`), instead of writing the reference into a value.'
     }
   ],
   [
