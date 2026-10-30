@@ -1,9 +1,6 @@
 {
   "packages/compiler/src/index.ts": {
-    "statements": 546
-  },
-  "packages/compiler/src/index.ts#Compiler.resolveEffectiveConfig": {
-    "statements": 51
+    "statements": 539
   },
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
@@ -58,7 +55,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9408
+    "statements": 9400
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -191,10 +188,10 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "statements": 314
+    "statements": 294
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "statements": 258
+    "statements": 238
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
     "statements": 78,

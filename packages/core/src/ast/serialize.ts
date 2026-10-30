@@ -7028,7 +7028,7 @@ function resolveBaseDeclMap(
 /** Dispatch a mixin CALL and collect its emitted declarations as a member map
  *  (`prop:` and `@var:` members split into `byProp` / `byVar`), for a namespace /
  *  mixin-path accessor base (`#ns.options[k]`) or a `@p: .mk-map()`-bound base.
- *  Mirrors {@link forItemsFromMixinCall}; nested rules are captured and discarded
+ *  Mirrors {@link forItemsFromMixinCall}; nested rules are dropped ({@link capturePartition})
  *  (a map is its declarations). Needs a scratch {@link Emit} — capture is thrown away. */
 function declMapFromMixinCall(
   call: MixinCall,
@@ -7038,19 +7038,6 @@ function declMapFromMixinCall(
   const em = scratchEmit(e);
   const collected: Leaf[] = [];
 
-  /*
-   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
-   * never drained here. A nested rule is a partition boundary, so the declarations
-   * around it leave `collected` (for its queued block, or `pending`).
-   */
-  const discard: Partition = {
-    encounteredContainer: false,
-    trailing: [],
-    placement: undefined,
-    boundary: null,
-    pending: [],
-    emitBlock: MOOT_FLUSH
-  };
   const varFrames: Frame[] = [];
 
   /*
@@ -7060,7 +7047,7 @@ function declMapFromMixinCall(
    * not a missing one.
    */
   const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
-  sink.partition = discard;
+  sink.partition = capturePartition();
   settled(expandCall(call, frame, sink, em, undefined, varFrames), SYNC_EXPANSION, call, em);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
@@ -9216,7 +9203,7 @@ function writtenBlockBody(
         const em = scratchEmit(e);
         const collected: Leaf[] = [];
         const sink = makePlacement(null, collected, MOOT_FLUSH, bodyFrame);
-        sink.partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
+        sink.partition = { encounteredContainer: false, dropsContainers: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
         settled(expandCall(rule, bodyFrame, sink, em), SYNC_EXPANSION, rule, em);
         if (sink.partition.trailing.length > 0 || sink.partition.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
@@ -12237,7 +12224,8 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
   return out;
 }
 
-function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
+/** Write the document's leading comments, or queue them onto `owner`'s next leaf. */
+function emitLeadingDocumentBlockComments(e: Emit, indent = '', owner?: Leaf[]): void {
   const trivia = e.s.trivia;
   if (trivia === undefined) {
     return;
@@ -12255,8 +12243,11 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
     return;
   }
   e.emittedBlockTrivia.addIndex(table, 0);
+  const write = owner === undefined
+    ? (comment: string) => putBlockComment(e, indent, comment)
+    : (comment: string) => queueLeafBlockComments(e, owner, [comment]);
   for (let c = table.commentAt[0]!; c < table.commentAt[1]!; c++) {
-    putBlockComment(e, indent, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
+    write(src.slice(table.commentStart[c]!, table.commentEnd[c]!));
   }
 }
 
@@ -16419,6 +16410,7 @@ function flattenWithHeader(
   };
   const partition: Partition = {
     encounteredContainer: false,
+    dropsContainers: false,
     trailing: [],
     placement: e.importPlacement,
     boundary: e.dynamicExtend?.boundary ?? null,
@@ -16521,6 +16513,30 @@ function flushPending(p: Partition): void {
     p.pending = [];
     p.trailing.push(() => p.emitBlock(batch, EMPTY_LEAF_BLOCK_COMMENTS));
   }
+}
+
+/**
+ * [partition] Defer a collapsed child to after its parent's block: the leaves
+ * before it become one block, and the ones after it buffer for the next. A map
+ * capture drops the child instead, so every declaration stays in its group.
+ */
+function deferContainer(group: Leaf[], p: Partition, e: Emit, emit: () => MaybePromise<void>): void {
+  if (p.dropsContainers) {
+    return;
+  }
+  queueLeadingGroup(group, p, e);
+  flushPending(p);
+  p.encounteredContainer = true;
+  queueContainer(p, e, emit);
+}
+
+/**
+ * [partition] The partition of a mixin call read as a map ({@link declMapFromMixinCall},
+ * {@link forItemsFromMixinCall}): a map is the call's declarations, in source
+ * order, so its nested rules are dropped rather than partitioning them.
+ */
+function capturePartition(): Partition {
+  return { encounteredContainer: false, dropsContainers: true, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
 }
 
 /** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
@@ -16766,6 +16782,9 @@ function queueBodyTriviaTail(
 interface Partition {
   encounteredContainer: boolean;
 
+  /** A map capture ({@link capturePartition}): a container is dropped where it stands. */
+  readonly dropsContainers: boolean;
+
   /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
 
@@ -16890,13 +16909,14 @@ function makePlacement(
 function splicePlacement(
   at: Placement,
   inline: NestedLeafBuffer | undefined,
-  bodyTrivia: BodyTriviaReplay | undefined
+  bodyTrivia: BodyTriviaReplay | undefined,
+  applyExpansion = at.applyExpansion
 ): PlacementDraft {
   const body = makePlacement(at.composed, at.group, at.flush, at.propertyScope);
   body.ancestor = at.ancestor;
   body.partition = at.partition;
   body.important = at.important;
-  body.applyExpansion = at.applyExpansion;
+  body.applyExpansion = applyExpansion;
   body.lambdaBody = at.lambdaBody;
   body.bodyTrivia = bodyTrivia;
   body.nested = at.nested;
@@ -16904,6 +16924,19 @@ function splicePlacement(
   body.source = at.source;
   body.sharedLeaves = inline;
   return body;
+}
+
+/**
+ * Run a sheet imported in a rule as that rule's body: its leaves join the
+ * rule's own (`inline` is the nested buffer; a collapsed body shares
+ * `at.group`), and its leading comments wait for its first leaf.
+ * {@link expandStyleImport} leaves those comments to this dispatcher.
+ */
+function importedSheet(at: Placement, inline: NestedLeafBuffer | undefined, e: Emit) {
+  return (document: Stylesheet, importFrame: Frame): MaybePromise<void> => {
+    emitLeadingDocumentBlockComments(e, '', inline?.leaves ?? (at.nested ? undefined : at.group));
+    return walkBody(document.rules, importFrame, splicePlacement(at, inline, undefined, false), e);
+  };
 }
 
 /**
@@ -17154,11 +17187,8 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * inline in source order.
            */
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
             skipBodyTrivia(bodyTrivia, rule, e);
-            queueContainer(partition, e, () => expandRule(rule, frame, at, e));
+            deferContainer(group, partition, e, () => expandRule(rule, frame, at, e));
           } else {
             skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
@@ -17300,10 +17330,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
             return r;
           };
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, emitAt);
+            deferContainer(group, partition, e, emitAt);
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17358,10 +17385,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const atNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitAtRuleStatement(atNode, frame, e));
+            deferContainer(group, partition, e, () => emitAtRuleStatement(atNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17378,7 +17402,15 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         case 'StyleImport': {
           if (nested) {
-            flushBuf();
+            /*
+             * A sheet imported in a rule runs as that rule's body (jess#358), so its
+             * declarations join this buffer like a mixin's, and a `+:` in it merges with
+             * the rule's own (ledger R10). A `(reference)` sheet writes none of its own.
+             */
+            const reference = e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference');
+            if (source === null || reference) {
+              flushBuf();
+            }
             emitBeforeRootStatement(node);
 
             /*
@@ -17391,13 +17423,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
               frame,
               e,
               e.importDocument,
-              e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
-                ? undefined
-                : (document, importFrame) => {
-                    const sheet = splicePlacement(at, undefined, undefined);
-                    sheet.applyExpansion = false;
-                    return walkBody(document.rules, importFrame, sheet, e);
-                  },
+              reference ? undefined : importedSheet(at, source === null ? undefined : inlineLeaves, e),
               source !== null
             );
             if (isThenable(imported)) {
@@ -17461,19 +17487,21 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
                  * stay hidden in a leaf group nothing writes.
                  */
                 ? (document: Stylesheet, importFrame: Frame) => {
-                    const hidden = splicePlacement(at, undefined, undefined);
+                    const hidden = splicePlacement(at, undefined, undefined, false);
                     hidden.group = [];
                     hidden.flush = MOOT_FLUSH;
                     hidden.partition = null;
-                    hidden.applyExpansion = false;
                     return walkBody(document.rules, importFrame, hidden, e);
                   }
-                : (document: Stylesheet, importFrame: Frame) => {
-                    const sheet = splicePlacement(at, undefined, undefined);
-                    sheet.applyExpansion = false;
-                    return walkBody(document.rules, importFrame, sheet, e);
-                  };
-            const flushed = flush();
+                : importedSheet(at, undefined, e);
+
+            /*
+             * The sheet's declarations join this rule's group, so they stay one block
+             * with the declarations around the import, and a `+:` merges across it
+             * (ledger R10). A `(reference)` sheet's declarations stay hidden; its rules
+             * still write after the declarations before it.
+             */
+            const flushed = composed === null || importOptionWords(node.options).includes('reference') ? flush() : undefined;
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument, emitLoaded, emitLoaded !== undefined),
@@ -17517,10 +17545,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const importNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitModuleImport(importNode, frame, e));
+            deferContainer(group, partition, e, () => emitModuleImport(importNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17543,10 +17568,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const opaqueNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
+            deferContainer(group, partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -18622,24 +18644,11 @@ function resolveForNode(
  * OUTPUT is iterated. Dispatch the call, collect its emitted declarations, and
  * present them as map items (key = declaration name, value = its value node) —
  * exactly the shape a detached-ruleset map iterates. Nested rulesets in the mixin
- * body are captured but discarded (a map iterates declarations, not rules).
+ * body are dropped (a map iterates declarations, not rules; {@link capturePartition}).
  */
 function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePromise<ForItem[]> {
   const collected: Leaf[] = [];
 
-  /*
-   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
-   * never drained here. A nested rule is a partition boundary, so the declarations
-   * around it leave `collected` (for its queued block, or `pending`).
-   */
-  const discard: Partition = {
-    encounteredContainer: false,
-    trailing: [],
-    placement: undefined,
-    boundary: null,
-    pending: [],
-    emitBlock: MOOT_FLUSH
-  };
   const outerPendingBlockCommentOwner = e.pendingLeafBlockCommentOwner;
   const outerPendingBlockComments = e.pendingLeafBlockComments;
   e.pendingLeafBlockCommentOwner = null;
@@ -18661,7 +18670,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
   };
   try {
     const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
-    sink.partition = discard;
+    sink.partition = capturePartition();
     const expanded = expandCall(call, frame, sink, e);
     if (isThenable(expanded)) {
       return expanded.then(finish, (error) => {
@@ -21535,7 +21544,7 @@ function expandStyleImport(
                  * bootstrap4 shape: a one-line entry that only `@import`s the framework)
                  * was left unemitted here and swept to the output tail.
                  */
-                if (e.referenceImportDepth === 0) {
+                if (e.referenceImportDepth === 0 && (!inRule || emitLoaded === undefined)) {
                   emitLeadingDocumentBlockComments(e, INDENT.repeat(e.depth));
                 }
                 return emit();
