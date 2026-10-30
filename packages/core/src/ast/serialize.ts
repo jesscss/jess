@@ -231,6 +231,7 @@ import {
   dynamicPathAt,
   enclosingExtents,
   mayBeTarget,
+  mayRevealPlaceholder,
   nestedSlotHeader,
   nestedSubjectParent,
   openDynamicPath,
@@ -15222,7 +15223,7 @@ function recordNestedDynExtendSlot(e: Emit, block: OpenBlock, emitted: string[],
     hoistMode: e.hoistMode,
     emitted,
     hiddenRef: e.referenceImportDepth > 0,
-    reserved: e.referenceImportDepth > 0,
+    reserved: e.referenceImportDepth > 0 || withoutPlaceholders(emitted) === null,
     blockEnd,
     nested: true,
     mark: block.mark,
@@ -15277,10 +15278,10 @@ function foldDynamicExtends(e: Emit): void {
     if (visible === null) {
       /*
        * [import:reference] A hidden `(reference)` rule with no visible extender folded
-       * in emits nothing: blank the block it was emitted into. A non-reference rule
-       * never resolves to null here, so this only fires for hidden reference blocks.
+       * in emits nothing: blank the block it was emitted into, as for a reserved
+       * placeholder rule nothing extends. Any other rule never resolves to null here.
        */
-      if (slot.hiddenRef && !slot.nested) {
+      if ((slot.hiddenRef || slot.reserved) && !slot.nested) {
         for (let i = slot.chunkIndex; i < slot.blockEnd; i++) {
           e.chunks[i] = '';
         }
@@ -15293,9 +15294,7 @@ function foldDynamicExtends(e: Emit): void {
     if (arraysEqualText(visible, slot.emitted)) {
       continue;
     }
-    e.chunks[slot.chunkIndex] = slot.nested
-      ? composeSelectorHeader(e, visible, slot.indent, null)
-      : slot.indent ? visible.join(',\n' + slot.indent) : visible.join(',\n');
+    e.chunks[slot.chunkIndex] = composeSelectorHeader(e, visible, slot.indent, null);
 
     /*
      * [nesting] The rewritten header is the extend's list, and its suffixed branches get
@@ -15758,13 +15757,15 @@ function flattenWithHeader(
    * still emits when the rule is pulled in as a mixin — a separate expansion path).
    * A hidden rule the deferred fold may still reveal emits a RESERVED block that the
    * fold rewrites or blanks: one the walk records here, or a planned one a recorded
-   * extend may reach (#355).
+   * extend may reach (#355). A placeholder rule the walk records is reserved the same
+   * way when an extend may reveal it (`@include` placing `%ph`, jess#499).
    */
   let header = visibleHeader(rule, header0, frame, e);
-  const reserved = header === null && e.referenceImportDepth > 0
-    && (recorded || dyn?.revealRules?.has(rule) === true);
+  const reserved = header === null && (e.referenceImportDepth > 0
+    ? recorded || dyn?.revealRules?.has(rule) === true
+    : recorded && mayRevealPlaceholder(dyn!, rule, e.extends));
   if (reserved) {
-    header = withoutPlaceholders(header0);
+    header = withoutPlaceholders(header0) ?? header0;
   }
   const referenceAncestor = header === null
     && (projection?.visibleReferenceRuleAncestors?.has(rule) === true
@@ -23383,7 +23384,7 @@ function emitTransparentShells(
 }
 
 /**
- * [extend/dynamic] Record the rule `block` opens, at open depth `depth`, if the walk
+ * [extend/dynamic] Record the rule `block` opens, at open depth `depth`, if `recorded`: the walk
  * reached it through a placing body or a mixin call, and keep what the deferred fold
  * needs to split or move it ({@link restructureNestedSlots}): its declarations, where an
  * extend can reach it ({@link mayBeTarget}), it is hidden, or a `;` before a block the
@@ -23394,12 +23395,11 @@ function emitTransparentShells(
  * recorded rule of a `(reference)` import, a RESERVED block whose declarations the walk
  * writes ({@link Emit.reservedRules}), else 0. No evaluation is re-driven (ledger X12).
  */
-function trackForFold(e: Emit, block: OpenBlock, at: Placement, depth: number): number {
+function trackForFold(e: Emit, block: OpenBlock, at: Placement, depth: number, recorded: boolean): number {
   const dyn = e.dynamicExtend;
   if (dyn === null) {
     return 0;
   }
-  const recorded = !placedStatically(block.rule!, e) || reachedViaMixinSplice(block.frame!);
   const parent = recorded && at.source !== null ? nestedSubjectParent(dyn, depth) : null;
   block.slot = parent !== false;
   block.leaves = block.slot && (e.compress === true || e.referenceImportDepth > 0 || mayBeTarget(dyn, block.rule!, e.extends)) ? null : undefined;
@@ -23480,7 +23480,10 @@ function writeNestedRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit, pl
      * nothing at all, while an extended one reaches output through the
      * extender's own header, which `plan.header` already carries.
      */
-    const own = withoutPlaceholders(ownAll);
+    const recorded = e.dynamicExtend !== null && (!placedStatically(rule, e) || reachedViaMixinSplice(frame));
+
+    /* A placeholder rule the walk records that an extend may reveal is written RESERVED: the fold rewrites it to its extenders or drops it (jess#499). */
+    const own = withoutPlaceholders(ownAll) ?? (recorded && mayRevealPlaceholder(e.dynamicExtend!, rule, e.extends) ? ownAll : null);
     if (own === null) {
       return;
     }
@@ -23493,10 +23496,9 @@ function writeNestedRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit, pl
      */
     const dyn = e.dynamicExtend;
     const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, at.source === null, own, true, resolved ?? undefined);
-    const authoredHeader = e.compress !== true && plan === undefined && at.source === null
+    const header = composeSelectorHeader(e, own, idt, e.compress !== true && plan === undefined && at.source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
-      : null;
-    const header = composeSelectorHeader(e, own, idt, authoredHeader);
+      : null);
 
     /* [nesting] An extended header's branches that carry a pseudo-element followed by more get rules of their own ({@link SplitBlock}). */
     const split = plan === undefined ? undefined : extendedSplitFlags(own, projection?.suffixedByRule?.get(rule));
@@ -23534,7 +23536,7 @@ function writeNestedRule(rule: Ruleset, frame: Frame, at: Placement, e: Emit, pl
       put(e, blockOpen(e));
     }
     const block = openBlock(e, null, '', idt, rule, frame, own, true, splitBlock, markChunks, markPos, headerChunkIndex);
-    const reserved = trackForFold(e, block, at, depth);
+    const reserved = trackForFold(e, block, at, depth, recorded);
     const childFrame = activateRuleFrame(rule, frame, e);
     const childSource: NestedHeaderSource = { parent: at.source, selector: resolved ?? rule.selector, frame };
 
