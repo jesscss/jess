@@ -102,7 +102,7 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 
 ## 6. Grammar gates — size and speed per grammar, enforced in CI
 
-Both run in the CI `verify` job. Their canaries are in `scripts/__tests__/grammar-gates.test.mjs` (`pnpm run test:grammar-gates`).
+`check:grammar-artifacts` runs in the CI `verify` job; `check:grammar-speed` runs in its own parallel `grammar-speed` job, off the critical path. Their canaries are in `scripts/__tests__/grammar-gates.test.mjs` (`pnpm run test:grammar-gates`).
 
 - **`check:grammar-artifacts`** (`scripts/check-grammar-artifacts.mjs`, about 1 s) reads every `lib/grammar/**/*.js` of the four parsers. For each one it records the bytes, the bytes per byte of `src/grammar.ts` and the number of precompiled functions in its `a: [{ factory }]` inventory.
   - It fails on size growth, on lost assembly, and on any artifact over 5× or tables-only grammar that has no named debt entry.
@@ -113,7 +113,7 @@ Both run in the CI `verify` job. Their canaries are in `scripts/__tests__/gramma
   - The fixtures are `benchmark.css` (CSS, and `.jess`, which has no committed `.jess` fixture large enough to measure), `benchmark.less` (Less) and `gen-workload` (SCSS, the committed generator's default output).
   - On Linux the counter is Valgrind's Cachegrind, because GitHub-hosted runners expose no hardware instruction counter. On macOS it is `/usr/bin/time -l`.
   - It runs V8's interpreter (`--jitless`). The script header gives the JIT measurements that ruled the JIT out on CI, and what the interpreter does not see.
-  - The baseline (`scripts/grammar-speed.baseline.json`) records its environment: counter, platform, Node version and method. It is compared only under that environment. CI pins Node for the step and passes `--require-env`.
+  - The baseline (`scripts/grammar-speed.baseline.json`) records its environment: counter, platform, Node version and method. It is compared only under that environment. The CI job pins Node and passes `--require-env`.
   - A faster result must be banked with `--lower`. Raising a value is a reviewed edit. `--propose` writes `<baseline>.new` for a new environment.
 
 ## Fixtures (the standard inputs)

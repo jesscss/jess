@@ -1,6 +1,6 @@
 name: CI
 
-# The blocking PR gate. THREE jobs, run in parallel, that together prove the repo
+# The blocking PR gate. FOUR jobs, run in parallel, that together prove the repo
 # is healthy along every axis — build, lint, types, tests, structural/perf
 # invariants, owner rulings — and are dialect-AGNOSTIC by construction:
 # per-dialect correctness is not a separate "Less readiness" headline, it lives
@@ -10,6 +10,9 @@ name: CI
 #   verify       — full clean build + lint + strict types + the jess ratchet
 #                  (the CLI app's corpus/plugin suite, which needs BUILT artifacts)
 #                  + every structural/perf gate. Add THIS to branch protection.
+#   grammar-speed — per-grammar parse cost in instructions (Valgrind), against
+#                  a committed baseline. Its own job so its counting stays off
+#                  the critical path. Add it too.
 #   test-source  — the build-free opt-out test suite (`pnpm -r --filter='!jess'
 #                  test`), primed by a ~3s core/fns/parser-shared build instead of
 #                  the full 22-package chain. Runs concurrently with `verify` so
@@ -295,19 +298,37 @@ jobs:
       - name: Gate — parser runtime boundary
         run: pnpm run verify:parser-runtime-boundary
 
-      # Per-grammar parse cost: marginal instructions per AST parse, counted by
-      # Valgrind (GitHub-hosted runners expose no hardware instruction counter),
-      # against scripts/grammar-speed.baseline.json. Instruction counts depend on
-      # the Node version, so this step pins it; bumping the pin re-records the
-      # baseline in the same reviewed change. Kept last: it switches Node for the
-      # steps after it.
-      - name: Install Valgrind (grammar speed gate)
-        run: sudo apt-get install -y -qq valgrind > /dev/null && valgrind --version
+  # Per-grammar parse cost: marginal instructions per AST parse, counted by
+  # Valgrind (GitHub-hosted runners expose no hardware instruction counter),
+  # against scripts/grammar-speed.baseline.json. Its own job, in parallel with
+  # `verify`, so its 2-4 minutes of counting stay off the critical path. It
+  # builds only the four parsers and what they depend on. Instruction counts
+  # depend on the Node version, so the job pins it; bumping the pin re-records
+  # the baseline in the same reviewed change. Add it to branch protection too.
+  grammar-speed:
+    name: Grammar speed (instructions per parse)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Pin Node for the grammar speed gate
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js (pinned for the instruction baseline)
         uses: actions/setup-node@v4
         with:
           node-version: 24.22.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the four parsers
+        run: pnpm -r --filter '@jesscss/css-parser...' --filter '@jesscss/less-parser...' --filter '@jesscss/scss-parser...' --filter '@jesscss/jess-parser...' build
+
+      - name: Install Valgrind
+        run: sudo apt-get install -y -qq valgrind > /dev/null && valgrind --version
 
       - name: Gate — grammar speed (marginal instructions per parse)
         run: node scripts/grammar-speed-gate.mjs --require-env

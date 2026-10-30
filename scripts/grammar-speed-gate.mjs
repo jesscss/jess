@@ -38,7 +38,7 @@
  *
  * Instruction counts depend on the CPU architecture, the counter, the Node
  * version and the method, so the baseline records that environment and is
- * only compared under the same one. CI pins the Node version for this step;
+ * only compared under the same one. The CI `grammar-speed` job pins Node;
  * `--require-env` (CI) fails on any other environment. The parseman version is
  * NOT part of the environment: a parseman release is measured against the
  * baseline it replaces, and must be no slower.
@@ -266,7 +266,7 @@ async function main() {
   if (!envMatches) {
     const message = `This environment does not match the baseline's:\n  this run  ${JSON.stringify(env)}\n  baseline  ${JSON.stringify(baseline.env)}`;
     if (process.argv.includes('--require-env')) {
-      console.error(`\n✗ ${message}\nGrammar speed gate FAILED: nothing was graded. CI pins Node for this step; a pin change re-records the baseline in the same reviewed edit.`);
+      console.error(`\n✗ ${message}\nGrammar speed gate FAILED: nothing was graded. The CI job pins Node; a pin change re-records the baseline in the same reviewed edit.`);
       process.exit(1);
     }
     console.log(`\n${message}\nReport only — not graded.`);
