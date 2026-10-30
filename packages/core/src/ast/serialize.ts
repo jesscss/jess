@@ -7027,7 +7027,7 @@ function resolveBaseDeclMap(
 /** Dispatch a mixin CALL and collect its emitted declarations as a member map
  *  (`prop:` and `@var:` members split into `byProp` / `byVar`), for a namespace /
  *  mixin-path accessor base (`#ns.options[k]`) or a `@p: .mk-map()`-bound base.
- *  Mirrors {@link forItemsFromMixinCall}; nested rules are captured and discarded
+ *  Mirrors {@link forItemsFromMixinCall}; nested rules are dropped ({@link capturePartition})
  *  (a map is its declarations). Needs a scratch {@link Emit} — capture is thrown away. */
 function declMapFromMixinCall(
   call: MixinCall,
@@ -7037,19 +7037,6 @@ function declMapFromMixinCall(
   const em = scratchEmit(e);
   const collected: Leaf[] = [];
 
-  /*
-   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
-   * never drained here. A nested rule is a partition boundary, so the declarations
-   * around it leave `collected` (for its queued block, or `pending`).
-   */
-  const discard: Partition = {
-    encounteredContainer: false,
-    trailing: [],
-    placement: undefined,
-    boundary: null,
-    pending: [],
-    emitBlock: MOOT_FLUSH
-  };
   const varFrames: Frame[] = [];
 
   /*
@@ -7059,7 +7046,7 @@ function declMapFromMixinCall(
    * not a missing one.
    */
   const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
-  sink.partition = discard;
+  sink.partition = capturePartition();
   settled(expandCall(call, frame, sink, em, undefined, varFrames), SYNC_EXPANSION, call, em);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
@@ -9215,7 +9202,7 @@ function writtenBlockBody(
         const em = scratchEmit(e);
         const collected: Leaf[] = [];
         const sink = makePlacement(null, collected, MOOT_FLUSH, bodyFrame);
-        sink.partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
+        sink.partition = { encounteredContainer: false, dropsContainers: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
         settled(expandCall(rule, bodyFrame, sink, em), SYNC_EXPANSION, rule, em);
         if (sink.partition.trailing.length > 0 || sink.partition.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
@@ -16421,6 +16408,7 @@ function flattenWithHeader(
   };
   const partition: Partition = {
     encounteredContainer: false,
+    dropsContainers: false,
     trailing: [],
     placement: e.importPlacement,
     boundary: e.dynamicExtend?.boundary ?? null,
@@ -16523,6 +16511,30 @@ function flushPending(p: Partition): void {
     p.pending = [];
     p.trailing.push(() => p.emitBlock(batch, EMPTY_LEAF_BLOCK_COMMENTS));
   }
+}
+
+/**
+ * [partition] Defer a collapsed child to after its parent's block: the leaves
+ * before it become one block, and the ones after it buffer for the next. A map
+ * capture drops the child instead, so every declaration stays in its group.
+ */
+function deferContainer(group: Leaf[], p: Partition, e: Emit, emit: () => MaybePromise<void>): void {
+  if (p.dropsContainers) {
+    return;
+  }
+  queueLeadingGroup(group, p, e);
+  flushPending(p);
+  p.encounteredContainer = true;
+  queueContainer(p, e, emit);
+}
+
+/**
+ * [partition] The partition of a mixin call read as a map ({@link declMapFromMixinCall},
+ * {@link forItemsFromMixinCall}): a map is the call's declarations, in source
+ * order, so its nested rules are dropped rather than partitioning them.
+ */
+function capturePartition(): Partition {
+  return { encounteredContainer: false, dropsContainers: true, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
 }
 
 /** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
@@ -16767,6 +16779,9 @@ function queueBodyTriviaTail(
  */
 interface Partition {
   encounteredContainer: boolean;
+
+  /** A map capture ({@link capturePartition}): a container is dropped where it stands. */
+  readonly dropsContainers: boolean;
 
   /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
@@ -17170,11 +17185,8 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * inline in source order.
            */
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
             skipBodyTrivia(bodyTrivia, rule, e);
-            queueContainer(partition, e, () => expandRule(rule, frame, at, e));
+            deferContainer(group, partition, e, () => expandRule(rule, frame, at, e));
           } else {
             skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
@@ -17316,10 +17328,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
             return r;
           };
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, emitAt);
+            deferContainer(group, partition, e, emitAt);
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17374,10 +17383,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const atNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitAtRuleStatement(atNode, frame, e));
+            deferContainer(group, partition, e, () => emitAtRuleStatement(atNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17537,10 +17543,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const importNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitModuleImport(importNode, frame, e));
+            deferContainer(group, partition, e, () => emitModuleImport(importNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17563,10 +17566,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const opaqueNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
+            deferContainer(group, partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -18656,24 +18656,11 @@ function resolveForNode(
  * OUTPUT is iterated. Dispatch the call, collect its emitted declarations, and
  * present them as map items (key = declaration name, value = its value node) —
  * exactly the shape a detached-ruleset map iterates. Nested rulesets in the mixin
- * body are captured but discarded (a map iterates declarations, not rules).
+ * body are dropped (a map iterates declarations, not rules; {@link capturePartition}).
  */
 function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePromise<ForItem[]> {
   const collected: Leaf[] = [];
 
-  /*
-   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
-   * never drained here. A nested rule is a partition boundary, so the declarations
-   * around it leave `collected` (for its queued block, or `pending`).
-   */
-  const discard: Partition = {
-    encounteredContainer: false,
-    trailing: [],
-    placement: undefined,
-    boundary: null,
-    pending: [],
-    emitBlock: MOOT_FLUSH
-  };
   const outerPendingBlockCommentOwner = e.pendingLeafBlockCommentOwner;
   const outerPendingBlockComments = e.pendingLeafBlockComments;
   e.pendingLeafBlockCommentOwner = null;
@@ -18695,7 +18682,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
   };
   try {
     const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
-    sink.partition = discard;
+    sink.partition = capturePartition();
     const expanded = expandCall(call, frame, sink, e);
     if (isThenable(expanded)) {
       return expanded.then(finish, (error) => {
