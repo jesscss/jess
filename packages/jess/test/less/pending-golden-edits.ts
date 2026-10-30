@@ -16,7 +16,15 @@
  *   2026-10-04); and the quoted case's `foo: bar` → `foo: baz`, which the source
  *   writes (a golden typo).
  */
-const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>();
+const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>([
+  /*
+   * A slash list a variable or a mixin argument holds divides once math that
+   * computes reads it (P35, FIXTURES, owner 2026-10-29: "A stored `10px/2`
+   * divides once it's used in math").
+   */
+  ['tests-unit/operations/operations-advanced.less', [['  result: calc(10px / 2 * 2);', '  result: 10px;']]],
+  ['tests-config/math-parens-division/mixins-args.less', [['  depth: 18 / 2 - 1%;', '  depth: 8%;']]]
+]);
 
 export function applyPendingGoldenEdits(file: string, golden: string): string {
   let edited = golden;

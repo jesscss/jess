@@ -12,7 +12,7 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, UnoperableOperandError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
@@ -118,7 +118,7 @@ function colorOperate(a: Color, b: Value, op: string): Color {
     out = [calculate(aRGB[0], op, bRGB[0]), calculate(aRGB[1], op, bRGB[1]), calculate(aRGB[2], op, bRGB[2])];
     newAlpha = a.alpha * (1 - b.alpha) + b.alpha;
   } else {
-    throw new TypeError(`Cannot operate on ${b.type}`);
+    throw new UnoperableOperandError(`\`${op}\` is not defined on a ${b.type}.`);
   }
 
   /*
@@ -799,8 +799,17 @@ export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalV
  * {@link operate} decides.
  */
 export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup, ev: Pick<ValueEvaluator, 'sassOperands' | 'sassCalculations'>, keepsMath: boolean): null {
+  return keepsMath || (ev.sassOperands === true && op === '/') ? null : operandRule(op, left, right, ev);
+}
+
+/**
+ * {@link checkedOperation}'s rule for an operation known to compute. A slash
+ * list that math reads divides ({@link mathOperand}), so that division is
+ * checked in every dialect, `/` included.
+ */
+export function operandRule(op: string, left: ValueGroup, right: ValueGroup, ev: Pick<ValueEvaluator, 'sassOperands' | 'sassCalculations'>): null {
   const sass = ev.sassOperands === true;
-  if (keepsMath || (sass && op === '/') || (!isValueGroupArray(left) && left.type === 'Null') || (!isValueGroupArray(right) && right.type === 'Null')) {
+  if ((!isValueGroupArray(left) && left.type === 'Null') || (!isValueGroupArray(right) && right.type === 'Null')) {
     return null;
   }
   const scss = sass && ev.sassCalculations === true;
@@ -911,7 +920,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes,
     if (left.type === 'Color') {
       return colorOperate(left, right, op);
     }
-    throw new TypeError(`Cannot operate on ${left.type}`);
+    throw new UnoperableOperandError(`\`${op}\` is not defined on a ${left.type === 'Dimension' ? right.type : left.type}.`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
       const preserved = keptMathKeyword(`${spliceOperand(left)} ${op} ${spliceOperand(right)}`, op, left, right);

@@ -55,7 +55,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9390
+    "statements": 9388
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
