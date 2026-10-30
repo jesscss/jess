@@ -1,8 +1,8 @@
 import {
-  type JessError,
   type Plugin,
   AbstractPlugin,
-  ERR
+  ERR,
+  type JessError
 } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
@@ -11,6 +11,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+import {
+  canonicalPath,
+  engineCodeOf,
+  engineFailure,
+  isConfigProbe,
+  isCwdMetaProbe,
+  loadInProcessRuntime,
+  prepareEngineCompile,
+  thrownFields,
+  type EngineCode,
+  type EngineCompileRequest,
+  type EngineRenderRequest,
+  type InProcessRuntime
+} from './engine.js';
 import { isPathInside, trustedFnsRealPath } from './trust.js';
 
 /**
@@ -65,10 +79,21 @@ const unrefStream = (stream: unknown): void => {
   }
 };
 
+/**
+ * Where stylesheet-loaded JavaScript runs:
+ * - `'call'` (default): in the Deno sandbox; the compile stays in Node and
+ *   every plugin call is one round trip to the sandbox.
+ * - `'compile'`: the WHOLE compile runs in the Deno sandbox, plugins
+ *   in-process there; one request per compile.
+ * - `false`: no sandbox. Scripts run in the Node process, as Less 4.x runs them.
+ */
+export type JsSandboxMode = 'call' | 'compile' | false;
+
 export type JavaScriptSandboxConfig = {
   allowHttp?: boolean;
   allowNetHosts?: string[];
   jsReadRoot?: string;
+  jsSandbox?: JsSandboxMode;
 };
 
 export interface JsPluginOptions extends JavaScriptSandboxConfig {
@@ -131,6 +156,9 @@ const resolveBundledDenoPath = (): string | undefined => {
 
 const BOOT_TIMEOUT_MS = 8000;
 const REQUEST_TIMEOUT_MS = 10_000;
+
+/** A whole compile is one request, so it gets a whole compile's time. */
+const COMPILE_TIMEOUT_MS = 120_000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
 /**
@@ -174,14 +202,6 @@ export const sanitizeSpawnEnv = (
     clean[key] = value;
   }
   return clean;
-};
-
-const canonicalPath = (p: string): string => {
-  try {
-    return fs.realpathSync.native(p);
-  } catch {
-    return p;
-  }
 };
 
 /**
@@ -302,6 +322,7 @@ function normalizePluginCallArgs(args: readonly unknown[] | unknown): readonly u
 }
 
 type RpcRequest =
+  | ({ id: number } & EngineCompileRequest)
   | { id: number; type: 'load'; modulePath: string }
   | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
   | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
@@ -324,10 +345,20 @@ type RpcResult =
     value?: unknown;
     logs?: PluginLogRecord[];
     important?: boolean;
+
+    /** A `compile` reply: the CSS, and what the compile printed to stderr. */
+    css?: string;
+    stderr?: string;
+    renderMs?: number;
   }
   | {
     id: number;
     ok: false;
+    stderr?: string;
+
+    /** A `compile` that threw a `JessError`: its fields, to rebuild it here. */
+    jessError?: Record<string, unknown>;
+    code?: string;
 
     /** Present when the sandbox paused for one unresolved scope/built-in fact. */
     need?: PluginFactNeed;
@@ -387,6 +418,23 @@ export class JsPlugin extends AbstractPlugin {
    * call into a single round trip instead of one round trip per read.
    */
   private readonly factMemo = new Map<string, Set<string>>();
+
+  /** Permission requests the broker has answered (each is one socket round trip from Deno). */
+  permissionChecks = 0;
+
+  /** The last engine compile's render time inside the sandbox, in ms (measurement aid). */
+  lastEngineRenderMs: number | undefined;
+
+  /** `jsSandbox: false`: the script runtime loaded into this process. */
+  private inProcess: Promise<InProcessRuntime> | undefined;
+
+  /**
+   * `jsSandbox: 'compile'`: what the compile in flight may read beyond the
+   * script roots — the compiler's own installed code, and the include paths
+   * and `NODE_PATH` packages it resolves stylesheets from.
+   */
+  private engineRoots: { code: string[]; read: string[]; configDirs: Set<string>; cwd: string } | undefined;
+  private engineCode: EngineCode | undefined;
 
   constructor(public opts: JsPluginOptions = {}) {
     super();
@@ -549,19 +597,48 @@ export class JsPlugin extends AbstractPlugin {
     if (jsReadRoot && isPathInside(realPath, jsReadRoot)) {
       return true;
     }
-    return this.installedPackageRoots().some(root => isPathInside(realPath, root))
-      || this.namedPackageRoots.some(root => isPathInside(realPath, root));
+    if (this.installedPackageRoots().some(root => isPathInside(realPath, root))
+      || this.namedPackageRoots.some(root => isPathInside(realPath, root))) {
+      return true;
+    }
+    const engine = this.engineRoots;
+    return engine !== undefined && (
+      engine.code.some(root => isPathInside(realPath, root))
+      || engine.read.some(root => isPathInside(realPath, root))
+      || isConfigProbe(realPath, engine.configDirs)
+      || isCwdMetaProbe(realPath, engine.cwd)
+    );
   }
 
+  /**
+   * Read decisions by requested path, for the current policy. Deno asks the
+   * broker on every check (the compile engine makes hundreds per compile), so
+   * a repeat is answered from here; the map is cleared whenever the policy
+   * changes. The sandbox has no write permission, so it cannot re-point a path.
+   */
+  private readDecisions = new Map<string, boolean>();
+
   private isReadAllowed(value: string | null): boolean {
+    if (value === null) {
+      return false;
+    }
+    let allowed = this.readDecisions.get(value);
+    if (allowed === undefined) {
+      allowed = this.decideRead(value);
+      this.readDecisions.set(value, allowed);
+    }
+    return allowed;
+  }
+
+  private decideRead(value: string | null): boolean {
     const normalized = normalizePermissionPath(value);
     if (!normalized) {
       return false;
     }
     const requestedPath = canonicalPath(path.resolve(normalized));
 
-    /* The worker reads its own script again to start its plugin thread. */
-    if (requestedPath === this.workerScriptPath) {
+    /* The worker reads its own scripts again to start its plugin thread. */
+    if (this.workerScriptPath !== undefined && isPathInside(requestedPath, path.dirname(this.workerScriptPath))) {
       return true;
     }
     return this.isReadableRealPath(requestedPath);
@@ -590,9 +667,13 @@ export class JsPlugin extends AbstractPlugin {
     });
     switch (request.permission) {
       case 'read':
-        return this.isReadAllowed(request.value)
-          ? { id: request.id, result: 'allow' }
-          : deny('Read access denied by Jess policy.');
+        if (this.isReadAllowed(request.value)) {
+          return { id: request.id, result: 'allow' };
+        }
+        if (process.env.JESS_SANDBOX_DEBUG === '1') {
+          process.stderr.write(`[jess-sandbox] denied read ${request.value}\n`);
+        }
+        return deny('Read access denied by Jess policy.');
       case 'net':
         return this.isNetAllowed(request.value)
           ? { id: request.id, result: 'allow' }
@@ -602,6 +683,9 @@ export class JsPlugin extends AbstractPlugin {
       case 'ffi':
       case 'sys':
       case 'write':
+        if (process.env.JESS_SANDBOX_DEBUG === '1') {
+          process.stderr.write(`[jess-sandbox] denied ${request.permission} ${request.value}\n`);
+        }
         return deny(`${request.permission} permission denied by Jess policy.`);
       default:
         return deny(`Permission "${request.permission}" denied by Jess policy.`);
@@ -639,6 +723,7 @@ export class JsPlugin extends AbstractPlugin {
             }) + '\n');
             continue;
           }
+          this.permissionChecks++;
           const response = this.handleBrokerRequest(req);
           socket.write(`${JSON.stringify(response)}\n`);
         }
@@ -664,10 +749,17 @@ export class JsPlugin extends AbstractPlugin {
       : sourceWorkerPath;
     this.workerScriptPath = canonicalPath(workerScriptPath);
     const runtimeApi = this.opts.runtimeApi ?? 'module';
+
+    /*
+     * The compile engine imports the host's compiler from where it is
+     * installed; a workspace-linked package lives outside `node_modules`, where
+     * Deno wants `node:` specifiers unless bare Node built-ins are allowed.
+     */
     const child = spawn(
       denoCommand,
-      ['run', '--no-prompt', workerScriptPath, `--runtime-api=${runtimeApi}`],
+      ['run', '--no-prompt', ...(this.opts.jsSandbox === 'compile' ? ['--unstable-bare-node-builtins'] : []), workerScriptPath, `--runtime-api=${runtimeApi}`],
       {
+        cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...sanitizeSpawnEnv(process.env),
@@ -818,6 +910,7 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   private async callWorker(request:
+    | EngineCompileRequest
     | { type: 'load'; modulePath: string }
     | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
     | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
@@ -853,7 +946,7 @@ export class JsPlugin extends AbstractPlugin {
          * running) and let the next call spin up a fresh one.
          */
         this.abortRuntime(new Error('Deno worker killed after a request timed out.'));
-      }, this.opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS);
+      }, this.opts.requestTimeoutMs ?? (request.type === 'compile' ? COMPILE_TIMEOUT_MS : REQUEST_TIMEOUT_MS));
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
@@ -938,6 +1031,7 @@ export class JsPlugin extends AbstractPlugin {
     const packageRoot = namedPackageRoot(realPath);
     if (packageRoot !== undefined) {
       this.namedPackageRoots.push(packageRoot);
+      this.readDecisions.clear();
       return;
     }
     throw new Error(`Script path "${path.resolve(absoluteFilePath)}" is outside jsReadRoot "${jsReadRoot}"`);
@@ -949,6 +1043,9 @@ export class JsPlugin extends AbstractPlugin {
       throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}"`);
     }
     const fnsRealPath = trustedFnsRealPath(absoluteFilePath);
+    if (fnsRealPath === undefined && this.opts.jsSandbox === false) {
+      return this.importInProcess(path.resolve(absoluteFilePath));
+    }
     if (fnsRealPath === undefined) {
       this.assertAllowedPath(absoluteFilePath);
       await this.ensureRuntime();
@@ -1014,6 +1111,9 @@ export class JsPlugin extends AbstractPlugin {
     const ext = path.extname(absoluteFilePath);
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
+    }
+    if (this.opts.jsSandbox === false) {
+      return this.importLessPluginInProcess(path.resolve(absoluteFilePath), options);
     }
     this.assertAllowedPath(absoluteFilePath);
     await this.ensureRuntime();
@@ -1143,6 +1243,114 @@ export class JsPlugin extends AbstractPlugin {
     const decoded = need.args.map(decodeBridgeValue);
     const answer = capabilities.callFunction?.(need.name, decoded);
     return answer === undefined ? null : encodeBridgeValue(answer);
+  }
+
+  /*
+   * ---- `jsSandbox: false`: the script runtime in this process -------------
+   * The same runtime and the same value conversion as the sandbox, minus the
+   * process boundary: a plugin call is a function call, and the scope reads
+   * and built-in calls a Less 4 plugin body makes are answered by the live
+   * call site directly, with no replay.
+   */
+
+  private runtime(): Promise<InProcessRuntime> {
+    this.inProcess ??= loadInProcessRuntime();
+    return this.inProcess;
+  }
+
+  private async importInProcess(modulePath: string): Promise<Record<string, unknown>> {
+    const runtime = await this.runtime();
+    const moduleObject: Record<string, unknown> = {};
+    for (const item of await runtime.loadModule(modulePath)) {
+      moduleObject[item.name] = item.kind === 'function'
+        ? async (...args: unknown[]) => {
+          try {
+            return decodeBridgeValue(await runtime.invokeExport(modulePath, item.name, encodeBridgeArgs(args)));
+          } catch (err) {
+            const fields = thrownFields(err);
+            throw lessPluginApiRefusal(path.basename(modulePath), fields) ?? new Error(fields.error);
+          }
+        }
+        : item.value;
+    }
+    return moduleObject;
+  }
+
+  private async importLessPluginInProcess(
+    modulePath: string,
+    options: string | null
+  ): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
+    const runtime = await this.runtime();
+    let names: string[];
+    try {
+      names = await runtime.loadLessPlugin(modulePath, options);
+    } catch (err) {
+      const fields = thrownFields(err);
+      throw lessPluginApiRefusal(path.basename(modulePath), fields)
+        ?? new PluginFunctionError(path.basename(modulePath), fields.error, fields.stack);
+    }
+    const functions: Record<string, ContextualPluginFunction> = {};
+    for (const functionName of names) {
+      functions[functionName] = async (args, capabilities = EMPTY_PLUGIN_CALL_CAPABILITIES) => {
+        let outcome: Awaited<ReturnType<InProcessRuntime['invokeLessPluginFunction']>>;
+        try {
+          outcome = await runtime.invokeLessPluginFunction(
+            modulePath,
+            functionName,
+            encodeBridgeArgs([...normalizePluginCallArgs(args)]),
+            options,
+            {
+              variable: name => this.resolveVariableFact(name, capabilities),
+              call: (name, callArgs) => this.resolveCallFact({ name, args: callArgs }, capabilities),
+              fileInfo: capabilities.currentFileInfo ?? null
+            }
+          );
+        } catch (err) {
+          const fields = thrownFields(err);
+          throw lessPluginApiRefusal(path.basename(modulePath), fields)
+            ?? new PluginFunctionError(functionName, fields.error, fields.stack, fields.errorName);
+        }
+        for (const record of outcome.logs) {
+          capabilities.log?.(record);
+        }
+        if (outcome.important) {
+          capabilities.markImportant?.();
+        }
+        return decodeBridgeResult(outcome.value);
+      };
+    }
+    return { functions };
+  }
+
+  /*
+   * ---- `jsSandbox: 'compile'`: the whole compile in the Deno sandbox --------
+   */
+
+  /**
+   * Runs one whole compile in this plugin's Deno process: one request carrying
+   * the entry, the compiler options as data and the compiler's identity, one
+   * reply carrying the CSS. The process stays up between compiles, so the
+   * compiler and the plugins it loaded stay warm. What the compile printed is
+   * written to this process's stderr; a thrown `JessError` is rethrown as one.
+   */
+  async renderInEngine(request: EngineRenderRequest): Promise<string> {
+    this.engineCode ??= engineCodeOf(request.compiler.module, import.meta.url);
+    const { payload, policy } = await prepareEngineCompile(request, this.engineCode);
+
+    /* The read policy is the compile's own: this entry's roots, set before the request is sent. */
+    this.opts.jsReadRoot = request.jsReadRoot;
+    this.packageRootsCache = undefined;
+    this.readDecisions.clear();
+    this.engineRoots = policy;
+    const result = await this.callWorker(payload);
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+    if (!result.ok) {
+      throw engineFailure(result);
+    }
+    this.lastEngineRenderMs = result.renderMs;
+    return result.css ?? '';
   }
 
   /** Context-facing executable-plugin capability used by the direct AST path. */

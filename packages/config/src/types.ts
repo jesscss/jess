@@ -509,6 +509,16 @@ export interface StylesConfig {
      * directory). Paths outside this root are rejected by @jesscss/plugin-js.
      */
     jsReadRoot?: string;
+
+    /**
+     * Where stylesheet-loaded JavaScript (`@plugin`, script `@use`) runs, when
+     * `@jesscss/plugin-js` is installed (without it, nothing changes):
+     * - `'call'` (default): in the Deno sandbox, one round trip per plugin call;
+     * - `'compile'`: the whole compile runs in the Deno sandbox, plugins
+     *   in-process there;
+     * - `false`: no sandbox; scripts run in the Node process.
+     */
+    jsSandbox?: 'call' | 'compile' | false;
   };
 
   /**

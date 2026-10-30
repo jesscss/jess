@@ -1,7 +1,4 @@
 {
-  "packages/compiler/src/index.ts": {
-    "statements": 539
-  },
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
   },

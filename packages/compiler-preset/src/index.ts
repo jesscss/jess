@@ -45,8 +45,9 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
 
   readonly hooks: CompilerHooks;
 
-  constructor(scriptPluginResolveFrom: string) {
+  constructor(scriptPluginResolveFrom: string, compilerModule?: { module: string; exportName: string }) {
     this.hooks = {
+      ...(compilerModule === undefined ? {} : { compilerModule }),
       defaultPlugins: context => this.defaultPlugins(context),
       normalizeConfiguredPlugin: (plugin, context) =>
         this.lessPluginResolver.normalizeConfiguredPlugin(plugin, context),
@@ -97,15 +98,27 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
   }
 }
 
-export function createDefaultCompilerStack(scriptPluginResolveFrom: string): DefaultCompilerStack {
-  return new DefaultCompilerStackImpl(scriptPluginResolveFrom);
+export function createDefaultCompilerStack(
+  scriptPluginResolveFrom: string,
+  compilerModule?: { module: string; exportName: string }
+): DefaultCompilerStack {
+  return new DefaultCompilerStackImpl(scriptPluginResolveFrom, compilerModule);
 }
 
 export class DefaultCompiler extends BaseCompiler {
   private readonly defaultStack: DefaultCompilerStack;
 
-  constructor(opts: ConfigOptions = { compile: {}, output: {}, language: {} }, scriptPluginResolveFrom = import.meta.url) {
-    const defaultStack = createDefaultCompilerStack(scriptPluginResolveFrom);
+  /**
+   * `compilerModule` names the module and export of the compiler class being
+   * constructed, so `jsSandbox: 'compile'` can build the same compiler in the
+   * sandbox. A subclass passes its own.
+   */
+  constructor(
+    opts: ConfigOptions = { compile: {}, output: {}, language: {} },
+    scriptPluginResolveFrom = import.meta.url,
+    compilerModule: { module: string; exportName: string } = { module: import.meta.url, exportName: 'DefaultCompiler' }
+  ) {
+    const defaultStack = createDefaultCompilerStack(scriptPluginResolveFrom, compilerModule);
     super(opts, defaultStack.hooks);
     this.defaultStack = defaultStack;
   }

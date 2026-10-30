@@ -19,6 +19,6 @@ export class Compiler extends DefaultCompiler {
     output: {},
     language: {}
   }) {
-    super(opts, import.meta.url);
+    super(opts, import.meta.url, { module: import.meta.url, exportName: 'Compiler' });
   }
 }

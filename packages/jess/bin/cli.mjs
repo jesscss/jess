@@ -62,6 +62,11 @@ Options:
   --allow-remote-imports <hosts>  Fetch and inline https @imports from these
                                   hosts (comma-separated; repeatable). Needs
                                   @jesscss/plugin-remote-import.
+  --js-sandbox <mode>             Where stylesheet JavaScript (@plugin, script
+                                  @use) runs; needs @jesscss/plugin-js:
+                                  call (default) runs each call in the Deno
+                                  sandbox, compile runs the whole compile in
+                                  it, off runs scripts in this process.
   --color, --no-color             Turn ANSI color and terminal hyperlinks in
                                   diagnostics on or off. Default: on only when
                                   stderr is a terminal and NO_COLOR is unset.
@@ -294,6 +299,20 @@ async function remoteImportOptions(hosts) {
   }
 }
 
+/** `--js-sandbox call|compile|off` as the `compile.jsSandbox` setting. */
+function jsSandboxOption(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === 'call' || value === 'compile') {
+    return value;
+  }
+  if (value === 'off') {
+    return false;
+  }
+  fail(`--js-sandbox must be call, compile or off, not ${value}`, EXIT_USAGE);
+}
+
 async function runCompile(args) {
   const { values, positionals } = parseCliArgs({
     args,
@@ -302,6 +321,7 @@ async function runCompile(args) {
     options: {
       out: { type: 'string', short: 'o' },
       'allow-remote-imports': { type: 'string', multiple: true },
+      'js-sandbox': { type: 'string' },
       color: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean' }
@@ -354,13 +374,17 @@ async function runCompile(args) {
     import('@jesscss/core')
   ]);
   const options = await remoteImportOptions(values['allow-remote-imports']);
+  const jsSandbox = jsSandboxOption(values['js-sandbox']);
+  const compilerOptions = jsSandbox === undefined
+    ? options
+    : { ...options, compile: { ...options?.compile, jsSandbox } };
   const startTime = Date.now();
 
   // Undefined unless --color or --no-color is given: diagnostics then color only a terminal.
   const colors = values.color;
   let css;
   try {
-    css = await new Compiler(options).render(path.resolve(inFile), { colors });
+    css = await new Compiler(compilerOptions).render(path.resolve(inFile), { colors });
   } catch (err) {
     /*
      * render() has printed the warnings and any other errors it collected, but
