@@ -2743,22 +2743,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (state: LessParseState | undefined) => state?.valueStop === undefined ? state : { ...state, valueStop: undefined },
     g.ValueRun
   );
+  /**
+   * A comma list of value runs; a single run is not wrapped. A lookup or
+   * namespace read (`@t[family]`, `#ns.m()[x]`) is one value piece like any
+   * other, so `@t[family], sans-serif` keeps both items.
+   */
   const ValueList = node(
     'ValueList',
-    choice(
-      // This transaction owns the WHOLE accessor-bearing value. Keeping it out
-      // of Value means its typed mixin arguments do not recurse through the
-      // same candidate before the required accessor fact has been established.
-      attempt(sequence(g.MixinReferenceChain, not(choice(productOperator, sumOperator)))),
-      oneOrMoreSep(g.ValueSequence, commaSeparator)
-    ),
-    (children, fields, _span, _rawChildren, triviaLog, state) => {
-      const referenceValue = children.find(isReference);
-      if (referenceValue !== undefined) {
-        return referenceValue;
-      }
-      return commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue);
-    }
+    oneOrMoreSep(g.ValueSequence, commaSeparator),
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue)
   );
   /**
    * A variable's value, read once. Less trivia is allowed right after `:` and
@@ -3405,14 +3399,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F.[(])/),
     children => color(requireToken(children[0]).value)
   );
-  // A static namespace/mixin invocation remains the existing typed MixinCall
-  // (including its selector-path combinators). Once the shared base is followed
-  // by a lookup/call accessor, the whole value is a Reference. The first
-  // accessor delimiter is consumed once and routed to the matching tail builder,
-  // so malformed accessor bodies stay on the selected reference route instead
-  // of probing forward with a broad value-position lookahead. This is the ONE
-  // chain builder — a whole-value `ValueList` reference and the merged atom arm
-  // below both project through it, so the head/tail machinery is single-sourced.
+  /**
+   * A namespace/mixin read: the shared base followed by at least one
+   * lookup/call accessor, as one `Reference` value (a static invocation with no
+   * accessor stays the typed `MixinCall`, selector-path combinators included).
+   * The first accessor delimiter is consumed once and routed to the matching
+   * tail builder, so malformed accessor bodies stay on the selected reference
+   * route instead of probing forward with a broad value-position lookahead.
+   * This is the ONE chain builder: the value atom below (`MixinReference`) and
+   * the media-query term (`MediaTypeTerm`) both project through it.
+   */
   const MixinReferenceChain = node(
     'MixinReference',
     sequence(
