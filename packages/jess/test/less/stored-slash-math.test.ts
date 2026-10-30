@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { emitJess } from '@jesscss/core';
+import { parse as parseLess } from '@jesscss/less-parser';
+import * as lessFunctionModule from '@jesscss/fns/less';
+import { lessFns } from '@jesscss/fns/less/registry';
 import { Compiler } from '../../src/index.js';
 
 /*
@@ -86,5 +90,105 @@ describe('a stored slash divides once it is used in math', () => {
   it('divides in .scss and .jess as in Less', async () => {
     expect(await render('$b: 18 / 2; .x { h: ($b - 1%); g: $b; }', 'parens-division', 'preserve', '.scss')).toBe('.x { h: 8%; g: 18 / 2; }');
     expect(await render('$d: 10px / 2; .x { r: $($d * 2); s: $d; }', 'parens-division', 'preserve', '.jess')).toBe('.x { r: 10px; s: 10px / 2; }');
+  });
+});
+
+/*
+ * Where something expects a number, a slash list converts to its quotient too,
+ * by the same conversion math uses — owner 2026-10-30 (DESIGN-DECISIONS P35):
+ * "if it's a math calculation or expects a number, then the slash list should
+ * have an auto-converting method". A parameter typed as a number and a
+ * comparison operand expect one; a parameter that accepts any value does not.
+ */
+describe('a slash list is its quotient where a number is expected', () => {
+  const guarded = (call: string): string =>
+    `.m(@a) when (@a > 4px) { g: yes; } .m(@a) when (default()) { g: no; } ${call}`;
+
+  it('converts for a parameter typed as a number', async () => {
+    expect(await render('@d: 10px/2; .x { a: percentage(@d); b: round(@d); c: unit(@d, em); d: min(@d, 4px); e: max(@d, 4px); }', 'parens-division'))
+      .toBe('.x { a: 500%; b: 5px; c: 5em; d: 4px; e: 5px; }');
+    expect(await render('@f: 12px/1.5; .x { a: percentage(@f); b: round(@f); }', 'parens-division')).toBe('.x { a: 800%; b: 8px; }');
+  });
+
+  it('converts for a comparison, in if(), boolean() and a guard', async () => {
+    expect(await render('@d: 10px/2; .x { a: if(@d > 4px, y, n); b: if(@d < 4px, y, n); c: if(@d = 5px, y, n); d: boolean(@d >= 5px); }', 'parens-division'))
+      .toBe('.x { a: y; b: n; c: y; d: true; }');
+    expect(await render(guarded('@d: 10px/2; .x { .m(@d); }'), 'parens-division')).toBe('.x { g: yes; }');
+    expect(await render('@d: 10px/2; .x when (@d > 4px) { g: yes; }', 'parens-division')).toBe('.x { g: yes; }');
+  });
+
+  it('converts a slash list a mixin argument carries', async () => {
+    expect(await render(guarded('@d: 10px/2; .x { .m(@d); } .y { .m(10px/2); }'), 'parens-division')).toBe('.x { g: yes; } .y { g: yes; }');
+    expect(await render('.m(@a) { p: percentage(@a); h: if(@a > 4px, y, n); r: @a; } @d: 10px/2; .x { .m(@d); }', 'parens-division'))
+      .toBe('.x { p: 500%; h: y; r: 10px / 2; }');
+  });
+
+  it('leaves a slash written where the number is expected to the math mode', async () => {
+    expect(await render('.x { a: percentage(16/17); b: unit(80/16, rem); c: if(10px/2 = 5px, y, n); }', 'parens-division'))
+      .toBe('.x { a: percentage(16 / 17); b: unit(80 / 16, rem); c: n; }');
+    expect(await render('.x { a: percentage((16/17)); c: if((10px/2) = 5px, y, n); }', 'parens-division')).toBe('.x { a: 94.11764706%; c: y; }');
+    expect(await render('.m() when (10px/2 = 5px) { g: yes; } .m() when (default()) { g: no; } .x { .m(); }', 'parens-division')).toBe('.x { g: no; }');
+  });
+
+  it('keeps a slash list with no quotient, as any value that is not a number', async () => {
+    expect(await render('@z: 1/0; .x { a: percentage(@z); }', 'parens-division')).toBe('.x { a: percentage(1 / 0); }');
+    await expect(new Compiler({ compile: { functionMode: 'error' } }).renderString('@z: 1/0; .x { a: percentage(@z); }', { extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-function' });
+    expect(await render(guarded('@z: 0/0; .x { .m(@z); }'), 'parens-division')).toBe('.x { g: no; }');
+    await expect(render('$z: 1 / 0; .x { @if $z > 1 { a: b; } }', 'parens-division', 'preserve', '.scss')).rejects.toMatchObject({ code: 'eval/incomparable-operands' });
+    await expect(render('@z: 1/0; .x { a: if(@z > 1, y, n); }', 'parens-division')).rejects.toMatchObject({ code: 'eval/incomparable-operands' });
+  });
+
+  it('keeps the list where it is written out or a parameter accepts any value', async () => {
+    expect(await render('@d: 10px/2; @f: 12px/1.5; .x { r: @d; font: @f; a: length(@d); b: extract(@d, 1); }', 'parens-division'))
+      .toBe('.x { r: 10px / 2; font: 12px / 1.5; a: 2; b: 10px; }');
+  });
+
+  it('keeps a slash list that does not divide to a number, as any value that is not a number', async () => {
+    expect(await render('@f: 12px/normal; .x { a: percentage(@f); b: if(@f = 12px/normal, y, n); }', 'parens-division'))
+      .toBe('.x { a: percentage(12px / normal); b: y; }');
+    await expect(render('@f: 12px/normal; .x { a: if(@f > 1px, y, n); }', 'parens-division')).rejects.toMatchObject({ code: 'eval/incomparable-operands' });
+    expect(await render(guarded('@f: 12px/normal; .x { .m(@f); }'), 'parens-division')).toBe('.x { g: no; }');
+  });
+
+  it('answers unitMode as the same division written in a group does', async () => {
+    const pairs = [
+      ['@d: 10px/2em; .x { a: percentage(@d); b: round(@d); c: unit(@d, em); }', '.x { a: percentage((10px/2em)); b: round((10px/2em)); c: unit((10px/2em), em); }'],
+      ['@d: 10px/2em; .x { a: if(@d > 4px, y, n); }', '.x { a: if((10px/2em) > 4px, y, n); }'],
+      [guarded('@d: 10px/2em; .x { .m(@d); }'), guarded('.x { .m((10px/2em)); }')]
+    ] as const;
+    for (const unitMode of ['strict', 'loose', 'preserve'] as const) {
+      for (const [stored, written] of pairs) {
+        const answer = (source: string): Promise<unknown> => render(source, 'parens-division', unitMode).catch((e: { code?: string }) => e.code);
+        expect(await answer(stored), `${unitMode} ${stored}`).toBe(await answer(written));
+      }
+    }
+    expect(await render('@d: 10px/2em; .x { a: if(@d > 4px, y, n); }', 'parens-division', 'preserve')).toBe('.x { a: n; }');
+    await expect(render('@d: 10px/2em; .x { a: if(@d > 4px, y, n); }', 'parens-division', 'strict')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+    await expect(render(guarded('@d: 10px/2em; .x { .m(@d); }'), 'parens-division', 'strict')).rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
+  });
+
+  it('converts in .scss and .jess as in Less', async () => {
+    expect(await render('@use "sass:math"; $d: 10px / 2; $h: 1 / 2; .x { a: percentage($h); b: round($d); c: math.unit($d); d: min($d, 4px); e: math.max($d, 4px); f: math.div($d, 2); r: $d; @if $d > 4px { i: yes; } }', 'parens-division', 'preserve', '.scss'))
+      .toBe('.x { a: 50%; b: 5px; c: "px"; d: 4px; e: 5px; f: 2.5px; r: 10px / 2; i: yes; }');
+    expect(await render('@-from "#less" import (percentage, round); $d: 10px / 2; .x { a: $percentage($d); b: $round($d); r: $d; }', 'parens-division', 'preserve', '.jess'))
+      .toBe('.x { a: 500%; b: 5px; r: 10px / 2; }');
+  });
+
+  it('gives the same CSS through .jess', async () => {
+    const LESS_FUNCTIONS = {
+      from: '#less',
+      names: new Map(Object.entries(lessFunctionModule).flatMap(([exported, fn]) =>
+        (lessFns as readonly unknown[]).includes(fn) && typeof fn === 'function' ? [[fn.name.toLowerCase(), exported] as const] : []))
+    };
+    const sources = [
+      '@d: 10px/2; @f: 12px/1.5; .x { a: percentage(@d); b: round(@d); c: unit(@d, em); d: min(@d, 4px); r: @d; font: @f; }',
+      guarded('@d: 10px/2; .x { .m(@d); }'),
+      '@d: 10px/2; .m(@a) when (@a >= 5px) and (@a <= 5px) and (@a = 5px) { g: yes; } .x { .m(@d); }'
+    ];
+    for (const less of sources) {
+      const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+      expect(await render(jess, 'parens-division', 'preserve', '.jess'), jess).toBe(await render(less, 'parens-division'));
+    }
   });
 });

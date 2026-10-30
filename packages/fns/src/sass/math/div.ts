@@ -33,8 +33,8 @@ const number = (item: ValueGroup, name: string): Dimension => {
  */
 const div = defineFunction('div', {
   params: [
-    { name: 'number1', type: 'any' },
-    { name: 'number2', type: 'any' }
+    { name: 'number1', type: 'Dimension' },
+    { name: 'number2', type: 'Dimension' }
   ],
   variadic: true,
   body: (args, ctx) => {

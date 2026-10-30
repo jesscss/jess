@@ -140,7 +140,7 @@ a blanket optimization exemption or a new active architecture queue.
     "sourceCheck": {
       "file": "packages/core/src/ast/evaluator.ts",
       "caller": "const call = (",
-      "guard": "if (ambient && registry.has(name))",
+      "guard": "scoped ?? (ambient ? registry.get(name) : undefined)",
       "call": "recoverAsyncCall("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
