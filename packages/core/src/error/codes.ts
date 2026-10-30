@@ -24,6 +24,7 @@ export type JessErrorCode =
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
   | 'parse/uncalled-mixin-reference'
+  | 'parse/important-on-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
@@ -50,6 +51,7 @@ export type JessErrorCode =
   | 'eval/ruleset-argument-with-rules'
   | 'eval/guarded-selector-list'
   | 'eval/ruleset-on-property'
+  | 'eval/uncalled-mixin-reference'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
   | 'eval/loop-iteration-limit'
@@ -217,6 +219,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'A mixin reference is not a value',
       reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
       fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
+    }
+  ],
+  [
+    'parse/important-on-mixin-reference',
+    {
+      summary: 'A mixin reference cannot carry !important.',
+      reason: 'A mixin reference names a mixin without calling it, so it has no declarations for !important to mark.',
+      fix: 'Remove !important, or call the mixin: .mixin() !important.'
     }
   ],
   [
@@ -427,6 +437,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'The value of "${what}" evaluated to a detached ruleset; a detached ruleset can only be called (e.g. `@dr();` inside a block), not used as a property value.',
       fix: 'Call the detached ruleset in statement position instead of assigning it to a property.'
+    }
+  ],
+  [
+    'eval/uncalled-mixin-reference',
+    {
+      summary: 'A mixin reference is not a value',
+      reason: '${name} writes out a mixin reference, which is neither called nor looked up, so it has no value.',
+      fix: 'Call the mixin in statement position, or look up one of its members (`@ref[name]`), instead of writing the reference into a value.'
     }
   ],
   [

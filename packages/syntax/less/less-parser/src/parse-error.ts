@@ -218,6 +218,29 @@ export class LessUncalledMixinReferenceError extends SyntaxError {
   }
 }
 
+/**
+ * `!important` after a mixin reference that is a variable's whole value
+ * (ledger P33): parsed, then an error at the `!important` (P45).
+ */
+export class LessImportantMixinReferenceError extends SyntaxError {
+  readonly code = 'parse/important-on-mixin-reference' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'A mixin reference names a mixin without calling it, so it has no declarations for !important to mark.';
+  readonly fix = 'Remove !important, or call the mixin: .mixin() !important.';
+
+  /** The declaration the parse kept for it; a report whose declaration is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('A mixin reference cannot carry !important.');
+    this.name = 'LessImportantMixinReferenceError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
 /** Ungrouped Less mixin guards are recognized so diagnostics can point at the guard. */
 export class LessUnparenthesizedMixinGuardError extends SyntaxError {
   readonly code = 'parse/unparenthesized-mixin-guard' as const;
@@ -361,7 +384,7 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
  * carries on past (ledger P45).
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
-  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError;
+  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no
