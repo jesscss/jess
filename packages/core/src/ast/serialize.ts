@@ -215,6 +215,7 @@ import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBoo
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { calledAt, isMixinReference, mixinReferenceAsValue } from './mixin-reference-value.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
@@ -5100,9 +5101,11 @@ function evalTyped(
         const bound = hit.value;
         return hit.evaluated !== null
           ? reachedEvaluated(e, hit.evaluated)
-          : withExcluded(e, bound, () => isMixinCallValue(bound)
-              ? force(literal(''))
-              : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
+          : isMixinReference(bound)
+            ? mixinReferenceAsValue(node, `@${nm}`, e.s)
+            : withExcluded(e, bound, () => isMixinCallValue(bound)
+                ? force(literal(''))
+                : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -5120,11 +5123,13 @@ function evalTyped(
         return force(unresolvedReference(node, frame, e));
       }
       const member = resolved.value;
-      return isMixinCallValue(member)
-        ? force(literal(node.raw))
-        : resolved.evaluated !== null
-          ? reachedEvaluated(e, resolved.evaluated)
-          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument));
+      return isMixinReference(member) || isMixinReference(node)
+        ? mixinReferenceAsValue(node, node.raw, e.s)
+        : isMixinCallValue(member)
+          ? force(literal(node.raw))
+          : resolved.evaluated !== null
+            ? reachedEvaluated(e, resolved.evaluated)
+            : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument));
     }
     case 'Block':
       /*
@@ -5943,7 +5948,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
           }
           return hit.evaluated !== null
             ? reachedEvaluated(e, hit.evaluated)
-            : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+            : isMixinReference(hit.value)
+              ? mixinReferenceAsValue(node, `@${nm}`, e.s)
+              : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
         });
       }
 
@@ -7219,11 +7226,6 @@ function resolveReferenceResult(
       continue;
     }
     if (step.type === 'Call') {
-      if (isMixinCallValue(value)) {
-        value = step.args.length === 0 ? value : { ...value, args: step.args };
-        continue;
-      }
-
       /*
        * A value bound to a callable lambda (`$f(args)`) — a param'd or paramless
        * `AnonymousMixin` that yields a `result:` — invokes: bind args→params, run
@@ -7273,6 +7275,11 @@ function resolveReferenceResult(
           continue;
         }
         break;
+      }
+
+      /* A mixin, named directly or held by a variable (`@foo: .m;` → `@foo(red)`), takes the call's arguments. */
+      if (isMixinCallValue(value)) {
+        value = step.args.length === 0 ? value : { ...value, args: step.args };
       }
       if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
         && lambdaResultValue(value.rules) !== undefined) {
@@ -7666,11 +7673,13 @@ function evalReference(node: Reference, frame: Frame | null, e: Lane): MaybeProm
     return unresolvedReference(node, frame, e);
   }
   const member = resolved.value;
-  return isMixinCallValue(member)
-    ? literal(node.raw)
-    : resolved.evaluated !== null
-      ? reachedEvaluated(e, resolved.evaluated)
-      : whileReachedFrom(e, member, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e));
+  return isMixinReference(member) || isMixinReference(node)
+    ? mixinReferenceAsValue(node, node.raw, e.s)
+    : isMixinCallValue(member)
+      ? literal(node.raw)
+      : resolved.evaluated !== null
+        ? reachedEvaluated(e, resolved.evaluated)
+        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e));
 }
 
 /**
@@ -7988,7 +7997,7 @@ function classifyMixinValueHit(hit: MixinValueHit, e: Lane): MixinValuePartMode 
   if (hit?.evaluated !== null && hit?.evaluated !== undefined) {
     return MIXIN_VALUE_CANONICAL;
   }
-  if (!hit || isMixinCallValue(hit.value)
+  if (!hit || isMixinCallValue(hit.value) || isMixinReference(hit.value)
     || (!isValueSlotArray(hit.value) && isValueBlock(hit.value))) {
     return MIXIN_VALUE_NONE;
   }
@@ -8175,7 +8184,7 @@ function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: Lane): MaybePr
  * reference, as before.
  */
 function eagerSource(value: CallValue, frame: Frame | null, e: Lane): MaybePromise<CallValue> | undefined {
-  return isMixinCallValue(value) || isTypedCallValue(value)
+  return isMixinCallValue(value) || isMixinReference(value) || isTypedCallValue(value)
     || (!isValueSlotArray(value) && isValueBlock(value))
     ? undefined
     : eagerSnapshot(value, frame, e);
@@ -18415,7 +18424,7 @@ function expandReferenceCall(
     return;
   }
   if (isMixinCallValue(resolved.value)) {
-    return expandCall(resolved.value, resolved.frame ?? frame, at, e, inline);
+    return expandCall(calledAt(resolved.value, call), resolved.frame ?? frame, at, e, inline);
   }
   const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
@@ -19122,7 +19131,7 @@ function dispatch(
       : resolveVarRef(overlay, lookupName!, lookup.scope, e);
     const hitValue = hit?.value;
     if (hitValue !== undefined && !isValueSlotArray(hitValue)
-      && !isMixinCallValue(hitValue) && isValueBlock(hitValue)) {
+      && !isMixinCallValue(hitValue) && (isValueBlock(hitValue) || isMixinReference(hitValue))) {
       return hitValue;
     }
     const mode = lookup !== undefined
@@ -19512,19 +19521,19 @@ function substituteClosureVarArgs(
      * dispatches it (its args resolve in the caller frame's runtime binding).
      */
     if (directVariable) {
-      const bound = directHit?.value;
-      if (bound && !isValueSlotArray(bound) && isValueBlock(bound)) {
-        changed = true;
-        return { ...a, value: bound };
-      }
-
       /*
-       * `@alias: .something(foo); .wrapper(@alias);` — a mixin-call-valued var passed
-       * as an arg binds BY REFERENCE, wrapped as a detached ruleset whose body is that
-       * call (so `@another-mixin()` in the callee dispatches it). The wrapper's home is
-       * the caller frame, where the call's own selector/args resolve.
+       * A ruleset-valued var binds BY REFERENCE, and so does a mixin-call-valued
+       * one (`@alias: .something(foo); .wrapper(@alias);`), wrapped as a detached
+       * ruleset whose body is that call (so `@another-mixin()` in the callee
+       * dispatches it; the wrapper's home is the caller frame, where the call's own
+       * selector/args resolve). A mixin reference (`@foo: .a;`) binds as itself,
+       * also through an alias (`@bar: @foo;`), since it has no value to snapshot.
        */
-      if (bound && isMixinCallValue(bound)) {
+      const bound = directHit !== undefined && !isValueSlotArray(directHit.value) && directHit.value.type === 'Lookup'
+        ? resolveBindingNode(directHit.value, directHit.frame, e) ?? directHit.value
+        : directHit?.value;
+      if (bound && !isValueSlotArray(bound) && (isMixinReference(bound)
+        || (bound === directHit!.value && (isMixinCallValue(bound) || isValueBlock(bound))))) {
         changed = true;
         return { ...a, value: bound };
       }
@@ -22341,7 +22350,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         const value = hit.value;
-        if (isMixinCallValue(value)) {
+        if (isMixinCallValue(value) || isMixinReference(value)) {
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         if (hit.evaluated !== null) {
