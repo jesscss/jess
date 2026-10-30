@@ -645,6 +645,19 @@ export class InvalidOperandError extends Error {
 }
 
 /**
+ * An operand `operate` has no arithmetic for: a list, or bytes kept as written.
+ * A `TypeError`, so `unitMode: 'preserve'` keeps the operation as written, as
+ * it keeps a unit clash; elsewhere it is `eval/invalid-operand` at the
+ * operation (ledger V36).
+ */
+export class UnoperableOperandError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnoperableOperandError';
+  }
+}
+
+/**
  * An empty list written where CSS needs a value, in `.scss` and `.jess`: an
  * argument of a call written out as-is, or a declaration's value (ledger P51;
  * Dart Sass: "() isn't a valid CSS value"). Writing nothing would lose the
