@@ -216,6 +216,7 @@ import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBoo
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileReached } from './value-read.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { mathOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
@@ -3984,11 +3985,11 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: Lane): boolean
  * property, a mixin argument, and so an interpolation of one — so the span is
  * also {@link whileReached}.
  */
-function withExcluded<T>(e: Lane, node: Binding, run: () => T): T {
+function withExcluded<T>(e: Lane, node: Binding, run: () => T, reader?: object): T {
   e.excluded.add(node);
   try {
     /* A root variable's value is looked up only once the session's documents differ. */
-    return whileReachedFrom(e, node, e.s.context?.mixedPolicies === true ? e.s.context.bodyOwner(node) : undefined, run);
+    return whileReachedFrom(e, node, e.s.context?.mixedPolicies === true ? e.s.context.bodyOwner(node) : undefined, run, reader);
   } finally {
     e.excluded.delete(node);
   }
@@ -4001,40 +4002,13 @@ function withExcluded<T>(e: Lane, node: Binding, run: () => T): T {
  * Every value a reference reaches passes here, so `value` is checked here
  * (`reportReached`).
  */
-function whileReachedFrom<T>(e: Lane, value: Binding, owner: object | null | undefined, run: () => T): T {
+function whileReachedFrom<T>(e: Lane, value: Binding, owner: object | null | undefined, run: () => T, reader?: object): T {
   if (e.checks !== undefined) {
     reportReached(e, reachedValueSyntax(value, e.s));
   }
   return e.s.context?.mixedPolicies === true && owner instanceof DocumentContext && changesPolicy(e, owner)
-    ? withPolicy(e, owner, () => whileReached(e, run))
-    : whileReached(e, run);
-}
-
-/**
- * [paren-group] Evaluate a value a reference reached — {@link withExcluded}'s
- * binding reads, and a map, namespace or mixin-call member — with
- * {@link Lane.reached} set: a paren group around one value in it evaluates
- * to its value, Less grouping, wherever the reference is read (`@a: (10px)` →
- * `.x-@{a}` is `.x-10px`, `margin: @a @a` is `10px 10px`, `calc(@a * 2)` is
- * `calc(10px * 2)`, `@media (min-width: @a)` is `(min-width: 10px)`). One
- * written directly in a declaration value, or inside a math function, keeps its
- * parens ({@link evalCalc} and {@link evalCall} clear the flag for the math
- * function's arguments; ledger J16, orchestrator judgment under owner
- * delegation 2026-10-06). Written only when it changes.
- *
- * ponytail: a group the value evaluates only after an await keeps its parens;
- * carry the flag through the continuation if a plugin value needs it.
- */
-function whileReached<T>(e: Lane, run: () => T): T {
-  if (e.reached) {
-    return run();
-  }
-  e.reached = true;
-  try {
-    return run();
-  } finally {
-    e.reached = false;
-  }
+    ? withPolicy(e, owner, () => whileReached(e, run, reader))
+    : whileReached(e, run, reader);
 }
 
 /**
@@ -4204,6 +4178,9 @@ interface Lane {
    * judgment under owner delegation 2026-10-06).
    */
   reached: boolean;
+
+  /** The outermost read in progress, or `ASKED` ({@link ReadLane.readAt}). */
+  readAt: object | undefined;
 
   /*
    * [resolver] value nodes currently being evaluated (per-declaration cycle
@@ -4485,10 +4462,15 @@ interface EvalSession {
  *   happens is not the condition's, so its exclusions, optional probe,
  *   `calc()` and paren nesting and declaration sinks are reset; the policy, the
  *   byte lane and {@link Lane.reached} are kept.
+ * - `asked`: a ruleset guard's operands and a type predicate's arguments, which
+ *   are only asked about ({@link Lane.readAt} is `ASKED`); P48 checks are kept.
+ * - `condition`: a value-position condition (`if()`, `boolean()`), asked about
+ *   as `asked` is and, as `unchecked`, not checked as a written value.
+ * `guard` and `statement` lanes are asked about too.
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath' | 'asked' | 'condition',
   sink?: { elided: boolean },
   isDefault?: () => boolean
 ): Lane {
@@ -4504,6 +4486,7 @@ function deriveLane(
         pluginHost: change === 'noPluginHost' ? undefined : e.pluginHost,
         writtenFrom: change === 'written' ? e : e.writtenFrom,
         reached: change === 'unreached' ? false : e.reached,
+        readAt: change === 'asked' || change === 'condition' || change === 'guard' || change === 'statement' ? ASKED : e.readAt,
         excluded: change === 'statement' ? new Set<Binding>() : e.excluded,
         optional: change === 'statement' ? false : e.optional,
         calcDepth: change === 'calc' ? e.calcDepth + 1 : change === 'statement' ? 0 : e.calcDepth,
@@ -4518,7 +4501,7 @@ function deriveLane(
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
         mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
         defaultFn: change === 'guard' ? isDefault : change === 'statement' ? undefined : e.defaultFn,
-        checks: change === 'statement' || change === 'unchecked' ? undefined : e.checks
+        checks: change === 'statement' || change === 'unchecked' || change === 'condition' ? undefined : e.checks
       };
 }
 
@@ -5102,9 +5085,11 @@ function evalTyped(
         const bound = hit.value;
         return hit.evaluated !== null
           ? reachedEvaluated(e, hit.evaluated)
-          : withExcluded(e, bound, () => isMixinCallValue(bound)
-              ? force(literal(''))
-              : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
+          : isMixinReference(bound)
+            ? readMixinReference(e, node, bound)
+            : withExcluded(e, bound, () => isMixinCallValue(bound)
+                ? force(literal(''))
+                : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node);
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -5122,11 +5107,13 @@ function evalTyped(
         return force(unresolvedReference(node, frame, e));
       }
       const member = resolved.value;
-      return isMixinCallValue(member)
-        ? force(literal(node.raw))
-        : resolved.evaluated !== null
-          ? reachedEvaluated(e, resolved.evaluated)
-          : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument));
+      return isMixinReference(member) || isMixinReference(node)
+        ? readMixinReference(e, node, member)
+        : isMixinCallValue(member)
+          ? force(literal(node.raw))
+          : resolved.evaluated !== null
+            ? reachedEvaluated(e, resolved.evaluated)
+            : whileReachedFrom(e, member, resolved.sourceOwner, () => evalTypedSlot(member, resolved.frame, e, projectMixinValues, argument), node);
     }
     case 'Block':
       /*
@@ -5945,7 +5932,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
           }
           return hit.evaluated !== null
             ? reachedEvaluated(e, hit.evaluated)
-            : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+            : isMixinReference(hit.value)
+              ? readMixinReference(e, node, hit.value)
+              : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e), node);
         });
       }
 
@@ -7221,11 +7210,6 @@ function resolveReferenceResult(
       continue;
     }
     if (step.type === 'Call') {
-      if (isMixinCallValue(value)) {
-        value = step.args.length === 0 ? value : { ...value, args: step.args };
-        continue;
-      }
-
       /*
        * A value bound to a callable lambda (`$f(args)`) — a param'd or paramless
        * `AnonymousMixin` that yields a `result:` — invokes: bind args→params, run
@@ -7275,6 +7259,11 @@ function resolveReferenceResult(
           continue;
         }
         break;
+      }
+
+      /* A mixin, named directly or held by a variable (`@foo: .m;` → `@foo(red)`), takes the call's arguments. */
+      if (isMixinCallValue(value)) {
+        value = step.args.length === 0 ? value : { ...value, args: step.args };
       }
       if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
         && lambdaResultValue(value.rules) !== undefined) {
@@ -7668,11 +7657,13 @@ function evalReference(node: Reference, frame: Frame | null, e: Lane): MaybeProm
     return unresolvedReference(node, frame, e);
   }
   const member = resolved.value;
-  return isMixinCallValue(member)
-    ? literal(node.raw)
-    : resolved.evaluated !== null
-      ? reachedEvaluated(e, resolved.evaluated)
-      : whileReachedFrom(e, member, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e));
+  return isMixinReference(member) || isMixinReference(node)
+    ? readMixinReference(e, node, member)
+    : isMixinCallValue(member)
+      ? literal(node.raw)
+      : resolved.evaluated !== null
+        ? reachedEvaluated(e, resolved.evaluated)
+        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalValueSlot(member, resolved.frame, e), node);
 }
 
 /**
@@ -7839,7 +7830,7 @@ function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
  *  `whenGuard` ({@link GuardEvalDeps.whenGuard}). */
 function guardDeps(frame: Frame | null, e: Lane, whenGuard = false): GuardEvalDeps {
   const decide = e.writtenFrom ?? e;
-  return { resolveTyped: makeTypedResolver(frame, decide.checks === undefined ? decide : deriveLane(decide, 'unchecked')), ev: decide.ev, modes: decide.modes, isDefault: () => false, whenGuard };
+  return { resolveTyped: makeTypedResolver(frame, deriveLane(decide, 'condition')), ev: decide.ev, modes: decide.modes, isDefault: () => false, whenGuard };
 }
 
 /**
@@ -7990,7 +7981,7 @@ function classifyMixinValueHit(hit: MixinValueHit, e: Lane): MixinValuePartMode 
   if (hit?.evaluated !== null && hit?.evaluated !== undefined) {
     return MIXIN_VALUE_CANONICAL;
   }
-  if (!hit || isMixinCallValue(hit.value)
+  if (!hit || isMixinCallValue(hit.value) || isMixinReference(hit.value)
     || (!isValueSlotArray(hit.value) && isValueBlock(hit.value))) {
     return MIXIN_VALUE_NONE;
   }
@@ -8178,7 +8169,7 @@ function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: Lane): MaybePr
  * reference, as before.
  */
 function eagerSource(value: CallValue, frame: Frame | null, e: Lane): MaybePromise<CallValue> | undefined {
-  return isMixinCallValue(value) || isTypedCallValue(value)
+  return isMixinCallValue(value) || isMixinReference(value) || isTypedCallValue(value)
     || (!isValueSlotArray(value) && isValueBlock(value))
     ? undefined
     : eagerSnapshot(value, frame, e);
@@ -8902,7 +8893,7 @@ function evalCall(
      */
     return makeBool(e.defaultFn());
   }
-  const intro = evalIntrospection(node, frame, e);
+  const intro = e.readAt !== ASKED && asksType(node.name) ? evalCall(node, frame, deriveLane(e, 'asked'), demanded) : evalIntrospection(node, frame, e);
   if (intro !== undefined) {
     return intro;
   }
@@ -11039,6 +11030,7 @@ function scratchEmit(e: Lane): Emit {
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     writtenFrom: undefined,
     reached: e.reached,
+    readAt: e.readAt,
     excluded: e.excluded,
     optional: e.optional,
     calcDepth: e.calcDepth,
@@ -14362,6 +14354,7 @@ function createRenderSession(
     pluginHost: options?.pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     writtenFrom: undefined, // set only on an F5 call's written lane
     reached: false, // [paren-group] inside a value a reference reached
+    readAt: undefined,
     excluded: new Set(), // [resolver] per-declaration cycle guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     calcDepth: 0,
@@ -15047,7 +15040,7 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: Lane): MaybePromise<boo
     });
   }
   return withUnitErrors(rule, e, () => evalGuard(rule.guard!, {
-    resolveTyped: makeTypedResolver(frame, e),
+    resolveTyped: makeTypedResolver(frame, deriveLane(e, 'asked')),
     ev: e.ev,
     modes: e.modes,
     isDefault: () => false,
@@ -18418,7 +18411,7 @@ function expandReferenceCall(
     return;
   }
   if (isMixinCallValue(resolved.value)) {
-    return expandCall(resolved.value, resolved.frame ?? frame, at, e, inline);
+    return expandCall(calledAt(resolved.value, call), resolved.frame ?? frame, at, e, inline);
   }
   const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
@@ -18809,7 +18802,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
    * (a `@plugin` result, a module-provided list). It resolves in place when it is
    * already settled, so the ordinary `each()` never becomes awaitable.
    */
-  return mapMaybe(evalTypedSlot(base, baseFrame, e, true), (v) => {
+  return mapMaybe(isMixinReference(base) ? readMixinReference(e, node, base) : evalTypedSlot(base, baseFrame, e, true), (v) => {
     if (isCollection(v)) {
       return v;
     }
@@ -19125,7 +19118,7 @@ function dispatch(
       : resolveVarRef(overlay, lookupName!, lookup.scope, e);
     const hitValue = hit?.value;
     if (hitValue !== undefined && !isValueSlotArray(hitValue)
-      && !isMixinCallValue(hitValue) && isValueBlock(hitValue)) {
+      && !isMixinCallValue(hitValue) && (isValueBlock(hitValue) || isMixinReference(hitValue))) {
       return hitValue;
     }
     const mode = lookup !== undefined
@@ -19515,19 +19508,19 @@ function substituteClosureVarArgs(
      * dispatches it (its args resolve in the caller frame's runtime binding).
      */
     if (directVariable) {
-      const bound = directHit?.value;
-      if (bound && !isValueSlotArray(bound) && isValueBlock(bound)) {
-        changed = true;
-        return { ...a, value: bound };
-      }
-
       /*
-       * `@alias: .something(foo); .wrapper(@alias);` — a mixin-call-valued var passed
-       * as an arg binds BY REFERENCE, wrapped as a detached ruleset whose body is that
-       * call (so `@another-mixin()` in the callee dispatches it). The wrapper's home is
-       * the caller frame, where the call's own selector/args resolve.
+       * A ruleset-valued var binds BY REFERENCE, and so does a mixin-call-valued
+       * one (`@alias: .something(foo); .wrapper(@alias);`), wrapped as a detached
+       * ruleset whose body is that call (so `@another-mixin()` in the callee
+       * dispatches it; the wrapper's home is the caller frame, where the call's own
+       * selector/args resolve). A mixin reference (`@foo: .a;`) binds as itself,
+       * also through an alias (`@bar: @foo;`), since it has no value to snapshot.
        */
-      if (bound && isMixinCallValue(bound)) {
+      const bound = directHit !== undefined && !isValueSlotArray(directHit.value) && directHit.value.type === 'Lookup'
+        ? resolveBindingNode(directHit.value, directHit.frame, e) ?? directHit.value
+        : directHit?.value;
+      if (bound && !isValueSlotArray(bound) && (isMixinReference(bound)
+        || (bound === directHit!.value && (isMixinCallValue(bound) || isValueBlock(bound))))) {
         changed = true;
         return { ...a, value: bound };
       }
@@ -22344,13 +22337,13 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         const value = hit.value;
-        if (isMixinCallValue(value)) {
+        if (isMixinCallValue(value) || isMixinReference(value)) {
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         if (hit.evaluated !== null) {
           return typedPreludeParts(hit.evaluated, e.compress === true);
         }
-        return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
+        return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e), node);
       });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
@@ -22360,7 +22353,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
       const member = resolved.value;
       return resolved.evaluated !== null
         ? typedPreludeParts(resolved.evaluated, e.compress === true)
-        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e));
+        : whileReachedFrom(e, member, resolved.sourceOwner, () => evalQueryPreludeParts(member, resolved.frame, e), node);
     }
     default:
       /*

@@ -24,6 +24,7 @@ import { isThenable, mapMaybe, type MaybePromise } from '@jesscss/awaitable-pipe
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import { evalGuard, guardUsesDefault, type GuardEvalDeps, type ValueResolver } from './guard.js';
+import { isMixinReference } from './value-read.js';
 
 /** The call-argument shape now lives with the nodes that carry it — a
  *  {@link CallArg} is the same node for a mixin call and a function call, so it
@@ -399,9 +400,10 @@ function finishBind(st: BindState): Map<string, CallValue> {
 function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<CallValue> {
   /*
    * a value-block (anonymous-mixin / collection) arg binds BY REFERENCE (never
-   * byte-flattened) so its body + closure survive to the call site.
+   * byte-flattened) so its body + closure survive to the call site; so does a
+   * mixin call or a mixin reference (`@foo: .a;`), which has no value to flatten.
    */
-  if ('type' in v && (isValueBlock(v) || v.type === 'MixinCall')) {
+  if ('type' in v && (isValueBlock(v) || v.type === 'MixinCall' || isMixinReference(v))) {
     return v;
   }
 

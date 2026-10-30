@@ -51,6 +51,7 @@ export type JessErrorCode =
   | 'eval/ruleset-argument-with-rules'
   | 'eval/guarded-selector-list'
   | 'eval/ruleset-on-property'
+  | 'eval/uncalled-mixin-reference'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
   | 'eval/loop-iteration-limit'
@@ -436,6 +437,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'The value of "${what}" evaluated to a detached ruleset; a detached ruleset can only be called (e.g. `@dr();` inside a block), not used as a property value.',
       fix: 'Call the detached ruleset in statement position instead of assigning it to a property.'
+    }
+  ],
+  [
+    'eval/uncalled-mixin-reference',
+    {
+      summary: 'A mixin reference is not a value',
+      reason: '${name} writes out a mixin reference, which is neither called nor looked up, so it has no value.',
+      fix: 'Call the mixin in statement position, or look up one of its members (`@ref[name]`), instead of writing the reference into a value.'
     }
   ],
   [

@@ -896,6 +896,13 @@ export const ERR = {
       ...args
     });
   },
+  uncalledMixinReference(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/uncalled-mixin-reference',
+      phase: 'eval',
+      ...args
+    });
+  },
   recursiveReference(
     args: Common & { meta: { kind: 'Variable' | 'Property'; symbol: string } }
   ) {
