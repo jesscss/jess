@@ -184,6 +184,9 @@ export interface ExtendResults {
 
   /** The plan's {@link Plan.targetAtoms}: every atom an extend target names. */
   targetAtoms: ReadonlySet<string>;
+
+  /** The plan's subjects, each with the selector level the planner built for its rule. */
+  subjects: readonly PlanSubject[];
 }
 
 /* ------------------------------------------------------ sibling compaction */
@@ -1776,6 +1779,7 @@ export function computeExtends(
     nestedPlan,
     hoistHeader,
     byPlacement,
-    targetAtoms: plan.targetAtoms
+    targetAtoms: plan.targetAtoms,
+    subjects: plan.subjects
   };
 }
