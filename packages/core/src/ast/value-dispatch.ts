@@ -8,10 +8,11 @@
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { isValueGroup, isValueGroupArray, type ValueGroup } from './value-eval.js';
+import { isValueGroup, isValueGroupArray, type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { numberOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { makeCollection } from './value-factory.js';
+import { makeCollection, makeList } from './value-factory.js';
 import type {
   DefinedFunction,
   Fn,
@@ -117,6 +118,39 @@ function paramType(param: ParamSpec): NormalizedParamType {
     throw new TypeError('function parameter must declare a value type');
   }
   return normalized;
+}
+
+const isRest = (param: ParamSpec): boolean => param.rest === true;
+
+/**
+ * A parameter typed as a number (it accepts a `Dimension` and not a `List`)
+ * expects a number, so a slash list passed to it is its quotient
+ * ({@link numberOperand}; ledger P35, owner 2026-10-30): `percentage(@d)` with
+ * `@d: 10px/2` is `500%`. A parameter that accepts any value, or a list,
+ * receives the list, and so does every argument in `inPlace`: a slash the call
+ * wrote in place (`percentage(16/17)`), which the math mode decides (P34).
+ * Each argument is governed by its own parameter, then by the `rest`
+ * parameter, or a variadic function's last one.
+ */
+export function numberArguments(fn: Fn, args: ValueGroup, ev: Pick<ValueEvaluator, 'operate' | 'sassOperands' | 'sassCalculations'>, modes: EvalModes, inPlace: ReadonlySet<ValueGroup> | undefined): ValueGroup {
+  const items = groupItems(args);
+  let out: ValueGroup[] | undefined;
+  const tail = fn.variadic === true ? fn.params.at(-1) : fn.params.find(isRest);
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+    if (isValueGroupArray(item) || item.type !== 'List' || item.sep !== '/' || inPlace?.has(item) === true) {
+      continue;
+    }
+    const param = fn.params[index] ?? tail;
+    const type = param === undefined ? null : normalizeParamType(param.type ?? param.kinds);
+    if (type !== null && type !== 'any' && type.includes('Dimension') && !type.includes('List')) {
+      (out ??= [...items])[index] = numberOperand(item, ev, modes);
+    }
+  }
+  if (out === undefined) {
+    return args;
+  }
+  return isValueGroupArray(args) ? out : args.type === 'List' ? makeList(out, args.sep) : args;
 }
 
 function isFnCtx(value: unknown): value is FnCtx {

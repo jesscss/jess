@@ -22,8 +22,9 @@ import { keepAsWritten, keptMathOf, mathText, operate } from './value-operate.js
 import { isMathFunctionName } from './math-functions.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
-import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
+import { dispatchFn, FunctionDeclined, numberArguments } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
+import { isWrittenSlash } from './math-operand.js';
 import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -122,6 +123,24 @@ const stringify = (v: ValueGroup): string =>
   !isValueGroupArray(v) && v.type === 'Quoted' ? v.value : readText(v);
 
 /**
+ * The arguments a call wrote as a slash list in place, by value: `values` are
+ * the arguments in authored order, each beside its `authored` node. `undefined`
+ * when there are none, so an ordinary call allocates nothing.
+ */
+function writtenSlashes(values: ValueGroup, authored: readonly ArgumentKeyword[] | undefined): Set<ValueGroup> | undefined {
+  if (authored === undefined) {
+    return undefined;
+  }
+  let out: Set<ValueGroup> | undefined;
+  for (let index = 0; index < authored.length; index++) {
+    if (isWrittenSlash(authored[index]!.value)) {
+      (out ??= new Set()).add(groupItems(values)[index]!);
+    }
+  }
+  return out;
+}
+
+/**
  * Build the typed `ValueEvaluator`. No pre-pass: values are computed
  * on demand during the single serialize walk. The fn set is CALLER-INJECTED via
  * `registry` (populate it from a DIALECT INDEX — `makeLessRegistry()` /
@@ -152,29 +171,25 @@ export function buildEvaluator(
      * direct consumers of the legacy lazy lookup seam.
      */
     const scoped = scopedFn ?? scope?.lookup(name);
-    if (scoped) {
+
+    /*
+     * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
+     * resolves to a built-in but can't produce a value for these args — a modern
+     * color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
+     * non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
+     * as-is, like an unknown CSS function, rather than throwing (ledger C17).
+     * The same holds for a scoped `@plugin`/`@use` fn. (Only fn-dispatch errors are
+     * caught here; variable-resolution / mixin-recursion errors are thrown
+     * outside `dispatch` and still propagate.) A slash list a reference
+     * delivers to a parameter typed as a number is its quotient
+     * ({@link numberArguments}).
+     */
+    const fn = scoped ?? (ambient ? registry.get(name) : undefined);
+    if (fn) {
       try {
-        const result = dispatchFn(scoped, args, { modes, stringify, io, parseSelector });
+        const result = dispatchFn(fn, numberArguments(fn, args, evaluator, modes, writtenSlashes(written?.args ?? args, authored)), { modes, stringify, io, parseSelector });
         return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty }) : result;
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty });
-      }
-    }
-    if (ambient && registry.has(name)) {
-      try {
-        const result = registry.dispatch(name, args, { modes, stringify, io, parseSelector });
-        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty }) : result;
-      } catch (err) {
-        /*
-         * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
-         * resolves to a built-in but can't produce a value for these args — a modern
-         * color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
-         * non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
-         * as-is, like an unknown CSS function, rather than throwing. This mirrors
-         * less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
-         * caught here; variable-resolution / mixin-recursion errors are thrown
-         * outside `dispatch` and still propagate.)
-         */
         return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty });
       }
     }
@@ -212,7 +227,7 @@ export function buildEvaluator(
     return typeCheckValues(name, values);
   };
 
-  return {
+  const evaluator: ValueEvaluator = {
     /* `.scss` computes `*` and `/` units as Dart Sass does (ledger V32). */
     operate: options.sassCalculations === true ? (op, left, right, modes) => operate(op, left, right, modes, true) : operate,
     call,
@@ -224,4 +239,5 @@ export function buildEvaluator(
     sassCalculations: options.sassCalculations === true,
     sassOperands: options.sassOperands === true
   };
+  return evaluator;
 }

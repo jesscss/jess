@@ -23,6 +23,7 @@ import {
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, SelectorPart, Simple } from './ir.js';
+import { branchTextIsPlaceholder } from '../nodes.js';
 import { mergeCompound, NO_SIMPLES, wouldConflict } from './conflict.js';
 import { recordAstExtendProfile } from './plan.js';
 
@@ -769,6 +770,9 @@ function recurseIntoGrafts(
 ): Branch {
   const last = b.segments.length - 1;
   const hidden = b.hidden === true;
+
+  /* A placeholder seed is hidden by its placeholder, not by these arms: they stay its own selectors (`%ph :is(.sm, .x, .p) .k`). */
+  const armsHidden = hidden && !branchTextIsPlaceholder(branchText(b));
   return mkBranch(b.segments.map((seg, k) => {
     const simples = seg.compound.value;
     const value: Simple[] = [];
@@ -779,7 +783,7 @@ function recurseIntoGrafts(
         continue;
       }
       const inner = applyInstruction(
-        s.branches, target, extenders, partial, extenderKeys, targetAtoms, false,
+        armsHidden ? hiddenArms(s.branches) : s.branches, target, extenders, partial, extenderKeys, targetAtoms, false,
         sideText(simples, 0, index, k === 0 ? outerBefore : NO_TEXT, true),
         sideText(simples, index + 1, simples.length, k === last ? outerAfter : NO_TEXT, false)
       );
@@ -810,6 +814,21 @@ function recurseIntoGrafts(
     }
     return { combinator: seg.combinator, compound: { value } };
   }));
+}
+
+/**
+ * The arms of a graft in a hidden seed, marked hidden: they are the seed's own selectors,
+ * so an extend shows only what it appends to them or substitutes into them, never an arm
+ * itself (`:is(.sm, .p) .k` + `.x:extend(.sm all)` → `.x .k`; ledger X13).
+ */
+function hiddenArms(arms: Branch[]): Branch[] {
+  return arms.map((arm) => {
+    const out = mkBranch(arm.segments, arm.key);
+    out.bnd = arm.bnd;
+    out.hidden = true;
+    out.ext = arm.ext;
+    return out;
+  });
 }
 
 const NO_TEXT: readonly string[] = [];
