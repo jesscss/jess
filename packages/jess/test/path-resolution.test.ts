@@ -270,4 +270,65 @@ describe('Less path resolution', () => {
     expect(css).toContain('width: 17px');
     expect(css).toContain('height: 9px');
   });
+
+  /*
+   * An import that looks like a bare specifier is tried, in order, against the
+   * importing file's directory, the include paths, then Node package
+   * resolution; the first file that exists loads.
+   */
+  describe('bare-looking imports', () => {
+    const write = (file: string, text: string) => {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, text);
+    };
+    const located = (result: { errors: Array<{ code?: string; filePath?: string; line?: number; column?: number }> }) =>
+      result.errors.map(d => `${d.code} ${path.basename(d.filePath ?? '')}:${d.line}:${d.column}`);
+
+    it('loads from the importing directory, then the include paths, then a Node package', async () => {
+      const entryFile = path.join(projectDir, 'entry.less');
+      write(entryFile, '@import "pkg/tokens";\n.entry { color: @tone; }');
+      const render = () => new Compiler().render(entryFile, { language: { less: { paths: [includeDir] } } });
+
+      write(path.join(projectDir, 'node_modules/pkg/tokens.less'), '@tone: green;');
+      expect(await render()).toContain('color: green');
+      write(path.join(includeDir, 'pkg/tokens.less'), '@tone: blue;');
+      expect(await render()).toContain('color: blue');
+      write(path.join(projectDir, 'pkg/tokens.less'), '@tone: red;');
+      expect(await render()).toContain('color: red');
+    });
+
+    it('adds .less to a package path written without it', () => {
+      const packaged = path.join(projectDir, 'node_modules/pkg/tokens.less');
+      write(packaged, '');
+
+      expect(lessPlugin().resolve('pkg/tokens', projectDir, [])).toEqual([
+        path.join(projectDir, 'pkg/tokens'),
+        fs.realpathSync(packaged)
+      ]);
+    });
+
+    it('reports a missing one at its statement', async () => {
+      const entryFile = path.join(projectDir, 'entry.less');
+      write(entryFile, '.a { b: 1; }\n\n@import "pkg/missing";\n');
+
+      expect(located(await new Compiler().renderToResult(entryFile, { quiet: true })))
+        .toEqual(['import/not-found entry.less:3:1']);
+    });
+
+    it('sees a file that appears or moves between renders of one compiler', async () => {
+      const compiler = new Compiler();
+      const entryFile = path.join(projectDir, 'entry.less');
+      const relative = path.join(projectDir, 'pkg/tokens.less');
+      write(entryFile, '@import "pkg/tokens";\n.entry { color: @tone; }');
+
+      expect(located(await compiler.renderToResult(entryFile, { quiet: true })))
+        .toEqual(['import/not-found entry.less:1:1']);
+      write(path.join(projectDir, 'node_modules/pkg/tokens.less'), '@tone: green;');
+      expect(await compiler.render(entryFile)).toContain('color: green');
+      write(relative, '@tone: red;');
+      expect(await compiler.render(entryFile)).toContain('color: red');
+      fs.renameSync(relative, path.join(projectDir, 'pkg/moved.less'));
+      expect(await compiler.render(entryFile)).toContain('color: green');
+    });
+  });
 });

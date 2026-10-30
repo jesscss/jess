@@ -484,6 +484,9 @@ export class LessPlugin extends AbstractPlugin {
   readonly #rewriteUrls: LessPluginOptions['rewriteUrls'];
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
+  /** A `require` per base directory; it holds only that directory's `node_modules` lookup paths, never file state. */
+  readonly #requires = new Map<string, NodeJS.Require>();
+
   /**
    * `own` is the options a user built the plugin with, when `opts` also carries
    * settings a host resolved for the entry ({@link LessPluginResolver}): under a
@@ -681,7 +684,15 @@ export class LessPlugin extends AbstractPlugin {
     });
 
     const resolved = super.resolve(mapped, currentDir, searchPaths);
-    const out = [...resolved];
+
+    /*
+     * Node resolution only appends candidates after these, and `locate` takes
+     * the first that exists, so when one of these exists it cannot change
+     * which file loads.
+     */
+    if (this.locate(resolved, currentDir) !== null) {
+      return resolved;
+    }
     const bases = [currentDir, ...searchPaths, process.cwd()];
     const looksBareSpecifier = (p: string) =>
       !path.isAbsolute(p)
@@ -696,28 +707,29 @@ export class LessPlugin extends AbstractPlugin {
       }
       for (const base of bases) {
         const baseDir = path.isAbsolute(base) ? base : path.resolve(currentDir, base);
+        let req = this.#requires.get(baseDir);
+        if (req === undefined) {
+          req = createRequire(path.join(baseDir, '__jess_resolve__.js'));
+          this.#requires.set(baseDir, req);
+        }
+        let resolvedModule: string;
         try {
-          const req = createRequire(path.join(baseDir, '__jess_resolve__.js'));
-          const resolvedModule = req.resolve(candidate);
-          if (!out.includes(resolvedModule)) {
-            out.push(resolvedModule);
-          }
-          break;
+          resolvedModule = req.resolve(candidate);
         } catch {
           try {
-            const req = createRequire(path.join(baseDir, '__jess_resolve__.js'));
-            const resolvedModuleLess = req.resolve(`${candidate}.less`);
-            if (!out.includes(resolvedModuleLess)) {
-              out.push(resolvedModuleLess);
-            }
-            break;
+            resolvedModule = req.resolve(`${candidate}.less`);
           } catch {
             // keep trying other base dirs
+            continue;
           }
         }
+        if (!resolved.includes(resolvedModule)) {
+          resolved.push(resolvedModule);
+        }
+        break;
       }
     }
-    return out;
+    return resolved;
   }
 
   /**
