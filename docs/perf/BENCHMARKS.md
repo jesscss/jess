@@ -9,7 +9,27 @@ serialize — the full `Compiler.render` path), not parse time alone. Parse spee
 is a someday-concern; do not lead with the parse ratio. North-star: jess's total
 render on `benchmark.less` at or near Less 4.x's total render.
 
-Reference point (2026-08-28, parseman 0.50.0, contended machine so indicative):
+Reference point (2026-10-30, `8b62ab0c8`, parseman 0.55.2, node 24.11.1, lessc
+4.9.1, M-series at load ~7, so indicative). Marginal per-compile time after
+warm-up, jess and lessc interleaved in one process in alternating AB/BA rounds,
+jess configured as `measure:less:hotpath` configures it. Parse is jess
+`Compiler.compile` (parse plus static imports) against `less.parse` (parse plus
+imports); eval+render is total minus parse. ¹ The file `bootstrap4.less` imports,
+`bootstrap-less-port@0.3.0/less/bootstrap.less` from `packages/less-corpus-fixture-deps`,
+rendered with the fixture's `math: 0`.
+
+| Fixture | Parse jess / lessc | Eval+render jess / lessc | Total jess / lessc |
+|---|---|---|---|
+| `benchmark.less` | 28.3 / 7.1 ms (4.0×) | 23.7 / 28.3 ms (0.78×) | 52.0 / 35.4 ms (1.42×) |
+| `bootstrap4.less`¹ | 60.8 / 9.7 ms (6.3×) | 250.5 / 71.5 ms (3.5×) | 311 / 81 ms (3.8×) |
+
+Marginal instructions retired per compile point the same way: `benchmark.less`
+1.03G / 0.76G (1.36×), `bootstrap4.less` 3.43G / 2.07G (1.66×). About half of
+jess's `bootstrap4.less` wall time is idle, waiting on the worker that runs the
+fixture's `@plugin` JavaScript. The driver that produced this table is not
+committed: there is still no committed total-render-vs-lessc harness (TL;DR).
+
+Earlier reference point (2026-08-28, parseman 0.50.0, contended machine so indicative):
 jess total render of `benchmark.less` ≈ **42ms** vs lessc 4.6.3 ≈ **38ms** —
 ~10%, essentially parity within noise. (lessc renders `benchmark.less` FINE — it
 is ordinary Less; there is no "v5-only" blocker. The perf-gate can't pair-time it
