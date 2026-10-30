@@ -249,7 +249,9 @@ import {
 import type { BlockExtent, DynamicExtendState, DynExtendSlot, NestedLanding } from './extend/dynamic.js'; // [extend/selector-interp]
 import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
-import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
+import { branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple } from './extend/ir.js';
+import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules } from './extend/document.js';
+import type { ExtendClass } from './extend/document.js';
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
@@ -12937,7 +12939,7 @@ function resolvePseudoInterpCopy(p: PseudoSelector, frame: Frame | null, e: Lane
     return p;
   }
   const selectors = args.selectors.flatMap(c => resolveSelectorBranchInterpCopy(c, frame, e, 'argument'));
-  return { ...p, args: { ...args, selectors }, _hasInterp: false };
+  return { ...p, args: { ...args, selectors, _level: undefined }, _hasInterp: false };
 }
 
 function resolveSelectorTermInterpCopy(term: SelectorTerm, frame: Frame | null, e: Lane, within: CompoundIn = 'selector'): SelectorTerm | SelectorTerm[] {
@@ -12999,7 +13001,7 @@ function resolvedSelectorBranchesOf(list: SelectorList, branches: ReadonlyArray<
     return;
   }
   const selectors = branches.flat();
-  e.s.resolvedSelectors.set(list, { ...list, selectors });
+  e.s.resolvedSelectors.set(list, { ...list, selectors, _level: undefined });
   if (selectors.length !== branches.length) {
     const lone = (branch: SelectorBranch[], index: number): boolean => branch.length > 1 && loneInterpRef(list.selectors[index]!) !== null;
     e.s.resolvedUnits.set(list, Int32Array.from(branches.flatMap((branch, index) => Array.isArray(branch) ? branch.map(() => lone(branch, index) ? ~index : index) : [index])));
@@ -13108,225 +13110,6 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
        * the selector run — recurse with the same frame.
        */
       resolveSelectorInterpForExtend(st.rules, frame, e);
-    }
-  }
-}
-
-/**
- * [extend/dynamic] Whether a document carries STATIC and/or DYNAMIC `:extend()`.
- * `static` — an extend on the ordinary Ruleset/AtRuleBlock spine (the pre-walk
- * `computeExtends`/interp-prepass surface). `dynamic` — an extend reached only through
- * a body the walk places (see {@link placingBody}; recorded by the ONE render walk,
- * ledger X12). A document can have both. `places` — such a body places a rule, a mixin
- * call places its callee's rules (a ruleset called as a mixin included), or an
- * `@import` sits inside a ruleset or such a body (the import planner never reaches
- * that sheet): once the graph has any extend, the walk must record what they place.
- */
-interface ExtendClass {
-  static: boolean;
-  dynamic: boolean;
-  places: boolean;
-
-  /**
-   * The statically addressed `@import`s the walk places (inside a ruleset or a placing
-   * body). The import planner never plans those sheets, so when nothing else in the
-   * graph extends it loads them only to learn whether they carry an extend, which the
-   * walk recorder must then be armed for.
-   */
-  placedImports: StyleImport[] | null;
-
-  /**
-   * The walk places an `@import` whose path is interpolated. Its sheet is known only
-   * where the walk resolves the path, so the walk recorder is armed for it outright.
-   */
-  placesUnaddressedImport: boolean;
-}
-
-/**
- * The body-form `&:extend()`s a statement carries for the render walk to apply wherever
- * its body lands (see {@link recordBodyExtends}): a mixin definition's (ledger X16), an
- * at-rule block's or an `each()` callback's (X19). A detached ruleset's are its own
- * ({@link heldAnonymousMixin}). Undefined for every other statement.
- */
-function walkAppliedExtends(st: Statement): readonly ExtendInstruction[] | undefined {
-  switch (st.type) {
-    case 'MixinDefinition':
-    case 'AtRuleBlock':
-    case 'For':
-      return st.extendInstructions;
-    default:
-      return undefined;
-  }
-}
-
-/**
- * The `index`-th detached ruleset a statement holds as a value — a variable's
- * (`@r: { … }`), a mixin call's argument or content block, a mixin definition's
- * parameter default. The render walk places its rules, and applies its body-form
- * `&:extend()`s (ledger X19), wherever it is called, so each classifier reads it as a
- * placing body. Null past the last one; indexed, so the classifiers allocate nothing.
- */
-function heldAnonymousMixin(st: Statement, index: number): AnonymousMixin | null {
-  let seen = 0;
-  const nth = (value: ValueSlot | CallValue | null | undefined): AnonymousMixin | null =>
-    value !== null && value !== undefined && !isValueSlotArray(value) && value.type === 'AnonymousMixin' && seen++ === index ? value : null;
-  switch (st.type) {
-    case 'VariableDeclaration':
-      return nth(st.value);
-    case 'MixinCall':
-      for (const arg of st.args) {
-        const held = nth(arg.value);
-        if (held !== null) {
-          return held;
-        }
-      }
-      return nth(st.content);
-    case 'MixinDefinition':
-      for (const param of st.params) {
-        const held = nth(param.default);
-        if (held !== null) {
-          return held;
-        }
-      }
-      return null;
-    default:
-      return null;
-  }
-}
-
-/**
- * Body `index` of a statement that places rules only when the render walk runs it: a
- * `$for`/`each()` loop, a mixin definition, a `$if`/`$while` control block (one body
- * per `$if` branch). A detached ruleset is {@link heldAnonymousMixin}. Null past the
- * last body, and for every other statement. Their rules are never static extend subjects; the walk
- * records them where they land. Indexed, so the per-render classifiers allocate nothing.
- */
-function placingBody(st: Statement, index: number): readonly Statement[] | null {
-  switch (st.type) {
-    case 'For':
-    case 'MixinDefinition':
-    case 'While':
-      return index === 0 ? st.rules : null;
-    case 'If':
-      return st.branches[index]?.rules ?? null;
-    default:
-      return null;
-  }
-}
-
-/**
- * [extend/dynamic] ONE spine traversal that classifies a document's extend surface,
- * fusing what used to be two separate whole-document walks (`documentHasExtend` +
- * `documentHasDynamicExtend`). Once inside a placing body (`inDynamic`) every extend
- * is dynamic. A `{ static:false, dynamic:false }` result is the no-extend document: the
- * caller then takes exactly the original zero-cost path. Pure shape analysis — no
- * evaluation. Short-circuits once both bits are set (the walk is then armed anyway).
- */
-function classifyExtend(statements: readonly Statement[], inDynamic: boolean, out: ExtendClass, placed = inDynamic): void {
-  for (const st of statements) {
-    if (out.static && out.dynamic) {
-      return;
-    }
-    for (let index = 0, held = heldAnonymousMixin(st, 0); held !== null; held = heldAnonymousMixin(st, ++index)) {
-      if (held.extendInstructions !== undefined) {
-        out.dynamic = true;
-      }
-      classifyExtend(held.rules, true, out);
-    }
-    if (st.type === 'Ruleset') {
-      if (inDynamic) {
-        out.places = true;
-      }
-      if (st.extendInstructions?.length) {
-        if (inDynamic) {
-          out.dynamic = true;
-        } else {
-          out.static = true;
-        }
-      }
-      classifyExtend(st.rules, inDynamic, out, true);
-    } else if (st.type === 'AtRuleBlock') {
-      if (st.extendInstructions !== undefined) {
-        out.dynamic = true;
-      }
-      classifyExtend(st.rules, inDynamic, out, placed);
-    } else if (st.type === 'StyleImport') {
-      if (placed) {
-        out.places = true;
-        if (isStaticQuoted(st.target) || (st.target.type === 'Url' && isStaticQuoted(st.target.value))) {
-          (out.placedImports ??= []).push(st);
-        } else {
-          out.placesUnaddressedImport = true;
-        }
-      }
-    } else if (st.type === 'MixinCall' || st.type === 'Apply') {
-      out.places = true;
-    } else {
-      /* A definition's own body-form extend applies wherever it is called (ledger X16). */
-      if (walkAppliedExtends(st) !== undefined) {
-        out.dynamic = true;
-      }
-      for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
-        classifyExtend(body, true, out);
-      }
-    }
-  }
-}
-
-/**
- * [extend/dynamic] ONE armed-only walk over the document: the static-spine Ruleset
- * nodes (`staticRules` — every rule reachable through ruleset / at-rule nesting, NOT
- * through a placing body; a rule outside it was reached dynamically and records its
- * facts at emit), and the target atoms of the extends in placing bodies.
- * Runs only when dynamic recording is armed, so non-extend documents pay nothing.
- *
- * F5 note: the planner's subject-rule set is NOT reused here — the pre-walk
- * `computeExtends` returns null (building no plan) for the common dynamic-only document
- * (extend only inside a loop/mixin, e.g. the bootstrap grid), exactly when `staticRules`
- * is most needed.
- */
-function collectDynamicExtendSets(
-  statements: readonly Statement[],
-  inDynamic: boolean,
-  staticRules: Set<Ruleset>,
-  targetAtoms: Set<string>
-): void {
-  for (const st of statements) {
-    for (let index = 0, held = heldAnonymousMixin(st, 0); held !== null; held = heldAnonymousMixin(st, ++index)) {
-      if (held.extendInstructions !== undefined) {
-        collectInstructionAtoms(held.extendInstructions, targetAtoms);
-      }
-      collectDynamicExtendSets(held.rules, true, staticRules, targetAtoms);
-    }
-    if (st.type === 'Ruleset') {
-      if (!inDynamic) {
-        staticRules.add(st);
-      } else if (st.extendInstructions?.length) {
-        collectInstructionAtoms(st.extendInstructions, targetAtoms);
-      }
-      collectDynamicExtendSets(st.rules, inDynamic, staticRules, targetAtoms);
-    } else if (st.type === 'AtRuleBlock') {
-      if (st.extendInstructions !== undefined) {
-        collectInstructionAtoms(st.extendInstructions, targetAtoms);
-      }
-      collectDynamicExtendSets(st.rules, inDynamic, staticRules, targetAtoms);
-    } else {
-      const extend = walkAppliedExtends(st);
-      if (extend !== undefined) {
-        collectInstructionAtoms(extend, targetAtoms);
-      }
-      for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
-        collectDynamicExtendSets(body, true, staticRules, targetAtoms);
-      }
-    }
-  }
-}
-
-/** Add the selector atoms of every `:extend()` target in `instructions` to `atoms`. */
-function collectInstructionAtoms(instructions: readonly ExtendInstruction[], atoms: Set<string>): void {
-  for (const inst of instructions) {
-    for (const sel of inst.target.selectors) {
-      collectBranchAtoms(branchFromSelector(sel), atoms);
     }
   }
 }
@@ -13492,7 +13275,7 @@ function planImportedStaticExtend(
       e.importedWalkPlacement = true;
       collectBodyExtendAtoms([statement], overlay.dynamicTargetAtoms ??= new Set());
     } else if (statement.type === 'Ruleset') {
-      const own = levelFromSelectorList(plannedSelectorList(statement.selector, e));
+      const own = selectorLevel(plannedSelectorList(statement.selector, e));
       const rulePath = [...path, own];
       const subject: PlanSubject = {
         rule: statement, path: rulePath, scope, ownLocal: own, parent,
@@ -13503,11 +13286,11 @@ function planImportedStaticExtend(
       if (statement.extendInstructions) {
         for (const inst of statement.extendInstructions) {
           const extenderPath = inst.subject
-            ? [...path, levelFromSelectorList(plannedSelectorList(inst.subject, e))]
+            ? [...path, selectorLevel(plannedSelectorList(inst.subject, e))]
             : rulePath;
-          for (const sel of plannedSelectorList(inst.target, e).selectors) {
+          for (const target of selectorLevel(plannedSelectorList(inst.target, e))) {
             overlay.instructions.push({
-              target: branchFromSelector(sel), partial: inst.partial, extenderPath, scope,
+              target, partial: inst.partial, extenderPath, scope,
               order: overlay.instructions.length, extenderHidden: hidden,
               boundary
             });
@@ -13726,8 +13509,7 @@ function planImportedFacts(
    * synchronous callable-body ownership, while actual import/extend facts opt
    * into planning.
    */
-  const extendClass: ExtendClass = { static: false, dynamic: false, places: false, placedImports: null, placesUnaddressedImport: false };
-  classifyExtend(root.rules, false, extendClass);
+  const extendClass = documentExtendClass(root);
 
   /*
    * A sheet the walk places through an interpolated path may carry the graph's only
@@ -14417,14 +14199,12 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
      * EXTEND-SEMANTICS §1a).
      */
     if (extendClass.dynamic || e.importedWalkPlacement || (extendClass.places && e.extends !== null)) {
-      const staticRules = new Set<Ruleset>();
-      const dynamicAtoms = new Set<string>(planned.imports?.dynamicTargetAtoms);
-      collectDynamicExtendSets(plannedRoot.rules, false, staticRules, dynamicAtoms);
-      if (e.importedStaticExtendRules) {
-        for (const rule of e.importedStaticExtendRules) {
-          staticRules.add(rule);
-        }
+      const walkFacts = documentWalkFacts(plannedRoot);
+      const dynamicAtoms = new Set<string>(walkFacts.targetAtoms);
+      for (const atom of planned.imports?.dynamicTargetAtoms ?? []) {
+        dynamicAtoms.add(atom);
       }
+      const staticRules = withRules(walkFacts.staticRules, e.importedStaticExtendRules);
       const reveal = hiddenRulesToReveal(planned.overlay, dynamicAtoms, planned.imports?.importingRules ?? null);
       e.dynamicExtend = {
         root: plannedRoot,
@@ -14440,7 +14220,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         pathSelectors: [],
         pathSubjects: [],
         ownLevels: new Map(),
-        targetBranches: new Map(),
         revealRules: reveal?.rules ?? null,
         revealAncestors: reveal?.ancestors ?? null,
         revealAtRules: reveal?.atRules ?? null,

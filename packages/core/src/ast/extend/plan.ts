@@ -5,11 +5,12 @@
  * scope, document order).
  */
 
-import { branchFromSelector, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
+import { branchSharesAtom, collectBranchAtoms, selectorLevel } from './ir.js';
 import type { Branch, Level } from './ir.js';
 import { selectorBranchHasInterp } from '../nodes.js';
 import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
 import type { AtRuleBlock } from '../at-rule.js';
+import type { InstGroup } from './solve.js';
 
 /**
  * Opt-in, import-time-captured counters for the AST extend planner. Production
@@ -182,6 +183,12 @@ export interface Plan {
    * of these atoms provably cannot match or chain — the solve prefilter skips it.
    */
   targetAtoms: Set<string>;
+
+  /**
+   * The instruction groups of a subject every instruction reaches, the common case,
+   * built by the first such solve and read by the rest ({@link solveComposed}).
+   */
+  groups: InstGroup[] | null;
 }
 
 /** Typed facts produced by a render-local preflight (currently imported loop bodies). */
@@ -277,16 +284,14 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
   ): void => {
     for (const st of statements) {
       if (st.type === 'Ruleset') {
-        const rule = st;
-
         /* An interpolated selector reads as the extend pre-pass resolved it (`resolved`), the parsed one untouched. */
-        const selector = resolved?.get(rule.selector) ?? rule.selector;
-        const own = levelFromSelectorList(selector);
+        const selector = resolved?.get(st.selector) ?? st.selector;
+        const own = selectorLevel(selector);
         const rulePath = [...path, own];
         const ownExt = ext === null ? null : writableLevel(selector, own);
         const ruleExt = ext === null || ownExt === null ? null : ext === path && ownExt === own ? rulePath : [...ext, ownExt];
         const subject: PlanSubject = {
-          rule,
+          rule: st,
           path: rulePath,
           scope,
           ownLocal: own,
@@ -298,8 +303,8 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
           placement: undefined
         };
         subjects.push(subject);
-        if (rule.extendInstructions) {
-          for (const inst of rule.extendInstructions) {
+        if (st.extendInstructions) {
+          for (const inst of st.extendInstructions) {
             /*
              * [extend] An INLINE extend binds to its own complex (`inst.subject`), not
              * the whole rule selector — its extender path narrows the own-local level to
@@ -308,17 +313,18 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
              */
             const subject = inst.subject && (resolved?.get(inst.subject) ?? inst.subject);
             const extenderPath = subject
-              ? ext === null || subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, levelFromSelectorList(subject)]
+              ? ext === null || subject.selectors.some(selectorBranchHasInterp) ? null : [...ext, selectorLevel(subject)]
               : ruleExt;
             if (extenderPath === null) {
               continue;
             }
-            for (const sel of (resolved?.get(inst.target) ?? inst.target).selectors) {
+            const target = resolved?.get(inst.target) ?? inst.target;
+            for (let index = 0; index < target.selectors.length; index++) {
               /* An unresolved target names nothing, and its `''` would match an unresolved subject. */
-              if (selectorBranchHasInterp(sel)) {
+              if (selectorBranchHasInterp(target.selectors[index]!)) {
                 continue;
               }
-              const targetBranch = branchFromSelector(sel);
+              const targetBranch = selectorLevel(target)[index]!;
               instructions.push({
                 target: targetBranch,
                 partial: inst.partial,
@@ -332,7 +338,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
             }
           }
         }
-        walk(rule.rules, rulePath, ruleExt, scope, subject);
+        walk(st.rules, rulePath, ruleExt, scope, subject);
       } else if (st.type === 'AtRuleBlock') {
         const inner = atRuleScope(scope, st, scopeIds);
         if (parent !== null) {
@@ -388,38 +394,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);
   recordAstExtendProfile?.('astExtend.plan.bubbles', bubbles.length);
   recordAstExtendProfile?.('astExtend.plan.instructions', instructions.length);
-  return { subjects, instructions, bubbles, targetAtoms };
-}
-
-/**
- * Allocation-free pre-scan: does the document contain ANY `:extend()` instruction?
- * The common case (no extends) returns false without building the subject/instruction
- * plan at all — the serializer's true zero-cost gate.
- */
-export function documentHasExtend(root: Stylesheet): boolean {
-  recordAstExtendProfile?.('astExtend.documentHasExtend.calls');
-  const scan = (statements: Statement[]): boolean => {
-    for (const st of statements) {
-      if (st.type === 'Ruleset') {
-        if (st.extendInstructions && st.extendInstructions.length > 0) {
-          return true;
-        }
-        if (scan(st.rules)) {
-          return true;
-        }
-      } else if (st.type === 'AtRuleBlock') {
-        if (scan(st.rules)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  const found = scan(root.rules);
-  recordAstExtendProfile?.(found
-    ? 'astExtend.documentHasExtend.featureBearingCalls'
-    : 'astExtend.documentHasExtend.noFeatureMisses');
-  return found;
+  return { subjects, instructions, bubbles, targetAtoms, groups: null };
 }
 
 /** Reachability: an instruction reaches a subject iff the subject scope is the
