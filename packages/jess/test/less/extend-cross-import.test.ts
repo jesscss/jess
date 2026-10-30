@@ -513,6 +513,15 @@ describe('extend across @import', () => {
     });
   });
 
+  /* A `(reference)` rule an `&` concatenation names is revealed to its extender (ledger X5, X13; jess#500). */
+  it.each([
+    ['amp-suffix-reference-main.less', '.q {\n  e: f;\n}'],
+    ['amp-suffix-reference-mixin-main.less', '.w .q {\n  e: f;\n}']
+  ])('reveals a (reference) &-suffix target to its extender (%s)', async (file, expected) => {
+    expect(await renderFile(file)).toBe(expected);
+    expect(await renderFile(file, false)).toBe(expected);
+  });
+
   /*
    * A hidden `(reference)` copy shows only what an extend adds: the extender, never the
    * `:is()` arms it was appended to (ledger X13; EXTEND-SEMANTICS §11, jess#501). The

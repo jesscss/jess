@@ -6,6 +6,7 @@
  */
 
 import { branchSharesAtom, collectBranchAtoms, selectorLevel } from './ir.js';
+import { buildsSharedName } from './compose.js';
 import type { Branch, Level } from './ir.js';
 import { selectorBranchHasInterp } from '../nodes.js';
 import type { SelectorList, Stylesheet, Ruleset, Statement } from '../nodes.js';
@@ -101,9 +102,11 @@ export interface PlanSubject {
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
-   * as an inherited boolean — O(own-local atoms) per subject, no `composePath`.
+   * as an inherited boolean — O(own-local atoms) per subject; only a subject whose own
+   * level builds a name on its parent (`&-b`) is composed ({@link buildsSharedName}).
    * A subject with `mayMatch === false` provably cannot match or chain any extend
-   * (its composed seed's atoms ⊆ the per-level atom union; see EXTEND-REDESIGN.md),
+   * (its composed seed's atoms ⊆ the per-level atom union, plus the names a `&`
+   * builds; see EXTEND-REDESIGN.md),
    * so it keeps its raw form and needs no expensive solve. Only meaningful when
    * `targetAtoms` is populated (i.e. the document has extends).
    */
@@ -380,15 +383,16 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
   /*
    * FAST-REJECT boolean, computed as an inherited flag over subjects in document
    * (pre-)order — a parent always precedes its descendants, so one forward pass
-   * suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms). A
+   * suffices. `own || parent.mayMatch`: O(own-local atoms), no `composePath`. A
    * subject with no parent subject reads its whole path: a rule the render walk
-   * reached through a mixin or loop body carries its ancestors as levels only.
+   * reached through a mixin or loop body carries its ancestors as levels only. A name
+   * a `&` builds on its parent is seen only composed ({@link buildsSharedName}).
    */
   const levelShares = (level: Level): boolean => level.some(b => branchSharesAtom(b, targetAtoms));
   for (const s of subjects) {
-    s.mayMatch = s.parent !== null && s.parent.placement !== PLANNED_PARENT
+    s.mayMatch = (s.parent !== null && s.parent.placement !== PLANNED_PARENT
       ? s.parent.mayMatch || levelShares(s.ownLocal)
-      : s.path.some(levelShares);
+      : s.path.some(levelShares)) || buildsSharedName(s.path, targetAtoms);
   }
 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);

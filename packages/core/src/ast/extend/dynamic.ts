@@ -21,6 +21,7 @@ import { computeExtends } from './emit.js';
 import type { ExtendPlacementResults, ExtendResults, NestedRulePlan } from './emit.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, selectorLevel, textSimple } from './ir.js';
 import type { Level } from './ir.js';
+import { buildsSharedName } from './compose.js';
 import { plannedParent, recordAstExtendProfile } from './plan.js';
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 
@@ -966,6 +967,14 @@ export function recordDynamicInstruction(dyn: DynamicExtendState, inst: ExtendIn
 }
 
 /**
+ * Whether a subject's own selector shares an atom with `atoms`, a name its `&` builds on
+ * its parent included ({@link buildsSharedName}).
+ */
+export function ownSharesAtom(s: PlanSubject, atoms: Set<string>): boolean {
+  return s.ownLocal.some(b => branchSharesAtom(b, atoms)) || buildsSharedName(s.path, atoms);
+}
+
+/**
  * [extend/dynamic] The extend results once the walk-recorded facts join the static
  * plan, or null when they cannot change any header. A recorded rule that shares no
  * atom with any extend target can neither match nor chain (the planner's `mayMatch`
@@ -977,7 +986,7 @@ export function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResul
   for (const inst of dyn.instructions) {
     collectBranchAtoms(inst.target, atoms);
   }
-  const subjects = dyn.subjects.filter(s => s.path.some(level => level.some(b => branchSharesAtom(b, atoms))));
+  const subjects = dyn.subjects.filter(s => s.path.some(level => level.some(b => branchSharesAtom(b, atoms))) || buildsSharedName(s.path, atoms));
   recordAstExtendProfile?.('astExtend.fold.recordedSubjects', dyn.subjects.length);
   recordAstExtendProfile?.('astExtend.fold.keptSubjects', subjects.length);
   if (subjects.length === 0 && dyn.instructions.length === 0) {
