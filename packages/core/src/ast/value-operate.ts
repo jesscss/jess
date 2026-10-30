@@ -12,7 +12,8 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type Quoted, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
+import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
@@ -748,6 +749,25 @@ function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | n
 }
 
 /**
+ * The value of a quoted string template whose text is `text`: in `quote`, or
+ * in the other quote where `text` holds `quote` unescaped and not the other
+ * one; a quote left unescaped is escaped. Only a spliced value, or an `.scss`
+ * string built with `+` (ledger V36), whose literals keep their own quotes,
+ * holds one: `"a" + 'b"c'` and `"a" + $x` with `$x: 'b"c'` are `'ab"c'`, `"a"
+ * + 'b"c' + "d'e"` is `"ab\"cd'e"`.
+ */
+export function quotedText(text: string, quote: string): Quoted {
+  const chosen = stringQuoteFor(text, quote);
+  return makeQuoted(escapeStringQuote(text, chosen), chosen, false);
+}
+
+/** The bytes of {@link quotedText}, for the bytes lane. */
+export function quotedBytes(text: string, quote: string): string {
+  const chosen = stringQuoteFor(text, quote);
+  return `${chosen}${escapeStringQuote(text, chosen)}${chosen}`;
+}
+
+/**
  * The value of an `.scss` string built with `+` whose leading operand is only
  * known at evaluation (`$prefix + "-x"`; ledger V36): quoted as Dart Sass
  * quotes it, from that operand. A quoted string gives a quoted result, an
@@ -759,7 +779,7 @@ export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalV
     return text;
   }
   if (lead.type === 'Quoted' && !lead.escaped) {
-    return makeQuoted(text, lead.quote, false);
+    return quotedText(text, lead.quote);
   }
   return lead.type === 'Any' || (lead.type === 'Keyword' && invalidOperand(lead, true, false) === 'keyword') ? makeAny(text) : text;
 }

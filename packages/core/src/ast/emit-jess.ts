@@ -37,7 +37,7 @@
 import type {
   AnonymousMixin, Block, CallArg, CallValue, Collection, ComplexSelector, CompoundSelector,
   Declaration, Expression, ExtendInstruction, FunctionCall, IfValue, Interpolation, Lookup, LookupStep, MixinCall,
-  MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
+  MixinDefinition, Operation, Param, PseudoSelector, Quoted, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
 import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
@@ -46,6 +46,7 @@ import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
 import { jessCollection, jessCurlyList, type ListSpeller } from './emit-jess-list.js';
 import { renderCombinator } from './node.js';
+import { escapeStringQuote, stringQuoteFor } from './css-syntax.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
 import { MEMBER_CALL, moduleImportText, selectorParseCall, unquoteLiteral } from './emit-jess-module.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
@@ -753,9 +754,7 @@ class JessPrinter {
             ? 'an `.scss` string built with `+` that takes its quoting from a value known at evaluation: `.jess` strings have their own quotes'
             : 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
         }
-        return node.interp === null
-          ? node.src
-          : `${node.escaped ? '~' : ''}${node.quote}${this.template(node.interp, 'string')}${node.quote}`;
+        return node.interp === null ? node.src : this.quotedTemplate(node, node.interp, text);
       }
       case 'Any':
         if (node.src.includes('$')) {
@@ -852,6 +851,16 @@ class JessPrinter {
       case 'Comment':
         return gap('Comment', 'a comment carried as a value node');
     }
+  }
+
+  /**
+   * A string template, in the quote its literals (`text`) choose, as evaluation
+   * writes it (`quotedText`): an `.scss` string built with `+` keeps each
+   * literal as written (`"a" + 'b"c'` is `'ab"c'`).
+   */
+  quotedTemplate(node: Quoted, interp: Interpolation, text: string): string {
+    const quote = stringQuoteFor(text, node.quote);
+    return `${node.escaped ? '~' : ''}${quote}${this.template(interp, 'string', quote)}${quote}`;
   }
 
   /** `VariableReference`: `$name` (live) / `$^name` (scoped); the parent selector `&`. */
@@ -1072,11 +1081,11 @@ class JessPrinter {
   }
 
   /** `DollarBrace` (`${name}`) / `ExpressionInterpolation` (`$( … )`) template parts. */
-  template(node: Interpolation, where: 'string' | 'selector' | 'name'): string {
+  template(node: Interpolation, where: 'string' | 'selector' | 'name', quote?: string): string {
     let out = '';
     for (const part of node.parts) {
       if ('lit' in part) {
-        out += part.lit;
+        out += quote === undefined ? part.lit : escapeStringQuote(part.lit, quote);
         continue;
       }
       const ref = part.ref;

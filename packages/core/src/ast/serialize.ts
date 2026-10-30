@@ -210,7 +210,7 @@ import { collectNestedProperty, isNestedPropertyValue } from './nested-property.
 import { callSiteLocation } from './call-site-location.js';
 import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedBytes, quotedText, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
@@ -5061,7 +5061,7 @@ function evalTyped(
       if (node.interp !== null) {
         return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => !isLiteral(content)
           ? content
-          : node.escaped ? makeAny(content, node.quote) : makeQuoted(content, node.quote, false));
+          : node.escaped ? makeAny(content, node.quote) : quotedText(content, node.quote));
       }
       return node.escaped ? makeAny(node.value, node.quote) : materializeNode(node, e);
     case 'Url':
@@ -5863,7 +5863,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Quoted':
       if (node.interp !== null) {
         return mapMaybe(evalInterp(node.interp, frame, e.checks === undefined ? e : deriveLane(e, 'unchecked')), content => isLiteral(content) && !node.escaped
-          ? literal(`${node.quote}${content}${node.quote}`)
+          ? literal(quotedBytes(content, node.quote))
           : content);
       }
       return literal(node.escaped ? node.value : node.src);
