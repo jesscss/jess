@@ -208,6 +208,7 @@ import { isMathFunctionName } from './math-functions.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
+import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
@@ -10898,9 +10899,10 @@ interface Emit extends Lane {
 
   /*
    * [recursion-backstop] current NESTED mixin-expansion depth (0 at the top of a
-   * document walk). `expandCall` bumps it around each expansion and raises a clean
-   * `RangeError` once it reaches `MAX_MIXIN_DEPTH` — catching a bad-guard runaway
-   * before a native stack overflow. Threaded through `scratchEmit`.
+   * document walk). `expandCall` bumps it around each expansion and reports
+   * `eval/mixin-recursion-limit` once it reaches `MAX_MIXIN_DEPTH`, or when a
+   * runaway overflows the native stack first (`mixin-recursion.ts`). Threaded
+   * through `scratchEmit`.
    */
   mixinDepth: number;
 
@@ -17682,21 +17684,6 @@ function expandNestedReferenceAncestorFor(node: For, frame: Frame, at: Placement
 }
 
 /**
- * [recursion-backstop] Maximum depth of NESTED mixin expansions. Parametric
- * self-recursion is meant to be terminated by its guard; a bad guard produces a
- * runaway that would blow the JS call stack. This high backstop turns that into a
- * clean, catchable `RangeError` far above any legitimate guarded recursion depth
- * (real Less recurses a handful to low-hundreds of levels) yet with comfortable
- * headroom below the native stack ceiling. Each expansion level costs many JS
- * frames (`expandCall` → `walkBody` → nested `expandCall`), so the measured native
- * ceiling is ~1000 levels and varies with the caller's starting stack depth; 500
- * leaves ~2× margin so the clean error ALWAYS fires before a native overflow,
- * regardless of context. It is a runaway BACKSTOP, not a recursion cap — see
- * `expandCall`.
- */
-const MAX_MIXIN_DEPTH = 500;
-
-/**
  * Expand a mixin call: [guards] resolve the overloaded definitions that match
  * (arity + literal pattern + named/default params + guards), then WALK each
  * matching shared def body in place under the current composed selector. No
@@ -17784,14 +17771,15 @@ function expandCall(
 
       /*
        * [recursion-backstop] Parametric self-recursion (`.loop(@n - 1)`) is terminated
-       * by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops and
-       * would otherwise blow the JS stack. Each nested expansion adds one level here; a
-       * high backstop (`MAX_MIXIN_DEPTH`) raises a clean, catchable error well before a
-       * native stack overflow. This is NOT the parent-exclusion skip above and NOT a low
-       * cap — legit deep guarded recursion runs unaffected far below the limit.
+       * by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops.
+       * Each nested expansion adds one level here, and `MAX_MIXIN_DEPTH` stops a
+       * runaway whose levels await. A synchronous one usually overflows the native
+       * stack first; the catch below reports that as the same error at this call
+       * (`runawayMixinError`). This is NOT the parent-exclusion skip above and NOT a
+       * low cap: guarded recursion runs unaffected below the limit.
        */
       if (e.mixinDepth >= MAX_MIXIN_DEPTH) {
-        throw new RangeError('maximum mixin recursion depth exceeded');
+        throw mixinRecursionLimit(call, e.s);
       }
       e.mixinDepth++;
       const run = (start: number): MaybePromise<void> => {
@@ -17921,7 +17909,7 @@ function expandCall(
         return expanded;
       } catch (error) {
         e.mixinDepth--;
-        throw error;
+        throw runawayMixinError(error, call, e.s);
       }
     });
     return runDispatch();

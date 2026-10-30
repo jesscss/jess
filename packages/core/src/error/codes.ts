@@ -53,6 +53,7 @@ export type JessErrorCode =
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
   | 'eval/loop-iteration-limit'
+  | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
   | 'eval/scss-warn'
   | 'eval/scss-error'
@@ -443,6 +444,15 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'A $while condition was still true after ${limit} iterations, so the loop was stopped rather than run forever.',
       fix: 'Make the body change a value the condition reads, or rewrite the loop as a $for over a bounded range.'
+    }
+  ],
+  [
+    'eval/mixin-recursion-limit',
+    {
+      summary: 'Mixin recursion did not terminate',
+      reason:
+        'The mixin call ${name}() was still expanding itself when it reached the recursion limit (${limit} nested expansions, or the end of the call stack), so it was stopped rather than run forever.',
+      fix: 'Give the recursive mixin a guard that stops matching once its argument reaches its end value.'
     }
   ],
   [
