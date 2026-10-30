@@ -42,7 +42,7 @@
     "params": 6
   },
   "packages/core/src/ast/extend/plan.ts#collectPlan": {
-    "statements": 58
+    "statements": 57
   },
   "packages/core/src/ast/mixin-dispatch.ts#bindArgs": {
     "statements": 53
@@ -55,7 +55,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9400
+    "statements": 9337
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -168,14 +168,11 @@
   "packages/core/src/ast/serialize.ts#emitDocumentStatements.emit~2": {
     "statements": 89
   },
-  "packages/core/src/ast/serialize.ts#openDynamicPath": {
+  "packages/core/src/ast/extend/dynamic.ts#openDynamicPath": {
     "params": 6
   },
-  "packages/core/src/ast/serialize.ts#recordDynamicExtendFacts": {
+  "packages/core/src/ast/extend/dynamic.ts#recordDynamicExtendFacts": {
     "params": 8
-  },
-  "packages/core/src/ast/serialize.ts#recordNestedDynExtendSlot": {
-    "params": 7
   },
   "packages/core/src/ast/serialize.ts#foldDynamicExtends": {
     "statements": 60
@@ -188,10 +185,10 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "statements": 294
+    "statements": 289
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "statements": 238
+    "statements": 233
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
     "statements": 78,
@@ -277,7 +274,7 @@
     "params": 12
   },
   "packages/core/src/ast/serialize.ts#writeNestedRule": {
-    "statements": 98
+    "statements": 97
   },
   "packages/core/src/ast/serialize.ts#writeNestedAtRuleBlock": {
     "params": 7

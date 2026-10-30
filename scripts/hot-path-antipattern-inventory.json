@@ -956,7 +956,7 @@
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
-      "file": "packages/core/src/ast/serialize.ts",
+      "file": "packages/core/src/ast/extend/dynamic.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "a4a83fcafd3faf3b",
       "ordinal": 0,

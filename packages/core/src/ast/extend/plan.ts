@@ -126,6 +126,29 @@ export interface PlanSubject {
   placement: object | undefined;
 }
 
+/**
+ * The placement of a stand-in for a planned rule: a rule the render walk records under
+ * a rule the plan holds names a stand-in as its parent, and {@link collectPlan} nests it
+ * under the planned subject (ledger X22).
+ */
+const PLANNED_PARENT = {};
+
+/** A stand-in for the planned subject of `rule`, written with `path` ({@link PLANNED_PARENT}). */
+export function plannedParent(rule: Ruleset, path: Level[]): PlanSubject {
+  return {
+    rule,
+    path,
+    scope: [],
+    ownLocal: path[path.length - 1]!,
+    parent: null,
+    mayMatch: false,
+    hidden: false,
+    boundary: null,
+    referenceAtRule: null,
+    placement: PLANNED_PARENT
+  };
+}
+
 /** One hidden at-rule occurrence in the render-local reference-import plan. */
 export interface PlanReferenceAtRule {
   node: AtRuleBlock;
@@ -205,6 +228,25 @@ export function atRuleScope(scope: number[], node: AtRuleBlock, ids: AtRuleScope
     ids.set(node, id);
   }
   return [...scope, id];
+}
+
+/**
+ * Append `overlay` to `subjects` in order, nesting a walk-recorded subject whose parent
+ * is a {@link plannedParent} stand-in under the planned subject of that rule. Indexed
+ * append: a large, finite imported-loop overlay spread as call arguments hits V8's
+ * stack/argument limit before solving.
+ */
+function appendOverlaySubjects(subjects: PlanSubject[], overlay: readonly PlanSubject[]): void {
+  let planned: Map<Ruleset, PlanSubject> | undefined;
+  for (let index = 0; index < overlay.length; index++) {
+    const s = overlay[index]!;
+    if (s.parent?.placement === PLANNED_PARENT) {
+      /* ponytail: by rule alone; a rule a `(multiple)` import plans twice nests its walk-placed children under its last placement. */
+      planned ??= new Map(subjects.map(p => [p.rule, p]));
+      s.parent = planned.get(s.parent.rule) ?? s.parent;
+    }
+    subjects.push(s);
+  }
 }
 
 export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: ReadonlyMap<SelectorList, SelectorList>): Plan {
@@ -307,9 +349,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
      * becomes call arguments and hits V8's stack/argument limit before solving.
      * Indexed append preserves source order without a temporary copy.
      */
-    for (let index = 0; index < overlay.subjects.length; index++) {
-      subjects.push(overlay.subjects[index]!);
-    }
+    appendOverlaySubjects(subjects, overlay.subjects);
     for (let index = 0; index < overlay.instructions.length; index++) {
       instructions.push(overlay.instructions[index]!);
     }
@@ -335,7 +375,7 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay, resolved?: 
    */
   const levelShares = (level: Level): boolean => level.some(b => branchSharesAtom(b, targetAtoms));
   for (const s of subjects) {
-    s.mayMatch = s.parent !== null
+    s.mayMatch = s.parent !== null && s.parent.placement !== PLANNED_PARENT
       ? s.parent.mayMatch || levelShares(s.ownLocal)
       : s.path.some(levelShares);
   }
