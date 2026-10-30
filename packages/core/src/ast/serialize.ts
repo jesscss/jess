@@ -166,6 +166,7 @@ import {
   EmptyOperandError,
   IncomparableOperandsError,
   InvalidOperandError,
+  UnoperableOperandError,
   EmptyListValueError,
   emitValue,
   readText,
@@ -216,6 +217,7 @@ import { CollectionOverlay, isCollection } from './value-collection.js';
 import { lambdaResultValue } from './value-lambda.js';
 import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
+import { mathOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
 import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -4553,13 +4555,6 @@ function force(v: EvalValue): ValueGroup {
   return isLiteral(v) ? makeKeyword(v) : v;
 }
 
-function requireScalarValue(value: ValueGroup, reason: string): Value {
-  if (isValueGroupArray(value)) {
-    throw new TypeError(`${reason} requires a scalar value`);
-  }
-  return value;
-}
-
 /**
  * Materialize a value-literal LEAF node to a typed value node, driven by the node
  * `type` (task #44 — no side-car tag). Each typed leaf builds from its own fields
@@ -4849,7 +4844,7 @@ function throwUnitArithmetic(error: unknown, node: object, e: Lane): never {
     ? ERR.invalidUnitArithmetic
     : error instanceof EmptyOperandError
       ? ERR.emptyOperand
-      : error instanceof InvalidOperandError ? ERR.invalidOperand : error instanceof IncomparableOperandsError ? ERR.incomparableOperands : undefined;
+      : error instanceof InvalidOperandError || error instanceof UnoperableOperandError ? ERR.invalidOperand : error instanceof IncomparableOperandsError ? ERR.incomparableOperands : undefined;
   if (raise === undefined || !(error instanceof Error)) {
     throw error;
   }
@@ -4997,7 +4992,14 @@ const ARG_SPLICE = 4;
  * variable passes is that list (ledger P49).
  */
 const ARG_SELECTOR = 5;
-type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE | typeof ARG_SELECTOR;
+
+/**
+ * An operand of math that computes: a mixin argument bound as bytes is read as
+ * the value it was evaluated to, so a slash list it carries divides there
+ * ({@link mathOperand}), as one a variable holds does.
+ */
+const ARG_OPERAND = 6;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN | typeof ARG_BINDING | typeof ARG_SPLICE | typeof ARG_SELECTOR | typeof ARG_OPERAND;
 
 /** Whether a typed value is written as authored: no callable reads it ({@link ARG_WRITTEN}, {@link ARG_SPLICE}, {@link ARG_SELECTOR}). */
 const writtenAsAuthored = (argument: ArgumentMode): boolean => argument === ARG_WRITTEN || argument === ARG_SPLICE || argument === ARG_SELECTOR;
@@ -5055,7 +5057,7 @@ function evalTyped(
       }
       {
         const snapshot = e.s.snapshotValues?.get(node);
-        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || (argument === ARG_SELECTOR && (isCommaList(snapshot) || isSelectorItem(snapshot)))) ? snapshot : undefined)
+        return (snapshot !== undefined && (!isStructuredGroup(snapshot) || argument === ARG_OPERAND || (argument === ARG_SELECTOR && (isCommaList(snapshot) || isSelectorItem(snapshot)))) ? snapshot : undefined)
           ?? snapshotOf(node, frame, e, 'url')
           ?? materializeNode(node, e);
       }
@@ -6260,8 +6262,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * that do not convert still raise here, and under `preserve` the kept
        * `calc(…)` still reaches the boundary that warns about it (ledger F8).
        */
-      const l = evalTyped(node.left, frame, e);
-      const r = evalTyped(node.right, frame, e);
+      const l = evalTyped(node.left, frame, e, false, ARG_OPERAND);
+      const r = evalTyped(node.right, frame, e, false, ARG_OPERAND);
       return combineAll([l, r], (values) => {
         try {
           /*
@@ -6273,8 +6275,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
           return checkedOperation(node.operator, values[0]!, values[1]!, ev, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
             ?? rememberUnitOwner(ev.operate(
               node.operator,
-              spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e),
-              spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e),
+              spelledOperand(node.left, mathOperand(values[0]!, node.operator, ev, e), frame, e),
+              spelledOperand(node.right, mathOperand(values[1]!, node.operator, ev, e), frame, e),
               e.modes
             ), node);
         } catch (error) {
@@ -8139,7 +8141,8 @@ const isStructuredGroup = (value: ValueGroup): boolean =>
  * Keep the typed value a snapshot was evaluated to beside it, so nothing reads
  * the snapshot's bytes back. One value — a number, a colour, an escaped string,
  * a url — is what a typed position reads (`snapshotValues`); a structured one
- * ({@link isStructuredGroup}) reads there as its opaque bytes and reaches a
+ * ({@link isStructuredGroup}) reads there as its opaque bytes, except as an
+ * operand of math that computes ({@link ARG_OPERAND}), and reaches a
  * function or plugin through `mixinValueBindings`. A query prelude reads either
  * to know a snapshot is a value evaluation made ({@link preludeLeaf}). Under compress the value a
  * declaration folds rides too ({@link carryCompressed}), unless the bytes are
