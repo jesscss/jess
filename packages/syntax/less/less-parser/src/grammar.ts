@@ -30,7 +30,7 @@ import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
@@ -245,7 +245,6 @@ type LessRules = {
   ValueSequence: Combinator<ValueSlot>;
   ValueList: Combinator<ValueSlot>;
   VariableValue: Combinator<ValueSlot>;
-  ImportantValue: Combinator<Important>;
   ValueListWithPriority: Combinator<ValueSlot>;
   CustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<CustomValuePart>;
@@ -394,7 +393,7 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
-  // Inherited from the CSS base: the `!important` priority marker, read by MixinCallValue and MixinReferenceImportant.
+  // Inherited from the CSS base: the `!important` priority marker, read by VariableValue, MixinCallValue and MixinReferenceImportant.
   Important: Combinator<unknown>;
   // Inherited from the CSS base: a `[…]` simple block in a value (grid line names), over Less's ValueList.
   SquareValue: Combinator<ValueNode>;
@@ -1775,7 +1774,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal(':'),
       choice(
         sequence(g.MixinCallValue, peek(declarationEnd)),
-        g.ImportantValue,
         sequence(not(literal('{')), g.VariableValue),
         LeadingSeparatorValue,
         sequence(MixinReferenceValue, optional(MixinReferenceImportant))
@@ -2762,37 +2760,38 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue);
     }
   );
-  // Variable declarations additionally permit Less trivia immediately after
-  // `:` and after comma boundaries. A `//` line comment is trivia (never a CSS
-  // value node), while the comma-separated value remains the normal List fact.
+  /**
+   * A variable's value, read once. Less trivia is allowed right after `:` and
+   * after each comma; a `//` line comment is trivia, never a value node.
+   *
+   * The tail is decided on its first token: `!` is CSS's `Important`
+   * (`!important`, or with whitespace or a comment after `!`), `,` a trailing
+   * comma. A trailing comma ends the value, so `a, !important` is rejected.
+   * The value carries the `Important` wrapper so a reference hoists its
+   * importance once; the `Declaration` reducer unwraps the same wrapper into
+   * its own flag.
+   */
   const VariableValue = node(
     'VariableValue',
     sequence(
       optional(whitespace),
       oneOrMoreSep(g.ValueSequence, commaSeparator),
-      optional(sequence(literal(','), optional(whitespace)))
+      optional(choice(
+        g.Important,
+        sequence(literal(','), optional(whitespace))
+      ))
     ),
-    (children, fields, _span, _rawChildren, triviaLog, state) =>
-      commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue)
+    (children, fields, _span, _rawChildren, triviaLog, state) => {
+      const value = commaListWithComments(children, fields, triviaLog, state, isLessValueSlotValue);
+      return children.at(-1) === true ? important(value) : value;
+    }
   );
-  // `!important` is a grammar-owned declaration/value modifier.  Variables
-  // carry the wrapper so references hoist importance once; declarations expose
-  // their own flag.  Do not represent it as an opaque keyword/value suffix.
-  const ImportantValue = node(
-    'ImportantValue',
-    // Priority syntax is token structure, not one glued source string: Less
-    // accepts `!important`, `! important`, and `!/*comment*/important`.
-    sequence(g.ValueList, literal('!'), g.ImportantToken),
-    children => important(requireValueSlot(children[0]))
-  );
-  // Left-factored value/priority: parse the value tower ONCE, then an optional
-  // `!important` tail.  The old `choice(ImportantValue, ValueList)`
-  // was non-disjoint on the value first-set, so every declaration without a
-  // priority (~99%) descended the whole value tower inside `ImportantValue`,
-  // failed at the required `!`, backtracked, and re-descended as a bare value.
-  // The tail mirrors `ImportantValue` exactly (`!`, trivia, `important`),
-  // so the AST is identical either way:
-  // an `Important` wrapper when the tail matched, else the bare value.
+  /**
+   * A declaration value, read once, then an optional `!important` tail (`!`,
+   * trivia, `important`): an `Important` wrapper when the tail matched, else
+   * the bare value. `choice(<value> !important, <value>)` would share the value
+   * first-set, so every value without a priority would be read twice.
+   */
   const ValueListWithPriority = node(
     'ValueListWithPriority',
     sequence(
@@ -6009,7 +6008,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ValueSequence,
     ValueList,
     VariableValue,
-    ImportantValue,
     ValueListWithPriority,
     CustomPropertyName,
     CustomPart,
