@@ -13,10 +13,11 @@ function failureOf(source: string): unknown {
 
 /*
  * A punctuation-led value is rejected in Less, in a variable and in a property
- * alike (owner ruling P33, 2026-09-23): a leading slash (jess#235) and an
- * uncalled mixin reference such as `.a` (jess#236) both. The diagnostic must sit
- * on the offending token and name the cause, not report a generic failure
- * earlier in the statement.
+ * alike (owner ruling P33, 2026-09-23): a leading slash (jess#235). An uncalled
+ * mixin reference such as `.a` (jess#236) is rejected in a property; in a
+ * variable it is the value (owner 2026-10-29: "No, it's a mixin reference.").
+ * The diagnostic must sit on the offending token and name the cause, not report
+ * a generic failure earlier in the statement.
  */
 describe('punctuation-led Less values are rejected at their first token', () => {
   it.each([
@@ -34,18 +35,32 @@ describe('punctuation-led Less values are rejected at their first token', () => 
   });
 
   it.each([
-    ['a variable', '@foo: .a;', 6, '.a'],
-    ['a variable followed by a ruleset', '@foo: .a;\n.bar { color: red; }', 6, '.a'],
-    ['a namespaced variable', '@foo: #ns.a;', 6, '#ns.a'],
-    ['a namespace spelled in hex letters', '@x: #add.m;', 4, '#add.m'],
     ['a hex-letter namespace in a property', '.x { p: #abc.m; }', 8, '#abc.m'],
-    ['a property', '.x { p: .a; }', 8, '.a'],
-    ['a reference spaced from its semicolon', '@foo: .a ;', 6, '.a']
+    ['a property', '.x { p: .a; }', 8, '.a']
   ])('names an uncalled mixin reference in %s (jess#236)', (_label, source, offset, name) => {
     expect(failureOf(source)).toMatchObject({
       code: 'parse/uncalled-mixin-reference',
       offset,
       fix: `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`
+    });
+  });
+
+  it.each([
+    ['a mixin', '@foo: .a;', '.a', []],
+    ['a mixin followed by a ruleset', '@foo: .a;\n.bar { color: red; }', '.a', []],
+    ['a namespaced mixin', '@foo: #ns.a;', '.a', ['#ns']],
+    ['a child-combined namespaced mixin', '@foo: #ns > .a;', '.a', ['#ns']],
+    ['a namespace spelled in hex letters', '@x: #add.m;', '.m', ['#add']],
+    ['a reference spaced from its semicolon', '@foo: .a ;', '.a', []]
+  ])('keeps an uncalled reference to %s as a variable value (jess#236)', (_label, source, name, path) => {
+    const [declaration] = parse(source).rules;
+    expect(declaration).toMatchObject({
+      type: 'VariableDeclaration',
+      value: {
+        type: 'Reference',
+        base: { type: 'MixinCall', name, args: [], path: path.map(selector => ({ selector })) },
+        steps: []
+      }
     });
   });
 
