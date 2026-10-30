@@ -140,7 +140,7 @@ describe('Operations', () => {
       expect(css).toContain('area: calc(100px * 50px)');
     });
 
-    it('preserves slash-list variable values inside later operations in parens-division mode', async () => {
+    it('divides a slash-list variable once a later operation reads it in parens-division mode', async () => {
       const lessCode = `
         @div-op: 10px / 2;
 
@@ -150,13 +150,12 @@ describe('Operations', () => {
       `;
 
       /*
-       * `@div-op` is a slash list (the slash does not divide under
-       * parens-division), so the `*` has nothing it can multiply and the
-       * operation is preserved as `calc(…)` — owner-approved fixture change
-       * (DESIGN-DECISIONS P35).
+       * `@div-op` is a slash list (the slash does not divide where it is
+       * written under parens-division); the `*` computes, so the list divides
+       * there — owner 2026-10-29 (DESIGN-DECISIONS P35).
        */
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('result: calc(10px / 2 * 2)');
+      expect(css).toContain('result: 10px;');
     });
 
     it('should preserve spacing', async () => {
