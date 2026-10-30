@@ -920,6 +920,19 @@ export const ERR = {
   },
 
   /**
+   * A mixin that never stops expanding itself: a guard that never fails, or no
+   * guard. Reported at the call, whether the expansion depth limit or the native
+   * call stack ran out first.
+   */
+  mixinRecursionLimit(args: Common & { meta: { name: string; limit: number } }) {
+    return makeJessError({
+      code: 'eval/mixin-recursion-limit',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
    * A division the author asked for — `math: always`, a paren group, `$( … )` —
    * whose divisor is zero. There is no quotient to print, and printing the
    * operation verbatim would hide the mistake, so it is an error in every
