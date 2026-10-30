@@ -92,6 +92,14 @@ describe('placement derivation', () => {
     }
   });
 
+  it('a mixin read as a map keeps the declarations on both sides of a nested rule (jess#386)', () => {
+    for (const mode of ['native', false] as const) {
+      expect(less('.m() { a: 1; .x { b: 2; } }\n.y { @p: .m(); v: @p[a]; }', mode)).toBe('.y {\n  v: 1;\n}\n');
+      expect(less('.m() { a: 1; .x { b: 2; } c: 3; }\n.y { each(.m(), { r-@{key}: @value; }); }', mode))
+        .toBe('.y {\n  r-a: 1;\n  r-c: 3;\n}\n');
+    }
+  });
+
   it('nested output: a rule whose `&` builds a name keeps its mixin call\'s `!important`', () => {
     expect(less('.m() { &__e { c: d; } }\n.b { .m() !important; }', false)).toBe('.b__e {\n  c: d !important;\n}\n');
   });
