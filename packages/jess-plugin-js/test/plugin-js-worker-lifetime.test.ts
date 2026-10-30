@@ -125,6 +125,29 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     expect(Date.now() - started).toBeLessThan(3000);
   });
 
+  /*
+   * A host killed by a signal (Vitest stops its forks with SIGTERM) runs no exit
+   * handler, so a broker socket still on disk would stay in /tmp for good. Once
+   * the worker has connected, none is.
+   */
+  it.skipIf(process.platform === 'win32')('leaves no broker socket in /tmp once the worker is running, across a worker crash and restart', async () => {
+    const brokerSockets = () => fs.readdirSync('/tmp').filter(name => name.startsWith(`jd-${process.pid}-`)).length;
+    const before = brokerSockets();
+    const modulePath = writeModule('export function ok() { return 1; }\nexport function quit() { Deno.exit(0); }');
+    const plugin = jsPlugin({ jsReadRoot: path.dirname(modulePath) }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    expect(await mod.ok()).toBe(1);
+    expect(brokerSockets()).toBe(before);
+
+    await expect(mod.quit()).rejects.toThrow('Deno worker exited unexpectedly.');
+    expect(await (await plugin.import(modulePath)).ok()).toBe(1);
+    expect(brokerSockets()).toBe(before);
+
+    plugin.dispose();
+    expect(brokerSockets()).toBe(before);
+  });
+
   it('fails startup at once when the worker exits before it is ready', async () => {
     const modulePath = writeModule('export const x = 1;');
     const root = path.dirname(modulePath);
