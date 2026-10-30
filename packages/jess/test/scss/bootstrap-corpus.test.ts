@@ -230,6 +230,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   '_transitions.scss',
   '_type.scss',
   '_variables-dark.scss',
+  'bootstrap-grid.scss',
   'bootstrap-reboot.scss',
   'bootstrap-utilities.scss',
   'bootstrap.scss',

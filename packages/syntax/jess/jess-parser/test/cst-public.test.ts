@@ -261,7 +261,7 @@ describe('@jesscss/jess-parser/cst', () => {
   });
 
   it('keeps leading-dot declaration lookup expression-only in the public CST route', () => {
-    const result = parseJessCst('$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); root: $($.tokens.tone); ns: $($tokens.tone); decimal: $(.1); }');
+    const result = parseJessCst('$tokens: #{ tone: blue; }; .card { value: $(.type.isnumber(.math.e)); root: $($.tokens.tone); ns: $($tokens.tone); decimal: $(.1); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();

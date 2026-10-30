@@ -11,6 +11,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isValueGroup, isValueGroupArray, type ValueGroup } from './value-eval.js';
 import { groupItems } from './value-list.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
+import { makeCollection } from './value-factory.js';
 import type {
   DefinedFunction,
   Fn,
@@ -159,6 +160,16 @@ function toDirectInput(value: unknown): DirectInput | FnRecord {
   throw new TypeError('direct calls require typed value nodes, named-record, or lazy arguments');
 }
 
+/*
+ * The empty list is also the empty map, so it satisfies a `Collection` slot as
+ * that map at the bind point, as Sass reads it: `map.get((), a)` is `null` and
+ * `map.merge((), (z: 9))` is `(z: 9)` (Sass's empty `()` is the empty curly
+ * list, owner 2026-10-23: *"so that Sass functions still work"*).
+ */
+const EMPTY_COLLECTION = makeCollection([]);
+const isListShaped = (value: ValueGroup): boolean =>
+  isValueGroupArray(value) || value.type === 'List' || value.type === 'Block';
+
 function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: direct calls require structural value arguments`);
@@ -171,9 +182,13 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
    * `lighten(red, 10%)` binds `#ff0000`; a keyword that is not a named color
    * still fails the `Color` slot as before.
    */
-  const bound = type !== 'any' && !isValueGroupArray(value) && value.type === 'Keyword' && type.includes('Color')
-    ? coerceNamedColorKeyword(value)
-    : value;
+  const bound = type === 'any'
+    ? value
+    : !isValueGroupArray(value) && value.type === 'Keyword' && type.includes('Color')
+        ? coerceNamedColorKeyword(value)
+        : type.includes('Collection') && groupItems(value).length === 0 && isListShaped(value)
+          ? EMPTY_COLLECTION
+          : value;
   if (!isValueForType(bound, type)) {
     const expected = type === 'any' ? 'any' : type.join('|');
     throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);
@@ -199,6 +214,16 @@ function checkedLazy(
   };
 }
 
+/**
+ * Whether `input` is core's absent value: an implicit `null`, never one the
+ * author wrote. A call that names a later parameter by keyword fills each
+ * parameter it skipped with it (`orderKeywordArgs`), so an optional parameter
+ * reads it as an argument that was not passed. Checked by shape, not identity:
+ * a provided module may run on a second copy of core.
+ */
+const isAbsent = (input: DirectInput): boolean =>
+  typeof input !== 'function' && !isValueGroupArray(input) && input.type === 'Null' && !input.explicit;
+
 function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
@@ -217,7 +242,7 @@ function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly
       continue;
     }
     const input = inputs[offset++];
-    if (input === undefined) {
+    if (input === undefined || ((param.optional || param.default !== undefined) && isAbsent(input))) {
       if (param.default !== undefined) {
         out.push(param.default);
         continue;

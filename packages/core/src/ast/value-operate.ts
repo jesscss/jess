@@ -12,11 +12,11 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type Keyword, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, InvalidOperandError, UnitArithmeticError, emitValue, incompatibleUnits, isLiteral, isValueGroupArray, unitName, writtenText, type Any, type Color, type Dimension, type EvalModes, type EvalValue, type Keyword, type ValueGroup, type Value, type ValueEvaluator } from './value-eval.js';
 import { HEX } from './color.js';
-import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { colorRawRgb, makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { convertValue, convertible, unitMultisetKey } from './value-units.js';
+import { convertValue, convertible, foldUnit, unitMultisetKey } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
@@ -146,7 +146,12 @@ function unitsOf(d: Dimension): UnitSet {
   return { num: d.unit ? [d.unit] : [], den: [], backup: d.unit || undefined };
 }
 
-/** less.js `Unit.cancel`: remove numerator/denominator units that appear on both sides. */
+/**
+ * less.js `Unit.cancel`: remove numerator/denominator units that appear on both
+ * sides. A unit cancels its own spelling first, then another spelling of it
+ * (`foldUnit`, ledger V37: `10PX / 2px` is `5`), so a surviving unit keeps the
+ * spelling it was written in.
+ */
 function cancel(u: UnitSet): void {
   const counter = new Map<string, number>();
   for (const n of u.num) {
@@ -167,21 +172,63 @@ function cancel(u: UnitSet): void {
   }
   u.num = num.sort();
   u.den = den.sort();
+  if (num.length !== 0 && den.length !== 0) {
+    cancelAcross(num, den, sameFoldedUnit);
+  }
+}
+
+/**
+ * Cancel each of `nums` against a unit of `dens` that `match` accepts, removing
+ * both; returns the factor the value takes (`in` over `px` is `96`).
+ */
+function cancelAcross(nums: string[], dens: string[], match: (n: string, d: string) => boolean): number {
+  let factor = 1;
+  for (let i = 0; i < nums.length;) {
+    const n = nums[i]!;
+    const j = dens.findIndex(d => match(n, d));
+    if (j === -1) {
+      i++;
+      continue;
+    }
+    factor *= convertValue(1, n, dens[j]!);
+    nums.splice(i, 1);
+    dens.splice(j, 1);
+  }
+  return factor;
+}
+
+const sameUnit = (n: string, d: string): boolean => n === d;
+
+const sameFoldedUnit = (n: string, d: string): boolean => foldUnit(n) === foldUnit(d);
+
+/**
+ * Dart Sass's unit cancellation: a unit cancels the same unit first, then a
+ * different unit of its conversion group (`1px * 1pt / 1px` is `1pt`,
+ * `6in / 3px` is `192`).
+ */
+function cancelConvertible(num: string[], den: string[], incomingNum: string[], incomingDen: string[]): number {
+  cancelAcross(num, incomingDen, sameUnit);
+  cancelAcross(incomingNum, den, sameUnit);
+  return cancelAcross(num, incomingDen, convertible) * cancelAcross(incomingNum, den, convertible);
 }
 
 /**
  * Compose `b`'s unit multiset into `a`'s under `*` or `/`, then cancel — the
- * shared half of `*`/`/` unit arithmetic.
+ * shared half of `*`/`/` unit arithmetic. Returns the factor the value takes.
+ *
+ * With `sassUnits` (`.scss`, ledger V32: SCSS computation follows Dart Sass) a
+ * unit also cancels against a different unit of its conversion group, as
+ * Dart Sass's `/` and `*` do (`6in / 3px` → `192`). Elsewhere only the same
+ * unit cancels (V18): `6in / 3px` has no CSS unit.
  */
-function composeUnits(u: UnitSet, bu: UnitSet, op: string): void {
-  if (op === '*') {
-    u.num = u.num.concat(bu.num);
-    u.den = u.den.concat(bu.den);
-  } else {
-    u.num = u.num.concat(bu.den);
-    u.den = u.den.concat(bu.num);
-  }
+function composeUnits(u: UnitSet, bu: UnitSet, op: string, sassUnits: boolean): number {
+  const num = op === '*' ? bu.num.slice() : bu.den.slice();
+  const den = op === '*' ? bu.den.slice() : bu.num.slice();
+  const factor = sassUnits ? cancelConvertible(u.num, u.den, num, den) : 1;
+  u.num = u.num.concat(num);
+  u.den = u.den.concat(den);
   cancel(u);
+  return factor;
 }
 
 /**
@@ -303,7 +350,7 @@ export function findFinalValue(value: ValueGroup, test: (value: Value) => boolea
  * `strictUnits` and Sass do: `strict` rejects only two different real units
  * (owner 2026-10-06, ledger V27).
  */
-function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
+function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes, sassUnits: boolean): Dimension {
   const isStrict = modes.unitMode === 'strict';
   if (b.number === 0 && op === '/') {
     throw new DivisionByZeroError(`${a.bytes} / ${b.bytes}`);
@@ -339,7 +386,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       throw incompatibleUnits(a, b);
     }
   } else if (op === '*' || op === '/') {
-    composeUnits(u, bu, op);
+    value *= composeUnits(u, bu, op, sassUnits);
   }
 
   const unit = displayUnit(u);
@@ -655,7 +702,99 @@ export function groupAsWritten(v: Value): Value {
 }
 
 /**
- * Binary operation. Guard order (byte-faithful):
+ * What an operand is when an operation is not defined on it (ledger V36), or
+ * `null`. Never one: a number, `null`, math kept as written or in a `calc()`,
+ * an unoperated slash (`10px / 2`, a `/` list, which Less writes as kept
+ * math), in Less a value kept as text that is no escaped string (an
+ * unoperated `18 / 2` a mixin argument binds), and an operation kept as
+ * written whose operands the rule did not reject (`foo / bar`). In every
+ * dialect that computes: a keyword (`foo`,
+ * `auto`), a string, quoted or escaped, and a call written out as-is
+ * (`var(--x)`; owner 2026-10-23). A colour, a named one included (V13), only
+ * in `.scss` (`scss`; owner 2026-10-23: *"ya keep it an error in .scss"*):
+ * Less and `.jess` keep colour math. A boolean, a list and a map in `.scss`
+ * and `.jess` (`sass`).
+ */
+function invalidOperand(v: ValueGroup, sass: boolean, scss: boolean): string | null {
+  if (isValueGroupArray(v)) {
+    return sass ? 'list' : null;
+  }
+  switch (v.type) {
+    case 'Keyword':
+      if (coerceNamedColorKeyword(v) !== v) {
+        return scss ? 'color' : null;
+      }
+      if (keptMathOf(v) !== undefined || calcInner(v.bytes) !== null) {
+        return null;
+      }
+      return !keptAsWritten.has(v) ? 'keyword' : keptAsWritten.get(v) === '' ? 'function call' : null;
+    case 'Color':
+      return scss ? 'color' : null;
+    case 'Quoted':
+      return 'string';
+    case 'Any':
+      return v.bytes !== '' && (sass || v.escapedQuote !== '') ? 'string' : null;
+    case 'Url':
+      return sass ? 'string' : 'function call';
+    case 'Bool':
+      return sass ? 'boolean' : 'keyword';
+    case 'List':
+      return sass && v.sep !== '/' ? 'list' : null;
+    case 'Collection':
+      return sass ? 'map' : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The value of an `.scss` string built with `+` whose leading operand is only
+ * known at evaluation (`$prefix + "-x"`; ledger V36): quoted as Dart Sass
+ * quotes it, from that operand. A quoted string gives a quoted result, an
+ * unquoted string or a word an unquoted one; anything else leaves `text` to
+ * the template's own quoting. `lead` is `undefined` for every other template.
+ */
+export function quotedFromLead(lead: EvalValue | undefined, text: string): EvalValue {
+  if (lead === undefined || isLiteral(lead) || isValueGroupArray(lead)) {
+    return text;
+  }
+  if (lead.type === 'Quoted' && !lead.escaped) {
+    return makeQuoted(text, lead.quote, false);
+  }
+  return lead.type === 'Any' || (lead.type === 'Keyword' && invalidOperand(lead, true, false) === 'keyword') ? makeAny(text) : text;
+}
+
+/**
+ * The operand rule of ledger V36, run where an operation computes, before
+ * {@link operate}: an operand the operation is not defined on
+ * ({@link invalidOperand}) raises {@link InvalidOperandError}, unless
+ * `keepsMath` (an argument of a CSS math function or a call written out
+ * as-is), and a `/` that divides with no group asking it to (Less
+ * `math: always`), which is also CSS's separator (`grid-column: auto / span
+ * 2`): the caller says so in `keepsMath`. In `.scss` and `.jess` (`sass`) it
+ * does not cover `/`, a separator there or unoperated division; it covers
+ * `-` (owner 2026-10-23, asked whether `foo - bar` is an error: *"yes"*). A
+ * string joins only where `.scss` writes a string literal in a `+` chain,
+ * which its parser reads as an interpolated string. `null` means
+ * {@link operate} decides.
+ */
+export function checkedOperation(op: string, left: ValueGroup, right: ValueGroup, ev: Pick<ValueEvaluator, 'sassOperands' | 'sassCalculations'>, keepsMath: boolean): null {
+  const sass = ev.sassOperands === true;
+  if (keepsMath || (sass && op === '/') || (!isValueGroupArray(left) && left.type === 'Null') || (!isValueGroupArray(right) && right.type === 'Null')) {
+    return null;
+  }
+  const scss = sass && ev.sassCalculations === true;
+  const leftKind = invalidOperand(left, sass, scss);
+  const kind = leftKind ?? invalidOperand(right, sass, scss);
+  if (kind !== null) {
+    throw new InvalidOperandError(`\`${emitValue(left)} ${op} ${emitValue(right)}\`: \`${op}\` is not defined on a ${kind} (\`${emitValue(leftKind === null ? right : left)}\`).`);
+  }
+  return null;
+}
+
+/**
+ * Binary operation. `sassUnits` is `.scss`'s unit rule for `*` and `/`
+ * ({@link composeUnits}). Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc);
  *      kept math splices its arithmetic ({@link keptMath}),
  *   2. an un-operable keyword operand → preserve source `l op r`,
@@ -668,7 +807,7 @@ export function groupAsWritten(v: Value): Value {
  * as written), and any other operation — inside a `$( … )` or a variable that a
  * `calc()` reads — answers `unitMode` exactly as it does anywhere else.
  */
-export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
+export function operate(op: string, left: Value, right: Value, modes: EvalModes, sassUnits = false): Value {
   /*
    * Guard 1: calc-wrapper keyword operand → flat calc splice.
    * byte-faithful: opaque operand, no structured node — at the seam a calc
@@ -744,7 +883,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
    */
   try {
     if (left.type === 'Dimension' && right.type === 'Dimension') {
-      return dimensionOperate(left, right, op, modes);
+      return dimensionOperate(left, right, op, modes, sassUnits);
     }
     if (left.type === 'Dimension' && right.type === 'Color') {
       return dimensionAsColor(left, right, op);

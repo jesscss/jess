@@ -9,12 +9,7 @@
 import type { Color, Dimension, ValueGroup } from '@jesscss/core';
 import { groupSeparator, isValueGroupArray } from '@jesscss/core';
 
-/** Clamp to the 0-1 range (alpha / saturation / lightness). */
-export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-
-/** `percentOf(base)`: a `%` dimension → `number * base / 100`; else its number. */
-export const percentOf = (d: Dimension, base: number): number =>
-  d.unit === '%' ? (d.number * base) / 100 : d.number;
+export { clamp01, percentOf } from '../shared/color/kernels.js';
 
 /**
  * `normalizeHue()`: any angle unit → degrees wrapped to 0-360. `turn`/`rad`/`grad`/

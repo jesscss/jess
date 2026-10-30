@@ -46,6 +46,15 @@ describe('keyword arguments in a function call', () => {
       .resolves.toBe('a {\n  b: 1 2;\n}\n');
   });
 
+  it('keeps a keyword at its own parameter when it skips one', async () => {
+    /* `$end-at` is the third parameter; nothing names the second. Dart Sass:
+     * `Missing argument $start-at.` — never `"bcd"`, which reads `2` as `$start-at`. */
+    await expect(render('@use "sass:string"; a { b: string.slice("abcd", $end-at: 2); }', '.scss'))
+      .resolves.toBe('a {\n  b: string.slice("abcd", $end-at: 2);\n}\n');
+    await expect(render('@use "sass:color"; a { b: color.adjust(#0d6efd, $lightness: -10%); }', '.scss'))
+      .resolves.toBe('a {\n  b: #0257d5;\n}\n');
+  });
+
   /*
    * Ledger P23 (jess#279): a call written out as-is keeps its keyword names
    * exactly as authored, sigil included.

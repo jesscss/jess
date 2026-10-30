@@ -382,7 +382,7 @@ describe('Less AST grammar facts', () => {
 
     const statement = run(
       lessGrammar.Document,
-      '@arbitrary value after ();',
+      '@arbitrary value after [];',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
     );
     expect(statement.ok).toBe(true);
@@ -393,7 +393,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'AtRuleStatement',
           name: '@arbitrary',
-          prelude: { type: 'Any', src: 'value after ()' }
+          prelude: { type: 'Any', src: 'value after []' }
         }
       ]
     });
@@ -2331,15 +2331,27 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
-    for (const invalid of [
-      '.card { text: %foo; }',
-      '.card { text: %("x",); }'
-    ]) {
-      const direct = run(lessGrammar.Document, invalid, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      });
-      expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
-    }
+
+    /* A comma closing the argument list leaves it the call (ledger A5). */
+    const trailing = run(lessGrammar.Document, '.card { text: %("x",); }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(trailing.ok && trailing.unconsumedFrom === null).toBe(true);
+    expect(trailing.value).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'FunctionCall', name: '%', args: [{ value: { type: 'Quoted', value: 'x' } }] } }] }]
+    });
+
+    /*
+     * `%foo` is no call: a `%` delim and an adjacent identifier (css-syntax-3
+     * §5.4.7), which parse (ledger P45) as the run they are.
+     */
+    const adjacent = run(lessGrammar.Document, '.card { text: %foo; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(adjacent.ok && adjacent.unconsumedFrom === null).toBe(true);
+    expect(adjacent.value).toMatchObject({
+      rules: [{ rules: [{ value: [{ type: 'Keyword', src: '%' }, { type: 'Keyword', src: 'foo' }] }] }]
+    });
   });
 
   it('keeps a static Less escaped quote inside percent-format arguments', () => {
@@ -4569,7 +4581,7 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               value: {
                 type: 'Block',
-                delimiter: 'paren',
+                delimiter: 'curly',
                 escaped: true,
                 value: {
                   type: 'List',
@@ -4586,7 +4598,7 @@ describe('Less AST grammar facts', () => {
               type: 'For',
               iterable: {
                 type: 'Block',
-                delimiter: 'paren',
+                delimiter: 'curly',
                 escaped: true,
                 value: [
                   { type: 'Dimension' },
@@ -6335,8 +6347,7 @@ describe('Less AST grammar facts', () => {
     }
     for (const source of [
       '@supports selector(.card { .card { color: red; } }',
-      '@supports selector([.card) { .card { color: red; } }',
-      '@supports (display: grid), (color: red) { .card { color: red; } }'
+      '@supports selector([.card) { .card { color: red; } }'
     ]) {
       const direct = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
@@ -6348,6 +6359,12 @@ describe('Less AST grammar facts', () => {
         source
       ).toBe(false);
     }
+
+    /* A comma list is no supports condition: it parses (ledger P45) and the compile reports its `,` (owner 2026-10-22). */
+    const commaList = run(lessGrammar.Document, '@supports (display: grid), (color: red) { .card { color: red; } }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(commaList.ok && commaList.unconsumedFrom === null).toBe(true);
     const genericSupports = run(
       lessGrammar.AtRuleBlock,
       '@supports (display: grid) { .card { color: red; } }',
@@ -6863,7 +6880,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: {
                     type: 'Block',
-                    delimiter: 'paren',
+                    delimiter: 'curly',
                     escaped: true,
                     value: {
                       type: 'List',
@@ -6879,7 +6896,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: {
                     type: 'Block',
-                    delimiter: 'paren',
+                    delimiter: 'curly',
                     escaped: true,
                     value: {
                       type: 'List',

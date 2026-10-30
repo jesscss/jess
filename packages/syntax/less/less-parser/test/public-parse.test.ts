@@ -3483,10 +3483,10 @@ describe('public Less parse()', () => {
     ].join('\n'));
 
     /* Both lists hold a `;`, so each comma run is ONE comma-list value, stored as
-     * the `~( … )` node (ledger P46): in the definition it is a pattern. */
+     * the curly list `~( … )` builds (ledger P46): in the definition it is a pattern. */
     const commaList = (...names: string[]) => ({
       type: 'Block',
-      delimiter: 'paren',
+      delimiter: 'curly',
       escaped: true,
       value: {
         type: 'List',
@@ -3965,5 +3965,12 @@ describe('dashed spellings of Less at-rules', () => {
       expect(bare(dashed), tail).toEqual(bare(parse(`@import (css) "theme.css"${tail};`)));
       expect(serialize(dashed).css, tail).toBe(`@import "theme.css"${tail};\n`);
     }
+  });
+});
+
+/* A curly list in a condition keeps its authored `~( … )` spelling in the condition's source (ledger P51). */
+describe('a `~( … )` list in a condition', () => {
+  it('is spelled as written', () => {
+    expect(parse('@r: boolean(~(a, b));').rules[0]).toMatchObject({ value: { value: { type: 'Condition', src: 'boolean(~(a, b))' } } });
   });
 });

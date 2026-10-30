@@ -26,3 +26,14 @@ export function absoluteStart(node: CssCstNode): number {
 export function absoluteEnd(node: CssCstNode): number {
   return Number(node.span.end);
 }
+
+/*
+ * The variable a `.jess` `${…}` reads, from its tokens, so padding inside the
+ * braces (`${ name }`) changes nothing: `${name}` reads `$name`, `${[$key]}`
+ * reads `$key`, and `${[name]}` reads a property, no variable.
+ */
+export function dollarBraceVariableNameOf(node: CssCstNode): string | null {
+  const leaves = cstChildrenOf(node).filter(child => child._tag === 'leaf');
+  const name = leaves[1]?.value === '[' ? (leaves[2]?.value === '$' ? leaves[3] : undefined) : leaves[1];
+  return name?._tag === 'leaf' ? name.value : null;
+}

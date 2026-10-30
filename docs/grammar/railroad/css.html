@@ -237,6 +237,9 @@ svg.railroad-diagram rect {
     <a href="#rule-MediaCondition">MediaCondition</a>
     <a href="#rule-MediaFeatureOpener">MediaFeatureOpener</a>
     <a href="#rule-mediaFeatureOpener">mediaFeatureOpener</a>
+    <a href="#rule-QueryComparedHead">QueryComparedHead</a>
+    <a href="#rule-queryComparedHead">queryComparedHead</a>
+    <a href="#rule-queryRangeName">queryRangeName</a>
     <a href="#rule-QueryFeatureName">QueryFeatureName</a>
     <a href="#rule-queryFeatureName">queryFeatureName</a>
     <a href="#rule-MediaFeatureContents">MediaFeatureContents</a>
@@ -273,6 +276,8 @@ svg.railroad-diagram rect {
     <a href="#rule-EnclosedQuoted">EnclosedQuoted</a>
     <a href="#rule-SupportsFeature">SupportsFeature</a>
     <a href="#rule-SupportsInParens">SupportsInParens</a>
+    <a href="#rule-SupportsIdentifier">SupportsIdentifier</a>
+    <a href="#rule-SupportsGroupCondition">SupportsGroupCondition</a>
     <a href="#rule-SupportsCondition">SupportsCondition</a>
     <a href="#rule-SupportsPrelude">SupportsPrelude</a>
     <a href="#rule-ConditionalBlock">ConditionalBlock</a>
@@ -897,7 +902,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-ParenValue">
     <h2><a href="#rule-ParenValue">§</a> ParenValue</h2>
     <div class="diagram" data-rule="ParenValue"></div>
-    <div class="ebnf">ParenValue ::= &quot;(&quot; WHITESPACE or COMMENT? ValueList? WHITESPACE or COMMENT? &quot;)&quot;</div>
+    <div class="ebnf">ParenValue ::= &quot;(&quot; WHITESPACE or COMMENT? (ValueList (&quot;,&quot; WHITESPACE or COMMENT?)?)? WHITESPACE or COMMENT? &quot;)&quot;</div>
   </section>
   <section class="rule" id="rule-SquareValue">
     <h2><a href="#rule-SquareValue">§</a> SquareValue</h2>
@@ -1199,6 +1204,21 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="mediaFeatureOpener"></div>
     <div class="ebnf">mediaFeatureOpener ::= (UnicodeRangeToken | IDENT (escapes allowed) &quot;(&quot;?) (QueryFeatureName (MediaInParens | (&quot;:&quot; QueryValue? | QueryComparisonOperator QueryValue? (QueryComparisonOperator QueryValue?)?)?) | queryUrlBound | queryMathBound | queryVarBound | queryUnicodeBound | queryUnicodeBound | queryFeatureName | queryFunctionBound | queryFeatureName)</div>
   </section>
+  <section class="rule" id="rule-QueryComparedHead">
+    <h2><a href="#rule-QueryComparedHead">§</a> QueryComparedHead</h2>
+    <div class="diagram" data-rule="QueryComparedHead"></div>
+    <div class="ebnf">QueryComparedHead ::= (UnicodeRangeToken | IDENT (escapes allowed) &quot;(&quot;?) (queryUrlBound | queryMathBound | queryVarBound | queryUnicodeBound | queryUnicodeBound | queryRangeName | queryFunctionBound | queryRangeName)</div>
+  </section>
+  <section class="rule" id="rule-queryComparedHead">
+    <h2><a href="#rule-queryComparedHead">§</a> queryComparedHead</h2>
+    <div class="diagram" data-rule="queryComparedHead"></div>
+    <div class="ebnf">queryComparedHead ::= (UnicodeRangeToken | IDENT (escapes allowed) &quot;(&quot;?) (queryUrlBound | queryMathBound | queryVarBound | queryUnicodeBound | queryUnicodeBound | queryRangeName | queryFunctionBound | queryRangeName)</div>
+  </section>
+  <section class="rule" id="rule-queryRangeName">
+    <h2><a href="#rule-queryRangeName">§</a> queryRangeName</h2>
+    <div class="diagram" data-rule="queryRangeName"></div>
+    <div class="ebnf">queryRangeName ::= QueryFeatureName (QueryComparisonOperator QueryValue?)?</div>
+  </section>
   <section class="rule" id="rule-QueryFeatureName">
     <h2><a href="#rule-QueryFeatureName">§</a> QueryFeatureName</h2>
     <div class="diagram" data-rule="QueryFeatureName"></div>
@@ -1292,7 +1312,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-queryBoundTail">
     <h2><a href="#rule-queryBoundTail">§</a> queryBoundTail</h2>
     <div class="diagram" data-rule="queryBoundTail"></div>
-    <div class="ebnf">queryBoundTail ::= (QueryComparisonOperator ((UnicodeRangeToken | IDENT (escapes allowed) &quot;(&quot;?) (queryUrlBound | queryMathBound | queryVarBound | queryUnicodeBound | queryUnicodeBound | QueryFeatureName (QueryComparisonOperator QueryValue?)? | queryFunctionBound | QueryFeatureName (QueryComparisonOperator QueryValue?)?) | (&quot;,&quot; | ValueSequence)+)? | (&quot;,&quot; | ValueSequence)+)?</div>
+    <div class="ebnf">queryBoundTail ::= (QueryComparisonOperator (QueryComparedHead | (&quot;,&quot; | ValueSequence)+)? | (&quot;,&quot; | ValueSequence)+)?</div>
   </section>
   <section class="rule" id="rule-QueryFeature">
     <h2><a href="#rule-QueryFeature">§</a> QueryFeature</h2>
@@ -1377,12 +1397,22 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-SupportsInParens">
     <h2><a href="#rule-SupportsInParens">§</a> SupportsInParens</h2>
     <div class="diagram" data-rule="SupportsInParens"></div>
-    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsCondition &quot;)&quot; | SupportsFeature | Enclosed</div>
+    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsGroupCondition &quot;)&quot; | SupportsFeature | Enclosed</div>
+  </section>
+  <section class="rule" id="rule-SupportsIdentifier">
+    <h2><a href="#rule-SupportsIdentifier">§</a> SupportsIdentifier</h2>
+    <div class="diagram" data-rule="SupportsIdentifier"></div>
+    <div class="ebnf">SupportsIdentifier ::= Keyword Enclosed?</div>
+  </section>
+  <section class="rule" id="rule-SupportsGroupCondition">
+    <h2><a href="#rule-SupportsGroupCondition">§</a> SupportsGroupCondition</h2>
+    <div class="diagram" data-rule="SupportsGroupCondition"></div>
+    <div class="ebnf">SupportsGroupCondition ::= QueryNot SupportsInParens | SupportsInParens (QueryConnective SupportsInParens)*</div>
   </section>
   <section class="rule" id="rule-SupportsCondition">
     <h2><a href="#rule-SupportsCondition">§</a> SupportsCondition</h2>
     <div class="diagram" data-rule="SupportsCondition"></div>
-    <div class="ebnf">SupportsCondition ::= QueryNot SupportsInParens | SupportsInParens (QueryConnective SupportsInParens)*</div>
+    <div class="ebnf">SupportsCondition ::= (QueryNot (SupportsInParens | SupportsIdentifier) | SupportsInParens | SupportsIdentifier) (QueryConnective (SupportsInParens | SupportsIdentifier))*</div>
   </section>
   <section class="rule" id="rule-SupportsPrelude">
     <h2><a href="#rule-SupportsPrelude">§</a> SupportsPrelude</h2>
@@ -2182,7 +2212,7 @@ svg.railroad-diagram rect {
   { name: "VarCall", dsl: function(){ return Diagram(Sequence(Terminal("var"), Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")"))); } },
   { name: "CalcIdentOrFunction", dsl: function(){ return Diagram(Sequence(NonTerminal("IdentToken"), Optional(Terminal("(")), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("UrlInner"))), Optional(Terminal("WHITESPACE")), Terminal(")")), NonTerminal("MathFunction"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")")), NonTerminal("RoutedKeyword"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Optional(Choice(0, Sequence(NonTerminal("branchLead"), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("BranchRest"), Sequence(ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")))), ZeroOrMore(Sequence(Terminal(";"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")), ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT"))))))))))), OneOrMore(Sequence(Terminal(";"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")), ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")))))))))), Terminal(")")), NonTerminal("RoutedCustomPropertyValue"), NonTerminal("RoutedKeyword")))); } },
   { name: "CalcParen", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CalcSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
-  { name: "ParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), Optional(NonTerminal("ValueList")), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
+  { name: "ParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("ValueList"), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")))))), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
   { name: "SquareValue", dsl: function(){ return Diagram(Sequence(Terminal("["), Optional(Terminal("WHITESPACE or COMMENT")), Optional(NonTerminal("ValueList")), Optional(Terminal("WHITESPACE or COMMENT")), Terminal("]"))); } },
   { name: "RawParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Comment("…"), Terminal(")"))); } },
   { name: "PunctuationValue", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("/@(?!-?(?:[-_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])))/"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal(".")), ZeroOrMore(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("/"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("@"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal("."))))); } },
@@ -2243,6 +2273,9 @@ svg.railroad-diagram rect {
   { name: "MediaCondition", dsl: function(){ return Diagram(Sequence(NonTerminal("MediaInParens"), ZeroOrMore(Choice(0, Sequence(NonTerminal("QueryAndOr"), Optional(NonTerminal("MediaInParens"))), NonTerminal("GluedConnectiveFunction"))))); } },
   { name: "MediaFeatureOpener", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, Sequence(NonTerminal("QueryFeatureName"), Choice(0, NonTerminal("MediaInParens"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))))), NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryFeatureName"), NonTerminal("queryFunctionBound"), NonTerminal("queryFeatureName")))); } },
   { name: "mediaFeatureOpener", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, Sequence(NonTerminal("QueryFeatureName"), Choice(0, NonTerminal("MediaInParens"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))))), NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryFeatureName"), NonTerminal("queryFunctionBound"), NonTerminal("queryFeatureName")))); } },
+  { name: "QueryComparedHead", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryRangeName"), NonTerminal("queryFunctionBound"), NonTerminal("queryRangeName")))); } },
+  { name: "queryComparedHead", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryRangeName"), NonTerminal("queryFunctionBound"), NonTerminal("queryRangeName")))); } },
+  { name: "queryRangeName", dsl: function(){ return Diagram(Sequence(NonTerminal("QueryFeatureName"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")))))); } },
   { name: "QueryFeatureName", dsl: function(){ return Diagram(Skip()); } },
   { name: "queryFeatureName", dsl: function(){ return Diagram(Sequence(NonTerminal("QueryFeatureName"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))))); } },
   { name: "MediaFeatureContents", dsl: function(){ return Diagram(Choice(0, NonTerminal("MediaFeatureOpener"), Sequence(NonTerminal("QueryValue"), NonTerminal("queryBoundTail")))); } },
@@ -2261,7 +2294,7 @@ svg.railroad-diagram rect {
   { name: "RoutedQueryFunction", dsl: function(){ return Diagram(Sequence(Comment("…"), Terminal(")"))); } },
   { name: "QueryIdentOrFunctionTerm", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Sequence(Choice(0, Terminal("layer"), Terminal("only")), Sequence(Comment("not"), Terminal("(")))), Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, NonTerminal("RoutedQueryFunction"), Skip()))); } },
   { name: "QueryFeatureContents", dsl: function(){ return Diagram(Choice(0, Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("UrlInner"))), Optional(Terminal("WHITESPACE")), Terminal(")"), Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))), Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("ValueList")))), NonTerminal("ValueList")))), Sequence(NonTerminal("MathFunction"), Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))), Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("ValueList")))), NonTerminal("ValueList")))), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")"), Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))), Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("ValueList")))), NonTerminal("ValueList")))), Sequence(Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))), Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("ValueList")))), NonTerminal("ValueList")))), Sequence(Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))), Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("ValueList")))), NonTerminal("ValueList")))), NonTerminal("queryFeatureName"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Optional(Choice(0, Sequence(NonTerminal("branchLead"), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("BranchRest"), Sequence(ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")))), ZeroOrMore(Sequence(Terminal(";"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")), ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT"))))))))))), OneOrMore(Sequence(Terminal(";"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")), ZeroOrMore(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("functionArgument"), Optional(Terminal("WHITESPACE or COMMENT")))))))))), Terminal(")"), Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))), Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("ValueList")))), NonTerminal("ValueList")))), NonTerminal("queryFeatureName"))), Sequence(NonTerminal("QueryValue"), NonTerminal("QueryComparisonOperator"), NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), NonTerminal("QueryValue")))))); } },
-  { name: "queryBoundTail", dsl: function(){ return Diagram(Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), Sequence(NonTerminal("QueryFeatureName"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))), NonTerminal("queryFunctionBound"), Sequence(NonTerminal("QueryFeatureName"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))), OneOrMore(Choice(0, Terminal(","), NonTerminal("ValueSequence")))))), OneOrMore(Choice(0, Terminal(","), NonTerminal("ValueSequence")))))); } },
+  { name: "queryBoundTail", dsl: function(){ return Diagram(Optional(Choice(0, Sequence(NonTerminal("QueryComparisonOperator"), Optional(Choice(0, NonTerminal("QueryComparedHead"), OneOrMore(Choice(0, Terminal(","), NonTerminal("ValueSequence")))))), OneOrMore(Choice(0, Terminal(","), NonTerminal("ValueSequence")))))); } },
   { name: "QueryFeature", dsl: function(){ return Diagram(Sequence(Terminal("("), NonTerminal("QueryFeatureContents"), Terminal(")"))); } },
   { name: "QueryClause", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryOnly"), Sequence(Comment("not"), Choice(0, Terminal("layer"), Terminal("only"))), NonTerminal("Keyword"), ZeroOrMore(Sequence(NonTerminal("QueryConnective"), NonTerminal("MediaTerm")))), Sequence(NonTerminal("MediaTerm"), ZeroOrMore(Sequence(Optional(NonTerminal("QueryAndOr")), NonTerminal("MediaTerm")))))); } },
   { name: "QueryPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("QueryClause"), Terminal("/,[ \\t\\n\\r\\f]*/"))); } },
@@ -2278,8 +2311,10 @@ svg.railroad-diagram rect {
   { name: "EnclosedGroup", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("EnclosedContent"), Terminal(")")), Sequence(Terminal("["), NonTerminal("EnclosedContent"), Terminal("]")), Sequence(Terminal("{"), NonTerminal("EnclosedContent"), Terminal("}")))); } },
   { name: "EnclosedQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), Terminal("DOUBLE-QUOTED BODY"), Terminal("\"")), Sequence(Terminal("'"), Terminal("SINGLE-QUOTED BODY"), Terminal("'")))); } },
   { name: "SupportsFeature", dsl: function(){ return Diagram(NonTerminal("QueryFeature")); } },
-  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsCondition"), Terminal(")")), NonTerminal("SupportsFeature"), NonTerminal("Enclosed"))); } },
-  { name: "SupportsCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryNot"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(NonTerminal("QueryConnective"), NonTerminal("SupportsInParens")))))); } },
+  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsGroupCondition"), Terminal(")")), NonTerminal("SupportsFeature"), NonTerminal("Enclosed"))); } },
+  { name: "SupportsIdentifier", dsl: function(){ return Diagram(Sequence(NonTerminal("Keyword"), Optional(NonTerminal("Enclosed")))); } },
+  { name: "SupportsGroupCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryNot"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(NonTerminal("QueryConnective"), NonTerminal("SupportsInParens")))))); } },
+  { name: "SupportsCondition", dsl: function(){ return Diagram(Sequence(Choice(0, Sequence(NonTerminal("QueryNot"), Choice(0, NonTerminal("SupportsInParens"), NonTerminal("SupportsIdentifier"))), NonTerminal("SupportsInParens"), NonTerminal("SupportsIdentifier")), ZeroOrMore(Sequence(NonTerminal("QueryConnective"), Choice(0, NonTerminal("SupportsInParens"), NonTerminal("SupportsIdentifier")))))); } },
   { name: "SupportsPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("SupportsCondition"), Terminal(","))); } },
   { name: "ConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")))); } },
   { name: "NestedConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), NonTerminal("declarationListBlock")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), NonTerminal("declarationListBlock")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), NonTerminal("declarationListBlock")))); } },

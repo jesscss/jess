@@ -84,11 +84,12 @@ export function serializeValue(v: ValueGroup): string {
     case 'Bool': return v.value ? 'true' : 'false';
     case 'Null': return v.bytes;
     case 'List': return joinGroup(v.value, sepGlue(v.sep), serializeValue);
-    case 'Block': {
-      const open = delimiterOpen(v.delimiter);
-      const close = delimiterClose(v.delimiter);
-      return `${v.escaped ? '~' : ''}${open}${serializeValue(v.value)}${close}`;
-    }
+
+    /* A curly list written without its braces keeps Less's `~( … )` spelling (ledger P46). */
+    case 'Block':
+      return v.escaped === true
+        ? `~(${serializeValue(v.value)})`
+        : `${delimiterOpen(v.delimiter)}${serializeValue(v.value)}${delimiterClose(v.delimiter)}`;
     case 'Collection': {
       const body = v.entries.map(collectionEntryBytes).join('; ');
       return body === '' ? '{}' : `{ ${body} }`;

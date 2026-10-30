@@ -99,7 +99,9 @@ const BY_DIALECT: Record<Dialect, ReadonlyArray<readonly [value: string, delim: 
     ['(a=b=c)', '='],
     ['foo((a=b=c))', '='], // a paren group of the run, as `(a=b=c)` is anywhere in a value
     ['a.b alpha(opacity=50)', '.'], // Less reads `alpha(opacity=50)` as a comparison (V11)
-    ['foo(a<b<c)', '<'] // one comparison is Less's (V11); a chain is the run
+    ['foo(a<b<c)', '<'], // one comparison is Less's (V11); a chain is the run
+    ['<length>', '<'], // a `<syntax>` type name compares nothing
+    ['foo(a<b>c)', '<'] // a glued `<b>` after an operand stays the comparison's run
   ],
   scss: [
     ['f(a.b)', '.'],
@@ -235,7 +237,7 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['scss', '@mixin m($a) {\n  x: $a;\n}\na { @include m(a.b); }\n', '.', 2, 3],
     ['scss', '$m: (k: a.b);\na { x: map-get($m, k); }\n', '.', 2, 5],
     ['jess', '$v: a~b;\na { x: $v; }\n', '~', 2, 5],
-    ['jess', '$m: { a: b.c };\na { x: $m.a; }\n', '.', 2, 5]
+    ['jess', '$m: #{ a: b.c };\na { x: $m.a; }\n', '.', 2, 5]
   ] as const)('%s: %s', async (dialect, source, delim, line, column) => {
     const parsed = PLUGINS[dialect].safeParse!(`/proj/punctuation.${dialect}`, source);
     expect(parsed.errors).toEqual([]);
@@ -261,7 +263,7 @@ describe('invalid value punctuation through a reference fails the compile', () =
     ['scss', 'an unused variable', '$v: a.b;\na { x: y; }\n'],
     ['scss', 'a custom property', '$v: a.b;\na { --x: #{$v}; }\n'],
     ['scss', 'a string', '$v: a.b;\na { x: "#{$v}"; }\n'],
-    ['jess', 'an unused variable and collection', '$v: a~b;\n$m: { a: b.c };\na { x: y; }\n']
+    ['jess', 'an unused variable and collection', '$v: a~b;\n$m: #{ a: b.c };\na { x: y; }\n']
   ] as const)('%s: %s compiles', async (dialect, _label, source) => {
     const result = await compile(dialect, source);
     expect(result.errors).toEqual([]);
@@ -305,7 +307,7 @@ describe('a var(), env() or attr() fallback is a value', () => {
   });
 
   it.each([
-    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => [
+    ...DIALECTS.flatMap(dialect => [
       [dialect, 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n', 'width: attr(data-w type(<length>), 0px);'],
       [dialect, 'a {\n  width: attr(data-w type(<length>),0px);\n}\n', 'width: attr(data-w type(<length>), 0px);']
     ] as const),
@@ -374,8 +376,8 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
     expect(await clean('jess', sheet('foo(a:b)'))).toContain('x: foo(a:b);');
   });
 
-  it('css: a typed attr()', async () => {
-    await clean('css', sheet('attr(data-x type(<length> | <percentage>), 0px)'));
+  it.each(['css', 'less'] as const)('%s: a typed attr()', async (dialect) => {
+    await clean(dialect, sheet('attr(data-x type(<length> | <percentage>), 0px)'));
   });
 
   it.each([
@@ -414,7 +416,7 @@ describe('punctuation a dialect or CSS gives meaning compiles', () => {
   it.each([
     ['an expression', 'a { x: $(1 == 2); }\n', 'x: false;'],
     ['a comparison', '$a: 2;\na { x: $($a > 1); }\n', 'x: true;'],
-    ['a member lookup', '$m: { a: 1 };\na { x: $m.a; }\n', 'x: 1;']
+    ['a member lookup', '$m: #{ a: 1 };\na { x: $m.a; }\n', 'x: 1;']
   ])('jess: %s', async (_label, source, written) => {
     expect(await clean('jess', source)).toContain(written);
   });

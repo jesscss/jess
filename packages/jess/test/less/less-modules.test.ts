@@ -190,6 +190,14 @@ describe('Less @compose stylesheet modules', () => {
     expect(css).toBe('.a {\n  box-shadow: 0 3px 0 black;\n}\n');
   });
 
+  /* With no namespace (`as *`), a module mixin is called as any Less mixin is (spec R6 §D.6). */
+  it('calls an `as *` module mixin directly', async () => {
+    const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
+    const { css, errors } = await render('@compose "./elevate.less" as *;\n.a { .lift(3px); }', [elevate]);
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  box-shadow: 0 3px 0 black;\n}\n');
+  });
+
   it('reports a failed member mixin call at its call site', async () => {
     const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
     const directory = project([elevate, ['entry.less', '@compose "./elevate.less";\n.a {\n  @elevate.lift(1px, 2px, 3px);\n}\n']]);

@@ -465,8 +465,19 @@ describe('SCSS canonical-AST grammar', () => {
       ] } }]
     });
 
+    /* No condition, but well-formed: they parse, and the compile reports them (`css/invalid-supports-condition`). */
+    for (const [source, condition] of [
+      ['@import "theme.css" supports(color);', { type: 'Keyword', src: 'color' }],
+      ['@import "theme.css" supports(not (a: b) and (c: d));', { type: 'Sequence', parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block' }, { type: 'Keyword', src: 'and' }, { type: 'Block' }] }]
+    ] as const) {
+      const parsed = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(parsed.unconsumedFrom, source).toBeNull();
+      expect(parsed.value).toMatchObject({ rules: [{ prelude: { parts: [{ type: 'Quoted' }, { type: 'FunctionCall', name: 'supports', args: [{ value: condition }] }] } }] });
+    }
+
     for (const unsupported of [
-      '@import "theme.css" supports(#{$feature});'
+      '@import "theme.css" supports(#{$feature});',
+      '@import "a.css" supports(--a:);'
     ]) {
       const unsupportedResult = run(scssGrammar.Stylesheet, unsupported, { trivia: scssGrammar.whitespace });
       expect(unsupportedResult.ok && unsupportedResult.unconsumedFrom === null && isStylesheet(unsupportedResult.value), unsupported).toBe(false);
@@ -876,7 +887,7 @@ describe('SCSS canonical-AST grammar', () => {
           }, right: { src: '2' }
         } },
         { type: 'VariableDeclaration', name: 'spaced-positive', value: {
-          type: 'Block', delimiter: 'paren', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
+          type: 'Block', delimiter: 'curly', escaped: true, value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
         } },
         { type: 'VariableDeclaration', name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { type: 'VariableDeclaration', name: 'legacy-plus', value: { type: 'Operation', operator: '+' } },
@@ -1448,12 +1459,9 @@ describe('SCSS canonical-AST grammar', () => {
       expect(query.ok && query.unconsumedFrom === null && isStylesheet(query.value), querySource).toBe(true);
     }
 
-    for (const invalid of [
-      '@supports (display: grid), (color: blue) { .card { color: blue; } }'
-    ]) {
-      const rejected = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), invalid).toBe(false);
-    }
+    /* A comma list is no supports condition: it parses (ledger P45) and the compile reports its `,` (owner 2026-10-22). */
+    const commaList = run(scssGrammar.Stylesheet, '@supports (display: grid), (color: blue) { .card { color: blue; } }', { trivia: scssGrammar.whitespace });
+    expect(commaList.ok && commaList.unconsumedFrom === null && isStylesheet(commaList.value)).toBe(true);
   });
 
   it('constructs descriptor-only @font-face blocks with existing direct declaration values', () => {
@@ -1623,8 +1631,9 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   it('matches public conditional-prelude rejection without a fallback block path', () => {
+    /* A bare identifier is no supports condition: it parses (ledger P45) and the compile reports it (owner 2026-10-22). */
+    expect(parseScssCst('@supports color { .bad { color: red; } }').errors).toHaveLength(0);
     for (const source of [
-      '@supports color { .bad { color: red; } }',
       '@supports { .bad { color: red; } }',
       '@media $cond { .bad { color: red; } }',
       '@container $cond { .bad { color: red; } }',
@@ -2562,8 +2571,13 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    // Empty `()` and a single `(a: 1)` are maps too.
-    expect(parse('$m: ();').rules[0]).toMatchObject({ value: { type: 'Collection', entries: [] } });
+    /*
+     * A single `(a: 1)` is a map too; the empty `()` is the empty curly list (owner 2026-10-23),
+     * its span recording the authored `()`.
+     */
+    const empty = parse('$m: ();').rules[0];
+    expect(empty).toMatchObject({ value: { type: 'Block', delimiter: 'curly', escaped: true, value: [] } });
+    expect(empty).toMatchObject({ value: { _s: 4, _e: 6 } });
     expect(parse('$m: (a: 1);').rules[0]).toMatchObject({ value: { type: 'Collection', entries: [{ type: 'CollectionEntry', key: { type: 'Keyword', src: 'a' } }] } });
 
     /*
@@ -2574,15 +2588,16 @@ describe('SCSS canonical-AST grammar', () => {
       value: { type: 'Collection', entries: [{ type: 'CollectionEntry', key: { type: 'Quoted', value: 'k' }, value: [{ type: 'Dimension', src: '1px' }, { type: 'Keyword', src: 'solid' }] }] }
     });
 
-    // A paren value-list (no `key:` entry) stays a Block list, never a Collection.
-    expect(parse('$m: (1 2 3);').rules[0]).toMatchObject({ value: { type: 'Block', delimiter: 'paren' } });
+    // A paren value-list (no `key:` entry) is the curly list, never a Collection.
+    expect(parse('$m: (1 2 3);').rules[0]).toMatchObject({ value: { type: 'Block', delimiter: 'curly', escaped: true } });
     expect(parse('$m: (1 + 2);').rules[0]).toMatchObject({ value: { type: 'Block', value: { type: 'Operation' } } });
   });
 
   it('lowers SCSS map-get to the shared $[…] accessor read', () => {
     /*
-     * `map-get($m, a)` => `$m[a]`: a Reference whose single BracketLookup step
-     * carries the key (member lookup for a value key, var lookup for `$k`).
+     * `map-get($m, a)` => `$m[a]`: a Reference whose single member step carries
+     * a word or string key. Any other key keeps the call: in `$m[…]` a number is
+     * a position (ledger P15), and a variable or expression may hold one.
      */
     expect(parse('.x { color: map-get($m, a); }').rules[0]).toMatchObject({
       type: 'Ruleset',
@@ -2597,9 +2612,15 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    expect(parse('.x { color: map-get($m, $k); }').rules[0]).toMatchObject({
-      rules: [{ value: { type: 'Reference', steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'k', raw: '@k' }, kind: 'var' }], raw: '$m[$k]' } }]
+    expect(parse('.x { color: map-get($m, "a"); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'Reference', steps: [{ type: 'LookupStep', name: { type: 'Quoted', value: 'a' }, kind: 'member' }] } }]
     });
+
+    for (const key of ['$k', '1px', '#fff', '$k + 1', '"#{$k}"']) {
+      expect(parse(`.x { color: map-get($m, ${key}); }`).rules[0]).toMatchObject({
+        rules: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
+      });
+    }
 
     // A non-canonical arity stays a plain FunctionCall for `fns` routing.
     expect(parse('.x { color: map-get($m); }').rules[0]).toMatchObject({
@@ -2644,14 +2665,16 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('lowers a @use-namespaced variable read to the shared $[…] accessor', () => {
+  it('builds a @use-namespaced variable read as the member lookup `.jess` writes `$theme.primary`', () => {
     expect(parse('a { b: theme.$primary; }').rules[0]).toMatchObject({
       rules: [{
         value: {
           type: 'Reference',
-          base: { type: 'Keyword', src: 'theme' },
-          steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'primary', raw: '@primary', scope: 'live' }, kind: 'var' }],
-          raw: 'theme.$primary'
+          base: { type: 'Lookup', kind: 'entry', _s: 7, _e: 12 },
+          steps: [{ type: 'LookupStep', kind: 'member', name: 'theme' }, { type: 'LookupStep', kind: 'member', name: 'primary' }],
+          raw: 'theme.$primary',
+          _s: 7,
+          _e: 21
         }
       }]
     });

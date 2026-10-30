@@ -31,6 +31,16 @@ describe('SCSS user @function call sites', () => {
     expect(css).toBe('.a {\n  w: 4;\n}\n');
   });
 
+  /* A map argument stays a map inside the body: `map.get` / `map-get` read its key (Dart Sass 1.101.7 gives `1`). */
+  it('reads a key of a map argument inside a @function and a @mixin', async () => {
+    await expect(render('@use "sass:map";\n$cfg: (x: 1);\n@function pick($m) { @return map.get($m, x); }\n.a { c: pick($cfg); }'))
+      .resolves.toBe('.a {\n  c: 1;\n}\n');
+    await expect(render('@function pick($m) { @return map-get($m, x); }\n.a { c: pick((x: 1)); }'))
+      .resolves.toBe('.a {\n  c: 1;\n}\n');
+    await expect(render('@mixin pick($m) { c: map-get($m, x); }\n.a { @include pick((x: 1)); }'))
+      .resolves.toBe('.a {\n  c: 1;\n}\n');
+  });
+
   /** A user function SHADOWS the builtin of the same name. */
   it('prefers a user function over a builtin of the same name', async () => {
     const css = await render('@function darken($c, $p) { @return red; }\n.a { c: darken(#fff, 10%); }');

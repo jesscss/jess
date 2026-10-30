@@ -26,7 +26,7 @@
 
 import { renderCombinator } from './node.js';
 import type { Combinator, Node, NodeType } from './node.js';
-import {
+import serializerNodes, {
   any,
   callArg,
   collection,
@@ -75,9 +75,9 @@ import {
   textHoldsParentRef,
   branchTextIsPlaceholder,
   isCssColorCall,
+  isConditionOperand,
   colorAlphaSlash
 } from './nodes.js';
-import serializerNodes from './nodes.js';
 import {
   type CompoundIn,
   type SelectorPlace,
@@ -165,6 +165,8 @@ import {
   DivisionByZeroError,
   EmptyOperandError,
   IncomparableOperandsError,
+  InvalidOperandError,
+  EmptyListValueError,
   emitValue,
   readText,
   delimiterClose,
@@ -203,15 +205,19 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { assertValidValueSyntax, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
+import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
+import { MAX_MIXIN_DEPTH, mixinRecursionLimit, runawayMixinError } from './mixin-recursion.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, carryKeptClash, findFinalValue, groupAsWritten, groupText, isKeptOperation, isUnexpressible, keepAsWritten, keptMathOf, mathText, operandAsWritten, preservedUnitClashes, checkedOperation, quotedFromLead, validateFinalUnits, writtenCalc } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
+import { lambdaResultValue } from './value-lambda.js';
+import { ambiguousMember, deriveModuleNamespace, hiddenNamespace, memberNotFound, readsNamespaceMember, recordNamespace } from './namespace-member.js';
+import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { groupItems } from './value-list.js';
-import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, type ModuleCallable } from './module-values.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
@@ -226,6 +232,7 @@ import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, 
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
+import { writtenListValue, writtenResult } from './empty-list.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isAuthoredGroupExpression, isGeneralEnclosedTemplate, isGluedConditionKeyword, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
@@ -1260,17 +1267,6 @@ export function activationOf(frame: Frame): FrameActivation {
   };
 }
 
-/**
- * The typed value a mixin argument's byte snapshot kept beside it: `'value'` for
- * its evaluated value, `'url'` for a URL-bearing one. The activation that bound
- * the argument holds it; until an activation takes it, the render does.
- */
-function snapshotOf(node: Binding, frame: Frame | null | undefined, e: Lane, kind: 'value' | 'url'): ValueGroup | undefined {
-  return kind === 'value'
-    ? frame?.activation?.mixinValueBindings?.get(node) ?? e.s.mixinValueBindings?.get(node)
-    : frame?.activation?.mixinUrlBindings?.get(node) ?? e.s.mixinUrlBindings?.get(node);
-}
-
 function sourceOwnerForBody(rules: object, frame: Frame, e: Lane): object | null {
   return e.s.context?.sourceOwnerForBody?.(rules) ?? frame.sourceOwner ?? null;
 }
@@ -1524,21 +1520,15 @@ function bindModuleCallable(
   (e.s.moduleReferenceValues ??= new Map()).set(marker, name.toLowerCase());
 }
 
-function requireModuleExport(module: Readonly<Record<string, unknown>>, name: string): unknown {
-  if (!Object.prototype.hasOwnProperty.call(module, name)) {
-    throw new TypeError(`Module has no export named "${name}".`);
-  }
-  return module[name];
-}
-
 function bindModuleNamespace(
+  node: ModuleImport,
   module: Readonly<Record<string, unknown>>,
   namespace: string,
   frame: Frame,
   e: Lane
 ): void {
   const values: Record<string, unknown> = {};
-  for (const [name, value] of Object.entries(module)) {
+  for (const [name, value] of moduleMembers(module)) {
     if (isModuleCallable(value)) {
       addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`), e);
     } else {
@@ -1548,6 +1538,7 @@ function bindModuleNamespace(
   const binding = bindModuleValue(frame, namespace, values, e);
   if (!isValueSlotArray(binding)) {
     (e.s.moduleReferenceValues ??= new Map()).set(binding, null);
+    recordNamespace(e.s, binding, node);
   }
 }
 
@@ -1563,7 +1554,7 @@ function bindModuleImport(
       throw new TypeError(`@-use "${node.path.value}" cannot derive a namespace; add an explicit "as <name>".`);
     }
     if (namespace === '*') {
-      for (const [name, value] of Object.entries(module)) {
+      for (const [name, value] of moduleMembers(module)) {
         if (isModuleCallable(value)) {
           bindModuleCallable(frame, name, value, e);
         } else {
@@ -1572,15 +1563,15 @@ function bindModuleImport(
       }
       return;
     }
-    bindModuleNamespace(module, namespace, frame, e);
+    bindModuleNamespace(node, module, namespace, frame, e);
     return;
   }
 
   if (node.namespace !== null) {
-    bindModuleNamespace(module, node.namespace, frame, e);
+    bindModuleNamespace(node, module, node.namespace, frame, e);
   }
   if (node.defaultImport !== null) {
-    const value = requireModuleExport(module, 'default');
+    const value = requireModuleMember(module, 'default');
     if (isModuleCallable(value)) {
       bindModuleCallable(frame, node.defaultImport, value, e);
     } else {
@@ -1588,7 +1579,7 @@ function bindModuleImport(
     }
   }
   for (const specifier of node.imports) {
-    const value = requireModuleExport(module, specifier.name);
+    const value = requireModuleMember(module, specifier.name);
     const localName = specifier.alias ?? specifier.name;
     if (isModuleCallable(value)) {
       bindModuleCallable(frame, localName, value, e);
@@ -3490,7 +3481,9 @@ function lookupVar(frame: Frame | null, name: string, e?: Lane): Binding | undef
  * the cycle guard: `@a: @a + 1` excludes its own node → skips it → falls back to
  * an earlier `@a` (or misses); `@a: @b; @b: @a` accumulates both exclusions and
  * terminates at any depth. There is NO depth cap. The value is returned with its
- * OWNING frame so it evaluates in its declaration scope.
+ * OWNING frame so it evaluates in its declaration scope. A binding that is an
+ * eager snapshot of a map reads as that map ({@link carriedMap}), so every
+ * reader — `@each`, a member read, a function argument — gets the same value.
  *
  * Both stores must therefore keep the EARLIER same-name bindings, or the skip has
  * nothing to land on. `scoped` reads get that from `declIndex`, a source-order
@@ -3499,9 +3492,9 @@ function lookupVar(frame: Frame | null, name: string, e?: Lane): Binding | undef
  * $i: $i - 1` reported a false `Recursive reference` — the read correctly skipped
  * its own node and then found nothing behind it. */
 function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane): BindingHit | undefined {
-  return lookup === 'live'
+  return carriedMap(e.s, lookup === 'live'
     ? lookupLiveCell(frame, name, e)
-    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e);
+    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e));
 }
 
 function hasExcludedVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane): boolean {
@@ -4256,6 +4249,14 @@ interface Lane {
   exprBoundary: boolean;
 
   /*
+   * [operand] Inside the arguments of a CSS math function or of a call written
+   * out as-is: an operation on an operand it is not defined on is kept as
+   * written there rather than rejected, as in a calculation (ledger V36). Lane
+   * state, as `calcDepth` is: a value a reference reaches is read here too.
+   */
+  keepsMath: boolean;
+
+  /*
    * [important] Less `importantScope`: while resolving one declaration's value, an
    * `Important`-wrapped variable reference (`@v: @c !important`) sets `hit`, so the
    * enclosing declaration hoists a SINGLE trailing `!important`. Installed per
@@ -4379,6 +4380,9 @@ interface EvalSession {
    * without admitting module functions into bare CSS call lookup. */
   moduleReferenceValues: Map<object, string | null> | undefined;
 
+  /** Each module namespace binding (`@use … as ns`, `@-compose … as ns`) → the import that bound it. */
+  namespaceImports: WeakMap<object, object> | undefined;
+
   /** Compile-loaded script/data modules keyed by their canonical import fact. */
   plannedModuleImports: Map<ModuleImport, PreparedModule> | null | undefined;
 
@@ -4417,9 +4421,10 @@ interface EvalSession {
    * The typed value an eager argument snapshot was evaluated to
    * ({@link eagerSnapshot}). A typed position reads a scalar one instead of
    * re-reading the snapshot's bytes, so an argument keeps the type the parser
-   * gave it across the mixin boundary; a structured one (a list, a block, a
-   * map) still reads there as its bytes ({@link carrySnapshot}). Created with
-   * the render, so every derived context shares it.
+   * gave it across the mixin boundary; a list or a block still reads there as
+   * its bytes ({@link carrySnapshot}), and a variable read of a map reads the
+   * map ({@link carriedMap}). Created with the render, so every derived
+   * context shares it.
    */
   snapshotValues: WeakMap<Binding, ValueGroup> | undefined;
 
@@ -4468,6 +4473,10 @@ interface EvalSession {
  * - `noPluginHost`: a plugin function declined the call, so it is evaluated
  *   again without plugins.
  * - `elide`: a ruleset argument's declaration value, with its own `sink`.
+ * - `keepMath` / `checkMath`: a call's arguments, where an operation on an
+ *   operand it is not defined on is kept as written (a CSS math function, a
+ *   call written out as-is) or rejected
+ *   ({@link Lane.keepsMath}).
  * - `guard`: a mixin guard operand, where `default()` is `isDefault`.
  * - `statement`: a condition decided ahead of execution
  *   ({@link preselectControlFlow}). Whatever value is mid-way when that
@@ -4477,7 +4486,7 @@ interface EvalSession {
  */
 function deriveLane(
   e: Lane,
-  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked',
+  change: 'paren' | 'parenBoundary' | 'boundary' | 'call' | 'callBoundary' | 'unreached' | 'calc' | 'written' | 'splice' | 'noPluginHost' | 'elide' | 'guard' | 'statement' | 'unchecked' | 'keepMath' | 'checkMath',
   sink?: { elided: boolean },
   isDefault?: () => boolean
 ): Lane {
@@ -4502,6 +4511,7 @@ function deriveLane(
             ? e.parenFrames === undefined ? [false] : [...e.parenFrames, false]
             : change === 'statement' ? undefined : e.parenFrames,
         exprBoundary: change === 'parenBoundary' || change === 'boundary' || change === 'callBoundary' || (change !== 'statement' && e.exprBoundary),
+        keepsMath: change === 'keepMath' || (change !== 'checkMath' && change !== 'statement' && e.keepsMath),
         importantSink: change === 'statement' ? undefined : e.importantSink,
         elideSink: change === 'elide' ? sink : change === 'statement' ? undefined : e.elideSink,
         mergeImportant: change === 'statement' ? undefined : e.mergeImportant,
@@ -4805,41 +4815,25 @@ function warnUnexpressibleUnit(value: Value, owner: object, e: Lane): void {
 
 function throwUnitArithmetic(error: unknown, node: object, e: Lane): never {
   if (error instanceof DivisionByZeroError) {
-    throw ERR.divisionByZero({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { expr: error.expr }
-    });
-  }
-  if (error instanceof UnitArithmeticError) {
-    throw ERR.invalidUnitArithmetic({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { reason: error.message }
-    });
+    throw ERR.divisionByZero({ node, ...arithmeticSiteLocation(node, e), meta: { expr: error.expr } });
   }
 
   /*
    * A no-common-ground RELATIONAL comparison (`1px > red`) surfaces through the
    * same site as a unit clash: same operand position, same guard lane, so the
    * author gets the same structured error and location rather than a bare
-   * TypeError out of the public API.
+   * TypeError out of the public API. So do an empty operand and an operand an
+   * operation is not defined on (ledger V36).
    */
-  if (error instanceof EmptyOperandError) {
-    throw ERR.emptyOperand({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { reason: error.message }
-    });
+  const raise = error instanceof UnitArithmeticError
+    ? ERR.invalidUnitArithmetic
+    : error instanceof EmptyOperandError
+      ? ERR.emptyOperand
+      : error instanceof InvalidOperandError ? ERR.invalidOperand : error instanceof IncomparableOperandsError ? ERR.incomparableOperands : undefined;
+  if (raise === undefined || !(error instanceof Error)) {
+    throw error;
   }
-  if (error instanceof IncomparableOperandsError) {
-    throw ERR.incomparableOperands({
-      node,
-      ...arithmeticSiteLocation(node, e),
-      meta: { reason: error.message }
-    });
-  }
-  throw error;
+  throw raise({ node, ...arithmeticSiteLocation(node, e), meta: { reason: error.message } });
 }
 
 /**
@@ -6032,7 +6026,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * escapes the delimiters at emission time.
        */
       if (node.escaped) {
-        return evalValueSlot(node.value, frame, e);
+        return evalValueSlot(writtenListValue(node, e.s), frame, e);
       }
       const computation = node.delimiter === 'paren' ? groupComputation(node, frame, e) : null;
       const reached = node.delimiter === 'paren' && e.reached && groupsOneValue(node);
@@ -6161,9 +6155,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        * here where the spans still exist. `namedColor` right operands stay on the
        * arithmetic path (V13 color coercion). ponytail: "glued" is span-width
        * (one authored space before the sign); a rare double-space before falls
-       * back to the spaced form, which Less would collapse anyway.
+       * back to the spaced form, which Less would collapse anyway. Where
+       * operands are read as `.scss` and `.jess` read them (V36) a keyword
+       * operand is an error, and those grammars already read a glued sign:
+       * `.scss` `c +d` is an operation by its grammar's choice.
        */
       if ((node.operator === '-' || node.operator === '+')
+        && e.ev?.sassOperands !== true
         && node.right.type === 'Keyword'
         && namedColor(node.right.src) === undefined
         && operationSignGlued(node)) {
@@ -6245,17 +6243,29 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
       return combineAll([l, r], (values) => {
-        const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
-        const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
-          return rememberUnitOwner(ev.operate(node.operator, lv, rv, e.modes), node);
+          /*
+           * The operand rule (ledger V36) reads the values, never their written
+           * parens (J16). Inside a `calc()` the math is CSS's (J16, V31); a math
+           * function's and a written-out call's arguments keep such math as
+           * written rather than reject it ({@link Lane.keepsMath}).
+           */
+          return checkedOperation(node.operator, values[0]!, values[1]!, ev, e.keepsMath || (e.calcDepth ?? 0) > 0 || (node.operator === '/' && node.mathOutsideParens) || isConditionOperand(node.left) || isConditionOperand(node.right))
+            ?? rememberUnitOwner(ev.operate(
+              node.operator,
+              spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e),
+              spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e),
+              e.modes
+            ), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
       });
     }
+
+    /* An empty list a call or a reference yields in `.scss` and `.jess` writes no CSS value (ledger P51). */
     case 'FunctionCall':
-      return evalCall(node, frame, e, false);
+      return e.ev?.sassOperands === true ? mapMaybe(evalCall(node, frame, e, false), value => writtenResult(value, node, e.s)) : evalCall(node, frame, e, false);
     case 'IfValue': {
       const unlowered = unloweredCall(node);
       if (unlowered !== null) {
@@ -6272,7 +6282,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
     case 'Interpolation':
       return evalInterp(node, frame, e);
     case 'Reference':
-      return evalReference(node, frame, e);
+      return e.ev?.sassOperands === true ? mapMaybe(evalReference(node, frame, e), value => writtenResult(value, node, e.s)) : evalReference(node, frame, e);
     case 'Range': {
       const values = [evalValue(node.start, frame, e), evalValue(node.end, frame, e)];
       if (node.step !== null) {
@@ -6299,7 +6309,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
 /**
  * A {@link Collection} reaching a value/arg position — an SCSS map literal
  * (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a function, or
- * the authorable Jess collection `$m: { a: 1; b: 2 }` — evaluates to the
+ * the authorable Jess collection `$m: #{ a: 1; b: 2 }` — evaluates to the
  * value-domain map (`value-eval.ts` `Collection`). SCSS nested-property syntax
  * uses a distinct `NestedPropertyBlock`; it never projects structural entries
  * into this data-only value type.
@@ -6455,9 +6465,10 @@ function evalCollection(
 function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
   const lone = node.parts.length === 1 ? node.parts[0]! : undefined;
   const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression' ? e : spliceCtx(e);
+
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    pieces.push('lit' in part ? part.lit : part.unquote ? unquotedRef(part.ref, frame, ei) : evalValue(part.ref, frame, ei));
+    pieces.push('lit' in part ? part.lit : part.unquote ? evalTyped(part.ref, frame, ei, false, ARG_SPLICE) : evalValue(part.ref, frame, ei));
   }
   return combineAll(pieces, (values) => {
     let bytes = '';
@@ -6500,11 +6511,11 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePro
           return value;
         }
       }
-      bytes += emitSplice(value);
+      bytes += emitSplice(part.unquote && !isLiteral(value) && !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : value);
     }
     return elided && values.length > 0
       ? NULL
-      : literal(resolveEmergentInterp(bytes, frame, ei));
+      : quotedFromLead(node.leadQuoting === true ? values[0] : undefined, literal(resolveEmergentInterp(bytes, frame, ei)));
   });
 }
 
@@ -6749,14 +6760,21 @@ function looseMemberLookup(
 }
 
 function resolveDeclarationMember(
+  node: Reference,
   frame: Frame | null,
   name: string,
   e: Lane
 ): DeclEntry | undefined {
-  const prop = resolvePropRef(frame, name, e);
   const variable = resolveVarRef(frame, name, 'scoped', e);
+
+  /*
+   * A module namespace (`@use … as color`, `@-compose … as color`) is bound
+   * only at the root, where no property can be declared, so a namespace head
+   * and a property are never two candidates for one name (ledger R17).
+   */
+  const prop = variable !== undefined && readsNamespaceMember(node, variable.value, e.s) ? undefined : resolvePropRef(frame, name, e);
   if (prop && variable) {
-    throw new Error(`Ambiguous reference member: ${name}`);
+    ambiguousMember(node, name, e.s);
   }
   if (prop) {
     return {
@@ -7010,7 +7028,7 @@ function resolveBaseDeclMap(
 /** Dispatch a mixin CALL and collect its emitted declarations as a member map
  *  (`prop:` and `@var:` members split into `byProp` / `byVar`), for a namespace /
  *  mixin-path accessor base (`#ns.options[k]`) or a `@p: .mk-map()`-bound base.
- *  Mirrors {@link forItemsFromMixinCall}; nested rules are captured and discarded
+ *  Mirrors {@link forItemsFromMixinCall}; nested rules are dropped ({@link capturePartition})
  *  (a map is its declarations). Needs a scratch {@link Emit} — capture is thrown away. */
 function declMapFromMixinCall(
   call: MixinCall,
@@ -7020,19 +7038,6 @@ function declMapFromMixinCall(
   const em = scratchEmit(e);
   const collected: Leaf[] = [];
 
-  /*
-   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
-   * never drained here. A nested rule is a partition boundary, so the declarations
-   * around it leave `collected` (for its queued block, or `pending`).
-   */
-  const discard: Partition = {
-    encounteredContainer: false,
-    trailing: [],
-    placement: undefined,
-    boundary: null,
-    pending: [],
-    emitBlock: MOOT_FLUSH
-  };
   const varFrames: Frame[] = [];
 
   /*
@@ -7042,7 +7047,7 @@ function declMapFromMixinCall(
    * not a missing one.
    */
   const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
-  sink.partition = discard;
+  sink.partition = capturePartition();
   settled(expandCall(call, frame, sink, em, undefined, varFrames), SYNC_EXPANSION, call, em);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
@@ -7074,29 +7079,12 @@ function declMapFromMixinCall(
   return { byVar, byProp, list, unified: false, valueEntries: null, varFrames, activation: null };
 }
 
-/** The value yielded by a called value-lambda: the LAST top-level `result:`
- *  declaration in its body (the lowered form of an SCSS `@return`). A function
- *  has no early return — it is "a mixin whose final assignment to a property
- *  named `result` is its value" — so a later `result:` overrides an earlier one,
- *  exactly as a repeated declaration does everywhere else. A `result:` nested
- *  inside a `$if`/`@if`/`$for` branch is not surfaced here; only a top-level one
- *  yields. */
-function lambdaResultValue(rules: Statement[]): ValueSlot | undefined {
-  for (let index = rules.length - 1; index >= 0; index -= 1) {
-    const statement = rules[index]!;
-    if (statement.type === 'Declaration' && statement.name === 'result') {
-      return statement.value;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Invoke a value-position lambda ({@link AnonymousMixin} carrying `params`, e.g.
  * the lowered SCSS user `@function`) called as `$f(args)`. Binds args→params with
  * the SAME rules as a MixinDefinition call (positional/named/default/rest, via
  * {@link bindArgs}) — args resolve in the CALLER frame, param defaults in the
- * lambda's DEFINITION frame — then activates the body and returns the value of its
+ * lambda's DEFINITION frame — then runs the body and returns the value of its
  * `result:` entry, evaluated later in the activation frame. Returns `null` when the
  * args cannot bind or the body yields no `result:` (caller falls back to `raw`).
  */
@@ -7139,6 +7127,17 @@ function invokeValueLambda(
     activation.fallback = callerFrame;
     activation.callerFallback = true;
   }
+
+  /*
+   * The body runs before `result:` is read, in source order, as a mixin body
+   * does: a local (`$q: 1`), a parameter reassigned in an `@if`, and a loop's
+   * accumulator are written to the activation's live cells. The walk skips
+   * the body's `result:` declarations (`lambdaBody`): that value is checked
+   * where the call writes it. Anything else it places goes to a sink nobody reads.
+   */
+  const body = makePlacement(null, [], MOOT_FLUSH, activation);
+  body.lambdaBody = true;
+  settled(walkBody(lambda.rules, activation, body, scratchEmit(e)), 'value-lambda body', lambda, e);
   return { value: result, frame: activation };
 }
 
@@ -7159,6 +7158,7 @@ function resolveReferenceResult(
   let evaluated: ValueGroup | null = null;
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
+
   if (
     e.s.moduleReferenceValues !== undefined
     && !isValueSlotArray(value)
@@ -7202,7 +7202,7 @@ function resolveReferenceResult(
       if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
         return null;
       }
-      const matched = resolveDeclarationMember(valueFrame, step.name, e);
+      const matched = resolveDeclarationMember(node, valueFrame, step.name, e);
       if (!matched) {
         unresolvedSymbol(node, step.name, e);
       }
@@ -7339,7 +7339,7 @@ function resolveReferenceResult(
     }
     const map = resolveBaseDeclMap(value, valueFrame, e, evaluated);
     if (!map) {
-      return null;
+      return hiddenNamespace({ node, frame, lookup: resolveVarRef, optional: e.optional }, stepIndex, e);
     }
     const calleeMember = value.type === 'MixinCall';
 
@@ -7388,7 +7388,7 @@ function resolveReferenceResult(
         : map.valueEntries.get(looseValueKey);
       const variable = map.unified ? undefined : map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
       if (prop && variable) {
-        throw new Error(`Ambiguous reference member: ${step.name}`);
+        ambiguousMember(node, step.name, e.s);
       }
       matched = prop ?? variable;
     } else if (step.kind !== 'index' && typeof step.name !== 'number') {
@@ -7476,7 +7476,7 @@ function resolveReferenceResult(
             const prop = map.byProp.get(key);
             const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
             if (prop && variable) {
-              throw new Error(`Ambiguous reference member: ${key}`);
+              ambiguousMember(node, key, e.s);
             }
             matched = prop ?? variable;
           } else {
@@ -7520,7 +7520,7 @@ function resolveReferenceResult(
       }
     }
     if (!matched) {
-      unresolvedSymbol(node, missingSymbol, e);
+      memberNotFound({ node, frame, lookup: resolveVarRef, optional: false }, stepIndex, missingSymbol, e);
     }
     if (matched.important) {
       if (e.importantSink) {
@@ -8880,7 +8880,7 @@ function evalCall(
    * pays one `Set.has` and never walks a frame.
    */
   if (e.s.lambdaFunctionNames?.has(node.name)) {
-    const invoked = evalLambdaCall(node, frame, e, demanded);
+    const invoked = evalLambdaCall(node, frame, e.keepsMath ? deriveLane(e, 'checkMath') : e, demanded);
     if (invoked !== undefined) {
       return invoked;
     }
@@ -9018,9 +9018,14 @@ function dispatchCall(
    */
   const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
   const alpha = colorAlphaSlash(node);
+
+  /* An operation the operand rule rejects is kept as written in a CSS math function or a call written out as-is (ledger V36). */
+  const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === e.keepsMath
+    ? e
+    : deriveLane(e, e.keepsMath ? 'checkMath' : 'keepMath');
   const typed = alpha === null
-    ? node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument))
-    : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+    ? node.args.map(a => evalTypedSlot(a.value, frame, ae, true, argument))
+    : [colorChannels(node.args[0]!.value, alpha, frame, ae, argument)];
   return combineAll(typed, (vals) => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {
@@ -9198,7 +9203,7 @@ function writtenBlockBody(
         const em = scratchEmit(e);
         const collected: Leaf[] = [];
         const sink = makePlacement(null, collected, MOOT_FLUSH, bodyFrame);
-        sink.partition = { encounteredContainer: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
+        sink.partition = { encounteredContainer: false, dropsContainers: false, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
         settled(expandCall(rule, bodyFrame, sink, em), SYNC_EXPANSION, rule, em);
         if (sink.partition.trailing.length > 0 || sink.partition.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
@@ -9276,21 +9281,21 @@ function writtenBlockBody(
  * mismatch. Guessing a position for a name the definition never declared is the
  * silent wrong lowering this exists to prevent.
  */
-function orderKeywordArgs<T>(
+function orderKeywordArgs(
   args: readonly CallArg<ValueSlot>[],
-  vals: T[],
+  vals: ValueGroup[],
   ev: ValueEvaluator,
   name: string,
   scopedFn: Fn | undefined,
   ambient: boolean
-): T[] {
+): ValueGroup[] {
   const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
   }
 
-  const slots = new Array<T | undefined>(params.length);
-  const positional: T[] = [];
+  const slots = new Array<ValueGroup | undefined>(params.length);
+  const positional: ValueGroup[] = [];
   for (let i = 0; i < args.length; i++) {
     const argName = args[i]!.name;
     if (argName === undefined) {
@@ -9305,21 +9310,20 @@ function orderKeywordArgs<T>(
   }
 
   /* Positional arguments keep their authored order and fill the slots the
-   * keywords did not claim — Less and Sass both allow the two forms to mix. */
-  const out: T[] = [];
+   * keywords did not claim — Less and Sass both allow the two forms to mix. A
+   * parameter skipped before the last bound one gets the core-minted absent
+   * value, {@link NULL}, which an optional parameter binds as not passed, so
+   * every keyword stays at its own parameter's position:
+   * `color.adjust($c, $lightness: 10%)` never reads `10%` as `$red`, and
+   * `string.slice("abcd", $end-at: 2)` does not bind `2` to `$start-at`. */
   let next = 0;
-  for (let at = 0; at < slots.length; at++) {
-    const bound = slots[at];
-    if (bound !== undefined) {
-      out.push(bound);
-    } else if (next < positional.length) {
-      out.push(positional[next++]!);
-    }
+  for (let at = 0; at < slots.length && next < positional.length; at++) {
+    slots[at] ??= positional[next++];
   }
-  for (; next < positional.length; next++) {
-    out.push(positional[next]!);
+  while (slots.length > 0 && slots[slots.length - 1] === undefined) {
+    slots.pop();
   }
-  return out;
+  return Array.from(slots, slot => slot ?? NULL).concat(positional.slice(next));
 }
 
 /**
@@ -9379,15 +9383,10 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: Lane): never
   if (error instanceof JessError) {
     throw error;
   }
-  const reason = error instanceof JessError
-    ? error.message
-    : error instanceof Error
-      ? error.message
-      : String(error);
-  throw ERR.invalidFunction({
+  throw (error instanceof EmptyListValueError ? ERR.emptyListValue : ERR.invalidFunction)({
     node,
     ...callSiteLocation(node, e.s),
-    meta: { name: node.name, reason }
+    meta: { name: node.name, reason: error instanceof Error ? error.message : String(error) }
   });
 }
 
@@ -10887,9 +10886,10 @@ interface Emit extends Lane {
 
   /*
    * [recursion-backstop] current NESTED mixin-expansion depth (0 at the top of a
-   * document walk). `expandCall` bumps it around each expansion and raises a clean
-   * `RangeError` once it reaches `MAX_MIXIN_DEPTH` — catching a bad-guard runaway
-   * before a native stack overflow. Threaded through `scratchEmit`.
+   * document walk). `expandCall` bumps it around each expansion and reports
+   * `eval/mixin-recursion-limit` once it reaches `MAX_MIXIN_DEPTH`, or when a
+   * runaway overflows the native stack first (`mixin-recursion.ts`). Threaded
+   * through `scratchEmit`.
    */
   mixinDepth: number;
 
@@ -11015,6 +11015,7 @@ function scratchEmit(e: Lane): Emit {
       io: e.s.io, // [io] preserve the file-read capability
       moduleFns: e.s.moduleFns,
       moduleReferenceValues: e.s.moduleReferenceValues,
+      namespaceImports: e.s.namespaceImports,
       plannedModuleImports: e.s.plannedModuleImports,
       pendingPlannedModuleImports: undefined,
       preparedImportsOwnedByCaller: false,
@@ -11040,6 +11041,7 @@ function scratchEmit(e: Lane): Emit {
     calcDepth: e.calcDepth,
     parenFrames: undefined,
     exprBoundary: false,
+    keepsMath: e.keepsMath,
     importantSink: undefined,
     elideSink: undefined,
     mergeImportant: undefined,
@@ -12222,7 +12224,8 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
   return out;
 }
 
-function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
+/** Write the document's leading comments, or queue them onto `owner`'s next leaf. */
+function emitLeadingDocumentBlockComments(e: Emit, indent = '', owner?: Leaf[]): void {
   const trivia = e.s.trivia;
   if (trivia === undefined) {
     return;
@@ -12240,8 +12243,11 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
     return;
   }
   e.emittedBlockTrivia.addIndex(table, 0);
+  const write = owner === undefined
+    ? (comment: string) => putBlockComment(e, indent, comment)
+    : (comment: string) => queueLeafBlockComments(e, owner, [comment]);
   for (let c = table.commentAt[0]!; c < table.commentAt[1]!; c++) {
-    putBlockComment(e, indent, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
+    write(src.slice(table.commentStart[c]!, table.commentEnd[c]!));
   }
 }
 
@@ -14330,6 +14336,7 @@ function createRenderSession(
       io: options?.io, // [io] per-render file-read capability for the IO built-ins
       moduleFns: undefined,
       moduleReferenceValues: undefined,
+      namespaceImports: undefined,
       plannedModuleImports: entry.plannedModuleImports,
       pendingPlannedModuleImports: entry.pendingPlannedModuleImports,
       preparedImportsOwnedByCaller: entry.preparedImportsOwnedByCaller,
@@ -14357,6 +14364,7 @@ function createRenderSession(
     calcDepth: 0,
     parenFrames: undefined,
     exprBoundary: false,
+    keepsMath: false,
     importantSink: undefined,
     elideSink: undefined,
     mergeImportant: undefined,
@@ -15184,7 +15192,7 @@ function preselectControlFlow(frame: Frame, e: Lane): void {
     try {
       body = selectedIfBody(statement, frame, ctx);
     } catch (error) {
-      if (error instanceof JessError && error.code === 'resolve/name-not-found') {
+      if (error instanceof JessError && (error.code === 'resolve/name-not-found' || error.code === 'resolve/namespace-shadowed')) {
         return;
       }
       throw error;
@@ -16402,6 +16410,7 @@ function flattenWithHeader(
   };
   const partition: Partition = {
     encounteredContainer: false,
+    dropsContainers: false,
     trailing: [],
     placement: e.importPlacement,
     boundary: e.dynamicExtend?.boundary ?? null,
@@ -16504,6 +16513,30 @@ function flushPending(p: Partition): void {
     p.pending = [];
     p.trailing.push(() => p.emitBlock(batch, EMPTY_LEAF_BLOCK_COMMENTS));
   }
+}
+
+/**
+ * [partition] Defer a collapsed child to after its parent's block: the leaves
+ * before it become one block, and the ones after it buffer for the next. A map
+ * capture drops the child instead, so every declaration stays in its group.
+ */
+function deferContainer(group: Leaf[], p: Partition, e: Emit, emit: () => MaybePromise<void>): void {
+  if (p.dropsContainers) {
+    return;
+  }
+  queueLeadingGroup(group, p, e);
+  flushPending(p);
+  p.encounteredContainer = true;
+  queueContainer(p, e, emit);
+}
+
+/**
+ * [partition] The partition of a mixin call read as a map ({@link declMapFromMixinCall},
+ * {@link forItemsFromMixinCall}): a map is the call's declarations, in source
+ * order, so its nested rules are dropped rather than partitioning them.
+ */
+function capturePartition(): Partition {
+  return { encounteredContainer: false, dropsContainers: true, trailing: [], placement: undefined, boundary: null, pending: [], emitBlock: MOOT_FLUSH };
 }
 
 /** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
@@ -16749,6 +16782,9 @@ function queueBodyTriviaTail(
 interface Partition {
   encounteredContainer: boolean;
 
+  /** A map capture ({@link capturePartition}): a container is dropped where it stands. */
+  readonly dropsContainers: boolean;
+
   /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
 
@@ -16802,6 +16838,13 @@ interface Placement {
 
   /** The body is a `$apply`'d rule's: its declarations are marked `fromApply`. */
   readonly applyExpansion: boolean;
+
+  /**
+   * The body is a called value lambda's ({@link invokeValueLambda}): its
+   * `result:` declarations are the call's value, checked where the call writes
+   * it, so the walk skips them.
+   */
+  readonly lambdaBody: boolean;
   readonly expandBubbledSelectorList: boolean;
   readonly bodyTrivia: BodyTriviaReplay | undefined;
 
@@ -16842,6 +16885,7 @@ function makePlacement(
     important: false,
     propertyScope,
     applyExpansion: false,
+    lambdaBody: false,
     expandBubbledSelectorList: false,
     bodyTrivia: undefined,
     nested: false,
@@ -16865,19 +16909,34 @@ function makePlacement(
 function splicePlacement(
   at: Placement,
   inline: NestedLeafBuffer | undefined,
-  bodyTrivia: BodyTriviaReplay | undefined
+  bodyTrivia: BodyTriviaReplay | undefined,
+  applyExpansion = at.applyExpansion
 ): PlacementDraft {
   const body = makePlacement(at.composed, at.group, at.flush, at.propertyScope);
   body.ancestor = at.ancestor;
   body.partition = at.partition;
   body.important = at.important;
-  body.applyExpansion = at.applyExpansion;
+  body.applyExpansion = applyExpansion;
+  body.lambdaBody = at.lambdaBody;
   body.bodyTrivia = bodyTrivia;
   body.nested = at.nested;
   body.hoist = inline === undefined ? at.hoist : undefined;
   body.source = at.source;
   body.sharedLeaves = inline;
   return body;
+}
+
+/**
+ * Run a sheet imported in a rule as that rule's body: its leaves join the
+ * rule's own (`inline` is the nested buffer; a collapsed body shares
+ * `at.group`), and its leading comments wait for its first leaf.
+ * {@link expandStyleImport} leaves those comments to this dispatcher.
+ */
+function importedSheet(at: Placement, inline: NestedLeafBuffer | undefined, e: Emit) {
+  return (document: Stylesheet, importFrame: Frame): MaybePromise<void> => {
+    emitLeadingDocumentBlockComments(e, '', inline?.leaves ?? (at.nested ? undefined : at.group));
+    return walkBody(document.rules, importFrame, splicePlacement(at, inline, undefined, false), e);
+  };
 }
 
 /**
@@ -16918,7 +16977,7 @@ const NOOP_TRAILING_TRIVIA = (): void => {};
 function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit): MaybePromise<void> {
   const {
     composed, group, flush, partition, important: imp, propertyScope,
-    applyExpansion, nested, hoist, source, sharedLeaves, owner
+    applyExpansion, lambdaBody, nested, hoist, source, sharedLeaves, owner
   } = at;
   let bodyTrivia = at.bodyTrivia;
 
@@ -17046,7 +17105,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * Lookup publication, nested-property expansion, and the monomorphic
            * placement shape are evaluator facts shared by both output projections.
            */
-          if (nested && e.referenceImportDepth > 0) {
+          if ((nested && e.referenceImportDepth > 0) || (lambdaBody && node.type === 'Declaration' && node.name === 'result')) {
             break;
           }
           evaluateLeafStatement(
@@ -17128,11 +17187,8 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
            * inline in source order.
            */
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
             skipBodyTrivia(bodyTrivia, rule, e);
-            queueContainer(partition, e, () => expandRule(rule, frame, at, e));
+            deferContainer(group, partition, e, () => expandRule(rule, frame, at, e));
           } else {
             skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
@@ -17274,10 +17330,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
             return r;
           };
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, emitAt);
+            deferContainer(group, partition, e, emitAt);
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17332,10 +17385,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const atNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitAtRuleStatement(atNode, frame, e));
+            deferContainer(group, partition, e, () => emitAtRuleStatement(atNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17352,7 +17402,15 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         case 'StyleImport': {
           if (nested) {
-            flushBuf();
+            /*
+             * A sheet imported in a rule runs as that rule's body (jess#358), so its
+             * declarations join this buffer like a mixin's, and a `+:` in it merges with
+             * the rule's own (ledger R10). A `(reference)` sheet writes none of its own.
+             */
+            const reference = e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference');
+            if (source === null || reference) {
+              flushBuf();
+            }
             emitBeforeRootStatement(node);
 
             /*
@@ -17365,13 +17423,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
               frame,
               e,
               e.importDocument,
-              e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
-                ? undefined
-                : (document, importFrame) => {
-                    const sheet = splicePlacement(at, undefined, undefined);
-                    sheet.applyExpansion = false;
-                    return walkBody(document.rules, importFrame, sheet, e);
-                  },
+              reference ? undefined : importedSheet(at, source === null ? undefined : inlineLeaves, e),
               source !== null
             );
             if (isThenable(imported)) {
@@ -17435,19 +17487,21 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
                  * stay hidden in a leaf group nothing writes.
                  */
                 ? (document: Stylesheet, importFrame: Frame) => {
-                    const hidden = splicePlacement(at, undefined, undefined);
+                    const hidden = splicePlacement(at, undefined, undefined, false);
                     hidden.group = [];
                     hidden.flush = MOOT_FLUSH;
                     hidden.partition = null;
-                    hidden.applyExpansion = false;
                     return walkBody(document.rules, importFrame, hidden, e);
                   }
-                : (document: Stylesheet, importFrame: Frame) => {
-                    const sheet = splicePlacement(at, undefined, undefined);
-                    sheet.applyExpansion = false;
-                    return walkBody(document.rules, importFrame, sheet, e);
-                  };
-            const flushed = flush();
+                : importedSheet(at, undefined, e);
+
+            /*
+             * The sheet's declarations join this rule's group, so they stay one block
+             * with the declarations around the import, and a `+:` merges across it
+             * (ledger R10). A `(reference)` sheet's declarations stay hidden; its rules
+             * still write after the declarations before it.
+             */
+            const flushed = composed === null || importOptionWords(node.options).includes('reference') ? flush() : undefined;
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument, emitLoaded, emitLoaded !== undefined),
@@ -17491,10 +17545,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const importNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitModuleImport(importNode, frame, e));
+            deferContainer(group, partition, e, () => emitModuleImport(importNode, frame, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17517,10 +17568,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           }
           const opaqueNode = node;
           if (partition) {
-            queueLeadingGroup(group, partition, e);
-            flushPending(partition);
-            partition.encounteredContainer = true;
-            queueContainer(partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
+            deferContainer(group, partition, e, () => emitUnknownAtRuleBlock(opaqueNode, e));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -17658,21 +17706,6 @@ function expandNestedReferenceAncestorFor(node: For, frame: Frame, at: Placement
 }
 
 /**
- * [recursion-backstop] Maximum depth of NESTED mixin expansions. Parametric
- * self-recursion is meant to be terminated by its guard; a bad guard produces a
- * runaway that would blow the JS call stack. This high backstop turns that into a
- * clean, catchable `RangeError` far above any legitimate guarded recursion depth
- * (real Less recurses a handful to low-hundreds of levels) yet with comfortable
- * headroom below the native stack ceiling. Each expansion level costs many JS
- * frames (`expandCall` → `walkBody` → nested `expandCall`), so the measured native
- * ceiling is ~1000 levels and varies with the caller's starting stack depth; 500
- * leaves ~2× margin so the clean error ALWAYS fires before a native overflow,
- * regardless of context. It is a runaway BACKSTOP, not a recursion cap — see
- * `expandCall`.
- */
-const MAX_MIXIN_DEPTH = 500;
-
-/**
  * Expand a mixin call: [guards] resolve the overloaded definitions that match
  * (arity + literal pattern + named/default params + guards), then WALK each
  * matching shared def body in place under the current composed selector. No
@@ -17760,14 +17793,15 @@ function expandCall(
 
       /*
        * [recursion-backstop] Parametric self-recursion (`.loop(@n - 1)`) is terminated
-       * by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops and
-       * would otherwise blow the JS stack. Each nested expansion adds one level here; a
-       * high backstop (`MAX_MIXIN_DEPTH`) raises a clean, catchable error well before a
-       * native stack overflow. This is NOT the parent-exclusion skip above and NOT a low
-       * cap — legit deep guarded recursion runs unaffected far below the limit.
+       * by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops.
+       * Each nested expansion adds one level here, and `MAX_MIXIN_DEPTH` stops a
+       * runaway whose levels await. A synchronous one usually overflows the native
+       * stack first; the catch below reports that as the same error at this call
+       * (`runawayMixinError`). This is NOT the parent-exclusion skip above and NOT a
+       * low cap: guarded recursion runs unaffected below the limit.
        */
       if (e.mixinDepth >= MAX_MIXIN_DEPTH) {
-        throw new RangeError('maximum mixin recursion depth exceeded');
+        throw mixinRecursionLimit(call, e.s);
       }
       e.mixinDepth++;
       const run = (start: number): MaybePromise<void> => {
@@ -17897,7 +17931,7 @@ function expandCall(
         return expanded;
       } catch (error) {
         e.mixinDepth--;
-        throw error;
+        throw runawayMixinError(error, call, e.s);
       }
     });
     return runDispatch();
@@ -18610,24 +18644,11 @@ function resolveForNode(
  * OUTPUT is iterated. Dispatch the call, collect its emitted declarations, and
  * present them as map items (key = declaration name, value = its value node) —
  * exactly the shape a detached-ruleset map iterates. Nested rulesets in the mixin
- * body are captured but discarded (a map iterates declarations, not rules).
+ * body are dropped (a map iterates declarations, not rules; {@link capturePartition}).
  */
 function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePromise<ForItem[]> {
   const collected: Leaf[] = [];
 
-  /*
-   * Declarations collect in `collected`; nested rules defer to `trailing`, which is
-   * never drained here. A nested rule is a partition boundary, so the declarations
-   * around it leave `collected` (for its queued block, or `pending`).
-   */
-  const discard: Partition = {
-    encounteredContainer: false,
-    trailing: [],
-    placement: undefined,
-    boundary: null,
-    pending: [],
-    emitBlock: MOOT_FLUSH
-  };
   const outerPendingBlockCommentOwner = e.pendingLeafBlockCommentOwner;
   const outerPendingBlockComments = e.pendingLeafBlockComments;
   e.pendingLeafBlockCommentOwner = null;
@@ -18649,7 +18670,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
   };
   try {
     const sink = makePlacement(null, collected, MOOT_FLUSH, frame);
-    sink.partition = discard;
+    sink.partition = capturePartition();
     const expanded = expandCall(call, frame, sink, e);
     if (isThenable(expanded)) {
       return expanded.then(finish, (error) => {
@@ -18855,15 +18876,16 @@ function bindForEntry(
     bindings.set(binding.names[0], key ?? index);
     bindings.set(binding.names[1], value);
   } else if (destructured !== null) {
-    for (let i = 0; i < binding.names.length && i < destructured.length; i++) {
-      bindings.set(binding.names[i]!, EVALUATED_BINDING);
+    // A tuple name past the item's last value binds null (`@each $a, $b, $c in (1 2)`).
+    for (let i = 0; i < binding.names.length; i++) {
+      bindings.set(binding.names[i]!, i < destructured.length ? EVALUATED_BINDING : NULL_NODE);
     }
   } else {
     const values = isValueSlotArray(value)
       ? value
       : value.type === 'Sequence' ? value.parts : value.type === 'List' ? value.value : [value];
-    for (let i = 0; i < binding.names.length && i < values.length; i++) {
-      bindings.set(binding.names[i]!, values[i]!);
+    for (let i = 0; i < binding.names.length; i++) {
+      bindings.set(binding.names[i]!, values[i] ?? NULL_NODE);
     }
   }
   return bindings;
@@ -18976,10 +18998,15 @@ function forIterations(
         const item = collectionEntry === undefined ? plainItems?.[i] ?? null : null;
         const evaluatedItem = collectionEntry === undefined ? evaluatedItems?.[i] ?? null : null;
         const index = dimension(i + 1);
+
+        /*
+         * A map iterates as its list of `key value` pairs ({@link groupItems}), so a
+         * tuple destructures the pair: `@each $k, $v in (a: 1)` binds the key, then the value.
+         */
         const destructured = node.binding.kind !== 'tuple'
           ? null
           : collectionEntry !== undefined
-            ? groupItems(collectionEntry.value)
+            ? [collectionEntry.key, collectionEntry.value]
             : evaluatedItem !== null
               ? groupItems(evaluatedItem)
               : null;
@@ -20586,7 +20613,7 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
   }
   const from = e.chunks.length;
   const marked = e.positions?.length ?? 0;
-  emitAtRuleStatementRaw(node, frame, e, cssImportTarget(node)!);
+  emitAtRuleStatementRaw(node, frame, e, checkedImportTarget(node, cssImportTarget(node)!, e.s));
   e.chunks[slot] = e.chunks.splice(from).join('');
   for (let index = marked; index < (e.positions?.length ?? 0); index++) {
     e.positions![index]!.start = slot;
@@ -20663,7 +20690,7 @@ function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void
   if (isCharset(node)) {
     return;
   }
-  const target = e.s.context === undefined ? null : cssImportTarget(node);
+  const target = e.s.context === undefined ? null : checkedImportTarget(node, cssImportTarget(node), e.s);
   emitAtRuleStatementRaw(node, frame, e, target);
 }
 
@@ -21041,29 +21068,6 @@ function rejectComposedMemberCall(node: Reference, member: DeclEntry | undefined
   });
 }
 
-/* A usable module namespace identifier (the same ident shape the grammars use). */
-const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
-
-/**
- * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
- * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
- * path). Take the last `/`-segment, strip a trailing file extension, strip a
- * leading `_` partial marker or `#` package-import marker. `./foo.less` → `foo`,
- * `#sass/map` → `map`, `#less` → `less`, `@co/design-tokens` → `design-tokens`,
- * `./_theme.scss` → `theme`. Returns
- * `null` when the result is not a usable identifier — the author must then
- * spell an explicit `as <name>`.
- */
-function deriveModuleNamespace(specifier: string): string | null {
-  /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
-     dot) and a leading `_` or `#` marker. Regex-based to keep `serialize.ts` free
-     of `lastIndexOf` (the diagnostic cold-path guard bans it). */
-  const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
-  const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
-  const base = withoutExt.startsWith('_') || withoutExt.startsWith('#') ? withoutExt.slice(1) : withoutExt;
-  return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
-}
-
 /**
  * Expose a composed module's OWN top-level members to the importer per its `as`
  * clause, WITHOUT splicing its body into the importer frame (that emission is a
@@ -21128,6 +21132,7 @@ function publishComposedModule(
     );
   }
   const block = anonymousMixin(children);
+  recordNamespace(e.s, block, node);
   publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }), rank);
   bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
 }
@@ -21539,7 +21544,7 @@ function expandStyleImport(
                  * bootstrap4 shape: a one-line entry that only `@import`s the framework)
                  * was left unemitted here and swept to the output tail.
                  */
-                if (e.referenceImportDepth === 0) {
+                if (e.referenceImportDepth === 0 && (!inRule || emitLoaded === undefined)) {
                   emitLeadingDocumentBlockComments(e, INDENT.repeat(e.depth));
                 }
                 return emit();
@@ -21624,7 +21629,7 @@ function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
   } catch (error) {
     if (
       error instanceof ReferenceError
-      || (error instanceof JessError && error.code === 'resolve/name-not-found')
+      || (error instanceof JessError && (error.code === 'resolve/name-not-found' || error.code === 'resolve/namespace-shadowed'))
     ) {
       throw new ImportPathNotReady(error);
     }
@@ -22164,8 +22169,9 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: Lane): May
         [{ bytes: `${node.name}(${content})`, protected: true }]);
     }
     case 'Block': {
-      const open = delimiterOpen(node.delimiter);
-      const close = delimiterClose(node.delimiter);
+      /* A curly list Less wrote `~( … )` keeps the parens it was written here before it was the curly list (ledger P51). */
+      const open = node.escaped === true ? '(' : delimiterOpen(node.delimiter);
+      const close = node.escaped === true ? ')' : delimiterClose(node.delimiter);
       if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
         return mapMaybe(evalBytes(node.value, frame, e), content =>
           [{ bytes: `${open}${content}${close}`, protected: true }]);
@@ -22273,9 +22279,10 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
        * A group around one value a reference reached is that value
        * ({@link whileReached}): `@a: (10px)` in `(min-width: @a)` is `10px`, where
        * `(10px)` is no `<mf-value>` and the query would never match. A feature
-       * (`@q: (min-width: 640px)`) is no one value and keeps its parens.
+       * (`@q: (min-width: 640px)`) is no one value and keeps its parens. An
+       * escaped group is written without its parens wherever it is.
        */
-      if (e.reached && isParenGroup(node) && groupsOneValue(node)) {
+      if (node.escaped === true || (e.reached && isParenGroup(node) && groupsOneValue(node))) {
         return evalQueryPreludeParts(node.value, frame, e);
       }
       const open = delimiterOpen(node.delimiter);
@@ -22495,7 +22502,7 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
   }
   const lname = node.name.toLowerCase();
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
+    return mapMaybe(evalSupportsPrelude(checkedSupportsPrelude(node, node.prelude, e.s), frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
     return mapMaybe(evalQueryPreludeParts(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeQueryPrelude, e.compress === true));

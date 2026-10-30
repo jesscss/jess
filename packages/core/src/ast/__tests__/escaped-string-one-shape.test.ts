@@ -31,10 +31,14 @@ const jess = (source: string, collapseNesting?: boolean): string => render(parse
 
 describe('an escaped string is one string, interpolating or not', () => {
   it('keeps an interpolating escaped string as opaque as the literal one', () => {
-    expect(less('@x: 0.5; @n: 4;\n.a { b: percentage(~"@{x}"); c: ~"@{n}px" + 1; d: percentage(~\'@{x}\'); }'))
-      .toBe('.a {\n  b: percentage(0.5);\n  c: calc(4px + 1);\n  d: percentage(0.5);\n}\n');
-    expect(less('.a { b: percentage(~"0.5"); c: ~"4px" + 1; d: percentage(~\'0.5\'); }'))
-      .toBe('.a {\n  b: percentage(0.5);\n  c: calc(4px + 1);\n  d: percentage(0.5);\n}\n');
+    expect(less('@x: 0.5; @n: 4;\n.a { b: percentage(~"@{x}"); d: percentage(~\'@{x}\'); }'))
+      .toBe('.a {\n  b: percentage(0.5);\n  d: percentage(0.5);\n}\n');
+    expect(less('.a { b: percentage(~"0.5"); d: percentage(~\'0.5\'); }'))
+      .toBe('.a {\n  b: percentage(0.5);\n  d: percentage(0.5);\n}\n');
+
+    /* Math on a string fails the compile where Less computes (ledger V36, owner 2026-10-23). */
+    expect(() => less('@n: 4;\n.a { c: ~"@{n}px" + 1; }')).toThrow(expect.objectContaining({ code: 'eval/invalid-operand' }));
+    expect(() => less('.a { c: ~"4px" + 1; }')).toThrow(expect.objectContaining({ code: 'eval/invalid-operand' }));
   });
 
   it('stays opaque whatever the spliced values spell', () => {
@@ -54,12 +58,13 @@ describe('an escaped string is one string, interpolating or not', () => {
 
   it('stays opaque when forwarded through a variable into a mixin argument', () => {
     // Was `50%` / `#ff3333` / `5px`: the argument's eager snapshot bound its bytes and a typed position re-read them.
-    const source = '@x: 0.5; @d1: ~"@{x}"; @d2: ~"0.5"; @c: ~"red"; @p: ~"4px";\n'
-      + '.m(@v) { a: percentage(@v); }\n.n(@v) { b: lighten(@v, 10%); }\n.o(@v) { c: @v + 1; }\n'
-      + '.ri { .m(@d1); }\n.rl { .m(@d2); }\n.rc { .n(@c); }\n.rp { .o(@p); }';
+    const source = '@x: 0.5; @d1: ~"@{x}"; @d2: ~"0.5"; @c: ~"red";\n'
+      + '.m(@v) { a: percentage(@v); }\n.n(@v) { b: lighten(@v, 10%); }\n'
+      + '.ri { .m(@d1); }\n.rl { .m(@d2); }\n.rc { .n(@c); }';
     expect(less(source)).toBe(
-      '.ri {\n  a: percentage(0.5);\n}\n.rl {\n  a: percentage(0.5);\n}\n.rc {\n  b: lighten(red, 10%);\n}\n.rp {\n  c: calc(4px + 1);\n}\n'
+      '.ri {\n  a: percentage(0.5);\n}\n.rl {\n  a: percentage(0.5);\n}\n.rc {\n  b: lighten(red, 10%);\n}\n'
     );
+    expect(() => less('@p: ~"4px";\n.o(@v) { c: @v + 1; }\n.rp { .o(@p); }')).toThrow(expect.objectContaining({ code: 'eval/invalid-operand' }));
   });
 
   it('binds as the same string through a compressed argument and a parameter default', () => {

@@ -776,6 +776,20 @@ export const ERR = {
       ...args
     });
   },
+  ambiguousMember(args: Common & { meta: { symbol: string } }) {
+    return makeJessError({
+      code: 'resolve/ambiguous-member',
+      phase: 'resolve',
+      ...args
+    });
+  },
+  namespaceShadowed(args: Common & { meta: { local: string; name: string; at: string } }) {
+    return makeJessError({
+      code: 'resolve/namespace-shadowed',
+      phase: 'resolve',
+      ...args
+    });
+  },
   circularCompose(args: Common & { meta: { chain: string } }) {
     return makeJessError({
       code: 'import/circular-compose',
@@ -906,6 +920,19 @@ export const ERR = {
   },
 
   /**
+   * A mixin that never stops expanding itself: a guard that never fails, or no
+   * guard. Reported at the call, whether the expansion depth limit or the native
+   * call stack ran out first.
+   */
+  mixinRecursionLimit(args: Common & { meta: { name: string; limit: number } }) {
+    return makeJessError({
+      code: 'eval/mixin-recursion-limit',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
    * A division the author asked for — `math: always`, a paren group, `$( … )` —
    * whose divisor is zero. There is no quotient to print, and printing the
    * operation verbatim would hide the mistake, so it is an error in every
@@ -947,6 +974,33 @@ export const ERR = {
   emptyOperand(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/empty-operand',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
+   * An empty list written where CSS needs a value: a declaration value or an
+   * argument of a call written out as-is (ledger P51; Dart Sass: "() isn't a
+   * valid CSS value"). Writing nothing would lose the authored `()` (P37).
+   */
+  emptyListValue(args: Common & { meta: { name?: string; reason: string } }) {
+    return makeJessError({
+      code: 'eval/empty-list-value',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
+   * An operation on an operand it is not defined on, where the operation
+   * computes (DESIGN-DECISIONS V36): a keyword or a string in every dialect, in
+   * Less also a call written out as-is, in `.scss` and `.jess` also a boolean,
+   * a list and a map. The result would mean nothing, so the compile fails.
+   */
+  invalidOperand(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/invalid-operand',
       phase: 'eval',
       ...args
     });
@@ -1057,6 +1111,19 @@ export const ERR = {
   invalidValuePunctuation(args: Common & { meta: { what: string; fix: string } }) {
     return makeJessError({
       code: 'css/invalid-value-punctuation',
+      phase: 'parse',
+      ...args
+    });
+  },
+
+  /**
+   * An `@supports` prelude term that is no `<supports-in-parens>` — an
+   * identifier, as in `selector (a)` or `color` — parsed as balanced CSS and
+   * then an error (owner 2026-10-22; ledger P45).
+   */
+  invalidSupportsCondition(args: Common & { meta: { what: string } }) {
+    return makeJessError({
+      code: 'css/invalid-supports-condition',
       phase: 'parse',
       ...args
     });

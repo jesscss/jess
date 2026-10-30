@@ -4,16 +4,21 @@
  * to a one-liner over. Pulled once if ANY math fn is used; a stylesheet that calls
  * none never ships it.
  *
+ * Shared by Less and Sass: Less `sqrt`/`pow`/`sin`/`cos`/`tan`/`asin`/`atan` and
+ * the `sass:math` members of those names compute through {@link applyMath}. What
+ * differs between the dialects is which units a call accepts and the unit of an
+ * inverse-trig result; each dialect's wrapper states that, never this kernel.
+ *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
-import { isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core';
+import { foldUnit, isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core';
 
 /**
- * Angle → radians normalization (`deg`/`grad`/`turn`), else the raw number.
+ * Angle → radians normalization (`deg`/`grad`/`turn`, any ASCII case), else the raw number.
  * Byte-identical to legacy `mathHelper`'s per-operand normalize step.
  */
 const normalizeAngle = (d: Dimension): number => {
-  switch (d.unit) {
+  switch (foldUnit(d.unit)) {
     case 'deg': return d.number * Math.PI / 180;
     case 'grad': return d.number * Math.PI / 200;
     case 'turn': return d.number * 2 * Math.PI;

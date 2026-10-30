@@ -631,6 +631,36 @@ export class EmptyOperandError extends Error {
   }
 }
 
+/**
+ * An operation on an operand it is not defined on (ledger V36): a keyword or a
+ * string in every dialect that computes; in Less also a function call written
+ * out as-is; in `.scss` and `.jess` also a boolean, a list and a map. Not a `TypeError`, so the preserve-mode fallback in
+ * `operate` cannot swallow it.
+ */
+export class InvalidOperandError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidOperandError';
+  }
+}
+
+/**
+ * An empty list written where CSS needs a value, in `.scss` and `.jess`: an
+ * argument of a call written out as-is, or a declaration's value (ledger P51;
+ * Dart Sass: "() isn't a valid CSS value"). Writing nothing would lose the
+ * authored `()` (P37), so the compile fails.
+ */
+export class EmptyListValueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmptyListValueError';
+  }
+}
+
+/** An empty list: the value an empty `()` / `{}` is read as, or a list a function built with no items (a bracketed `[]` is written). */
+export const isEmptyList = (value: ValueGroup): boolean =>
+  isValueGroupArray(value) ? value.length === 0 : value.type === 'List' && value.value.length === 0;
+
 /* --------------------------------------------------------------- seam */
 
 /**
@@ -871,4 +901,13 @@ export interface ValueEvaluator {
    * `calc()` (ledger V32). Absent means `false`.
    */
   readonly sassCalculations?: boolean;
+
+  /**
+   * Whether operations read their operands as `.scss` and `.jess` do (ledger
+   * V36): the operand rule covers every operator but `/` and also rejects a
+   * boolean, a list and a map; with {@link sassCalculations} (`.scss`) a
+   * colour too. Absent means `false`, as in Less: every operator `/` divides
+   * included, and colour math computes.
+   */
+  readonly sassOperands?: boolean;
 }

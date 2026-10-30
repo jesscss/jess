@@ -1,5 +1,5 @@
 import type { Dimension } from '@jesscss/core';
-import { groupOf } from '@jesscss/core';
+import { convertValue, foldUnit, groupOf } from '@jesscss/core';
 
 /**
  * Unit-multiset helpers shared by every dialect. Nothing here is Sass-specific:
@@ -27,13 +27,14 @@ export const isUnitlessDimension = (value: Dimension): boolean => {
 
 /**
  * The comparison key for one unit: convertible units collapse to their shared
- * conversion group, everything else (including `%`) stands for itself. Two unit
+ * conversion group, everything else (including `%`) stands for itself, ASCII
+ * case-insensitively (`foldUnit`, ledger V37). Two unit
  * multisets are compatible when their key multisets are equal — which is why
  * `1px`/`1cm` compare but `1px`/`1%` and `1px`/`1px*1px` do not.
  */
 const unitKey = (unit: string): string => {
   const group = groupOf(unit);
-  return group === undefined ? unit : `g${group}`;
+  return group === undefined ? foldUnit(unit) : `g${group}`;
 };
 
 const sameKeys = (a: readonly string[], b: readonly string[]): boolean => {
@@ -57,4 +58,14 @@ export function compatibleUnits(a: Dimension, b: Dimension): boolean {
   const left = unitsOf(a);
   const right = unitsOf(b);
   return sameKeys(left.numerator, right.numerator) && sameKeys(left.denominator, right.denominator);
+}
+
+/**
+ * `value`'s number in `target`'s unit, for two dimensions {@link compatibleUnits}
+ * accepts with units on both sides (`1in` in `px` is `96`), through core's one
+ * conversion (`convertValue`).
+ */
+export function convertNumber(value: Dimension, target: Dimension): number {
+  // ponytail: one unit each side; a compound unit converts only to the same units. Convert per unit when a caller needs it.
+  return convertValue(value.number, value.unit, target.unit);
 }

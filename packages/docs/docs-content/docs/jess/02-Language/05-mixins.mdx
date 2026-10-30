@@ -170,15 +170,28 @@ button-base($bg: #1a73e8, $color: #fff, $pad: 0.5em 1.25em) {
 :::info[Comma separators]
 Like CSS, Jess uses **commas** (`,`) between mixin and function arguments (and parameters).
 If you need to use a CSS value list that has a comma, you can assign it to a variable to pass it in, or
-you can wrap it in escaped parentheses like Less does e.g. `~(one, two, three)`
+you can wrap it in curly braces, e.g. `{one, two, three}`: a **curly list**, one value however many
+commas it holds.
 
 ```less
 $values: one, two, three;
 $ > button-base($values);
 
 // or
-$ > button-base(~(one, two, three));
+$ > button-base({one, two, three});
 ```
+
+This is CSS's own syntax for a comma-containing argument: [CSS Values 5 §3.1.1 Commas in Function
+Arguments](https://drafts.csswg.org/css-values-5/#component-function-commas) lets an argument be wrapped
+in `{}`, and the braces are syntax, not part of the value. [CSS Custom Functions and Mixins
+1](https://drafts.csswg.org/css-mixins-1/#using-custom-functions) uses it to pass a list to a custom
+function, `--max-plus-x({ 1px, 7px, 2px }, 3px)`. Chromium ships custom functions
+([Chrome 139](https://developer.chrome.com/blog/new-in-chrome-139)); WebKit's position is
+[support](https://github.com/WebKit/standards-positions/issues/437); Mozilla has
+[no position yet](https://github.com/mozilla/standards-positions/issues/1148). In a plain CSS call
+(`random-item(--x, {a, b}, c)`) Jess writes the braces as you wrote them. Less writes the same list
+`~(one, two, three)`, and Sass `(one, two, three)`; see [Values and types](./values-and-types#curly-list).
+:::
 
 ### Using the mixin
 

@@ -465,8 +465,10 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/prototype/_shadow.scss',
   'scss/prototype/_sizing.scss',
   'scss/prototype/_spacing.scss',
+  'scss/prototype/_text-decoration.scss',
   'scss/prototype/_text-transformation.scss',
   'scss/prototype/_text-utilities.scss',
+  'scss/settings/_settings.scss',
   'scss/typography/_alignment.scss',
   'scss/typography/_helpers.scss',
   'scss/typography/_print.scss',
@@ -491,7 +493,8 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'test/sass/_color.scss',
   'test/sass/_components.scss',
   'test/sass/_selector.scss',
-  'test/sass/_unit.scss'
+  'test/sass/_unit.scss',
+  'test/sass/_value.scss'
 ];
 
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */

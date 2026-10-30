@@ -88,7 +88,7 @@ export function isTruthy(value: ValueGroup): boolean {
     case 'List': return value.value.length !== 0;
     case 'Collection': return value.entries.length !== 0;
     case 'Block':
-      return value.delimiter === 'paren' ? isTruthy(value.value) : !isEmptyGroup(value.value);
+      return value.delimiter === 'paren' || value.escaped === true ? isTruthy(value.value) : !isEmptyGroup(value.value);
     default: return true;
   }
 }

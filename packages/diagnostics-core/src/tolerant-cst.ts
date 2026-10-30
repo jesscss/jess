@@ -32,6 +32,7 @@ import {
   absoluteEnd,
   absoluteStart,
   cstChildrenOf,
+  dollarBraceVariableNameOf,
   isCstNode
 } from './cst-node.js';
 import { pushParseTwinDiagnostics } from './parse-twins.js';
@@ -3790,11 +3791,11 @@ function variableReferenceFactOf(source: string, node: CssCstNode, language: Jes
      */
     const start = absoluteStart(node);
     const sigil = language === 'less' ? 64 : 36; // `@` or `$`
-    const keyed = language === 'jess' && source.charCodeAt(start + 2) === 91; // `[`
-    const name = (language === 'less' || language === 'jess') && source.charCodeAt(start) === sigil && source.charCodeAt(start + 1) === 123 /* { */
-      && (!keyed || source.charCodeAt(start + 3) === 36)
-      ? interpolatedVariableNameOf(source, start + (keyed ? 4 : 2), absoluteEnd(node))
-      : null;
+    const name = language === 'jess'
+      ? dollarBraceVariableNameOf(node)
+      : language === 'less' && source.charCodeAt(start) === sigil && source.charCodeAt(start + 1) === 123 /* { */
+        ? interpolatedVariableNameOf(source, start + 2, absoluteEnd(node))
+        : null;
     return name === null
       ? null
       : { name: normalizedVariableName(String.fromCharCode(sigil) + name, language), display: source.slice(start, absoluteEnd(node)), span: node.span };

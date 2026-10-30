@@ -13,7 +13,7 @@
  * out as-is.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, itemBoundary, joinGroup, readText, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { EmptyListValueError, emitValue, isEmptyList, isValueGroupArray, itemBoundary, joinGroup, readText, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
 import { valueLayoutOf } from './provenance.js';
 import type { Fn, FnIo, SelectorParse } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
@@ -64,8 +64,18 @@ function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly A
  * its arithmetic, never a nested `calc()` (`max(1px + 1em, 1px)`; {@link keptMathOf}),
  * and text in the groups written around it (`min((1px + 2px), 3px)`; {@link mathText}).
  */
-function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments, authored?: readonly ArgumentKeyword[]): Value {
-  return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(written?.args ?? args, modes, written?.keywords ?? authored, isMathFunctionName(name))})`));
+/** How a call is written out: its arguments as written, and whether an empty list among them fails (`.scss`, `.jess`). */
+interface WrittenCall {
+  readonly written?: WrittenArguments;
+  readonly authored?: readonly ArgumentKeyword[];
+  readonly rejectEmpty: boolean;
+}
+
+function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefined, call: WrittenCall): Value {
+  if (call.rejectEmpty && groupItems(args).some(isEmptyList)) {
+    throw new EmptyListValueError(`An empty list is an argument of \`${name}()\`, a call written out as-is; an empty list has no CSS spelling.`);
+  }
+  return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(call.written?.args ?? args, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`));
 }
 
 /**
@@ -78,28 +88,26 @@ function recoverCallFailure(
   name: string,
   args: ValueGroup,
   modes: EvalModes,
-  written?: WrittenArguments,
-  authored?: readonly ArgumentKeyword[]
+  call: WrittenCall
 ): Value {
   if (modes.functionMode === 'error' && !(error instanceof FunctionDeclined)) {
     throw error;
   }
-  return fallbackCall(name, args, modes, written, authored);
+  return fallbackCall(name, args, modes, call);
 }
 
-/** Keep the ordinary synchronous path allocation-free; attach recovery only to an async result. */
+/** Attach recovery to an async result; the caller keeps the synchronous path allocation-free. */
 function recoverAsyncCall(
   result: MaybePromise<ValueGroup>,
   name: string,
   args: ValueGroup,
   modes: EvalModes,
-  written?: WrittenArguments,
-  authored?: readonly ArgumentKeyword[]
+  call: WrittenCall
 ): MaybePromise<ValueGroup> {
   if (!isThenable(result)) {
     return result;
   }
-  return result.catch(error => recoverCallFailure(error, name, args, modes, written, authored));
+  return result.catch(error => recoverCallFailure(error, name, args, modes, call));
 }
 
 /**
@@ -122,9 +130,10 @@ const stringify = (v: ValueGroup): string =>
  */
 export function buildEvaluator(
   registry: FnRegistry,
-  options: { readonly sassCalculations?: boolean; readonly parseSelector?: SelectorParse } = {}
+  options: { readonly sassCalculations?: boolean; readonly sassOperands?: boolean; readonly parseSelector?: SelectorParse } = {}
 ): ValueEvaluator {
   const { parseSelector } = options;
+  const rejectEmpty = options.sassOperands === true;
   const call = (
     name: string,
     args: ValueGroup,
@@ -145,14 +154,16 @@ export function buildEvaluator(
     const scoped = scopedFn ?? scope?.lookup(name);
     if (scoped) {
       try {
-        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io, parseSelector }), name, args, modes, written, authored);
+        const result = dispatchFn(scoped, args, { modes, stringify, io, parseSelector });
+        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty }) : result;
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes, written, authored);
+        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty });
       }
     }
     if (ambient && registry.has(name)) {
       try {
-        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io, parseSelector }), name, args, modes, written, authored);
+        const result = registry.dispatch(name, args, { modes, stringify, io, parseSelector });
+        return isThenable(result) ? recoverAsyncCall(result, name, args, modes, { written, authored, rejectEmpty }) : result;
       } catch (err) {
         /*
          * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
@@ -164,12 +175,12 @@ export function buildEvaluator(
          * caught here; variable-resolution / mixin-recursion errors are thrown
          * outside `dispatch` and still propagate.)
          */
-        return recoverCallFailure(err, name, args, modes, written, authored);
+        return recoverCallFailure(err, name, args, modes, { written, authored, rejectEmpty });
       }
     }
 
     // Unknown function: emit verbatim.
-    return fallbackCall(name, args, modes, written, authored);
+    return fallbackCall(name, args, modes, { written, authored, rejectEmpty });
   };
 
   /* The callee's declared parameter names — the binding surface a keyword
@@ -202,13 +213,15 @@ export function buildEvaluator(
   };
 
   return {
-    operate,
+    /* `.scss` computes `*` and `/` units as Dart Sass does (ledger V32). */
+    operate: options.sassCalculations === true ? (op, left, right, modes) => operate(op, left, right, modes, true) : operate,
     call,
     paramNames,
     has: name => registry.has(name),
     compare,
     compareMatch,
     typeCheck,
-    sassCalculations: options.sassCalculations === true
+    sassCalculations: options.sassCalculations === true,
+    sassOperands: options.sassOperands === true
   };
 }

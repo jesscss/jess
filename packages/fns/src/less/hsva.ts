@@ -1,7 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { makeColorRgb, defineFunction, RGB } from '@jesscss/core';
 import { alphaToNumber, hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `hsva(h, s, v, a)` — construct an RGB-format color from HSV + alpha. Byte-faithful

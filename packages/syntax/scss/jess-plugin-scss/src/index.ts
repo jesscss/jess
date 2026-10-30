@@ -29,7 +29,7 @@ export type ScssPluginOptions = {
 type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /* A `.scss` `calc()` is a Sass calculation, as dart-sass evaluates it (ledger V32); `selector.parse()` reads a string with the SCSS grammar's own selector list. */
-const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations: true, parseSelector });
+const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations: true, sassOperands: true, parseSelector });
 
 /**
  * `#sass` and `#sass/<module>` are this plugin's private paths to the Sass

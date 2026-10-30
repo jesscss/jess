@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { NO_SPAN, any, ifTestCall, styleFeature, forgivingSelectorRest, scannedLeaf, anonymousMixin, componentRun, withGluedKeywordSpan, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchOf, condition, decl, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, parentSelectorReference, quoted, range, reference, relativeSelector, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, isSpannedToken, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, Any, IfValue, SpannedToken, Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -91,7 +91,6 @@ import {
   urlFromChildren,
   requireLiteralQuoted,
   isJessDeclaration,
-  isCollectionItem,
   requireExactToken,
   reduceGuardTruth,
   reduceIfCompare,
@@ -117,6 +116,7 @@ import {
   enterTestValue,
   genericCallFrom
 } from './grammar-helpers.js';
+import { collectionFrom, curlyListFrom, enterCssCall, leaveCssCall } from './curly-list.js';
 import type {
   ExpressionFact,
   JessOperatorFact,
@@ -191,6 +191,7 @@ type JessRules = {
   CollectionEntry: Combinator<CollectionEntry>;
   CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
+  CurlyList: Combinator<Block>;
   ParenValue: Combinator<ValueNode>;
   SquareValue: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
@@ -266,6 +267,7 @@ type JessRules = {
   StyleFeature: Combinator<ValueNode>;
   QueryFeatureName: Combinator<string | Interpolation>;
   MediaFeatureOpener: Combinator<unknown>;
+  QueryComparedHead: Combinator<unknown>;
   QueryComparisonFeature: Combinator<ValueNode>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
   QueryTerm: Combinator<ValueNode>;
@@ -333,9 +335,18 @@ type SharedSyntax = {
    */
   SelectorOnlyPseudoArgument: Combinator<SelectorList>;
 
-  /* Inherited from the CSS base: the media feature opener dispatch, and a feature's name and what follows it. */
+  /*
+   * Inherited from the CSS base: the media feature opener dispatch, and a
+   * feature's name and what follows it; the compared-head dispatch after a
+   * value-first bound, and the range name and what follows it.
+   */
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
+
+  /* Inherited from the CSS base: the comma list of supports conditions an `@supports` prelude reads. */
+  SupportsPrelude: Combinator<ValueNode>;
 
   /* Inherited from the CSS base: the contents of the `media()`, `supports()` and `style()` CSS `if()` tests, and the value run they read. */
   ValueSequence: Combinator<unknown>;
@@ -710,42 +721,43 @@ const typeNamespace = regex(/\$type\./);
  * branches again on `$`, a name, or a quote. Those are disjoint continuation
  * sets, so this is structural factoring rather than five competing `${...}`
  * alternatives.
+ *
+ * Trivia inside the braces is padding, as anywhere `.jess` reads trivia
+ * (`${ size }`, `${ /* lg *\/ size }` are `${size}`): the braces read the
+ * document's trivia, and the bracket key is `noTrivia`, so `${[ x ]}`,
+ * `${[$ x]}` and a quoted key's bytes stay exact. `$ {` is no opener.
  */
-const dollarBraceStructure = noTrivia(sequence(
-  literal('${'),
-  choice(
-    sequence(
-      literal('['),
-      choice(
-        sequence(
-          literal('$'),
+const dollarBraceStructure = parser(
+  { trivia: whitespace },
+  sequence(
+    literal('${'),
+    choice(
+      noTrivia(sequence(
+        literal('['),
+        choice(
+          sequence(
+            literal('$'),
+            dollarName
+          ),
           dollarName,
-          literal(']}')
+          sequence(
+            literal('\''),
+            regex(/(?:[^'\\]|\\[\s\S])*/),
+            literal('\'')
+          ),
+          sequence(
+            literal('"'),
+            regex(/(?:[^"\\]|\\[\s\S])*/),
+            literal('"')
+          )
         ),
-        sequence(
-          dollarName,
-          literal(']}')
-        ),
-        sequence(
-          literal('\''),
-          regex(/(?:[^'\\]|\\[\s\S])*/),
-          literal('\''),
-          literal(']}')
-        ),
-        sequence(
-          literal('"'),
-          regex(/(?:[^"\\]|\\[\s\S])*/),
-          literal('"'),
-          literal(']}')
-        )
-      )
+        literal(']')
+      )),
+      dollarName
     ),
-    sequence(
-      dollarName,
-      literal('}')
-    )
+    literal('}')
   )
-));
+);
 
 /*
  * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
@@ -1169,9 +1181,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.Dimension,
       g.Color,
       g.ExpressionQuoted,
+
+      /*
+       * A paren group, or a comma list in one: the `Block` of a `List` a value
+       * position builds for `(1, 2)`. Well-formed input parses (ledger P45);
+       * math on the list is an evaluation error (V36).
+       */
       sequence(
         literal('('),
-        g.ExpressionLogical,
+        oneOrMoreSep(g.ExpressionLogical, literal(',')),
         literal(')')
       ),
 
@@ -1194,8 +1212,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children, _fields, span) => {
       if (isToken(children[0]) && requireToken(children[0]).value === '(') {
-        const inner = requireExpressionFact(children[1]);
-        return { value: block(inner.value), src: `(${inner.src})` };
+        const items = children.filter(isExpressionFact);
+        const value = items.length === 1 ? items[0]!.value : list(items.map(item => item.value), ',');
+        return { value: block(value), src: `(${items.map(item => item.src).join(', ')})` };
       }
       if (isJessReferenceTail(children[1])) {
         const base = requireValueNode(children[0]);
@@ -2600,8 +2619,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(','),
         optional(valueTrivia),
 
-        /* An empty fallback is css's empty `Any`, never a missing fallback. */
-        choice(g.Value, g.VarFallbackEmpty),
+        /*
+         * An empty fallback is css's empty `Any`, never a missing fallback. The
+         * fallback is a CSS call's argument, where `{ … }` keeps CSS's braces.
+         */
+        withCtx(state => enterCssCall(state), choice(g.Value, g.VarFallbackEmpty)),
         optional(valueTrivia)
       )),
       literal(')')
@@ -2634,11 +2656,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal(';'),
     optional(valueTrivia)
   ));
-  const callArgumentGroup = sequence(
+
+  /* A CSS call's arguments, where a `{ … }` keeps CSS's braces (`CurlyList`); a `$` call's reset it (`ReferenceCallTail`). */
+  const callArgumentGroup = withCtx(state => enterCssCall(state), sequence(
     g.CallComponent,
     optional(branchValue),
     many(g.CallArgument)
-  );
+  ));
 
   /**
    * A direct call owns its argument boundaries and recursive call shape. Its
@@ -3075,29 +3099,36 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => collectionSpread(requireValueSlot(children[1]))
   );
+
+  /*
+   * A map is `#{ … }` (ledger P31, owner 2026-09-22: *"data blocks / maps need
+   * `#{}`"*), so a bare `{ … }` value is the curly list (`CurlyList`; owner
+   * 2026-10-23: *"those need to be separate for Jess syntax (#{} vs {})"*). A
+   * bare `{` that opens an entry is still read as the map, an error at the
+   * block (`collectionFrom`), and the parse carries on (P45). Its entries read
+   * their values outside any CSS call's arguments.
+   */
+  const collectionItem = choice(
+    g.CollectionSpread,
+    g.CollectionEntry
+  );
   const Collection = node<Collection>(
     'Collection',
     sequence(
-      literal('{'),
-      parser(
-        { trivia: whitespace },
-        many(choice(
-          g.CollectionSpread,
-          g.CollectionEntry
-        ))
+      choice(
+        sequence(
+          literal('#{'),
+          parser({ trivia: whitespace }, withCtx(state => leaveCssCall(state), many(collectionItem)))
+        ),
+        sequence(
+          literal('{'),
+          parser({ trivia: whitespace }, withCtx(state => leaveCssCall(state), sequence(collectionItem, many(collectionItem))))
+        )
       ),
       optional(rawWhitespace),
       literal('}')
     ),
-    (children) => {
-      const entries: CollectionItem[] = [];
-      for (const child of children) {
-        if (isCollectionItem(child)) {
-          entries.push(child);
-        }
-      }
-      return collection(entries);
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => collectionFrom(children, span, state)
   );
 
   /*
@@ -3165,10 +3196,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(oneOrMoreSep(
+        optional(withCtx(state => leaveCssCall(state), oneOrMoreSep(
           g.MixinCallArgument,
           literal(',')
-        ))
+        )))
       ),
       optional(rawWhitespace),
       literal(')')
@@ -3374,6 +3405,34 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `{ … }` in value position: the curly list, a list passed as one value
+   * (owner 2026-10-09: *"We should interpret Sass / Less value lists as a
+   * curly list. So ~(1px, 2px) would be parsed as `{1px, 2px}`"*, and
+   * *"`~()` would no longer be valid in .jess"*), the css-values-5 §3.1.1
+   * `{}`-wrapped argument. A map is `#{ … }` and a detached ruleset `@{ … }`, so
+   * a bare `{` here is free (owner 2026-10-23: *"those need to be separate for
+   * Jess syntax (#{} vs {})"*). The interior is optional, as `SquareValue`'s is:
+   * `{}` is the empty list; a trailing comma makes a comma list of what it
+   * holds, so `{1,}` is the one-item comma list Sass writes `(1,)`. Like
+   * `Collection`, it may only be a value's first atom (see `nonBlockValueAtom`).
+   */
+  const CurlyList = node<Block>(
+    'CurlyList',
+    noTrivia(sequence(
+      literal('{'),
+      optional(valueTrivia),
+      optional(sequence(
+        g.Value,
+        optional(valueTrivia),
+        optional(literal(','))
+      )),
+      optional(valueTrivia),
+      literal('}')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => curlyListFrom(children, span, state)
+  );
+
+  /*
    * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
@@ -3417,6 +3476,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'ValueAtom',
     choice(
       g.Collection,
+      g.CurlyList,
       nonBlockValueAtom
     ),
     children => requireValueNode(children[0])
@@ -3682,12 +3742,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * css builds; the raw arm is the §5.4.7 fallback for the one residual Jess's
    * value model omits — a bare infix `+` or `-` between numbers (`(1 + 2)`),
    * which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects) but which
-   * is valid CSS inside a block. The `not` guard preserves Jess's
-   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
-   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
-   * the conservative existing behaviour rather than minting an empty `Any` block
-   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
-   * separate open question, not settled here).
+   * is valid CSS inside a block. The empty `()` / `( )` block is well-formed too
+   * (ledger P45): the structured arm reads it as the EMPTY SLOT `[]`, as the css
+   * base does, never a contentless `Any`, so the raw arm (its `raw` field) always
+   * holds text.
    */
   const ParenValue = node<ValueNode>(
     'ParenValue',
@@ -3695,26 +3753,22 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       noTrivia(sequence(
         literal('('),
         optional(valueTrivia),
-        groupValue,
+        optional(groupValue),
         optional(valueTrivia),
         literal(')')
       )),
       noTrivia(sequence(
         literal('('),
-        not(sequence(
-          optional(valueTrivia),
-          literal(')')
-        )),
-        rawParenInner,
+        field('raw', rawParenInner),
         literal(')')
       ))
     ),
-    (children) => {
-      const slot = children.find(isJessValueSlotValue);
-      return slot === undefined
-        ? block(any(requireToken(children[1]).value), 'paren')
-        : block(slot, 'paren');
-    }
+    (children, fields) => block(
+      fields?.raw === undefined
+        ? children.find(isJessValueSlotValue) ?? []
+        : any(requireToken(children[1]).value),
+      'paren'
+    )
   );
 
   /*
@@ -3919,6 +3973,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const MediaFeatureOpener = choice(
     g.mediaFeatureOpener,
     g.queryFeatureName
+  );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= ${d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
   );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
@@ -4635,14 +4698,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Enclosed = node<FunctionCall | Block>(
     'Enclosed',
     choice(
-      sequence(
+      noTrivia(sequence(
         g.Identifier,
-        noTrivia(sequence(
-          literal('('),
-          g.GeneralTemplate,
-          literal(')')
-        ))
-      ),
+        literal('('),
+        g.GeneralTemplate,
+        literal(')')
+      )),
       noTrivia(sequence(
         literal('('),
         g.GeneralTemplate,
@@ -4693,31 +4754,68 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       'Jess supports feature lost its property name.'
     )
   );
+
+  /*
+   * css's `<supports-in-parens>` arms, then an identifier where one is
+   * expected, with the group after it: `selector (a)` is `selector` and a
+   * `(a)` group, never the glued `selector(` (css-syntax-3 §4.3.4), and
+   * `color` is no condition. They parse (ledger P45), and the compile reports
+   * `css/invalid-supports-condition` (owner 2026-10-22). Only outside a
+   * condition's parentheses: inside them, `(a and b)` stays general-enclosed.
+   */
   const SupportsInParens = node<ValueNode>(
     'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.SupportsCondition,
+        withCtx(state => enterSupportsGroup(state), g.SupportsCondition),
         literal(')')
       ),
       g.SupportsFeature,
-      g.Enclosed
+      g.Enclosed,
+      {
+        gate: state => !isInSupportsGroup(state),
+        combinator: sequence(
+          g.Keyword,
+          optional(g.Enclosed)
+        )
+      }
     ),
     (children) => {
-      const value = children.find(isValueNode);
-      if (value === undefined) {
+      const values = children.filter(isValueNode);
+      if (values.length === 0) {
         throw new TypeError('Jess supports parenthesis lost its typed condition.');
       }
-      return isValueNode(children[0]) ? value : block(value);
+      if (!isValueNode(children[0])) {
+        return block(values[0]!);
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
     }
   );
+
+  /*
+   * At the top of a condition, `not` takes the chain after its operand too:
+   * `not (a) and (b)` is no condition (css-conditional-3 §6 needs
+   * `(not (a)) and (b)`), but it is well-formed, so it parses (ledger P45) and
+   * the compile reports it (owner 2026-10-22). Inside a group's parentheses
+   * the chain is gated off, so the group stays `<general-enclosed>`.
+   */
   const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
       sequence(
         g.SupportsNot,
-        g.SupportsInParens
+        g.SupportsInParens,
+        many(choice({
+          gate: state => !isInSupportsGroup(state),
+          combinator: sequence(
+            choice(
+              g.SupportsLogical,
+              peek(g.QueryGluedConnective)
+            ),
+            g.SupportsInParens
+          )
+        }))
       ),
       sequence(
         g.SupportsInParens,
@@ -4885,7 +4983,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'SupportsAtRuleBlock',
     sequence(
       g.SupportsAtKeyword,
-      g.SupportsCondition,
+      g.SupportsPrelude,
       literal('{'),
       many(atBlockStatement),
       literal('}')
@@ -5133,13 +5231,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * A block-valued assignment AUTO-TERMINATES at its closing brace: the block is
-   * its own unambiguous end, so `$foo: { … }`, `$foo: @{ … }`, and
+   * its own unambiguous end, so `$foo: #{ … }`, `$foo: @{ … }`, and
    * `$foo: @() > { … }` need no `;` and whatever follows the brace begins a new
    * statement. Less has the same rule for a detached ruleset bound to a variable.
    * The block must be the WHOLE value — a value can never precede it (there is no
    * `ValueBlock` arm in the space-group continuation), because that is
    * exactly the case where the value's end would be ambiguous. Compose instead:
-   * bind the block first (`$foo: {}`), then use it (`$bar: $foo bar;`).
+   * bind the block first (`$foo: #{}`), then use it (`$bar: $foo bar;`).
    */
   const ValueBlockDeclaration = node<VariableDeclaration>(
     'ValueBlockDeclaration',
@@ -6409,6 +6507,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     StyleFeature,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryComparisonFeature,
     QueryNonOnlyKeyword,
     QueryTerm,
@@ -6472,6 +6571,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     CollectionEntry,
     CollectionSpread,
     Collection,
+    CurlyList,
     ParenValue,
     SquareValue,
     InterpolatedValue,

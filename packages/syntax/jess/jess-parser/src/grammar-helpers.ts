@@ -1260,6 +1260,7 @@ export {
   isIfTest,
   enterIfTest,
   leaveIfTest,
+
   isTestValue,
   enterTestValue,
   genericCallFrom,
@@ -1289,6 +1290,7 @@ export {
   isValueNode,
   isValueNodeArray,
   isJessValueSlotValue,
+  reportRecovered,
   requireValueSlot,
   isJessMixinCallArgument,
   isJessCallArgument,

@@ -17,15 +17,17 @@ import { CSS_MATH_FUNCTIONS, CSS_MATH_FUNCTION_OPENERS, isMathFunctionName } fro
  * `math-functions.ts` first; this test then names every file to update.
  */
 /*
- * The grammars that ROUTE the table today. `.less` and `.scss` are absent on
- * purpose: they already ACCEPT every §10 construct through their generic call
- * tails, so they carry no recognition defect, and routing them needs a
- * per-dialect argument grammar rather than a copy of this one — in `.less` a
- * `/` inside a call is a list boundary, not division. Add them here in the same
- * change that gives them the arm.
+ * The grammars that ROUTE the table today. `.less` is absent on purpose: it
+ * already ACCEPTS every §10 construct through its generic call tail, so it
+ * carries no recognition defect, and routing it needs a per-dialect argument
+ * grammar rather than a copy of this one — in `.less` a `/` inside a call is a
+ * list boundary, not division. Add it here in the same change that gives it
+ * the arm. `.scss` routes the openers to its generic call with a parse state
+ * that marks a Sass calculation's arguments.
  */
 const GRAMMARS = [
   '../../../../syntax/css/css-parser/src/grammar.ts',
+  '../../../../syntax/scss/scss-parser/src/grammar.ts',
   '../../../../syntax/jess/jess-parser/src/grammar.ts'
 ] as const;
 

@@ -1,24 +1,12 @@
 {
   "packages/compiler/src/index.ts": {
-    "statements": 546
-  },
-  "packages/compiler/src/index.ts#Compiler.resolveEffectiveConfig": {
-    "statements": 51
+    "statements": 539
   },
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
   },
-  "packages/core/src/ast/emit-jess.ts": {
-    "statements": 531
-  },
   "packages/core/src/ast/emit-jess.ts#JessPrinter.node": {
     "statements": 49
-  },
-  "packages/core/src/ast/evaluator.ts#recoverCallFailure": {
-    "params": 6
-  },
-  "packages/core/src/ast/evaluator.ts#recoverAsyncCall": {
-    "params": 6
   },
   "packages/core/src/ast/evaluator.ts#buildEvaluator.call": {
     "params": 9
@@ -67,7 +55,7 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9427
+    "statements": 9400
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
@@ -91,7 +79,7 @@
     "statements": 72
   },
   "packages/core/src/ast/serialize.ts#evalValue": {
-    "statements": 147
+    "statements": 145
   },
   "packages/core/src/ast/serialize.ts#evalCollectionEntries": {
     "statements": 59
@@ -200,10 +188,10 @@
     "params": 7
   },
   "packages/core/src/ast/serialize.ts#walkBody": {
-    "statements": 314
+    "statements": 294
   },
   "packages/core/src/ast/serialize.ts#walkBody.run": {
-    "statements": 258
+    "statements": 238
   },
   "packages/core/src/ast/serialize.ts#expandCall": {
     "statements": 78,
@@ -335,7 +323,7 @@
     "statements": 63
   },
   "packages/diagnostics-core/src/tolerant-cst.ts": {
-    "statements": 3464
+    "statements": 3463
   },
   "packages/diagnostics-core/src/tolerant-cst.ts#animationNameReferences": {
     "statements": 81

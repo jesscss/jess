@@ -1,7 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { makeColorRgb, defineFunction, RGB } from '@jesscss/core';
 import { getLuma, reformatColor, requireColor } from './color-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `contrast(color, dark?, light?, threshold?)` — pick `dark` or `light` by whether

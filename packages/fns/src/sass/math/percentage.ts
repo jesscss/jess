@@ -1,5 +1,5 @@
 import { defineFunction, makeDimension } from '@jesscss/core';
-import { isUnitlessDimension } from './units.js';
+import { assertNoUnits } from './units.js';
 
 /**
  * Sass `math.percentage($number)` / the global `percentage()`.
@@ -16,12 +16,7 @@ import { isUnitlessDimension } from './units.js';
  */
 const percentage = defineFunction('percentage', {
   params: [{ name: 'number', type: 'Dimension' }] as const,
-  body: (number) => {
-    if (!isUnitlessDimension(number)) {
-      throw new TypeError(`$number: Expected ${number.bytes} to have no units.`);
-    }
-    return makeDimension(number.number * 100, '%');
-  }
+  body: number => makeDimension(assertNoUnits(number, 'number').number * 100, '%')
 });
 
 export { percentage };

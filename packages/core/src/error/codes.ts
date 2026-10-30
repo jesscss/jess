@@ -33,6 +33,8 @@ export type JessErrorCode =
   | 'parse/arithmetic-outside-expression'
   | 'parse/deprecated-if-function'
   | 'resolve/name-not-found'
+  | 'resolve/ambiguous-member'
+  | 'resolve/namespace-shadowed'
   | 'import/circular-compose'
   | 'compose/not-top-level'
   | 'import/cycle'
@@ -51,6 +53,7 @@ export type JessErrorCode =
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
   | 'eval/loop-iteration-limit'
+  | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
   | 'eval/scss-warn'
   | 'eval/scss-error'
@@ -61,6 +64,8 @@ export type JessErrorCode =
   | 'eval/charset-not-utf8'
   | 'eval/incomparable-operands'
   | 'eval/empty-operand'
+  | 'eval/empty-list-value'
+  | 'eval/invalid-operand'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -78,7 +83,8 @@ export type JessErrorCode =
   | 'css/glued-condition-keyword'
   | 'css/forgiving-selector-item'
   | 'css/legacy-ie-syntax'
-  | 'css/invalid-value-punctuation';
+  | 'css/invalid-value-punctuation'
+  | 'css/invalid-supports-condition';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -280,6 +286,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'resolve/ambiguous-member',
+    {
+      summary: 'Ambiguous member',
+      reason: 'Member "${symbol}" names both a variable and a property here, so the read has two candidates.',
+      fix: 'Rename the variable or the property so that "${symbol}" names one of them.'
+    }
+  ],
+  [
+    'resolve/namespace-shadowed',
+    {
+      summary: 'Module hidden by a local variable',
+      reason: 'Local `${local}` hides the module `${name}` (bound at ${at}), so this read looks in the local value.',
+      fix: 'Rename the local variable, or bind the module under another name with `as`.'
+    }
+  ],
+  [
     'import/circular-compose',
     {
       summary: 'Circular @-compose detected',
@@ -425,6 +447,15 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'eval/mixin-recursion-limit',
+    {
+      summary: 'Mixin recursion did not terminate',
+      reason:
+        'The mixin call ${name}() was still expanding itself when it reached the recursion limit (${limit} nested expansions, or the end of the call stack), so it was stopped rather than run forever.',
+      fix: 'Give the recursive mixin a guard that stops matching once its argument reaches its end value.'
+    }
+  ],
+  [
     'eval/invalid-unit-arithmetic',
     {
       summary: 'Invalid unit arithmetic',
@@ -529,11 +560,35 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'css/invalid-supports-condition',
+    {
+      summary: '`${what}` is not a supports condition',
+      reason: '`@supports` takes one condition: parenthesized features and groups and functions such as `selector()`, joined by `and` or by `or` (not both), or one of them after `not` (css-conditional-3 §6). `${what}` stands where none of them can (`selector (a)` is the identifier `selector` and a group, not the `selector()` function), so a browser ignores the whole rule.',
+      fix: 'Write a feature `(property: value)`, or a function with no space before its `(` (`selector(a)`); group a mix of `and` and `or` in parentheses.'
+    }
+  ],
+  [
     'eval/empty-operand',
     {
       summary: 'Operation on an empty value',
       reason: '${reason}',
       fix: 'Operate on a value: a function that returns nothing (false, true or an empty result) can only stand as a statement.'
+    }
+  ],
+  [
+    'eval/empty-list-value',
+    {
+      summary: 'An empty list is not a CSS value',
+      reason: '${reason}',
+      fix: 'Write a value, or leave the declaration or argument out when the list is empty.'
+    }
+  ],
+  [
+    'eval/invalid-operand',
+    {
+      summary: 'Operation on an operand it is not defined on',
+      reason: '${reason}',
+      fix: 'Compute with numbers, lengths and colours, and write math the browser computes inside `calc()`. To build a string, interpolate: `"Elapsed: #{$t}"` in `.scss`, `"Elapsed: $($t)"` in `.jess`.'
     }
   ],
   [

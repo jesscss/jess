@@ -168,7 +168,7 @@ describe('a var(), env() or attr() fallback is a value', () => {
   });
 
   it.each([
-    ...(['css', 'scss', 'jess'] as const).flatMap(dialect => [
+    ...DIALECTS.flatMap(dialect => [
       [dialect, 'a {\n  width: attr(data-w type(<length>), 0px);\n}\n'],
       [dialect, 'a {\n  width: attr(data-w type(<length>),0px);\n}\n']
     ] as const),
@@ -237,8 +237,9 @@ describe('punctuation a dialect or CSS gives meaning is not reported', () => {
     ['scss', '@mixin m($a: 1) { x: $a; }\na { @include m($a: 3); y: map-get((a: 1, b: 2), a); }\n'],
     ['scss', '%p { c: d; }\na { @extend %p; }\n'],
     ['css', sheet('attr(data-x type(<length> | <percentage>), 0px)')],
+    ['less', sheet('attr(data-x type(<length> | <percentage>), 0px)')],
     ['jess', 'a { x: $(1 == 2); }\n'],
-    ['jess', '$m: { a: 1 };\na { x: $m.a; }\n'],
+    ['jess', '$m: #{ a: 1 };\na { x: $m.a; }\n'],
     ['jess', '$a: 2;\na { x: $($a > 1); }\n'],
     ['jess', sheet('foo(a:b)')]
   ] as const)('%s: %s', (dialect, source) => {

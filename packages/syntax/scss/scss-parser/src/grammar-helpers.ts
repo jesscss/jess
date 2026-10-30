@@ -16,8 +16,8 @@
  * parameterised by.
  */
 
-import { NO_SPAN, any, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleStatement, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, keyword, appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, branch, callArg, condition, expression, withSourceSpan, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, sassImportUrlIsPlainCss, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, inParens, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStaticQuoted, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueLayoutOf, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleStatement, Block, Branch, Operation, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, IfValueBranch, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SourceSpan, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { DeprecatedIfFunctionWarning, LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { ScssImportPostludeError, type ScssRecoveredError } from './parse-error.js';
 
@@ -251,43 +251,62 @@ export function isFunctionCall(value: unknown): value is FunctionCall {
     && Array.isArray(value.args);
 }
 
+/** A math operator with its padding: the operator, and where the two are written. */
+export type MathOperatorFact = Token & { readonly start: number; readonly end: number };
+
+export function isMathOperatorFact(value: unknown): value is MathOperatorFact {
+  return isToken(value) && 'start' in value && typeof value.start === 'number' && 'end' in value && typeof value.end === 'number';
+}
+
+/** `MathProductOperator` / `MathSumOperator`'s reduction: the one operator among its pads. */
+export function mathOperatorFact(children: readonly unknown[], _fields: unknown, span: SourceSpan): MathOperatorFact {
+  const operator = children.find(child => isToken(child) && isMathOperator(child.value));
+  if (!isToken(operator)) {
+    throw new TypeError('SCSS math operator lost its operator.');
+  }
+  return { value: operator.value, start: span.start, end: span.end };
+}
+
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
  * to the caller's product/sum production, never to a source-text recovery.
  *
- * Operands and operator characters arrive in authored order with the operators'
- * padding interleaved. The pads are their own terms, so an operator no longer
- * sits a constant distance from its operand and the fold reads the shape rather
- * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
- * defeat any attempt to recover the operator from the padded text. */
+ * Operands and operator facts arrive in authored order. An operator fact holds
+ * its padding, which can hold a comment whose own `/` and `*` would defeat any
+ * attempt to recover the operator from the padded text.
+ *
+ * An operation's span runs from the chain's first operator to the next
+ * operator, or to the end of its own: the operands carry no span, and this one
+ * is what places an error in the operation at its operator. The fold reads no
+ * span of its own, which every value would pay for (a value is a product). */
 export function scssFoldOperation(children: readonly unknown[]): ValueNode {
-  const first = children.find(isScssValue);
-  if (first === undefined) {
+  const firstIndex = children.findIndex(isScssValue);
+  const first = children[firstIndex];
+  if (!isScssValue(first)) {
     throw new TypeError('SCSS arithmetic grammar produced no operand.');
   }
   let result = first;
-  let operator: string | undefined;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
+  let operator: MathOperatorFact | undefined;
+  let start: number | undefined;
+  for (let index = firstIndex + 1; index < children.length; index += 1) {
     const child = children[index];
     if (isScssValue(child)) {
       if (operator === undefined) {
         throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
       }
-      result = operation(
-        operator,
+      const next = children[index + 1];
+      result = withSourceSpan(operation(
+        operator.value,
         result,
         child,
         false,
-        cssBaseMathOutsideParens(operator)
-      );
+        cssBaseMathOutsideParens(operator.value)
+      ), { start: start ?? operator.start, end: isMathOperatorFact(next) ? next.start : operator.end });
+      start ??= operator.start;
       operator = undefined;
       continue;
     }
-    if (child === undefined || child === null) {
-      continue;
-    }
-    const text = requireToken(child).value;
-    if (isMathOperator(text)) {
-      operator = text;
+    if (isMathOperatorFact(child)) {
+      operator = child;
     }
   }
   if (operator !== undefined) {
@@ -295,6 +314,52 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
   }
   return result;
 }
+
+/**
+ * A Sass paren value. Parens Dart Sass drops when it writes the value are
+ * syntax, not part of it (owner 2026-10-22: *"if they drop parens when
+ * rendering, then those should be parsed as "escaped" when parsing .scss"*,
+ * ledger J16's `.scss` case), so the group is the curly list a Less `~( … )`
+ * builds (owner 2026-10-23: *"none of the languages should be parsing to that,
+ * it should be the {} list"*), written without its delimiters and read as what
+ * it holds:
+ * around a list (a comma list, a space list, a list with a trailing comma,
+ * `(1,)`), and, outside a math function's arguments, around one value
+ * (`(10px)`, `($l)`). Math in a group (`(1 + 2)`), and a group around one value
+ * inside a Sass calculation (`calc(2 * ($k))`) or a CSS `if()` condition
+ * (`if(css(1) and (css(2)): c)`), whose parens Dart Sass writes, are the paren
+ * group J16 reads.
+ */
+export function parenValue(children: readonly unknown[], state: unknown): Block {
+  const value = requireValueSlot(children.find(isScssValueSlotValue));
+  if (children.some(child => isToken(child) && child.value === ',')) {
+    const items = !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value : list([value], ',');
+    return block(items, 'curly', true);
+  }
+  if (isValueSlotArray(value) || value.type === 'List') {
+    return block(value, 'curly', true);
+  }
+  if (value.type === 'Block' && value.escaped === true) {
+    return value;
+  }
+  return keepsGroup(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'curly', true);
+}
+
+/* Where Dart Sass writes a group's parens: a Sass calculation's arguments and a CSS `if()` condition. */
+const keepsGroup = (state: unknown): boolean => isInCalculation(state) || isIfTest(state);
+
+/**
+ * Sass's empty `()`: the empty list, which Dart Sass also accepts wherever a map
+ * is expected (owner 2026-10-23: *"a Sass empty `()` would be `{}` (whilst
+ * storing the raw, so that Sass functions still work"*). It is the empty curly
+ * list, whose span records the authored `()`; `.jess` spells it `{}`. Written
+ * where CSS needs a value it fails the compile, as in Dart Sass ("() isn't a
+ * valid CSS value"), a CSS `if()` condition and a calculation included.
+ */
+export const emptyParenList = (): Block => block([], 'curly', true);
+
+/* What a paren group holds when it is math or a test: the group is J16's, which the math reads and consumes. */
+const GROUP_COMPUTES: ReadonlySet<string> = new Set(['Operation', 'Expression', 'Condition']);
 
 export function isScssValue(value: unknown): value is ValueNode {
   /*
@@ -422,7 +487,7 @@ export function contentArgRaw(arg: ScssCallArg): string {
 }
 
 /** `map.get` is the `sass:map` module spelling of the global `map-get`. Both are
- *  the same function, so both lower to the same accessor read — a grammar that
+ *  the same function, so both lower to the same tree — a grammar that
  *  accepted only one spelling into the accessor form would emit two different
  *  trees for one semantics. */
 export const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
@@ -546,6 +611,21 @@ export function isIfTest(state: unknown): boolean {
   return typeof state === 'object' && state !== null && 'ifTest' in state && state.ifTest === true;
 }
 
+/** Whether the parse is inside a math function's arguments (`calc()`, `min()`, …), a Sass calculation. */
+export function isInCalculation(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'calculation' in state && state.calculation === true;
+}
+
+/** The parse state outside a math function's arguments: unchanged when it was not inside one. */
+export function leaveCalculation(state: unknown): unknown {
+  return isInCalculation(state) && typeof state === 'object' && state !== null ? { ...state, calculation: false } : state;
+}
+
+/** The parse state inside a math function's arguments. */
+export function enterCalculation(state: unknown): object {
+  return typeof state === 'object' && state !== null ? { ...state, calculation: true } : { calculation: true };
+}
+
 /** The parse state inside an `if()` call: its conditions are read as CSS `if()` conditions. */
 export function enterIfTest(state: unknown): object {
   return typeof state === 'object' && state !== null ? { ...state, ifTest: true } : { ifTest: true };
@@ -636,14 +716,22 @@ export function scssValueTail(children: readonly unknown[]): ScssValueTail {
   return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}`, glued: null };
 }
 
+/**
+ * The key of a `map-get($m, k)` that the shared `$[…]` accessor reads with the
+ * same meaning: a word or a string with no interpolation, which `.jess` writes
+ * `$m[k]` / `$m["k"]` (ledger P14). Any other key keeps the call, which matches
+ * the key by value where it is written. In a `[…]` subscript a number is a
+ * position (ledger P15), and a variable or an expression may hold one, so
+ * `map.get($m, 1px)` and `map.get($m, $k)` are not `$m[…]` reads.
+ */
+function isMapGetAccessorKey(key: ValueNode): key is Keyword | Quoted {
+  return key.type === 'Keyword' || isStaticQuoted(key);
+}
+
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
- *  whose single LookupStep carries the key. A `$var` key selects the
- *  variable-namespace lookup; every other key is a value-equality member lookup
- *  (map keys compare by value, never by position, so `index` is never used). */
-export function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
-  const step: ReferenceStep = key.type === 'Lookup' && key.kind === 'var'
-    ? { type: 'LookupStep', kind: 'var', name: key }
-    : { type: 'LookupStep', kind: 'member', name: key };
+ *  whose single member LookupStep carries the key, compared by value. */
+export function lowerMapGet(base: ValueNode, key: Keyword | Quoted): Reference {
+  const step: ReferenceStep = { type: 'LookupStep', kind: 'member', name: key };
   const baseRaw = base.type === 'Reference' ? base.raw : referenceKeyRaw(base);
   return reference(
     base,
@@ -884,7 +972,8 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
     name,
     args
   );
-  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isScssValue(args[0]!.value) && isScssValue(args[1]!.value)) {
+  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isScssValue(args[0]!.value) && isScssValue(args[1]!.value)
+    && isMapGetAccessorKey(args[1]!.value)) {
     return lowerMapGet(
       args[0]!.value,
       args[1]!.value

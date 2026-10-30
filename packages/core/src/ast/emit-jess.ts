@@ -35,7 +35,7 @@
  *     spellings, recomputed by the `.jess` reducer from what is printed.
  */
 import type {
-  AnonymousMixin, Block, CallArg, CallValue, Collection, CollectionItem, ComplexSelector, CompoundSelector,
+  AnonymousMixin, Block, CallArg, CallValue, Collection, ComplexSelector, CompoundSelector,
   Declaration, Expression, ExtendInstruction, FunctionCall, IfValue, Interpolation, Lookup, LookupStep, MixinCall,
   MixinDefinition, Operation, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
@@ -44,9 +44,10 @@ import { colorAlphaSlash, isCssColorFunction, pseudoArgumentText, selectorBranch
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard-node.js';
 import { jessBranch, jessIf } from './emit-jess-if.js';
+import { jessCollection, jessCurlyList, type ListSpeller } from './emit-jess-list.js';
 import { renderCombinator } from './node.js';
 import { WHITESPACE, runSeparator } from './emit-jess-run.js';
-import { MEMBER_CALL, moduleImportText, selectorParseLiteral } from './emit-jess-module.js';
+import { MEMBER_CALL, moduleImportText, selectorParseCall, unquoteLiteral } from './emit-jess-module.js';
 import { NO_SPAN, bodyEndOf, bodyStartOf, isAuthoredGroupExpression, sourceEndOf, sourceStartOf, triviaMapOf, valueLayoutOf } from './provenance.js';
 import type { Trivia } from '../types/index.js';
 
@@ -184,6 +185,12 @@ class JessPrinter {
 
   /** Set while a property's value prints: a value written to the output, not one a callable reads. */
   #propertyValue = false;
+
+  /** Set while a CSS call's arguments print, where a `{ … }` is CSS's own argument braces (`CurlyList`). */
+  #cssCall = false;
+
+  /** The value spelling a map and a curly list are written with ({@link jessCollection}, {@link jessCurlyList}). */
+  readonly #lists: ListSpeller = { value: (slot, indent) => this.value(slot, At.Value, indent), gap };
 
   /** The call names of Sass's `selector.parse()` through each `sass:selector` namespace. */
   readonly #selectorParse = new Set<string>();
@@ -710,6 +717,10 @@ class JessPrinter {
       if (i > 0) {
         const sep = layout?.[i - 1] ?? ' ';
         out += runSeparator(parts[i - 1], part, sep, gap);
+        if (!isSlotArray(part) && ((part.type === 'Block' && part.delimiter === 'curly') || part.type === 'Collection')) {
+          out += gap(part.type, 'a curly list or a collection after another value: `CurlyList` and `Collection` are only a value\'s first atom');
+          continue;
+        }
       }
       out += this.value(part, at, indent);
     }
@@ -737,8 +748,10 @@ class JessPrinter {
          * hold a `$` that `.jess` would read as one.
          */
         const text = node.interp === null ? node.value : node.interp.parts.map(part => 'lit' in part ? part.lit : '').join('');
-        if (/\$[[({]/u.test(text)) {
-          return gap('Quoted', 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
+        if (/\$[[({]/u.test(text) || node.interp?.leadQuoting === true) {
+          return gap('Quoted', node.interp?.leadQuoting === true
+            ? 'an `.scss` string built with `+` that takes its quoting from a value known at evaluation: `.jess` strings have their own quotes'
+            : 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
         }
         return node.interp === null
           ? node.src
@@ -772,8 +785,17 @@ class JessPrinter {
       case 'Important':
         return gap('Important', '`!important` inside a value is undecided for `.jess` (inventory row)');
       case 'Operation':
+        /*
+         * An operation that computes where it is written with no `$( … )`
+         * around it (a `.scss` `$a + $b`) is that `$( … )`: `.jess` math reads
+         * numbers and text by the same rule (ledger V36), so the conversion is
+         * one to one. A Less operation that computes already sits in an
+         * `Expression`.
+         */
         if (at !== At.Expr && !(at === At.Math && node.inMathFunction)) {
-          return gap('Operation', 'math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)');
+          return at === At.Value && node.mathOutsideParens && !node.inMathFunction
+            ? `$(${this.value(node, At.Expr, indent)})`
+            : gap('Operation', 'math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)');
         }
         if (!EXPRESSION_OPS.has(node.operator)) {
           return gap('Operation', `operator \`${node.operator}\` is not a \`.jess\` arithmetic operator`);
@@ -814,8 +836,12 @@ class JessPrinter {
         return this.valueInterpolation(node, at);
       case 'AnonymousMixin':
         return gap('AnonymousMixin', 'a block inside a larger value: `BlockLambda` is admitted only as a whole variable value');
+
+      /* `#{ … }` is a value atom like the curly list: a value's first atom, read as a map wherever a `.jess` value is (ledger P31). */
       case 'Collection':
-        return gap('Collection', 'a collection inside a larger value: `Collection` is admitted only as a whole variable or entry value');
+        return at === At.Expr || at === At.Prelude || this.#cssCall
+          ? gap('Collection', 'a collection inside a larger value: `Collection` is a value\'s first atom outside `$( … )`, a prelude and a CSS call')
+          : this.collection(node, indent);
       case 'NestedPropertyBlock':
         return gap('NestedPropertyBlock', 'SCSS nested-property block: no `.jess` production');
       case 'Range': {
@@ -906,16 +932,17 @@ class JessPrinter {
   }
 
   call(node: FunctionCall, at: At): string {
+    const escaped = unquoteLiteral(node, this.#functions?.names.has('unquote') ?? true);
     if (at === At.Expr) {
-      return gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
+      return escaped ?? gap('FunctionCall', 'a bare-name call inside `$( … )`: only `$fn(…)` calls are expression atoms');
     }
 
     /* The global `selector-parse` is Sass's only when the source dialect's functions have it. */
-    const selectorText = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
-      ? selectorParseLiteral(node)
-      : null;
-    if (selectorText !== null) {
-      return `selector(${selectorText})`;
+    const lowered = this.#selectorParse.has(node.name) || (node.name === 'selector-parse' && this.#functions?.names.has(node.name) === true)
+      ? selectorParseCall(node)
+      : escaped;
+    if (lowered !== null) {
+      return lowered;
     }
     const member = MEMBER_CALL.test(node.name);
     if (!member && !IDENT.test(node.name)) {
@@ -935,11 +962,13 @@ class JessPrinter {
       this.calledFunctions.set(lower, exported);
     }
     const inner = at === At.Prelude ? At.Prelude : At.Math;
+    const name = exported === undefined && !member ? node.name : `$${node.name}`;
     const alpha = colorAlphaSlash(node);
     if (alpha !== null) {
-      const name = exported === undefined && !member ? node.name : `$${node.name}`;
       return `${name}(${this.colorChannels(node.args[0]!.value, alpha, inner)})`;
     }
+    const outer = this.#cssCall;
+    this.#cssCall = !name.startsWith('$');
     const args = node.args.map((arg) => {
       if (arg.spread || arg.name !== undefined) {
         return gap('FunctionCall', 'keyword or spread argument: `CallArgument` is positional');
@@ -950,7 +979,7 @@ class JessPrinter {
       }
       return this.value(value, inner);
     });
-    const name = exported === undefined && !member ? node.name : `$${node.name}`;
+    this.#cssCall = outer;
     return `${name}(${args.join(', ')})`;
   }
 
@@ -973,14 +1002,14 @@ class JessPrinter {
   }
 
   paren(node: Block, at: At): string {
+    if (node.delimiter === 'curly') {
+      return jessCurlyList(node, at === At.Prelude ? 'prelude' : this.#cssCall ? 'css-call' : 'value', this.#lists);
+    }
     if (node.escaped === true) {
-      return gap('Block', 'escaped `~( … )` block: no `.jess` production');
+      return gap('Block', 'an escaped group: no `.jess` production');
     }
     if (node.delimiter === 'square') {
       return `[${this.value(node.value, at)}]`;
-    }
-    if (node.delimiter === 'curly') {
-      return gap('Block', 'a css-values-5 `{}`-wrapped argument: in `.jess` a `{` in a call argument is a Collection');
     }
     if (at === At.Prelude && !isSlotArray(node.value) && node.value.type === 'Operation' && node.value.operator === ':') {
       // `QueryFeature`: `(name: value)`.
@@ -1052,9 +1081,11 @@ class JessPrinter {
       }
       const ref = part.ref;
 
-      /* A string splices an expression as `$( … )`, SCSS `#{&}` included. */
-      if (where === 'string' && (ref.type === 'Expression' || (ref.type === 'Lookup' && ref.kind === 'parent'))) {
-        out += ref.type === 'Expression' ? this.expression(ref, At.Value) : '$(&)';
+      /* A string splices an expression as `$( … )`, SCSS `#{&}` and `#{ns.$name}` included. */
+      if (where === 'string' && (ref.type === 'Expression' || ref.type === 'Reference' || (ref.type === 'Lookup' && ref.kind === 'parent'))) {
+        out += ref.type === 'Expression'
+          ? this.expression(ref, At.Value)
+          : ref.type === 'Reference' ? `$(${this.reference(ref, At.Value)})` : '$(&)';
         continue;
       }
       if (ref.type !== 'Lookup' || ref.kind !== 'var' || typeof ref.name !== 'string') {
@@ -1080,32 +1111,9 @@ class JessPrinter {
     return `@${params}${params === '' ? '' : ' '}${this.block(node.rules, 'nested', node, indent)}`;
   }
 
-  /** `Collection`: `{ key: value; …; ...spread; }`. */
+  /** `Collection`: `#{ … }` ({@link jessCollection}). */
   collection(node: Collection, indent: string): string {
-    if (node.entries.length === 0) {
-      return '{}';
-    }
-    const inner = `${indent}  `;
-    const item = (entry: CollectionItem): string => {
-      if (entry.type === 'CollectionSpread') {
-        return `...${this.value(entry.value, At.Value, inner)}`;
-      }
-      if (entry.merge !== null || entry.valueOnNewLine === true) {
-        return gap('CollectionEntry', 'merge marker or value-on-new-line layout on a collection entry');
-      }
-      const key = isSlotArray(entry.key)
-        ? `[${this.value(entry.key, At.Value, inner)}]`
-        : entry.key.type === 'Keyword'
-          ? entry.key.src
-          : entry.key.type === 'Quoted'
-            ? this.value(entry.key, At.Value, inner)
-            : `[${this.value(entry.key, At.Value, inner)}]`;
-      const value = !isSlotArray(entry.value) && entry.value.type === 'Collection'
-        ? this.collection(entry.value, inner)
-        : this.value(entry.value, At.Value, inner);
-      return `${key}: ${value}${entry.important ? ' !important' : ''}`;
-    };
-    return `{\n${node.entries.map(e => `${inner}${item(e)};\n`).join('')}${indent}}`;
+    return jessCollection(node, indent, this.#lists);
   }
 
   /** `ForSource`: one atom or a comma list of atoms (a range prints as itself). */

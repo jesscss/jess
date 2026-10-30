@@ -1,6 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { defineFunction } from '@jesscss/core';
-import { degreesOf, noExcess, requireColor, requireDimension, rotateHue } from './kernels.js';
+import { degreesOf, noExcess, requireColor, requireDimension } from './kernels.js';
+import { rotateHue } from '../../shared/color/kernels.js';
 
 /**
  * `color.adjust-hue(color, degrees)` — rotate the hue, wrapped to 0-360.

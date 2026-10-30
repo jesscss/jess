@@ -42,7 +42,8 @@ These are the legacy global functions that Sass provides for backward compatibil
 - `lighten()`, `darken()`, `saturate()`, `desaturate()`
 - `grayscale()`, `adjust-hue()`, `opacify()`, `fade-in()`, `transparentize()`, `fade-out()`
 - `complement()`, `ie-hex-str()`, `invert()`
-- TODO: `hue()`, `saturation()`, `lightness()`, `opacity()`, `color()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`, `adjust-color()`, `scale-color()`, `change-color()`
+- `adjust-color()`, `scale-color()`, `change-color()` (rgb, hsl and hwb channels)
+- TODO: `hue()`, `saturation()`, `lightness()`, `opacity()`, `color()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()`
 
 ### Global String Functions
 - TODO: All string functions
@@ -87,17 +88,21 @@ Functions available in `sass:math` module.
 
 ### Available Functions
 - `abs()`, `ceil()`, `floor()`, `round()`, `max()`, `min()`
-
-### TODO: Module Functions
-- `percentage()`, `unit()`, `unitless()`, `compatible()`
+- `percentage()`, `unit()`, `is-unitless()`, `compatible()`, `random()`
 - `sqrt()`, `pow()`, `log()`, `hypot()`
 - `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`, `atan2()`
 - `clamp()`, `div()`
 
-### TODO: Module Variables
+`sqrt()`, `pow()` and the trig functions compute through the kernel Less's
+functions of the same names use (`shared/math/math-helper.ts`); each states its
+own unit rule.
+
+### Module Variables
 - `$e`, `$pi`, `$epsilon`
-- `$max-safe-integer`, `$min-safe-integer`
-- `$max-number`, `$min-number`
+- `$max-safe-integer`, `$min-safe-integer`, `$max-number`, `$min-number`
+
+A module's non-function exports are its variables (`sass/math/constants.ts`);
+the hyphenated ones are entries of its member table export, `$members`.
 
 ## String Module (`sass/string/index.ts`)
 

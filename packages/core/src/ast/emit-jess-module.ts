@@ -42,3 +42,25 @@ export function selectorParseLiteral(node: FunctionCall): string | null {
   const text = value.value.trim();
   return text === '' || /[&%]/u.test(text) ? null : text;
 }
+
+/**
+ * A `.scss` `unquote("…")` (or `string.unquote("…")`) of one plain string is
+ * `.jess`'s escaped string `~"…"`, the same string value (owner 2026-10-22:
+ * *"`unquote(" + ")` should be de-sugared in .jess to `~" + "`"*); `null` for
+ * any other argument, which keeps the call's lowering, and when the source
+ * dialect's functions (`hasUnquote`) have no `unquote`.
+ */
+export function unquoteLiteral(node: FunctionCall, hasUnquote: boolean): string | null {
+  const arg = hasUnquote && /^(?:string\.)?unquote$/u.test(node.name) && node.args.length === 1 ? node.args[0]! : undefined;
+  const value = arg === undefined || arg.spread || arg.name !== undefined ? undefined : arg.value;
+  if (value === undefined || isValueSlotArray(value) || value.type !== 'Quoted' || value.interp !== null || value.escaped || /\$[[({]/u.test(value.value)) {
+    return null;
+  }
+  return `~${value.quote}${value.value}${value.quote}`;
+}
+
+/** A `selector.parse("…")` call as `.jess` writes it, `selector(…)` ({@link selectorParseLiteral}), or `null`. */
+export function selectorParseCall(node: FunctionCall): string | null {
+  const text = selectorParseLiteral(node);
+  return text === null ? null : `selector(${text})`;
+}

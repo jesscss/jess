@@ -1,6 +1,6 @@
 import type { Fn } from '@jesscss/core';
 import { makeKeyword, defineFunction } from '@jesscss/core';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 
 /**
  * `get-unit(dimension)` — the dimension's unit as a keyword (empty for a unitless

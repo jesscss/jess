@@ -35,6 +35,12 @@ describe('.jess @-compose namespace members', () => {
   const MODULE = '$a?: 1;\n$b: 2;\n$b := 3;\n$c: 4;\n$c: 5;\n';
   const LOOP = '$for ($v, $k of $m) { .k-${k} { v: $v; } }\n';
 
+  /* An `as *` module's mixins are called as `$ > .name()`, as any .jess mixin is (spec R6 §D.6). */
+  it('calls an `as *` module mixin with `$ > .name()`', async () => {
+    await expect(render('@-compose "./m.jess" as *;\n.a { $ > .elevate(); }\n', '.elevate() { box-shadow: 0 1px red; }\n'))
+      .resolves.toBe('.a {\n  box-shadow: 0 1px red;\n}\n');
+  });
+
   it('a $for over a namespace iterates each member once, as the activation binds it', async () => {
     await expect(render(`@-compose "./m.jess" with { $a: 9; }\n${LOOP}`, MODULE)).resolves.toBe(
       '.k-a {\n  v: 9;\n}\n.k-b {\n  v: 3;\n}\n.k-c {\n  v: 5;\n}\n'

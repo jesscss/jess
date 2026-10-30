@@ -160,6 +160,8 @@ import {
 } from './grammar-helpers.js';
 import { capturedPseudoFrom, selectorCaptureFrom } from './selector-capture.js';
 import { operatorRun, runOperand } from './delim-runs.js';
+import { lessParenListFrom } from './paren-list.js';
+import { plainUrlBodyFrom } from './url-argument.js';
 import type {
   BodyExtendFact,
   CustomValuePart,
@@ -298,6 +300,8 @@ type LessRules = {
   QueryFeatureName: Combinator<string | Interpolation>;
   /** What a media feature's contents open with: the CSS base's slot, with a name an interpolation opens. */
   MediaFeatureOpener: Combinator<unknown>;
+  /** What a value-first bound's comparison is followed by: the CSS base's slot, with a range name an interpolation opens. */
+  QueryComparedHead: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   /* `style()`, `scroll-state()`, or a function-form general-enclosed routed through its opener. */
   ContainerStyleQuery: Combinator<unknown>;
@@ -409,6 +413,9 @@ type SharedSyntax = {
   // Inherited from the CSS base: the media feature opener dispatch — MediaFeatureOpener's first arm — and a feature's name and what follows it.
   mediaFeatureOpener: Combinator<unknown>;
   queryFeatureName: Combinator<unknown>;
+  // Inherited from the CSS base: the compared-head dispatch — QueryComparedHead's first arm — and a range name and what follows it.
+  queryComparedHead: Combinator<unknown>;
+  queryRangeName: Combinator<unknown>;
   // Inherited from the CSS base: an and/or connective, or a peeked glued and( / or( operand.
   QueryConnective: Combinator<unknown>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -419,6 +426,8 @@ type SharedSyntax = {
   SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
   SupportsCondition: Combinator<ValueNode>;
+  // Inherited from the CSS base: the comma list of supports conditions an @supports prelude reads.
+  SupportsPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
   IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
@@ -593,6 +602,14 @@ const compoundSelectorTrivia = classifiedTrivia({
   blockComment
 });
 const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
+/*
+ * The trivia of a `@supports selector(…)` argument. General-enclosed content
+ * is otherwise read with no trivia, its `//` kept as written (F13: a custom
+ * property's `//` is value text). A `selector(` argument is a
+ * `<complex-selector>` (css-conditional-4 §6.1), and in a Less selector a `//`
+ * line comment is trivia, so there it never reaches the output.
+ */
+const enclosedTrivia = classifiedTrivia({ lineComment });
 const customValueCommentTrivia = classifiedTrivia({ blockComment: customValueBlockCommentRun });
 // The trivia before a custom-property value — after a declaration's `:`, a
 // `var()` fallback's `,`, a style query's `:` — is only the whitespace
@@ -944,6 +961,19 @@ const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
 const functionConditionOperator = regex(/[<>=]*=~|[<>=]+/);
 
 /**
+ * The `<` of a `<syntax>` type name (css-values-5 §3.3,
+ * `'<' <syntax-type-name> '>'`): a `<` glued to a name and its `>`. Where a
+ * value run could stop at a comparison, one is not (`valueRunEndAhead`).
+ */
+const syntaxTypeOpen = regex(/<(?=-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*>)/);
+/**
+ * The `>` that closes a `<syntax>` type name, with its `<syntax-multiplier>`,
+ * `#` or `+`, unless that `#` or `+` starts a hash or a number
+ * (`<length>+1` is `>` and `+1`, css-syntax-3 §4.3.1).
+ */
+const syntaxTypeClose = regex(/>(?:[#+](?![-_a-zA-Z0-9.\u0080-\uffff\\]))?/);
+
+/**
  * A run of CSS delims (css-syntax-3 §4.3.1 delim-tokens) that a Less value
  * gives no meaning, glued or padded: `x: a=b`, `x: a ~ b`. It is the css
  * `punctuationValueCharacter` run less the characters Less reads itself: `@`,
@@ -969,6 +999,13 @@ const gluedDelim = regex(/:|\.(?![0-9])/);
  * (`gluedValueBoundary`).
  */
 const gluedValueStart = regex(/[@=~|^?:.]/);
+/**
+ * What may open a component value glued after a piece that ends where it cannot
+ * continue it (`adjacentComponentBoundary`): an identifier or a `(`.
+ */
+const adjacentComponentStart = regex(/[(_a-zA-Z\u0080-\uffff\\]/);
+/** Either glued opener: one test decides there is a glued piece at all (`gluedContinuation`). */
+const gluedStart = regex(/[@=~|^?:.(_a-zA-Z\u0080-\uffff\\]/);
 const gluedPunctuationStart = regex(/[:.]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
@@ -992,8 +1029,11 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 // General-enclosed content is a raw template assembled by Parseman: structural
 // delimiters, strings, comments, and `@{…}` each have their own grammar arm.
 // This terminal owns only the remaining literal bytes; no completed source span
-// is scanned or re-parsed after recognition.
-const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+// is scanned or re-parsed after recognition. A run stops before `//`, which is
+// read on its own (`enclosedDoubleSlash`) so that where the content is a
+// selector, the trivia read between items sees it first (`enclosedTrivia`).
+const enclosedText = regex(/(?:\\[\s\S]|\/(?![*/])|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+const enclosedDoubleSlash = literal('//');
 const enclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const enclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
 const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
@@ -1215,25 +1255,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => quotedFromChildren(children, true)
   );
+  /**
+   * What follows a `url(` opener: the address, quoted or not, to its `)`. Its
+   * edge whitespace is not the Less `whitespace` production, so a `//` in it is
+   * address, not a comment. Every function whose argument is an address reads
+   * it (`url(`, and `@document`'s `url-prefix(` and `domain(`).
+   */
+  const plainUrlArgument = sequence(
+    optional(urlBoundaryWhitespace),
+    optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
+    optional(urlBoundaryWhitespace),
+    literal(')')
+  );
   const PlainUrl = node(
     'Url',
     noTrivia(sequence(
       urlFunctionOpen,
-      optional(urlBoundaryWhitespace),
-      optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
-      optional(urlBoundaryWhitespace),
-      literal(')')
+      plainUrlArgument
     )),
-    (_children, fields, span) => {
-      const captured = fields?.body;
-      if (Array.isArray(captured)) {
-        throw new TypeError('Less plain URL produced repeated body facts.');
-      }
-      const body = captured?.value;
-      return withSourceSpan(url(body === undefined
-        ? any('')
-        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
-    }
+    (_children, fields, span) => withSourceSpan(url(plainUrlBodyFrom(fields) ?? any('')), span)
   );
   // Bare `@name` and `@{name}` URL bodies are structural Less values, not
   // opaque URL text. The interpolation branch retains its literal suffixes as
@@ -1260,21 +1300,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'Url',
     noTrivia(sequence(
       routed(),
-      optional(urlBoundaryWhitespace),
-      optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
-      optional(urlBoundaryWhitespace),
-      literal(')')
+      plainUrlArgument
     )),
-    (_children, fields, span) => {
-      const captured = fields?.body;
-      if (Array.isArray(captured)) {
-        throw new TypeError('Less routed plain URL produced repeated body facts.');
-      }
-      const body = captured?.value;
-      return withSourceSpan(url(body === undefined
-        ? any('')
-        : isQuoted(body) || isInterp(body) ? body : any(requireTerminalText(body))), span);
-    }
+    (_children, fields, span) => withSourceSpan(url(plainUrlBodyFrom(fields) ?? any('')), span)
   );
   const UrlTarget = choice(g.VariableUrl, g.PlainUrl);
   const ImportOption = node(
@@ -2005,9 +2033,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
+  // A comma may close its argument list (`%("x",)`): it is still the call.
   const FormatFunction = node(
     'Call',
-    sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.ValueSequence)), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))), literal(')')),
+    sequence(
+      noTrivia(literal('%(')),
+      optional(sequence(not(literal('{')), g.ValueSequence)),
+      many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))),
+      optional(noTrivia(regex(/,[ \t\n\r\f]*/))),
+      literal(')')
+    ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       withFunctionScope(funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue)), functionScopeOf(state))
   );
@@ -2178,19 +2213,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       throw new LessInlineJavaScriptError(span.start, span.end);
     }
   );
-  // `~(...)` escapes its delimiters and makes the complete inner list the value
-  // (rather than a math grouping). A paren-delimited `Block` already has exactly the required
-  // evaluation behavior for that typed list: a computed list loses its outer
-  // parentheses, while the inner list remains indexable by `each()` and list
-  // functions.  This is grammar construction, not a raw source-value escape.
+  /*
+   * `~(...)` passes the complete inner list as one value (rather than a math
+   * grouping). It builds the curly list, the one node every dialect's "a list
+   * passed as one value" parses to (owner 2026-10-09 and 2026-10-23: "none of
+   * the languages should be parsing to that, it should be the {} list"; ledger
+   * P51, P46): a `curly` `Block` written without its delimiters, which `.jess`
+   * spells `{ … }`. Read typed it is the inner list, indexable by `each()` and
+   * list functions. Inside the group the gaps are the document's trivia, as in
+   * a value list anywhere else: `~( a, b )` and `~(a /* c *\/, b)`.
+   */
   const EscapedParen = node(
     'Block',
-    noTrivia(sequence(literal('~('), g.ValueList, literal(')'))),
+    noTrivia(sequence(
+      literal('~('),
+      optional(whitespace),
+      parser({ trivia: whitespace }, sequence(g.ValueList, literal(')')))
+    )),
     (children, _fields, span) => withSourceSpan(
-      block(requireValueSlot(children[1]), 'paren', true),
+      block(requireValueSlot(children.find(isLessValueSlotValue)), 'curly', true),
       span
     )
   );
+  /** The `,` between the items of a value comma list, and the gap after it. */
+  const commaSeparator = field('separator', regex(/,[ \t\n\r\f]*/));
   /*
    * A bare `(...)` is a math grouping in Less. Function/mixin argument lists
    * have their own productions above; do not widen this value position into a
@@ -2213,7 +2259,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * the `and` / `or` after it are matched where they start. `and` and `or` are
    * their own facts, so the reduction folds them without reading their bytes;
    * a group with neither, nor a comparison or `not`, is the ordinary math group
-   * and its tree is unchanged.
+   * and its tree is unchanged. A comma after the first term makes it a group
+   * around a comma list instead (`parenListRest`).
    */
   const parenConditionCompared = many(sequence(functionConditionOperator, optional(whitespace), g.OperandRun, optional(whitespace)));
   const parenConditionTerm = sequence(
@@ -2232,6 +2279,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     lessCaseWord('or'),
     (children, _fields, span) => parenLogicalFrom('or', children, span)
   );
+  /** One item of a paren group: its terms, joined by `and` / `or`. */
+  const parenTerms = sequence(
+    parenConditionTerm,
+    many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm))
+  );
+  /**
+   * The items after a paren group's first, each behind `commaSeparator`:
+   * `(1, 2)`, `(a b, c d)`, `foo((c, d), e)` — the css paren group around a
+   * comma list, well-formed in every dialect (ledger P45). Every item is read as
+   * the first is, so the same bytes build the same item in any position; the
+   * gap after a comma is ambient trivia, so its comments reach the trivia log
+   * the list's layout reads, as they do in `ValueList`. The first item is read
+   * once; a `,` after it decides. An item may be empty, as a simple block's
+   * content may (css-syntax-3 §5.4.8): a comma closing the list, `(1,)`, ends
+   * it with an empty slot.
+   */
+  const parenListRest = parser({ trivia: whitespace }, many(sequence(commaSeparator, optional(noTrivia(parenTerms)))));
   const Paren = node(
     'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
@@ -2240,11 +2304,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(
       literal('('),
       optional(whitespace),
-      parenConditionTerm,
-      many(sequence(choice(parenConditionAnd, parenConditionOr), optional(whitespace), parenConditionTerm)),
+      optional(sequence(parenTerms, parenListRest)),
+      optional(whitespace),
       literal(')')
     )),
-    (children, _fields, span, rawChildren, _triviaLog, state) => lessParenFrom(children, rawChildren, span, state)
+    (children, fields, span, rawChildren, triviaLog, state) => withSourceSpan(
+      block(fields?.separator === undefined
+        ? lessParenFrom(children, rawChildren, state, false)
+        : lessParenListFrom(children, rawChildren, fields, triviaLog, state)),
+      span
+    )
   );
   // A parenthesized `feature: value` is an ordinary typed Less value as well
   // as a media/container query fact: `@tablet: (min-width: @size)`.  Keep the
@@ -2426,6 +2495,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
 
   /** A delim piece and the piece glued after it: `x: a = b`, `x: a=b`. */
   const delimValue = sequence(punctuationDelim, optional(g.valuePiece));
+  /** The `<` of a `<syntax>` type name, as the delim css reads it. */
+  const syntaxTypeOpenDelim = node(
+    'PunctuationValue',
+    syntaxTypeOpen,
+    children => any(requireTerminalText(children[0]))
+  );
+  /** Its `>`, and the multiplier on it, as the delim css reads it. */
+  const syntaxTypeCloseDelim = node(
+    'PunctuationValue',
+    syntaxTypeClose,
+    children => any(requireTerminalText(children[0]))
+  );
+  /**
+   * A `<syntax>` type name, `<number>` or `<length>+`, as the argument of
+   * `attr()`'s `type()` spells it (css-values-5 §3.3): the three component
+   * values css reads it as, a `<` delim, the name and a `>` delim, written as
+   * authored (ledger N18). Neither bracket is a comparison here. In a
+   * declaration value its delims are the invalid-value-punctuation error, as in
+   * css (P48); `attr()`'s `type()` is not a value, so there they are not.
+   */
+  const syntaxTypeName = noTrivia(sequence(syntaxTypeOpenDelim, g.Keyword, syntaxTypeCloseDelim));
 
   /*
    * Value pieces are separated by grammar-owned whitespace. Keeping that token
@@ -2435,8 +2525,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * No bare `literal('/')` arm: a slash is only ever reachable BETWEEN two
    * operands, through the division operator in `MathSum`. So `p: / 1` fails for
    * the same structural reason a leading `,` does (DESIGN-DECISIONS P33/P34).
+   * A `<` reaches a piece only as a `<syntax>` type name (`syntaxTypeName`);
+   * anywhere else it is a comparison.
    */
-  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'), delimValue);
+  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'), syntaxTypeName, delimValue);
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
   /**
    * A `*` or `+` with no operand after it (`x: a *`): the delim it is in a CSS
@@ -2465,7 +2557,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     nestedAtRuleValueStart,
     {
       gate: state => valueStopOf(state) !== undefined,
-      combinator: functionConditionOperator
+      combinator: sequence(not(syntaxTypeOpen), functionConditionOperator)
     },
     {
       gate: state => valueStopOf(state) === 'condition',
@@ -2507,13 +2599,37 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     not(choice({ gate: state => valueStopOf(state) !== undefined, combinator: literal('=') })),
     gluedPiece
   );
+  /**
+   * An identifier or a `(` glued after a piece that ends where neither can
+   * continue it: adjacent component values (css-syntax-3 §5.4.7), `(1)px`,
+   * `(1, 2)px`, `foo(a)(b)`, written as authored, with no space (the
+   * `adjacent-component` marker). In a run with the `condition` stop a glued
+   * `and` / `or` is the keyword (`(a)and(b)`), not a piece; the gate runs only
+   * there.
+   */
+  const adjacentComponentBoundary = sequence(
+    leaf(peek(adjacentComponentStart), () => ({ kind: 'adjacent-component' })),
+    not(choice({
+      gate: state => valueStopOf(state) === 'condition',
+      combinator: choice(functionConditionAnd, functionConditionOr)
+    })),
+    g.valuePiece
+  );
   const gluedBacktickValueBoundary = noTrivia(sequence(
     BacktickJavaScript,
     optional(g.valuePiece)
   ));
+  /*
+   * A glued piece of either kind, behind one test, so a value's end pays one
+   * failed peek for both.
+   */
+  const gluedContinuation = sequence(
+    peek(gluedStart),
+    choice(gluedValueBoundary, adjacentComponentBoundary)
+  );
   const valueContinuation = choice(
     valueTriviaBoundary,
-    gluedValueBoundary,
+    gluedContinuation,
     gluedBacktickValueBoundary
   );
   /**
@@ -2597,10 +2713,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required accessor fact has been established.
       attempt(sequence(g.MixinReferenceChain, not(choice(productOperator, sumOperator)))),
-      oneOrMoreSep(
-        g.ValueSequence,
-        field('separator', regex(/,[ \t\n\r\f]*/))
-      )
+      oneOrMoreSep(g.ValueSequence, commaSeparator)
     ),
     (children, fields, _span, _rawChildren, triviaLog, state) => {
       const referenceValue = children.find(isReference);
@@ -2617,10 +2730,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'VariableValue',
     sequence(
       optional(whitespace),
-      oneOrMoreSep(
-        g.ValueSequence,
-        field('separator', regex(/,[ \t\n\r\f]*/))
-      ),
+      oneOrMoreSep(g.ValueSequence, commaSeparator),
       optional(sequence(literal(','), optional(whitespace)))
     ),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
@@ -3766,7 +3876,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const enclosedRaw = node(
     'EnclosedRaw',
-    noTrivia(choice(g.BlockCommentToken, enclosedText)),
+    noTrivia(choice(g.BlockCommentToken, enclosedText, enclosedDoubleSlash)),
     children => requireToken(children[0]).value
   );
   const EnclosedQuoted = node(
@@ -3786,26 +3896,52 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     enclosedInterpolationFromChildren
   );
+  const enclosedContentItems = many(choice(
+    g.BareVariableInterpolation,
+    enclosedRaw,
+    g.VariableInterpolation,
+    g.EnclosedQuoted,
+    g.EnclosedGroup
+  ));
   const EnclosedContent = node(
     'EnclosedContent',
-    noTrivia(many(choice(
-      g.BareVariableInterpolation,
-      enclosedRaw,
-      g.VariableInterpolation,
-      g.EnclosedQuoted,
-      g.EnclosedGroup
-    ))),
+    noTrivia(enclosedContentItems),
     enclosedInterpolationFromChildren
   );
+  /*
+   * The same content, read with the trivia of the place that reads it: a
+   * `selector(` argument's `enclosedTrivia`. It is not a rule because a rule
+   * reads with its own trivia, which is why `EnclosedContent` spells
+   * `noTrivia`. Its nested groups are `EnclosedGroup`s, so a `//` inside one
+   * (`selector(:is(a // c⏎))`) is still read as text.
+   */
+  const SelectorEnclosedContent = node(
+    'EnclosedContent',
+    enclosedContentItems,
+    enclosedInterpolationFromChildren
+  );
+  const enclosedFunctionOpen = token(noTrivia(sequence(g.QueryFunctionName, literal('('))));
   const EnclosedFunctionName = node(
     'EnclosedFunctionName',
-    token(noTrivia(sequence(g.QueryFunctionName, literal('(')))),
+    routed(),
     children => ({ name: functionNameFromOpener(children[0]) })
   );
+  /*
+   * A function-form `<general-enclosed>` reads its content with no trivia,
+   * except a `selector(` argument, which reads Less's `//` line comment as
+   * trivia (`enclosedTrivia`).
+   */
   const Enclosed = node(
     'Enclosed',
     choice(
-      noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))),
+      dispatch(
+        enclosedFunctionOpen,
+        caseOf(
+          'selector(',
+          parser({ trivia: enclosedTrivia }, sequence(g.EnclosedFunctionName, SelectorEnclosedContent, literal(')')))
+        ),
+        otherwise(noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))))
+      ),
       noTrivia(sequence(literal('('), g.EnclosedContent, literal(')')))
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => enclosedFrom(
@@ -3862,7 +3998,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SupportsBlock',
     sequence(
       g.SupportsAtKeyword,
-      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsCondition),
+      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsPrelude),
       literal('{'),
       g.blockBody,
       optional(g.Call),
@@ -3938,6 +4074,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MediaFeatureOpener = choice(
     g.mediaFeatureOpener,
     g.queryFeatureName
+  );
+
+  /*
+   * css's compared-head dispatch, then a range name it cannot read: one an
+   * interpolation opens (`400px <= @{d}`), read once as the name.
+   */
+  const QueryComparedHead = choice(
+    g.queryComparedHead,
+    g.queryRangeName
   );
   const QueryBareFeature = node(
     'QueryBareFeature',
@@ -4226,10 +4371,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const ContainerQueryPrelude = node(
     'ContainerQueryPrelude',
-    oneOrMoreSep(
-      ContainerConditionItem,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
+    oneOrMoreSep(ContainerConditionItem, commaSeparator),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
       commaListWithComments(children, fields, triviaLog, state, isValueNode)
   );
@@ -4381,9 +4523,33 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     token(g.PagePseudoRun),
     children => any(requireToken(children[0]).value)
   );
+  /**
+   * `url-prefix(` and `domain(` are the `@document` URL-matching functions
+   * (css-conditional-3, 2012 WD, §7). Their argument is an address, written
+   * quoted or unquoted as `url(`'s is (Gecko, their one implementation, reads
+   * both forms), so it is read as `url(`'s argument is, and a `//` in it
+   * (`url-prefix(http://example.com/)`) is part of the address, never a Less
+   * line comment. `regexp(` takes only a `<string>`, so it needs no case.
+   * An argument that is no address (`url-prefix(@{base}/a)`) is an ordinary
+   * call's, as `url(`'s variable forms are.
+   */
+  const RoutedUrlMatchFunction = node(
+    'Call',
+    noTrivia(sequence(
+      routed(),
+      plainUrlArgument
+    )),
+    (children, fields, span, _rawChildren, _triviaLog, state) => {
+      const address = plainUrlBodyFrom(fields);
+      const call = funcCall(functionNameFromOpener(children[0]), address === undefined ? [] : [address]);
+      return withSourceSpan(withFunctionScope(call, functionScopeOf(state)), span);
+    }
+  );
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
     caseOf('url(', RoutedPlainUrl),
+    caseOf('url-prefix(', choice(RoutedUrlMatchFunction, g.GenericFunction)),
+    caseOf('domain(', choice(RoutedUrlMatchFunction, g.GenericFunction)),
     caseOf('calc(', g.CalcFunction),
     when(endsWith('('), g.GenericFunction),
     when(matches(/:/), RoutedPageSelector),
@@ -4419,10 +4585,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const AtRulePreludeValue = node(
     'AtRulePreludeValue',
-    oneOrMoreSep(
-      g.AtRulePreludeValueTerm,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
+    oneOrMoreSep(g.AtRulePreludeValueTerm, commaSeparator),
     (children, fields) => {
       const values = children.filter(isValueNode);
       if (values.length === 1) {
@@ -5869,6 +6032,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     RoutedQueryFunction,
     QueryFeatureName,
     MediaFeatureOpener,
+    QueryComparedHead,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,

@@ -1,7 +1,7 @@
 import { defineFunction } from '@jesscss/core';
 import type { Fn } from '@jesscss/core';
 import { requireColor, withAlpha } from './color-helper.js';
-import { requireDimension } from './math-helper.js';
+import { requireDimension } from '../shared/math/math-helper.js';
 import { percentToFraction } from '../util/decimal.js';
 
 /** `fade(color, amount)` — SET alpha to `amount`%. Byte-faithful to `less/fade`. */

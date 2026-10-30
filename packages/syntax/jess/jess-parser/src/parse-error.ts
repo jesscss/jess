@@ -95,5 +95,29 @@ export class JessArithmeticOutsideExpressionError extends SyntaxError {
   }
 }
 
+/**
+ * A map written `{ key: value; }`: a `.jess` map is `#{ … }` (ledger P31) and a
+ * bare `{ … }` is the curly list (P51), so it is an error at the block, and the
+ * parse carries on with the map (P45).
+ */
+export class JessBareBraceMapError extends SyntaxError {
+  readonly code = 'parse/bare-brace-map' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'In .jess a map is written #{ … }; a bare { … } is a list passed as one value.';
+  readonly fix = 'Write the map as #{ key: value; }.';
+
+  /** The value the parse kept for it; a report whose value is not in the accepted tree is dropped. */
+  readonly recoveredValue: object;
+
+  constructor(offset: number, endOffset: number, recoveredValue: object) {
+    super('A map is written #{ … }.');
+    this.name = 'JessBareBraceMapError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.recoveredValue = recoveredValue;
+  }
+}
+
 /** A problem the grammar recovered from: a located error diagnostic the parse carries on past (ledger P45). */
-export type JessRecoveredError = JessSelectorCaptureArgumentError | LeadingSeparatorValueError | JessArithmeticOutsideExpressionError;
+export type JessRecoveredError = JessSelectorCaptureArgumentError | LeadingSeparatorValueError | JessArithmeticOutsideExpressionError | JessBareBraceMapError;

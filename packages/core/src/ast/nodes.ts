@@ -403,13 +403,28 @@ export function colorAlphaSlash(node: FunctionCall): Operation | null {
 /**
  * A delimiter-bearing value, e.g. `(#aaa * 3)`, `[a, b]` or the css-values-5
  * §3.1.1 `{}`-wrapped argument `{a, b}` (`curly`).
+ *
+ * A `curly` Block is the CURLY LIST: a list passed as one value or argument.
+ * Every dialect's spelling of that parses to it (owner 2026-10-09: *"we need a
+ * CurlyList AST node, sounds like... or a curly option for a List node"*;
+ * 2026-10-23: *"none of the languages should be parsing to that, it should be
+ * the {} list"*): css's `{a, b}` argument, Less `~(a, b)` and a `;` mixin
+ * argument group (P46), a Sass paren list Dart Sass writes without its parens
+ * and Sass's empty `()`, and `.jess` `{a, b}`. Delimiters are a `Block` fact,
+ * never a {@link List} flag, so the curly list is this node rather than a second
+ * list shape.
  */
 export interface Block extends SpanSlots {
   readonly type: 'Block';
   readonly value: ValueSlot;
   readonly delimiter: BlockDelimiter;
 
-  /** Less `~(...)` emits without the authored delimiters. */
+  /**
+   * The delimiters are pass syntax, not part of the value: the group is written
+   * as what it holds and read as that. Set on a curly list whose braces are not
+   * CSS's own (Less `~( … )`, a `;` group, a Sass paren list, `.jess` `{ … }`
+   * outside a CSS call's arguments); css's `{a, b}` argument keeps its braces.
+   */
   readonly escaped?: boolean;
 }
 
@@ -536,6 +551,13 @@ export type InterpPart = { lit: string } | { ref: ValueNode; unquote: boolean };
 export interface Interpolation extends SpanSlots {
   readonly type: 'Interpolation';
   readonly parts: InterpPart[];
+
+  /**
+   * Set only on an `.scss` string built with `+` whose leading operand is only
+   * known at evaluation (`$prefix + "-x"`; ledger V36): the string takes its
+   * quoting from that operand's value, as Dart Sass does. Absent otherwise.
+   */
+  readonly leadQuoting?: true;
 }
 
 /**
@@ -1694,6 +1716,14 @@ export const selectorCapture = (branches: readonly string[], components: readonl
 export const color = (src: string): Color => ({ type: 'Color', src });
 export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
   ({ type: 'Quoted', src, value, quote, escaped, interp });
+
+/**
+ * A condition as an operand, bare in a guard or in a paren group (`(1 = 1) + 1`):
+ * its truth, a value the author did not write as a keyword, so the operand rule
+ * (ledger V36) leaves the operation to `operate` (ledger P42).
+ */
+export const isConditionOperand = (node: ValueNode): boolean =>
+  node.type === 'Condition' || (node.type === 'Block' && 'type' in node.value && node.value.type === 'Condition');
 
 /** A string whose content is its authored `value` — one that does not interpolate. */
 export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;
