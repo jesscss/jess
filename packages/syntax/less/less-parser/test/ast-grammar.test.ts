@@ -4880,6 +4880,50 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps every item of a variable value that starts with a lookup and carries !important', () => {
+    const source =
+      '@font-stack: @typography[family], sans-serif !important; @border: #theme.colors()[primary] 1px solid !important;';
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(parseLessCst(source).errors).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'VariableDeclaration',
+          name: 'font-stack',
+          value: {
+            type: 'Important',
+            value: {
+              type: 'List',
+              sep: ',',
+              value: [
+                { type: 'Reference', raw: '@typography[family]' },
+                { type: 'Keyword', src: 'sans-serif' }
+              ]
+            }
+          }
+        },
+        {
+          type: 'VariableDeclaration',
+          name: 'border',
+          value: {
+            type: 'Important',
+            value: [
+              { type: 'Reference', raw: '#theme .colors()[primary]' },
+              { type: 'Dimension', src: '1px' },
+              { type: 'Keyword', src: 'solid' }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it('constructs generic static at-rule blocks and statements through canonical at-rule nodes', () => {
     const source =
       '@charset "utf-8"; @namespace url(http://www.w3.org/1999/xhtml); @namespace foo url(http://www.example.com); @font-face { font-family: Inter; src: url(font.woff2); } @media screen { .card { color: red; } } .outer { @layer utilities { color: blue; } }';
