@@ -3745,6 +3745,19 @@ function nodeContainsExactDescendant(node: CssCstNode, grammarType: string): boo
     && absoluteEnd(descendant) === absoluteEnd(node);
 }
 
+/*
+ * An SCSS value that is a map. The grammar reads a value map and a paren group
+ * with one rule, `MapOrGroup`; a map is the one with its first entry's `:`
+ * among its own children.
+ */
+function scssValueIsMap(value: CssCstNode): boolean {
+  const paren = firstDescendantNodeOf(value, 'MapOrGroup');
+  return paren !== undefined
+    && absoluteStart(paren) === absoluteStart(value)
+    && absoluteEnd(paren) === absoluteEnd(value)
+    && hasLeafChild(paren, ':');
+}
+
 function variableDeclarationIsMapLike(node: CssCstNode, language: JessLanguage): boolean {
   if (language === 'css') {
     return false;
@@ -3754,7 +3767,7 @@ function variableDeclarationIsMapLike(node: CssCstNode, language: JessLanguage):
   }
   if (language === 'scss') {
     const value = firstChildNodeOf(node, 'Value');
-    return node.grammarType === 'VariableDeclaration' && value !== undefined && nodeContainsExactDescendant(value, 'Collection');
+    return node.grammarType === 'VariableDeclaration' && value !== undefined && scssValueIsMap(value);
   }
   const value = firstChildNodeMatching(node, MAP_LIKE_VALUE_TYPES);
   return value !== undefined && nodeContainsExactDescendant(value, 'Collection');
