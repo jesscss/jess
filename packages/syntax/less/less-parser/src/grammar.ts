@@ -2047,8 +2047,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * paren). `url(` and `calc(` are not one: each has its own grammar, so a
    * statement or call never opens on them.
    */
+  const notUrlOrCalcOpen = not(keywords(['url(', 'calc('], { caseInsensitive: true }));
   const genericFunctionOpen = token(noTrivia(sequence(
-    not(keywords(['url(', 'calc('], { caseInsensitive: true })),
+    notUrlOrCalcOpen,
     g.InterpolatedValueStart,
     literal('(')
   )));
@@ -2164,13 +2165,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * A statement's leading identifier, read once for the call, declaration or
    * nested rule it starts: `name(` with the paren glued is a call's opener, a
    * bare `name` a property or a type selector. `url(` / `calc(` open no
-   * statement, and a name glued to `|` is a namespace prefix (`svg|a`), so
-   * those fail here and reach the statement arms after the dispatch.
+   * statement, so they fail here and reach the statement arms after the
+   * dispatch, as they fail `genericFunctionOpen`.
    */
   const statementHead = token(noTrivia(sequence(
-    not(keywords(['url(', 'calc('], { caseInsensitive: true })),
+    notUrlOrCalcOpen,
     g.IdentToken,
-    choice(literal('('), not(literal('|')))
+    optional(literal('('))
   )));
   /*
    * A head that ends in an unescaped `(` opens a call. `a\(` ends in an escaped
@@ -3051,20 +3052,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // declaration or falling back to a second parser.
     optional(choice(g.ValueListWithPriority, rejectedValueStart))
   ));
-  /*
-   * The declaration whose name is a statement's routed identifier, when a gap
-   * follows its colon (`color: red`, `color : red`). A selector pseudo is glued
-   * to its colon, so no nested rule reads this head (ledger P44): the arm goes
-   * ahead of the nested rule, and a glued head (`color:red`, `div:hover`) fails
-   * it at the colon and reaches the rule first. Its expected entry is the
-   * colon's, the one the declaration it stands for reports.
-   */
+  /* A colon a gap follows. Its expected entry is the colon's, as `literal(':')` reports it. */
   const spacedDeclarationColon = label('":"', regex(/:(?=[ \t\n\r\f])/));
   const StandardDeclaration = node(
     'Declaration',
     noTrivia(sequence(DeclarationHead, declarationValue)),
     declarationFromChildren
   );
+  /*
+   * The declaration whose name is a statement's routed identifier, when a gap
+   * follows its colon (`color: red`, `color : red`). A selector pseudo is glued
+   * to its colon, so no nested rule reads this head (ledger P44): the arm goes
+   * ahead of the nested rule, and a glued head (`color:red`, `div:hover`) fails
+   * it at the colon and reaches the rule first.
+   */
   const SpacedDeclaration = node(
     'Declaration',
     noTrivia(sequence(
@@ -3702,11 +3703,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * An identifier-led statement, its name read once by `statementHead`. The
    * head picks a call or `each(` / `if(`, or a custom property, whose `--` name
-   * no selector can start; any other head is a declaration or a nested rule,
-   * and each arm replays the head (`routed()`) instead of reading it again.
-   * Parseman gates a routed arm on the character after the head, so the P44
-   * spaced declaration is entered only at a `:` or a gap. A failed branch
-   * fails the statement: no other arm reads an identifier.
+   * no selector can start; any other head is a declaration or a nested rule.
+   * The calls and the P44 spaced declaration replay the head (`routed()`);
+   * the nested rule and the glued declaration read it again from the
+   * statement start, through their own tokens. Parseman gates the routed
+   * spaced arm on the character after the head, so it is entered only at a
+   * `:` or a gap. A failed branch fails the statement, committed, as a failed
+   * call already did: no other arm reads an identifier.
    */
   const nestedIdentStatementArms = choice(spacedDeclarationItem, g.NestedRulesetWithExtends, declarationItem);
   const nestedIdentStatement = transform(
@@ -3720,6 +3723,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     ([, statement]) => statement
   );
+  // The root twin of `nestedIdentStatement`: an absolute rule, and a declaration the input's end may close.
   const rootIdentStatementArms = choice(rootSpacedDeclarationItem, g.RulesetWithExtends, rootDeclarationItem);
   const rootIdentStatement = transform(
     dispatch(
@@ -4462,8 +4466,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // percentage selectors as selector facts.
   // Gating note: block entries overlap on ident-led declarations and
   // function-call statements. The shared prefix is the property/call name, but
-  // the deciding delimiter is `:` versus `(` / `;`, so a cosmetic dispatch on
-  // the identifier would commit too early.
+  // the deciding delimiter is `:` versus `(` / `;`. A dispatch on the
+  // identifier (as `nestedIdentStatement`) would commit a failed declaration
+  // here; this body keeps the call opener and the declaration as siblings.
   const KeyframeBlock = node(
     'KeyframeBlock',
     sequence(

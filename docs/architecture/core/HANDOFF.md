@@ -1660,8 +1660,10 @@ The required no-backtracking design is:
    its `{` before choosing qualified rule; it must never parse a declaration
    value and retry it as a selector. The old Less
    `rulesetNotDeclaration` regex preflight is gone: Less reads the head once
-   (`statementHead`) and gates its replaying arms on the next character; the
-   shared CSS-owned shape is still the target.
+   (`statementHead`), its calls and spaced declaration replay it, and the
+   spaced declaration is gated on the next character; the nested rule and the
+   glued declaration still read the name again. The shared CSS-owned shape is
+   still the target.
 4. `dispatch(...)` is only for a consumed opener whose returned value chooses
    the family. Use `choice(...)` for a later-delimiter decision. `routed()` is
    for a selected branch to replay its already-consumed opener, not a reason to
