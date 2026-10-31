@@ -2,7 +2,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { mergeWith } from 'lodash-es';
 import { getConfigWithMeta, type ConfigWithMeta } from './config.js';
 import {
   Context,
@@ -34,6 +33,7 @@ import {
   type OutputOptions
 } from 'styles-config';
 import { outputDiagnostics } from './diagnostics.js';
+import { mergeConfig } from './merge-config.js';
 
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */
@@ -66,8 +66,6 @@ export type ConfigOptions = StylesConfig & {
   /** Error-display config (scalar tier or object). Default tier: `frame`. */
   errors?: ErrorsConfigInput;
 };
-
-const { isArray } = Array;
 
 function thrownMessage(err: unknown): string {
   return err instanceof JessError
@@ -345,22 +343,6 @@ const createBaseConfig = (): ConfigOptions => ({
   language: {}
 });
 
-/**
- * Customizer for mergeWith that concatenates arrays instead of replacing them.
- * `output` is one options object or a list of entries: merged with a list, an
- * object joins it as a file-less entry, in merge order, so a later one still
- * wins (`readOutput`). An empty object adds nothing.
- */
-function arrayConcatCustomizer(objValue: unknown, srcValue: unknown, key: string): unknown {
-  if (isArray(objValue) && isArray(srcValue)) {
-    return [...objValue, ...srcValue];
-  }
-  if (key === 'output' && (isArray(objValue) || isArray(srcValue))) {
-    return [objValue, srcValue].flat().filter(entry => isObjectRecord(entry) && Object.keys(entry).length > 0);
-  }
-  return undefined;
-}
-
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') {
     return JSON.stringify(value);
@@ -632,11 +614,7 @@ export class Compiler {
   private readonly hooks: CompilerHooks = {}
   ) {
     this.opts = opts;
-    this.baseOptsNormalized = mergeWith(
-      createBaseConfig(),
-      opts,
-      arrayConcatCustomizer
-    );
+    this.baseOptsNormalized = mergeConfig(createBaseConfig(), opts);
   }
 
   private resolveEffectiveConfig(
@@ -646,18 +624,8 @@ export class Compiler {
   ): ResolvedRenderConfig {
     const entryFolder: ConfigWithMeta = filePath ? getConfigWithMeta(path.dirname(filePath)) : { config: {} };
     const { config: loadedFileConfig, configFilePath } = entryFolder;
-    const explicitConfig: ConfigOptions = mergeWith(
-      createBaseConfig(),
-      this.baseOptsNormalized,
-      renderOptions || {},
-      arrayConcatCustomizer
-    );
-    const effectiveConfig: ConfigOptions = mergeWith(
-      createBaseConfig(),
-      loadedFileConfig,
-      explicitConfig,
-      arrayConcatCustomizer
-    );
+    const explicitConfig: ConfigOptions = mergeConfig(createBaseConfig(), this.baseOptsNormalized, renderOptions);
+    const effectiveConfig: ConfigOptions = mergeConfig(createBaseConfig(), loadedFileConfig, explicitConfig);
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the

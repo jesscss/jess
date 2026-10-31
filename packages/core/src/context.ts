@@ -1344,6 +1344,10 @@ export class Context {
     }
 
     const source = await this.readSource(resolvedPath, locator);
+    const loading = plugin.loadParser?.();
+    if (loading) {
+      await loading;
+    }
     const { result: parseResult, settings } = this.parseSource(plugin, resolvedPath, source, importOptions);
 
     // Collect normalized errors and warnings from plugin
@@ -1528,6 +1532,10 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
+    const loading = plugin.loadParser?.();
+    if (loading) {
+      await loading;
+    }
     const { result, settings } = this.parseSource(plugin, virtualPath, content);
     if (sourceOffset || sourceEnd !== undefined) {
       const owner = { sourceOffset, sourceEnd };

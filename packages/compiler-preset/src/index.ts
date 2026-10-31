@@ -6,10 +6,8 @@ import {
 } from '@jesscss/compiler';
 import { AbstractPlugin, type ISafeParseResult, parserDiagnostic, type PluginInterface } from '@jesscss/core';
 import { parse as parseCss } from '@jesscss/css-parser';
-import jessPlugin from '@jesscss/plugin-jess';
 import { LessPluginResolver, prepareLessRootSource } from '@jesscss/plugin-less';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
-import scssPlugin from '@jesscss/plugin-scss';
 
 export type { ConfigOptions } from '@jesscss/compiler';
 
@@ -37,10 +35,100 @@ export interface DefaultCompilerStack {
   dispose(): void;
 }
 
+/** The `AbstractPlugin` path handling a deferred dialect plugin keeps until it loads. */
+class DefaultPathPlugin extends AbstractPlugin {
+  name = 'default-paths';
+}
+
+const defaultPaths = new DefaultPathPlugin();
+
+/**
+ * A dialect plugin whose package, and the grammar it loads, is imported only
+ * when Context first parses a document of its dialect (`loadParser`), so a
+ * compile loads no grammar it does not use.
+ *
+ * Until then it answers as `AbstractPlugin`, as the real plugin does for any
+ * path that is not one of its provided modules. A plugin that `providesModules`
+ * resolves its `#…` aliases and `@…` package spellings itself, and only a
+ * candidate with a `#` or `@` can be one (`ProvidedModules.resolve`), so such a
+ * candidate loads the plugin first.
+ *
+ * Once loaded, every member of the real plugin is copied onto this one, its
+ * methods bound to the real plugin, for the rest of the compile that loaded
+ * it; the stack hands later compiles the real plugin itself (`plugin`).
+ *
+ * ponytail: before it loads, it claims no module file (`canImportModule`), so a
+ * provided module reached by a path with no `#` or `@` is untrusted until the
+ * plugin loads. It fails closed. Tracked in jesscss/jess#518.
+ */
+class DeferredDialectPlugin implements PluginInterface {
+  plugin: PluginInterface | undefined;
+  #loading: Promise<void> | undefined;
+
+  constructor(
+    readonly name: string,
+    readonly supportedExtensions: string[],
+    private readonly providesModules: boolean,
+    private readonly create: () => Promise<PluginInterface>
+  ) {}
+
+  loadParser(): Promise<void> | undefined {
+    if (this.plugin) {
+      return undefined;
+    }
+    return this.#loading ??= this.create().then((plugin) => {
+      this.plugin = plugin;
+      adoptMembers(this, plugin);
+    });
+  }
+
+  safeParse(): ISafeParseResult {
+    throw new Error(`The ${this.name} plugin parses only after Context awaits its loadParser()`);
+  }
+
+  resolve(paths: string | string[], currentDir: string, searchPaths: string[]): string[] | Promise<string[] | null> {
+    if (this.providesModules && (typeof paths === 'string' ? [paths] : paths).some(candidate => /[#@]/.test(candidate))) {
+      return Promise.resolve(this.loadParser()).then(() => {
+        const plugin = this.plugin;
+        return plugin?.resolve ? plugin.resolve(paths, currentDir, searchPaths) : defaultPaths.resolve(paths, currentDir, searchPaths);
+      });
+    }
+    return defaultPaths.resolve(paths, currentDir, searchPaths);
+  }
+
+  locate(candidates: string[], currentDir: string): string | null {
+    return defaultPaths.locate(candidates, currentDir);
+  }
+
+  getSource(absoluteFilePath: string): Promise<string> {
+    return defaultPaths.getSource(absoluteFilePath);
+  }
+}
+
+/** Copy every member of `plugin`, own and inherited, onto `target`, methods bound to `plugin`. */
+function adoptMembers(target: object, plugin: PluginInterface): void {
+  let source: unknown = plugin;
+  while (typeof source === 'object' && source !== null && source !== Object.prototype) {
+    for (const key of Reflect.ownKeys(source)) {
+      if (key === 'constructor' || Object.prototype.hasOwnProperty.call(target, key)) {
+        continue;
+      }
+      const value: unknown = Reflect.get(plugin, key);
+      Object.defineProperty(target, key, {
+        value: typeof value === 'function' ? value.bind(plugin) : value,
+        writable: true,
+        configurable: true,
+        enumerable: true
+      });
+    }
+    source = Object.getPrototypeOf(source);
+  }
+}
+
 class DefaultCompilerStackImpl implements DefaultCompilerStack {
   private lessPluginResolver = new LessPluginResolver();
-  private jessPluginInstance: PluginInterface | undefined;
-  private scssPluginInstance: PluginInterface | undefined;
+  private jessPluginInstance: DeferredDialectPlugin | undefined;
+  private scssPluginInstance: DeferredDialectPlugin | undefined;
   private readonly cssPlugin = new CssPlugin();
 
   readonly hooks: CompilerHooks;
@@ -57,21 +145,15 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
   }
 
   private getOrCreateJessPlugin(): PluginInterface {
-    let plugin = this.jessPluginInstance;
-    if (!plugin) {
-      plugin = jessPlugin();
-      this.jessPluginInstance = plugin;
-    }
-    return plugin;
+    const deferred = this.jessPluginInstance ??= new DeferredDialectPlugin('jess', ['.jess'], false,
+      async () => (await import('@jesscss/plugin-jess')).default());
+    return deferred.plugin ?? deferred;
   }
 
   private getOrCreateScssPlugin(): PluginInterface {
-    let plugin = this.scssPluginInstance;
-    if (!plugin) {
-      plugin = scssPlugin();
-      this.scssPluginInstance = plugin;
-    }
-    return plugin;
+    const deferred = this.scssPluginInstance ??= new DeferredDialectPlugin('scss', ['.scss'], true,
+      async () => (await import('@jesscss/plugin-scss')).default());
+    return deferred.plugin ?? deferred;
   }
 
   private defaultPlugins(context: CompilerPluginContext): readonly PluginInterface[] {
@@ -87,7 +169,7 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
   dispose(): void {
     this.lessPluginResolver.dispose();
     try {
-      void this.scssPluginInstance?.dispose?.();
+      void this.scssPluginInstance?.plugin?.dispose?.();
     } catch {
       // ignore cleanup failures
     }
