@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "deno": "^2.6.8",
+    "deno": "2.9.6",
     "typescript": "^5.0.0",
     "vitest": "^4.1.0"
   },

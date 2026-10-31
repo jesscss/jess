@@ -294,10 +294,10 @@ and `denied.invalid`, so the app-level check is out of the way, and:
 Without the plugin's own guard, an unrestricted `--allow-net` would let the
 first probe reach the network and fail the test; that is what makes it a proof.
 The same script run under an unrestricted `--allow-net` proves the guard (§4):
-the plugin's constructor refuses to start, and no probe runs. Deno is found on
-`PATH` first, then the binary of the `deno` devDependency (the order
-`@jesscss/plugin-js` uses); the tests are skipped, with that reason, only when
-neither runs.
+the plugin's constructor refuses to start, and no probe runs. Deno is the
+binary of the pinned `deno` devDependency first, then a Deno on `PATH` (the
+order `@jesscss/plugin-js` uses); the tests are skipped, with that reason, only
+when neither runs.
 
 The Node side — the claim (fetched, left CSS for an extensionless URL, refused
 for one with an extension or that must load), https-only, IP-literal hosts,
