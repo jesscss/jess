@@ -5327,6 +5327,8 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '.-();',
       '#-();',
+      '.-;',
+      '#-;',
       '.-() { color: red; }'
     ]) {
       expect(

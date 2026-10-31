@@ -3632,17 +3632,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // whether the retained structure is a mixin definition/call or a ruleset.
   // Keep the unsupported dash-only spelling separate because it has a dedicated
   // public diagnostic and cannot form the shared selector prefix.
-  const UnsupportedDashOnlyMixin = node(
-    'UnsupportedMixinName',
-    noTrivia(choice(
-      sequence(choice(literal('.'), literal('#')), literal('-'), literal('('), optional(g.MixinArguments), literal(')')),
-      sequence(choice(literal('.'), literal('#')), literal('-'), literal(';'))
-    )),
-    (_children, _fields, span) => {
-      throw new LessUnsupportedMixinNameError(span.start, span.end);
-    }
+  /**
+   * A `.` / `#` statement. The arms share their first character and part on
+   * the second: `mixinName` needs a name after the optional `-`, where the
+   * dash-only spelling has its `(` or `;`, so no input reaches both. The common
+   * arm goes first, so `.r { }` never enters the dash-only node.
+   */
+  const mixinStatement = choice(
+    g.ClassIdStatement,
+    node(
+      'UnsupportedMixinName',
+      noTrivia(sequence(
+        choice(literal('.'), literal('#')),
+        literal('-'),
+        choice(sequence(literal('('), optional(g.MixinArguments), literal(')')), literal(';'))
+      )),
+      (_children, _fields, span) => {
+        throw new LessUnsupportedMixinNameError(span.start, span.end);
+      }
+    )
   );
-  const mixinStatement = choice(UnsupportedDashOnlyMixin, g.ClassIdStatement);
   // Chevrotain disambiguated a nested rule from a declaration on the colon's
   // trailing trivia, not a full selector speculation: `foo: bar` (colon then
   // whitespace) is always a declaration, never a selector, because a selector
