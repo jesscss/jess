@@ -22,6 +22,11 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./css": {
+      "types": "./lib/css.d.ts",
+      "import": "./lib/css.js",
+      "require": "./lib/css.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

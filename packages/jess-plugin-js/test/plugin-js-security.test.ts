@@ -21,7 +21,7 @@ describe('@jesscss/plugin-js security', () => {
     plugins.length = 0;
   });
 
-  it('denies environment access by default in broker mode', async () => {
+  it('denies environment access by default', async () => {
     const root = makeTmpDir('jess-js-root-');
     const modulePath = path.join(root, 'env-test.ts');
     fs.writeFileSync(
@@ -146,59 +146,43 @@ describe('@jesscss/plugin-js security', () => {
     const mod = await plugin.import(probePath);
     await expect(mod.readRaw(leakFile)).resolves.toBe('DENIED');
 
-    // Importing a module that merely sits under some node_modules is also denied.
+    // Importing a module that merely sits under some node_modules is also denied: Deno reports it not found.
     const outsidePkg = path.join(siblingNm, 'pkg', 'index.js');
     fs.mkdirSync(path.dirname(outsidePkg), { recursive: true });
     fs.writeFileSync(outsidePkg, 'export const value = 1;', 'utf8');
-    await expect(plugin.import(outsidePkg)).rejects.toThrow(/outside jsReadRoot/);
+    await expect(plugin.import(outsidePkg)).rejects.toThrow(/ENOENT|No such file/);
   });
 
   /*
-   * A plugin the stylesheet names (`@plugin "x"`, `@use` of a JS module) is resolved by
-   * package resolution, which can land outside jsReadRoot's ancestor chain: a corpus
-   * checked out beside the project, its plugin installed in the project's
-   * node_modules. The author asked for that package, so its own root — the nearest
-   * package directory in a node_modules above the resolved realpath — is readable,
-   * and only it.
+   * A script outside every read root is not loaded (ledger A19: one read root,
+   * no grant for a package a stylesheet names outside it). Deno answers its
+   * path "not found".
    */
-  it('loads a named plugin from the package it resolved into, outside jsReadRoot', async () => {
+  it('refuses a named plugin that resolved outside the read root', async () => {
     const corpus = makeTmpDir('jess-js-corpus-');
     const project = makeTmpDir('jess-js-proj-');
     const pkgRoot = path.join(project, 'node_modules', 'named-plugin');
-    fs.mkdirSync(path.join(pkgRoot, 'lib'), { recursive: true });
+    fs.mkdirSync(pkgRoot, { recursive: true });
     fs.writeFileSync(path.join(pkgRoot, 'package.json'), JSON.stringify({ name: 'named-plugin', type: 'module' }), 'utf8');
-    fs.writeFileSync(path.join(pkgRoot, 'lib', 'helper.js'), 'export const base = 40;', 'utf8');
-    fs.writeFileSync(path.join(pkgRoot, 'data.json'), JSON.stringify({ extra: 2 }), 'utf8');
     const modulePath = path.join(pkgRoot, 'index.js');
-    fs.writeFileSync(
-      modulePath,
-      [
-        'import { base } from "./lib/helper.js";',
-        'export function value() { return base + JSON.parse(Deno.readTextFileSync(new URL("./data.json", import.meta.url))).extra; }'
-      ].join('\n'),
-      'utf8'
-    );
+    fs.writeFileSync(modulePath, 'export function value() { return 42; }', 'utf8');
     const plugin = jsPlugin({ jsReadRoot: corpus }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
-    await expect(mod.value()).resolves.toBe(42);
+    await expect(plugin.import(modulePath)).rejects.toThrow(/ENOENT|No such file/);
   });
 
-  it('keeps a sibling package the stylesheet did not name denied', async () => {
+  it('keeps the files of a package outside the read root unreadable', async () => {
     const corpus = makeTmpDir('jess-js-corpus-');
     const project = makeTmpDir('jess-js-proj-');
     const nm = path.join(project, 'node_modules');
-    const pkgRoot = path.join(nm, 'named-plugin');
     const sibling = path.join(nm, 'other-package');
-    fs.mkdirSync(pkgRoot, { recursive: true });
     fs.mkdirSync(sibling, { recursive: true });
-    fs.writeFileSync(path.join(pkgRoot, 'package.json'), JSON.stringify({ name: 'named-plugin' }), 'utf8');
     fs.writeFileSync(path.join(sibling, 'package.json'), JSON.stringify({ name: 'other-package' }), 'utf8');
     const secret = path.join(sibling, 'secret.json');
     fs.writeFileSync(secret, JSON.stringify({ stolen: true }), 'utf8');
     const loose = path.join(nm, 'leak.json');
     fs.writeFileSync(loose, JSON.stringify({ stolen: true }), 'utf8');
-    const modulePath = path.join(pkgRoot, 'index.js');
+    const modulePath = path.join(corpus, 'probe.js');
     fs.writeFileSync(
       modulePath,
       'export function readRaw(p) { try { return Deno.readTextFileSync(p); } catch { return "DENIED"; } }',

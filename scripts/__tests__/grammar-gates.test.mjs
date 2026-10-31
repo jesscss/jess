@@ -96,45 +96,50 @@ test('removing grammar-source comments moves the ratio but not the bytes, and do
 });
 
 test('an over-budget artifact with no named debt fails as OVER BUDGET', () => {
-  const baseline = clone(artifactBaseline);
-  delete baseline.grammars.css.artifacts[AST_JS].overBudget;
-  const { failures } = compareArtifacts(measured, baseline);
+  const over = clone(measured);
+  over.css.artifacts[AST_JS].bytes = over.css.sourceBytes * 6;
+  const { failures } = compareArtifacts(over, artifactBaseline);
   assert.ok(failures.some(f => f.startsWith(`css ${AST_JS}: OVER BUDGET`)), failures.join('\n'));
 });
 
 test('over-budget debt does not carry over to another parseman version: a bump must bring every artifact within 5x', () => {
-  const { failures } = compareArtifacts(measured, artifactBaseline, '0.56.0');
+  const over = clone(measured);
+  over.css.artifacts[AST_JS].bytes = over.css.sourceBytes * 6;
+  const indebted = clone(artifactBaseline);
+  Object.assign(indebted.grammars.css.artifacts[AST_JS], { bytes: over.css.artifacts[AST_JS].bytes, ratio: 6, overBudget: 'named debt' });
+  assert.deepEqual(compareArtifacts(over, indebted).failures, []);
+  const { failures } = compareArtifacts(over, indebted, '0.58.0');
   assert.ok(failures.some(f => f.startsWith(`css ${AST_JS}: OVER BUDGET`) && f.includes('does not carry over')), failures.join('\n'));
   const within = clone(measured);
   within.css.artifacts[AST_JS].bytes = within.css.sourceBytes * 5;
-  const bumped = compareArtifacts(within, artifactBaseline, '0.56.0');
+  const bumped = compareArtifacts(within, indebted, '0.58.0');
   assert.deepEqual(bumped.failures, []);
-  const ratcheted = ratchetArtifacts(within, artifactBaseline, '0.56.0');
-  assert.equal(ratcheted.debtParseman, '0.56.0');
+  const ratcheted = ratchetArtifacts(within, indebted, '0.58.0');
+  assert.equal(ratcheted.debtParseman, '0.58.0');
   assert.equal(ratcheted.grammars.css.artifacts[AST_JS].overBudget, undefined);
-  assert.deepEqual(compareArtifacts(within, ratcheted, '0.56.0'), { failures: [], unbanked: [] });
+  assert.deepEqual(compareArtifacts(within, ratcheted, '0.58.0'), { failures: [], unbanked: [] });
 });
 
 test('a tables-only grammar with no named debt fails as TABLES ONLY', () => {
   const baseline = clone(artifactBaseline);
-  delete baseline.grammars.less.tablesOnly;
+  delete baseline.grammars.jess.tablesOnly;
   const { failures } = compareArtifacts(measured, baseline);
-  assert.ok(failures.some(f => f.startsWith(`less ${AST_JS}: TABLES ONLY`)), failures.join('\n'));
+  assert.ok(failures.some(f => f.startsWith(`jess ${AST_JS}: TABLES ONLY`)), failures.join('\n'));
 });
 
 test('regaining assembly is unbanked until pinned; the ratchet pins it and drops the debt', () => {
   const doctored = clone(measured);
-  doctored.less.artifacts[AST_JS].assemblyFunctions = 1217;
+  doctored.jess.artifacts[AST_JS].assemblyFunctions = 1217;
   const { failures, unbanked } = compareArtifacts(doctored, artifactBaseline);
   assert.deepEqual(failures, []);
-  assert.ok(unbanked.some(u => u.startsWith(`less ${AST_JS}: assembly grew`)), unbanked.join('\n'));
-  assert.ok(unbanked.some(u => u.startsWith('less: lib/grammar/ast.js carries 1217')), unbanked.join('\n'));
+  assert.ok(unbanked.some(u => u.startsWith(`jess ${AST_JS}: assembly grew`)), unbanked.join('\n'));
+  assert.ok(unbanked.some(u => u.startsWith('jess: lib/grammar/ast.js carries 1217')), unbanked.join('\n'));
   const ratcheted = ratchetArtifacts(doctored, artifactBaseline);
-  assert.equal(ratcheted.grammars.less.tablesOnly, undefined);
+  assert.equal(ratcheted.grammars.jess.tablesOnly, undefined);
   assert.deepEqual(compareArtifacts(doctored, ratcheted), { failures: [], unbanked: [] });
   const lost = clone(doctored);
-  lost.less.artifacts[AST_JS].assemblyFunctions = 0;
-  assert.ok(compareArtifacts(lost, ratcheted).failures.some(f => f.startsWith(`less ${AST_JS}: ASSEMBLY LOST`)));
+  lost.jess.artifacts[AST_JS].assemblyFunctions = 0;
+  assert.ok(compareArtifacts(lost, ratcheted).failures.some(f => f.startsWith(`jess ${AST_JS}: ASSEMBLY LOST`)));
 });
 
 test('a new or missing artifact fails', () => {

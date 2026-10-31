@@ -49,6 +49,7 @@ which is a harness limitation, not a syntax one.)
 | jess parser parse-bench | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
 | **per-grammar parse cost, CI-gated** | `pnpm run check:grammar-speed` | marginal instructions per AST parse for each grammar against `scripts/grammar-speed.baseline.json`. See §6. |
 | **per-grammar artifact size + precompiled assembly, CI-gated** | `pnpm run check:grammar-artifacts` | bytes per source byte (parseman's 5× budget) and precompiled-assembly count per `lib/grammar/*.js`. See §6. |
+| **CLI cold start** vs lessc 4.x | `pnpm run measure:cli:cold-start [--fixture bootstrap4] [--base <jess checkout>]` | spawn-to-exit CLI time, module load, first and second compile in a fresh process; every sample a new process, arms interleaved. See §7. |
 | **byte identity of a refactor** (not timing) | `pnpm run compare:less:builds -- --corpus --record .scratch/corpus-baseline.json` before the change, `... --corpus --baseline .scratch/corpus-baseline.json` after rebuilding | every corpus fixture × 6 output modes, compared by name. See §5. |
 
 `measure:less:hotpath` is the canonical jess total-render harness. `perf:gate`
@@ -115,6 +116,23 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
   - It runs V8's interpreter (`--jitless`). The script header gives the JIT measurements that ruled the JIT out on CI, and what the interpreter does not see.
   - The baseline (`scripts/grammar-speed.baseline.json`) records its environment: counter, platform, Node version and method. It is compared only under that environment. The CI job pins Node and passes `--require-env`.
   - A faster result must be banked with `--lower`. Raising a value is a reviewed edit. `--propose` writes `<baseline>.new` for a new environment.
+
+## 7. measure:cli:cold-start — a one-file CLI run, jess against lessc 4.x
+
+- Script: `scripts/measure-cli-cold-start.mjs`. Build first (`pnpm run build:release`).
+- Every sample is a fresh `node` process. Per round it times `jess <fixture> <out>` and `lessc <fixture> <out>` spawn to exit (`cli`), then, in another fresh process, the imports the CLI needs to compile (`load`), the first compile and the second compile. It prints the median of `--runs` rounds (default 21), and the arm order alternates each round.
+- `--fixture benchmark` (default) is `packages/jess/benchmark/benchmark.less`. `--fixture bootstrap4` is the less.js corpus `bootstrap4.less` with its `styles.config.cjs` (`math: 0`), resolving `bootstrap-less-port` from `packages/less-corpus-fixture-deps`; lessc gets `--math=always` and that package as an include path, so both compile the same sources.
+- `--base <checkout>` adds another built jess checkout as an arm, for a before/after in one interleaved run.
+- Reference point (2026-10-31, parseman 0.57.0, node 24.11.1, lessc 4.9.1, M4 Pro at load averages 4–8, so indicative), median of 21, ms:
+
+| Fixture | Arm | CLI | Load | First compile | Second compile |
+|---|---|---|---|---|---|
+| `benchmark.less` | jess `98e132094` | 346.1 | 143.1 | 133.6 | 62.3 |
+| | jess, dialect plugins loaded on demand | 236.7 | 62.6 | 141.9 | 64.7 |
+| | lessc 4.9.1 | 138.3 | 23.0 | 92.4 | 49.9 |
+| `bootstrap4.less` | jess `98e132094` | 695.8 | 147.4 | 480.7 | 299.4 |
+| | jess, dialect plugins loaded on demand | 593.0 | 66.9 | 506.1 | 297.7 |
+| | lessc 4.9.1 | 206.1 | 23.6 | 149.7 | 107.6 |
 
 ## Fixtures (the standard inputs)
 

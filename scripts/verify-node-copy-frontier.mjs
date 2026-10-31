@@ -21,13 +21,13 @@ const guardEvalCopyPattern = /\bcopyGuardForEval\b/u;
 const allowedOrdinaryClonePatterns = [
   {
     /*
-     * Not a jess tree node. runtime-worker.ts is the sandboxed Deno worker for
-     * Less 4.x `@plugin` compatibility; it declares its OWN local `Unit` class
+     * Not a jess tree node. plugin-runtime.ts is the sandboxed Deno script
+     * runtime for Less 4.x `@plugin` compatibility; it declares its OWN local `Unit` class
      * mirroring less.js, and `unitOf` clones that value object. The copy
      * frontier invariant is about the core evaluation spine (V8-ARCHITECTURE
-     * §5), which this worker is not part of.
+     * §5), which this runtime is not part of.
      */
-    file: 'packages/jess-plugin-js/src/runtime-worker.ts',
+    file: 'packages/jess-plugin-js/src/plugin-runtime.ts',
     pattern: /\breturn unit\.clone\(\);/u
   }
 ];

@@ -130,11 +130,61 @@ export interface ModuleConfigRejection {
   message: string;
 }
 
+/**
+ * Where a plugin instance came from: the module, its export (a factory) and
+ * the arguments the factory was called with. A compile that runs in the
+ * `@jesscss/plugin-js` sandbox recreates the plugin from this; the instance
+ * itself never crosses.
+ */
+export interface PluginModuleIdentity {
+  module: string;
+  exportName: string;
+  args: readonly unknown[];
+}
+
+/**
+ * Records on `plugin` the factory that made it ({@link PluginModuleIdentity}).
+ * A plugin factory (a Jess plugin, or a Less plugin object passed in options)
+ * calls this with its own `import.meta.url`, its export name and its arguments. Trailing `undefined` arguments are dropped, so the factory
+ * sees its own defaults when it runs again.
+ */
+export const recordPluginModule = <P extends object>(
+  plugin: P,
+  module: string,
+  exportName: string,
+  args: readonly unknown[]
+): P => {
+  let end = args.length;
+  while (end > 0 && args[end - 1] === undefined) {
+    end--;
+  }
+  Object.defineProperty(plugin, 'pluginModule', {
+    value: { module, exportName, args: args.slice(0, end) },
+    configurable: true
+  });
+  return plugin;
+};
+
+/**
+ * What a script plugin is told about the render that reaches a script: how to
+ * move that render into the sandbox. Set by the compiler per render.
+ */
+export interface ScriptSandboxRoute {
+  /**
+   * Abandons this render where it is and runs it again, whole, in the sandbox.
+   * The returned promise never settles.
+   */
+  reroute(): Promise<never>;
+}
+
 export interface PluginInterface {
   /**
    * e.g. 'less-plugin'
    */
   name: string;
+
+  /** The factory that made this instance; see {@link recordPluginModule}. */
+  readonly pluginModule?: PluginModuleIdentity;
 
   /**
    * Queryable filter if we have resolved the extension
@@ -199,6 +249,13 @@ export interface PluginInterface {
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
 
   /**
+   * Loads what `safeParse` needs, for a plugin that defers loading its parser
+   * until a document of its language is parsed. Context awaits it before every
+   * `safeParse` call; once the parser is loaded it returns nothing.
+   */
+  loadParser?(): void | Promise<void>;
+
+  /**
    * Optionally transform a rendered URL or direct quoted import target owned by
    * this plugin's active document. This is intentionally not import resolution:
    * Context already owns source identity and imports have been parsed before
@@ -214,8 +271,11 @@ export interface PluginInterface {
    */
   escapedUrlSkips?(request: UrlTransformRequest): string | undefined;
 
-  /** If this method exists, then the plugin can return a JS module / object */
-  import?(absoluteFilePath: string): Promise<Record<string, any>>;
+  /**
+   * If this method exists, then the plugin can return a JS module / object.
+   * `route` is the render's {@link ScriptSandboxRoute}, when it has one.
+   */
+  import?(absoluteFilePath: string, route?: ScriptSandboxRoute): Promise<Record<string, any>>;
 
   /**
    * Claim a resolved module path before extension-based executable-module
@@ -230,7 +290,7 @@ export interface PluginInterface {
    * returned module ABI. Kept distinct from `import()` because a legacy plugin
    * runtime may require a constrained execution environment.
    */
-  importPlugin?(absoluteFilePath: string, options?: string | null): Promise<unknown>;
+  importPlugin?(absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute): Promise<unknown>;
 
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;
