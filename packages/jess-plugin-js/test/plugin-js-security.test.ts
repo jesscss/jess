@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
 import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
 import { trustedFnsRealPath } from '../src/trust.js';
+import { sandboxed } from './engine/sandboxed.js';
 import { registered } from './registered.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -39,7 +40,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.readEnv()).resolves.toBe('DENIED');
   });
 
@@ -61,8 +62,10 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
-    await expect(mod.readPath(testFilePath)).resolves.toBe('DENIED');
+    const mod = await sandboxed(plugin).import(modulePath);
+    const outside = path.join(makeTmpDir('jess-js-outside-'), 'secret.txt');
+    fs.writeFileSync(outside, 'SECRET', 'utf8');
+    await expect(mod.readPath(outside)).resolves.toBe('DENIED');
   });
 
   it('denies network by default', async () => {
@@ -84,7 +87,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.fetchExample()).resolves.toBe('DENIED');
   });
 
@@ -106,7 +109,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     expect(mod.value).toBe(42);
     await expect(mod.plus(2, 3)).resolves.toBe(5);
   });
@@ -143,14 +146,14 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(probePath);
+    const mod = await sandboxed(plugin).import(probePath);
     await expect(mod.readRaw(leakFile)).resolves.toBe('DENIED');
 
     // Importing a module that merely sits under some node_modules is also denied: Deno reports it not found.
     const outsidePkg = path.join(siblingNm, 'pkg', 'index.js');
     fs.mkdirSync(path.dirname(outsidePkg), { recursive: true });
     fs.writeFileSync(outsidePkg, 'export const value = 1;', 'utf8');
-    await expect(plugin.import(outsidePkg)).rejects.toThrow(/ENOENT|No such file/);
+    await expect(sandboxed(plugin).import(outsidePkg)).rejects.toThrow(/ENOENT|No such file/);
   });
 
   /*
@@ -168,7 +171,7 @@ describe('@jesscss/plugin-js security', () => {
     fs.writeFileSync(modulePath, 'export function value() { return 42; }', 'utf8');
     const plugin = jsPlugin({ jsReadRoot: corpus }) as JsPlugin;
     plugins.push(plugin);
-    await expect(plugin.import(modulePath)).rejects.toThrow(/ENOENT|No such file/);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/ENOENT|No such file/);
   });
 
   it('keeps the files of a package outside the read root unreadable', async () => {
@@ -190,7 +193,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: corpus }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.readRaw(secret)).resolves.toBe('DENIED');
     await expect(mod.readRaw(loose)).resolves.toBe('DENIED');
     await expect(mod.readRaw(path.join(sibling, 'package.json'))).resolves.toBe('DENIED');
@@ -228,11 +231,11 @@ describe('@jesscss/plugin-js security', () => {
 
     const withoutDeno = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
     plugins.push(withoutDeno);
-    await expect(withoutDeno.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
+    await expect(sandboxed(withoutDeno).import(modulePath)).rejects.toThrow(/Deno runtime is required/);
 
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.runtime()).resolves.toBe('deno');
     await expect(mod.readOutside(outsideFile)).resolves.toBe('DENIED');
   });
@@ -248,7 +251,7 @@ describe('@jesscss/plugin-js security', () => {
     fs.symlinkSync(other, link, 'dir');
     const plugin = jsPlugin({ jsReadRoot: root, denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
     plugins.push(plugin);
-    await expect(plugin.import(path.join(link, 'index.js'))).rejects.toThrow(/Deno runtime is required/);
+    await expect(sandboxed(plugin).import(path.join(link, 'index.js'))).rejects.toThrow(/Deno runtime is required/);
   });
 
   it('resolves the trusted fns import to its canonical realpath (check and load agree)', () => {
@@ -301,7 +304,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root, requestTimeoutMs: 500 }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     const pid = plugin['worker']?.pid;
     expect(typeof pid).toBe('number');
 
@@ -337,7 +340,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.ok()).resolves.toBe(1);
     const pid = plugin['worker']?.pid;
     expect(typeof pid).toBe('number');
@@ -372,12 +375,12 @@ describe('@jesscss/plugin-js security', () => {
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
 
-    const mod = await plugin.import(boomPath);
+    const mod = await sandboxed(plugin).import(boomPath);
     await expect(mod.ok()).resolves.toBe(1);
     await expect(mod.boom()).rejects.toThrow(/exited unexpectedly/);
 
     // Before the fix the plugin latched to `failed` here and rejected forever.
-    const good = await plugin.import(goodPath);
+    const good = await sandboxed(plugin).import(goodPath);
     expect(good.value).toBe(5);
   }, 15000);
 
@@ -392,7 +395,7 @@ describe('@jesscss/plugin-js security', () => {
     plugins.push(plugin);
 
     for (let attempt = 0; attempt < 6; attempt++) {
-      await expect(plugin.import(crashPath)).rejects.toThrow(/exited unexpectedly/);
+      await expect(sandboxed(plugin).import(crashPath)).rejects.toThrow(/exited unexpectedly/);
     }
 
     /*
@@ -402,7 +405,7 @@ describe('@jesscss/plugin-js security', () => {
     expect(plugin['runtimeState'].status).toBe('failed');
     const goodPath = path.join(root, 'good.ts');
     fs.writeFileSync(goodPath, 'export const value = 5;', 'utf8');
-    await expect(plugin.import(goodPath)).rejects.toThrow(/exited unexpectedly/);
+    await expect(sandboxed(plugin).import(goodPath)).rejects.toThrow(/exited unexpectedly/);
   }, 20000);
 
   it('runs the workspace @jesscss/fns package in-process when deno command is unavailable', async () => {
@@ -425,7 +428,7 @@ describe('@jesscss/plugin-js security', () => {
       denoCommand: '__definitely_missing_deno__'
     }) as JsPlugin;
     plugins.push(plugin);
-    await expect(plugin.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/Deno runtime is required/);
   });
 
   it('sandboxes an @jesscss/fns path spelling with no @jesscss/fns package.json', async () => {
@@ -438,7 +441,7 @@ describe('@jesscss/plugin-js security', () => {
       denoCommand: '__definitely_missing_deno__'
     }) as JsPlugin;
     plugins.push(plugin);
-    await expect(plugin.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/Deno runtime is required/);
   });
 
   it('uses ESM module scope by default without Jess or Less compatibility globals', async () => {
@@ -465,7 +468,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.inspectRuntimeApi()).resolves.toEqual({
       hasJess: false,
       hasJessUpper: false,
@@ -545,7 +548,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     const dimensionResult = await mod.bumpDimension(makeDimension(4, 'px'));
     expect(dimensionResult.type).toBe('Dimension');
     expect(dimensionResult.number).toBe(5);
@@ -628,7 +631,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.describe(makeAny('x', '\''))).resolves.toBe('Quoted(\'x\', escaped=true)');
     await expect(mod.describe(makeAny('z'))).resolves.toBe('Anonymous(z)');
     expect(await mod.escaped()).toEqual(makeAny('text', '"'));
@@ -649,7 +652,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     expect((await mod.keyword()).bytes).toBe('kw');
     expect((await mod.expression()).map((item: { bytes: string }) => item.bytes)).toEqual(['1px', 'solid']);
 
@@ -681,7 +684,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
     plugins.push(plugin);
-    const loaded = await plugin.importLessPlugin(modulePath);
+    const loaded = await sandboxed(plugin).importLessPlugin(modulePath);
     expect(Object.keys(loaded.functions).sort()).toEqual(['probeprocess', 'triple']);
 
     await expect(registered(loaded, 'triple')(makeDimension(2, 'px'))).resolves.toMatchObject({ type: 'Dimension', number: 6, unit: 'px' });
@@ -707,8 +710,8 @@ describe('@jesscss/plugin-js security', () => {
     const runtime = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
     plugins.push(runtime);
 
-    const first = await runtime.importPlugin(modulePath, 'first=value');
-    const second = await runtime.importPlugin(modulePath, 'second=value');
+    const first = await sandboxed(runtime).importLessPlugin(modulePath, 'first=value');
+    const second = await sandboxed(runtime).importLessPlugin(modulePath, 'second=value');
     await expect(registered(first, 'plugin-option')()).resolves.toBe('first=value');
     await expect(registered(second, 'plugin-option')()).resolves.toBe('second=value');
   });
@@ -728,10 +731,10 @@ describe('@jesscss/plugin-js security', () => {
     }) as JsPlugin;
     plugins.push(plugin);
 
-    await expect(plugin.import(lessAliasPath)).rejects.toThrow(
+    await expect(sandboxed(plugin).import(lessAliasPath)).rejects.toThrow(
       'Deno runtime is required for @jesscss/plugin-js, but no usable Deno binary was found.'
     );
-    await expect(plugin.import(sassAliasPath)).rejects.toThrow(
+    await expect(sandboxed(plugin).import(sassAliasPath)).rejects.toThrow(
       'Deno runtime is required for @jesscss/plugin-js, but no usable Deno binary was found.'
     );
   });
@@ -745,7 +748,7 @@ describe('@jesscss/plugin-js security', () => {
       denoCommand: '__definitely_missing_deno__'
     }) as JsPlugin;
     plugins.push(plugin);
-    await expect(plugin.import(modulePath)).rejects.toThrow(
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(
       'Deno runtime is required for @jesscss/plugin-js, but no usable Deno binary was found.'
     );
   });
@@ -803,7 +806,7 @@ describe('@jesscss/plugin-js security', () => {
 
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
 
     const cases: Array<{ name: string; run: () => Promise<unknown>; expected: unknown }> = [
       { name: 'envProbe', run: () => mod.envProbe(), expected: 'DENIED' },
@@ -836,7 +839,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     await expect(mod.readEtcHosts()).resolves.toBe('DENIED');
   });
 
@@ -879,7 +882,7 @@ describe('@jesscss/plugin-js security', () => {
     try {
       const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
       plugins.push(plugin);
-      const mod = await plugin.import(modulePath);
+      const mod = await sandboxed(plugin).import(modulePath);
       expect(mod.value).toBe(123);
     } finally {
       if (savedNodeOptions === undefined) {
@@ -895,7 +898,12 @@ describe('@jesscss/plugin-js security', () => {
     }
   });
 
-  it('denies access to process (Node global) from Deno context', async () => {
+  /*
+   * The engine answers the compiler's `process.env` reads from the few host
+   * facts the render carries (never the host's environment), so a script that
+   * reads `process.env` sees no host variable.
+   */
+  it('gives a script no host environment through process.env', async () => {
     const root = makeTmpDir('jess-js-root-');
     const modulePath = path.join(root, 'process-probe.ts');
     fs.writeFileSync(
@@ -903,9 +911,8 @@ describe('@jesscss/plugin-js security', () => {
       [
         'export function getProcessEnv(): string {',
         '  try {',
-        '    return (typeof (globalThis as any).process !== "undefined"',
-        '      ? (globalThis as any).process.env?.HOME ?? "LEAKED"',
-        '      : "DENIED");',
+        '    const env = (globalThis as any).process?.env ?? {};',
+        '    return env.HOME ?? env.PATH ?? env.USER ?? "UNSET";',
         '  } catch {',
         '    return "DENIED";',
         '  }',
@@ -915,7 +922,7 @@ describe('@jesscss/plugin-js security', () => {
     );
     const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
-    await expect(mod.getProcessEnv()).resolves.toBe('DENIED');
+    const mod = await sandboxed(plugin).import(modulePath);
+    await expect(mod.getProcessEnv()).resolves.toMatch(/^(UNSET|DENIED)$/);
   });
 });

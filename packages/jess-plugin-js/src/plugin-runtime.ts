@@ -9,10 +9,10 @@ const moduleCache = new Map();
 const lessPluginRuntimeCache = new Map();
 
 /*
- * The script runtime behind `@jesscss/plugin-js`. It runs only inside Deno:
- * in the compile engine, where the whole compile runs and plugins are called
- * in-process, and in the per-call worker (`runtime-worker.ts`). File access
- * goes through `node:fs`, which Deno checks against its permission flags.
+ * The script runtime behind `@jesscss/plugin-js`. It runs only inside the
+ * Deno compile engine, where the whole render runs and plugins are called
+ * in-process. File access goes through `node:fs`, which Deno checks against
+ * its permission flags.
  */
 
 /**
@@ -1049,22 +1049,6 @@ export const loadLessPlugin = async (modulePath: string, options: string | null 
   return Array.from(runtime.localFunctions.keys());
 };
 
-/**
- * The sandbox cannot call back into the compiler synchronously, but a Less 4
- * plugin body reads scope (`frames[i].variable('@x')`) and built-in functions
- * (`functionRegistry.get('mix')`) synchronously. Rather than eagerly shipping
- * the whole variable scope on every call, an unsatisfied read raises this
- * signal: the worker reports exactly what it needs, the host resolves it
- * against the LIVE evaluation frame, and the call is replayed with the answer
- * in hand. The host remembers which names a given function asked for, so after
- * the first call the needed facts travel with the request and no replay occurs.
- */
-class HostFactNeeded {
-  constructor(need) {
-    this.need = need;
-  }
-}
-
 /*
  * The host learns a plugin's function names when the plugin loads, so a
  * function or plugin added from inside a function body would never be callable.
@@ -1072,8 +1056,6 @@ class HostFactNeeded {
 const refuseRegistrationInBody = () => {
   throw new Error('Less @plugin: functions and plugins can only be added while the plugin loads, not from inside a function body.');
 };
-
-const hostCallKey = (name, args) => `${String(name).toLowerCase()}\u0000${JSON.stringify(args)}`;
 
 /**
  * Builds the `this` a Less 4 plugin function body expects: `this.context` with
@@ -1102,21 +1084,9 @@ const createPluginCallContext = (facts, manager) => {
      * already reported as unbound resolves to `null` (less.js's "no such
      * variable" answer); anything not yet known raises a fact request.
      */
+    /* The live call site answers: the script and the compiler share the engine's realm. */
     variable(name) {
-      const key = String(name);
-
-      /* In-process (the compile engine, or no sandbox) the live call site answers directly. */
-      if (facts.variable) {
-        return liveVariable(facts.variable(key));
-      }
-      if (!Object.prototype.hasOwnProperty.call(facts.vars, key)) {
-        throw new HostFactNeeded({ kind: 'variable', name: key });
-      }
-      const entry = facts.vars[key];
-      if (entry === null || entry === undefined) {
-        return null;
-      }
-      return { value: decodeBridgeValue(entry.value), important: entry.important ? '!important' : '' };
+      return liveVariable(facts.variable(String(name)));
     },
     property() {
       return null;
@@ -1127,21 +1097,7 @@ const createPluginCallContext = (facts, manager) => {
   const functionRegistry = {
     get(name) {
       const fnName = String(name);
-      return (...callArgs) => {
-        const encoded = callArgs.map(encodeBridgeChildValue);
-        if (facts.call) {
-          return liveCall(fnName, facts.call(fnName, encoded));
-        }
-        const key = hostCallKey(fnName, encoded);
-        if (!Object.prototype.hasOwnProperty.call(facts.calls, key)) {
-          throw new HostFactNeeded({ kind: 'call', name: fnName, args: encoded, key });
-        }
-        const answer = facts.calls[key];
-        if (answer === null || answer === undefined) {
-          throw new Error(`Less @plugin: built-in function "${fnName}" could not be evaluated with these arguments.`);
-        }
-        return decodeBridgeValue(answer);
-      };
+      return (...callArgs) => liveCall(fnName, facts.call(fnName, callArgs.map(encodeBridgeChildValue)));
     },
     add: refuseRegistrationInBody
   };
@@ -1169,7 +1125,7 @@ const createPluginCallContext = (facts, manager) => {
   };
 };
 
-export const invokeLessPluginFunction = async (modulePath: string, functionName: string, args: unknown[], options: string | null = null, facts: object | null = null) => {
+export const invokeLessPluginFunction = async (modulePath: string, functionName: string, args: unknown[], options: string | null, facts: object) => {
   const cacheKey = lessPluginCacheKey(modulePath, options);
   if (!lessPluginRuntimeCache.has(cacheKey)) {
     await loadLessPlugin(modulePath, options);
@@ -1180,18 +1136,12 @@ export const invokeLessPluginFunction = async (modulePath: string, functionName:
     throw new Error(`Less @plugin function "${functionName}" is not registered.`);
   }
   const logs = [];
-  const resolved = facts ?? { vars: {}, calls: {}, fileInfo: null };
-  const callContext = createPluginCallContext(resolved, runtime.manager);
+  const callContext = createPluginCallContext(facts, runtime.manager);
   const previousSink = activeLogSink;
   activeLogSink = logs;
   let raw;
   try {
     raw = await fn.apply(callContext, args.map(decodeBridgeValue));
-  } catch (err) {
-    if (err instanceof HostFactNeeded) {
-      return { need: err.need, logs };
-    }
-    throw err;
   } finally {
     activeLogSink = previousSink;
   }
@@ -1229,36 +1179,9 @@ export const computeResponse = async (req) => {
     if (req.type === 'warm') {
       return { id: req.id, ...(await warmEngine(req)) };
     }
-    if (req.type === 'load') {
-      const exports = await loadModule(req.modulePath);
-      return { id: req.id, ok: true, exports };
-    }
-    if (req.type === 'invoke') {
-      const value = await invokeExport(req.modulePath, req.exportName, req.args ?? []);
-      return { id: req.id, ok: true, value };
-    }
-    if (req.type === 'loadLessPlugin') {
-      const functions = await loadLessPlugin(req.modulePath, req.options ?? null);
-      return { id: req.id, ok: true, functions };
-    }
-    if (req.type === 'invokeLessPluginFunction') {
-      const outcome = await invokeLessPluginFunction(
-        req.modulePath,
-        req.functionName,
-        req.args ?? [],
-        req.options ?? null,
-        req.facts ?? null
-      );
-      return outcome.need
-        ? { id: req.id, ok: false, need: outcome.need, logs: outcome.logs }
-        : { id: req.id, ok: true, value: outcome.value, logs: outcome.logs, important: outcome.important };
-    }
     return { id: req.id, ok: false, error: `Unknown request type "${req.type}".` };
   } catch (err) {
-    /*
-     * A plugin throw is a real failure, so it carries its stack across the wire:
-     * the host turns it into a diagnostic that names the function and the throw.
-     */
+    /* A failure outside the render itself (the request, the engine): reported with its stack. */
     return {
       id: req.id,
       ok: false,
