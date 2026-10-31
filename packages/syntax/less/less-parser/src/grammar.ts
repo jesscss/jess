@@ -343,7 +343,8 @@ type LessRules = {
   InterpolatedAttributeValueToken: Combinator<Interpolation>;
   InterpolatedAttributeQuoted: Combinator<Interpolation>;
   InterpolatedAttributeSelector: Combinator<SimpleSelector>;
-  InterpolatedSimpleSelector: Combinator<SimpleSelector>;
+  /** An interpolated class/id simple, or a plain one's name token: the node collapses when there is no interpolation. */
+  InterpolatedSimpleSelector: Combinator<SimpleSelector | Token>;
   BareInterpolatedSelector: Combinator<SimpleSelector>;
   AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
   BareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
@@ -632,7 +633,6 @@ const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6
 // Its literal runs deliberately exclude `.`, `#`, `[`, `:`, whitespace, and
 // combinators: those have separate selector grammar roles and must not be
 // flattened into an interpolation template.
-const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 // A bare `@{name}` is one selector simple, so a combinator, another compound,
 // a glued simple, a guard, `,` or `{` may follow it (`@{s} > .r`, `.r @{s} .t`).
@@ -949,6 +949,7 @@ const lessOwnAtKeyword = keywords(
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 /* `staticAtRuleStatementName` is now the composed `g.StaticAtRuleStatementName` rule. */
+/** A `.` / `#` name: a mixin's, and a class or id simple selector's. */
 const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
@@ -5483,25 +5484,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(interpolatedSelectorTail, staticSimpleSelector)))),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
+  /** An interpolation and the name text and interpolations glued after it: a selector simple after its `.`, `#` or `&`. */
+  const interpolatedSelectorRest = sequence(
+    g.VariableInterpolation,
+    many(choice(interpolatedSelectorTail, g.VariableInterpolation))
+  );
+  /**
+   * A class or id simple selector, which Less may interpolate (`.b`,
+   * `.b-@{n}`, `#@{id}`). The name is read once: a plain `.b` is the one token
+   * the node collapses to, and a glued `@{` continues the same simple. A bare
+   * `.` or `#` is a simple only with an interpolation after it.
+   */
   const InterpolatedSimpleSelector = node(
     'InterpolatedSimpleSelector',
-    noTrivia(sequence(
-      interpolatedSelectorPrefix,
-      g.VariableInterpolation,
-      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
+    noTrivia(choice(
+      sequence(mixinName, optional(interpolatedSelectorRest)),
+      sequence(choice(literal('.'), literal('#')), interpolatedSelectorRest)
     )),
-    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true))),
+    { collapse: true }
   );
   // `&` plus a glued Less interpolation is one parent-suffix selector token,
   // not a static parent selector followed by a second compound member. The
   // existing Interpolation-backed SimpleSelector is its complete canonical model.
   const InterpolatedParentSuffix = node(
     'InterpolatedParentSuffix',
-    noTrivia(sequence(
-      staticAmpersand,
-      g.VariableInterpolation,
-      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
-    )),
+    noTrivia(sequence(staticAmpersand, interpolatedSelectorRest)),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const compoundSimple = choice(
