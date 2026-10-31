@@ -2170,7 +2170,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const statementHead = token(noTrivia(sequence(
     notUrlOrCalcOpen,
-    g.IdentToken,
+    g.InterpolatedValueStart,
     optional(literal('('))
   )));
   /*
@@ -3701,15 +3701,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     { collapse: true }
   );
   /*
+   * A custom property (`--x: …`) as a list item. `statementHead` does not read
+   * a `--` name, and no selector starts with `--`, so the item goes ahead of the
+   * nested rule after the dispatch instead of paying for a rule attempt.
+   */
+  const customDeclarationItem = node(
+    'DeclarationItem',
+    sequence(g.CustomDeclaration, declarationEnd),
+    declarationOfItem,
+    { collapse: true }
+  );
+  /*
    * An identifier-led statement, its name read once by `statementHead`. The
-   * head picks a call or `each(` / `if(`, or a custom property, whose `--` name
-   * no selector can start; any other head is a declaration or a nested rule.
-   * The calls and the P44 spaced declaration replay the head (`routed()`);
-   * the nested rule and the glued declaration read it again from the
-   * statement start, through their own tokens. Parseman gates the routed
-   * spaced arm on the character after the head, so it is entered only at a
-   * `:` or a gap. A failed branch fails the statement, committed, as a failed
-   * call already did: no other arm reads an identifier.
+   * head picks a call or `each(` / `if(`; any other head is a declaration or
+   * a nested rule. The calls and the P44 spaced declaration replay the head
+   * (`routed()`); the nested rule and the glued declaration read it again
+   * from the statement start, through their own tokens. Parseman gates the
+   * routed spaced arm on the character after the head, so it is entered only
+   * at a `:` or a gap. A failed call commits; a failed declaration or rule
+   * does not (`commit: false`), so the body ends there as it would without the
+   * dispatch, and the error is the one the enclosing rule reports.
    */
   const nestedIdentStatementArms = choice(spacedDeclarationItem, g.NestedRulesetWithExtends, declarationItem);
   const nestedIdentStatement = transform(
@@ -3717,9 +3728,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       statementHead,
       caseOf('each(', g.EachFunctionStatement),
       caseOf('if(', g.IfFunctionStatement),
-      when(startsWith('--'), declarationItem),
       when(statementCallHead, statementCall),
-      otherwise(nestedIdentStatementArms)
+      otherwise(nestedIdentStatementArms, { commit: false })
     ),
     ([, statement]) => statement
   );
@@ -3730,13 +3740,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       statementHead,
       caseOf('each(', g.EachFunctionStatement),
       caseOf('if(', g.IfFunctionStatement),
-      when(startsWith('--'), rootDeclarationItem),
       when(statementCallHead, statementCall),
-      otherwise(rootIdentStatementArms)
+      otherwise(rootIdentStatementArms, { commit: false })
     ),
     ([, statement]) => statement
   );
-  const blockItem = choice(atStatement, mixinStatement, nestedIdentStatement, g.NestedRulesetWithExtends, declarationItem, literal(';'));
+  const blockItem = choice(atStatement, mixinStatement, nestedIdentStatement, customDeclarationItem, g.NestedRulesetWithExtends, declarationItem, literal(';'));
   // Every braced statement body — a ruleset's, a mixin definition's, an
   // at-rule block's — takes a body-form `&:extend()` after the shared arms
   // (ledgers X16, X19). An extend head never matches `;` or a shared arm, so the
@@ -3762,7 +3771,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // body is a nested context, so a child selector may lead with a combinator
   // (`> td { … }`). Only `Stylesheet` keeps the absolute `RulesetWithExtends`,
   // where a leading combinator stays an error.
-  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedIdentStatement, g.NestedRulesetWithExtends, declarationItem, literal(';'));
+  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedIdentStatement, customDeclarationItem, g.NestedRulesetWithExtends, declarationItem, literal(';'));
   // A body-form `&:extend()` in either container extends the rule each call or
   // iteration lands in (ledger X19).
   const detachedBody = many(choice(g.BodyStatement, g.ExtendStatement));
@@ -4466,9 +4475,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // percentage selectors as selector facts.
   // Gating note: block entries overlap on ident-led declarations and
   // function-call statements. The shared prefix is the property/call name, but
-  // the deciding delimiter is `:` versus `(` / `;`. A dispatch on the
-  // identifier (as `nestedIdentStatement`) would commit a failed declaration
-  // here; this body keeps the call opener and the declaration as siblings.
+  // the deciding delimiter is `:` versus `(` / `;`. This body keeps the call
+  // opener and the declaration as siblings; `nestedIdentStatement` is the
+  // read-once form for bodies that also hold nested rules.
   const KeyframeBlock = node(
     'KeyframeBlock',
     sequence(
