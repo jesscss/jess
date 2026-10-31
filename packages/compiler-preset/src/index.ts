@@ -4,31 +4,11 @@ import {
   type CompilerPluginContext,
   type ConfigOptions
 } from '@jesscss/compiler';
-import { AbstractPlugin, type ISafeParseResult, parserDiagnostic, type PluginInterface } from '@jesscss/core';
-import { parse as parseCss } from '@jesscss/css-parser';
+import { AbstractPlugin, type ISafeParseResult, type PluginInterface } from '@jesscss/core';
 import { LessPluginResolver, prepareLessRootSource } from '@jesscss/plugin-less';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 
 export type { ConfigOptions } from '@jesscss/compiler';
-
-/**
- * Plain `.css` input: parsed by the CSS grammar and rendered through the same
- * output options as every other dialect (`collapseNesting`, `compress`, source
- * maps). CSS has nothing to evaluate, so there is no value evaluator: values
- * are written as authored.
- */
-export class CssPlugin extends AbstractPlugin {
-  name = 'css';
-  supportedExtensions = ['.css'];
-
-  safeParse(filePath: string, source: string): ISafeParseResult {
-    try {
-      return { document: parseCss(source), errors: [], warnings: [] };
-    } catch (error) {
-      return { errors: [parserDiagnostic({ dialect: 'CSS', error, filePath, source })], warnings: [] };
-    }
-  }
-}
 
 export interface DefaultCompilerStack {
   readonly hooks: CompilerHooks;
@@ -129,7 +109,7 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
   private lessPluginResolver = new LessPluginResolver();
   private jessPluginInstance: DeferredDialectPlugin | undefined;
   private scssPluginInstance: DeferredDialectPlugin | undefined;
-  private readonly cssPlugin = new CssPlugin();
+  private cssPluginInstance: DeferredDialectPlugin | undefined;
 
   readonly hooks: CompilerHooks;
 
@@ -156,13 +136,19 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
     return deferred.plugin ?? deferred;
   }
 
+  private getOrCreateCssPlugin(): PluginInterface {
+    const deferred = this.cssPluginInstance ??= new DeferredDialectPlugin('css', ['.css'], false,
+      async () => new (await import('./css.js')).CssPlugin());
+    return deferred.plugin ?? deferred;
+  }
+
   private defaultPlugins(context: CompilerPluginContext): readonly PluginInterface[] {
     return [
       nodeModulesPlugin({ basePath: context.resolutionBaseDir }),
       this.getOrCreateJessPlugin(),
       this.lessPluginResolver.getOrCreate(context.optionsFor('less'), [], context),
       this.getOrCreateScssPlugin(),
-      this.cssPlugin
+      this.getOrCreateCssPlugin()
     ];
   }
 
@@ -176,6 +162,7 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
     this.lessPluginResolver = new LessPluginResolver();
     this.jessPluginInstance = undefined;
     this.scssPluginInstance = undefined;
+    this.cssPluginInstance = undefined;
   }
 }
 
