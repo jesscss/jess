@@ -8,6 +8,7 @@ import {
   type UnitMode,
   ProvidedModules,
   buildEvaluator,
+  recordPluginModule,
   type ValueEvaluator
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
@@ -124,6 +125,7 @@ export class ScssPlugin extends AbstractPlugin {
   }
 }
 
-const scssPlugin = ((opts?: ScssPluginOptions) => new ScssPlugin(opts)) satisfies Plugin;
+const scssPlugin = ((opts?: ScssPluginOptions) =>
+  recordPluginModule(new ScssPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
 export default scssPlugin;

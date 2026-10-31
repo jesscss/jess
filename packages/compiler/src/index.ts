@@ -22,6 +22,7 @@ import {
   type PreparedImports,
   type PluginInterface,
   type Position,
+  type ScriptSandboxRoute,
   type SourceSettings
 } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
@@ -33,6 +34,30 @@ import {
   type OutputOptions
 } from 'styles-config';
 import { outputDiagnostics } from './diagnostics.js';
+import {
+  createRenderProfile,
+  finalizeRenderProfile,
+  measureProfileAsync,
+  measureProfileSync,
+  type RenderProfile
+} from './profile.js';
+import {
+  compilerModuleOf,
+  fromEngine,
+  routeRender,
+  runInEngine,
+  withColors,
+  type CompilerModuleIdentity,
+  type EngineCache,
+  type EngineMethod,
+  type RenderInput,
+  type RenderResult,
+  type RenderStringOptions,
+  type RoutedCall,
+  type SafeRenderResult
+} from './sandbox-route.js';
+
+export type { CompilerModuleIdentity } from './sandbox-route.js';
 import { mergeConfig } from './merge-config.js';
 
 export type ConfigOptions = StylesConfig & {
@@ -224,28 +249,8 @@ function appendThrownJessDiagnostic(
 type PluginFactoryCacheKey = string;
 type LazyPluginInterface = PluginInterface;
 type ExecutablePluginInterface = PluginInterface & {
-  importPlugin(absoluteFilePath: string, options?: string | null): Promise<unknown>;
+  importPlugin(absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute): Promise<unknown>;
 };
-type ProfileMemorySnapshot = {
-  rss: number;
-  heapTotal: number;
-  heapUsed: number;
-  external: number;
-  arrayBuffers: number;
-};
-type RenderProfile = {
-  id: number;
-  label: string;
-  metadata: Record<string, unknown>;
-  startedAtMs: number;
-  startedMemory: ProfileMemorySnapshot;
-  phases: Array<{
-    phase: string;
-    durationMs: number;
-    memoryDelta: ProfileMemorySnapshot;
-  }>;
-};
-
 type PluginFactoryRecord = {
   name: string;
   create: (overrideConfig?: JsPluginConfig & { runtimeApi?: string }) => PluginInterface;
@@ -381,113 +386,6 @@ function getSearchPaths(options: Record<string, unknown>): string[] | undefined 
   return undefined;
 }
 
-let nextRenderProfileId = 0;
-
-const isProfileEnabled = (): boolean => process.env.JESS_PROFILE === '1';
-
-const nowMs = (): number => Number(process.hrtime.bigint()) / 1_000_000;
-
-const getMemorySnapshot = (): ProfileMemorySnapshot => {
-  const { rss, heapTotal, heapUsed, external, arrayBuffers } = process.memoryUsage();
-  return { rss, heapTotal, heapUsed, external, arrayBuffers };
-};
-
-const diffMemorySnapshot = (
-  before: ProfileMemorySnapshot,
-  after: ProfileMemorySnapshot
-): ProfileMemorySnapshot => ({
-  rss: after.rss - before.rss,
-  heapTotal: after.heapTotal - before.heapTotal,
-  heapUsed: after.heapUsed - before.heapUsed,
-  external: after.external - before.external,
-  arrayBuffers: after.arrayBuffers - before.arrayBuffers
-});
-
-const createRenderProfile = (
-  label: string,
-  metadata: Record<string, unknown> = {}
-): RenderProfile | undefined => {
-  if (!isProfileEnabled()) {
-    return undefined;
-  }
-  return {
-    id: ++nextRenderProfileId,
-    label,
-    metadata,
-    startedAtMs: nowMs(),
-    startedMemory: getMemorySnapshot(),
-    phases: []
-  };
-};
-
-const measureProfileSync = <T>(
-  profile: RenderProfile | undefined,
-  phase: string,
-  fn: () => T
-): T => {
-  if (!profile) {
-    return fn();
-  }
-  const startedAt = nowMs();
-  const startedMemory = getMemorySnapshot();
-  try {
-    return fn();
-  } finally {
-    const endedAt = nowMs();
-    const endedMemory = getMemorySnapshot();
-    profile.phases.push({
-      phase,
-      durationMs: endedAt - startedAt,
-      memoryDelta: diffMemorySnapshot(startedMemory, endedMemory)
-    });
-  }
-};
-
-const measureProfileAsync = async <T>(
-  profile: RenderProfile | undefined,
-  phase: string,
-  fn: () => Promise<T>
-): Promise<T> => {
-  if (!profile) {
-    return fn();
-  }
-  const startedAt = nowMs();
-  const startedMemory = getMemorySnapshot();
-  try {
-    return await fn();
-  } finally {
-    const endedAt = nowMs();
-    const endedMemory = getMemorySnapshot();
-    profile.phases.push({
-      phase,
-      durationMs: endedAt - startedAt,
-      memoryDelta: diffMemorySnapshot(startedMemory, endedMemory)
-    });
-  }
-};
-
-const finalizeRenderProfile = (
-  profile: RenderProfile | undefined,
-  extraMetadata: Record<string, unknown> = {}
-) => {
-  if (!profile) {
-    return;
-  }
-  const endedAtMs = nowMs();
-  const endedMemory = getMemorySnapshot();
-  console.error(`[jess-profile] ${JSON.stringify({
-    id: profile.id,
-    label: profile.label,
-    metadata: {
-      ...profile.metadata,
-      ...extraMetadata
-    },
-    totalDurationMs: endedAtMs - profile.startedAtMs,
-    totalMemoryDelta: diffMemorySnapshot(profile.startedMemory, endedMemory),
-    phases: profile.phases
-  })}`);
-};
-
 const createConsumerRequire = (fromDir?: string) => {
   const baseDir = fromDir ? path.resolve(fromDir) : process.cwd();
   return createRequire(path.join(baseDir, '__jess_consumer__.js'));
@@ -599,12 +497,26 @@ const getConsumerResolutionBaseDir = (
 };
 
 export class Compiler {
+  /**
+   * The module and export of this compiler class. A render that reaches a
+   * stylesheet script runs whole in the `@jesscss/plugin-js` sandbox, which
+   * makes the same compiler from this. A subclass that declares its own runs
+   * there as itself; one that does not keeps per-call script execution.
+   */
+  static readonly moduleIdentity: CompilerModuleIdentity | undefined = undefined;
+
   /** @internal */
   public opts: ConfigOptions;
   private baseOptsNormalized: ConfigOptions;
   private configuredPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
+
+  /** The script plugin's compile engine per script-plugin config: one Deno process each. */
+  private engines: EngineCache = new Map();
+
+  /** Entries whose render reached a stylesheet script: they render in the engine directly. */
+  private sandboxedEntries = new Set<string>();
 
   constructor(opts: ConfigOptions = {
       compile: {},
@@ -939,19 +851,19 @@ export class Compiler {
     const proxy: LazyPluginInterface = {
       name: 'js',
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
-      import: async (absoluteFilePath) => {
+      import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
           throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable script execution features.`);
         }
-        return plugin.import(absoluteFilePath);
+        return plugin.import(absoluteFilePath, route);
       },
-      importPlugin: async (absoluteFilePath: string, options?: string | null) => {
+      importPlugin: async (absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute) => {
         const plugin = await getScriptRuntimePlugin();
         if (!isExecutablePluginInterface(plugin)) {
           throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable executable plugin modules.`);
         }
-        return plugin.importPlugin(absoluteFilePath, options);
+        return plugin.importPlugin(absoluteFilePath, options, route);
       },
       dispose: async () => {
         const plugins = await Promise.all([
@@ -1035,7 +947,11 @@ export class Compiler {
     };
   }
 
-  private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
+  private createContextFromResolved(
+    resolved: ResolvedRenderConfig,
+    plugins: PluginInterface[],
+    route?: ScriptSandboxRoute
+  ): Context {
     const searchPaths = getSearchPaths(resolved.activeOptions)
       ?? getSearchPaths(resolved.effectiveConfig.compile ?? {});
     const explicit = resolved.explicitModes;
@@ -1104,6 +1020,9 @@ export class Compiler {
      */
     if (resolved.effectiveConfig.breakOnError !== undefined) {
       contextOptions.breakOnError = resolved.effectiveConfig.breakOnError;
+    }
+    if (route !== undefined) {
+      contextOptions.scriptSandbox = route;
     }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(contextOptions.disableScriptModules
@@ -1194,7 +1113,8 @@ export class Compiler {
   private async prepareRender(
     filePath?: string,
     renderOptions?: Partial<ConfigOptions>,
-    parseInput?: { language?: string; extension?: string }
+    parseInput?: { language?: string; extension?: string },
+    route?: ScriptSandboxRoute
   ) {
     const profile = createRenderProfile('prepareRender', { filePath });
     const resolved = measureProfileSync(profile, 'resolveEffectiveConfig', () =>
@@ -1202,7 +1122,7 @@ export class Compiler {
     const plugins = measureProfileSync(profile, 'buildPlugins', () =>
       this.buildPlugins(resolved));
     const context = measureProfileSync(profile, 'createContextFromResolved', () =>
-      this.createContextFromResolved(resolved, plugins));
+      this.createContextFromResolved(resolved, plugins, route));
     return { resolved, plugins, context, profile };
   }
 
@@ -1418,8 +1338,56 @@ export class Compiler {
     });
   }
 
-  async render(filePath: string, options?: Partial<ConfigOptions>) {
-    const { resolved, context, profile } = await this.prepareRender(filePath, options);
+  /**
+   * Runs a render where it belongs (ledger A19, `docs/design/DENO-SANDBOX-COMPILE.md`):
+   * see {@link routeRender}.
+   */
+  private routed<T>(method: EngineMethod, call: RoutedCall<T>): Promise<T> {
+    const compiler = compilerModuleOf(this);
+    if (compiler === undefined || this.scriptPluginSpecifier === undefined) {
+      return call.here(undefined);
+    }
+    return routeRender({
+      ...call,
+      entries: this.sandboxedEntries,
+      inEngine: () => this.renderInEngine(compiler, method, call.engineArgs, call.filePath, call.options)
+    });
+  }
+
+  /** The engine a render runs in: a script plugin configured by instance (with its own options), else one per script-plugin config. */
+  private renderInEngine(
+    compiler: CompilerModuleIdentity,
+    method: EngineMethod,
+    args: readonly unknown[],
+    filePath: string | undefined,
+    options: Partial<ConfigOptions> | undefined
+  ): Promise<unknown> {
+    const resolved = this.resolveEffectiveConfig(filePath, options);
+    return runInEngine({
+      request: { compiler, compilerOptions: this.opts, method, args, filePath, jsReadRoot: resolved.jsPluginConfig.jsReadRoot },
+      configured: resolved.effectiveConfig.compile?.plugins?.filter(isPluginInterface) ?? [],
+      engines: this.engines,
+      label: this.scriptPluginSpecifier ?? 'the configured script plugin',
+      factory: () => this.getJsPluginFactory(
+        resolved.jsPluginConfig,
+        getConsumerResolutionBaseDir(filePath, resolved.configFilePath)
+      )
+    });
+  }
+
+  async render(filePath: string, options?: Partial<ConfigOptions>): Promise<string> {
+    return this.routed('render', {
+      engineArgs: [filePath, withColors(options)],
+      filePath,
+      memoKey: filePath,
+      options,
+      check: fromEngine.render,
+      here: route => this.renderHere(route, filePath, options)
+    });
+  }
+
+  private async renderHere(route: ScriptSandboxRoute | undefined, filePath: string, options?: Partial<ConfigOptions>) {
+    const { resolved, context, profile } = await this.prepareRender(filePath, options, undefined, route);
     try {
       const input = { filePath };
       const { css } = await this.renderStylesheet(
@@ -1452,14 +1420,19 @@ export class Compiler {
     }
   }
 
-  async renderString(content: string, options: {
-    filePath?: string;
-    language?: string;
-    extension?: string;
-    config?: Partial<ConfigOptions>;
-  } = {}) {
+  async renderString(content: string, options: RenderStringOptions = {}): Promise<string> {
+    return this.routed('renderString', {
+      engineArgs: [content, { ...options, config: withColors(options.config) }],
+      filePath: options.filePath,
+      options: options.config,
+      check: fromEngine.render,
+      here: route => this.renderStringHere(route, content, options)
+    });
+  }
+
+  private async renderStringHere(route: ScriptSandboxRoute | undefined, content: string, options: RenderStringOptions) {
     const { filePath, language, extension, config: renderOptions } = options;
-    const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
+    const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension }, route);
 
     try {
       const input = { filePath, source: content, language, extension };
@@ -1494,7 +1467,7 @@ export class Compiler {
   }
 
   async renderToResult(
-    input: string | { source: string; filePath?: string; language?: string; extension?: string },
+    input: RenderInput,
 
     /*
      * `language` here is the per-language config (`language.less`), as
@@ -1502,25 +1475,31 @@ export class Compiler {
      * the input object, else from the file extension.
      */
     options?: Partial<ConfigOptions>
-  ): Promise<{
-    css: string;
-    errors: ErrorDiagnostic[];
-    warnings: WarningDiagnostic[];
-    loadedUrls: string[];
+  ): Promise<RenderResult> {
+    const isSourceContent = typeof input === 'object' && 'source' in input;
+    const filePath = isSourceContent ? input.filePath : input;
+    return this.routed('renderToResult', {
+      engineArgs: [input, withColors(options)],
+      filePath,
+      memoKey: isSourceContent ? undefined : filePath,
+      options,
+      check: fromEngine.renderResult,
+      here: route => this.renderToResultHere(route, input, options)
+    });
+  }
 
-    /** v3 source map JSON, present only when source maps are enabled. */
-    map?: string;
-
-    /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
-    sourceMapURL?: string;
-  }> {
+  private async renderToResultHere(
+    route: ScriptSandboxRoute | undefined,
+    input: RenderInput,
+    options?: Partial<ConfigOptions>
+  ): Promise<RenderResult> {
     const isSourceContent = typeof input === 'object' && 'source' in input;
     const source = isSourceContent ? input.source : undefined;
     const filePath = isSourceContent ? input.filePath : input;
     const language = isSourceContent ? input.language : undefined;
     const extension = isSourceContent ? input.extension : undefined;
     const renderOptions = options;
-    const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
+    const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension }, route);
 
     try {
       const input = { filePath, source, language, extension };
@@ -1652,16 +1631,27 @@ export class Compiler {
   }
 
   /** @internal */
-  async safeRender(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-    css: string | null;
-    errors: ErrorDiagnostic[];
-    warnings: WarningDiagnostic[];
-  }> {
+  async safeRender(filePath: string, options?: Partial<ConfigOptions>): Promise<SafeRenderResult> {
+    return this.routed('safeRender', {
+      engineArgs: [filePath, withColors(options)],
+      filePath,
+      memoKey: filePath,
+      options,
+      check: fromEngine.safeRenderResult,
+      here: route => this.safeRenderHere(route, filePath, options)
+    });
+  }
+
+  private async safeRenderHere(
+    route: ScriptSandboxRoute | undefined,
+    filePath: string,
+    options?: Partial<ConfigOptions>
+  ): Promise<SafeRenderResult> {
     const { resolved, context, profile } = await this.prepareRender(filePath, {
       ...options,
       breakOnError: false,
       suppressWarnings: options?.suppressWarnings ?? false
-    });
+    }, undefined, route);
 
     try {
       const input = { filePath };
@@ -1713,6 +1703,10 @@ export class Compiler {
   }
 
   dispose() {
+    for (const engine of this.engines.values()) {
+      void engine.then(plugin => plugin?.dispose?.(), () => undefined);
+    }
+    this.engines.clear();
     for (const plugin of this.jsPluginProxyCache.values()) {
       try {
         void plugin.dispose?.();

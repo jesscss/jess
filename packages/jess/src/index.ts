@@ -11,6 +11,9 @@ export type { ConfigOptions } from '@jesscss/compiler-preset';
  * and CLI-oriented dialect behavior.
  */
 export class Compiler extends DefaultCompiler {
+  /** This class, so a render that runs in the script sandbox runs with the same compiler. */
+  static override readonly moduleIdentity = { module: import.meta.url, exportName: 'Compiler' };
+
   /** @internal */
   declare public opts: ConfigOptions;
 

@@ -36,6 +36,7 @@ import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { corpusReadRoot, fixturePackagesPlugin, harnessFunctionsPlugin, testDataRemoteImports } from './compare-less-builds-plugins.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -145,80 +146,6 @@ export function corpusFixtures(testDataRoot, filter) {
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-/*
- * The harness plugins the Less corpus suite renders with
- * (packages/jess/test/test-utils.ts), bound to the build under test, so the
- * corpus renders here the way it renders in `all-less.test.ts`.
- * ponytail: a plain-JS mirror because the script runs on built libs without a TS
- * loader. If the suite's harness changes, a fixture may render differently here,
- * which changes coverage but never the before/after comparison.
- */
-function readNumericArg(value) {
-  if (typeof value?.value === 'number') {
-    return value.value;
-  }
-  if (typeof value?.value?.number === 'number') {
-    return value.value.number;
-  }
-  return Number(value?.valueOf?.() ?? value);
-}
-
-function readStringArg(value) {
-  const raw = typeof value?.value === 'string'
-    ? value.value
-    : typeof value?.value?.value === 'string' ? value.value.value : String(value?.valueOf?.() ?? value);
-  return raw.replace(/^(['"])(.*)\1$/, '$2');
-}
-
-const harnessFunctionsPlugin = {
-  install(less) {
-    less.functions.functionRegistry.addMultiple({
-      add: (a, b) => readNumericArg(a) + readNumericArg(b),
-      increment: a => readNumericArg(a) + 1,
-      _color: str => (readStringArg(str) === 'evil red' ? '#660000' : undefined)
-    });
-  }
-};
-
-function fixturePackagesPlugin() {
-  const depsRoot = path.join(REPO_ROOT, 'packages/less-corpus-fixture-deps');
-  const depsRequire = createRequire(path.join(depsRoot, '__jess_fixture_resolve__.js'));
-  const { dependencies = {} } = JSON.parse(fs.readFileSync(path.join(depsRoot, 'package.json'), 'utf8'));
-  const pinned = Object.keys(dependencies).map(name => [name, path.dirname(depsRequire.resolve(`${name}/package.json`))]);
-  return {
-    name: 'less-corpus-fixture-packages',
-    resolve(filePath) {
-      return (Array.isArray(filePath) ? filePath : [filePath]).map((candidate) => {
-        for (const [name, dir] of pinned) {
-          const marker = `${path.sep}${name}${path.sep}`;
-          const at = candidate.lastIndexOf(marker);
-          if (at !== -1) {
-            return path.join(dir, candidate.slice(at + marker.length));
-          }
-          if (candidate.startsWith(`${name}/`)) {
-            return path.join(dir, candidate.slice(name.length + 1));
-          }
-        }
-        return candidate;
-      });
-    }
-  };
-}
-
-function testDataRemoteImports(remoteImportPlugin, testDataRoot) {
-  const published = '/npm/@less/test-data/';
-  return remoteImportPlugin({
-    allow: ['cdn.jsdelivr.net'],
-    fetch: async (url) => {
-      const { pathname } = new URL(url);
-      const file = pathname.startsWith(published) ? path.join(testDataRoot, pathname.slice(published.length)) : undefined;
-      return file !== undefined && fs.existsSync(file)
-        ? new Response(fs.readFileSync(file, 'utf8'))
-        : new Response('not found', { status: 404 });
-    }
-  });
-}
-
 const RENDER_TIMEOUT_MS = 60_000;
 
 async function renderRecord(compiler, file, renderOptions) {
@@ -249,18 +176,18 @@ async function renderRecord(compiler, file, renderOptions) {
 /** Renders every fixture in every mode with the build at `root`: `{ [mode]: { [name]: record } }`. */
 async function renderCorpus(root, fixtures, testDataRoot) {
   const load = relative => import(pathToFileURL(path.resolve(root, relative)).href);
-  const [{ Compiler }, { default: lessPlugin }, { lessCompatPlugin }, { remoteImportPlugin }] = await Promise.all([
+  const [{ Compiler }, { default: lessPlugin }, { lessCompatPlugin }] = await Promise.all([
     load('packages/jess/lib/index.js'),
     load('packages/syntax/less/jess-plugin-less/lib/index.js'),
-    load('packages/syntax/less/jess-plugin-less-compat/lib/index.js'),
-    load('packages/jess-plugin-remote-import/lib/index.js')
+    load('packages/syntax/less/jess-plugin-less-compat/lib/index.js')
   ]);
   const plugins = [
-    lessPlugin({ plugins: [harnessFunctionsPlugin] }),
+    lessPlugin({ plugins: [harnessFunctionsPlugin()] }),
     lessCompatPlugin(),
-    fixturePackagesPlugin(),
-    testDataRemoteImports(remoteImportPlugin, testDataRoot)
+    fixturePackagesPlugin(REPO_ROOT),
+    await testDataRemoteImports(path.resolve(root), testDataRoot)
   ];
+  const scriptRoot = corpusReadRoot(testDataRoot, REPO_ROOT);
   const modes = {};
   for (const { label, collapseNesting, compress } of CORPUS_MODES) {
     /*
@@ -273,10 +200,11 @@ async function renderCorpus(root, fixtures, testDataRoot) {
     const records = {};
     for (const { name, file, testData } of fixtures) {
       /*
-       * Corpus `@plugin` fixtures load shared scripts from sibling directories,
-       * so the suite widens their script read root to the corpus root.
+       * Corpus `@plugin` fixtures load shared scripts from sibling directories
+       * and packages this repository installs, so the script read root is the
+       * folder holding both (as in all-less.test.ts).
        */
-      records[name] = await renderRecord(compiler, file, testData ? { compile: { jsReadRoot: testDataRoot } } : undefined);
+      records[name] = await renderRecord(compiler, file, testData ? { compile: { jsReadRoot: scriptRoot } } : undefined);
     }
     modes[label] = records;
   }

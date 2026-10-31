@@ -15,7 +15,8 @@ import {
   readStringFunctionArg,
   resolveLessTestDataRoot,
   upstreamHarnessSourceMap,
-  withFixtureTimeout
+  withFixtureTimeout,
+  corpusReadRoot
 } from '../test-utils.js';
 import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 import lessPlugin from '@jesscss/plugin-less';
@@ -59,7 +60,7 @@ const baseCompiler = new Compiler({
      * test-data/plugin/*.js from fixtures in sibling directories; widen the
      * (trusted) harness jsReadRoot to the test-data root so plugin-js can read them.
      */
-    jsReadRoot: testData,
+    jsReadRoot: corpusReadRoot(testData),
     plugins: [
       /*
        * [plugin/P2] The harness function plugin is registered through the NATIVE

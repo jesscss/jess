@@ -285,7 +285,10 @@ describe('legacy Less @plugin runtime', () => {
       expect(failure).toBeInstanceOf(Error);
       const message = failure instanceof Error ? failure.message : '';
       expect(message).toContain('require("../outside/secret.js")');
-      expect(message).toContain('was refused: Read access denied by Jess policy.');
+
+      /* Deno answers a read outside the read root "not found" (`--ignore-read`), so the file is not seen at all. */
+      expect(message).toContain('no file found');
+      expect(message).not.toContain('LEAKED');
     }, 30000);
 
     it('refuses package and built-in specifiers with a clear message', async () => {

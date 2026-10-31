@@ -1,7 +1,4 @@
 {
-  "packages/compiler/src/index.ts": {
-    "statements": 532
-  },
   "packages/core/src/ast/css-grammar-helpers.ts": {
     "statements": 735
   },
@@ -369,7 +366,7 @@
     "statements": 86
   },
   "packages/jess-plugin-js/src/index.ts#JsPlugin.startWorker": {
-    "statements": 50
+    "statements": 49
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
     "statements": 1277

@@ -56,6 +56,7 @@ import {
   lessFixturePackagesPlugin,
   lessHarnessFunctionsPlugin,
   lessTestDataRemoteImports,
+  resolveLessFixtureDepsRoot,
   resolveLessTestDataRoot
 } from '../test-utils.js';
 
@@ -914,6 +915,19 @@ beforeAll(async () => {
       }
       fs.mkdirSync(path.dirname(path.join(root, 'node_modules', name)), { recursive: true });
       fs.symlinkSync(target, path.join(root, 'node_modules', name), 'dir');
+    }
+
+    /*
+     * The fixture packages the harness installs, linked as a project links its
+     * dependencies, so a render that runs a script in the sandbox can read them
+     * (its read root follows these links to where they are installed, ledger A19).
+     */
+    const deps = path.join(resolveLessFixtureDepsRoot(), 'node_modules');
+    fs.mkdirSync(path.join(root, 'node_modules'), { recursive: true });
+    for (const name of fs.readdirSync(deps).filter(entry => !entry.startsWith('.'))) {
+      if (!fs.existsSync(path.join(root, 'node_modules', name))) {
+        fs.symlinkSync(fs.realpathSync(path.join(deps, name)), path.join(root, 'node_modules', name), 'dir');
+      }
     }
   }
 }, 120_000);
