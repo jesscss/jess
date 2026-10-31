@@ -113,7 +113,6 @@ process and passes it as flags; nothing asks the host during a compile.
 ```
 deno run --no-prompt \
   --allow-read=<read set> --ignore-read \
-  --ignore-env \
   [--allow-net=<hosts>]   # only with allowHttp, as today
   <engine>
 ```
@@ -128,15 +127,33 @@ deno run --no-prompt \
 - A plugin that reads outside the set therefore sees "no such file", the same
   answer as for a file that does not exist, and learns nothing about what is
   there.
-- **`--ignore-env`** makes every environment read `undefined`. The env facts a
-  compile uses travel in the request instead.
-- **The read set** is one read root (§8.2), plus the installed compiler and its
+- **Environment.** No env permission, so an env read throws Deno's own
+  `NotCapable`. The env facts a compile uses (cwd, home and temp paths,
+  colour support, a fixed set of variables) travel in the request, and the
+  engine answers the compiler's reads from them.
+- **The read set** is the read root (§8.2), plus the installed compiler and its
   dependencies where they lie outside it. The read root is whichever of these
   is nearest the top of the filesystem: the folder holding the `node_modules`
-  that governs the entry (the nearest one above it), the script root
-  (`jsReadRoot`), and the entry stylesheet's folder. Everything under it is
-  readable. Each entry is passed in both its written and its canonical
-  spelling, because Deno matches paths as written (below).
+  that governs the entry (below), the script root (`jsReadRoot`), and the
+  entry stylesheet's folder. Everything under it is readable. Each root is
+  passed in its real spelling and in each written spelling the render uses for
+  it, because Deno matches paths as written (below).
+- **The governing `node_modules`** is the one package resolution lands in.
+  Take the nearest `node_modules` above the entry; for each package it lists,
+  resolve its real path, and take the parent of the outermost `node_modules`
+  folder holding that path. Under npm that is the folder holding
+  `node_modules` itself. Under pnpm, whose package folders link into the
+  workspace root's `.pnpm` store, it is the workspace root. A stray
+  `~/node_modules` above a project with its own `node_modules` does not count.
+  A package whose real path is in no `node_modules` (a `link:` or `file:`
+  dependency on a sibling checkout) gives no candidate, so a sandboxed render
+  cannot read it; the same import compiles in a render without scripts.
+- **Candidates on different branches.** When the candidates are not on one
+  ancestor chain (an entry folder beside, not inside, the folder its packages
+  live in, as with a symlinked `node_modules`), each one nearest the top of its
+  own chain is kept as a root, because dropping one would make the entry or
+  its packages unreadable. This is how the implementation reads §8.2 for that
+  case; it awaits a ruling.
 - **A different read set needs a different process.** Flags are fixed at spawn,
   so a render whose read set differs from the running process's starts a new
   one. A compiler that renders one project keeps one process.
@@ -176,6 +193,21 @@ What that means:
 - Deno 2.7.6 throws from `existsSync` where 2.9.6 returns `false`, so the
   engine needs an exact Deno version.
 
+### Known limitation: the module loader reads any `node_modules`
+
+Deno 2.9.6 loads a file under any `node_modules` folder through `require()`
+and `import()`, whatever `--allow-read` says. An `fs` read of the same file is
+denied, and so is a module load outside every `node_modules`. A sandboxed
+script can therefore load (and, for JSON, read) files under a `node_modules`
+folder outside its read root, though not plain files beside them.
+
+- The broker never saw these loads either: under the broker on `dev`, the same
+  `require()` of a JSON file under an unrelated `node_modules` succeeded, while
+  an `fs` read of it was denied with "Read access denied by Jess policy."
+- `packages/jess-plugin-js/test/deno-loader-channel.test.ts` pins the
+  behaviour, so a Deno release that changes it fails the test.
+- No broker walls it off (§8.3).
+
 ### What remains brokered
 
 Nothing (§8.2, §8.3). Each broker duty and what replaces it:
@@ -183,7 +215,7 @@ Nothing (§8.2, §8.3). Each broker duty and what replaces it:
 | Broker duty | Replacement |
 |---|---|
 | read inside `jsReadRoot` / `node_modules` above it | `--allow-read` |
-| deny write, env, run, ffi, sys | not granted; `--ignore-env` for env reads |
+| deny write, env, run, ffi, sys | not granted; Deno throws `NotCapable` |
 | net per `allowHttp` / `allowNetHosts` | `--allow-net=<hosts>`, as remote imports do |
 | canonicalize, so a symlink cannot lead out | dropped: Deno's behaviour is accepted (§8.3) |
 | grant a package a stylesheet names that resolves outside every root | dropped: the read root decides (§8.2) |
@@ -258,7 +290,12 @@ three is nearest the top of the filesystem, the owner answered, 2026-10-31:
 
 So the read root is whichever is nearest the filesystem root of: the folder
 holding the governing `node_modules`, the script root (`jsReadRoot`), and the
-entry stylesheet's folder. Everything under it is readable. The compiler's own
+entry stylesheet's folder. Everything under it is readable.
+
+Orchestrator judgment under owner delegation, 2026-10-31: the governing
+`node_modules` is the one package resolution actually lands in, as §5 states.
+Under pnpm that is the workspace root's `node_modules` (the `.pnpm` store), not
+the package's own folder of links. The compiler's own
 code is added where it lies outside the root, so the engine can load it.
 Include paths are not added; a stylesheet or script outside the root fails in
 a sandboxed compile.
