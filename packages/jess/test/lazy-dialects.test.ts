@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 /*
- * Run in a fresh process against the built preset: which modules a process
+ * Run in a fresh process against the built package: which modules a process
  * loads is the behaviour under test, and Vitest's own module graph would hide it.
  */
 function inFreshProcess<T>(body: string): T {
@@ -14,7 +14,7 @@ function inFreshProcess<T>(body: string): T {
       if (match) parsers.add(match[1]);
       return next(url, context);
     } });
-    const { DefaultCompiler } = await import('@jesscss/compiler-preset');
+    const { Compiler } = await import('jess');
     ${body}
   `;
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { cwd: import.meta.dirname, encoding: 'utf8' });
@@ -23,12 +23,12 @@ function inFreshProcess<T>(body: string): T {
 
 function render(source: string, extension: string): { css: string; parsers: string[] } {
   return inFreshProcess(`
-    const css = await new DefaultCompiler().renderString(${JSON.stringify(source)}, { extension: ${JSON.stringify(extension)} });
+    const css = await new Compiler().renderString(${JSON.stringify(source)}, { extension: ${JSON.stringify(extension)} });
     console.log(JSON.stringify({ css, parsers: [...parsers].sort() }));
   `);
 }
 
-describe('default compiler stack', () => {
+describe('the jess compiler', () => {
   it('loads a dialect parser only when a document of that dialect is parsed', () => {
     const less = render('@c: red; .a { color: @c; }', '.less');
     expect(less.css).toBe('.a {\n  color: red;\n}\n');
@@ -43,7 +43,7 @@ describe('default compiler stack', () => {
 
   it('names a deferred dialect plugin, before it loads, as the plugin it loads', () => {
     const { deferred, loadedBefore, real } = inFreshProcess<{ deferred: unknown; loadedBefore: string[]; real: unknown }>(`
-      const plugins = new DefaultCompiler().createContext().plugins;
+      const plugins = new Compiler().createContext().plugins;
       const describe = plugin => ({ name: plugin.name, supportedExtensions: plugin.supportedExtensions });
       const deferred = ['jess', 'scss'].map(name => describe(plugins.find(plugin => plugin.name === name)));
       const loadedBefore = [...parsers];
