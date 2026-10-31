@@ -56,8 +56,20 @@ The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute
 through a value the compiler checks, not through a load error.
 
-A stylesheet without JavaScript never touches Deno, so its output and timing
-are unchanged.
+**Started ahead of time.** The first render in a process starts its
+compiler's engine at once: Deno spawns, imports the compiler and loads the
+entry's dialect while the render runs in Node, so a render that reaches a
+script finds it warm. A render that loads no script lets it go (the process
+is killed and the read-set work still in flight is aborted), and no later
+render in that process starts one ahead of time. Its output never depends on
+Deno; its cold start pays the plugin import and the spawn call on the main
+thread, about 3 ms.
+
+**Compilers that can run there.** A compiler class runs in the engine when it
+declares its own `static moduleIdentity` (module and export), as jess's
+`Compiler` and `DefaultCompiler` do. A script reached by any other compiler,
+or outside a render (`compile`, a direct plugin call), is refused with an
+error that says so; there is no per-call path any more.
 
 ## 3. How a compile enters Deno
 
@@ -329,13 +341,15 @@ Each step is one PR, measured and merged before the next.
 
 1. This design.
 2. Pin the exact Deno version and run the pinned binary (§6). Done: #522.
-3. The engine: a sandboxed render runs whole in Deno, with native permissions,
+3. Done: #524 (the engine) and #526 (started ahead of time). The engine: a sandboxed render runs whole in Deno, with native permissions,
    routed by §2, for `render`, `renderToResult` and `renderString`; the CLI
    needs no change beyond the compiler's. Deletes the broker. Measured as §7,
    against `dev` and lessc: `bootstrap4.less` and `benchmark.less`, warm
    (marginal time and instructions, interleaved, with an A/A null) and cold
    (`pnpm run measure:cli:cold-start --fixture bootstrap4`).
 4. Delete the per-call worker path, which no route reaches after step 3.
+   `DefaultCompiler` declares its module identity, and the plugin-js tests
+   drive scripts through the engine.
 
 Every step keeps:
 
