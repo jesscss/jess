@@ -19,7 +19,7 @@ import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
-import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessHarnessFunctionsPlugin } from '../test-utils.js';
+import { corpusReadRoot, getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessHarnessFunctionsPlugin } from '../test-utils.js';
 import type { TestCase } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
@@ -46,7 +46,7 @@ interface Job { kind: 'render' | 'error'; file: string; lessPath: string; expect
 
 const errorCorpusConfig: Partial<StylesConfig> = {
   compile: {
-    jsReadRoot: testData,
+    jsReadRoot: corpusReadRoot(testData),
     functionMode: 'error',
     unitMode: 'strict'
   }

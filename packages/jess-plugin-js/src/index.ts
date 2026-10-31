@@ -1,17 +1,57 @@
 import {
   type JessError,
   type Plugin,
+  type ScriptSandboxRoute,
   AbstractPlugin,
-  ERR
+  ERR,
+  recordPluginModule
 } from '@jesscss/core';
 import * as fs from 'node:fs';
-import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
-import { isPathInside, trustedFnsRealPath } from './trust.js';
+import { trustedFnsRealPath } from './trust.js';
+import {
+  encodeEngineValue,
+  engineCode,
+  engineFailure,
+  hostFacts,
+  denoRunArgs,
+  readSetFor,
+  type EngineHostFacts
+} from './engine.js';
+
+/** The script runtime (`plugin-runtime.ts`), loaded only inside the compile engine. */
+type InProcessRuntime = {
+  loadModule(modulePath: string): Promise<Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>>;
+  invokeExport(modulePath: string, exportName: string, args: unknown[]): Promise<unknown>;
+  loadLessPlugin(modulePath: string, options: string | null): Promise<string[]>;
+  invokeLessPluginFunction(
+    modulePath: string,
+    functionName: string,
+    args: unknown[],
+    options: string | null,
+    facts: {
+      variable(name: string): { value: unknown; important?: boolean } | null;
+      call(name: string, args: unknown[]): unknown;
+      fileInfo: { filename: string; entryPath: string } | null;
+    }
+  ): Promise<{ value?: unknown; logs: PluginLogRecord[]; important?: boolean }>;
+};
+
+const loadInProcessRuntime = async (): Promise<InProcessRuntime> => {
+  const runtime: InProcessRuntime = await import('./plugin-runtime.js');
+  return runtime;
+};
+
+/** A thrown value's fields, as the sandbox reports them. */
+const thrownFields = (err: unknown): { error: string; errorName: string; stack: string | undefined } => ({
+  error: err instanceof Error ? err.message : String(err),
+  errorName: err instanceof Error ? err.name : 'Error',
+  stack: err instanceof Error ? err.stack : undefined
+});
 
 /**
  * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
@@ -133,6 +173,9 @@ const BOOT_TIMEOUT_MS = 8000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
+/** A whole render is one request, so it gets a whole render's time. */
+const RENDER_TIMEOUT_MS = 120_000;
+
 /**
  * Consecutive unexpected worker deaths (with no successful reply between) after
  * which the plugin stops auto-restarting and latches to `failed`. Bounds a
@@ -176,47 +219,6 @@ export const sanitizeSpawnEnv = (
   return clean;
 };
 
-const canonicalPath = (p: string): string => {
-  try {
-    return fs.realpathSync.native(p);
-  } catch {
-    return p;
-  }
-};
-
-/**
- * The root of the installed package a resolved module's `realPath` lies in: the
- * nearest directory above it that is a package directory of a `node_modules`
- * (`node_modules/<name>` or `node_modules/@scope/<name>`) and holds a
- * `package.json`. Undefined for a module in no installed package, which grants
- * nothing.
- */
-const namedPackageRoot = (realPath: string): string | undefined => {
-  for (let dir = path.dirname(realPath); path.dirname(dir) !== dir; dir = path.dirname(dir)) {
-    const parent = path.dirname(dir);
-    const inNodeModules = path.basename(parent) === 'node_modules'
-      || (path.basename(parent).startsWith('@') && path.basename(path.dirname(parent)) === 'node_modules');
-    if (inNodeModules) {
-      return fs.existsSync(path.join(dir, 'package.json')) ? dir : undefined;
-    }
-  }
-  return undefined;
-};
-
-const normalizePermissionPath = (value: string | null): string | null => {
-  if (!value) {
-    return null;
-  }
-  if (value.startsWith('file://')) {
-    try {
-      return fileURLToPath(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-};
-
 const isJsonValue = (value: unknown) => {
   try {
     JSON.stringify(value);
@@ -224,21 +226,6 @@ const isJsonValue = (value: unknown) => {
   } catch {
     return false;
   }
-};
-
-type BrokerRequest = {
-  v: number;
-  pid: number;
-  id: number;
-  datetime: string;
-  permission: 'read' | 'write' | 'net' | 'env' | 'run' | 'ffi' | 'sys' | string;
-  value: string | null;
-};
-
-type BrokerResponse = {
-  id: number;
-  result: 'allow' | 'deny';
-  reason?: string;
 };
 
 /**
@@ -301,7 +288,18 @@ function normalizePluginCallArgs(args: readonly unknown[] | unknown): readonly u
   return Array.isArray(args) ? args : [args];
 }
 
+/** One render sent to the compile engine (`engine-runtime.ts`). */
+type EngineWireRequest = {
+  type: 'render';
+  compiler: { module: string; exportName: string };
+  compilerOptions: unknown;
+  method: EngineRenderRequest['method'];
+  args: unknown;
+  host: EngineHostFacts;
+};
+
 type RpcRequest =
+  | ({ id: number } & EngineWireRequest)
   | { id: number; type: 'load'; modulePath: string }
   | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
   | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
@@ -324,10 +322,18 @@ type RpcResult =
     value?: unknown;
     logs?: PluginLogRecord[];
     important?: boolean;
+
+    /** A `render` reply: what the render printed to stderr. */
+    stderr?: string;
   }
   | {
     id: number;
     ok: false;
+
+    /** A `render` reply: what the render printed, and a thrown `JessError`'s fields. */
+    stderr?: string;
+    jessError?: Record<string, unknown>;
+    code?: string;
 
     /** Present when the sandbox paused for one unresolved scope/built-in fact. */
     need?: PluginFactNeed;
@@ -351,12 +357,16 @@ export class JsPlugin extends AbstractPlugin {
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
   private runtimeState: RuntimeState = { status: 'idle' };
   private shuttingDown = false;
-  private brokerServer: net.Server | undefined;
-  private brokerSocketPath: string | undefined;
   private worker: ChildProcessWithoutNullStreams | undefined;
 
-  /** The worker's own script, which it reads again to start its plugin thread. */
-  private workerScriptPath: string | undefined;
+  /** The `--allow-read` list the running Deno process was started with. */
+  private workerReadSet: string | undefined;
+
+  /** The `--allow-read` list the next Deno process starts with (set by a render). */
+  private nextReadSet: readonly string[] | undefined;
+
+  /** Inside the compile engine: the script runtime of this realm. */
+  private inProcess: Promise<InProcessRuntime> | undefined;
   private workerBuffer = '';
   private nextRequestId = 1;
   private pending = new Map<number, {
@@ -367,12 +377,6 @@ export class JsPlugin extends AbstractPlugin {
 
   private idleTimer: NodeJS.Timeout | undefined;
   private denoCommand: string | undefined;
-
-  /** Memoized ancestor-chain `node_modules` read roots (see installedPackageRoots). */
-  private packageRootsCache: string[] | undefined;
-
-  /** The roots of the packages a stylesheet named and resolution placed outside those roots (see namedPackageRoot). */
-  private namedPackageRoots: string[] = [];
 
   /**
    * Consecutive unexpected worker deaths since the last successful reply. One
@@ -394,8 +398,12 @@ export class JsPlugin extends AbstractPlugin {
     JsPlugin.registerProcessCleanup();
   }
 
+  /**
+   * Nothing to start ahead of time: a render that reaches a script moves into
+   * the compile engine, which starts with that render's read root.
+   */
   prewarm() {
-    return this.ensureRuntime().catch(() => undefined);
+    return undefined;
   }
 
   private static registerProcessCleanup() {
@@ -498,172 +506,22 @@ export class JsPlugin extends AbstractPlugin {
     return promise;
   }
 
-  private createBrokerPath() {
-    if (process.platform === 'win32') {
-      const rand = `${process.pid}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      return `\\\\.\\pipe\\jess-deno-broker-${rand}`;
-    }
-
-    // macOS temp dir paths can exceed unix socket limits. Keep this short.
-    const rand = Math.floor(Math.random() * 10000);
-    return `/tmp/jd-${process.pid}-${Date.now()}-${rand}.sock`;
+  /**
+   * The read root a process without a render request runs under: the script
+   * root, or the working directory when none is configured.
+   */
+  private defaultReadSet(): string[] {
+    const root = this.opts.jsReadRoot ?? process.cwd();
+    return readSetFor(root, root, [path.dirname(fileURLToPath(import.meta.url))]);
   }
 
   /**
-   * The `node_modules` directories on `jsReadRoot`'s ancestor chain, each
-   * canonicalized. An installed dependency a sandboxed script legitimately reads
-   * resolves here — the project's own `node_modules`, and any higher one a
-   * package manager hoisted to or placed its store in (pnpm's `.pnpm` store
-   * lives under `<project>/node_modules`). Computed once; empty when no
-   * `jsReadRoot` is set, which denies every out-of-root read.
+   * Starts Deno under native permission flags (ledger A19): read only
+   * `readSet`, every other read answered "not found" (`--ignore-read`),
+   * network only with `allowHttp`, and no env, write, run, ffi or sys. Deno
+   * enforces them itself.
    */
-  private installedPackageRoots(): string[] {
-    if (this.packageRootsCache !== undefined) {
-      return this.packageRootsCache;
-    }
-    const roots: string[] = [];
-    if (this.opts.jsReadRoot) {
-      let dir = canonicalPath(path.resolve(this.opts.jsReadRoot));
-      for (;;) {
-        roots.push(canonicalPath(path.join(dir, 'node_modules')));
-        const parent = path.dirname(dir);
-        if (parent === dir) {
-          break;
-        }
-        dir = parent;
-      }
-    }
-    return (this.packageRootsCache = roots);
-  }
-
-  /**
-   * Whether an already-canonicalized `realPath` is a readable location: inside
-   * `jsReadRoot`, inside one of the ancestor-chain `node_modules` directories, or
-   * inside the root of a package a stylesheet named ({@link namedPackageRoot}).
-   * A bare `/node_modules/` substring anywhere on the machine is NOT enough — the
-   * matched directory must be anchored to `jsReadRoot` or be that named package,
-   * so a sandboxed script cannot read files under an unrelated `node_modules`
-   * elsewhere on disk.
-   */
-  private isReadableRealPath(realPath: string): boolean {
-    const jsReadRoot = this.opts.jsReadRoot ? canonicalPath(path.resolve(this.opts.jsReadRoot)) : undefined;
-    if (jsReadRoot && isPathInside(realPath, jsReadRoot)) {
-      return true;
-    }
-    return this.installedPackageRoots().some(root => isPathInside(realPath, root))
-      || this.namedPackageRoots.some(root => isPathInside(realPath, root));
-  }
-
-  private isReadAllowed(value: string | null): boolean {
-    const normalized = normalizePermissionPath(value);
-    if (!normalized) {
-      return false;
-    }
-    const requestedPath = canonicalPath(path.resolve(normalized));
-
-    /* The worker reads its own script again to start its plugin thread. */
-    if (requestedPath === this.workerScriptPath) {
-      return true;
-    }
-    return this.isReadableRealPath(requestedPath);
-  }
-
-  private isNetAllowed(value: string | null): boolean {
-    if (!this.opts.allowHttp) {
-      return false;
-    }
-    const allowHosts = this.opts.allowNetHosts ?? [];
-    if (allowHosts.length === 0) {
-      return true;
-    }
-    if (!value) {
-      return false;
-    }
-    const host = value.split(':')[0] ?? value;
-    return allowHosts.includes(host);
-  }
-
-  private handleBrokerRequest(request: BrokerRequest): BrokerResponse {
-    const deny = (reason: string): BrokerResponse => ({
-      id: request.id,
-      result: 'deny',
-      reason
-    });
-    switch (request.permission) {
-      case 'read':
-        return this.isReadAllowed(request.value)
-          ? { id: request.id, result: 'allow' }
-          : deny('Read access denied by Jess policy.');
-      case 'net':
-        return this.isNetAllowed(request.value)
-          ? { id: request.id, result: 'allow' }
-          : deny('Network access denied by Jess policy.');
-      case 'env':
-      case 'run':
-      case 'ffi':
-      case 'sys':
-      case 'write':
-        return deny(`${request.permission} permission denied by Jess policy.`);
-      default:
-        return deny(`Permission "${request.permission}" denied by Jess policy.`);
-    }
-  }
-
-  private async startBroker(): Promise<string> {
-    const socketPath = this.createBrokerPath();
-    if (process.platform !== 'win32' && fs.existsSync(socketPath)) {
-      fs.unlinkSync(socketPath);
-    }
-    const server = net.createServer((socket) => {
-      socket.unref();
-      let buf = '';
-      socket.setEncoding('utf8');
-      socket.on('data', (chunk) => {
-        buf += chunk;
-        let idx = buf.indexOf('\n');
-        while (idx >= 0) {
-          const line = buf.slice(0, idx).trim();
-          buf = buf.slice(idx + 1);
-          idx = buf.indexOf('\n');
-          if (!line) {
-            continue;
-          }
-          let req: BrokerRequest | undefined;
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field access below
-            req = JSON.parse(line) as BrokerRequest;
-          } catch {
-            socket.write(JSON.stringify({
-              id: -1,
-              result: 'deny',
-              reason: 'Malformed permission request.'
-            }) + '\n');
-            continue;
-          }
-          const response = this.handleBrokerRequest(req);
-          socket.write(`${JSON.stringify(response)}\n`);
-        }
-      });
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(socketPath, () => resolve());
-    });
-    server.unref();
-
-    /*
-     * Deno opens one broker connection at startup and keeps it, so the path is
-     * needed only until then. Unlinking it there leaves nothing in /tmp when the
-     * host dies without running its exit handlers (SIGTERM, SIGINT, SIGKILL —
-     * Vitest stops its forks with SIGTERM).
-     */
-    server.once('connection', () => this.unlinkBrokerPath(socketPath));
-    this.brokerServer = server;
-    this.brokerSocketPath = socketPath;
-    return socketPath;
-  }
-
-  private startWorker(socketPath: string): Promise<void> {
+  private startWorker(readSet: readonly string[]): Promise<void> {
     const denoCommand = this.resolveDenoCommand();
     const moduleDir = path.dirname(fileURLToPath(import.meta.url));
     const compiledWorkerPath = path.join(moduleDir, 'runtime-worker.js');
@@ -671,17 +529,13 @@ export class JsPlugin extends AbstractPlugin {
     const workerScriptPath = fs.existsSync(compiledWorkerPath)
       ? compiledWorkerPath
       : sourceWorkerPath;
-    this.workerScriptPath = canonicalPath(workerScriptPath);
-    const runtimeApi = this.opts.runtimeApi ?? 'module';
+    const args = denoRunArgs(readSet, this.opts, workerScriptPath);
     const child = spawn(
       denoCommand,
-      ['run', '--no-prompt', workerScriptPath, `--runtime-api=${runtimeApi}`],
+      args,
       {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...sanitizeSpawnEnv(process.env),
-          DENO_PERMISSION_BROKER_PATH: socketPath
-        }
+        env: sanitizeSpawnEnv(process.env)
       }
     );
     this.worker = child;
@@ -754,7 +608,6 @@ export class JsPlugin extends AbstractPlugin {
       return;
     }
     const err = new Error('Deno worker exited unexpectedly.');
-    this.closeBroker();
     this.rejectAllPending(err);
     if (this.runtimeState.status === 'disposed') {
       return;
@@ -776,9 +629,10 @@ export class JsPlugin extends AbstractPlugin {
 
   private async startRuntime(): Promise<void> {
     this.resolveDenoCommand();
-    const socketPath = await this.startBroker();
+    const readSet = this.nextReadSet ?? this.defaultReadSet();
+    this.workerReadSet = readSet.join('\u0000');
     try {
-      await this.startWorker(socketPath);
+      await this.startWorker(readSet);
     } catch (err: unknown) {
       this.shutdown();
       throw err instanceof Error ? err : new Error(String(err));
@@ -830,6 +684,7 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   private async callWorker(request:
+    | EngineWireRequest
     | { type: 'load'; modulePath: string }
     | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
     | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
@@ -865,7 +720,7 @@ export class JsPlugin extends AbstractPlugin {
          * running) and let the next call spin up a fresh one.
          */
         this.abortRuntime(new Error('Deno worker killed after a request timed out.'));
-      }, this.opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS);
+      }, this.opts.requestTimeoutMs ?? (request.type === 'render' ? RENDER_TIMEOUT_MS : REQUEST_TIMEOUT_MS));
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
@@ -902,29 +757,6 @@ export class JsPlugin extends AbstractPlugin {
       this.worker.kill('SIGKILL');
     }
     this.worker = undefined;
-    this.closeBroker();
-  }
-
-  private closeBroker() {
-    if (this.brokerServer) {
-      this.brokerServer.close();
-      this.brokerServer = undefined;
-    }
-    if (this.brokerSocketPath) {
-      this.unlinkBrokerPath(this.brokerSocketPath);
-    }
-    this.brokerSocketPath = undefined;
-  }
-
-  private unlinkBrokerPath(socketPath: string) {
-    if (process.platform === 'win32') {
-      return;
-    }
-    try {
-      fs.unlinkSync(socketPath);
-    } catch {
-      // already gone
-    }
   }
 
   dispose() {
@@ -933,45 +765,19 @@ export class JsPlugin extends AbstractPlugin {
     this.runtimeState = { status: 'disposed' };
   }
 
-  private assertAllowedPath(absoluteFilePath: string) {
-    const jsReadRoot = this.opts.jsReadRoot ? path.resolve(this.opts.jsReadRoot) : undefined;
-    if (!jsReadRoot) {
-      return;
-    }
-
-    /*
-     * Anchored like isReadAllowed: inside jsReadRoot, or an ancestor-chain
-     * node_modules (pnpm store / hoisting live there) — never any node_modules
-     * elsewhere on the machine.
-     */
-    const realPath = canonicalPath(path.resolve(absoluteFilePath));
-    if (this.isReadableRealPath(realPath)) {
-      return;
-    }
-
-    /*
-     * A plugin the stylesheet names (`@plugin "x"`, `@use` of a JS module) is
-     * found by package resolution, which may land outside those roots: a corpus
-     * checked out beside the project, its plugin installed in the project's
-     * node_modules. The author asked for that package, so its root becomes
-     * readable — that package only, never the node_modules around it.
-     */
-    const packageRoot = namedPackageRoot(realPath);
-    if (packageRoot !== undefined) {
-      this.namedPackageRoots.push(packageRoot);
-      return;
-    }
-    throw new Error(`Script path "${path.resolve(absoluteFilePath)}" is outside jsReadRoot "${jsReadRoot}"`);
-  }
-
-  async import(absoluteFilePath: string): Promise<Record<string, any>> {
+  async import(absoluteFilePath: string, route?: ScriptSandboxRoute): Promise<Record<string, any>> {
     const ext = path.extname(absoluteFilePath);
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}"`);
     }
     const fnsRealPath = trustedFnsRealPath(absoluteFilePath);
     if (fnsRealPath === undefined) {
-      this.assertAllowedPath(absoluteFilePath);
+      if (inEngine()) {
+        return this.importInProcess(path.resolve(absoluteFilePath));
+      }
+      if (route !== undefined) {
+        return route.reroute();
+      }
       await this.ensureRuntime();
       const modulePath = path.resolve(absoluteFilePath);
       const loadResult = await this.callWorker({ type: 'load', modulePath });
@@ -1031,12 +837,21 @@ export class JsPlugin extends AbstractPlugin {
    * @deprecated Less `@plugin` is deprecated. Prefer `@-from` for
    * ESM-style script imports or `@-use` for Sass-module-style namespace imports.
    */
-  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
+  async importLessPlugin(
+    absoluteFilePath: string,
+    options: string | null = null,
+    route?: ScriptSandboxRoute
+  ): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
     const ext = path.extname(absoluteFilePath);
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
     }
-    this.assertAllowedPath(absoluteFilePath);
+    if (inEngine()) {
+      return this.importLessPluginInProcess(path.resolve(absoluteFilePath), options);
+    }
+    if (route !== undefined) {
+      return route.reroute();
+    }
     await this.ensureRuntime();
     const modulePath = path.resolve(absoluteFilePath);
     const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
@@ -1167,10 +982,147 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   /** Context-facing executable-plugin capability used by the direct AST path. */
-  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
-    return this.importLessPlugin(absoluteFilePath, options);
+  async importPlugin(
+    absoluteFilePath: string,
+    options: string | null = null,
+    route?: ScriptSandboxRoute
+  ): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
+    return this.importLessPlugin(absoluteFilePath, options, route);
+  }
+
+  /*
+   * ---- Inside the compile engine: scripts in this realm, which is the sandbox --
+   * The same runtime and the same value conversion as the per-call worker,
+   * minus the process boundary: a plugin call is a function call, and the scope
+   * reads and built-in calls a Less 4 plugin body makes are answered by the live
+   * call site directly.
+   */
+
+  private runtime(): Promise<InProcessRuntime> {
+    this.inProcess ??= loadInProcessRuntime();
+    return this.inProcess;
+  }
+
+  private async importInProcess(modulePath: string): Promise<Record<string, unknown>> {
+    const runtime = await this.runtime();
+    const moduleObject: Record<string, unknown> = {};
+    for (const item of await runtime.loadModule(modulePath)) {
+      moduleObject[item.name] = item.kind === 'function'
+        ? async (...args: unknown[]) => {
+          try {
+            return decodeBridgeValue(await runtime.invokeExport(modulePath, item.name, encodeBridgeArgs(args)));
+          } catch (err) {
+            const fields = thrownFields(err);
+            throw lessPluginApiRefusal(path.basename(modulePath), fields) ?? new Error(fields.error);
+          }
+        }
+        : item.value;
+    }
+    return moduleObject;
+  }
+
+  private async importLessPluginInProcess(
+    modulePath: string,
+    options: string | null
+  ): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
+    const runtime = await this.runtime();
+    let names: string[];
+    try {
+      names = await runtime.loadLessPlugin(modulePath, options);
+    } catch (err) {
+      const fields = thrownFields(err);
+      throw lessPluginApiRefusal(path.basename(modulePath), fields)
+        ?? new PluginFunctionError(path.basename(modulePath), fields.error, fields.stack);
+    }
+    const functions: Record<string, ContextualPluginFunction> = {};
+    for (const functionName of names) {
+      functions[functionName] = async (args, capabilities = EMPTY_PLUGIN_CALL_CAPABILITIES) => {
+        let outcome: Awaited<ReturnType<InProcessRuntime['invokeLessPluginFunction']>>;
+        try {
+          outcome = await runtime.invokeLessPluginFunction(
+            modulePath,
+            functionName,
+            encodeBridgeArgs([...normalizePluginCallArgs(args)]),
+            options,
+            {
+              variable: name => this.resolveVariableFact(name, capabilities),
+              call: (name, callArgs) => this.resolveCallFact({ name, args: callArgs }, capabilities),
+              fileInfo: capabilities.currentFileInfo ?? null
+            }
+          );
+        } catch (err) {
+          const fields = thrownFields(err);
+          throw lessPluginApiRefusal(path.basename(modulePath), fields)
+            ?? new PluginFunctionError(functionName, fields.error, fields.stack, fields.errorName);
+        }
+        for (const record of outcome.logs) {
+          capabilities.log?.(record);
+        }
+        if (outcome.important) {
+          capabilities.markImportant?.();
+        }
+        return decodeBridgeResult(outcome.value);
+      };
+    }
+    return { functions };
+  }
+
+  /*
+   * ---- The compile engine: a whole render in the Deno sandbox ----------------
+   */
+
+  /**
+   * Runs one whole render in this plugin's Deno process: one request carrying
+   * the compiler's identity, its options as data and the render's arguments,
+   * one reply carrying the result. The process stays up between renders, so
+   * the compiler and the scripts it loaded stay warm; a render under another
+   * read root starts a new process. What the render printed is written to this
+   * process's stderr; a thrown `JessError` is rethrown as one.
+   */
+  async renderInEngine(request: EngineRenderRequest): Promise<unknown> {
+    const code = engineCode(request.compiler.module, import.meta.url);
+    const readSet = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
+    const key = readSet.join('\u0000');
+    if (this.workerReadSet !== key && this.runtimeState.status !== 'idle') {
+      this.shutdown();
+      if (this.runtimeState.status !== 'disposed') {
+        this.runtimeState = { status: 'idle' };
+      }
+    }
+    this.nextReadSet = readSet;
+    const result = await this.callWorker({
+      type: 'render',
+      compiler: request.compiler,
+      compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
+      method: request.method,
+      args: encodeEngineValue(request.args, 'render arguments'),
+      host: hostFacts(code)
+    });
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+    if (!result.ok) {
+      throw engineFailure(result);
+    }
+    return result.value;
   }
 }
+
+/** Set by the compile engine (`engine-runtime.ts`) in the Deno realm it runs in. */
+const inEngine = (): boolean => Reflect.get(globalThis, Symbol.for('@jesscss/plugin-js/engine')) === true;
+
+/** One render the compiler moves into the engine (see `renderInEngine`). */
+export type EngineRenderRequest = {
+  /** The compiler class the host runs, made again in the engine by its module and export. */
+  compiler: { module: string; exportName: string };
+  compilerOptions: unknown;
+  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender';
+  args: readonly unknown[];
+
+  /** The entry stylesheet's folder and the script root, which decide the read root. */
+  entryDir: string;
+  jsReadRoot: string;
+};
 
 /**
  * Global flag set when @jesscss/plugin-js is loaded.
@@ -1183,8 +1135,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis[JESS_PLUGIN_JS_GLOBAL] = true;
 }
 
-const jsPlugin = ((opts?: JsPluginOptions) => {
-  return new JsPlugin(opts);
-}) satisfies Plugin;
+const jsPlugin = ((opts?: JsPluginOptions) =>
+  recordPluginModule(new JsPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
 export default jsPlugin;

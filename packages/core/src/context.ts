@@ -1,5 +1,5 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
-import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
+import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
@@ -214,6 +214,13 @@ export interface ContextOptions {
    * plugin-free parse/eval paths.
    */
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
+
+  /**
+   * How this render moves into the script sandbox when it reaches a script
+   * boundary; passed to the script plugin's `import` / `importPlugin`. Set by
+   * the compiler per render.
+   */
+  scriptSandbox?: ScriptSandboxRoute;
 
   /**
    * The settings that cover one source file, computed for its language (its
@@ -1659,7 +1666,7 @@ export class Context {
       }
     }
 
-    const module = await plugin.import!(resolvedPath);
+    const module = await plugin.import!(resolvedPath, this.opts.scriptSandbox);
     if (!module) {
       throw new Error(`File "${friendlyPath}" not supported`);
     }
@@ -1747,7 +1754,7 @@ export class Context {
     if (cached !== undefined) {
       return cached;
     }
-    const loading = plugin.importPlugin(resolvedPath, options).then(module => ({
+    const loading = plugin.importPlugin(resolvedPath, options, this.opts.scriptSandbox).then(module => ({
       module,
       triedPaths,
       resolvedPath

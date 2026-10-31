@@ -41,7 +41,7 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
 const startWorker = async (modulePath: string) => {
   const child = spawn(
     denoPath,
-    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${workerPath}`, workerPath, '--runtime-api=module'],
+    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${path.dirname(workerPath)}`, workerPath, '--runtime-api=module'],
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
   const lines: Array<{ id?: number; type?: string }> = [];

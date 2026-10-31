@@ -10,6 +10,10 @@ import { DefaultCompiler } from '@jesscss/compiler-preset';
 // @public
 export class Compiler extends DefaultCompiler {
     constructor(opts?: ConfigOptions);
+    static readonly moduleIdentity: {
+        module: string;
+        exportName: string;
+    };
     // @internal (undocumented)
     opts: ConfigOptions;
 }

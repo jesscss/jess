@@ -22,7 +22,7 @@ import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
-import { resolveLessTestDataRoot } from '../test-utils.js';
+import { corpusReadRoot, resolveLessTestDataRoot } from '../test-utils.js';
 
 const tempDirs: string[] = [];
 
@@ -622,7 +622,7 @@ describe('legacy Less plugin-manager hooks in the corpus fixtures', () => {
     const entry = path.join(testData, 'tests-unit/plugin-preeval/plugin-preeval.less');
     const result = await new Compiler({
       compile: {
-        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: corpusReadRoot(testData), runtimeApi: 'less' }), lessCompatPlugin()]
       }
     }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
 
@@ -646,7 +646,7 @@ describe('legacy Less plugin-manager hooks in the corpus fixtures', () => {
     const entry = path.join(testData, 'tests-unit/plugin-module/plugin-module.less');
     const result = await new Compiler({
       compile: {
-        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: corpusReadRoot(testData), runtimeApi: 'less' }), lessCompatPlugin()]
       }
     }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
 

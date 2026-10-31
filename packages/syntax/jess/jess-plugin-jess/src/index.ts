@@ -8,7 +8,8 @@ import {
   type ModuleConfigRequest,
   type Plugin,
   type SafeParseOptions,
-  type ValueEvaluator
+  type ValueEvaluator,
+  recordPluginModule
 } from '@jesscss/core';
 import { parseRecovering, parseSelector, type JessParseOptions } from '@jesscss/jess-parser';
 
@@ -111,6 +112,6 @@ export class JessPlugin extends AbstractPlugin {
   }
 }
 
-const jessPlugin = (() => new JessPlugin()) satisfies Plugin;
+const jessPlugin = (() => recordPluginModule(new JessPlugin(), import.meta.url, 'default', [])) satisfies Plugin;
 
 export default jessPlugin;
