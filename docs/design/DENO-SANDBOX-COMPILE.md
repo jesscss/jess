@@ -1,14 +1,14 @@
 # Sandboxed compiles run whole in Deno
 
-**Status:** design, not yet implemented. Tracks jesscss/jess#497. It replaces
+**Status:** design, decided (§8; ledger row A19), not yet implemented. Tracks
+jesscss/jess#497. It replaces
 the per-call worker and the permission broker described in
 [`architecture/js-execution-deno-spec.md`](../architecture/js-execution-deno-spec.md)
 (its "Permission broker" section and its non-goal "running the entire Jess
 compile in Deno"). The rest of that spec (lazy activation, script boundaries,
 the value bridge, error categories) still holds.
 
-Section 8 lists the decisions this design needs before the routing and
-permission changes land.
+Section 8 records the trust and API decisions this design rests on.
 
 ## 1. What happens today
 
@@ -39,7 +39,8 @@ A compile runs in one of two places, and the CSS must not depend on which.
 - **Whole in Deno.** A compile that reaches a script boundary served by
   `@jesscss/plugin-js` (the boundaries of the spec's "Lazy Activation
   Contract": a `@plugin` or script `@use` that resolves to a `.js`/`.ts`
-  module, other than the trusted `@jesscss/fns` modules) runs whole inside the
+  module, other than Jess's own `@jesscss/fns` modules, which run in-process
+  unsandboxed, §8.1) runs whole inside the
   Deno sandbox: parse, evaluate and serialize. Plugin calls are ordinary
   in-process function calls there.
 
@@ -100,7 +101,9 @@ Nothing crosses as a live object.
 - **Config files** (`styles.config.*`) are loaded by the compile in Deno, as
   they are found per source file today.
 
-How a plugin instance reports its module identity is decision 8.4.
+Each plugin factory records its module identity on the instances it makes
+(§8.4). A plugin instance without one cannot cross, and a sandboxed render that
+needs it fails with an error naming the plugin.
 
 ## 5. Native permissions
 
@@ -127,11 +130,13 @@ deno run --no-prompt \
   there.
 - **`--ignore-env`** makes every environment read `undefined`. The env facts a
   compile uses travel in the request instead.
-- **The read set** is the script read set of today's policy (`jsReadRoot` and
-  the `node_modules` folders above it), plus the include paths, plus the
-  installed compiler and its dependencies. Each entry is passed in both its
-  written and its canonical spelling, because Deno matches paths as written
-  (below). Decision 8.2 is whether that set is right for stylesheets.
+- **The read set** is one read root (§8.2), plus the installed compiler and its
+  dependencies where they lie outside it. The read root is whichever of these
+  is nearest the top of the filesystem: the folder holding the `node_modules`
+  that governs the entry (the nearest one above it), the script root
+  (`jsReadRoot`), and the entry stylesheet's folder. Everything under it is
+  readable. Each entry is passed in both its written and its canonical
+  spelling, because Deno matches paths as written (below).
 - **A different read set needs a different process.** Flags are fixed at spawn,
   so a render whose read set differs from the running process's starts a new
   one. A compiler that renders one project keeps one process.
@@ -160,7 +165,7 @@ What that means:
 - Deno checks the path as written. It does not resolve symlinks, on either
   side. Today's broker resolves every requested path (`realpath`) before it
   checks, so a symlink inside the root that points outside it is denied today
-  and allowed natively. Decision 8.3.
+  and allowed natively. That is accepted (§8.3).
 - A sandboxed script cannot make such a symlink: creating one needs unscoped
   write permission, which the sandbox never has. Only a symlink already on
   disk can lead outside.
@@ -173,20 +178,15 @@ What that means:
 
 ### What remains brokered
 
-Nothing, under the options this design takes in §8. Each broker duty and what
-replaces it:
+Nothing (§8.2, §8.3). Each broker duty and what replaces it:
 
 | Broker duty | Replacement |
 |---|---|
 | read inside `jsReadRoot` / `node_modules` above it | `--allow-read` |
 | deny write, env, run, ffi, sys | not granted; `--ignore-env` for env reads |
 | net per `allowHttp` / `allowNetHosts` | `--allow-net=<hosts>`, as remote imports do |
-| canonicalize, so a symlink cannot lead out | not expressible natively; decision 8.3 |
-| grant a package a stylesheet names that resolves outside every root | not expressible with flags fixed at spawn; decision 8.2 |
-
-If decision 8.3 or 8.2 keeps either of the last two rows, that row is the only
-thing a broker would still answer, and its cost is ~0.13 ms per check (293
-checks per `bootstrap4.less` compile in the prototype below).
+| canonicalize, so a symlink cannot lead out | dropped: Deno's behaviour is accepted (§8.3) |
+| grant a package a stylesheet names that resolves outside every root | dropped: the read root decides (§8.2) |
 
 ## 6. Deno version
 
@@ -238,73 +238,52 @@ a cold first render. Starting the Deno process in the background when
 plugin-js is installed, while Node begins the compile, would overlap the two;
 that is an optimization to measure after the routing lands.
 
-## 8. Decisions needed
+## 8. Decisions
 
-### 8.1 Is there an unsandboxed mode for stylesheet JavaScript?
+### 8.1 Stylesheet JavaScript always runs sandboxed, except Jess's own functions
 
-Today stylesheet JavaScript runs only in the sandbox. Without
-`@jesscss/plugin-js` a script boundary is refused ("Install
-@jesscss/plugin-js…"). This design keeps that. Options:
+Owner, 2026-10-31: *"It can be unsandboxed if it's one of Jess's distributed
+functions (fns package)"*.
 
-- **A (this design):** no unsandboxed mode. The "sandboxing off" figures above
-  come from the prototype and are a measurement only.
-- **B:** an explicit opt-out (the prototype's `compile.jsSandbox: false`, CLI
-  `--js-sandbox off`), for a project that trusts its scripts. Scripts run
-  in-process in Node through the same runtime and value bridge.
-- **C:** without plugin-js installed, scripts run in-process unsandboxed;
-  installing plugin-js turns the sandbox on.
+`@jesscss/fns` modules run in-process in Node, unsandboxed, as today. Every
+other script runs sandboxed in Deno. There is no `jsSandbox: false` opt-out,
+and without `@jesscss/plugin-js` a script boundary is refused as today.
 
-### 8.2 What may a sandboxed compile read?
+### 8.2 The read root
 
-The compile and its scripts share one realm in Deno, so they share one read
-set. Today stylesheets read any path (in Node) and only scripts are confined.
-Options:
+Owner, 2026-10-31: *"Lowest root - either node modules parent root, or script
+root, or start stylesheet root"*. Asked whether that means whichever of the
+three is nearest the top of the filesystem, the owner answered, 2026-10-31:
+*"yes"*.
 
-- **A (this design):** the read set of §5. A stylesheet import outside it fails
-  in a sandboxed compile with a diagnostic that names the read roots, where the
-  same import succeeds in a compile without JavaScript. The package rule for
-  scripts that resolve outside every root (a corpus checked out beside the
-  project) is not kept. In the prototype's corpus run this changed 1 of 318
-  fixtures (`import-module.less`, which imports a sibling folder).
-- **B:** A, plus the folders of every stylesheet the Node attempt read before
-  it reached the boundary. Covers more, but which files are readable then
-  depends on import order.
-- **C:** an unrestricted read set (`--allow-read` with no list), keeping no
-  write, env, run, ffi or sys, and no net unless `allowHttp`. Scripts could
-  then read what stylesheets already can; the only way out is the CSS.
+So the read root is whichever is nearest the filesystem root of: the folder
+holding the governing `node_modules`, the script root (`jsReadRoot`), and the
+entry stylesheet's folder. Everything under it is readable. The compiler's own
+code is added where it lies outside the root, so the engine can load it.
+Include paths are not added; a stylesheet or script outside the root fails in
+a sandboxed compile.
 
-### 8.3 Symlinks inside a read root
+### 8.3 Symlinks
 
-Deno allows a symlink inside the read set that points outside it; the broker
-denies it. Options:
+Owner, 2026-10-31: *"Accept Deno's behaviour"*.
 
-- **A (this design):** accept the native behaviour. A script cannot create a
-  symlink, and a stylesheet compiled in Node reads such a file anyway.
-- **B:** keep the broker for reads only, at ~0.13 ms per read, to resolve and
-  check each path.
+A symlink inside the read root that points outside it is readable. There is no
+broker.
 
 ### 8.4 How a plugin instance names its module
 
-For §4, the host needs each configured plugin's module and export. Options:
-
-- **A:** search for it, as the prototype does: Node's CJS registry, then the
-  ESM entries of plugin packages in the compiler's dependency closure, then a
-  same-named class. Needs no change to plugins; the last step can pick the
-  wrong class.
-- **B (this design):** each plugin factory records it: `definePlugin(import.meta.url,
-  'default', opts => new LessPlugin(opts))`, stored on the instance. Exact, one
-  line per plugin package, and a third-party plugin that does not record it
-  fails with a clear error in a sandboxed compile.
-- **C:** only plugins from config files and the default stack cross (Deno
-  loads both itself). A plugin instance passed in code is refused in a
-  sandboxed compile.
+Orchestrator judgment under owner delegation, 2026-10-31: each plugin factory
+records its module identity, `definePlugin(import.meta.url, 'default', opts =>
+new LessPlugin(opts))` or the equivalent, stored on the instance. A plugin
+without it cannot cross into a sandboxed compile, and the render fails with an
+error that names it.
 
 ## 9. Plan
 
 Each step is one PR, measured and merged before the next.
 
 1. This design.
-2. Pin the exact Deno version and run the pinned binary (§6).
+2. Pin the exact Deno version and run the pinned binary (§6). Done: #522.
 3. The engine: a sandboxed render runs whole in Deno, with native permissions,
    routed by §2, for `render`, `renderToResult` and `renderString`; the CLI
    needs no change beyond the compiler's. Deletes the broker. Measured as §7,
@@ -323,5 +302,5 @@ Every step keeps:
   `packages/jess-plugin-remote-import/test/deno-net-denial.test.ts`: a
   sandboxed plugin reads a file outside the read set, with every host-side
   check out of the way, and fails with Deno's own error. A positive control
-  reads a file inside the set, and a symlink probe pins whichever answer
-  decision 8.3 takes.
+  reads a file inside the set, a symlink probe pins §8.3, and a network
+  request without `allowHttp` fails with Deno's own error.
