@@ -190,10 +190,12 @@ checks per `bootstrap4.less` compile in the prototype below).
 
 ## 6. Deno version
 
-`@jesscss/plugin-js` pins an exact `deno` version (2.9.6 today, from `^2.6.8`),
-and the engine runs the pinned binary. A Deno on `PATH` is used only when
-`denoCommand` names it. Today the plugin prefers any Deno on `PATH`; the table
-above shows two Deno versions differ in a behaviour the compile depends on.
+`@jesscss/plugin-js` pins an exact `deno` version (2.9.6 today, from `^2.6.8`)
+and runs the binary that dependency installs. An explicit `denoCommand` still
+wins, and a Deno on `PATH` remains the fallback when the dependency's binary is
+not installed (its install script did not run). Today the plugin prefers any
+Deno on `PATH` over the installed one; the table above shows two Deno versions
+differ in a behaviour the compile depends on.
 
 ## 7. Evidence from the prototype
 
