@@ -2044,12 +2044,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       plainArgumentsAfterFirst
     )
   ));
-  // Value-position identifiers and glued function openers share one lexical
-  // family. Parse that opener once, then route by the returned text. Branch
-  // nodes own `routed()` so the consumed opener remains inside the selected CST
-  // node, and `foo (` still stays keyword + paren because the `(` is not glued
-  // into the opener.
-  const identOrFunction = token(noTrivia(sequence(g.InterpolatedValueStart, optional(literal('(')))));
+  /**
+   * A function opener, `name(` with the `(` glued (`foo (` is a keyword and a
+   * paren). `url(` and `calc(` are not one: each has its own grammar, so a
+   * statement or call never opens on them.
+   */
   const genericFunctionOpen = token(noTrivia(sequence(
     not(keywords(['url(', 'calc('], { caseInsensitive: true })),
     g.InterpolatedValueStart,
@@ -2145,28 +2144,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return lowerLogicalCallStatement(call);
     }
   );
+  /**
+   * A statement-position call (`each(…)`, `if(…)`, `foo(…);`). The dispatch
+   * opens only on a function opener, so a property or a type selector fails it
+   * at the character after its name, before any case is looked up, and
+   * `url(` / `calc(` fail it in the opener and fall through to the other
+   * statements (a committed dispatch failure would not).
+   */
   const FunctionStatement = transform(
     dispatch(
-      identOrFunction,
+      genericFunctionOpen,
       caseOf('each(', g.EachFunctionStatement),
       caseOf('if(', g.IfFunctionStatement),
-      /*
-       * The url/calc exclusion here is LOAD-BEARING, not redundant with
-       * `genericFunctionOpen`'s `not(keywords(['url(','calc(']))` guard (:3380).
-       * This arm routes through `CallArgumentFunction`'s
-       * `routed(genericFunctionOpen)`, and `routed()` reuses the dispatch opener
-       * token WITHOUT running that guard — so the negative lookahead is the only
-       * thing keeping `url(`/`calc(` from ENTERING this arm. A dispatch miss
-       * falls through to `declarationItem`; entering and failing is a *committed*
-       * dispatch failure that `choice` propagates, suppressing the fall-through
-       * (verified: `endsWith('(')` reparses bare `calc(1px + 2px);` as a function
-       * statement). To make it principled, divert `url(`/`calc(` with `caseOf`
-       * arms first (as `IdentifierOrFunction` does) — a behavior change, not a rename.
-       */
-      when(
-        matches(/^(?!(?:url|calc)\($).+\($/i),
-        choice(GenericFunctionStatement, TerminalGenericFunction)
-      )
+      otherwise(choice(GenericFunctionStatement, TerminalGenericFunction))
     ),
     ([, statement]) => statement
   );
@@ -2202,7 +2192,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // read as one token like any other: glued to `(` it is a css-mixins-1
   // `<dashed-function>` and takes the generic call tail, and bare it is the
   // custom-property value. `FunctionStatement` keeps the plain
-  // `identOrFunction`: widening it would scan every `--x: …` custom-property
+  // `genericFunctionOpen`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   //
   // BLOCKED restatements (checklist item 1, outcome 4): `valueIdentOrFunction`
