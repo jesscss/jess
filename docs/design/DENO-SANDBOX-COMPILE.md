@@ -114,6 +114,7 @@ process and passes it as flags; nothing asks the host during a compile.
 deno run --no-prompt \
   --allow-read=<read set> --ignore-read \
   [--allow-net=<hosts>]   # only with allowHttp, as today
+  --unstable-bare-node-builtins --unstable-sloppy-imports \
   <engine>
 ```
 
@@ -129,8 +130,12 @@ deno run --no-prompt \
   there.
 - **Environment.** No env permission, so an env read throws Deno's own
   `NotCapable`. The env facts a compile uses (cwd, home and temp paths,
-  colour support, a fixed set of variables) travel in the request, and the
-  engine answers the compiler's reads from them.
+  colour support, `NODE_PATH`, a fixed set of variables) travel in the
+  request, and the engine answers the compiler's reads from them.
+- The two unstable flags only change module resolution: bare Node built-in
+  names (`fs` for `node:fs`) in workspace-linked packages, and `./x.js` for
+  `./x.ts` when the compiler runs from its TypeScript sources (a workspace
+  test run). Neither grants a permission.
 - **The read set** is the read root (§8.2), plus the installed compiler and its
   dependencies where they lie outside it. The read root is whichever of these
   is nearest the top of the filesystem: the folder holding the `node_modules`
@@ -195,8 +200,9 @@ What that means:
 
 ### Known limitation: the module loader reads any `node_modules`
 
-Deno 2.9.6 loads a file under any `node_modules` folder through `require()`
-and `import()`, whatever `--allow-read` says. An `fs` read of the same file is
+When a `package.json` sits beside the main module (as it does for the engine,
+inside `@jesscss/plugin-js`), Deno 2.9.6 loads a file under any `node_modules`
+folder through `require()` and `import()`, whatever `--allow-read` says. An `fs` read of the same file is
 denied, and so is a module load outside every `node_modules`. A sandboxed
 script can therefore load (and, for JSON, read) files under a `node_modules`
 folder outside its read root, though not plain files beside them.
