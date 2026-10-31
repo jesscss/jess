@@ -25,7 +25,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { NO_SPAN, anonymousMixin, any, generalEnclosedGroup, ifTestCall, styleFeature, forgivingSelectorRest, withGluedKeywordSpan, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, inParens, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, declarationReference, lookupStep, parentSelectorReference, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot, queryFeatureNameFrom, queryFeatureNameValue, enterSupportsGroup, isInSupportsGroup } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { conditionWord, emptyParenList, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
+import { conditionWord, emptyParenList, keepsGroup, parenValue, enterCalculation, leaveCalculation, controlBlockStatements, contentArgRaw, enterIfTest, isIfTest, leaveIfTest, foldLogicalOperation, leadingSeparatorValue, scssFoldOperation, mathOperatorFact, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, scssCallArgument, scssValueTail, gluedRun, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren, queryFunctionContents } from './grammar-helpers.js';
 import { scssSum } from './plus-chain.js';
 import type { ConditionWord, MathOperatorFact, ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
@@ -44,6 +44,7 @@ type ScssRules = {
   Paren: Combinator<ValueNode>;
   MapEntry: Combinator<CollectionEntry>;
   Map: Combinator<Collection>;
+  MapOrGroup: Combinator<ValueNode>;
   EmptyList: Combinator<Block>;
   ReturnRule: Combinator<Declaration>;
   FunctionRule: Combinator<VariableDeclaration>;
@@ -824,13 +825,14 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * A parenthesized SCSS value can either enforce arithmetic precedence or hold
-   * an ordinary list. Try the fully structured arithmetic form first; the list
-   * branch is deliberately separate so `(1 2)` is a list rather than being
-   * invented as math. Parens around a list are list syntax, as Dart Sass reads
+   * an ordinary list. A group with no `/` after its first operand is read by
+   * `MapOrGroup` before this rule is tried; here the fully structured arithmetic
+   * form comes first, so `(a/b)` divides, and the list branch is deliberately
+   * separate so `(1 2)` is a list rather than being invented as math. Parens around a list are list syntax, as Dart Sass reads
    * them, so the list branch builds the curly list (`parenValue`), and it
    * takes a trailing comma: `(1,)` is a one-item comma list.
    *
-   * The interior padding is spelled for the same reason `Map` above spells it:
+   * The interior padding is spelled for the same reason `Map` below spells it:
    * this ladder runs with trivia cleared, so an interior that admits authored
    * padding has to write it, and it has to write the comment-bearing
    * `valueTrivia` — the document trivia table names only whitespace and `//`,
@@ -861,7 +863,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ))
     ),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => parenValue(children, state)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => parenValue(children, keepsGroup(state))
   );
 
   /*
@@ -897,6 +899,14 @@ const scssFactory = (g: ScssInputRules) => {
     )
   );
 
+  /* A map entry's `:` and its value, after the key. */
+  const mapEntryValue = sequence(
+    optional(valueTrivia),
+    literal(':'),
+    optional(valueTrivia),
+    g.ValueTerm
+  );
+
   /*
    * A Sass map entry `key: value`. The key is a single arithmetic term (an
    * identifier, string, number, or `#{…}`); the value is an ordinary value term
@@ -907,10 +917,7 @@ const scssFactory = (g: ScssInputRules) => {
     'CollectionEntry',
     noTrivia(sequence(
       g.MathTopSum,
-      optional(valueTrivia),
-      literal(':'),
-      optional(valueTrivia),
-      g.ValueTerm
+      mapEntryValue
     )),
     children => collectionEntry(
       mapKeyValue(requireValue(children[0])),
@@ -918,14 +925,27 @@ const scssFactory = (g: ScssInputRules) => {
     )
   );
 
+  /* A map's entries after its first, and its close. */
+  const mapRest = sequence(
+    many(noTrivia(sequence(
+      optional(valueTrivia),
+      literal(','),
+      optional(valueTrivia),
+      g.MapEntry
+    ))),
+    listTrailingComma,
+    optional(valueTrivia),
+    literal(')')
+  );
+
   /*
    * A Sass map literal `(a: 1, b: 2)` lowers to the data-only shared
    * `Collection` (`.jess` `#{a: 1; b: 2}`); SCSS nested properties use
    * `NestedPropertyBlock` instead. Maps are disambiguated from a paren
    * value-list `(1 2 3)` by the `key: value` entry shape, so a single `(a: 1)`
-   * is a map and `()` is not (`EmptyList`). This arm sits before `Paren` in the
-   * value-atom choice; when no entry carries a colon it backtracks to the paren
-   * list/arithmetic form.
+   * is a map and `()` is not (`EmptyList`). A value reads a map through
+   * `MapOrGroup`; this rule is the `@use … with (…)` configuration, which takes
+   * only a map.
    */
   const Map = node<Collection>(
     'Collection',
@@ -933,17 +953,65 @@ const scssFactory = (g: ScssInputRules) => {
       literal('('),
       optional(valueTrivia),
       g.MapEntry,
-      many(noTrivia(sequence(
-        optional(valueTrivia),
-        literal(','),
-        optional(valueTrivia),
-        g.MapEntry
-      ))),
-      listTrailingComma,
-      optional(valueTrivia),
-      literal(')')
+      mapRest
     )),
     children => collection(children.filter(isCollectionEntry))
+  );
+
+  /*
+   * A value `(` that opens a map or an arithmetic group reads its first operand
+   * once and decides on what follows it: a `:` makes a map (`(a: 1, b: 2)`), a
+   * `)` a group (`($x * 2)`, `(6px)`). The operand is a map key's `MathTopSum`.
+   * Followed by `)` it is also the group's `MathSum`, which differs from it only
+   * by reading a `/` as division, and no `/` follows it.
+   *
+   * The rest is `Paren`'s, after this rule fails: a `/` after the operand, where
+   * `(a/b)` divides but `(a/b c)` is a slash list, which only the input further
+   * on decides, and a list (`(1 2)`, `(1, 2)`), whose items `Paren` reads as a
+   * `Value`.
+   */
+  const MapOrGroup = node<ValueNode>(
+    'MapOrGroup',
+    noTrivia(sequence(
+      literal('('),
+      optional(valueTrivia),
+      g.MathTopSum,
+      choice(
+        sequence(
+          mapEntryValue,
+          mapRest
+        ),
+        sequence(
+          optional(valueTrivia),
+
+          /*
+           * Whether the group keeps its parens is read here, by a gate, so the
+           * reducer reads it as a field rather than the parse state, which would
+           * make every map capture its raw children and trivia log as well.
+           */
+          choice(
+            {
+              gate: state => keepsGroup(state),
+              combinator: field('keepsParens', literal(')'))
+            },
+            literal(')')
+          )
+        )
+      )
+    )),
+    (children, fields) => {
+      const colon = children.findIndex(child => isToken(child) && child.value === ':');
+      if (colon === -1) {
+        return parenValue(children, fields?.keepsParens !== undefined);
+      }
+      return collection([
+        collectionEntry(
+          mapKeyValue(requireValue(children.find(isScssValue))),
+          requireValueSlot(children.find((child, index) => index > colon && isScssValueSlotValue(child)))
+        ),
+        ...children.filter(isCollectionEntry)
+      ]);
+    }
   );
 
   /*
@@ -1366,7 +1434,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.CustomPropertyValue,
       g.UnicodeRange,
       IdentifierOrFunction,
-      g.Map,
+      g.MapOrGroup,
       g.EmptyList,
       g.Paren,
       g.Square,
@@ -5373,6 +5441,7 @@ const scssFactory = (g: ScssInputRules) => {
     Paren,
     MapEntry,
     Map,
+    MapOrGroup,
     EmptyList,
     ReturnRule,
     FunctionRule,
