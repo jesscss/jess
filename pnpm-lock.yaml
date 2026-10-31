@@ -619,7 +619,7 @@ importers:
         specifier: workspace:*
         version: link:../fns
       deno:
-        specifier: ^2.6.8
+        specifier: 2.9.6
         version: 2.9.6
     devDependencies:
       '@types/node':
@@ -658,7 +658,7 @@ importers:
         specifier: ^20.0.0
         version: 20.19.43
       deno:
-        specifier: ^2.6.8
+        specifier: 2.9.6
         version: 2.9.6
       typescript:
         specifier: ^5.0.0

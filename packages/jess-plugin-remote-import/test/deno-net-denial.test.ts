@@ -4,19 +4,19 @@ import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** Deno on PATH first, then the binary the `deno` package installs — the order @jesscss/plugin-js uses. */
+/** The binary the pinned `deno` package installs, then Deno on PATH — the order @jesscss/plugin-js uses. */
 function findDeno(): string | undefined {
   const runs = (command: string): boolean => spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0;
-  if (runs('deno')) {
-    return 'deno';
-  }
   try {
     const packageDir = path.dirname(createRequire(import.meta.url).resolve('deno/package.json'));
     const binary = path.join(packageDir, process.platform === 'win32' ? 'deno.exe' : 'deno');
-    return runs(binary) ? binary : undefined;
+    if (runs(binary)) {
+      return binary;
+    }
   } catch {
-    return undefined;
+    // not installed: fall back to PATH
   }
+  return runs('deno') ? 'deno' : undefined;
 }
 
 const deno = findDeno();

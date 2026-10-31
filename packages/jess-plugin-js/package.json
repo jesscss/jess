@@ -36,7 +36,7 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/fns": "workspace:*",
-    "deno": "^2.6.8"
+    "deno": "2.9.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
