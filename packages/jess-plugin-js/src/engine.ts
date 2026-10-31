@@ -180,17 +180,28 @@ const closures = new Map<string, Promise<string[]>>();
  * with asynchronous file reads, so it runs beside a render in this process
  * instead of holding it up.
  */
-export const codeClosure = (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
+export const codeClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
   const key = entryFiles.join('\u0000');
   let closure = closures.get(key);
   if (closure === undefined) {
     closure = walkClosure(entryFiles, signal);
-
-    /* A walk stopped part way (`signal`) is not kept: the next caller walks again. */
-    closure.catch(() => closures.delete(key));
     closures.set(key, closure);
   }
-  return closure;
+  try {
+    return await closure;
+  } catch (err) {
+    /*
+     * A walk stopped part way (an ahead-of-time start let go) is not kept, and
+     * a caller that did not ask to stop walks again.
+     */
+    if (closures.get(key) === closure) {
+      closures.delete(key);
+    }
+    if (signal?.aborted !== true && err instanceof Error && err.name === 'AbortError') {
+      return codeClosure(entryFiles, signal);
+    }
+    throw err;
+  }
 };
 
 const walkClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
