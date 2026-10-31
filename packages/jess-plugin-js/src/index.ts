@@ -437,10 +437,11 @@ export class JsPlugin extends AbstractPlugin {
 
   /**
    * The Deno executable this instance spawns, resolved once. An explicit
-   * `denoCommand` option wins; otherwise a Deno on PATH is preferred (the usual
-   * developer setup) and the binary shipped by the bundled `deno` dependency is
-   * the fallback (CI and any install without a native Deno). Throws the
-   * actionable RUNTIME_MISSING guidance when nothing runs.
+   * `denoCommand` option wins; otherwise the binary of the `deno` dependency,
+   * whose exact version this package pins, so every install runs the Deno its
+   * sandbox was tested on. A Deno on PATH is the fallback for an install whose
+   * `deno` binary was never downloaded (its install script did not run).
+   * Throws the actionable RUNTIME_MISSING guidance when nothing runs.
    */
   private resolveDenoCommand(): string {
     if (this.denoCommand !== undefined) {
@@ -459,12 +460,12 @@ export class JsPlugin extends AbstractPlugin {
       }
       return (this.denoCommand = explicit);
     }
-    if (runs('deno')) {
-      return (this.denoCommand = 'deno');
-    }
     const bundled = resolveBundledDenoPath();
     if (bundled && runs(bundled)) {
       return (this.denoCommand = bundled);
+    }
+    if (runs('deno')) {
+      return (this.denoCommand = 'deno');
     }
     throw new Error(RUNTIME_MISSING_MESSAGE);
   }
