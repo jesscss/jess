@@ -231,7 +231,6 @@ type LessRules = {
   FunctionStatement: Combinator<Statement | string>;
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
-  MathAtom: Combinator<ValueNode>;
   calcValueAtom: Combinator<unknown>;
   CalcProduct: Combinator<ValueNode>;
   CalcSum: Combinator<ValueNode>;
@@ -1869,7 +1868,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * The `<operator> <operand>` pairs after a math run's first operand: `MathSum`'s
    * tail, and the rest of a run a condition or guard group heads.
    */
-  const mathRunTail = many(sequence(choice(productOperator, sumOperator), g.MathAtom));
+  const mathRunTail = many(sequence(choice(productOperator, sumOperator), g.MathUnary));
 
   /*
    * A group is read once, as a condition; the token after its `)` decides what
@@ -2488,12 +2487,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ),
     { collapse: true }
   );
-  const MathAtom = node(
-    'MathAtom',
-    g.MathUnary,
-    children => requireValueNode(children[0]),
-    { collapse: true }
-  );
   // Every Less math operator is parsed HERE, the division slash included —
   // there is no second production that reads a slash (ledger P34). The run is
   // flat because its precedence is not fixed: a slash is a product operator in
@@ -2505,7 +2498,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // one way and a later step re-reading the result.
   const MathSum = node(
     'MathSum',
-    noTrivia(sequence(g.MathAtom, mathRunTail)),
+    noTrivia(sequence(g.MathUnary, mathRunTail)),
     lessMathRun,
     { collapse: true }
   );
@@ -2996,14 +2989,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => interpolation(interpolationPartsFrom(children, false))
   );
   // An interpolated property name always carries a `@{`/`${` marker before the
-  // declaration `:`; a plain property never does. InterpolatedProperty
-  // is tried first in the property choice (its literal prefix arm can begin a
-  // property like `color-@{n}`), so a plain `color:` otherwise scans the whole
-  // property ident through the interpolated-property-start production before
-  // failing at the required interpolation. This positive lookahead is the cheap
-  // commit signal: only enter the interpolated-property arm when a marker is
-  // actually present before the delimiter, so plain properties fall straight to
-  // the literal DeclarationProperty arm. The collapsed semantic node keeps the
+  // declaration `:`; a plain property never does. `DeclarationHead` reaches
+  // this arm only after the plain property failed, and this positive lookahead
+  // enters InterpolatedProperty only when a marker is actually present before
+  // the delimiter, so a head that is neither (`color foo`) does not scan the
+  // name a third time. The collapsed semantic node keeps the
   // marker off the declaration reducer's `children[0]` property slot without
   // adding a second public CST name for the same InterpolatedProperty concept.
   const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
@@ -3022,14 +3012,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Declaration-head gaps are trivia, not declaration-name syntax. The AST keeps
   // the semantic property name clean; rendering replays output-bearing block
   // comments from the source trivia map before writing the colon.
-  const DeclarationHead = parser({ trivia: whitespace }, sequence(
-    choice(
-      interpolatedPropertyHead,
-      g.NumericMapKeyToken,
-      g.DeclarationPropertyToken
-    ),
-    optional(sequence(choice(literal('+_'), literal('+')))),
-    literal(':')
+  //
+  // A plain property is read first, so `color:` never runs the interpolation
+  // lookahead. The arms cannot both succeed: the property token holds no
+  // `@{` / `${`, and the interpolated head needs one before the colon, so an
+  // interpolated name fails the plain arm at its marker and is read by the next.
+  // The tail sits inside every arm: one shared tail after the choice would
+  // commit `color-@{n}:` to the plain arm (`color-`) and fail at the `@`.
+  const declarationHeadTail = sequence(optional(choice(literal('+_'), literal('+'))), literal(':'));
+  const DeclarationHead = parser({ trivia: whitespace }, choice(
+    sequence(g.DeclarationPropertyToken, declarationHeadTail),
+    sequence(interpolatedPropertyHead, declarationHeadTail),
+    sequence(g.NumericMapKeyToken, declarationHeadTail)
   ));
   const StandardDeclaration = node(
     'Declaration',
@@ -6014,7 +6008,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Dimension,
     Value,
     SelectorCapture,
-    MathAtom,
     calcValueAtom,
     CalcProduct,
     CalcSum,
