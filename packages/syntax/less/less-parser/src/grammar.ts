@@ -231,7 +231,6 @@ type LessRules = {
   FunctionStatement: Combinator<Statement | string>;
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture | Any>;
-  MathAtom: Combinator<ValueNode>;
   calcValueAtom: Combinator<unknown>;
   CalcProduct: Combinator<ValueNode>;
   CalcSum: Combinator<ValueNode>;
@@ -1869,7 +1868,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * The `<operator> <operand>` pairs after a math run's first operand: `MathSum`'s
    * tail, and the rest of a run a condition or guard group heads.
    */
-  const mathRunTail = many(sequence(choice(productOperator, sumOperator), g.MathAtom));
+  const mathRunTail = many(sequence(choice(productOperator, sumOperator), g.MathUnary));
 
   /*
    * A group is read once, as a condition; the token after its `)` decides what
@@ -2488,12 +2487,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ),
     { collapse: true }
   );
-  const MathAtom = node(
-    'MathAtom',
-    g.MathUnary,
-    children => requireValueNode(children[0]),
-    { collapse: true }
-  );
   // Every Less math operator is parsed HERE, the division slash included —
   // there is no second production that reads a slash (ledger P34). The run is
   // flat because its precedence is not fixed: a slash is a product operator in
@@ -2505,7 +2498,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // one way and a later step re-reading the result.
   const MathSum = node(
     'MathSum',
-    noTrivia(sequence(g.MathAtom, mathRunTail)),
+    noTrivia(sequence(g.MathUnary, mathRunTail)),
     lessMathRun,
     { collapse: true }
   );
@@ -5990,7 +5983,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Dimension,
     Value,
     SelectorCapture,
-    MathAtom,
     calcValueAtom,
     CalcProduct,
     CalcSum,
