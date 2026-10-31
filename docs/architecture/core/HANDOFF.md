@@ -1658,9 +1658,10 @@ The required no-backtracking design is:
    qualified rule; colon plus trivia means declaration; only a colon glued to a
    pseudo name is ambiguous. That rare path must prove the structural route to
    its `{` before choosing qualified rule; it must never parse a declaration
-   value and retry it as a selector. The old Less
-   `rulesetNotDeclaration` regex preflight is debt to delete through this
-   shared CSS-owned shape.
+   value and retry it as a selector. The old Less regex preflight, now
+   `spacedDeclarationAhead` (a `peek` guarding the declaration arm, which the
+   statement choices try first), is debt to delete through this shared
+   CSS-owned shape.
 4. `dispatch(...)` is only for a consumed opener whose returned value chooses
    the family. Use `choice(...)` for a later-delimiter decision. `routed()` is
    for a selected branch to replay its already-consumed opener, not a reason to
@@ -1669,7 +1670,7 @@ The required no-backtracking design is:
 
 Current code evidence: Less still has the older `ClassIdSelectorPrefix` /
 `SelectorBranchFact` / `ClassIdStatement` shape and the broad
-`rulesetNotDeclaration` preflight in
+`spacedDeclarationAhead` preflight in
 `packages/syntax/less/less-parser/src/grammar.ts`; both are targets, not models.
 The Less file currently has concurrent uncommitted signature-trivia work. Do
 not amend, reset, or fold a routing change into that worktree state. Use a clean

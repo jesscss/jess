@@ -85,7 +85,6 @@ import {
   isQuoted,
   isReference,
   isReferenceTailFact,
-  isRuleset,
   isRulesetTailFact,
   isLessSelectorBranch,
   isSelectorBranchFact,
@@ -3017,6 +3016,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // lookahead. The arms cannot both succeed: the property token holds no
   // `@{` / `${`, and the interpolated head needs one before the colon, so an
   // interpolated name fails the plain arm at its marker and is read by the next.
+  // The tail sits inside every arm: one shared tail after the choice would
+  // commit `color-@{n}:` to the plain arm (`color-`) and fail at the `@`.
   const declarationHeadTail = sequence(optional(choice(literal('+_'), literal('+'))), literal(':'));
   const DeclarationHead = parser({ trivia: whitespace }, choice(
     sequence(g.DeclarationPropertyToken, declarationHeadTail),
@@ -3642,12 +3643,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )
   );
   /**
-   * A spaced declaration head, `<ident><ws?>:<ws>`. It can never start a
-   * selector, because a pseudo-class needs its name glued to the colon
-   * (`foo:hover`), so the statement choices try the declaration first on it and
-   * reach no function opener or selector on the way. A glued `foo:bar`, and a
-   * head this does not spell (`@{p}:`, `foo+:`, `*zoom:`), keeps the
-   * ruleset-before-declaration order.
+   * A spaced declaration head: a `[-\w]` run, optional spaces or tabs, `:` and
+   * whitespace. It can never start a selector, because a pseudo-class needs its
+   * name glued to the colon (`foo:hover`), so the statement choices try the
+   * declaration first on it and reach no function opener or selector on the way.
+   * A glued `foo:bar`, and a head this does not spell (`@{p}:`, `foo+:`,
+   * `*zoom:`, a non-ASCII name), tries the ruleset before the declaration.
+   *
+   * This is still a regex preflight over the name the declaration then reads
+   * again: the debt `docs/architecture/core/HANDOFF.md` records under the
+   * no-backtracking routing design (an identifier start decided by the colon and
+   * its trivia).
    */
   const spacedDeclarationAhead = peek(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
   const declarationItem = node(
@@ -3684,6 +3690,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     },
     { collapse: true }
   );
+  /** A root declaration behind `spacedDeclarationAhead`, the first ident-led arm of `Stylesheet`. */
   const spacedRootDeclarationItem = transform(sequence(spacedDeclarationAhead, rootDeclarationItem), ([, declaration]) => declaration);
   const punctuationMapDeclarationItem = node(
     'PunctuationMapDeclarationItem',
@@ -3700,9 +3707,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     },
     { collapse: true }
   );
-  // The statement choices try a spaced declaration before the function and
-  // ruleset arms (`spacedDeclarationAhead`); every other ident-led statement
-  // keeps the old order and reaches `declarationItem` last.
+  /** A declaration behind `spacedDeclarationAhead`, the first ident-led arm of a body. */
   const spacedDeclarationItem = transform(sequence(spacedDeclarationAhead, declarationItem), ([, declaration]) => declaration);
   const blockItem = choice(atStatement, mixinStatement, spacedDeclarationItem, g.FunctionStatement, g.NestedRulesetWithExtends, declarationItem, literal(';'));
   // Every braced statement body — a ruleset's, a mixin definition's, an
