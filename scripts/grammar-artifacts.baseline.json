@@ -66,42 +66,42 @@
       "tablesOnly": "Runs on the closure table engine only: no precompiled assembly since the 2026-08-31 move from composeLeaf() to compose(). https://github.com/jesscss/jess/issues/508",
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 773378,
+          "bytes": 773586,
           "ratio": 2.87,
           "assemblyFunctions": 0
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 777667,
+          "bytes": 777875,
           "ratio": 2.88,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 773770,
+          "bytes": 773978,
           "ratio": 2.87,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 777979,
-          "ratio": 2.88,
+          "bytes": 778187,
+          "ratio": 2.89,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 272821,
+          "bytes": 273029,
           "ratio": 1.01,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 272907,
+          "bytes": 273115,
           "ratio": 1.01,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 272907,
+          "bytes": 273115,
           "ratio": 1.01,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 272913,
+          "bytes": 273121,
           "ratio": 1.01,
           "assemblyFunctions": null
         }
