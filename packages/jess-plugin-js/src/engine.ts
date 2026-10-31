@@ -142,8 +142,9 @@ const realpathAsync = (p: string): Promise<string | undefined> =>
   fs.promises.realpath(p).catch(() => undefined);
 
 /** Node's package lookup, reduced to the directory: `<ancestor>/node_modules/<name>`, canonicalized. */
-const packageDirFrom = async (name: string, fromDir: string): Promise<string | undefined> => {
+const packageDirFrom = async (name: string, fromDir: string, signal?: AbortSignal): Promise<string | undefined> => {
   for (let dir = fromDir; ; dir = path.dirname(dir)) {
+    signal?.throwIfAborted();
     const candidate = await realpathAsync(path.join(dir, 'node_modules', name));
     if (candidate !== undefined) {
       return candidate;
@@ -179,17 +180,20 @@ const closures = new Map<string, Promise<string[]>>();
  * with asynchronous file reads, so it runs beside a render in this process
  * instead of holding it up.
  */
-export const codeClosure = (entryFiles: readonly string[]): Promise<string[]> => {
+export const codeClosure = (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
   const key = entryFiles.join('\u0000');
   let closure = closures.get(key);
   if (closure === undefined) {
-    closure = walkClosure(entryFiles);
+    closure = walkClosure(entryFiles, signal);
+
+    /* A walk stopped part way (`signal`) is not kept: the next caller walks again. */
+    closure.catch(() => closures.delete(key));
     closures.set(key, closure);
   }
   return closure;
 };
 
-const walkClosure = async (entryFiles: readonly string[]): Promise<string[]> => {
+const walkClosure = async (entryFiles: readonly string[], signal?: AbortSignal): Promise<string[]> => {
   const roots = new Set<string>();
   let level = entryFiles.map(packageRootOf).filter((dir): dir is string => dir !== undefined);
   while (level.length > 0) {
@@ -202,7 +206,7 @@ const walkClosure = async (entryFiles: readonly string[]): Promise<string[]> => 
         ...Object.keys(manifest.optionalDependencies ?? {}),
         ...Object.keys(manifest.peerDependencies ?? {})
       ]);
-      return Promise.all([...names].map(name => packageDirFrom(name, dir)));
+      return Promise.all([...names].map(name => packageDirFrom(name, dir, signal)));
     }));
     level = next.flat().filter((dir): dir is string => dir !== undefined);
   }
@@ -302,8 +306,8 @@ export const hostFacts = (code: readonly string[]): EngineHostFacts => {
 };
 
 /** The code directories of a compiler module and this plugin. */
-export const engineCode = (compilerModule: string, selfModule: string): Promise<string[]> =>
-  codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)]);
+export const engineCode = (compilerModule: string, selfModule: string, signal?: AbortSignal): Promise<string[]> =>
+  codeClosure([fileURLToPath(compilerModule), fileURLToPath(selfModule)], signal);
 
 /** A failed engine render, rethrown here: a `JessError` as one (so it prints the same frame), else an `Error`. */
 export const engineFailure = (result: {

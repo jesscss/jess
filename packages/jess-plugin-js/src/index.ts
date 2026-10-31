@@ -376,8 +376,8 @@ export class JsPlugin extends AbstractPlugin {
   /** Whether a render ran in this plugin's engine (a prewarmed one that never did is let go). */
   private engineUsed = false;
 
-  /** Set when an engine started ahead of time is let go, so a start still on its way does not happen. */
-  private prewarmReleased = false;
+  /** Stops the ahead-of-time start still on its way when the engine is let go: no spawn, no more file reads. */
+  private prewarmAbort: AbortController | undefined;
 
   /** Inside the compile engine: the script runtime of this realm. */
   private inProcess: Promise<InProcessRuntime> | undefined;
@@ -1120,8 +1120,8 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   /** Points the next Deno process at `request`'s read set, ending a running one under another. */
-  private async useReadSet(request: EngineRequestBase): Promise<string[]> {
-    const code = await engineCode(request.compiler.module, import.meta.url);
+  private async useReadSet(request: EngineRequestBase, signal?: AbortSignal): Promise<string[]> {
+    const code = await engineCode(request.compiler.module, import.meta.url, signal);
     const readSet = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
     if (this.workerReadSet !== readSet.join('\u0000') && this.runtimeState.status !== 'idle') {
       this.shutdown();
@@ -1143,10 +1143,11 @@ export class JsPlugin extends AbstractPlugin {
     if (inEngine() || this.runtimeState.status !== 'idle') {
       return;
     }
-    this.prewarmReleased = false;
+    const prewarm = new AbortController();
+    this.prewarmAbort = prewarm;
     const warm = async () => {
-      const code = await this.useReadSet(request);
-      if (this.prewarmReleased) {
+      const code = await this.useReadSet(request, prewarm.signal);
+      if (prewarm.signal.aborted) {
         return;
       }
       await this.callWorker({
@@ -1163,7 +1164,7 @@ export class JsPlugin extends AbstractPlugin {
   /** Ends an engine that was started ahead of time and never ran a render. */
   releaseEngine(): void {
     if (!this.engineUsed) {
-      this.prewarmReleased = true;
+      this.prewarmAbort?.abort();
       this.abortRuntime(new Error('The prewarmed Deno engine was not needed.'));
     }
   }
