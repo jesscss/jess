@@ -26,7 +26,6 @@ import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { getSystemErrorMap, parseArgs } from 'node:util';
 import { colorsByDefault, outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { formatStyledLintResult, lintFiles } from '@jesscss/lint';
 
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
@@ -427,6 +426,8 @@ async function runLint(args) {
     fail('--max-warnings must be a non-negative integer', EXIT_USAGE);
   }
 
+  // Loaded here, not at startup: the linter loads every dialect's grammar, which a compile never needs.
+  const { formatStyledLintResult, lintFiles } = await import('@jesscss/lint');
   const result = await lintFiles(positionals, {
     configFile: values.config,
     maxWarnings,

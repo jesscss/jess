@@ -199,6 +199,13 @@ export interface PluginInterface {
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
 
   /**
+   * Loads what `safeParse` needs, for a plugin that defers loading its parser
+   * until a document of its language is parsed. Context awaits it before every
+   * `safeParse` call; once the parser is loaded it returns nothing.
+   */
+  loadParser?(): void | Promise<void>;
+
+  /**
    * Optionally transform a rendered URL or direct quoted import target owned by
    * this plugin's active document. This is intentionally not import resolution:
    * Context already owns source identity and imports have been parsed before

@@ -6,10 +6,8 @@ import {
 } from '@jesscss/compiler';
 import { AbstractPlugin, type ISafeParseResult, parserDiagnostic, type PluginInterface } from '@jesscss/core';
 import { parse as parseCss } from '@jesscss/css-parser';
-import jessPlugin from '@jesscss/plugin-jess';
 import { LessPluginResolver, prepareLessRootSource } from '@jesscss/plugin-less';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
-import scssPlugin from '@jesscss/plugin-scss';
 
 export type { ConfigOptions } from '@jesscss/compiler';
 
@@ -37,6 +35,63 @@ export interface DefaultCompilerStack {
   dispose(): void;
 }
 
+/**
+ * A dialect plugin whose package, and the grammar it loads, is imported only
+ * when Context first parses a document of its dialect (`loadParser`), so a
+ * compile loads no grammar it does not use. Once loaded, every member is the
+ * real plugin's.
+ *
+ * Until then it answers as `AbstractPlugin`, as the real plugin does for any
+ * path that is not one of its provided modules. A plugin that `providesModules`
+ * resolves its `#…` aliases and `@…` package spellings itself, and only a
+ * candidate with a `#` or `@` can be one (`ProvidedModules.resolve`), so such a
+ * candidate loads the plugin first.
+ *
+ * ponytail: before it loads, the plugin claims no module file
+ * (`canImportModule`). A provided module reached by a path with no `#` or `@` (a
+ * relative path into `@jesscss/fns`) is untrusted until a document of the
+ * dialect, or one of its aliases, loads the plugin. Expose the plugin's module
+ * table without its grammar if that path matters.
+ */
+function lazyDialectPlugin(
+  name: string,
+  supportedExtensions: string[],
+  providesModules: boolean,
+  create: () => Promise<PluginInterface>
+): PluginInterface {
+  let loaded: PluginInterface | undefined;
+  let loading: Promise<PluginInterface> | undefined;
+  const load = (): Promise<PluginInterface> => loading ??= create().then(plugin => (loaded = plugin));
+  const defaults = new DefaultPathPlugin();
+  const unloaded: PluginInterface = {
+    name,
+    supportedExtensions,
+    loadParser: () => (loaded ? undefined : load().then(() => undefined)),
+    safeParse: () => {
+      throw new Error(`The ${name} plugin parses only after Context awaits its loadParser()`);
+    },
+    resolve: (paths, currentDir, searchPaths) =>
+      providesModules && (Array.isArray(paths) ? paths : [paths]).some(candidate => /[#@]/.test(candidate))
+        ? load().then(plugin => (plugin.resolve ?? defaults.resolve.bind(defaults))(paths, currentDir, searchPaths))
+        : defaults.resolve(paths, currentDir, searchPaths),
+    locate: (candidates, currentDir) => defaults.locate(candidates, currentDir),
+    getSource: absoluteFilePath => defaults.getSource(absoluteFilePath)
+  };
+
+  return new Proxy<PluginInterface>(unloaded, {
+    get(target, prop) {
+      const source: PluginInterface = loaded && Reflect.has(loaded, prop) ? loaded : target;
+      const value: unknown = Reflect.get(source, prop, source);
+      return typeof value === 'function' ? value.bind(source) : value;
+    }
+  });
+}
+
+/** The `AbstractPlugin` path handling a dialect plugin keeps until it loads. */
+class DefaultPathPlugin extends AbstractPlugin {
+  name = 'default-paths';
+}
+
 class DefaultCompilerStackImpl implements DefaultCompilerStack {
   private lessPluginResolver = new LessPluginResolver();
   private jessPluginInstance: PluginInterface | undefined;
@@ -57,21 +112,13 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
   }
 
   private getOrCreateJessPlugin(): PluginInterface {
-    let plugin = this.jessPluginInstance;
-    if (!plugin) {
-      plugin = jessPlugin();
-      this.jessPluginInstance = plugin;
-    }
-    return plugin;
+    return this.jessPluginInstance ??= lazyDialectPlugin('jess', ['.jess'], false,
+      async () => (await import('@jesscss/plugin-jess')).default());
   }
 
   private getOrCreateScssPlugin(): PluginInterface {
-    let plugin = this.scssPluginInstance;
-    if (!plugin) {
-      plugin = scssPlugin();
-      this.scssPluginInstance = plugin;
-    }
-    return plugin;
+    return this.scssPluginInstance ??= lazyDialectPlugin('scss', ['.scss'], true,
+      async () => (await import('@jesscss/plugin-scss')).default());
   }
 
   private defaultPlugins(context: CompilerPluginContext): readonly PluginInterface[] {
