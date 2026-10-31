@@ -62,46 +62,46 @@
     },
     "less": {
       "source": "packages/syntax/less/less-parser/src/grammar.ts",
-      "sourceBytes": 269687,
+      "sourceBytes": 270222,
       "tablesOnly": "Runs on the closure table engine only: no precompiled assembly since the 2026-08-31 move from composeLeaf() to compose(). https://github.com/jesscss/jess/issues/508",
       "artifacts": {
         "lib/grammar/ast.js": {
-          "bytes": 773586,
-          "ratio": 2.87,
+          "bytes": 773294,
+          "ratio": 2.86,
           "assemblyFunctions": 0
         },
         "lib/grammar/ast/positions.js": {
-          "bytes": 777875,
+          "bytes": 777599,
           "ratio": 2.88,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst.js": {
-          "bytes": 773978,
-          "ratio": 2.87,
+          "bytes": 773686,
+          "ratio": 2.86,
           "assemblyFunctions": 0
         },
         "lib/grammar/cst/positions.js": {
-          "bytes": 778187,
-          "ratio": 2.89,
+          "bytes": 777911,
+          "ratio": 2.88,
           "assemblyFunctions": 0
         },
         "lib/grammar/interpreter/ast.js": {
-          "bytes": 273029,
+          "bytes": 273551,
           "ratio": 1.01,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/ast/positions.js": {
-          "bytes": 273115,
+          "bytes": 273637,
           "ratio": 1.01,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst.js": {
-          "bytes": 273115,
+          "bytes": 273637,
           "ratio": 1.01,
           "assemblyFunctions": null
         },
         "lib/grammar/interpreter/cst/positions.js": {
-          "bytes": 273121,
+          "bytes": 273643,
           "ratio": 1.01,
           "assemblyFunctions": null
         }

@@ -1008,6 +1008,12 @@ const adjacentComponentStart = regex(/[(_a-zA-Z\u0080-\uffff\\]/);
 /** Either glued opener: one test decides there is a glued piece at all (`gluedContinuation`). */
 const gluedStart = regex(/[@=~|^?:.(_a-zA-Z\u0080-\uffff\\]/);
 const gluedPunctuationStart = regex(/[:.]/);
+/**
+ * What opens a trivia gap (`whitespace`): a whitespace character, or the `//` /
+ * `/*` of a comment. The gap itself is read once, as the sequence's trivia; this
+ * only decides that one is there, so a `/` that opens a division is not a gap.
+ */
+const triviaStart = regex(/[ \t\n\r\f]|\/[/*]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 /*
@@ -2601,10 +2607,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       combinator: choice(functionConditionAnd, functionConditionOr)
     }
   );
+  /**
+   * The next piece of a value run after a trivia gap (`1px solid`). The gap is
+   * read once, as this sequence's trivia after `triviaStart` has decided there
+   * is one; peeking the whole gap first would read it twice.
+   */
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
     sequence(
-      peek(whitespace),
+      peek(triviaStart),
       not(valueRunEndAhead),
       choice(g.valuePiece, danglingOperator)
     )
