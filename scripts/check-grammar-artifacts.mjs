@@ -1,0 +1,249 @@
+#!/usr/bin/env node
+/**
+ * Grammar artifact gate: SIZE and PRECOMPILED ASSEMBLY, per shipped grammar
+ * artifact, against `scripts/grammar-artifacts.baseline.json`.
+ *
+ * WHY. On 2026-08-31 the Less, SCSS and `.jess` grammars moved from
+ * `composeLeaf()` to `compose()` and silently lost parseman's precompiled
+ * assembly: Less `benchmark.less` parse went 16.9 → 27.6 ms and its `ast.js`
+ * went from 1,217 precompiled functions to 0 (jesscss/jess#508). The artifacts
+ * got SMALLER, `check:macro` stayed green (a closure-only table is not an
+ * interpreter fallback) and nothing counted the assembly. This gate counts it.
+ *
+ * WHAT IT MEASURES, for every `.js` under each parser's `lib/grammar/` (the
+ * macro variants and the interpreter build; `.cjs` is the same lowering in the
+ * other module format and is skipped):
+ *
+ *   - bytes, and bytes per byte of the grammar source (`src/grammar.ts`) —
+ *     parseman's size contract (`docs/design/runtime-and-size-contract.md`
+ *     rule 4) is 5× for every artifact variant of a real grammar;
+ *   - the precompiled assembly, read from parseman's artifact contract
+ *     (`precompiledAssembly` in `parseman-fallback-detector.mjs`).
+ *
+ * WHAT FAILS (`node scripts/check-grammar-artifacts.mjs`):
+ *
+ *   SIZE GREW      an artifact's bytes AND its bytes-per-source-byte both rose
+ *                  above the baseline. (A source-only edit, such as adding or
+ *                  removing grammar comments, moves the ratio without moving
+ *                  the bytes and cannot fail it.) No headroom: the build is
+ *                  deterministic, so the noise floor is zero.
+ *   OVER BUDGET    an artifact over 5× with no named `overBudget` debt entry,
+ *                  or ANY artifact over 5× once the installed parseman is not
+ *                  the version the debt was recorded under (`debtParseman`):
+ *                  over-budget debt never carries over to a new parseman
+ *                  release, so a parseman bump must bring every artifact of
+ *                  every grammar within 5×.
+ *   ASSEMBLY LOST  fewer precompiled functions than the baseline.
+ *   TABLES ONLY    a grammar's `lib/grammar/ast.js` (the AST/no-lines variant,
+ *                  the one parseman precompiles) carries no assembly and the
+ *                  grammar has no named `tablesOnly` debt entry.
+ *   UNBANKED       the opposite moves: size shrank more than 0.1%, assembly
+ *                  grew, or a debt entry no longer applies. Each must be
+ *                  pinned so the freed room cannot be spent again:
+ *                  `node scripts/check-grammar-artifacts.mjs --ratchet`.
+ *   NEW / GONE     an artifact or grammar that is not in the baseline, or a
+ *                  baselined one that is not built.
+ *
+ * `--ratchet` rewrites the baseline only when nothing grew, was lost or is
+ * unnamed debt; it never raises a size ceiling, lowers an assembly floor or
+ * adds debt. Raising a ceiling, adding an artifact or naming new debt is a
+ * reviewed edit of the baseline file.
+ *
+ * Needs built parser libs (CI runs it after the clean build). Canaries:
+ * `scripts/__tests__/grammar-gates.test.mjs`.
+ */
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { precompiledAssembly } from './parseman-fallback-detector.mjs';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const BASELINE = 'scripts/grammar-artifacts.baseline.json';
+
+export const GRAMMARS = {
+  css: 'packages/syntax/css/css-parser',
+  less: 'packages/syntax/less/less-parser',
+  scss: 'packages/syntax/scss/scss-parser',
+  jess: 'packages/syntax/jess/jess-parser'
+};
+
+/** The variant parseman precompiles: AST host mode, no line tracking. */
+const PRECOMPILED_VARIANT = 'lib/grammar/ast.js';
+
+/** Ratchet slack: a shrink below this is churn, not a win to bank. Not a tolerance — growth has none. */
+const SLACK = 0.001;
+
+function grammarModules(dir) {
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...grammarModules(full));
+    } else if (entry.name.endsWith('.js')) {
+      files.push(full);
+    }
+  }
+  return files.sort();
+}
+
+/** `{ <grammar>: { sourceBytes, artifacts: { <lib path>: { bytes, assemblyFunctions } } } }`; throws if unbuilt. */
+export function measureGrammars(root = ROOT) {
+  const measured = {};
+  for (const [name, pkg] of Object.entries(GRAMMARS)) {
+    const libDir = join(root, pkg, 'lib/grammar');
+    if (!existsSync(libDir)) {
+      throw new Error(`${name}: no ${relative(root, libDir)} — build the parsers first (\`pnpm build:release\`).`);
+    }
+    const artifacts = {};
+    for (const file of grammarModules(libDir)) {
+      const assembly = precompiledAssembly(readFileSync(file, 'utf8'));
+      artifacts[relative(join(root, pkg), file)] = {
+        bytes: statSync(file).size,
+        assemblyFunctions: assembly?.functions ?? null
+      };
+    }
+    measured[name] = { sourceBytes: statSync(join(root, pkg, 'src/grammar.ts')).size, artifacts };
+  }
+  return measured;
+}
+
+/** The parseman version the parser packages build with. */
+export function parsemanVersion(root = ROOT) {
+  return JSON.parse(readFileSync(join(root, GRAMMARS.css, 'node_modules/parseman/package.json'), 'utf8')).version;
+}
+
+const ratio = (bytes, sourceBytes) => bytes / sourceBytes;
+const fmt = r => `${r.toFixed(2)}×`;
+
+/**
+ * Pure comparison of a measurement against a baseline. Returns `{ failures, unbanked }`,
+ * each a list of one-line findings; the gate fails on either.
+ */
+export function compareArtifacts(measured, baseline, parseman = baseline.debtParseman) {
+  const failures = [];
+  const unbanked = [];
+  const budget = baseline.budget;
+  const debtApplies = parseman === baseline.debtParseman;
+  for (const name of new Set([...Object.keys(measured), ...Object.keys(baseline.grammars)])) {
+    const now = measured[name];
+    const base = baseline.grammars[name];
+    if (!base) {
+      failures.push(`${name}: NEW grammar, not in ${BASELINE} — add it in a reviewed edit.`);
+      continue;
+    }
+    if (!now) {
+      failures.push(`${name}: GONE — baselined but not measured.`);
+      continue;
+    }
+    for (const path of new Set([...Object.keys(now.artifacts), ...Object.keys(base.artifacts)])) {
+      const a = now.artifacts[path];
+      const b = base.artifacts[path];
+      const id = `${name} ${path}`;
+      if (!b) {
+        failures.push(`${id}: NEW artifact, not in the baseline — add it in a reviewed edit.`);
+        continue;
+      }
+      if (!a) {
+        failures.push(`${id}: GONE — baselined but not built.`);
+        continue;
+      }
+      const r = ratio(a.bytes, now.sourceBytes);
+      const rb = ratio(b.bytes, base.sourceBytes);
+      if (a.bytes > b.bytes && r > rb) {
+        failures.push(`${id}: SIZE GREW ${b.bytes} → ${a.bytes} bytes, ${fmt(rb)} → ${fmt(r)} per source byte.`);
+      } else if (a.bytes < b.bytes && r < rb * (1 - SLACK)) {
+        unbanked.push(`${id}: size shrank ${fmt(rb)} → ${fmt(r)} — bank it.`);
+      }
+      if (r > budget && !b.overBudget) {
+        failures.push(`${id}: OVER BUDGET ${fmt(r)} > ${budget}× with no named overBudget debt.`);
+      } else if (r > budget && !debtApplies) {
+        failures.push(`${id}: OVER BUDGET ${fmt(r)} > ${budget}× under parseman ${parseman}; its debt was recorded under ${baseline.debtParseman} and does not carry over.`);
+      } else if (r <= budget && b.overBudget) {
+        unbanked.push(`${id}: now ${fmt(r)}, within ${budget}× — drop its overBudget debt.`);
+      }
+      if ((a.assemblyFunctions === null) !== (b.assemblyFunctions === null)) {
+        failures.push(`${id}: table/interpreter kind changed (assembly ${b.assemblyFunctions} → ${a.assemblyFunctions}).`);
+      } else if (a.assemblyFunctions < b.assemblyFunctions) {
+        failures.push(`${id}: ASSEMBLY LOST ${b.assemblyFunctions} → ${a.assemblyFunctions} precompiled functions.`);
+      } else if (a.assemblyFunctions > b.assemblyFunctions) {
+        unbanked.push(`${id}: assembly grew ${b.assemblyFunctions} → ${a.assemblyFunctions} — pin it.`);
+      }
+    }
+    const precompiled = now.artifacts[PRECOMPILED_VARIANT]?.assemblyFunctions ?? 0;
+    if (precompiled === 0 && !base.tablesOnly) {
+      failures.push(`${name} ${PRECOMPILED_VARIANT}: TABLES ONLY — no precompiled assembly and no named tablesOnly debt.`);
+    } else if (precompiled > 0 && base.tablesOnly) {
+      unbanked.push(`${name}: ${PRECOMPILED_VARIANT} carries ${precompiled} precompiled functions — drop its tablesOnly debt.`);
+    }
+  }
+  return { failures, unbanked };
+}
+
+/** The baseline with every unbanked win pinned. Callers only invoke it when `failures` is empty. */
+export function ratchetArtifacts(measured, baseline, parseman = baseline.debtParseman) {
+  const grammars = {};
+  for (const [name, now] of Object.entries(measured)) {
+    const base = baseline.grammars[name];
+    const precompiled = now.artifacts[PRECOMPILED_VARIANT]?.assemblyFunctions ?? 0;
+    const artifacts = {};
+    for (const [path, a] of Object.entries(now.artifacts)) {
+      const over = ratio(a.bytes, now.sourceBytes) > baseline.budget;
+      artifacts[path] = {
+        bytes: a.bytes,
+        ratio: +ratio(a.bytes, now.sourceBytes).toFixed(2),
+        assemblyFunctions: a.assemblyFunctions,
+        ...(over ? { overBudget: base.artifacts[path].overBudget } : {})
+      };
+    }
+    grammars[name] = {
+      source: `${GRAMMARS[name]}/src/grammar.ts`,
+      sourceBytes: now.sourceBytes,
+      ...(precompiled === 0 ? { tablesOnly: base.tablesOnly } : {}),
+      artifacts
+    };
+  }
+  return { ...baseline, debtParseman: parseman, grammars };
+}
+
+function report(measured, baseline) {
+  const lines = [];
+  for (const [name, now] of Object.entries(measured)) {
+    const base = baseline.grammars[name];
+    lines.push(`  ${name} (src/grammar.ts ${now.sourceBytes} bytes)${base?.tablesOnly ? `  TABLES ONLY — debt: ${base.tablesOnly}` : ''}`);
+    for (const [path, a] of Object.entries(now.artifacts)) {
+      const r = ratio(a.bytes, now.sourceBytes);
+      const asm = a.assemblyFunctions === null ? 'interpreter build' : `${a.assemblyFunctions} precompiled functions`;
+      const over = r > baseline.budget ? `  OVER ${baseline.budget}× — debt: ${base?.artifacts[path]?.overBudget ?? 'UNNAMED'}` : '';
+      lines.push(`    ${path.padEnd(40)} ${String(a.bytes).padStart(9)} B  ${fmt(r).padStart(7)}  ${asm}${over}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const baselinePath = join(ROOT, BASELINE);
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  const measured = measureGrammars();
+  const parseman = parsemanVersion();
+  const { failures, unbanked } = compareArtifacts(measured, baseline, parseman);
+  console.log(`Grammar artifacts (parseman ${parseman}) — bytes, bytes per source byte (budget ${baseline.budget}×), precompiled assembly:\n${report(measured, baseline)}\n`);
+  if (process.argv.includes('--ratchet') && failures.length === 0 && (unbanked.length > 0 || parseman !== baseline.debtParseman)) {
+    writeFileSync(baselinePath, `${JSON.stringify(ratchetArtifacts(measured, baseline, parseman), null, 2)}\n`);
+    console.log(`Pinned ${unbanked.length} change(s) in ${BASELINE}.`);
+    process.exit(0);
+  }
+  for (const line of failures) {
+    console.error(`✗ ${line}`);
+  }
+  for (const line of unbanked) {
+    console.error(`✗ ${line}`);
+  }
+  if (unbanked.length > 0) {
+    console.error(`\n  Pin ${unbanked.length === 1 ? 'it' : 'them'} with \`node scripts/check-grammar-artifacts.mjs --ratchet\`.`);
+  }
+  if (failures.length > 0 || unbanked.length > 0) {
+    console.error('\nGrammar artifact gate FAILED.');
+    process.exit(1);
+  }
+  console.log('Grammar artifact gate passed: no size growth, no lost assembly, all debt named.');
+}

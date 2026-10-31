@@ -44,7 +44,10 @@ function find(dir, pattern) {
 
 const CASES = {
   'css-corpus': findFlat('packages/syntax/css/css-parser/test/css', '*.css'),
-  'test-data-css': find('node_modules/@less/test-data/tests-unit', '*.css')
+  'test-data-css': find('node_modules/@less/test-data/tests-unit', '*.css'),
+
+  /** One large real stylesheet: the CSS row of `scripts/grammar-speed-gate.mjs`. */
+  'benchmark.css': [resolve(repo, 'packages/jess/benchmark/benchmark.css')]
 };
 
 const label = process.argv[2] ?? 'run';
@@ -79,11 +82,15 @@ for (const [name, files] of Object.entries(CASES)) {
     if (surfaces && !surfaces.has(surface)) {
       continue;
     }
+    let thrown = 0;
     const once = () => {
       for (const s of sources) {
         try {
           fn(s);
-        } catch { /* deliberate corpus errors are part of the workload */ }
+        } catch {
+          /* deliberate corpus errors are part of the workload */
+          thrown++;
+        }
       }
     };
     for (let i = 0; i < warmup; i++) {
@@ -99,6 +106,7 @@ for (const [name, files] of Object.entries(CASES)) {
     out[`${name}/${surface}`] = {
       files: sources.length,
       kb: +(bytes / 1024).toFixed(1),
+      thrown,
       median: +samples[Math.floor(samples.length / 2)].toFixed(4),
       min: +samples[0].toFixed(4),
       max: +samples[samples.length - 1].toFixed(4),
