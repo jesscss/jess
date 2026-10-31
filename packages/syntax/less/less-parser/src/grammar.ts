@@ -343,7 +343,8 @@ type LessRules = {
   InterpolatedAttributeValueToken: Combinator<Interpolation>;
   InterpolatedAttributeQuoted: Combinator<Interpolation>;
   InterpolatedAttributeSelector: Combinator<SimpleSelector>;
-  InterpolatedSimpleSelector: Combinator<SimpleSelector>;
+  /** An interpolated class/id simple, or a plain one's name token: the node collapses when there is no interpolation. */
+  InterpolatedSimpleSelector: Combinator<SimpleSelector | Token>;
   BareInterpolatedSelector: Combinator<SimpleSelector>;
   AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
   BareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
@@ -632,7 +633,6 @@ const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6
 // Its literal runs deliberately exclude `.`, `#`, `[`, `:`, whitespace, and
 // combinators: those have separate selector grammar roles and must not be
 // flattened into an interpolation template.
-const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 // A bare `@{name}` is one selector simple, so a combinator, another compound,
 // a glued simple, a guard, `,` or `{` may follow it (`@{s} > .r`, `.r @{s} .t`).
@@ -949,6 +949,7 @@ const lessOwnAtKeyword = keywords(
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 /* `staticAtRuleStatementName` is now the composed `g.StaticAtRuleStatementName` rule. */
+/** A `.` / `#` name: a mixin's, and a class or id simple selector's. */
 const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
@@ -1008,6 +1009,12 @@ const adjacentComponentStart = regex(/[(_a-zA-Z\u0080-\uffff\\]/);
 /** Either glued opener: one test decides there is a glued piece at all (`gluedContinuation`). */
 const gluedStart = regex(/[@=~|^?:.(_a-zA-Z\u0080-\uffff\\]/);
 const gluedPunctuationStart = regex(/[:.]/);
+/**
+ * What opens a trivia gap (`whitespace`): a whitespace character, or the `//` /
+ * `/*` of a comment. The gap itself is read once, as the sequence's trivia; this
+ * only decides that one is there, so a `/` that opens a division is not a gap.
+ */
+const triviaStart = regex(/[ \t\n\r\f]|\/[/*]/);
 const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 /*
@@ -1041,7 +1048,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
   const lessWord = makeWord(IDENT_BOUNDARY);
   const lessCaseWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
-  const whenGuardAhead = sequence(optional(regex(/[ \t\n\r\f]+/)), lessCaseWord('when'));
+  /**
+   * A `when` guard next; only ever asserted, never consumed. Every caller reads
+   * it where its trivia (whitespace and both comments) has just been skipped,
+   * as a `many()` item or a later `sequence()` term, so the guard is the word
+   * itself: at the `.`, `>` or `{` of a selector tail one character rules it out.
+   */
+  const whenGuardAhead = lessCaseWord('when');
   const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-_a-zA-Z0-9\u0080-\uffff\\])/);
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
@@ -2031,12 +2044,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       plainArgumentsAfterFirst
     )
   ));
-  // Value-position identifiers and glued function openers share one lexical
-  // family. Parse that opener once, then route by the returned text. Branch
-  // nodes own `routed()` so the consumed opener remains inside the selected CST
-  // node, and `foo (` still stays keyword + paren because the `(` is not glued
-  // into the opener.
-  const identOrFunction = token(noTrivia(sequence(g.InterpolatedValueStart, optional(literal('(')))));
+  /**
+   * A function opener, `name(` with the `(` glued (`foo (` is a keyword and a
+   * paren). `url(` and `calc(` are not one: each has its own grammar, so a
+   * statement or call never opens on them.
+   */
   const genericFunctionOpen = token(noTrivia(sequence(
     not(keywords(['url(', 'calc('], { caseInsensitive: true })),
     g.InterpolatedValueStart,
@@ -2132,28 +2144,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return lowerLogicalCallStatement(call);
     }
   );
+  /**
+   * A statement-position call (`each(…)`, `if(…)`, `foo(…);`). The dispatch
+   * opens only on a function opener, so a property or a type selector fails it
+   * at the character after its name, before any case is looked up, and
+   * `url(` / `calc(` fail it in the opener and fall through to the other
+   * statements (a committed dispatch failure would not).
+   */
   const FunctionStatement = transform(
     dispatch(
-      identOrFunction,
+      genericFunctionOpen,
       caseOf('each(', g.EachFunctionStatement),
       caseOf('if(', g.IfFunctionStatement),
-      /*
-       * The url/calc exclusion here is LOAD-BEARING, not redundant with
-       * `genericFunctionOpen`'s `not(keywords(['url(','calc(']))` guard (:3380).
-       * This arm routes through `CallArgumentFunction`'s
-       * `routed(genericFunctionOpen)`, and `routed()` reuses the dispatch opener
-       * token WITHOUT running that guard — so the negative lookahead is the only
-       * thing keeping `url(`/`calc(` from ENTERING this arm. A dispatch miss
-       * falls through to `declarationItem`; entering and failing is a *committed*
-       * dispatch failure that `choice` propagates, suppressing the fall-through
-       * (verified: `endsWith('(')` reparses bare `calc(1px + 2px);` as a function
-       * statement). To make it principled, divert `url(`/`calc(` with `caseOf`
-       * arms first (as `IdentifierOrFunction` does) — a behavior change, not a rename.
-       */
-      when(
-        matches(/^(?!(?:url|calc)\($).+\($/i),
-        choice(GenericFunctionStatement, TerminalGenericFunction)
-      )
+      otherwise(choice(GenericFunctionStatement, TerminalGenericFunction))
     ),
     ([, statement]) => statement
   );
@@ -2189,7 +2192,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // read as one token like any other: glued to `(` it is a css-mixins-1
   // `<dashed-function>` and takes the generic call tail, and bare it is the
   // custom-property value. `FunctionStatement` keeps the plain
-  // `identOrFunction`: widening it would scan every `--x: …` custom-property
+  // `genericFunctionOpen`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   //
   // BLOCKED restatements (checklist item 1, outcome 4): `valueIdentOrFunction`
@@ -2601,10 +2604,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       combinator: choice(functionConditionAnd, functionConditionOr)
     }
   );
+  /**
+   * The next piece of a value run after a trivia gap (`1px solid`). The gap is
+   * read once, as this sequence's trivia after `triviaStart` has decided there
+   * is one; peeking the whole gap first would read it twice.
+   */
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
     sequence(
-      peek(whitespace),
+      peek(triviaStart),
       not(valueRunEndAhead),
       choice(g.valuePiece, danglingOperator)
     )
@@ -3621,17 +3629,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // whether the retained structure is a mixin definition/call or a ruleset.
   // Keep the unsupported dash-only spelling separate because it has a dedicated
   // public diagnostic and cannot form the shared selector prefix.
-  const UnsupportedDashOnlyMixin = node(
-    'UnsupportedMixinName',
-    noTrivia(choice(
-      sequence(choice(literal('.'), literal('#')), literal('-'), literal('('), optional(g.MixinArguments), literal(')')),
-      sequence(choice(literal('.'), literal('#')), literal('-'), literal(';'))
-    )),
-    (_children, _fields, span) => {
-      throw new LessUnsupportedMixinNameError(span.start, span.end);
-    }
+  /**
+   * A `.` / `#` statement. The arms share their first character and part on
+   * the second: `mixinName` needs a name after the optional `-`, where the
+   * dash-only spelling has its `(` or `;`, so no input reaches both. The common
+   * arm goes first, so `.r { }` never enters the dash-only node.
+   */
+  const mixinStatement = choice(
+    g.ClassIdStatement,
+    node(
+      'UnsupportedMixinName',
+      noTrivia(sequence(
+        choice(literal('.'), literal('#')),
+        literal('-'),
+        choice(sequence(literal('('), optional(g.MixinArguments), literal(')')), literal(';'))
+      )),
+      (_children, _fields, span) => {
+        throw new LessUnsupportedMixinNameError(span.start, span.end);
+      }
+    )
   );
-  const mixinStatement = choice(UnsupportedDashOnlyMixin, g.ClassIdStatement);
   // Chevrotain disambiguated a nested rule from a declaration on the colon's
   // trailing trivia, not a full selector speculation: `foo: bar` (colon then
   // whitespace) is always a declaration, never a selector, because a selector
@@ -5463,25 +5480,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(interpolatedSelectorTail, staticSimpleSelector)))),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
+  /** An interpolation and the name text and interpolations glued after it: a selector simple after its `.`, `#` or `&`. */
+  const interpolatedSelectorRest = sequence(
+    g.VariableInterpolation,
+    many(choice(interpolatedSelectorTail, g.VariableInterpolation))
+  );
+  /**
+   * A class or id simple selector, which Less may interpolate (`.b`,
+   * `.b-@{n}`, `#@{id}`). The name is read once: a plain `.b` is the one token
+   * the node collapses to, and a glued `@{` continues the same simple. A bare
+   * `.` or `#` is a simple only with an interpolation after it.
+   */
   const InterpolatedSimpleSelector = node(
     'InterpolatedSimpleSelector',
-    noTrivia(sequence(
-      interpolatedSelectorPrefix,
-      g.VariableInterpolation,
-      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
+    noTrivia(choice(
+      sequence(mixinName, optional(interpolatedSelectorRest)),
+      sequence(choice(literal('.'), literal('#')), interpolatedSelectorRest)
     )),
-    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true))),
+    { collapse: true }
   );
   // `&` plus a glued Less interpolation is one parent-suffix selector token,
   // not a static parent selector followed by a second compound member. The
   // existing Interpolation-backed SimpleSelector is its complete canonical model.
   const InterpolatedParentSuffix = node(
     'InterpolatedParentSuffix',
-    noTrivia(sequence(
-      staticAmpersand,
-      g.VariableInterpolation,
-      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
-    )),
+    noTrivia(sequence(staticAmpersand, interpolatedSelectorRest)),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const compoundSimple = choice(
