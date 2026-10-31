@@ -1048,7 +1048,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
   const lessWord = makeWord(IDENT_BOUNDARY);
   const lessCaseWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
-  const whenGuardAhead = sequence(optional(regex(/[ \t\n\r\f]+/)), lessCaseWord('when'));
+  /**
+   * A `when` guard next; only ever asserted, never consumed. Every caller reads
+   * it where its trivia (whitespace and both comments) has just been skipped,
+   * as a `many()` item or a later `sequence()` term, so the guard is the word
+   * itself: at the `.`, `>` or `{` of a selector tail one character rules it out.
+   */
+  const whenGuardAhead = lessCaseWord('when');
   const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-_a-zA-Z0-9\u0080-\uffff\\])/);
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
