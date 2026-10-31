@@ -3648,31 +3648,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
     )
   );
-  // Chevrotain disambiguated a nested rule from a declaration on the colon's
-  // trailing trivia, not a full selector speculation: `foo: bar` (colon then
-  // whitespace) is always a declaration, never a selector, because a selector
-  // pseudo requires its name glued to the colon (`foo:hover`). Ruleset is tried
-  // before Declaration (a bare type-selector nested rule must win over a property
-  // name), so every `foo: value` otherwise parses `foo` as a type-selector
-  // compound and only fails at the missing `{`. This negative lookahead skips the
-  // Ruleset arm for the unambiguous `<ident><ws?>:<ws>` declaration shape, leaving
-  // the rarer `foo:bar` / `@{p}:` / `foo+:` forms on the original
-  // Ruleset-then-Declaration path. No real selector matches `<ident>:<ws>`, so the
-  // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
-  // lookahead marker from splicing into the statement list.
-  const rulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
-  const guardedRuleset = node(
-    'GuardedRuleset',
-    sequence(rulesetNotDeclaration, g.RulesetWithExtends),
-    (children) => {
-      const ruleset = children.find(isRuleset);
-      if (ruleset === undefined) {
-        throw new TypeError('Less declaration-guarded ruleset lost its rule.');
-      }
-      return ruleset;
-    },
-    { collapse: true }
-  );
+  /**
+   * A spaced declaration head, `<ident><ws?>:<ws>`. It can never start a
+   * selector, because a pseudo-class needs its name glued to the colon
+   * (`foo:hover`), so the statement choices try the declaration first on it and
+   * reach no function opener or selector on the way. A glued `foo:bar`, and a
+   * head this does not spell (`@{p}:`, `foo+:`, `*zoom:`), keeps the
+   * ruleset-before-declaration order.
+   */
+  const spacedDeclarationAhead = peek(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
   const declarationItem = node(
     'DeclarationItem',
     sequence(
@@ -3707,6 +3691,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     },
     { collapse: true }
   );
+  const spacedRootDeclarationItem = transform(sequence(spacedDeclarationAhead, rootDeclarationItem), ([, declaration]) => declaration);
   const punctuationMapDeclarationItem = node(
     'PunctuationMapDeclarationItem',
     sequence(
@@ -3722,19 +3707,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     },
     { collapse: true }
   );
-  const nestedGuardedRuleset = node(
-    'GuardedRuleset',
-    sequence(rulesetNotDeclaration, g.NestedRulesetWithExtends),
-    (children) => {
-      const ruleset = children.find(isRuleset);
-      if (ruleset === undefined) {
-        throw new TypeError('Less guarded ruleset lost its ruleset fact.');
-      }
-      return ruleset;
-    },
-    { collapse: true }
-  );
-  const blockItem = choice(atStatement, mixinStatement, g.FunctionStatement, nestedGuardedRuleset, declarationItem, literal(';'));
+  // The statement choices try a spaced declaration before the function and
+  // ruleset arms (`spacedDeclarationAhead`); every other ident-led statement
+  // keeps the old order and reaches `declarationItem` last.
+  const spacedDeclarationItem = transform(sequence(spacedDeclarationAhead, declarationItem), ([, declaration]) => declaration);
+  const blockItem = choice(atStatement, mixinStatement, spacedDeclarationItem, g.FunctionStatement, g.NestedRulesetWithExtends, declarationItem, literal(';'));
   // Every braced statement body — a ruleset's, a mixin definition's, an
   // at-rule block's — takes a body-form `&:extend()` after the shared arms
   // (ledgers X16, X19). An extend head never matches `;` or a shared arm, so the
@@ -3755,11 +3732,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
-  // The ruleset arm is `nestedGuardedRuleset`, the same arm `blockItem` uses:
+  // The ruleset arm is `NestedRulesetWithExtends`, the same arm `blockItem` uses:
   // a detached-ruleset body is a nested context, so a child selector may lead
   // with a combinator (`> td { … }`). Only `Stylesheet` keeps the absolute
-  // `guardedRuleset`, where a leading combinator stays an error.
-  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.FunctionStatement, declarationItem, literal(';'));
+  // `RulesetWithExtends`, where a leading combinator stays an error.
+  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, spacedDeclarationItem, g.NestedRulesetWithExtends, g.FunctionStatement, declarationItem, literal(';'));
   // A body-form `&:extend()` in either container extends the rule each call or
   // iteration lands in (ledger X19).
   const detachedBody = many(choice(g.BodyStatement, g.ExtendStatement));
@@ -5964,7 +5941,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Stylesheet = node(
     'Stylesheet',
-    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, spacedRootDeclarationItem, g.FunctionStatement, g.RulesetWithExtends, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
