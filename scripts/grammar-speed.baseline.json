@@ -23,7 +23,7 @@
   "grammars": {
     "css": { "fixture": "benchmark.css", "instructionsPerParse": 1516849992 },
     "less": { "fixture": "benchmark.less", "instructionsPerParse": 2332323824 },
-    "scss": { "fixture": "gen-workload", "instructionsPerParse": 10241859852 },
+    "scss": { "fixture": "gen-workload", "instructionsPerParse": 9113060896 },
     "jess": { "fixture": "benchmark.css", "instructionsPerParse": 2465731253 }
   }
 }
