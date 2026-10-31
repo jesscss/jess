@@ -123,16 +123,16 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 - Every sample is a fresh `node` process. Per round it times `jess <fixture> <out>` and `lessc <fixture> <out>` spawn to exit (`cli`), then, in another fresh process, the imports the CLI needs to compile (`load`), the first compile and the second compile. It prints the median of `--runs` rounds (default 21), and the arm order alternates each round.
 - `--fixture benchmark` (default) is `packages/jess/benchmark/benchmark.less`. `--fixture bootstrap4` is the less.js corpus `bootstrap4.less` with its `styles.config.cjs` (`math: 0`), resolving `bootstrap-less-port` from `packages/less-corpus-fixture-deps`; lessc gets `--math=always` and that package as an include path, so both compile the same sources.
 - `--base <checkout>` adds another built jess checkout as an arm, for a before/after in one interleaved run.
-- Reference point (2026-10-31, parseman 0.55.2, node 24.11.1, lessc 4.9.1, M4 Pro at load averages 13–26, so indicative), median of 21, ms:
+- Reference point (2026-10-31, parseman 0.57.0, node 24.11.1, lessc 4.9.1, M4 Pro at load averages 4–8, so indicative), median of 21, ms:
 
 | Fixture | Arm | CLI | Load | First compile | Second compile |
 |---|---|---|---|---|---|
-| `benchmark.less` | jess `f0fc34f17` | 428.5 | 174.8 | 176.0 | 87.4 |
-| | jess, dialect plugins loaded on demand | 282.5 | 84.8 | 170.2 | 79.4 |
-| | lessc 4.9.1 | 168.9 | 28.8 | 113.2 | 60.1 |
-| `bootstrap4.less` | jess `f0fc34f17` | 865.8 | 169.9 | 596.2 | 373.8 |
-| | jess, dialect plugins loaded on demand | 715.3 | 82.5 | 604.8 | 352.8 |
-| | lessc 4.9.1 | 234.0 | 27.9 | 170.6 | 120.8 |
+| `benchmark.less` | jess `98e132094` | 346.1 | 143.1 | 133.6 | 62.3 |
+| | jess, dialect plugins loaded on demand | 236.7 | 62.6 | 141.9 | 64.7 |
+| | lessc 4.9.1 | 138.3 | 23.0 | 92.4 | 49.9 |
+| `bootstrap4.less` | jess `98e132094` | 695.8 | 147.4 | 480.7 | 299.4 |
+| | jess, dialect plugins loaded on demand | 593.0 | 66.9 | 506.1 | 297.7 |
+| | lessc 4.9.1 | 206.1 | 23.6 | 149.7 | 107.6 |
 
 ## Fixtures (the standard inputs)
 
