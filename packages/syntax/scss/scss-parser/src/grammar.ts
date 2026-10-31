@@ -995,7 +995,7 @@ const scssFactory = (g: ScssInputRules) => {
       return collection([
         collectionEntry(
           mapKeyValue(requireValue(children.find(isScssValue))),
-          requireValueSlot(children.slice(colon + 1).find(isScssValueSlotValue))
+          requireValueSlot(children.find((child, index) => index > colon && isScssValueSlotValue(child)))
         ),
         ...children.filter(isCollectionEntry)
       ]);
