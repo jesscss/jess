@@ -3,7 +3,7 @@
 import * as fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { renderInEngine } from './engine-runtime.js';
+import { renderInEngine, warmEngine } from './engine-runtime.js';
 
 const moduleCache = new Map();
 const lessPluginRuntimeCache = new Map();
@@ -1225,6 +1225,9 @@ export const computeResponse = async (req) => {
   try {
     if (req.type === 'render') {
       return { id: req.id, ...(await renderInEngine(req)) };
+    }
+    if (req.type === 'warm') {
+      return { id: req.id, ...(await warmEngine(req)) };
     }
     if (req.type === 'load') {
       const exports = await loadModule(req.modulePath);

@@ -51,6 +51,16 @@ export type EnginePlugin = PluginInterface & {
     entryDir: string;
     jsReadRoot: string;
   }): Promise<unknown>;
+
+  /** Starts the engine before a render needs it; `releaseEngine` ends it unused. */
+  prewarmEngine?(request: {
+    compiler: CompilerModuleIdentity;
+    compilerOptions: unknown;
+    entryDir: string;
+    jsReadRoot: string;
+    extension: string | undefined;
+  }): void;
+  releaseEngine?(): void;
 };
 
 export const isEnginePlugin = (plugin: PluginInterface): plugin is EnginePlugin =>
@@ -108,6 +118,9 @@ const isRenderResultLike = (value: unknown): value is {
   && isDiagnosticList(Reflect.get(value, 'errors'))
   && isDiagnosticList(Reflect.get(value, 'warnings'));
 
+/** Whether a render in this process has started an engine ahead of time (one does, at most). */
+let prewarmed = false;
+
 /** Resolves a race when a render moved into the sandbox. */
 const REROUTED: unique symbol = Symbol('rerouted');
 
@@ -137,10 +150,18 @@ export type RoutedCall<T> = {
 export const routeRender = async <T>(call: RoutedCall<T> & {
   entries: Set<string>;
   inEngine: () => Promise<unknown>;
+
+  /** Starts the engine ahead of time (the first render in a process); the returned release ends it unused. */
+  prewarm?: () => () => void;
 }): Promise<T> => {
   const inEngine = async () => call.check(await call.inEngine());
   if (call.memoKey !== undefined && call.entries.has(call.memoKey)) {
     return inEngine();
+  }
+  let release: (() => void) | undefined;
+  if (!prewarmed && call.prewarm !== undefined) {
+    prewarmed = true;
+    release = call.prewarm();
   }
   let reroute = (): void => undefined;
   const rerouted = new Promise<typeof REROUTED>((resolve) => {
@@ -155,8 +176,15 @@ export const routeRender = async <T>(call: RoutedCall<T> & {
 
   /* After a reroute this render is abandoned; a late failure of it is not this call's. */
   inProcess.catch(() => undefined);
-  const outcome = await Promise.race([inProcess, rerouted]);
+  let outcome: T | typeof REROUTED;
+  try {
+    outcome = await Promise.race([inProcess, rerouted]);
+  } catch (err) {
+    release?.();
+    throw err;
+  }
   if (outcome !== REROUTED) {
+    release?.();
     return outcome;
   }
   if (call.memoKey !== undefined) {
@@ -168,50 +196,79 @@ export const routeRender = async <T>(call: RoutedCall<T> & {
 /** The script plugin's engine per script-plugin config key: one Deno process each. */
 export type EngineCache = Map<string, Promise<EnginePlugin | undefined>>;
 
-/**
- * Runs one render in a script plugin's engine. A script plugin configured by
- * instance runs it under its own options (`jsReadRoot`, `allowHttp`); otherwise
- * the compiler's script plugin, one engine per script-plugin config.
- */
-export const runInEngine = async (run: {
-  request: {
-    compiler: CompilerModuleIdentity;
-    compilerOptions: unknown;
-    method: EngineMethod;
-    args: readonly unknown[];
-    filePath: string | undefined;
-    jsReadRoot: string | undefined;
-  };
+/** Where a compiler's engine comes from (see {@link engineFor}). */
+export type EngineSource = {
   configured: readonly PluginInterface[];
   engines: EngineCache;
   label: string;
   factory: () => { key: string; factoryPromise: Promise<{ create(): PluginInterface }> } | undefined;
-}): Promise<unknown> => {
-  const { filePath, jsReadRoot, ...rest } = run.request;
-  const request = {
-    ...rest,
-    entryDir: filePath === undefined ? process.cwd() : path.dirname(path.resolve(filePath)),
-    jsReadRoot: jsReadRoot ?? process.cwd()
-  };
-  const configured = run.configured.find(isEnginePlugin);
+};
+
+/** What decides a render's engine request: the compiler, and the read root's inputs. */
+export type EngineRequest = {
+  compiler: CompilerModuleIdentity;
+  compilerOptions: unknown;
+  filePath: string | undefined;
+  jsReadRoot: string | undefined;
+};
+
+/**
+ * The engine a render runs in: a script plugin configured by instance (under
+ * its own options, `jsReadRoot`, `allowHttp`), else the compiler's script
+ * plugin, one engine per script-plugin config.
+ */
+const engineFor = async (source: EngineSource): Promise<EnginePlugin> => {
+  const configured = source.configured.find(isEnginePlugin);
   if (configured !== undefined) {
-    return configured.renderInEngine(request);
+    return configured;
   }
-  const factory = run.factory();
+  const factory = source.factory();
   if (factory === undefined) {
-    throw new Error(`Feature not supported. Install ${run.label} to enable script execution features.`);
+    throw new Error(`Feature not supported. Install ${source.label} to enable script execution features.`);
   }
-  let engine = run.engines.get(factory.key);
+  let engine = source.engines.get(factory.key);
   if (engine === undefined) {
     engine = factory.factoryPromise.then((record) => {
       const plugin = record.create();
       return isEnginePlugin(plugin) ? plugin : undefined;
     });
-    run.engines.set(factory.key, engine);
+    source.engines.set(factory.key, engine);
   }
   const plugin = await engine;
   if (plugin === undefined) {
-    throw new Error(`${run.label} cannot run a render in its sandbox.`);
+    throw new Error(`${source.label} cannot run a render in its sandbox.`);
   }
-  return plugin.renderInEngine(request);
+  return plugin;
+};
+
+const engineRequest = <R extends EngineRequest>({ filePath, jsReadRoot, ...rest }: R) => ({
+  ...rest,
+  entryDir: filePath === undefined ? process.cwd() : path.dirname(path.resolve(filePath)),
+  jsReadRoot: jsReadRoot ?? process.cwd()
+});
+
+/** Runs one render in the engine. */
+export const runInEngine = async (
+  source: EngineSource,
+  request: EngineRequest & { method: EngineMethod; args: readonly unknown[] }
+): Promise<unknown> => (await engineFor(source)).renderInEngine(engineRequest(request));
+
+/**
+ * Starts the engine ahead of a render that may reach a script, so Deno's
+ * start overlaps the render in this process. Returns the release for a
+ * render that never needed it. A script plugin that cannot start ahead of time,
+ * or none at all, gives nothing.
+ */
+export const prewarmEngine = (source: EngineSource, request: EngineRequest): (() => void) => {
+  const engine = engineFor(source).then((plugin) => {
+    plugin.prewarmEngine?.({
+      ...engineRequest(request),
+      extension: request.filePath === undefined ? undefined : path.extname(request.filePath)
+    });
+    return plugin;
+  });
+  engine.catch(() => undefined);
+  return () => {
+    void engine.then(plugin => plugin.releaseEngine?.(), () => undefined);
+  };
 };

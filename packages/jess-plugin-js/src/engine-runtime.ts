@@ -200,3 +200,18 @@ export const renderInEngine = async (req) => {
     console.warn = consoleWarn;
   }
 };
+
+/**
+ * Gets the engine ready for a render before it is asked for one: the
+ * compiler imported and made, and the entry's dialect loaded by rendering an
+ * empty source of the entry's extension. A render that follows finds them
+ * warm; one that never comes costs only this process.
+ */
+export const warmEngine = async (req) => {
+  applyHostFacts(req.host);
+  const compiler = await compilerFor(req);
+  if (req.extension) {
+    await compiler.renderString('', { extension: req.extension }).catch(() => undefined);
+  }
+  return { ok: true };
+};
