@@ -144,6 +144,7 @@
     "verify:aggressive-cutting-review": "node scripts/verify-aggressive-cutting-review.mjs",
     "measure:less:hotpath": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs",
     "measure:less:hotpath:record": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs --save --compare-latest",
+    "measure:cli:cold-start": "node scripts/measure-cli-cold-start.mjs",
     "prototype:binding-frame-layout": "node scripts/prototype-binding-frame-layout.mjs",
     "prototype:binding-handle-reuse": "node scripts/prototype-binding-handle-reuse.mjs",
     "verify:diagnostic-cold-path": "node scripts/verify-diagnostic-cold-path.mjs",
