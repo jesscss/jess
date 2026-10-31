@@ -156,9 +156,11 @@ deno run --no-prompt \
 - **Candidates on different branches.** When the candidates are not on one
   ancestor chain (an entry folder beside, not inside, the folder its packages
   live in, as with a symlinked `node_modules`), each one nearest the top of its
-  own chain is kept as a root, because dropping one would make the entry or
-  its packages unreadable. This is how the implementation reads §8.2 for that
-  case; it awaits a ruling.
+  own chain is kept as a separate read root. Orchestrator judgment under owner
+  delegation, 2026-10-31: a single common ancestor could widen the read set to
+  `~` or `/`, wider than the owner's rule intends; disjoint roots are the
+  narrowest faithful reading, and dropping one would make the entry or its
+  packages unreadable.
 - **A different read set needs a different process.** Flags are fixed at spawn,
   so a render whose read set differs from the running process's starts a new
   one. A compiler that renders one project keeps one process.
