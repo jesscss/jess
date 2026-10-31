@@ -154,7 +154,7 @@
     "jess": {
       "source": "packages/syntax/jess/jess-parser/src/grammar.ts",
       "sourceBytes": 227755,
-      "tablesOnly": "Runs on the closure table engine only: no precompiled assembly since the 2026-08-31 move from composeLeaf() to compose(). https://github.com/jesscss/jess/issues/508",
+      "tablesOnly": "Built with assemblyBudget 0 (packages/syntax/jess/jess-parser/tsdown.config.ts): under selective assembly every budget measured parses at the same speed and each step up costs import time. https://github.com/jesscss/jess/issues/508",
       "artifacts": {
         "lib/grammar/ast.js": {
           "bytes": 573045,

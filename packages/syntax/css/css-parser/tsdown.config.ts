@@ -31,7 +31,7 @@ const here = dirname(fileURLToPath(import.meta.url));
  * `benchmark.css`, budgets from 1 to 2.75 all parse at the same speed
  * (marginal instructions within run-to-run spread, JIT and `--jitless`), and
  * import time rises with the budget, so this is the smallest budget on that
- * plateau. `ast.js` is 2.39x its source.
+ * plateau. `ast.js` is 2.36x its source.
  */
 const ASSEMBLY = {
   assemblyBudget: 1,
