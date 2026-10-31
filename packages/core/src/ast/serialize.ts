@@ -6909,7 +6909,14 @@ function recordMapPropertyTimeline(statements: readonly Statement[], frame: Fram
  * [lookup-memo] Negative control: `JESS_NO_DECLMAP_MEMO=1` disables the member-lookup
  * DeclMap memo so a measurement can reproduce the un-memoized rebuild/dispatch counts.
  */
-const DECLMAP_MEMO_ENABLED = typeof process === 'undefined' || process.env?.JESS_NO_DECLMAP_MEMO !== '1';
+const DECLMAP_MEMO_ENABLED = ((): boolean => {
+  try {
+    return typeof process === 'undefined' || process.env?.JESS_NO_DECLMAP_MEMO !== '1';
+  } catch {
+    /* Deno without env permission throws on the read: the knob is simply unset. */
+    return true;
+  }
+})();
 
 /**
  * [lookup-memo] Cache a PURE base's DeclMap on the resolving frame, keyed by the base
