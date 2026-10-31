@@ -291,7 +291,7 @@ For §4, the host needs each configured plugin's module and export. Options:
   ESM entries of plugin packages in the compiler's dependency closure, then a
   same-named class. Needs no change to plugins; the last step can pick the
   wrong class.
-- **B:** each plugin factory records it: `definePlugin(import.meta.url,
+- **B (this design):** each plugin factory records it: `definePlugin(import.meta.url,
   'default', opts => new LessPlugin(opts))`, stored on the instance. Exact, one
   line per plugin package, and a third-party plugin that does not record it
   fails with a clear error in a sandboxed compile.
