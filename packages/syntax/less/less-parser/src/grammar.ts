@@ -2996,14 +2996,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => interpolation(interpolationPartsFrom(children, false))
   );
   // An interpolated property name always carries a `@{`/`${` marker before the
-  // declaration `:`; a plain property never does. InterpolatedProperty
-  // is tried first in the property choice (its literal prefix arm can begin a
-  // property like `color-@{n}`), so a plain `color:` otherwise scans the whole
-  // property ident through the interpolated-property-start production before
-  // failing at the required interpolation. This positive lookahead is the cheap
-  // commit signal: only enter the interpolated-property arm when a marker is
-  // actually present before the delimiter, so plain properties fall straight to
-  // the literal DeclarationProperty arm. The collapsed semantic node keeps the
+  // declaration `:`; a plain property never does. `DeclarationHead` reaches
+  // this arm only after the plain property failed, and this positive lookahead
+  // enters InterpolatedProperty only when a marker is actually present before
+  // the delimiter, so a head that is neither (`color foo`) does not scan the
+  // name a third time. The collapsed semantic node keeps the
   // marker off the declaration reducer's `children[0]` property slot without
   // adding a second public CST name for the same InterpolatedProperty concept.
   const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
@@ -3022,14 +3019,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Declaration-head gaps are trivia, not declaration-name syntax. The AST keeps
   // the semantic property name clean; rendering replays output-bearing block
   // comments from the source trivia map before writing the colon.
-  const DeclarationHead = parser({ trivia: whitespace }, sequence(
-    choice(
-      interpolatedPropertyHead,
-      g.NumericMapKeyToken,
-      g.DeclarationPropertyToken
-    ),
-    optional(sequence(choice(literal('+_'), literal('+')))),
-    literal(':')
+  //
+  // A plain property is read first, so `color:` never runs the interpolation
+  // lookahead. The arms cannot both succeed: the property token holds no
+  // `@{` / `${`, and the interpolated head needs one before the colon, so an
+  // interpolated name fails the plain arm at its marker and is read by the next.
+  const declarationHeadTail = sequence(optional(choice(literal('+_'), literal('+'))), literal(':'));
+  const DeclarationHead = parser({ trivia: whitespace }, choice(
+    sequence(g.DeclarationPropertyToken, declarationHeadTail),
+    sequence(interpolatedPropertyHead, declarationHeadTail),
+    sequence(g.NumericMapKeyToken, declarationHeadTail)
   ));
   const StandardDeclaration = node(
     'Declaration',
