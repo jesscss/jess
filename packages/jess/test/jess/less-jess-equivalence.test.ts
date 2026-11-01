@@ -7,15 +7,16 @@
  * is byte identity:
  *
  *   arm A    `Compiler.safeRender(file.less)`                         → cssA
- *   convert  `Compiler.safeCompile(file.less)` (the product parse) → `emitJess` → write `file.jess`
+ *   convert  `Compiler.convertToJess(file.less)` → write each `.jess` it returns
  *   arm B    `Compiler.safeRender(file.jess)`                         → cssB
  *   gate     cssB === cssA
  *
- * The emitter prints the PARSED tree — nothing is evaluated — so a variable stays
- * a variable and a mixin stays a mixin; the round trip cannot pass by flattening.
- * The corpus is copied to a temp directory and EVERY `.less` file in it is
- * converted, so an `@import` resolves to its converted sibling. Both arms read the
- * copy, so they see the same files.
+ * The converter renders the file and prints the PARSED tree of it and of every
+ * file the render loaded — so a variable stays a variable and a mixin stays a
+ * mixin; the round trip cannot pass by flattening — and points each import at the
+ * file the render actually loaded (a package import, an extension-less path).
+ * The corpus is copied to a temp directory; both arms read the copy, and a
+ * converted file is written only inside it.
  *
  * Every non-passing fixture is listed in {@link KNOWN} with a cause and a reason:
  *
@@ -40,15 +41,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import { emitJess, NoJessSpelling } from '@jesscss/core';
-import { importTargetSpelling } from '@jesscss/core/ast';
 import { parse as parseJess } from '@jesscss/jess-parser';
 import { parse as parseLess } from '@jesscss/less-parser';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { getExpectedOutputFiles } from '../../src/config.js';
 import { Compiler, type ConfigOptions } from '../../src/index.js';
+import type { ConvertedFile } from '@jesscss/compiler';
 import {
   getTestCases,
   lessFixturePackagesPlugin,
@@ -233,92 +233,51 @@ function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigO
   } as ConfigOptions;
 }
 
-/**
- * `.jess` imports name the file they load. The converter wrote `foo.jess` next to
- * every `foo.less`, so a Less import of `foo` or `foo.less` becomes `foo.jess`.
- */
-const importPath = (spelling: string): string => {
-  const ext = path.extname(spelling);
-  return ext === '' ? `${spelling}.jess` : ext === '.less' ? `${spelling.slice(0, -5)}.jess` : spelling;
-};
-
 /** The Less built-ins as `.jess` imports them — the Less plugin owns the projection. */
 const LESS_FUNCTIONS = jessFunctions();
 
 /**
- * Per converted file: its `NoJessSpelling` gaps (`null` when it converted) and
- * the corpus files its top-level imports load, so a fixture is charged with the
- * gaps of every partial it pulls in.
+ * Per fixture: every file its conversion printed, and the converted files that do
+ * not re-print to themselves; or why the conversion's render failed.
  */
 type Conversion =
-  | { readonly gaps: readonly string[] | null; readonly imports: readonly string[]; readonly reprint?: string }
-  | { readonly parseError: string };
+  | { readonly files: readonly ConvertedFile[]; readonly unstable: readonly string[] }
+  | { readonly error: string };
+
+/*
+ * The print must be a fixed point of parse-then-print: the `.jess` tree it parses
+ * to prints back to text that parses to the SAME tree. A spelling the grammar
+ * reads as a different node fails here even where the CSS happens to agree.
+ * (Trees, not text: comments are trivia, and a `.jess` statement without a source
+ * span cannot anchor one in the same place.)
+ */
+function reprintProblem(jess: string): string | undefined {
+  try {
+    const tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
+
+    // A `.jess` tree already carries its `@-from` imports; only the Less source needs them added.
+    const again = parseJess(emitJess(tree), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
+    return shape(again) === shape(tree) ? undefined : 'tree changed';
+  } catch (error) {
+    return String(error);
+  }
+}
 
 async function convertCorpus(corpus: Corpus): Promise<Map<string, Conversion>> {
   const results = new Map<string, Conversion>();
-  const byFile = new Map(corpus.fixtures.map(f => [f.file, f]));
-  const files = glob.sync('**/*.less', { cwd: path.join(corpus.copy, corpus.convertRoot), ignore: ['**/node_modules/**'] })
-    .map(f => path.join(corpus.convertRoot, f))
-    .sort();
-  for (const file of files) {
-    const full = path.join(corpus.copy, file);
-
-    // A partial parses with its directory's configuration, exactly as when imported.
-    const fixture = byFile.get(file) ?? {
-      corpus: corpus.name,
-      file,
-      config: (() => {
-        try {
-          const found = getExpectedOutputFiles(full);
-          return (Array.isArray(found) ? found[0]!.config : found.config) as ConfigOptions;
-        } catch {
-          return {};
-        }
-      })()
-    };
+  for (const fixture of corpus.fixtures) {
     const compiler = new Compiler(configFor(corpus, fixture, null));
     try {
-      const { document, errors } = await compiler.safeCompile(full, { suppressWarnings: true });
-      if (document === null || errors.length > 0) {
-        results.set(file, { parseError: errors[0]?.message ?? 'no document' });
+      const { files, errors } = await compiler.convertToJess(path.join(corpus.copy, fixture.file), { suppressWarnings: true });
+      if (errors.length > 0) {
+        results.set(fixture.file, { error: firstError(errors) });
         continue;
       }
-      const imports = document.rules.flatMap((rule) => {
-        if (rule.type !== 'StyleImport') {
-          return [];
-        }
-        const spelling = importTargetSpelling(rule.target);
-        const target = path.resolve(path.dirname(full), path.extname(spelling) === '' ? `${spelling}.less` : spelling);
-        return fs.existsSync(target) ? [path.relative(corpus.copy, target)] : [];
+      const unstable = files.flatMap((file) => {
+        const problem = 'jess' in file ? reprintProblem(file.jess) : undefined;
+        return problem === undefined ? [] : [`${path.relative(corpus.copy, file.source)}: ${problem}`];
       });
-      try {
-        const jess = emitJess(document, { importPath, functions: LESS_FUNCTIONS });
-        fs.writeFileSync(full.replace(/\.less$/u, '.jess'), jess);
-
-        /*
-         * The print must be a fixed point of parse-then-print: the `.jess` tree it
-         * parses to prints back to text that parses to the SAME tree. A spelling
-         * the grammar reads as a different node fails here even where the CSS
-         * happens to agree. (Trees, not text: comments are trivia, and a `.jess`
-         * statement without a source span cannot anchor one in the same place.)
-         */
-        let reprint: string | undefined;
-        try {
-          const tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
-
-          // A `.jess` tree already carries its `@-from` imports; only the Less source needs them added.
-          const again = parseJess(emitJess(tree), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
-          reprint = shape(again) === shape(tree) ? undefined : 'tree changed';
-        } catch (error) {
-          reprint = String(error);
-        }
-        results.set(file, { gaps: null, imports, ...(reprint === undefined ? {} : { reprint }) });
-      } catch (error) {
-        if (!(error instanceof NoJessSpelling)) {
-          throw error;
-        }
-        results.set(file, { gaps: [...new Set(error.gaps.map(g => `${g.nodeType}: ${g.reason}`))], imports });
-      }
+      results.set(fixture.file, { files, unstable });
     } finally {
       compiler.dispose();
     }
@@ -336,19 +295,6 @@ type Diagnostics = Awaited<ReturnType<Compiler['safeRender']>>['errors'];
 const firstError = (errors: Diagnostics): string =>
   errors.length === 0 ? '' : `${errors[0]!.code}: ${String(errors[0]!.message).split('\n')[0]}`;
 
-/** A file's own gaps plus those of every partial it imports, transitively. */
-function gapsOf(file: string, conversions: ReadonlyMap<string, Conversion>, seen = new Set<string>()): string[] {
-  const conversion = conversions.get(file);
-  if (conversion === undefined || 'parseError' in conversion || seen.has(file)) {
-    return [];
-  }
-  seen.add(file);
-  return [
-    ...(conversion.gaps ?? []).map(g => (seen.size === 1 ? g : `${g} [in ${file}]`)),
-    ...conversion.imports.flatMap(dep => gapsOf(dep, conversions, seen))
-  ];
-}
-
 async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions: ReadonlyMap<string, Conversion>): Promise<Observation> {
   const conversion = conversions.get(fixture.file);
   const full = path.join(corpus.copy, fixture.file);
@@ -358,15 +304,42 @@ async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions
     if (a.css === null || a.errors.length > 0) {
       return { outcome: 'arm-a-error', detail: firstError(a.errors) };
     }
-    if (conversion === undefined || 'parseError' in conversion) {
-      return { outcome: 'arm-a-error', detail: conversion?.parseError ?? 'not converted' };
+    if (conversion === undefined || 'error' in conversion) {
+      return { outcome: 'arm-a-error', detail: conversion?.error ?? 'not converted' };
     }
-    const gaps = gapsOf(fixture.file, conversions);
+    const entry = fs.realpathSync(full);
+
+    // A partial is named inside the copy, or from its package when the render loaded it from an installed one.
+    const shown = (source: string): string => {
+      const real = fs.realpathSync(source);
+      const inCopy = path.relative(fs.realpathSync(corpus.copy), real);
+      return inCopy.startsWith('..') ? real.slice(real.lastIndexOf('node_modules/')) : inCopy;
+    };
+    const gaps = conversion.files.flatMap(({ source, ...file }) => ('gaps' in file
+      ? [...new Set(file.gaps.map(g => `${g.nodeType}: ${g.reason}`))].map(g => (fs.realpathSync(source) === entry ? g : `${g} [in ${shown(source)}]`))
+      : []));
     if (gaps.length > 0) {
       const p35 = gaps.every(g => g.includes(P35));
       return { outcome: p35 ? 'p35' : 'cannot-express', detail: [...new Set(gaps)].join(' | ') };
     }
-    const b = await compiler.safeRender(full.replace(/\.less$/u, '.jess'), { suppressWarnings: true });
+
+    // Converted files go next to their sources, which must be inside the copy.
+    const root = fs.realpathSync(path.resolve(corpus.copy, path.relative(corpus.layout, '.')));
+    let entryJess = '';
+    for (const file of conversion.files) {
+      if (!('jess' in file)) {
+        continue;
+      }
+      const at = path.join(fs.realpathSync(path.dirname(file.jessPath)), path.basename(file.jessPath));
+      if (path.relative(root, at).startsWith('..')) {
+        return { outcome: 'arm-b-error', detail: `a loaded file is outside the copy: ${at}` };
+      }
+      fs.writeFileSync(at, file.jess);
+      if (fs.realpathSync(file.source) === entry) {
+        entryJess = at;
+      }
+    }
+    const b = await compiler.safeRender(entryJess, { suppressWarnings: true });
     if (b.css === null || b.errors.length > 0) {
       const detail = firstError(b.errors);
       return { outcome: detail.startsWith('parse/') ? 'arm-b-parse' : 'arm-b-error', detail };
@@ -391,9 +364,9 @@ async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions
  */
 const KNOWN = new Map<string, Known>([
   ['all-less:tests-config/3rd-party/bootstrap4.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'a bare package import (`bootstrap-less-port/less/bootstrap`) became file-relative (`./…`, the migration guide\'s rewrite); the converter does not observe that Less resolved it as a package'
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Plugin: `@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from` [in node_modules/bootstrap-less-port/less/_functions.less] (+68 more)'
   }],
   ['all-less:tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less', {
     cause: 'cannot-express',
@@ -664,11 +637,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'StyleImport: an interpolated or escaped import target: `.jess` imports take a plain quoted path (+1 more)'
-  }],
-  ['all-less:tests-unit/import/import-module.less', {
-    cause: 'lost-info',
-    outcome: 'arm-b-error',
-    reason: 'bare package imports (`@less/test-import-module/…`) became file-relative (`./…`, the migration guide\'s rewrite); the converter does not observe that Less resolved them as a package'
   }],
   ['all-less:tests-unit/import/import-once.less', {
     cause: 'cannot-express',
@@ -945,8 +913,8 @@ for (const corpus of CORPORA) {
     });
 
     it('every converted file re-prints to itself', () => {
-      const unstable = [...conversions].flatMap(([file, c]) => ('reprint' in c && c.reprint !== undefined ? [`${file}: ${c.reprint}`] : []));
-      expect(unstable).toEqual([]);
+      const unstable = new Set([...conversions.values()].flatMap(c => ('unstable' in c ? c.unstable : [])));
+      expect([...unstable]).toEqual([]);
     });
 
     for (const fixture of corpus.fixtures) {

@@ -55,12 +55,14 @@ import type { Trivia } from '../types/index.js';
 export interface EmitJessOptions {
 
   /**
-   * Rewrites a converted `@import` path. `.jess` imports name the file they
-   * load — no extension inference — so which `.jess` file a Less import becomes
-   * is the CONVERTER's fact (it knows what it wrote), not the printer's. Called
-   * with the authored path after the `./` rewrite; absent, the path is kept.
+   * Rewrites a converted import path. `.jess` imports name the file they load —
+   * no extension inference, no package lookup — so which file an import becomes
+   * is the CONVERTER's fact (it knows what the import resolved to and what it
+   * wrote), not the printer's. Called with the authored path (a Less `@import`'s
+   * after the `./` rewrite) and the import; absent, the path is kept. Throwing
+   * {@link NoJessSpelling} records a gap for the import.
    */
-  readonly importPath?: (path: string) => string;
+  readonly importPath?: (path: string, node: StyleImport) => string;
 
   /**
    * The function module a converted file's calls resolved against, and the
@@ -178,7 +180,7 @@ class JessPrinter {
 
   /** Comment runs a custom-property value printed in place ({@link customValue}). */
   readonly #printed = new Set<Trivia>();
-  readonly #importPath: (path: string) => string;
+  readonly #importPath: NonNullable<EmitJessOptions['importPath']>;
   readonly #functions: EmitJessOptions['functions'];
 
   /** Call name → export name of every module function this file calls. */
@@ -601,12 +603,14 @@ class JessPrinter {
    */
   styleImport(node: StyleImport): string {
     if (node.mode !== 'import' || node.alias !== null || node.config !== null || node.forward) {
-      if (node.name === '@-compose' || node.name === '@-export') {
+      /* In `.less` every compiler at-rule is spelled with or without the dash; `.jess` requires it (ledger A1). */
+      const name = node.name.toLowerCase() === '@compose' ? '@-compose' : node.name;
+      if (name === '@-compose' || name === '@-export') {
         const config = node.config === null
           ? ''
           : ` ${node.config.kind} {${node.config.bindings.map(b => ` ${this.variableDeclaration(b, '')};`).join('')} }`;
         const as = node.namespace === null ? '' : ` as ${node.namespace}`;
-        return `${node.name} ${this.importTarget(node, false)}${as}${config}`;
+        return `${name} ${this.importTarget(node, false)}${as}${config}`;
       }
       return gap('StyleImport', 'module import semantics (`as`/`with`/forward) outside `@-compose`/`@-export`');
     }
@@ -628,12 +632,9 @@ class JessPrinter {
     }
     const quote = target.type === 'Quoted' ? target.quote : '"';
     const path = target.type === 'Quoted' ? target.value : target.src;
-    if (!fromLess) {
-      return `${quote}${path}${quote}`;
-    }
-    const relative = path.startsWith('./') || path.startsWith('../') || path.startsWith('/')
+    const relative = !fromLess || path.startsWith('./') || path.startsWith('../') || path.startsWith('/')
       || /^[a-z][a-z0-9+.-]*:/iu.test(path);
-    const rewritten = this.#importPath(relative ? path : `./${path}`);
+    const rewritten = this.#importPath(relative ? path : `./${path}`, node);
     return rewritten.includes(quote)
       ? gap('StyleImport', 'an import path containing its own quote character')
       : `${quote}${rewritten}${quote}`;

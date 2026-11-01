@@ -163,7 +163,7 @@ const compilerFor = async (req) => {
   return compiler;
 };
 
-const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender']);
+const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender', 'convertToJess']);
 
 /**
  * One render. What it prints (its diagnostics) is collected and returned as

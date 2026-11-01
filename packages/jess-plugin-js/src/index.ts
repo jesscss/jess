@@ -990,7 +990,7 @@ type EngineRequestBase = {
 
 /** One render the compiler moves into the engine (see `renderInEngine`). */
 export type EngineRenderRequest = EngineRequestBase & {
-  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender';
+  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender' | 'convertToJess';
   args: readonly unknown[];
 };
 

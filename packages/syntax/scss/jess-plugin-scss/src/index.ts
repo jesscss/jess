@@ -13,7 +13,7 @@ import {
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
-import { SASS_MODULE } from './jess-functions.js';
+import { SASS_MODULE, jessFunctions } from './jess-functions.js';
 import { parseRecovering, parseSelector } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
@@ -53,6 +53,7 @@ export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
   readonly valueEvaluator: ValueEvaluator = sassValueEvaluator;
+  readonly jessFunctions = jessFunctions;
   readonly #dialectDefaults: ScssDialectDefaults;
 
   constructor(public opts: ScssPluginOptions = {}) {

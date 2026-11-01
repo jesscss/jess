@@ -3,7 +3,7 @@
  * this process, or, once it reaches a stylesheet script, whole in the
  * `@jesscss/plugin-js` Deno engine.
  */
-import type { ErrorDiagnostic, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
+import type { ErrorDiagnostic, JessSpellingGap, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,19 @@ export type RenderResult = {
   sourceMapURL?: string;
 };
 
+/** One converted document (by its source path): its `.jess` text, or every construct `.jess` cannot spell. */
+export type ConvertedFile = { readonly source: string; readonly jessPath: string } & (
+  | { readonly jess: string }
+  | { readonly gaps: readonly JessSpellingGap[] }
+);
+
+/** What `Compiler.convertToJess` produced — plain data, so it crosses from the sandbox — and the render's diagnostics. */
+export type JessConversion = {
+  files: readonly ConvertedFile[];
+  errors: ErrorDiagnostic[];
+  warnings: WarningDiagnostic[];
+};
+
 export type SafeRenderResult = {
   css: string | null;
   errors: ErrorDiagnostic[];
@@ -41,7 +54,7 @@ export type SafeRenderResult = {
 /** The module and export of a compiler class, so the script sandbox can make the same compiler. */
 export type CompilerModuleIdentity = { module: string; exportName: string };
 
-export type EngineMethod = 'render' | 'renderToResult' | 'renderString' | 'safeRender';
+export type EngineMethod = 'render' | 'renderToResult' | 'renderString' | 'safeRender' | 'convertToJess';
 
 /** The script plugin's compile engine (`@jesscss/plugin-js`): one whole render in its Deno sandbox. */
 export type EnginePlugin = PluginInterface & {
@@ -108,6 +121,13 @@ export const fromEngine = {
       throw new Error('The compile engine returned no result for this render.');
     }
     return { ...value, css: value.css };
+  },
+  conversion: (value: unknown): JessConversion => {
+    const files: unknown = isRenderResultLike(value) ? Reflect.get(value, 'files') : undefined;
+    if (!isRenderResultLike(value) || !Array.isArray(files)) {
+      throw new Error('The compile engine returned no result for this conversion.');
+    }
+    return { files, errors: value.errors, warnings: value.warnings };
   }
 };
 

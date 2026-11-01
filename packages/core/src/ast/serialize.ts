@@ -740,6 +740,14 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
       return undefined;
     }
     const document = loaded.node;
+    const targets = context.importTargets;
+    if (targets !== undefined) {
+      let loadedBy = targets.get(node);
+      if (loadedBy === undefined) {
+        targets.set(node, loadedBy = new Map());
+      }
+      loadedBy.set(loaded.resolvedPath, document);
+    }
     return {
       document,
       key: loaded.resolvedPath,

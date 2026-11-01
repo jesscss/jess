@@ -16,6 +16,8 @@ import {
   type WarningsConfigInput,
   type ErrorsConfigInput,
   serialize,
+  emitJess,
+  NoJessSpelling,
   prepareStaticImports,
   buildAstSourceMap,
   removeSourceMapBasepath,
@@ -25,7 +27,7 @@ import {
   type ScriptSandboxRoute,
   type SourceSettings
 } from '@jesscss/core';
-import type { Stylesheet } from '@jesscss/core/ast';
+import type { StyleImport, Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
   applyStrictPreset,
@@ -59,8 +61,12 @@ import {
   type RenderResult,
   type RenderStringOptions,
   type RoutedCall,
-  type SafeRenderResult
+  type SafeRenderResult,
+  type ConvertedFile,
+  type JessConversion
 } from './sandbox-route.js';
+
+export type { ConvertedFile, JessConversion } from './sandbox-route.js';
 
 export type { CompilerModuleIdentity } from './sandbox-route.js';
 import { mergeConfig } from './merge-config.js';
@@ -1646,6 +1652,111 @@ export class Compiler {
       });
       return { document: null, context, errors, warnings };
     }
+  }
+
+  /**
+   * @internal `.less` / `.scss` → `.jess` from an EVALUATED render. The entry and
+   * every document the render loaded print through `emitJess`, each with its own
+   * plugin's function module, and each import names the file it actually loaded:
+   * a package, search-path or extension-inferred import, and an
+   * `@compose "foo.less"`, all become the relative path of that file's `.jess`.
+   * An import the render never evaluated keeps its authored path with the
+   * extension rewritten; one that loaded more than one file is a gap. A document
+   * whose plugin has no `jessFunctions` (a `.css` or `.jess` file) is not
+   * converted, and an import of it names it as it is.
+   *
+   * A document that is not a local file (a remote import) is not converted
+   * either, and an import of it keeps its URL.
+   *
+   * Routed like {@link safeRender}: a conversion whose render reaches a
+   * sandboxed script runs whole in the sandbox, and returns plain data.
+   */
+  async convertToJess(filePath: string, options?: Partial<ConfigOptions>): Promise<JessConversion> {
+    return this.routed('convertToJess', {
+      engineArgs: [filePath, withColors(options)],
+      filePath,
+      memoKey: filePath,
+      options,
+      check: fromEngine.conversion,
+      here: route => this.convertToJessHere(route, filePath, options)
+    });
+  }
+
+  private async convertToJessHere(
+    route: ScriptSandboxRoute | undefined,
+    filePath: string,
+    options?: Partial<ConfigOptions>
+  ): Promise<JessConversion> {
+    const { resolved, context, profile } = await this.prepareRender(filePath, {
+      ...options,
+      breakOnError: false,
+      suppressWarnings: options?.suppressWarnings ?? false
+    }, undefined, route);
+    const loads: NonNullable<Context['importTargets']> = new Map();
+    context.importTargets = loads;
+    const files: ConvertedFile[] = [];
+    const errors: ErrorDiagnostic[] = [];
+    try {
+      const entry = await this.prepareStylesheet(context, resolved, { filePath }, profile);
+      await this.renderStylesheet(entry, context, profile, undefined, resolved);
+
+      const documents = new Map<Stylesheet, string>();
+      for (const [source, document] of context.sourceTrees) {
+        if (document === entry) {
+          documents.set(entry, source);
+        }
+      }
+      for (const loaded of loads.values()) {
+        for (const [source, document] of loaded) {
+          documents.set(document, source);
+        }
+      }
+      const jessPathOf = (source: string): string => `${source.slice(0, source.length - path.extname(source).length)}.jess`;
+      const converted = new Set([...documents].flatMap(([document, source]) =>
+        (path.isAbsolute(source) && context.pluginOf(document)?.jessFunctions !== undefined ? [source] : [])));
+      for (const [document, source] of documents) {
+        const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;
+        if (functions === undefined) {
+          continue;
+        }
+        const importPath = (authored: string, node: StyleImport): string => {
+          const loaded = loads.get(node);
+          if (loaded === undefined) {
+            const ext = path.extname(authored);
+            return ext === '' ? `${authored}.jess` : ext === path.extname(source) ? jessPathOf(authored) : authored;
+          }
+          const [target, ...others] = loaded.keys();
+          if (target === undefined || others.length > 0) {
+            throw new NoJessSpelling('StyleImport', 'an import that loaded more than one file: a `.jess` import names one');
+          }
+          if (!path.isAbsolute(target)) {
+            return target;
+          }
+          const relative = path.relative(path.dirname(source), converted.has(target) ? jessPathOf(target) : target)
+            .split(path.sep).join('/');
+          return relative.startsWith('../') ? relative : `./${relative}`;
+        };
+        const jessPath = jessPathOf(source);
+        try {
+          files.push({ source, jessPath, jess: emitJess(document, { functions, importPath }) });
+        } catch (error) {
+          if (!(error instanceof NoJessSpelling)) {
+            throw error;
+          }
+          files.push({ source, jessPath, gaps: error.gaps });
+        }
+      }
+    } catch (err: unknown) {
+      errors.push(...context.errors);
+      const warnings: WarningDiagnostic[] = [...context.warnings];
+      if (err instanceof JessError) {
+        appendThrownJessDiagnostic(errors, warnings, err);
+      } else {
+        errors.push(internalUnknownDiagnostic(err, thrownMessage(err), filePath, 'An unexpected error occurred during conversion.'));
+      }
+      return { files, errors, warnings };
+    }
+    return { files, errors: [...context.errors], warnings: [...context.warnings] };
   }
 
   /** @internal */
