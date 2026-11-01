@@ -75,7 +75,7 @@ two fixtures fewer than the pinned one):
 
 | Arm | Corpus | Fixtures | Pass | Bare math | Cannot express | Lost info | Arm A does not render |
 | --- | --- | --: | --: | --: | --: | --: | --: |
-| Less | `all-less` test-data | 138 | 46 | 2 | 76 | 3 | 11 |
+| Less | `all-less` test-data | 138 | 45 | 2 | 77 | 3 | 11 |
 | Less | `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
 | Less | `gen-workload.less` | 1 | 1 | 0 | 0 | 0 | 0 |
 | SCSS | `gen-workload.scss` | 1 | 1 | 0 | 0 | 0 | 0 |
@@ -84,8 +84,8 @@ two fixtures fewer than the pinned one):
 
 "Cannot express" is a `NoJessSpelling` gap (in the file or in a partial it
 imports), or a conversion that renders but differs for a reason `.jess` does not
-model: Less-plugin URL rewriting, or a function registered by a Less `plugins`
-entry. `.jess` has no ambient function namespace (ledger P17), so the converter
+model: Less-plugin URL rewriting, a function registered by a Less `plugins`
+entry, or an import a `processImports: false` policy drops. `.jess` has no ambient function namespace (ledger P17), so the converter
 adds one `@-from "#less" import (…)` (or `"#sass"`) per file naming exactly the
 built-ins that file calls. "Lost info" is a conversion that drops what the
 render knew: two are built-in calls the evaluator leaves as CSS

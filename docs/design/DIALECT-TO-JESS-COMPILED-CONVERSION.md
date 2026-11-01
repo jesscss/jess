@@ -27,9 +27,10 @@ behavior remains an explicit conversion diagnostic/candidate.
 - **Import provenance**, the first fact below. When a caller sets
   `Context.importTargets`, the serializer's import expansion records, per
   import node, each target it resolved and what that target became: the loaded
-  document, or `null` when it stays a CSS `@import` (a `.css` terminal, a URL,
-  or a document whose policy is `processImports: false`). Unset, nothing is
-  recorded and nothing is allocated.
+  document, or `null` when it stays a CSS `@import` (a `.css` terminal or a
+  URL), written back as authored; and which imports a document's
+  `processImports: false` policy skipped, which convert as a gap (`.jess` has
+  no such policy). Unset, nothing is recorded and nothing is allocated.
 - **`Compiler.convertToJess(file)`** renders the file once with that map set,
   then prints every loaded `.less`/`.scss` document with `emitJess`. Each
   import names its recorded target, relative to the converted file (a

@@ -44,6 +44,45 @@ describe('Compiler.convertToJess', () => {
     }
   });
 
+  /* An import the render left a CSS `@import` is written as authored, `url()` and all, not as a `.jess` import. */
+  it('writes an import that stays CSS as authored', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'a.less'), '@import url("https://fonts.example/css?family=X");\n@import "theme.less";\n.a { w: 1; }\n');
+    fs.writeFileSync(path.join(dir, 'theme.less'), '.t { x: 1; }\n');
+
+    const UNPROCESSED = { language: { less: { processImports: false } } };
+    const compiler = new Compiler();
+    try {
+      const plain = await compiler.convertToJess(path.join(dir, 'a.less'));
+      expect(plain.errors).toEqual([]);
+      expect(plain.files[0] && 'jess' in plain.files[0] ? plain.files[0].jess : plain.files[0])
+        .toBe('@import url("https://fonts.example/css?family=X");\n@-import "./theme.jess";\n.a {\n  w: 1;\n}\n');
+
+      /* `processImports: false` drops both imports from the CSS; `.jess` has no such policy to convert them to. */
+      const unprocessed = await compiler.convertToJess(path.join(dir, 'a.less'), UNPROCESSED);
+      expect(unprocessed.errors).toEqual([]);
+      const [entry] = unprocessed.files;
+      expect(entry && 'gaps' in entry ? entry.gaps.map(gap => gap.nodeType) : entry).toEqual(['StyleImport', 'StyleImport']);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
+  /* A `.jess` prelude takes CSS leaves or a whole `${name}`; a computed splice has no spelling there. */
+  it('reports a computed splice in a prelude as a gap', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'a.scss'), '$tablet: 768px;\n.a {\n  @media (min-width: #{$tablet + 1px}) {\n    b: c;\n  }\n}\n');
+
+    const compiler = new Compiler();
+    try {
+      const { files, errors } = await compiler.convertToJess(path.join(dir, 'a.scss'));
+      expect(errors).toEqual([]);
+      expect(files[0] && 'gaps' in files[0] ? files[0].gaps.map(gap => gap.nodeType) : files[0]).toEqual(['Interpolation']);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
   /* Sass finds `@use "theme"` as `_theme.scss`; `.jess` names that file. */
   it('names the partial a Sass `@use` loaded', async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));

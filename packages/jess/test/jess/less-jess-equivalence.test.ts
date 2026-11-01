@@ -512,6 +512,11 @@ const KNOWN = new Map<string, Known>([
     outcome: 'arm-a-error',
     reason: 'the Less arm itself does not render: resolve/name-not-found: Name not found'
   }],
+  ['all-less:tests-config/process-imports/google.less', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: '`processImports: false` drops the import from the CSS; a `.jess` import has no such policy'
+  }],
   ['all-less:tests-config/rewrite-urls-all/rewrite-urls-all.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',

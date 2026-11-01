@@ -58,11 +58,12 @@ export interface EmitJessOptions {
    * Rewrites a converted import path. `.jess` imports name the file they load —
    * no extension inference, no package lookup — so which file an import becomes
    * is the CONVERTER's fact (it knows what the import resolved to and what it
-   * wrote), not the printer's. Called with the authored path (a Less `@import`'s
-   * after the `./` rewrite) and the import; absent, the path is kept. Throwing
-   * {@link NoJessSpelling} records a gap for the import.
+   * wrote), not the printer's. Called with the path as authored and the import;
+   * `null` keeps it a CSS `@import` written as authored. Absent, a Less import's
+   * bare path gains `./`. Throwing {@link NoJessSpelling} records a gap for the
+   * import.
    */
-  readonly importPath?: (path: string, node: StyleImport) => string;
+  readonly importPath?: (path: string, node: StyleImport) => string | null;
 
   /**
    * The function module a converted file's calls resolved against, and the
@@ -180,7 +181,7 @@ class JessPrinter {
 
   /** Comment runs a custom-property value printed in place ({@link customValue}). */
   readonly #printed = new Set<Trivia>();
-  readonly #importPath: NonNullable<EmitJessOptions['importPath']>;
+  readonly #importPath: EmitJessOptions['importPath'];
   readonly #functions: EmitJessOptions['functions'];
 
   /** Call name → export name of every module function this file calls. */
@@ -200,7 +201,7 @@ class JessPrinter {
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
-    this.#importPath = options.importPath ?? (path => path);
+    this.#importPath = options.importPath;
     this.#functions = options.functions;
   }
 
@@ -610,7 +611,7 @@ class JessPrinter {
           ? ''
           : ` ${node.config.kind} {${node.config.bindings.map(b => ` ${this.variableDeclaration(b, '')};`).join('')} }`;
         const as = node.namespace === null ? '' : ` as ${node.namespace}`;
-        return `${name} ${this.importTarget(node, false)}${as}${config}`;
+        return `${name} ${this.importTarget(node, false) ?? gap('StyleImport', 'a module import that stays a CSS `@import`')}${as}${config}`;
       }
       return gap('StyleImport', 'module import semantics (`as`/`with`/forward) outside `@-compose`/`@-export`');
     }
@@ -618,10 +619,12 @@ class JessPrinter {
       const words = node.options.value.map(o => (!isSlotArray(o) && 'src' in o ? String(o.src).trim() : '?')).join(', ');
       return gap('StyleImport', `import option \`(${words})\`: \`@-import\` takes no option clause (\`@-reference\` parses only as an inert at-rule)`);
     }
-    return `@-import ${this.importTarget(node, node.name !== '@-import')}`;
+    const target = this.importTarget(node, node.name !== '@-import');
+    return target === null ? `@import ${this.value(node.target, At.Value)}` : `@-import ${target}`;
   }
 
-  importTarget(node: StyleImport, fromLess: boolean): string {
+  /** The quoted `.jess` target, or `null` when the import stays a CSS `@import`. */
+  importTarget(node: StyleImport, fromLess: boolean): string | null {
     /*
      * A compile-time import's `url(…)` wrapper is syntax around the same path,
      * so it prints as the plain quoted path the `.jess` rule takes.
@@ -634,10 +637,12 @@ class JessPrinter {
     const path = target.type === 'Quoted' ? target.value : target.src;
     const relative = !fromLess || path.startsWith('./') || path.startsWith('../') || path.startsWith('/')
       || /^[a-z][a-z0-9+.-]*:/iu.test(path);
-    const rewritten = this.#importPath(relative ? path : `./${path}`, node);
-    return rewritten.includes(quote)
-      ? gap('StyleImport', 'an import path containing its own quote character')
-      : `${quote}${rewritten}${quote}`;
+    const rewritten = this.#importPath === undefined ? (relative ? path : `./${path}`) : this.#importPath(path, node);
+    return rewritten === null
+      ? null
+      : rewritten.includes(quote)
+        ? gap('StyleImport', 'an import path containing its own quote character')
+        : `${quote}${rewritten}${quote}`;
   }
 
   /* -------------------------------------------------------------- selectors */
@@ -1061,8 +1066,8 @@ class JessPrinter {
     if (at === At.Prelude) {
       return node.parts.every(part => 'lit' in part)
         ? node.parts.map(part => ('lit' in part ? part.lit : '')).join('')
-        : node.parts.length === 1 && 'ref' in node.parts[0]!
-          ? this.template(node, 'string')
+        : node.parts.length === 1
+          ? this.template(node, 'name')
           : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
     }
     const first = node.parts[0];

@@ -1,14 +1,15 @@
 {
   "reviewVersion": 2,
   "id": "jess-function-bindings",
-  "definitionDigest": "892f018f635ed7facbfd896f37c8dca27237595d25467722c4680f0466f97df7",
-  "contractDigest": "d42a7853e4db11d22afb1db4990db0ff8e3b4bd3975f6508be31a0ecdb33a4fb",
+  "definitionDigest": "c327223c6be426f6ea7c2d8f6212bf8d9b8f9b1b8717d189e36c9d97253dc347",
+  "contractDigest": "c39f29f71b6783c1b7e0643ed76e669cc90dde750f95449867c4bff201e7225c",
   "implementations": {
-    "owner": "ae28ac55559b60662214a7f9709decfea391afc33b81b5180cf90c82ef9ec741",
-    "less-equivalence": "94524cbc8c3702f0e1ab1cfa8f3f2187ec50bf557efef0a08ddc6ebd8a1f0a4f",
+    "owner": "e8fbe3f1a53792442a84382c901e8fdd390b16e6f62f878ce1e64191315dce71",
+    "compiler-convert": "bb0c9f7d6aae3418c375f6eea95089bdad1b2d40d34396f1f2b09fb4e180b50b",
+    "less-equivalence": "b70ec78cdde641a213060790cf8e0af47675acb3ebc58fddc96b144f0e629ff2",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Merged dev: the Sass provided-modules table moved to its own entry (provided-modules.ts), which now owns SASS_MODULE; jess-functions.ts re-exports it. provided-modules.ts joins the owner files."
+  "rationale": "Compiler.convertToJess (printConversion) joins as a consumer: it reads each loaded document's projection from that document's plugin. Its suite (convert-to-jess.test.ts) converts both dialects, so the checker tells its values apart by module specifier, and the observation config loads @jesscss/compiler from source so a consumer alternative is the code that runs."
 }

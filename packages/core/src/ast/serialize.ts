@@ -20782,8 +20782,8 @@ function expandStyleImport(
     throw composeNotTopLevel(node, e);
   }
   if (e.s.context?.options.processImports === false) {
-    // Under this document's policy the import stays a CSS `@import` as written; nothing is resolved.
-    return e.s.context.importTargets?.record(node, '', null);
+    // Under this document's policy the import contributes nothing; nothing is resolved.
+    return e.s.context.importTargets?.skip(node);
   }
   if (importDocument) {
     const planned = e.plannedImportDocuments;
