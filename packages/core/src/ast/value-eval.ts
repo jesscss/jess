@@ -155,6 +155,21 @@ export interface Keyword {
 
   /** The paren groups written around it where it is text ({@link Any.groups}); `0` otherwise. */
   readonly groups: number;
+
+  /** The call it spells when it is a call written out as-is ({@link KeywordCall}), `null` for any other keyword. */
+  readonly call: KeywordCall | null;
+}
+
+/**
+ * A call written out as-is (an unknown or CSS function, a built-in that could
+ * not compute), as structure: its name and its evaluated arguments as written,
+ * any of which may be such a call in turn. The keyword holding it is its
+ * spelling. It travels with the value, so a callable that receives it can read
+ * the call rather than its bytes (docs/design/CSS-NATIVE-BUILTINS.md §3.2).
+ */
+export interface KeywordCall {
+  readonly name: string;
+  readonly args: ValueGroup;
 }
 
 /**

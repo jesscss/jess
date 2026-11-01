@@ -23,7 +23,7 @@ import { isMathFunctionName } from './math-functions.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, FunctionDeclined, numberArguments } from './value-dispatch.js';
-import { makeKeyword } from './value-factory.js';
+import { makeCallKeyword } from './value-factory.js';
 import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -75,7 +75,8 @@ function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefin
   if (call.rejectEmpty && groupItems(args).some(isEmptyList)) {
     throw new EmptyListValueError(`An empty list is an argument of \`${name}()\`, a call written out as-is; an empty list has no CSS spelling.`);
   }
-  return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(call.written?.args ?? args, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`));
+  const written = call.written?.args ?? args;
+  return keepAsWritten(makeCallKeyword(`${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`, { name, args: written }));
 }
 
 /**
