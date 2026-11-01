@@ -45,6 +45,10 @@ points you at the source; then you read the source. Treat a subagent's
 - [design/CSS-NATIVE-BUILTINS.md](design/CSS-NATIVE-BUILTINS.md): PROPOSAL (ledger **V38**, OPEN) — built-ins with a CSS counterpart represented as their CSS-native form (relative colour, `color-mix()`, CSS math). Its inventory [design/css-native-builtins.json](design/css-native-builtins.json) classifies every colour/math built-in by whether it prints as CSS or needs JS.
 - [architecture/core/EXTEND-SEMANTICS.md](architecture/core/EXTEND-SEMANTICS.md): extend semantics record (the ledger's X-series rows point here).
 
+## Browser runtime — `@export` variables, `var()` output, the JS module
+
+- [architecture/core/spec/R8-browser-runtime.md](architecture/core/spec/R8-browser-runtime.md): the plan, the slice contracts and the open owner items. The rulings live in ledger row **A4**.
+
 ## Perf — hot path (core eval/render, grammar/parser, extend/selector)
 
 - [perf/BENCHMARKS.md](perf/BENCHMARKS.md): **METHOD OF RECORD** — the command-first index of every canonical harness, the standard fixtures, and the history/baseline files. Never invent or search for a harness; start here.

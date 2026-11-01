@@ -28,7 +28,7 @@ describe('Less module mode (P36)', () => {
     expect(call && hasAmbientFunctions(call)).toBe(true);
   });
 
-  it.each(['@use "x";', '@-use "x";', '@compose "x";', '@-compose "x";', '.w { @compose "x"; }'])(
+  it.each(['@use "x";', '@-use "x";', '@compose "x";', '@-compose "x";', '.w { @compose "x"; }', '@export @x: 1;', '@-export @x: 1;'])(
     'closes them for every call in a document that writes %s',
     (directive) => {
       const found = calls(parse(`a { b: min(1px, 2px); }\n${directive}\nc { d: darken(red, 1%); }`));
