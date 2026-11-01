@@ -22,7 +22,7 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { LeadingSeparatorValueError } from '@jesscss/core/diagnostics';
 import { JessArithmeticOutsideExpressionError, JessSelectorCaptureArgumentError, type JessRecoveredError } from './parse-error.js';
-import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isExtendInstruction, isGuardNodeOf, isInterpolation, isMathOperator, isMixinCall, isParamArray, isQuoted, isSelectorBranch, isSimpleToken, isToken, isValueSlotOf, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg, queryFeatureNameValue } from '@jesscss/core/ast';
+import { NO_SPAN, adoptForgivenSelectorItems, any, authoredSource, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, selectorCaptureOf, isSpannedToken, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan, valueLayoutOf, withValueLayout, isValueSlotArray, branch, ifValue, inParens, funcCall, callArg, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { Any, SelectorCapture, Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, FunctionCall, IfValue, IfValueBranch } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -612,70 +612,34 @@ function jessFunctionOpenName(child: unknown): string {
   return value.endsWith('(') ? value.slice(0, -1) : value;
 }
 
-/** A statement child: each statement guard gates on one distinct `type`, so dispatch on it once. */
-function isJessStatement(child: unknown): child is Statement {
-  if (typeof child !== 'object' || child === null || !('type' in child)) {
-    return false;
-  }
-  switch (child.type) {
-    case 'MixinDefinition':
-    case 'MixinCall':
-    case 'Apply':
-    case 'Reference':
-    case 'Ruleset':
-    case 'For':
-    case 'If':
-    case 'While':
-    case 'StyleImport':
-    case 'ModuleImport':
-    case 'AtRuleBlock':
-    case 'AtRuleStatement':
-    case 'UnknownAtRuleBlock':
-      return true;
-    case 'VariableDeclaration':
-      return isVarDeclaration(child);
-    case 'Declaration':
-      return isJessDeclaration(child);
-    default:
-      return false;
-  }
-}
-
-function requireStatement(child: unknown): Statement {
-  if (!isJessStatement(child)) {
-    throw new TypeError('Jess grammar produced a non-statement child.');
-  }
-  return child;
-}
-
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    statements.push(requireStatement(child));
+    /* The guards gate on distinct types; the statements a body holds most are tried first. */
+    if (!isJessDeclaration(child) && !isRuleset(child) && !isVarDeclaration(child) && !isMixinCall(child) && !isMixinDefinition(child) && !isApply(child) && !isReference(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isUnknownAtRuleBlock(child)) {
+      throw new TypeError('Jess grammar produced a non-statement child.');
+    }
+    statements.push(child);
   }
   return statements;
 }
 
 /*
  * Block bodies whose grammar admits array-producing arms (`$extend`) and a bare
- * `;` arm: flatten mixin-call arrays, drop other arrays and stray tokens. One
- * pass over `children[open .. -1)`, without the intermediate arrays.
+ * `;` arm: flatten mixin-call arrays, drop other arrays and stray tokens, in one
+ * pass over `children[open .. -1)`.
  */
 function collectBlockStatements(children: readonly unknown[], open: number): Statement[] {
-  const statements: Statement[] = [];
+  const statements: unknown[] = [];
   for (let index = open; index < children.length - 1; index++) {
     const child = children[index];
     if (isMixinCallArray(child)) {
-      for (const call of child) {
-        if (!isToken(call)) {
-          statements.push(requireStatement(call));
-        }
-      }
+      statements.push(...child);
     } else if (!Array.isArray(child) && !isToken(child)) {
-      statements.push(requireStatement(child));
+      statements.push(child);
     }
   }
-  return statements;
+  return requireStatements(statements);
 }
 
 /*
@@ -683,18 +647,16 @@ function collectBlockStatements(children: readonly unknown[], open: number): Sta
  * token arms other than mixin-call expansion: flatten mixin-call arrays only.
  */
 function collectBodyStatements(children: readonly unknown[], open: number): Statement[] {
-  const statements: Statement[] = [];
+  const statements: unknown[] = [];
   for (let index = open; index < children.length - 1; index++) {
     const child = children[index];
     if (isMixinCallArray(child)) {
-      for (const call of child) {
-        statements.push(requireStatement(call));
-      }
+      statements.push(...child);
     } else {
-      statements.push(requireStatement(child));
+      statements.push(child);
     }
   }
-  return statements;
+  return requireStatements(statements);
 }
 
 function requireStatementList(value: unknown): Statement[] {
