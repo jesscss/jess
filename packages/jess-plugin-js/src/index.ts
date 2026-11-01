@@ -17,6 +17,7 @@ import {
   encodeEngineValue,
   engineCode,
   engineFailure,
+  engineOwnCode,
   hostFacts,
   denoRunArgs,
   encodeHostConfigs,
@@ -1018,6 +1019,17 @@ export class JsPlugin extends AbstractPlugin {
     const prewarm = new AbortController();
     this.prewarmAbort = prewarm;
     const warm = async () => {
+      /*
+       * Deno starts now, on the read set its code closure can only add to (the
+       * read roots, the compiler's and this plugin's own packages): the closure,
+       * computed next, is what held a cold start back. When the closure adds a
+       * folder, `useReadSet` switches the process before any render reaches it.
+       */
+      const early = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, engineOwnCode(request.compiler.module, import.meta.url));
+      if (!prewarm.signal.aborted && this.readSetTurn === undefined && this.runtimeState.status === 'idle') {
+        this.nextReadSet = early;
+        this.ensureRuntime().catch(() => undefined);
+      }
       const { code, release } = await this.useReadSet(request, prewarm.signal);
       try {
         if (prewarm.signal.aborted) {
