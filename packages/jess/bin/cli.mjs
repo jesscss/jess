@@ -22,10 +22,18 @@
 import { randomBytes } from 'node:crypto';
 import { fstatSync, lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import { open, rename, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import nodeModule, { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { getSystemErrorMap, parseArgs } from 'node:util';
-import { colorsByDefault, outputDiagnostics } from '@jesscss/compiler/diagnostics';
+
+/*
+ * Node's on-disk compile cache (Node 22.1+; absent on Node 20, so optional):
+ * each run after the first reuses the compiled code of the modules it loads
+ * instead of compiling them again. NODE_DISABLE_COMPILE_CACHE=1 turns it off.
+ * The compiler modules are imported dynamically below, after this call, so
+ * they are cached too.
+ */
+nodeModule.enableCompileCache?.();
 
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
@@ -348,9 +356,10 @@ async function runCompile(args) {
   const outPath = path.resolve(values.out ?? path.dirname(outFile), path.basename(outFile));
   const plan = planOutput(outPath, input, inFile, outArg);
 
-  const [{ Compiler }, { JessError, toDiagnostic }] = await Promise.all([
+  const [{ Compiler }, { JessError, toDiagnostic }, { outputDiagnostics }] = await Promise.all([
     import('../lib/index.js'),
-    import('@jesscss/core')
+    import('@jesscss/core'),
+    import('@jesscss/compiler/diagnostics')
   ]);
   const options = await remoteImportOptions(values['allow-remote-imports']);
   const startTime = Date.now();
@@ -427,7 +436,10 @@ async function runLint(args) {
   }
 
   // Loaded here, not at startup: the linter loads every dialect's grammar, which a compile never needs.
-  const { formatStyledLintResult, lintFiles } = await import('@jesscss/lint');
+  const [{ formatStyledLintResult, lintFiles }, { colorsByDefault }] = await Promise.all([
+    import('@jesscss/lint'),
+    import('@jesscss/compiler/diagnostics')
+  ]);
   const result = await lintFiles(positionals, {
     configFile: values.config,
     maxWarnings,
