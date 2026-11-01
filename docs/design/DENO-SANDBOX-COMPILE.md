@@ -175,7 +175,10 @@ deno run --no-prompt \
   packages unreadable.
 - **A different read set needs a different process.** Flags are fixed at spawn,
   so a render whose read set differs from the running process's starts a new
-  one. A compiler that renders one project keeps one process.
+  one. A compiler that renders one project keeps one process. The switch waits
+  for every render under the running read set to finish, and while a render
+  waits no new one joins the running set: a render never runs in, or is
+  stopped by, a process started for another render's read set.
 
 ### What the native check does with symlinks and paths
 
