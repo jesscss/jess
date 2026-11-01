@@ -50,17 +50,18 @@ that render again in Deno. The compiler remembers that entry path, so later
 renders of it go to Deno directly. The CLI uses the same compiler, so it
 behaves the same way and switches to Deno only when the compile needs it.
 
-A `@plugin` is a boundary as soon as import planning meets it, before
-evaluation: when its target is a plain string and the plugin that loads its
-extension sandboxes every script (`PluginInterface.sandboxesScripts`, as
-plugin-js does), `Context.rerouteForPlugin` moves the render then, and the
-rest of the import graph is never parsed in Node only to be thrown away. It
-loads nothing; a `@plugin` whose path does not resolve, or a compile with
-scripts disabled, is left to evaluation, which reports it. The move does not
-depend on evaluation reaching the `@plugin`, so a render whose planned
-`@plugin` sits in a branch evaluation skips runs in Deno too, with the same
-CSS. A `@plugin` inside a mixin body, which planning does not visit, still
-moves the render when evaluation reaches it.
+A `@plugin` is a boundary as soon as the document holding it is parsed,
+before evaluation: when it is a top-level statement, its target is a plain
+string, and the plugin that loads its extension sandboxes every script
+(`PluginInterface.sandboxesScripts`, as plugin-js does),
+`rerouteForPlannedPlugins` (core, called by `Context.getTree`) moves the
+render then, and the rest of the import graph is never parsed in Node only to
+be thrown away. It loads nothing; a `@plugin` whose path does not resolve, or
+a compile with scripts disabled, is left to evaluation, which reports it. The
+move does not depend on evaluation reaching the `@plugin`, so a render whose
+top-level `@plugin` sits behind a guard evaluation skips runs in Deno too,
+with the same CSS. A `@plugin` nested in a rule or a mixin body still moves
+the render when evaluation reaches it.
 
 The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute
