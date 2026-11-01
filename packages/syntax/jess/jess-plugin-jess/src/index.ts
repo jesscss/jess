@@ -114,4 +114,5 @@ export class JessPlugin extends AbstractPlugin {
 
 const jessPlugin = (() => recordPluginModule(new JessPlugin(), import.meta.url, 'default', [])) satisfies Plugin;
 
+export { jessPlugin };
 export default jessPlugin;
