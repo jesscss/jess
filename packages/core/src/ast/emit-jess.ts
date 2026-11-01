@@ -465,9 +465,11 @@ class JessPrinter {
 
     // `assignHead`: `$n:` / `$n?:` / `$n:=` / `$n::=`, `$^` for the scoped store.
     const w = node.write;
-    const head = w.mode === 'declare'
-      ? `$${node.name}:`
-      : `$${w.scope === 'scoped' ? '^' : ''}${node.name}${w.mode === 'if-absent' ? '?:' : w.mode === 'reassign' ? ' :=' : ' ::='}`;
+    const head = w.mode === 'export'
+      ? gap('VariableDeclaration', '`@-export $name:` — the `.jess` grammar does not parse a variable export yet (ledger A4)')
+      : !('scope' in w)
+          ? `$${node.name}:`
+          : `$${w.scope === 'scoped' ? '^' : ''}${node.name}${w.mode === 'if-absent' ? '?:' : w.mode === 'reassign' ? ' :=' : ' ::='}`;
     const value = node.value;
     if (!isSlotArray(value) && value.type === 'MixinCall') {
       return gap('VariableDeclaration', 'bound to a mixin call: no `.jess` value spelling for a call\'s output');
