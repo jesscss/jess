@@ -854,11 +854,8 @@ export function isSelectorTerm(value: unknown): value is SelectorTerm {
 }
 
 /** The selector term the tokens spell: a lone token stays direct, adjacent tokens form a compound. */
-export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm => {
-  const first = tokens[0]!;
-  const second = tokens[1];
-  return second === undefined ? first : compoundSelectorOf([first, second, ...tokens.slice(2)]);
-};
+export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  tokens[1] === undefined ? tokens[0]! : compoundSelectorOf([tokens[0]!, tokens[1], ...tokens.slice(2)]);
 
 export function isComplex(value: unknown): value is Extract<SelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
@@ -1362,25 +1359,17 @@ export function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
 }
 
 export function complexSegments(children: readonly unknown[]): [ComplexSegment, ...ComplexSegment[]] {
-  /* The segments are built as the non-empty list they are returned as, not copied into one. */
-  let segments: [ComplexSegment, ...ComplexSegment[]] | undefined;
+  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm }> = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
     if (isSelectorTerm(child)) {
-      if (segments === undefined) {
-        segments = [{ term: child }];
-      } else {
-        segments.push({ combinator, term: child });
-      }
+      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
       combinator = ' ';
       continue;
     }
     combinator = selectorCombinator(child);
   }
-  if (segments === undefined) {
-    throw new TypeError('A complex selector lost its first term.');
-  }
-  return segments;
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 export function branchSegments(branch: SelectorBranch): [ComplexSegment, ...ComplexSegment[]] {

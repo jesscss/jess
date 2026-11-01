@@ -1044,25 +1044,17 @@ function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
 function complexSegmentsFrom(
   children: readonly unknown[]
 ): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
-  /* The segments are built as the non-empty list they are returned as, not copied into one. */
-  let segments: [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] | undefined;
+  const segments: Array<{ combinator?: SelectorCombinator; term: SelectorTerm }> = [];
   let combinator: SelectorCombinator = ' ';
   for (const child of children) {
     if (isSelectorTerm(child)) {
-      if (segments === undefined) {
-        segments = [{ term: child }];
-      } else {
-        segments.push({ combinator, term: child });
-      }
+      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
       combinator = ' ';
     } else {
       combinator = requireCombinator(child);
     }
   }
-  if (segments === undefined) {
-    throw new TypeError('Less complex selector lost its first term.');
-  }
-  return segments;
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
