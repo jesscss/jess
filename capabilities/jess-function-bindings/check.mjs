@@ -46,7 +46,7 @@ const here = 'capabilities/jess-function-bindings';
  * consumer without a `dialect` converts both, told apart by each value's `from`.
  */
 const CONSUMERS = {
-  'compiler-convert': { file: 'packages/compiler/src/index.ts', suite: 'packages/jess/test/jess/convert-to-jess.test.ts' },
+  'compiler-convert': { file: 'packages/compiler/src/convert-to-jess.ts', suite: 'packages/jess/test/jess/convert-to-jess.test.ts' },
   'less-equivalence': { file: 'packages/jess/test/jess/less-jess-equivalence.test.ts', dialect: 'less' },
   'less-stored-slash-math': { file: 'packages/jess/test/less/stored-slash-math.test.ts', dialect: 'less' },
   'sass-list-map-functions': { file: 'packages/jess/test/scss/sass-list-map-functions.test.ts', dialect: 'sass' },

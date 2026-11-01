@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { getConfigWithMeta, type ConfigWithMeta } from './config.js';
 import {
   Context,
+  ImportTargets,
   type ContextOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
@@ -16,8 +17,6 @@ import {
   type WarningsConfigInput,
   type ErrorsConfigInput,
   serialize,
-  emitJess,
-  NoJessSpelling,
   prepareStaticImports,
   buildAstSourceMap,
   removeSourceMapBasepath,
@@ -27,7 +26,7 @@ import {
   type ScriptSandboxRoute,
   type SourceSettings
 } from '@jesscss/core';
-import type { StyleImport, Stylesheet } from '@jesscss/core/ast';
+import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
   applyStrictPreset,
@@ -36,6 +35,7 @@ import {
   type OutputOptions
 } from 'styles-config';
 import { outputDiagnostics } from './diagnostics.js';
+import { printConversion } from './convert-to-jess.js';
 import {
   createRenderProfile,
   finalizeRenderProfile,
@@ -62,7 +62,6 @@ import {
   type RenderStringOptions,
   type RoutedCall,
   type SafeRenderResult,
-  type ConvertedFile,
   type JessConversion
 } from './sandbox-route.js';
 
@@ -255,6 +254,23 @@ function appendThrownJessDiagnostic(
   if (!target.some(existing => sameDiagnosticSite(existing, diagnostic))) {
     target.push(diagnostic);
   }
+}
+
+/** The session's diagnostics with the one `err` a compile threw added. */
+function thrownDiagnostics(
+  context: Context,
+  err: unknown,
+  filePath: string | undefined,
+  fallbackReason: string
+): { errors: ErrorDiagnostic[]; warnings: WarningDiagnostic[] } {
+  const errors: ErrorDiagnostic[] = [...context.errors];
+  const warnings: WarningDiagnostic[] = [...context.warnings];
+  if (err instanceof JessError) {
+    appendThrownJessDiagnostic(errors, warnings, err);
+  } else {
+    errors.push(internalUnknownDiagnostic(err, thrownMessage(err), filePath, fallbackReason));
+  }
+  return { errors, warnings };
 }
 
 type PluginFactoryCacheKey = string;
@@ -1552,20 +1568,8 @@ export class Compiler {
         ...(sourceMapURL === undefined ? {} : { sourceMapURL })
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath ?? undefined, 'An unexpected error occurred during compilation.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath ?? undefined,
-          'An unexpected error occurred during compilation.'
-        ));
-      }
 
       if (renderOptions?.suppressWarnings !== true) {
         outputDiagnostics(errors, warnings, {
@@ -1627,20 +1631,8 @@ export class Compiler {
         warnings: [...context.warnings]
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during compilation.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath,
-          'An unexpected error occurred during compilation.'
-        ));
-      }
 
       finalizeRenderProfile(profile, {
         method: 'safeCompile',
@@ -1655,19 +1647,9 @@ export class Compiler {
   }
 
   /**
-   * @internal `.less` / `.scss` → `.jess` from an EVALUATED render. The entry and
-   * every document the render loaded print through `emitJess`, each with its own
-   * plugin's function module, and each import names the file it actually loaded:
-   * a package, search-path or extension-inferred import, and an
-   * `@compose "foo.less"`, all become the relative path of that file's `.jess`.
-   * An import that stays a CSS `@import` keeps its authored path. No path is
-   * inferred from the specifier: an import the render never resolved, or one
-   * that resolved to more than one file, is a gap. A document
-   * whose plugin has no `jessFunctions` (a `.css` or `.jess` file) is not
-   * converted, and an import of it names it as it is.
-   *
-   * A document that is not a local file (a remote import) is not converted
-   * either, and an import of it keeps its URL.
+   * @internal `.less` / `.scss` → `.jess` from an EVALUATED render: the render
+   * records what each import resolved to, and {@link printConversion} prints the
+   * entry and every document it loaded from those facts.
    *
    * Routed like {@link safeRender}: a conversion whose render reaches a
    * sandboxed script runs whole in the sandbox, and returns plain data.
@@ -1693,76 +1675,14 @@ export class Compiler {
       breakOnError: false,
       suppressWarnings: options?.suppressWarnings ?? false
     }, undefined, route);
-    const loads: NonNullable<Context['importTargets']> = new Map();
-    context.importTargets = loads;
-    const files: ConvertedFile[] = [];
-    const errors: ErrorDiagnostic[] = [];
+    const loads = context.importTargets = new ImportTargets();
     try {
       const entry = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       await this.renderStylesheet(entry, context, profile, undefined, resolved);
-
-      const documents = new Map<Stylesheet, string>();
-      for (const [source, document] of context.sourceTrees) {
-        if (document === entry) {
-          documents.set(entry, source);
-        }
-      }
-      for (const loaded of loads.values()) {
-        for (const [source, document] of loaded) {
-          if (document !== null) {
-            documents.set(document, source);
-          }
-        }
-      }
-      const jessPathOf = (source: string): string => `${source.slice(0, source.length - path.extname(source).length)}.jess`;
-      const converted = new Set([...documents].flatMap(([document, source]) =>
-        (path.isAbsolute(source) && context.pluginOf(document)?.jessFunctions !== undefined ? [source] : [])));
-      for (const [document, source] of documents) {
-        const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;
-        if (functions === undefined) {
-          continue;
-        }
-        const importPath = (authored: string, node: StyleImport): string => {
-          const loaded = loads.get(node);
-          if (loaded === undefined) {
-            throw new NoJessSpelling('StyleImport', 'an import the render never resolved: a `.jess` import names the file it resolves to');
-          }
-          const [resolved, ...others] = loaded;
-          if (resolved === undefined || others.length > 0) {
-            throw new NoJessSpelling('StyleImport', 'an import that resolved to more than one file: a `.jess` import names one');
-          }
-          const [target, document] = resolved;
-          if (document === null) {
-            return authored;
-          }
-          if (!path.isAbsolute(target)) {
-            return target;
-          }
-          const relative = path.relative(path.dirname(source), converted.has(target) ? jessPathOf(target) : target)
-            .split(path.sep).join('/');
-          return relative.startsWith('../') ? relative : `./${relative}`;
-        };
-        const jessPath = jessPathOf(source);
-        try {
-          files.push({ source, jessPath, jess: emitJess(document, { functions, importPath }) });
-        } catch (error) {
-          if (!(error instanceof NoJessSpelling)) {
-            throw error;
-          }
-          files.push({ source, jessPath, gaps: error.gaps });
-        }
-      }
+      return { files: printConversion(context, entry, loads), errors: [...context.errors], warnings: [...context.warnings] };
     } catch (err: unknown) {
-      errors.push(...context.errors);
-      const warnings: WarningDiagnostic[] = [...context.warnings];
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(err, thrownMessage(err), filePath, 'An unexpected error occurred during conversion.'));
-      }
-      return { files, errors, warnings };
+      return { files: [], ...thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during conversion.') };
     }
-    return { files, errors: [...context.errors], warnings: [...context.warnings] };
   }
 
   /** @internal */
@@ -1810,20 +1730,8 @@ export class Compiler {
         warnings: [...context.warnings]
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during rendering.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath,
-          'An unexpected error occurred during rendering.'
-        ));
-      }
 
       finalizeRenderProfile(profile, {
         method: 'safeRender',

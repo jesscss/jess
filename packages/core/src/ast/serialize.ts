@@ -663,19 +663,6 @@ function importsOnce(options: string | null): boolean {
   return options === null || (!importHasOption(options, 'multiple') && !importHasOption(options, 'reference'));
 }
 
-/** What an import resolved to, when a converter asked the Context to record it (`Context.importTargets`). */
-function recordImportTarget(context: Context, node: StyleImport, target: string, document: Stylesheet | null): void {
-  const targets = context.importTargets;
-  if (targets === undefined) {
-    return;
-  }
-  let resolved = targets.get(node);
-  if (resolved === undefined) {
-    targets.set(node, resolved = new Map());
-  }
-  resolved.set(target, document);
-}
-
 /**
  * The public path deliberately calls Context itself: there is no Jess-side
  * resolver callback, secondary cache, or AST import bridge. The optional
@@ -746,16 +733,11 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * An unclaimed external specifier (`//host/x.css`, `https:…`) is a CSS
      * terminal, not a failed load, so `(optional)` stays moot on it.
      */
-    if (loaded === undefined) {
-      recordImportTarget(context, node, specifier, null);
+    const document = loaded?.node?.type === 'Stylesheet' ? loaded.node : null;
+    context.importTargets?.record(node, loaded?.resolvedPath ?? specifier, document);
+    if (loaded === undefined || document === null) {
       return undefined;
     }
-    if (loaded.node?.type !== 'Stylesheet') {
-      recordImportTarget(context, node, loaded.resolvedPath, null);
-      return undefined;
-    }
-    const document = loaded.node;
-    recordImportTarget(context, node, loaded.resolvedPath, document);
     return {
       document,
       key: loaded.resolvedPath,
@@ -20801,8 +20783,7 @@ function expandStyleImport(
   }
   if (e.s.context?.options.processImports === false) {
     // Under this document's policy the import stays a CSS `@import` as written; nothing is resolved.
-    recordImportTarget(e.s.context, node, '', null);
-    return;
+    return e.s.context.importTargets?.record(node, '', null);
   }
   if (importDocument) {
     const planned = e.plannedImportDocuments;

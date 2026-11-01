@@ -1057,15 +1057,13 @@ class JessPrinter {
      * size(…)` (CSS Conditional 5; ledger N17) — which `.jess` reads as CSS does, so it
      * is written as authored, never as escaped text.
      */
-    if (at === At.Prelude && node.parts.every(part => 'lit' in part)) {
-      return node.parts.map(part => ('lit' in part ? part.lit : '')).join('');
-    }
-
     /* A prelude takes CSS leaves or a whole `${…}` (ledger P13): `@media (prefers-color-scheme: #{$name})`. */
     if (at === At.Prelude) {
-      return node.parts.length === 1 && 'ref' in node.parts[0]!
-        ? this.template(node, 'string')
-        : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
+      return node.parts.every(part => 'lit' in part)
+        ? node.parts.map(part => ('lit' in part ? part.lit : '')).join('')
+        : node.parts.length === 1 && 'ref' in node.parts[0]!
+          ? this.template(node, 'string')
+          : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
     }
     const first = node.parts[0];
     if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {

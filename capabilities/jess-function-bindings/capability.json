@@ -42,9 +42,10 @@
   "consumers": [
     {
       "id": "compiler-convert",
-      "entrypoint": "packages/compiler/src/index.ts",
-      "export": "Compiler.convertToJess",
+      "entrypoint": "packages/compiler/src/convert-to-jess.ts",
+      "export": "printConversion",
       "files": [
+        "packages/compiler/src/index.ts",
         "packages/jess/test/jess/convert-to-jess.test.ts",
         "packages/compiler/src/config.ts",
         "packages/compiler/src/diagnostics.ts",
@@ -58,23 +59,31 @@
           "replace": [
             {
               "from": "const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;",
-              "to": "const owned = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;\n        const functions = owned && { ...owned };"
+              "to": "const owned = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;\n    const functions = owned && { ...owned };"
             }
           ]
         },
         "copy": {
           "replace": [
             {
+              "from": "import * as path from 'path';",
+              "to": "import * as path from 'path';\nimport { createRequire } from 'node:module';"
+            },
+            {
               "from": "const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;",
-              "to": "const registry = source.endsWith('.scss') ? '../../fns/lib/sass/registry.js' : '../../fns/lib/less/registry.js';\n        const local = await import(String(new URL(registry, import.meta.url)));\n        const functions = converted.has(source) ? (source.endsWith('.scss') ? { from: '#sass', names: local.sassExportNames() } : { from: '#less', names: local.lessExportNames() }) : undefined;"
+              "to": "const registry = createRequire(import.meta.url)(source.endsWith('.scss') ? '../../fns/lib/sass/registry.cjs' : '../../fns/lib/less/registry.cjs');\n    const functions = converted.has(source) ? (source.endsWith('.scss') ? { from: '#sass', names: registry.sassExportNames() } : { from: '#less', names: registry.lessExportNames() }) : undefined;"
             }
           ]
         },
         "unusedImport": {
           "replace": [
             {
+              "from": "import * as path from 'path';",
+              "to": "import * as path from 'path';\nimport { createRequire } from 'node:module';"
+            },
+            {
               "from": "const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;",
-              "to": "void context.pluginOf(document)?.jessFunctions?.();\n        const registry = source.endsWith('.scss') ? '../../fns/lib/sass/registry.js' : '../../fns/lib/less/registry.js';\n        const local = await import(String(new URL(registry, import.meta.url)));\n        const functions = converted.has(source) ? (source.endsWith('.scss') ? { from: '#sass', names: local.sassExportNames() } : { from: '#less', names: local.lessExportNames() }) : undefined;"
+              "to": "void context.pluginOf(document)?.jessFunctions?.();\n    const registry = createRequire(import.meta.url)(source.endsWith('.scss') ? '../../fns/lib/sass/registry.cjs' : '../../fns/lib/less/registry.cjs');\n    const functions = converted.has(source) ? (source.endsWith('.scss') ? { from: '#sass', names: registry.sassExportNames() } : { from: '#less', names: registry.lessExportNames() }) : undefined;"
             }
           ]
         }
@@ -249,7 +258,7 @@
     ],
     "allowed": [
       "Pass jessFunctions() (or a value spread from it) as emitJess's `functions` option.",
-      "Read a document's projection from its plugin (`context.pluginOf(document)?.jessFunctions?.()`), as Compiler.convertToJess does for every file the render loaded."
+      "Read a document's projection from its plugin (`context.pluginOf(document)?.jessFunctions?.()`), as the compiler's converter does for every file the render loaded."
     ],
     "extend": "A new dialect's conversion adds a jessFunctions() beside that plugin's ProvidedModules specifier, built with exportNamesByCall over the dialect index, and its consumers join this contract.",
     "forbidden": [

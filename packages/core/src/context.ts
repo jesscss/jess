@@ -1,6 +1,7 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
-import type { StyleImport, Stylesheet } from './ast/nodes.js';
+import type { Stylesheet } from './ast/nodes.js';
+import type { ImportTargets } from './import-targets.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind, OutputOptions } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
@@ -939,14 +940,8 @@ export class Context {
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
 
-  /**
-   * Set before a render to learn what each import it evaluates resolved to:
-   * import → resolved path → the document it loaded, or `null` when it stays a
-   * CSS `@import` as written. A converter reads it to point a converted import
-   * at what this import resolved to in its own importer's context. Unset,
-   * nothing is recorded.
-   */
-  importTargets?: Map<StyleImport, Map<string, Stylesheet | null>>;
+  /** Set before a render to record what each import it evaluates resolved to. Unset, nothing is recorded. */
+  importTargets?: ImportTargets;
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
 
   /**
