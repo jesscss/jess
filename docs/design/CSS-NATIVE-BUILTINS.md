@@ -98,7 +98,7 @@ Where the Less meaning and a naive CSS form disagree, and how each is handled:
 | Case | Difference | Handling |
 | --- | --- | --- |
 | **Clamping** (V14) | Relative-colour channels are *not* clamped (css-color-5 §4.1): `hsl(from C h s calc(l + 50))` can leave the sRGB gamut and the browser gamut-maps it (css-color-4 §11.2, §14). Less clamps the written channel to `[0, 1]`. | The CSS form writes the clamp: `clamp(0, l + A, 100)`. Alpha *is* clamped by CSS (§4.1), so the alpha family needs none. Every result stays in gamut. |
-| **HSL vs sRGB round trip** | The browser takes `h s l` from the origin "after conversion, if required, to sRGB" (§4.4), and an `hsl()` colour resolves to sRGB (css-color-4 §2). Jess carries the authored HSL exactly (`Color.hsl`, V5). | For a chromatic origin, both sides use the same formulas (`rgbToHsl`/`hslToRgb`, `color.ts`): float ulps, below V4's 1e-10 tolerance and the byte rounding. **A grey origin written with a hue diverges:** Jess keeps the hue of `hsl(120, 0%, 50%)`, while the browser stores grey sRGB, whose hue is powerless (css-color-4 §4.4.1) and reads as 0. So `saturate(hsl(120, 0%, 50%), 10%)` is greenish in Jess and reddish in the browser; `spin` likewise. Q9. |
+| **HSL vs sRGB round trip** | The browser takes `h s l` from the origin "after conversion, if required, to sRGB" (§4.4), and an `hsl()` colour resolves to sRGB (css-color-4 §2). Jess carries the authored HSL exactly (`Color.hsl`, V5). | For a chromatic origin, both sides use the same formulas (`rgbToHsl`/`hslToRgb`, `color.ts`): float ulps, below V4's 1e-10 tolerance and the byte rounding. **A grey a built-in computed keeps its hue in Jess:** `desaturate`/`greyscale` write `s = 0` and Jess carries the hue to the next call (`Color.hsl`), so `saturate(desaturate(#33cc33, 100%), 50%)` is `#40bf40` (green) today. In the browser each relative colour resolves to sRGB, a grey's hue is powerless (css-color-4 §4.4.1) and reads as 0, so the same chain is `#bf4040` (red). An authored grey `hsl(120, 0%, 50%)` already loses its hue in Jess (`saturate(hsl(120, 0%, 50%), 20%)` is `hsl(0, 20%, 50%)` today). Q9. |
 | **`method: relative`** | Less scales the delta by the current channel. | Written into the form: `clamp(0, l - l * A / 100, 100)`; alpha: `calc(alpha - alpha * A)`. Exact. |
 | **Precision** | The browser computes in floats. Jess runs `+ - *` in exact base 10 (V6). | A form resolves only when every operand is a resolved number (channel keywords replaced by the origin's channel values), and then runs through the same operation evaluator as Less math (`value-operate.ts` `operate`), so V6 applies and V36's operand rule never sees a keyword. An unresolved form is never operated: it is written out, as math inside a math function always is (F8). Differences stay below the output policy, except at decimal ties (the `round` row). |
 | **Amount scale** | Less reads `10%` and `10` alike as 0.1. A relative `l` is a number on 0–100, so `l - 10%` is invalid (a number and a percentage don't add), and so is `alpha + 10%`. | A known amount is written as a number (`l - 10`, `alpha + 0.1`). A **deferred** amount needs typed arithmetic, `l - var(--a) / 1%` and `alpha + var(--a) / 100%`, which assumes the variable holds a percentage (Q2). |
@@ -262,12 +262,12 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | --- | --- | --- |
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
 | 1 | The IR alone: `Call` and `Operation` value kinds, built where evaluation now writes text (`fallbackCall`, `keptMath`), one output emitter. No output change: every authored call and every kept operation prints the same bytes, proven on the full corpus. `perf-architecture-reviewer` on the new kinds. | — |
-| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q8, Q9, Q12 |
+| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q9 |
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
-| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | Q8 |
+| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | — |
 | 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`. | Q11 |
-| 7 | `contrast()` → `contrast-color()`; known inputs pick by the larger WCAG 2.1 contrast ratio. | Q8 (count the `contrast()` fixtures that move) |
+| 7 | `contrast()` → `contrast-color()`; known inputs pick by the larger WCAG 2.1 contrast ratio. | — (the `contrast()` fixtures that move are listed for the owner) |
 | 8 | Sass colour/math rows. | slices 2–6 |
 
 ## 5. Owner questions (nothing above lands without these)
@@ -316,7 +316,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 - **Q7 — imported built-ins.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** `@less.darken(var(--x), 10%)` (and `.jess`
   `$darken`) stops being a compile error and prints the CSS form. Confirm.
   ("No" breaks the `.less → .jess` round trip for legacy `.less`, §3.7.)
-- **Q8 — fixtures whose output moves** (all print as-written today):
+- **Q8 — fixtures whose output moves** (all print as-written today). **Approved, owner 2026-11-01.**
   - `tests-unit/math-css-vars/math-css-vars.css` `e: percentage(var(--p))` →
     `calc(var(--p) * 100%)` (slice 4);
   - `tests-error/eval/percentage-css-var` → `calc(var(--x) * 100%)`, so it is no
@@ -329,11 +329,13 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 
   Unchanged: `sin(var(--angle))`, `atan2(…)` (already-css),
   `rgba(var(--color-accent), 0.2)` (§3.8).
-- **Q9 — a grey `hsl()` written with a hue.** Jess keeps the hue of
-  `hsl(120, 0%, 50%)`; a browser does not (§2). Should the resolved value
-  follow the browser (`saturate`/`spin` of such a colour change output), or
-  keep the authored hue and accept that known and deferred inputs differ here?
-  Recommendation: follow the browser, after counting the fixtures that move.
+- **Q9 — a grey that a built-in computed.** `saturate(desaturate(#33cc33,
+  100%), 50%)` is `#40bf40` (green) in Jess today, because the hue survives
+  the grey; the CSS form `hsl(from hsl(from #33cc33 h 0 l) h calc(s + 50) l)`
+  is `#bf4040` (red) in a browser, because a grey has no hue. An authored grey
+  `hsl()` already behaves the browser's way. Follow the browser for computed
+  greys too? Recommendation: yes (one definition, and E9), after counting the
+  fixtures that move.
 - **Q10 — type tests on a deferred colour.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** Is `iscolor(darken(var(--x),
   10%))` true (it is a colour the browser computes) or false, as
   `iscolor(var(--x))` is today? Recommendation: true for a deferred built-in
@@ -345,7 +347,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   no CSS form. Recommendation: a failed call (printed as written, an error
   under `functionMode: 'error'`); those two fixtures move.
 
-- **Q12 — an authored CSS function consumed by a built-in.** With the IR,
+- **Q12 — an authored CSS function consumed by a built-in.** **Ruled as recommended, owner 2026-11-01 (*"yes"*).** With the IR,
   `darken(color-mix(in srgb, red, blue), 10%)` and `percentage(calc(0.5))` can
   resolve, because their leaves are known; written on their own they still
   print as written. Allow it? Recommendation: yes. It is V1 (a value prints as
