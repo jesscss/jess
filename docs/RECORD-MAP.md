@@ -44,6 +44,10 @@ points you at the source; then you read the source. Treat a subagent's
   - Which Jess `$` form (`${…}` interp / `$[…]` lookup / `$(…)` expr) is legal in which position (selectors, property names, at-rule preludes, strings, quoted vs unquoted `url()` bodies, value positions) → **row P13** (SETTLED). `docs/design/SIGIL-DOLLAR-PAREN.md` is an *exploration* doc, not the record.
 - [architecture/core/EXTEND-SEMANTICS.md](architecture/core/EXTEND-SEMANTICS.md): extend semantics record (the ledger's X-series rows point here).
 
+## Browser runtime — `@export` variables, `var()` output, the JS module
+
+- [architecture/core/spec/R8-browser-runtime.md](architecture/core/spec/R8-browser-runtime.md): the plan, the slice contracts and the open owner items. The rulings live in ledger row **A4**.
+
 ## Perf — hot path (core eval/render, grammar/parser, extend/selector)
 
 - [perf/BENCHMARKS.md](perf/BENCHMARKS.md): **METHOD OF RECORD** — the command-first index of every canonical harness, the standard fixtures, and the history/baseline files. Never invent or search for a harness; start here.
