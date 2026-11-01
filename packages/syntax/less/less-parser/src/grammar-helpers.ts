@@ -2711,16 +2711,18 @@ function isStatement(value: unknown): value is Statement {
     return false;
   }
   switch (value.type) {
+    /*
+     * The three statements every body holds are recognized by their tag: core's
+     * one constructor for each builds the fields the deep guard would re-walk,
+     * value included, once per enclosing body.
+     */
+    case 'VariableDeclaration':
+    case 'Declaration':
+    case 'Ruleset':
     case 'ModuleImport':
       return true;
     case 'StyleImport':
       return isStyleImport(value);
-    case 'VariableDeclaration':
-      return isVarDeclaration(value);
-    case 'Declaration':
-      return isLessDeclaration(value);
-    case 'Ruleset':
-      return isRuleset(value);
     case 'AtRuleBlock':
       return isAtRuleBlock(value);
     case 'UnknownAtRuleBlock':
