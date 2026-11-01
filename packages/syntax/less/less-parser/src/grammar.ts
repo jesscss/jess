@@ -3850,8 +3850,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )
     ),
     /* The body span, inside the callback's own braces, is where its comments are. */
-    (children): LessEachCallback => {
-      const bodySpan = bodySpanFromRaw(children);
+    (children, _fields, _span, rawChildren): LessEachCallback => {
+      const bodySpan = bodySpanFromRaw(rawChildren);
       const extensions = bodyExtensionsOf(children);
       const statements = (from: number): Statement[] => requireCallbackStatements(
         extensions.length === 0 ? children.slice(from, -1) : children.slice(from, -1).filter(child => !isBodyExtendFact(child))
@@ -4063,7 +4063,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}')
     ),
-    (children, _fields, span) => withSourceSpan(
+    (children, _fields, span, rawChildren) => withSourceSpan(
       withBlockBody(
         atRuleBlock(
           requireToken(children[0]).value,
@@ -4073,7 +4073,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           children.filter(isStatement).filter(statement => statement !== children[1]),
           bodyExtensionsOf(children)
         ),
-        children
+        rawChildren
       ),
       span
     )
@@ -4496,14 +4496,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}')
     ),
-    (children, _fields, span) => {
+    (children, _fields, span, rawChildren) => {
       const selectors = children.filter(isSimpleSelector)
         .map(selector => selector);
       if (selectors.length === 0) {
         throw new TypeError('Less keyframe block requires a selector.');
       }
       return withSourceSpan(
-        withBlockBody(rule(selist(...selectors), children.filter(isStatement)), children),
+        withBlockBody(rule(selist(...selectors), children.filter(isStatement)), rawChildren),
         span
       );
     }
@@ -4520,7 +4520,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       many(choice(g.ReferenceCall, g.KeyframeBlock)),
       literal('}')
     ),
-    (children, fields, span) => {
+    (children, fields, span, rawChildren) => {
       // The keyframes body may itself contain Reference values. Select header
       // facts only from the grammar region before `{`, rather than filtering
       // every value-shaped child in the whole production.
@@ -4539,7 +4539,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           preludeParts.length === 1 ? preludeParts[0]! : spaced(preludeParts),
           children.filter(isStatement)
         ),
-        children
+        rawChildren
       ), span);
     }
   );
@@ -4767,14 +4767,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         genericAtRuleBlockTail
       )
     ),
-    (children, _fields, span) => {
+    (children, _fields, span, rawChildren) => {
       const prelude = children.find(isValueNode) ?? null;
       // A FunctionCall is a legal statement *and* a legal generic prelude
       // component. Exclude the exact selected prelude object rather than
       // reclassifying it through text or weakening the statement grammar.
       const body = children.filter(isStatement).filter(statement => statement !== prelude);
       return withSourceSpan(
-        withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), children),
+        withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), rawChildren),
         span
       );
     }
