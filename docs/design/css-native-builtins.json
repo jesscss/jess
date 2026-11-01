@@ -1,0 +1,770 @@
+{
+  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `blockedOn` names the owner question (doc section 5) that gates the row. A row is a proposal until the ledger row V38 is ruled.",
+  "schema": 1,
+  "functions": [
+    {
+      "dialect": "less",
+      "name": "lighten",
+      "class": "exact",
+      "css": "hsl(from C h s clamp(0, l + A, 100))",
+      "relative": "hsl(from C h s clamp(0, l + l * A / 100, 100))",
+      "spec": "css-color-5 §4.4, css-values-4 #comparison-funcs"
+    },
+    {
+      "dialect": "less",
+      "name": "darken",
+      "class": "exact",
+      "css": "hsl(from C h s clamp(0, l - A, 100))",
+      "relative": "hsl(from C h s clamp(0, l - l * A / 100, 100))",
+      "spec": "css-color-5 §4.4, css-values-4 #comparison-funcs"
+    },
+    {
+      "dialect": "less",
+      "name": "saturate",
+      "class": "exact",
+      "css": "hsl(from C h clamp(0, s + A, 100) l)",
+      "relative": "hsl(from C h clamp(0, s + s * A / 100, 100) l)",
+      "spec": "css-color-5 §4.4"
+    },
+    {
+      "dialect": "less",
+      "name": "desaturate",
+      "class": "exact",
+      "css": "hsl(from C h clamp(0, s - A, 100) l)",
+      "relative": "hsl(from C h clamp(0, s - s * A / 100, 100) l)",
+      "spec": "css-color-5 §4.4"
+    },
+    {
+      "dialect": "less",
+      "name": "spin",
+      "class": "exact",
+      "css": "hsl(from C calc(h + A) s l)",
+      "spec": "css-color-5 §4.4"
+    },
+    {
+      "dialect": "less",
+      "name": "greyscale",
+      "class": "exact",
+      "css": "hsl(from C h 0 l)",
+      "spec": "css-color-5 §4.4"
+    },
+    {
+      "dialect": "less",
+      "name": "fade",
+      "class": "exact",
+      "css": "rgb(from C r g b / A)",
+      "spec": "css-color-5 §4.1, §4.3"
+    },
+    {
+      "dialect": "less",
+      "name": "fadein",
+      "class": "exact",
+      "css": "rgb(from C r g b / calc(alpha + A))",
+      "relative": "rgb(from C r g b / calc(alpha + alpha * A))",
+      "spec": "css-color-5 §4.1, §4.3"
+    },
+    {
+      "dialect": "less",
+      "name": "fadeout",
+      "class": "exact",
+      "css": "rgb(from C r g b / calc(alpha - A))",
+      "relative": "rgb(from C r g b / calc(alpha - alpha * A))",
+      "spec": "css-color-5 §4.1, §4.3"
+    },
+    {
+      "dialect": "less",
+      "name": "mix",
+      "class": "approx",
+      "css": "color-mix(in srgb, C1 W%, C2)",
+      "spec": "css-color-5 §3.3, §3.5",
+      "blockedOn": "Q1",
+      "notes": "equal only when both alphas are equal and the operand channels are whole bytes"
+    },
+    {
+      "dialect": "less",
+      "name": "tint",
+      "class": "approx",
+      "css": "color-mix(in srgb, white W%, C)",
+      "spec": "css-color-5 §3",
+      "blockedOn": "Q1",
+      "notes": "equal when C is opaque"
+    },
+    {
+      "dialect": "less",
+      "name": "shade",
+      "class": "approx",
+      "css": "color-mix(in srgb, black W%, C)",
+      "spec": "css-color-5 §3",
+      "blockedOn": "Q1",
+      "notes": "equal when C is opaque"
+    },
+    {
+      "dialect": "less",
+      "name": "average",
+      "class": "approx",
+      "css": "color-mix(in srgb, C1, C2)",
+      "spec": "css-color-5 §3",
+      "blockedOn": "Q1",
+      "notes": "equal when both are opaque"
+    },
+    {
+      "dialect": "less",
+      "name": "hsv",
+      "class": "exact-if",
+      "css": "hwb(H calc((1 - S) * V * 100%) calc((1 - V) * 100%))",
+      "spec": "css-color-4 §8",
+      "notes": "exact when S and V are known, or deferred as 0-1 numbers; a deferred percentage (50%) makes (1 - S) invalid. hwb white = (1 - s)v, black = 1 - v, so white + black <= 100% always"
+    },
+    {
+      "dialect": "less",
+      "name": "hsva",
+      "class": "exact-if",
+      "css": "hwb(H calc((1 - S) * V * 100%) calc((1 - V) * 100%) / A)",
+      "spec": "css-color-4 §8",
+      "notes": "exact when S and V are known, or deferred as 0-1 numbers; a deferred percentage (50%) makes (1 - S) invalid. hwb white = (1 - s)v, black = 1 - v, so white + black <= 100% always"
+    },
+    {
+      "dialect": "less",
+      "name": "rgba",
+      "class": "exact-if",
+      "css": "rgb(from C r g b / A)",
+      "spec": "css-color-5 §4.3",
+      "notes": "the 2-slot (colour, alpha) overload only, and only when C is a deferred colour that is not a substitution function: rgba(var(--rgb), .5) is the CSS channel-list idiom and stays as written. 3+ slots are CSS already"
+    },
+    {
+      "dialect": "less",
+      "name": "rgb",
+      "class": "already-css",
+      "spec": "css-color-4 §5"
+    },
+    {
+      "dialect": "less",
+      "name": "hsl",
+      "class": "already-css",
+      "spec": "css-color-4 §7"
+    },
+    {
+      "dialect": "less",
+      "name": "hsla",
+      "class": "already-css",
+      "spec": "css-color-4 §7"
+    },
+    {
+      "dialect": "less",
+      "name": "multiply",
+      "class": "none",
+      "notes": "per-channel product of two colours; relative colour syntax has one origin"
+    },
+    {
+      "dialect": "less",
+      "name": "screen",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "overlay",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "softlight",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "hardlight",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "difference",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "exclusion",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "negation",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "contrast",
+      "class": "none",
+      "notes": "css-color-5 §8 contrast-color() takes one colour, returns only white/black, UA-defined algorithm, no threshold"
+    },
+    {
+      "dialect": "less",
+      "name": "hue",
+      "class": "none",
+      "notes": "channel readers exist in CSS only as channel keywords inside a relative colour"
+    },
+    {
+      "dialect": "less",
+      "name": "saturation",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "lightness",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "red",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "green",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "blue",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "alpha",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "luma",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "luminance",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "hsvhue",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "hsvsaturation",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "hsvvalue",
+      "class": "none"
+    },
+    {
+      "dialect": "less",
+      "name": "argb",
+      "class": "none",
+      "notes": "returns #AARRGGBB text"
+    },
+    {
+      "dialect": "less",
+      "name": "color",
+      "class": "none",
+      "notes": "parses a string"
+    },
+    {
+      "dialect": "less",
+      "name": "percentage",
+      "class": "exact-if",
+      "css": "calc(N * 100%)",
+      "spec": "css-values-4 §10.9",
+      "blockedOn": "Q3",
+      "notes": "N a <number>"
+    },
+    {
+      "dialect": "less",
+      "name": "abs",
+      "class": "already-css",
+      "spec": "css-values-4 §10.6"
+    },
+    {
+      "dialect": "less",
+      "name": "ceil",
+      "class": "exact-if",
+      "css": "round(up, N, 1)",
+      "spec": "css-values-4 §10.3",
+      "blockedOn": "Q3",
+      "notes": "N a <number>; a dimension needs B in N's unit, unknown for a deferred N"
+    },
+    {
+      "dialect": "less",
+      "name": "floor",
+      "class": "exact-if",
+      "css": "round(down, N, 1)",
+      "spec": "css-values-4 §10.3",
+      "blockedOn": "Q3"
+    },
+    {
+      "dialect": "less",
+      "name": "round",
+      "class": "exact-if",
+      "css": "calc(sign(N) * round(abs(N), 10^-P))",
+      "spec": "css-values-4 §10.3, §10.6",
+      "blockedOn": "Q4",
+      "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. Today round(var(--x), 2) prints a CSS call with the step meaning; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
+    },
+    {
+      "dialect": "less",
+      "name": "mod",
+      "class": "exact-if",
+      "css": "rem(N, B)",
+      "spec": "css-values-4 §10.3",
+      "blockedOn": "Q4",
+      "notes": "Less mod is JS %, sign of the dividend = CSS rem(); CSS mod() takes the divisor's sign. Both arguments must share a type in CSS"
+    },
+    {
+      "dialect": "less",
+      "name": "min",
+      "class": "already-css",
+      "spec": "css-values-4 #comparison-funcs",
+      "notes": "Less coerces a unitless argument; CSS needs consistent types"
+    },
+    {
+      "dialect": "less",
+      "name": "max",
+      "class": "already-css",
+      "spec": "css-values-4 #comparison-funcs"
+    },
+    {
+      "dialect": "less",
+      "name": "sqrt",
+      "class": "already-css",
+      "spec": "css-values-4 §10.5",
+      "notes": "CSS sqrt takes numbers only; Less sqrt(4px) = 2px has no CSS form"
+    },
+    {
+      "dialect": "less",
+      "name": "pow",
+      "class": "already-css",
+      "spec": "css-values-4 §10.5",
+      "notes": "numbers only, as sqrt"
+    },
+    {
+      "dialect": "less",
+      "name": "sin",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "less",
+      "name": "cos",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "less",
+      "name": "tan",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "less",
+      "name": "asin",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4",
+      "notes": "Less returns rad, CSS an <angle>: the same quantity"
+    },
+    {
+      "dialect": "less",
+      "name": "acos",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "less",
+      "name": "atan",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "less",
+      "name": "pi",
+      "class": "exact",
+      "css": "calc(pi)",
+      "spec": "css-values-4 #calc-constants",
+      "notes": "no input, so it always resolves"
+    },
+    {
+      "dialect": "less",
+      "name": "unit",
+      "class": "exact-if",
+      "css": "calc(N * 1U)",
+      "spec": "css-values-4 §10.9",
+      "blockedOn": "Q3",
+      "notes": "N a <number>; replacing or stripping a known unit is calc(N / 1<from> * 1U) by typed arithmetic"
+    },
+    {
+      "dialect": "less",
+      "name": "convert",
+      "class": "exact",
+      "css": "calc(N)",
+      "spec": "css-values-4 §10.9",
+      "notes": "a converted value is the same CSS quantity; only its spelling differs"
+    },
+    {
+      "dialect": "less",
+      "name": "get-unit",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "lighten",
+      "class": "exact",
+      "css": "hsl(from C h s clamp(0, l + A, 100))",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "darken",
+      "class": "exact",
+      "css": "hsl(from C h s clamp(0, l - A, 100))",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "saturate",
+      "class": "exact",
+      "css": "hsl(from C h clamp(0, s + A, 100) l)",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "desaturate",
+      "class": "exact",
+      "css": "hsl(from C h clamp(0, s - A, 100) l)",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "adjust-hue",
+      "class": "exact",
+      "css": "hsl(from C calc(h + A) s l)",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "complement",
+      "class": "exact",
+      "css": "hsl(from C calc(h + 180) s l)",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "grayscale",
+      "class": "exact",
+      "css": "hsl(from C h 0 l)",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "invert",
+      "class": "exact",
+      "css": "rgb(from C calc(255 - r) calc(255 - g) calc(255 - b))",
+      "weighted": "color-mix(in srgb, rgb(from C calc(255 - r) calc(255 - g) calc(255 - b)) W%, C)",
+      "spec": "css-color-5 §3, §4.3",
+      "blockedOn": "Q5",
+      "notes": "the inverted colour keeps C's alpha, so the weighted mix is exact"
+    },
+    {
+      "dialect": "scss",
+      "name": "opacify",
+      "class": "exact",
+      "css": "rgb(from C r g b / calc(alpha + A))",
+      "spec": "css-color-5 §4.1",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "fade-in",
+      "class": "exact",
+      "css": "rgb(from C r g b / calc(alpha + A))",
+      "spec": "css-color-5 §4.1",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "transparentize",
+      "class": "exact",
+      "css": "rgb(from C r g b / calc(alpha - A))",
+      "spec": "css-color-5 §4.1",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "fade-out",
+      "class": "exact",
+      "css": "rgb(from C r g b / calc(alpha - A))",
+      "spec": "css-color-5 §4.1",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "mix",
+      "class": "approx",
+      "css": "color-mix(in srgb, C1 W%, C2)",
+      "spec": "css-color-5 §3",
+      "blockedOn": "Q1",
+      "notes": "Sass mixes raw channels, so it is exact whenever both alphas are equal"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.adjust",
+      "class": "exact",
+      "css": "rgb(from C calc(r + R) ...) / hsl(from C ...)",
+      "spec": "css-color-5 §4.3, §4.4",
+      "blockedOn": "Q5",
+      "notes": "legacy rgb/hsl channels; one relative colour per channel family"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.scale",
+      "class": "exact-if",
+      "css": "hsl(from C h s calc(l + (100 - l) * F))",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5",
+      "notes": "F known: its sign picks the formula (positive: calc(l + (100 - l) * F), negative: calc(l + l * F))"
+    },
+    {
+      "dialect": "scss",
+      "name": "color.change",
+      "class": "exact",
+      "css": "hsl(from C h s L)",
+      "spec": "css-color-5 §4.4",
+      "blockedOn": "Q5"
+    },
+    {
+      "dialect": "scss",
+      "name": "rgba",
+      "class": "exact-if",
+      "css": "rgb(from C r g b / A)",
+      "spec": "css-color-5 §4.3",
+      "notes": "as Less rgba"
+    },
+    {
+      "dialect": "scss",
+      "name": "rgb",
+      "class": "already-css"
+    },
+    {
+      "dialect": "scss",
+      "name": "hsl",
+      "class": "already-css"
+    },
+    {
+      "dialect": "scss",
+      "name": "hsla",
+      "class": "already-css"
+    },
+    {
+      "dialect": "scss",
+      "name": "red",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "green",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "blue",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "hue",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "saturation",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "lightness",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "alpha",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "opacity",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "ie-hex-str",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "abs",
+      "class": "already-css",
+      "spec": "css-values-4 §10.6"
+    },
+    {
+      "dialect": "scss",
+      "name": "ceil",
+      "class": "exact-if",
+      "css": "round(up, N, 1)",
+      "spec": "css-values-4 §10.3",
+      "blockedOn": "Q3"
+    },
+    {
+      "dialect": "scss",
+      "name": "floor",
+      "class": "exact-if",
+      "css": "round(down, N, 1)",
+      "spec": "css-values-4 §10.3",
+      "blockedOn": "Q3"
+    },
+    {
+      "dialect": "scss",
+      "name": "round",
+      "class": "exact-if",
+      "css": "calc(sign(N) * round(abs(N), B))",
+      "spec": "css-values-4 §10.3, §10.6",
+      "blockedOn": "Q4",
+      "notes": "Sass B is a step, as in CSS; only the tie direction differs; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
+    },
+    {
+      "dialect": "scss",
+      "name": "min",
+      "class": "already-css",
+      "spec": "css-values-4 #comparison-funcs"
+    },
+    {
+      "dialect": "scss",
+      "name": "max",
+      "class": "already-css",
+      "spec": "css-values-4 #comparison-funcs"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.clamp",
+      "class": "already-css",
+      "spec": "css-values-4 #comparison-funcs"
+    },
+    {
+      "dialect": "scss",
+      "name": "percentage",
+      "class": "exact-if",
+      "css": "calc(N * 100%)",
+      "spec": "css-values-4 §10.9",
+      "blockedOn": "Q3"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.div",
+      "class": "exact",
+      "css": "calc(N / B)",
+      "spec": "css-values-4 §10.9"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.sqrt",
+      "class": "already-css",
+      "spec": "css-values-4 §10.5"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.pow",
+      "class": "already-css",
+      "spec": "css-values-4 §10.5"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.log",
+      "class": "already-css",
+      "spec": "css-values-4 §10.5"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.hypot",
+      "class": "already-css",
+      "spec": "css-values-4 §10.5"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.sin",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.cos",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.tan",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.asin",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.acos",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.atan",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.atan2",
+      "class": "already-css",
+      "spec": "css-values-4 §10.4"
+    },
+    {
+      "dialect": "scss",
+      "name": "random",
+      "class": "none",
+      "notes": "chosen at compile time; Values 5 random() is a different function"
+    },
+    {
+      "dialect": "scss",
+      "name": "unit",
+      "class": "none",
+      "notes": "returns text"
+    },
+    {
+      "dialect": "scss",
+      "name": "unitless",
+      "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "comparable",
+      "class": "none"
+    }
+  ]
+}
