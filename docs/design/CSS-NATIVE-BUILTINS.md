@@ -153,6 +153,15 @@ structure:
   for `calc()`/`clamp()`/`round()`/`rem()`/`abs()`/`sign()` the type
   css-values-4 §10.9 gives its arguments) follows from the name and is read
   where slice 2 first needs it. Built in slice 1.
+
+  Slice 2 replaces it with a value kind of its own, `FunctionCall`: the
+  evaluated twin of the parse tree's `FunctionCall`, as the value `Color`,
+  `Dimension`, `Keyword`, `Quoted` and `List` are of theirs (owner,
+  2026-11-01, asked whether the call is "like a FunctionCall": *"yeah do that
+  i think"*). It holds the name, the evaluated arguments, the CSS type the
+  call produces and its bytes, and `KeywordCall` goes. Slice 2 is where the
+  keyword readings above must change anyway: a deferred colour has to satisfy
+  a colour parameter and `iscolor()`.
 - **Kept math**: arithmetic that has not computed, `op`, `left`, `right`, in
   place of `keptMath`'s bytes. Preserved math (`calc(1px + 1em)`, V18) becomes
   that structure in a `calc` call, the same value an authored
