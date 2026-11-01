@@ -1102,8 +1102,13 @@ const createPluginCallContext = (facts, manager) => {
     add: refuseRegistrationInBody
   };
 
+  /*
+   * Built on first read: it copies the whole facade, and most plugin bodies
+   * use the `less` they were installed with instead of this one.
+   */
+  let less;
   const pluginManager = Object.create(manager, {
-    less: { value: createPluginLess(functionRegistry) },
+    less: { get: () => (less ??= createPluginLess(functionRegistry)) },
     addPlugin: { value: refuseRegistrationInBody },
     addPlugins: { value: refuseRegistrationInBody }
   });

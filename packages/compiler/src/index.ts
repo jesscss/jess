@@ -844,14 +844,14 @@ export class Compiler {
       import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable script execution features.`);
+          throw new Error(`Feature not supported. Install ${scriptPluginLabel} where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`);
         }
         return plugin.import(absoluteFilePath, route);
       },
       importPlugin: async (absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute) => {
         const plugin = await getScriptRuntimePlugin();
         if (!isExecutablePluginInterface(plugin)) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable executable plugin modules.`);
+          throw new Error(`Feature not supported. Install ${scriptPluginLabel} where the compiler is installed (beside @jesscss/jess or less) to enable executable plugin modules.`);
         }
         return plugin.importPlugin(absoluteFilePath, options, route);
       },
@@ -1332,11 +1332,12 @@ export class Compiler {
      * Deno starts while the render runs here; if it never reaches a script,
      * the engine is let go, and no later render starts one ahead of time.
      * Where the script plugin is not installed, nothing more than an
-     * asynchronous look for it happens.
+     * asynchronous look for it happens, where the compiler loads it from (its
+     * own install, never the stylesheet's folder).
      */
     const specifier = this.scriptPluginSpecifier;
     const prewarm = () => prewarmWhenInstalled(
-      packageInstalled(specifier, [call.filePath, this.hooks.scriptPluginResolveFrom]),
+      packageInstalled(specifier, [this.hooks.scriptPluginResolveFrom ?? import.meta.url]),
       () => prewarmEngine(...this.engineFor(compiler, call))
     );
     return routeRender({
