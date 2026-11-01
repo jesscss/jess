@@ -566,10 +566,11 @@ const isBlockCommentAt = (source: string, at: number): boolean =>
  * layout of a list keeps it: each block comment with the whitespace either side of
  * it; with no block comment, the whitespace only where it breaks a line; otherwise
  * nothing. An entry is classified by its own bytes (`/*` opens a block comment), so
- * any dialect's trivia scope reads the same.
+ * any dialect's trivia scope reads the same. A caller reading the log in order
+ * passes `from`, an entry at or before the run, so the read starts there.
  */
-export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number): string {
-  return triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, 0, insertIndex), insertIndex);
+export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number, from = 0): string {
+  return triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, from, insertIndex), insertIndex);
 }
 
 /** The first log entry from `from` whose insert index is at least `insertIndex`: the indices never decrease. */

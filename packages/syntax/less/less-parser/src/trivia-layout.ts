@@ -26,7 +26,12 @@ export function lessTriviaEntryInsertIndex(triviaLog: readonly number[], index: 
 
 /** Whether any trivia stands before raw child `insertIndex`. */
 export function hasTriviaAtInsertIndex(triviaLog: readonly number[], insertIndex: number): boolean {
-  return triviaLog.some((value, at) => at % LESS_NODE_TRIVIA_STRIDE === 2 && value === insertIndex);
+  for (let at = 2; at < triviaLog.length; at += LESS_NODE_TRIVIA_STRIDE) {
+    if (triviaLog[at] === insertIndex) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The layout text of the trivia before raw child `insertIndex` ({@link triviaTextAt}). */
