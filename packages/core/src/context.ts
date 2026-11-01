@@ -1723,6 +1723,48 @@ export class Context {
     throw new Error(`Plugin not found: ${importPath} (tried ${tried.join(', ')})`);
   }
 
+  /** The plugin that loads an executable Plugin module of this extension, as {@link getPluginModule} selects it. */
+  private async pluginModuleLoaderFor(ext: string): Promise<PluginInterface | undefined> {
+    const configured = this.plugins.find(candidate =>
+      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
+    if (configured) {
+      return configured;
+    }
+    const plugin = await this.opts.loadPluginForExtension?.(ext);
+    if (plugin && !this.plugins.includes(plugin)) {
+      this.plugins.push(plugin);
+    }
+    return plugin && plugin.supportedExtensions?.includes(ext) && plugin.importPlugin ? plugin : undefined;
+  }
+
+  /**
+   * Moves this render into the script sandbox when a `@plugin` it plans loads a
+   * script the sandbox runs (`sandboxesScripts`): the move evaluation would make
+   * when it reaches the `@plugin`, made before the rest of the import graph is
+   * parsed here for nothing. Loads nothing. Anything that stops the load (no
+   * route, scripts disabled, a path that does not resolve) leaves it to
+   * evaluation, which reports it as before.
+   */
+  async rerouteForPlugin(importPath: string): Promise<void> {
+    const route = this.opts.scriptSandbox;
+    if (route === undefined || this.opts.disableScriptModules || this.opts.disablePluginRule) {
+      return;
+    }
+    let ext: string;
+    try {
+      refuseRemoteModule(this.importTarget(importPath));
+      const resolved = await this._getPluginPath(importPath);
+      refuseRemoteModule(resolved.resolvedPath);
+      ext = resolved.ext;
+    } catch {
+      return;
+    }
+    const plugin = await this.pluginModuleLoaderFor(ext);
+    if (plugin?.sandboxesScripts === true) {
+      await route.reroute();
+    }
+  }
+
   /**
    * Load an executable Plugin module through the same Context-owned path and
    * extension dispatch used by ordinary modules. The active dialect adapter
@@ -1732,17 +1774,7 @@ export class Context {
     refuseRemoteModule(this.importTarget(importPath));
     const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
     refuseRemoteModule(resolvedPath);
-    let plugin = this.plugins.find(candidate =>
-      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
-    if (!plugin) {
-      plugin = await this.opts.loadPluginForExtension?.(ext);
-      if (plugin && !this.plugins.includes(plugin)) {
-        this.plugins.push(plugin);
-      }
-      if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.importPlugin)) {
-        plugin = undefined;
-      }
-    }
+    const plugin = await this.pluginModuleLoaderFor(ext);
     if (!plugin?.importPlugin) {
       if (SCRIPT_MODULE_EXTENSIONS.has(ext)) {
         throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);

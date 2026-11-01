@@ -324,6 +324,9 @@ export class JsPlugin extends AbstractPlugin {
   private static liveInstances = new Set<JsPlugin>();
   name = 'js';
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
+
+  /** `importPlugin` never loads a script outside the engine: it moves the render there. */
+  readonly sandboxesScripts = true;
   private runtimeState: RuntimeState = { status: 'idle' };
   private shuttingDown = false;
   private worker: ChildProcessWithoutNullStreams | undefined;

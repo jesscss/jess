@@ -292,6 +292,14 @@ export interface PluginInterface {
    */
   importPlugin?(absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute): Promise<unknown>;
 
+  /**
+   * True when `importPlugin` runs every script in the sandbox: given a render's
+   * {@link ScriptSandboxRoute}, it moves the render there instead of loading
+   * the script. A render reaching a `@plugin` this plugin serves can then move
+   * as soon as the `@plugin` is planned, before evaluation reaches it.
+   */
+  readonly sandboxesScripts?: boolean;
+
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;
   dispose?(): void | Promise<void>;

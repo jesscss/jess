@@ -47,6 +47,7 @@ import {
   packageInstalled,
   prewarmEngine,
   prewarmWhenInstalled,
+  inScriptSandbox,
   routeRender,
   runInEngine,
   withColors,
@@ -856,6 +857,9 @@ export class Compiler {
     const proxy: LazyPluginInterface = {
       name: 'js',
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
+
+      /* It hands every `@plugin` to the script plugin, which runs it in the sandbox. */
+      sandboxesScripts: true,
       import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
@@ -1349,7 +1353,7 @@ export class Compiler {
    */
   private routed<T>(method: EngineMethod, call: RoutedCall<T>): Promise<T> {
     const compiler = compilerModuleOf(this);
-    if (compiler === undefined || this.scriptPluginSpecifier === undefined) {
+    if (compiler === undefined || this.scriptPluginSpecifier === undefined || inScriptSandbox()) {
       return call.here(undefined);
     }
 
