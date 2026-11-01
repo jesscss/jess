@@ -5,7 +5,7 @@
  * Less index into its bundle just to build the Sass dispatch table.
  */
 import type { Fn, FnRegistry } from '@jesscss/core';
-import { fnsOf, registryOf } from '../registry.js';
+import { exportNamesByCall, fnsOf, registryOf } from '../registry.js';
 import * as sassIndex from './index.js';
 
 /** Every Sass built-in. Derived from the index — not a maintained list. */
@@ -14,4 +14,9 @@ export const sassFns: readonly Fn[] = fnsOf(sassIndex);
 /** Build the Sass built-in dispatch table. */
 export function makeSassRegistry(): FnRegistry {
   return registryOf(sassIndex);
+}
+
+/** Every Sass built-in's call name → its export name in this index. */
+export function sassExportNames(): Map<string, string> {
+  return exportNamesByCall(sassIndex);
 }

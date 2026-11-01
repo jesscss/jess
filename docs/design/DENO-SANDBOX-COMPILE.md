@@ -71,6 +71,14 @@ declares its own `static moduleIdentity` (module and export), as jess's
 or outside a render (`compile`, a direct plugin call), is refused with an
 error that says so; there is no per-call path any more.
 
+**Where the script plugin comes from.** `@jesscss/plugin-js` is the sandbox,
+so the compiler resolves it from where the compiler is installed
+(`scriptPluginResolveFrom`), never from the stylesheet's folder. A
+`node_modules` beside the entry belongs to the code being compiled, whose
+scripts run sandboxed; a `@jesscss/plugin-js` shipped there would otherwise be
+imported into the host process. A global `jess` therefore needs
+`@jesscss/plugin-js` installed beside it, not only in the project.
+
 ## 3. How a compile enters Deno
 
 - **One process per compiler.** A `Compiler` owns one Deno process per read
@@ -137,13 +145,26 @@ process and passes it as flags; nothing asks the host during a compile.
 ```
 deno run --no-prompt \
   --allow-read=<read set> --ignore-read \
-  [--allow-net=<hosts>]   # only with allowHttp, as today
+  [--allow-net=<hosts> --allow-import=<hosts>]   # only with allowHttp
+  [--no-remote]                                  # without allowHttp
   --unstable-bare-node-builtins --unstable-sloppy-imports \
   <engine>
 ```
 
+with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
+
 - **No** `--allow-write`, `--allow-run`, `--allow-ffi`, `--allow-sys` or
   `--allow-env`. The CSS returns as data and the host writes the output file.
+- **Remote module imports follow the net rule.** Deno 2.9.6 allows an
+  `import()` from a default host list (deno.land, jsr.io, esm.sh,
+  cdn.jsdelivr.net, raw.githubusercontent.com, …) without `--allow-net`.
+  Without `allowHttp`, `--no-remote` refuses every remote module; with it,
+  `--allow-import` takes the same hosts as `--allow-net`.
+- **The web Cache API is kept in memory.** Deno stores `caches` on disk by
+  default, needing no write permission, keyed by the main module, which every
+  engine shares; a script could leave data there for a later render of any
+  project. `DENO_CACHE_DB_MODE=memory` ends it with the process. (`localStorage`
+  is absent on the engine's worker thread.)
 - **`--ignore-read`** makes a read outside the set fail with Deno's own
   `NotFound` instead of `NotCapable`. The compile needs this: its config search
   and package resolution probe folders above the roots, and a probe that throws
@@ -187,7 +208,10 @@ deno run --no-prompt \
   packages unreadable.
 - **A different read set needs a different process.** Flags are fixed at spawn,
   so a render whose read set differs from the running process's starts a new
-  one. A compiler that renders one project keeps one process.
+  one. A compiler that renders one project keeps one process. The switch waits
+  for every render under the running read set to finish, and while a render
+  waits no new one joins the running set: a render never runs in, or is
+  stopped by, a process started for another render's read set.
 
 ### What the native check does with symlinks and paths
 

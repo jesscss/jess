@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
 import { parse as parseLess } from '@jesscss/less-parser';
-import * as lessFunctionModule from '@jesscss/fns/less';
-import { lessFns } from '@jesscss/fns/less/registry';
+import { jessFunctions } from '@jesscss/plugin-less';
 import { Compiler } from '../../src/index.js';
 
 /*
@@ -231,11 +230,7 @@ describe('a slash list is its quotient where its use is unambiguous', () => {
   });
 
   it('gives the same CSS through .jess', async () => {
-    const LESS_FUNCTIONS = {
-      from: '#less',
-      names: new Map(Object.entries(lessFunctionModule).flatMap(([exported, fn]) =>
-        (lessFns as readonly unknown[]).includes(fn) && typeof fn === 'function' ? [[fn.name.toLowerCase(), exported] as const] : []))
-    };
+    const LESS_FUNCTIONS = jessFunctions();
     const sources = [
       '@d: 10px/2; @f: 12px/1.5; .x { a: percentage(@d); b: round(@d); c: unit(@d, em); d: min(@d, 4px); r: @d; font: @f; }',
       guarded('@d: 10px/2; .x { .m(@d); }'),

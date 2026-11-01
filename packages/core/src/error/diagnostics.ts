@@ -847,6 +847,20 @@ export const ERR = {
       ...args
     });
   },
+  exportNotAValue(args: Common & { meta: { symbol: string; name: string; where: string } }) {
+    return makeJessError({
+      code: 'eval/export-not-a-value',
+      phase: 'eval',
+      ...args
+    });
+  },
+  exportNotTopLevel(args: Common) {
+    return makeJessError({
+      code: 'eval/export-not-top-level',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-function',

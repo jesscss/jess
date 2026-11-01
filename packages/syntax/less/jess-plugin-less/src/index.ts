@@ -17,6 +17,7 @@ import {
   UNIT_MODES,
   logger, recordPluginModule, type PluginHost, type ValueEvaluator } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
+import { LESS_MODULE } from './jess-functions.js';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, ModuleMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
@@ -101,7 +102,7 @@ function checkModeOptions(
  * whatever the importing project installs. The plugin loads and trusts it (no
  * script runtime); the package spelling reaching the same file is the same module.
  */
-const providedModules = new ProvidedModules([['#less', '@jesscss/fns/less']], createRequire(import.meta.url));
+const providedModules = new ProvidedModules([[LESS_MODULE, '@jesscss/fns/less']], createRequire(import.meta.url));
 type LessPluginInput = LessPluginOptions & { plugins?: readonly unknown[] };
 type LessPluginCacheKey = string;
 
@@ -763,6 +764,7 @@ export class LessPlugin extends AbstractPlugin {
 }
 
 export type { LessOptions } from 'styles-config';
+export { jessFunctions } from './jess-functions.js';
 const lessPlugin = ((opts?: LessPluginOptions) =>
   recordPluginModule(new LessPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 

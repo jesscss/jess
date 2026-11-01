@@ -1,0 +1,14 @@
+{
+  "reviewVersion": 2,
+  "id": "jess-function-bindings",
+  "definitionDigest": "892f018f635ed7facbfd896f37c8dca27237595d25467722c4680f0466f97df7",
+  "contractDigest": "d42a7853e4db11d22afb1db4990db0ff8e3b4bd3975f6508be31a0ecdb33a4fb",
+  "implementations": {
+    "owner": "ae28ac55559b60662214a7f9709decfea391afc33b81b5180cf90c82ef9ec741",
+    "less-equivalence": "94524cbc8c3702f0e1ab1cfa8f3f2187ec50bf557efef0a08ddc6ebd8a1f0a4f",
+    "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
+    "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
+    "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
+  },
+  "rationale": "Merged dev: the Sass provided-modules table moved to its own entry (provided-modules.ts), which now owns SASS_MODULE; jess-functions.ts re-exports it. provided-modules.ts joins the owner files."
+}

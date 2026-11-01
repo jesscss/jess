@@ -577,6 +577,10 @@ export function groupText(v: Any | Keyword): Value {
   return v.type === 'Any' ? makeAny(v.bytes, v.escapedQuote, v.groups + 1) : { ...makeKeyword(v.bytes), groups: v.groups + 1 };
 }
 
+/** `value` spelled `bytes`, the parens written around it: a call in parens is a paren group, no longer the call it spelled. */
+export const inParens = (value: Value, bytes: string): Value =>
+  value.type === 'Keyword' ? { ...value, bytes, call: null } : { ...value, bytes };
+
 /**
  * `bytes`, the spelling of `v` ({@link emitValue}: an escaped string's already
  * in its groups), as `v` is written into math: an unquoted `.scss` string in the
