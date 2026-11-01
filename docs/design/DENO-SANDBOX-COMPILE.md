@@ -47,10 +47,20 @@ A compile runs in one of two places, and the CSS must not depend on which.
 The rule needs no prediction. A compile starts in Node. The first time it
 reaches a script boundary, the plugin-js proxy stops it, and the compiler runs
 that render again in Deno. The compiler remembers that entry path, so later
-renders of it go to Deno directly. The Node work thrown away is the time to the
-first boundary: 145 ms in a cold process for `bootstrap4.less`, then never
-again for that compiler. The CLI uses the same compiler, so it behaves the same
-way and switches to Deno only when the compile needs it.
+renders of it go to Deno directly. The CLI uses the same compiler, so it
+behaves the same way and switches to Deno only when the compile needs it.
+
+A `@plugin` is a boundary as soon as import planning meets it, before
+evaluation: when its target is a plain string and the plugin that loads its
+extension sandboxes every script (`PluginInterface.sandboxesScripts`, as
+plugin-js does), `Context.rerouteForPlugin` moves the render then, and the
+rest of the import graph is never parsed in Node only to be thrown away. It
+loads nothing; a `@plugin` whose path does not resolve, or a compile with
+scripts disabled, is left to evaluation, which reports it. The move does not
+depend on evaluation reaching the `@plugin`, so a render whose planned
+`@plugin` sits in a branch evaluation skips runs in Deno too, with the same
+CSS. A `@plugin` inside a mixin body, which planning does not visit, still
+moves the render when evaluation reaches it.
 
 The stop must not be swallowed. The `@plugin` load path reports load failures
 as diagnostics and keeps evaluating (P45), so the proxy signals the reroute
@@ -63,7 +73,10 @@ script finds it warm. A render that loads no script lets it go (the process
 is killed and the read-set work still in flight is aborted), and no later
 render in that process starts one ahead of time. Its output never depends on
 Deno; its cold start pays the plugin import and the spawn call on the main
-thread, about 3 ms.
+thread, about 3 ms. Deno spawns on the read set its code closure can only add
+to (the read roots and the compiler's and plugin-js's own packages) while the
+closure, about a hundred package manifests, is walked; when the closure adds a
+folder, the process is switched before any render reaches it.
 
 **Compilers that can run there.** A compiler class runs in the engine when it
 declares its own `static moduleIdentity` (module and export), as jess's
