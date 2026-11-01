@@ -21,6 +21,11 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./provided-modules": {
+      "types": "./lib/provided-modules.d.ts",
+      "import": "./lib/provided-modules.js",
+      "require": "./lib/provided-modules.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
