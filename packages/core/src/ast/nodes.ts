@@ -1338,9 +1338,13 @@ export interface Declaration extends SpanSlots {
  * NEAREST existing binding in `scope`, or — when none exists anywhere outer —
  * declare a block-local shadow in the current frame. It always writes; only the
  * shadow is conditional. Contrast `reassign`, which ERRORS when nothing exists.
+ *
+ * `export` is a `declare` the author also published (`@export @brand: red;`,
+ * ledger A4): it writes exactly as `declare` does, and a root-level one makes
+ * every CSS value that reads the name a `var(--brand, …)`.
  */
 export type VariableWrite =
-  | { readonly mode: 'declare' }
+  | { readonly mode: 'declare' | 'export' }
   | { readonly mode: 'if-absent' | 'reassign' | 'reassign-or-declare'; readonly scope: VariableLookup };
 
 export interface VariableDeclaration extends SpanSlots {
