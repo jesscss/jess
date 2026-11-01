@@ -92,6 +92,17 @@ error that says so; there is no per-call path any more.
   the same conversion as today and output stays byte-identical.
 - **Plugins load once.** A script loads once per Deno process and loads again
   only when its file changes.
+- **One trust domain per compiler.** Scripts share the engine's realm with the
+  compiler and with each other, so a script in one render can change what
+  later renders in that engine produce. That is by design (ledger A19 (5)).
+  Owner 2026-11-01, verbatim: *"the point of sandboxing is not to isolate
+  compiles from each other, and its not to do "perfect" sandboxing... its to
+  prevent someone being surprised that a stylesheet can read / execute JS,
+  and make sure that doesnt' mean it's pulling private documents / caches
+  from their computer"* and *"it's more like "reasonable isolation" is what
+  we're building, not like CIA-grade sandboxing"*. What the sandbox guards
+  is the machine: the user's files outside the read root, their caches, and
+  the network.
 - **Entry points.** `render`, `renderToResult` and `renderString` route as
   above. `compile` (internal: parse plus static imports) evaluates nothing, so
   it reaches no script boundary and stays in Node.

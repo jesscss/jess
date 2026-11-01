@@ -45,6 +45,14 @@ What a sandboxed script still sees: its own source and the values you pass it,
 plus whatever it can read under the read root (your project tree and its
 installed packages) — treat those as readable by any script you import.
 
+The sandbox protects your machine, not one compile from another. Scripts run
+in the same engine as the compile and as each other, so a script reached by
+one render can change what later renders of the same `Compiler` produce.
+Treat everything a `Compiler` compiles as one trust domain. A `jsPlugin()`
+instance you configure is one engine, shared by every `Compiler` it is
+configured on; to keep stylesheets you do not trust apart, give each its own
+`Compiler` and do not share a configured instance between them.
+
 Values cross the boundary through a small typed bridge (dimensions, colors,
 quoted strings, lists, detached rules, …).
 
