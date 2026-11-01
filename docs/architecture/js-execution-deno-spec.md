@@ -239,7 +239,7 @@ Exemption:
 
 If plugin is absent and JS import is requested, fail with deterministic error:
 
-- `JavaScript plugin not installed. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`
+- `Feature not supported. Install @jesscss/plugin-js where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`
 
 If a script-capable feature is encountered and the plugin is not installed/configured:
 
