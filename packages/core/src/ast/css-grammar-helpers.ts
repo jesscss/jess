@@ -1362,17 +1362,25 @@ export function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
 }
 
 export function complexSegments(children: readonly unknown[]): [ComplexSegment, ...ComplexSegment[]] {
-  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm }> = [];
+  /* The segments are built as the non-empty list they are returned as, not copied into one. */
+  let segments: [ComplexSegment, ...ComplexSegment[]] | undefined;
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
     if (isSelectorTerm(child)) {
-      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+      if (segments === undefined) {
+        segments = [{ term: child }];
+      } else {
+        segments.push({ combinator, term: child });
+      }
       combinator = ' ';
       continue;
     }
     combinator = selectorCombinator(child);
   }
-  return [segments[0]!, ...segments.slice(1)];
+  if (segments === undefined) {
+    throw new TypeError('A complex selector lost its first term.');
+  }
+  return segments;
 }
 
 export function branchSegments(branch: SelectorBranch): [ComplexSegment, ...ComplexSegment[]] {
