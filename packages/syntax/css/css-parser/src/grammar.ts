@@ -4853,20 +4853,20 @@ const cssFactory = (g: GrammarSelf) => {
   const LayerBlock = node(
     'LayerBlock',
     g.routedStylesheetBody,
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
       blockStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const NestedLayerBlock = node(
     'NestedLayerBlock',
     g.routedDeclarationListBody,
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
       rulesetStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const DescriptorBlock = node(
     'DescriptorBlock',
@@ -4875,11 +4875,11 @@ const cssFactory = (g: GrammarSelf) => {
       g.AtRulePrelude,
       g.descriptorBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       children.find(isValue) ?? null,
       children.filter(isDeclaration)
-    ), children), span)
+    ), rawChildren), span)
   );
   const PageBlock = node(
     'PageBlock',
@@ -4888,11 +4888,11 @@ const cssFactory = (g: GrammarSelf) => {
       g.AtRulePrelude,
       pageBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
       children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
-    ), children), span)
+    ), rawChildren), span)
   );
   const Keyframes = node(
     'Keyframes',
@@ -4901,11 +4901,11 @@ const cssFactory = (g: GrammarSelf) => {
       g.AtRulePrelude,
       keyframesBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
       blockStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const FontFeatureValuesBlock = node(
     'FontFeatureValuesBlock',
@@ -4914,11 +4914,11 @@ const cssFactory = (g: GrammarSelf) => {
       g.AtRulePrelude,
       fontFeatureValuesBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
       children.filter(isAtRuleBlock)
-    ), children), span)
+    ), rawChildren), span)
   );
 
   /*
@@ -4929,38 +4929,38 @@ const cssFactory = (g: GrammarSelf) => {
   const ScopeBlock = node(
     'ScopeBlock',
     g.routedDeclarationListBody,
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
       rulesetStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const StartingStyleBlock = node(
     'StartingStyleBlock',
     g.routedStylesheetBody,
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
       blockStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const NestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
     g.routedDeclarationListBody,
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
       rulesetStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const DocumentBlock = node(
     'DocumentBlock',
     g.routedStylesheetBody,
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
       blockStatements(children)
-    ), children), span)
+    ), rawChildren), span)
   );
   const keyframesAtRuleNames = [
     '@keyframes',
@@ -5156,11 +5156,11 @@ const cssFactory = (g: GrammarSelf) => {
       g.MarginAtKeyword,
       g.descriptorBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       null,
       children.filter(isDeclaration)
-    ), children), span)
+    ), rawChildren), span)
   );
   const keyframeSelector = node(
     'SimpleSelector',
@@ -5184,10 +5184,10 @@ const cssFactory = (g: GrammarSelf) => {
        */
       g.descriptorBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(rule(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(rule(
       keyframeSelectorList(children),
       children.filter(isDeclaration)
-    ), children), span)
+    ), rawChildren), span)
   );
   const Ruleset = node(
     'Ruleset',
@@ -5204,12 +5204,12 @@ const cssFactory = (g: GrammarSelf) => {
       many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
-      ), children);
+      ), rawChildren);
     }
   );
   const TopLevelRuleset = node(
@@ -5226,12 +5226,12 @@ const cssFactory = (g: GrammarSelf) => {
       many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
-      ), children);
+      ), rawChildren);
     }
   );
   const ConditionalBlock = node(
@@ -5256,12 +5256,12 @@ const cssFactory = (g: GrammarSelf) => {
         conditionalGroupBodyBlock
       )
     ),
-    (children, _fields, span) => {
+    (children, _fields, span, rawChildren) => {
       return withSourceSpan(withBlockBody(atRuleBlock(
         tokenText(children[0]!),
         children.find(isValue)!,
         blockStatements(children)
-      ), children), span);
+      ), rawChildren), span);
     }
   );
   const NestedConditionalBlock = node(
@@ -5286,12 +5286,12 @@ const cssFactory = (g: GrammarSelf) => {
         g.declarationListBlock
       )
     ),
-    (children, _fields, span) => {
+    (children, _fields, span, rawChildren) => {
       return withSourceSpan(withBlockBody(atRuleBlock(
         tokenText(children[0]!),
         children.find(isValue)!,
         rulesetStatements(children)
-      ), children), span);
+      ), rawChildren), span);
     }
   );
 
@@ -5306,11 +5306,11 @@ const cssFactory = (g: GrammarSelf) => {
       g.FontFeatureValueAtKeyword,
       g.descriptorBodyBlock
     ),
-    (children, _fields, span) => withSourceSpan(withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       null,
       children.filter(isDeclaration)
-    ), children), span)
+    ), rawChildren), span)
   );
   const Stylesheet = node(
     'Stylesheet',
