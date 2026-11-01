@@ -1,4 +1,5 @@
 import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
+import { rerouteForPlannedPlugins } from './plugin-reroute.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, ScriptSandboxRoute, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { TriviaMap } from './types/index.js';
@@ -1379,6 +1380,7 @@ export class Context {
         this.document = document;
       }
       this.rememberDocumentContext(document, resolvedPath, source, plugin, this.policyFor(settings, parseResult.dialectDefaults));
+      await this.withDocument(document, () => rerouteForPlannedPlugins(document, this));
 
       this.parsedSourceTrees.set(parsedSourceKey, document);
       if (type === undefined) {
@@ -1737,32 +1739,9 @@ export class Context {
     return plugin && plugin.supportedExtensions?.includes(ext) && plugin.importPlugin ? plugin : undefined;
   }
 
-  /**
-   * Moves this render into the script sandbox when a `@plugin` it plans loads a
-   * script the sandbox runs (`sandboxesScripts`): the move evaluation would make
-   * when it reaches the `@plugin`, made before the rest of the import graph is
-   * parsed here for nothing. Loads nothing. Anything that stops the load (no
-   * route, scripts disabled, a path that does not resolve) leaves it to
-   * evaluation, which reports it as before.
-   */
-  async rerouteForPlugin(importPath: string): Promise<void> {
-    const route = this.opts.scriptSandbox;
-    if (route === undefined || this.opts.disableScriptModules || this.opts.disablePluginRule) {
-      return;
-    }
-    let ext: string;
-    try {
-      refuseRemoteModule(this.importTarget(importPath));
-      const resolved = await this._getPluginPath(importPath);
-      refuseRemoteModule(resolved.resolvedPath);
-      ext = resolved.ext;
-    } catch {
-      return;
-    }
-    const plugin = await this.pluginModuleLoaderFor(ext);
-    if (plugin?.sandboxesScripts === true) {
-      await route.reroute();
-    }
+  /** The plugin that loads the executable Plugin module `importPath` names, or undefined when it does not resolve. */
+  pluginModuleLoader(importPath: string): Promise<PluginInterface | undefined> {
+    return this._getPluginPath(importPath).then(({ ext }) => this.pluginModuleLoaderFor(ext), () => undefined);
   }
 
   /**

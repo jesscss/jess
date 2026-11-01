@@ -13914,16 +13914,6 @@ function planImportedFacts(
             (deferredAnchors ??= []).push(anchor);
           }
         }
-      } else if (st.type === 'Plugin' && e.s.context?.opts.scriptSandbox !== undefined) {
-        /*
-         * A `@plugin` whose script the sandbox runs moves the render there now,
-         * as evaluation would when it reached it (Context.rerouteForPlugin). Only
-         * a target written as a plain string: evaluation loads exactly that.
-         */
-        const target = st.target.type === 'Url' ? st.target.value : st.target;
-        if (target.type === 'Quoted' && target.interp === null) {
-          await e.s.context.rerouteForPlugin(target.value);
-        }
       } else if (st.type === 'ModuleImport' && e.s.context) {
         const { module } = await e.s.context.getModule(st.path.value).catch(moduleLoadFailed(st, e));
         e.s.plannedModuleImports?.set(st, module);
