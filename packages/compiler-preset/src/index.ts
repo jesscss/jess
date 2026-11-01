@@ -6,7 +6,13 @@ import {
 } from '@jesscss/compiler';
 import { AbstractPlugin, type ISafeParseResult, type PluginInterface } from '@jesscss/core';
 import { LessPluginResolver, prepareLessRootSource } from '@jesscss/plugin-less';
-import nodeModulesPlugin from '@jesscss/plugin-node-modules';
+
+/*
+ * Plugin factories are imported by name, never as a default import: the
+ * CommonJS build reads a default import of a package with Node's interop, which
+ * hands back the package's whole `exports` object rather than its `default`.
+ */
+import { nodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
 export type { ConfigOptions } from '@jesscss/compiler';
 
@@ -126,13 +132,13 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
 
   private getOrCreateJessPlugin(): PluginInterface {
     const deferred = this.jessPluginInstance ??= new DeferredDialectPlugin('jess', ['.jess'], false,
-      async () => (await import('@jesscss/plugin-jess')).default());
+      async () => (await import('@jesscss/plugin-jess')).jessPlugin());
     return deferred.plugin ?? deferred;
   }
 
   private getOrCreateScssPlugin(): PluginInterface {
     const deferred = this.scssPluginInstance ??= new DeferredDialectPlugin('scss', ['.scss'], true,
-      async () => (await import('@jesscss/plugin-scss')).default());
+      async () => (await import('@jesscss/plugin-scss')).scssPlugin());
     return deferred.plugin ?? deferred;
   }
 

@@ -128,4 +128,5 @@ export class ScssPlugin extends AbstractPlugin {
 const scssPlugin = ((opts?: ScssPluginOptions) =>
   recordPluginModule(new ScssPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
+export { scssPlugin };
 export default scssPlugin;
