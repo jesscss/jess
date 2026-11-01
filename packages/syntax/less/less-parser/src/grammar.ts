@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermFromTokens, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -131,6 +131,7 @@ import {
   referenceBracketTailFact,
   referenceCallTailFact,
   referenceDotTailFact,
+  requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   rulesetExtensions,
@@ -145,6 +146,7 @@ import {
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
+  lessSelectorTermFromTokens,
   staticNonSelectorPseudoFrom,
   staticSelectorPseudoFrom,
   staticText,
@@ -164,7 +166,6 @@ import type {
   BodyExtendFact,
   CustomValuePart,
   EnclosedNameFact,
-  ExtendTargetFact,
   ExtendTargetListFact,
   FunctionConditionFact,
   InterpolationAccessorFact,
@@ -5092,7 +5093,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, g.PseudoSelector, g.NthPseudoSelector, g.AttributeSelector))
     ),
-    children => selectorTermFromTokens(children.map((child) => {
+    children => lessSelectorTermFromTokens(children.map((child) => {
       return isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5563,7 +5564,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ClassIdCompound = node(
     'CompoundSelector',
     parser({ trivia: compoundSelectorTrivia }, sequence(mixinName, many(compoundSimple))),
-    children => selectorTermFromTokens(children.map((child) => {
+    children => lessSelectorTermFromTokens(children.map((child) => {
       return isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5591,7 +5592,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
       const simples = children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
-      return selectorTermFromTokens(simples);
+      return lessSelectorTermFromTokens(simples);
     }
   );
   const ComplexSelector = node(
@@ -5629,7 +5630,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, pseudo, g.NthPseudoSelector, g.AttributeSelector))
     ),
-    children => selectorTermFromTokens(children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+    children => lessSelectorTermFromTokens(children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const InlineExtendSubjectComplexTail = node(
     'InlineExtendSubjectComplexTail',
@@ -5777,10 +5778,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span) => selectorListWithExtendsFrom(children, span)
   );
+  /**
+   * A statement-position rule. It is tried before the declaration (ledger P44),
+   * and a glued `<ident>:` head reads as both up to a point no token decides
+   * (`b:f(@c);` against `b:f(c) {}`). A committed failure in the selector list,
+   * such as a pseudo `dispatch()` arm whose argument is not a pseudo argument
+   * (`darken(@c`, `f()`), would stop the statement choice before the
+   * declaration arm. The selector list's commitment is contained, so it fails
+   * at the statement start and the declaration arm reads `color:darken(@c)`.
+   * This rule contains nothing after its `{`; a nested rule in the body
+   * contains its own selector list the same way.
+   */
   const RulesetWithExtends = node(
     'Ruleset',
-    sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
-    (children, _fields, span) => {
+    sequence(
+      attempt(selectorListWithExtends, { contain: true }),
+      optional(g.MixinGuard),
+      literal('{'),
+      blockBody,
+      optional(g.Call),
+      literal('}'),
+      optional(literal(';'))
+    ),
+    (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
@@ -5788,31 +5808,40 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
           // the braces. This validates that fact list; it never reparses body text.
-          children.filter(isStatement),
+          requireRulesetBody(children.filter(isStatement)),
           extensions,
           children.find(isMixinGuard)
         ),
-        children
+        rawChildren
       );
-      return hasRulesetTerminator(children) ? withSourceSpan(node, span) : node;
+      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
     }
   );
   const NestedRulesetWithExtends = node(
     'Ruleset',
-    sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
-    (children, _fields, span) => {
+    // The nested twin of `RulesetWithExtends`, its selector list contained the same way.
+    sequence(
+      attempt(relativeSelectorListWithExtends, { contain: true }),
+      optional(g.MixinGuard),
+      literal('{'),
+      blockBody,
+      optional(g.Call),
+      literal('}'),
+      optional(literal(';'))
+    ),
+    (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
         rule(
           selectorFact.selector,
-          children.filter(isStatement),
+          requireRulesetBody(children.filter(isStatement)),
           extensions,
           children.find(isMixinGuard)
         ),
-        children
+        rawChildren
       );
-      return hasRulesetTerminator(children) ? withSourceSpan(node, span) : node;
+      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
     }
   );
   /**
@@ -5834,8 +5863,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     )),
-    (children) => {
-      const bodySpan = bodySpanFromRaw(children);
+    (children, _fields, _span, rawChildren) => {
+      const bodySpan = bodySpanFromRaw(rawChildren);
       return {
         params: [],
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
@@ -5896,18 +5925,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children): RulesetTailFact => ({
+    (children, _fields, _span, rawChildren): RulesetTailFact => ({
       /* One shape: absent parts are `undefined`. */
       firstExtensions: children
         .filter(Array.isArray)
         .flatMap(values => values.filter(isExtendTargetFact)),
       branches: children.filter(isSelectorBranchFact),
-      selectorEnd: requiredTokenStart(children, '{'),
+      selectorEnd: requiredTokenStart(rawChildren, '{'),
       guard: children.find(isMixinGuard),
       rules: children.filter(isStatement),
       extensions: bodyExtensionsOf(children),
-      bodySpan: bodySpanFromRaw(children),
-      terminated: hasRulesetTerminator(children)
+      bodySpan: bodySpanFromRaw(rawChildren),
+      terminated: hasRulesetTerminator(rawChildren)
     })
   );
   const ClassIdStatement = node(
@@ -5959,18 +5988,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
             selist(prefix.selector, ...ruleset.branches.map(branch => branch.selector)),
             { start: prefixSpan.start, end: guardSpan?.start ?? ruleset.selectorEnd }
           );
-      const extensions: ExtendInstruction[] = [];
-      for (const target of ruleset.firstExtensions) {
-        extensions.push({
+      const extensions = [
+        ...ruleset.firstExtensions.map(target => ({
           target: target.target,
           partial: target.partial,
           subject: selist(prefix.selector)
-        });
-      }
-      for (const branch of ruleset.branches) {
-        extensions.push(...branch.extensions);
-      }
-      extensions.push(...ruleset.extensions);
+        })),
+        ...ruleset.branches.flatMap(branch => branch.extensions),
+        ...ruleset.extensions
+      ];
       const node = rule(
         selector,
         [...ruleset.rules],

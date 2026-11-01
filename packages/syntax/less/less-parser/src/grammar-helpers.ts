@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -140,12 +140,11 @@ type VariableNameFact = {
   readonly variableName: string;
   readonly variableNameSource: string;
 };
-/** The child as a token. Callers read its `value`, so it is not copied. */
 function requireToken(value: unknown): Token {
-  if (!isToken(value)) {
+  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
     throw new TypeError('Less grammar produced a non-token child.');
   }
-  return value;
+  return { value: value.value };
 }
 
 function functionNameFromOpener(value: unknown): string {
@@ -1652,6 +1651,9 @@ function isLessSimpleToken(value: unknown): value is SimpleToken {
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
+const lessSelectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
+
 function pseudoNameFromHead(head: string): string {
   return head.slice(0, 2) === '::'
     ? head.slice(2)
@@ -1838,11 +1840,6 @@ function isBareMixinCallFact(value: unknown): value is BareMixinCallFact {
     && 'important' in value && typeof value.important === 'boolean';
 }
 
-/**
- * `RulesetTail`'s fact, by its tag field: that reducer is its one producer and
- * builds each of its arrays from the guard of what it holds, so they are not
- * walked again here.
- */
 function isRulesetTailFact(value: unknown): value is RulesetTailFact {
   return typeof value === 'object' && value !== null && 'firstExtensions' in value;
 }
@@ -2767,6 +2764,17 @@ function isFor(value: unknown): value is For {
     && 'binding' in value;
 }
 
+function requireRulesetBody(children: readonly unknown[]): Statement[] {
+  const statements: Statement[] = [];
+  for (const child of children) {
+    if (!isStatement(child)) {
+      throw new TypeError('Less grammar produced a non-ruleset-body child.');
+    }
+    statements.push(child);
+  }
+  return statements;
+}
+
 /**
  * A `<general-enclosed>` group from its `Enclosed` content: a call when it has a
  * name, else a paren block. It records its source bytes, as the css base's does,
@@ -3179,6 +3187,7 @@ export {
   referenceCallTailFact,
   referenceDotTailFact,
   requireReferenceTailFact,
+  requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   rulesetExtensions,
@@ -3193,6 +3202,7 @@ export {
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
+  lessSelectorTermFromTokens,
   separatorRawIndexes,
   separatorWithSurroundingTrivia,
   separatorsFromFields,
