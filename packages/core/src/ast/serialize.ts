@@ -207,6 +207,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
+import { exportChecked, exportInput, READS_EXPORT, rejectNestedExport, rootExports, type ExportCalls } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -3415,7 +3416,7 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: Lane): Bindi
          * facts stay indexed for provenance, but must not become final bindings
          * before the source-order write executes.
          */
-        if (declaration.write.mode !== 'declare') {
+        if ('scope' in declaration.write) {
           continue;
         }
         if (!e?.excluded.has(declaration.value)) {
@@ -3464,10 +3465,7 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: Lane): b
     if (stack) {
       for (let i = stack.length - 1; i >= 0; i--) {
         const declaration = stack[i]!;
-        if (declaration.write.mode !== 'declare') {
-          continue;
-        }
-        if (e.excluded.has(declaration.value)) {
+        if (!('scope' in declaration.write) && e.excluded.has(declaration.value)) {
           return true;
         }
       }
@@ -3517,11 +3515,14 @@ function lookupVar(frame: Frame | null, name: string, e?: Lane): Binding | undef
  * stack per name. `live` reads get it from `BindingCell.prev`; until that existed
  * a live cell was a single slot, so write `N` destroyed `N-1` and `$i: 3;
  * $i: $i - 1` reported a false `Recursive reference` — the read correctly skipped
- * its own node and then found nothing behind it. */
-function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane): BindingHit | undefined {
-  return carriedMap(e.s, lookup === 'live'
+ * its own node and then found nothing behind it.
+ *
+ * [A4] Every read is checked for an export ({@link exportChecked}); `reader` is
+ * the node that reads it, for an error's location. */
+function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane, reader?: object): BindingHit | undefined {
+  return exportChecked(carriedMap(e.s, lookup === 'live'
     ? lookupLiveCell(frame, name, e)
-    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e));
+    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e)), name, lookup, e, reader);
 }
 
 function hasExcludedVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: Lane): boolean {
@@ -3699,10 +3700,17 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
 }
 
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: Lane): void {
+  /*
+   * [A4] A document's top level is a frame with no parent; a ruleset, at-rule,
+   * mixin, detached-ruleset or loop body always has one. ponytail: an
+   * `@import`ed document folds into a child frame, so an `@export` in it raises
+   * too; `@compose` keeps it a module.
+   */
+  rejectNestedExport(node, frame.parent !== null, e);
   if (
-    node.write.mode === 'declare'
+    !('scope' in node.write)
     && callValueHasLookup(node.value, readsScoped, node.name)
-    && withExcluded(e, node.value, () => resolveVarRef(frame, node.name, 'scoped', e)) === undefined
+    && withExcluded(e, node.value, () => resolveVarRef(frame, node.name, 'scoped', e, READS_EXPORT)) === undefined
   ) {
     recursiveReference(node, `@${node.name}`, 'Variable', e);
   }
@@ -4447,6 +4455,13 @@ interface EvalSession {
    * reported at the declaration (`reportReached`).
    */
   nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
+
+  /**
+   * [A4] The `var()` call each exported root binding reads as in a CSS value
+   * ({@link exportChecked}). Undefined for a document with no export, so a
+   * lookup there pays one undefined check.
+   */
+  exports: ExportCalls | undefined;
 }
 
 /**
@@ -5099,7 +5114,9 @@ function evalTyped(
           : mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
-        const hit = resolveVarRef(frame, nm, node.scope, e);
+        const hit = argument === ARG_INPUT
+          ? exportInput(resolveVarRef(frame, nm, node.scope, e, READS_EXPORT), nm, node, e)
+          : resolveVarRef(frame, nm, node.scope, e, node);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
@@ -5470,7 +5487,7 @@ function lookupBinding(node: Lookup, frame: Frame | null, e: Lane): { value: Bin
       observeRejectedThenable(name);
       return undefined;
     }
-    return resolveVarRef(frame, name, node.scope, e);
+    return resolveVarRef(frame, name, node.scope, e, node);
   }
   if (node.kind === 'prop' && typeof node.name === 'string') {
     const hit = resolvePropRef(frame, node.name, e);
@@ -5947,7 +5964,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: Lane): MaybePromise<
        */
       if (node.kind === 'var') {
         return mapMaybe(lookupName(node, frame, e), (nm) => {
-          const hit = resolveVarRef(frame, nm, node.scope, e);
+          const hit = resolveVarRef(frame, nm, node.scope, e, node);
           if (!hit) {
             if (hasExcludedVarRef(frame, nm, node.scope, e)) {
               recursiveReference(node, `@${nm}`, 'Variable', e);
@@ -6476,10 +6493,15 @@ function evalCollection(
  *
  * A template WITH literal pieces is authored bytes around a splice (`"v${x}"`),
  * so it stays a literal: §4.3 measures `b: "v#{$x}"` as `b: "v"`, not a drop.
+ * A ref spliced beside other pieces (`@{n}px`) is text, read as a string's
+ * splice is [P47/P48]: it is not checked as a CSS value, and an exported
+ * variable cannot be read there (ledger A4).
  */
 function evalInterp(node: Interpolation, frame: Frame | null, e: Lane): MaybePromise<EvalValue> {
   const lone = node.parts.length === 1 ? node.parts[0]! : undefined;
-  const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression' ? e : spliceCtx(e);
+  const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression'
+    ? e
+    : spliceCtx(lone === undefined && e.checks !== undefined ? deriveLane(e, 'unchecked') : e);
 
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
@@ -6858,7 +6880,7 @@ function activatedVarMember(activation: Frame, name: string, e: Lane): DeclEntry
  */
 function memberLookup(activation: Frame, name: string): VariableLookup {
   for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
-    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
+    if ('scope' in declaration.write && declaration.write.scope === 'live') {
       return 'live';
     }
   }
@@ -10927,7 +10949,8 @@ function scratchEmit(e: Lane): Emit {
       snapshotValues: e.s.snapshotValues,
       argumentSyntax: undefined,
       invalidArguments: e.s.invalidArguments,
-      nestedPropertyOwners: e.s.nestedPropertyOwners
+      nestedPropertyOwners: e.s.nestedPropertyOwners,
+      exports: e.s.exports
     },
     ev: e.ev,
     modes: e.modes,
@@ -14030,7 +14053,8 @@ function createRenderSession(
       snapshotValues: new WeakMap(),
       argumentSyntax: undefined,
       invalidArguments: new Map(),
-      nestedPropertyOwners: undefined
+      nestedPropertyOwners: undefined,
+      exports: rootExports(root)
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -21772,7 +21796,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: Lane): M
         return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return mapMaybe(lookupName(node, frame, e), (nm): MaybePromise<SupportsPreludePart[]> => {
-        const hit = resolveVarRef(frame, nm, node.scope, e);
+        const hit = resolveVarRef(frame, nm, node.scope, e, node);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
