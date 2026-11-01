@@ -133,13 +133,26 @@ process and passes it as flags; nothing asks the host during a compile.
 ```
 deno run --no-prompt \
   --allow-read=<read set> --ignore-read \
-  [--allow-net=<hosts>]   # only with allowHttp, as today
+  [--allow-net=<hosts> --allow-import=<hosts>]   # only with allowHttp
+  [--no-remote]                                  # without allowHttp
   --unstable-bare-node-builtins --unstable-sloppy-imports \
   <engine>
 ```
 
+with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
+
 - **No** `--allow-write`, `--allow-run`, `--allow-ffi`, `--allow-sys` or
   `--allow-env`. The CSS returns as data and the host writes the output file.
+- **Remote module imports follow the net rule.** Deno 2.9.6 allows an
+  `import()` from a default host list (deno.land, jsr.io, esm.sh,
+  cdn.jsdelivr.net, raw.githubusercontent.com, …) without `--allow-net`.
+  Without `allowHttp`, `--no-remote` refuses every remote module; with it,
+  `--allow-import` takes the same hosts as `--allow-net`.
+- **The web Cache API is kept in memory.** Deno stores `caches` on disk by
+  default, needing no write permission, keyed by the main module, which every
+  engine shares; a script could leave data there for a later render of any
+  project. `DENO_CACHE_DB_MODE=memory` ends it with the process. (`localStorage`
+  is absent on the engine's worker thread.)
 - **`--ignore-read`** makes a read outside the set fail with Deno's own
   `NotFound` instead of `NotCapable`. The compile needs this: its config search
   and package resolution probe folders above the roots, and a probe that throws
