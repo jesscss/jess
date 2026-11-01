@@ -1857,8 +1857,9 @@ export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleTo
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
 export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
-  const [first, second, ...rest] = value;
-  return second === undefined ? first : compoundSelectorOf([first, second, ...rest]);
+  const first = value[0];
+  const second = value[1];
+  return second === undefined ? first : compoundSelectorOf([first, second, ...value.slice(2)]);
 };
 
 /** `compoundSelector('.a', '.b')` => `.a.b`. */

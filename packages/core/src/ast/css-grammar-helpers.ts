@@ -33,7 +33,7 @@ import {
   selectorBranchCanonical,
   simpleSelector,
   spaced,
-  selectorTermOf,
+  compoundSelectorOf,
   selist
 } from './nodes.js';
 import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
@@ -853,8 +853,12 @@ export function isSelectorTerm(value: unknown): value is SelectorTerm {
   return isSimpleToken(value) || isCompound(value);
 }
 
-export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
-  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
+/** The selector term the tokens spell: a lone token stays direct, adjacent tokens form a compound. */
+export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm => {
+  const first = tokens[0]!;
+  const second = tokens[1];
+  return second === undefined ? first : compoundSelectorOf([first, second, ...tokens.slice(2)]);
+};
 
 export function isComplex(value: unknown): value is Extract<SelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
