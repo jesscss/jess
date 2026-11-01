@@ -262,7 +262,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | --- | --- | --- |
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
 | 1 | The IR alone: `Call` and `Operation` value kinds, built where evaluation now writes text (`fallbackCall`, `keptMath`), one output emitter. No output change: every authored call and every kept operation prints the same bytes, proven on the full corpus. `perf-architecture-reviewer` on the new kinds. | — |
-| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q9 |
+| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | — |
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
 | 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | — |
@@ -329,13 +329,15 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 
   Unchanged: `sin(var(--angle))`, `atan2(…)` (already-css),
   `rgba(var(--color-accent), 0.2)` (§3.8).
-- **Q9 — a grey that a built-in computed.** `saturate(desaturate(#33cc33,
+- **Q9 — a grey that a built-in computed.** **Ruled as recommended, owner 2026-11-01 (*"Yes, follow browser"*): a computed grey has no hue, as in the browser.** `saturate(desaturate(#33cc33,
   100%), 50%)` is `#40bf40` (green) in Jess today, because the hue survives
   the grey; the CSS form `hsl(from hsl(from #33cc33 h 0 l) h calc(s + 50) l)`
   is `#bf4040` (red) in a browser, because a grey has no hue. An authored grey
   `hsl()` already behaves the browser's way. Follow the browser for computed
   greys too? Recommendation: yes (one definition, and E9), after counting the
-  fixtures that move.
+  fixtures that move. The Less corpus has no direct chain (a hue-reading
+  built-in around `desaturate()`/`greyscale()`); a chain through a variable is
+  measured in slice 2.
 - **Q10 — type tests on a deferred colour.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** Is `iscolor(darken(var(--x),
   10%))` true (it is a colour the browser computes) or false, as
   `iscolor(var(--x))` is today? Recommendation: true for a deferred built-in
