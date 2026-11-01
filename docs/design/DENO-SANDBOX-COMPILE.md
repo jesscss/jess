@@ -148,11 +148,15 @@ with `DENO_CACHE_DB_MODE=memory` in the engine's environment.
   cdn.jsdelivr.net, raw.githubusercontent.com, …) without `--allow-net`.
   Without `allowHttp`, `--no-remote` refuses every remote module; with it,
   `--allow-import` takes the same hosts as `--allow-net`.
-- **The web Cache API is kept in memory.** Deno stores `caches` on disk by
-  default, needing no write permission, keyed by the main module, which every
-  engine shares; a script could leave data there for a later render of any
-  project. `DENO_CACHE_DB_MODE=memory` ends it with the process. (`localStorage`
-  is absent on the engine's worker thread.)
+- **The web Cache API's index is kept in memory.** Deno stores `caches` on disk
+  by default, needing no write permission, keyed by the main module, which
+  every engine shares; a script could leave data there for a later render of
+  any project. With `DENO_CACHE_DB_MODE=memory` the index that finds an entry
+  lives in the process and ends with it, so a later engine finds nothing. Deno
+  still writes each `put()` body to a file under
+  `$DENO_DIR/location_data/web_cache/`; nothing in a later process can reach
+  it, since the index is gone and `$DENO_DIR` is not in the read set (unless
+  `DENO_DIR` is set to a folder inside a read root), so it is not a channel. (`localStorage` is absent on the engine's worker thread.)
 - **`--ignore-read`** makes a read outside the set fail with Deno's own
   `NotFound` instead of `NotCapable`. The compile needs this: its config search
   and package resolution probe folders above the roots, and a probe that throws
