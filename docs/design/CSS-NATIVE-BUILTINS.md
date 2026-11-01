@@ -34,7 +34,7 @@ What changes, measured against `dev` (`f2119a2d0`):
 | `percentage(var(--p))` | `percentage(var(--p))` | `calc(var(--p) * 100%)` |
 | `round(var(--x), 2)` | `round(var(--x), 2)`: valid CSS that rounds to a **multiple of 2** | `calc(sign(var(--x)) * round(abs(var(--x)), 0.01))` (Q4) |
 | `mod(var(--x), 3)` | `mod(var(--x), 3)`: valid CSS with the **divisor's** sign | `rem(var(--x), 3)` (Q4) |
-| `rgba(var(--rgb), .5)` | `rgba(var(--rgb), .5)` | unchanged: CSS channel-list idiom (§3.3) |
+| `rgba(var(--rgb), .5)` | `rgba(var(--rgb), .5)` | unchanged: CSS channel-list idiom (§3.8) |
 | `lightness(var(--x))` | `lightness(var(--x))` | unchanged: no CSS counterpart |
 
 The `round` and `mod` rows are existing defects. In legacy-mode `.less` the Less
@@ -52,18 +52,18 @@ every registered Less colour/math built-in, and the Sass global and
 `sass:color`/`sass:math` members). Classes:
 
 - **exact** — the CSS form computes the same value for every input in the
-  built-in's domain. 26 rows.
+  built-in's domain. 31 rows, including `mix`, `tint`, `shade`, `average` and
+  Sass `mix`, which are `color-mix(in srgb)` by the Q1 ruling.
 - **exact-if** — exact under one stated condition, usually "the deferred input
   is a `<number>`". 15 rows.
 - **approx** — a CSS form exists but computes a different value for part of
-  the domain. 5 rows, all `color-mix()`: `mix`, `tint`, `shade`, `average`,
-  Sass `mix` (Q1).
+  the domain. 1 row: `contrast()` (Q13).
 - **already-css** — the built-in has the same name and meaning as a CSS
   function, so the call as written is already the CSS form (`sin`, `min`,
   `abs`, `sqrt` on numbers, `rgb`/`hsl` with three channels). 32 rows.
 - **none** — no CSS form: channel readers (`hue()`, `red()`, `luma()`…),
-  blend modes (`multiply`, `screen`…), `contrast`, string results (`argb`,
-  `get-unit`, `unit()` in Sass), `random`. 37 rows. These stay as they are:
+  blend modes (`multiply`, `screen`…), string results (`argb`, `get-unit`,
+  `unit()` in Sass), `random`. 36 rows. These stay as they are:
   resolved when known, printed as written when not.
 
 Spec basis, per family (each row cites its section):
@@ -110,72 +110,121 @@ Where the Less meaning and a naive CSS form disagree, and how each is handled:
 | **Types CSS rejects** | CSS `sqrt`/`pow` take numbers only (§10.5); `round(A, B)` needs A and B of one type, B optional only for a number (§10.3); `rem` needs one type. Less keeps a unit (`sqrt(4px)` = `2px`, `mod(5px, 2)` = `1px`). | A *known* input still resolves as today. A deferred input of unknown type gets the number form, which is valid exactly when the variable holds a number (Q3). |
 | **`asin`/`acos`/`atan`** | Less writes `rad`; CSS returns an `<angle>`. | Same quantity; already-css. |
 
-## 3. AST shape
+## 3. Internal representation: a function IR
 
-No new node kind. Three existing pieces carry it:
+Owner, 2026-11-01, verbatim: *"we should reason about how the function works
+internally... it should create intermediate representations of these functions
+that can be passed around to other Less functions or serialized... meaning we
+should also PARSE the functions probably to create their IR."*
 
-1. **The CSS form is a `FunctionCall`** (`core/src/ast/nodes.ts:321`), the node
-   the CSS grammar produces for the same text, relative `from` slot included
-   (F5's nested structured slot). A built-in that has a CSS form declares it as
-   that node, its parameters as variable references bound to the call's
-   arguments, the way a stylesheet-defined function binds its parameters. The
-   template is built once per built-in, at module load, with core's node
-   factories (no parse at runtime). The JS kernel the form replaces is
-   deleted (`hslAdjust`, `withAlpha`'s alpha arithmetic, …): one definition.
-2. **A built-in call resolves by evaluating its form.** The rule is stated over
-   the construct, a *built-in call*: when every input is a resolved value, the
-   call is its form evaluated over those values (relative `rgb()`/`hsl()`/
-   `hwb()`, `color-mix(in srgb, …)`, `clamp`/`round`/`rem`/`sign`/`abs`/
-   `calc`). That evaluator runs only as a built-in call's own evaluation. A CSS
-   colour or math function written in the stylesheet is not a built-in call:
-   it is printed as written, as today (V1, F5, F8, V32), and as an input to a
-   built-in it is deferred (3.1). So no value prints two ways by who built it.
-   `darken(color-mix(in srgb, red, blue), 10%)` prints
-   `hsl(from color-mix(in srgb, red, blue) h s clamp(0, l - 10, 100))`.
-3. **Unresolved, the form itself is written out**, with its resolved inputs
-   substituted, by the emitter every written-out call uses (F11, compressed
-   output included). Not `fallbackCall` over the built-in's own arguments,
-   which writes `darken(…)` back, the defect this replaces. The result is a
-   `Keyword` marked `keepAsWritten` (`value-operate.ts:638`), with a type fact
-   (colour, or a numeric type) in the same side-table pattern as
-   `keptAsWritten`/`keptMath`. No field is added to `Keyword`, so its hidden
-   class does not change. A consumer reads the type fact to tell a deferred
-   **colour** from a value that is not a colour. Nesting splices the inner
-   form's bytes as the origin, without re-parsing them:
-   `darken(darken(var(--x), 10%), 5%)` is
-   `hsl(from hsl(from var(--x) h s clamp(0, l - 10, 100)) h s clamp(0, l - 5, 100))`.
+### 3.1 What is missing today
 
-### 3.0 One value in every position
+The parser already gives CSS functions structure: `hsl(from …)` arrives as a
+`FunctionCall` with a nested relative slot (F5, `nodes.ts:321`), `color-mix()`
+as a `FunctionCall`, and math inside `calc()` as `Operation` nodes. Evaluation
+then discards it. A call written out as-is becomes text at once
+(`evaluator.ts` `fallbackCall` → `verbatimArgs` → a `Keyword` marked
+`keepAsWritten`), and so does kept math (`value-operate.ts` `keptMath`, a
+`WeakMap` from a `Keyword` to its bytes). The value domain
+(`value-eval.ts:313`: `Dimension | Color | Quoted | Keyword | Any | UrlValue |
+List | Block | Bool | Null | Collection`) has nothing that holds a CSS function
+or an uncomputed operation as structure. So another function can only splice
+the bytes, never read them.
 
-A deferred form is one value with fixed bytes, so it prints the same in a
-declaration, an interpolation (`evalInterp`), a selector, a mixin argument and
-a guard operand (SEMANTIC-INVARIANTS 2). As a call written out as-is, a paren
-group around it keeps its parens (J16). Two facts must travel with it, and
-slice 1 tests each:
+### 3.2 The IR: the parse tree's two calculation kinds, as values
 
-- the type fact survives the eager mixin-argument snapshot (`snapshotValues`,
-  V3);
-- the type predicates (`iscolor()` and the others) and `=` give the same
-  answer whether a guard or a declaration reads them. What that answer is: Q10.
+The value domain gains the evaluated twins of the two parse-tree kinds it
+lacks, the way `Color` is the evaluated twin of a colour literal:
 
-### 3.1 What counts as a deferred input
+- **`Call`**: a CSS function, holding `name`, `args` (a `ValueGroup`, so an
+  argument may itself be a `Call`), `result` (its CSS type: `color` for
+  `hsl()`/`rgb()`/`hwb()`/`color-mix()`/`contrast-color()`/`light-dark()`, and
+  for `calc()`/`clamp()`/`round()`/`rem()`/`abs()`/`sign()` the type
+  css-values-4 §10.9 gives its arguments), and `src` (the authored bytes, or
+  `''` when computed).
+- **`Operation`**: arithmetic inside a math function that has not computed:
+  `op`, `left`, `right`. It replaces `keptMath`'s bytes. Preserved math
+  (`calc(1px + 1em)`, V18) becomes an `Operation` in a `calc` `Call`, the same
+  value an authored `calc(1px + 1em)` evaluates to.
 
-An argument makes the form print instead of resolve when it is a value only the
-browser can compute **and** its CSS type can fill the parameter:
+Every field is always present (factory-defaulted), so each kind is one hidden
+class, as `Any` and `Keyword` already are. Neither duplicates an existing value
+kind: `Keyword`/`Any` are text, `UrlValue` is one opaque function.
+`keptAsWritten`'s text stays for calls nothing can compute: an unknown
+function, a failed built-in.
 
-- an arbitrary-substitution function: `var()`, `env()`, `attr()`;
-- for a colour parameter: `currentcolor`, a system colour, `light-dark()`,
-  `color-mix()`, a relative colour, any CSS colour function the compile does
-  not materialize as a `Color` (F5 materializes `rgb()`/`hsl()` channels; they
-  stay resolved), or a deferred built-in result (above);
-- for a numeric parameter: kept math (`calc(1px + 1em)` under `preserve`, V18)
-  or a CSS math function written in the stylesheet.
+The leaves an IR cannot compute are the values only the browser knows:
+`var()`, `env()`, `attr()`, `currentcolor`, system colours. They are `Call`s
+(or a `Keyword`) whose `result` is unknown (substitution) or `color`.
 
-Anything else keeps today's behaviour: `darken(10px, 10%)` is still a failed
-call under `functionMode` (C17), and an unknown function such as
-`darken(foo(1), 10%)` is still printed as written (Q6).
+### 3.3 Built-ins are templates over the IR, written in `.jess` and parsed at build time
 
-### 3.2 Scope by dialect
+Each built-in with a CSS counterpart is defined by its CSS form, written as
+`.jess` source over its parameters (shown here as `signature = form`; the
+file's exact `.jess` spelling is a slice 2 detail):
+
+```
+darken($color, $amount)    = hsl(from $color h s clamp(0, l - $amount, 100))
+fade($color, $amount)      = rgb(from $color r g b / $amount)
+mix($a, $b, $weight: 50%)  = color-mix(in srgb, $a $weight, $b)
+percentage($n)             = calc($n * 100%)
+```
+
+The `.jess` grammar parses each template once, at the `@jesscss/fns` build,
+into the parse tree; the package ships that tree, so nothing is parsed at
+runtime and no code is generated at runtime. Calling the built-in binds the
+parameters to the evaluated arguments and evaluates the template, which
+yields a `Call`. One definition per built-in: the JS kernel it replaces
+(`hslAdjust`, the alpha arithmetic in `withAlpha`, `mixColors`) is deleted.
+
+### 3.4 Resolving: an operated value computes, an authored one prints as written
+
+This is V1 stated for the IR. A `Call` or `Operation` the author wrote prints
+its `src` bytes unchanged (V1, F5, F8, V32). A built-in call is an operation:
+it consumes its arguments, and its result is computed. A computed `Call`
+resolves to a `Color` or `Dimension` when every leaf under it is known, using
+the CSS definition of each function: relative `rgb()`/`hsl()`/`hwb()`
+(css-color-5 §4), `color-mix(in srgb)` (§3), `calc`/`clamp`/`round`/`rem`/
+`abs`/`sign` (css-values-4 §10). Otherwise it stays a `Call`. So:
+
+- `darken(#336699, 10%)` → `#264c73`, as today.
+- `darken(var(--x), 10%)` → the `Call`
+  `hsl(from var(--x) h s clamp(0, l - 10, 100))`.
+- `darken(color-mix(in srgb, red, blue), 10%)`: the authored `color-mix()` is
+  consumed, its leaves are known, so the whole call resolves to a colour.
+  Written on its own, `color-mix(in srgb, red, blue)` still prints as written
+  (Q12).
+- `darken(mix(var(--a), red), 10%)` nests:
+  `hsl(from color-mix(in srgb, var(--a), red) h s clamp(0, l - 10, 100))`.
+
+Where the browser's definition and Jess's earlier kernel differ, the
+browser's definition wins. Section 2 lists each case; under E9 the confusing
+old behaviour is dropped, not kept behind an option.
+
+### 3.5 Serializing: once, at output
+
+A `Call` turns into text only where output is written, by one emitter. So it
+prints the same in a declaration, an interpolation (`evalInterp`), a selector,
+a mixin argument and a guard operand (SEMANTIC-INVARIANTS 2), and compressed
+output spells it with the compressed number and separator rules. Inside a math
+function a `calc` `Call` drops its own wrapper (`calc(calc(x))` is never
+written; V27). A paren group around a `Call` keeps its parens, as around any
+call written out (J16). Structure travels with the value, so the eager
+mixin-argument snapshot (`snapshotValues`, V3) keeps it without a side table.
+The type predicates read `result` (`iscolor()` of a colour `Call`: Q10).
+
+Later work can rewrite the IR before output, for example folding
+`darken(darken(x, 10%), 5%)` into one relative colour. The runtime work can
+walk it to find every `var()` a value depends on.
+
+### 3.6 Which inputs fail
+
+A built-in call fails, as today (`functionMode`, C17), only when an argument's
+type is **known** and wrong (`darken(10px, 10%)`), or when the built-in has no
+CSS form and an input is unknown (`lightness(var(--x))`, `argb()`). Q6 (an
+unknown function such as `foo(1)` as an input) is open.
+
+### 3.7 Scope by dialect
 
 - **Legacy `.less`** (ambient built-ins, P36): yes.
 - **Modern `.less` and `.jess`** (built-ins only by import, P17, P36): an
@@ -185,11 +234,11 @@ call under `functionMode` (C17), and an unknown function such as
   prints the CSS form (Q7). Q7 is not independent: a legacy `.less`
   `darken(var(--x), 10%)` converts to an imported `.jess` call, so if Q7 is
   "no", `.less → .css` prints the form and `.less → .jess → .css` errors.
-- **`.scss`**: the owner has ruled `.scss` constructs to follow Dart Sass
-  (`calc()` V32, `+` V36, `if()` 2026-10-19), and Dart Sass rejects
-  `lighten(var(--x), 10%)`. Whether that covers these built-ins is Q5.
+- **`.scss`**: yes, the same as Less (Q5, owner 2026-11-01). The `.scss`
+  dialect is Sass+, not canonical Sass, so Dart Sass rejecting
+  `lighten(var(--x), 10%)` does not decide it.
 
-### 3.3 CSS-shaped names keep their CSS reading
+### 3.8 CSS-shaped names keep their CSS reading
 
 `rgb`/`rgba`/`hsl`/`hsla` with a `var()` argument are never rewritten:
 `rgba(var(--rgb), .5)`, with `--rgb: 255, 0, 0`, is a common, valid CSS idiom
@@ -202,7 +251,7 @@ already right.
 
 ## 4. Slice plan
 
-Each slice: OPEN→ruled ledger text, `semantics-reviewer` and
+Each slice: ruled ledger text, `semantics-reviewer` and
 `perf-architecture-reviewer` (core eval path), the Less corpus in all four
 math modes plus the equivalence suite, byte-identical output for every input
 that resolves today, and a browser check. The browser check puts each printed
@@ -212,12 +261,14 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | # | Slice | Gated on |
 | --- | --- | --- |
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
-| 1 | Core: template `FunctionCall` on `Fn`, the built-in-call evaluation of relative `hsl()`, deferred-input detection, the type fact, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q2, Q6, Q7, Q8, Q9, Q10 |
-| 2 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()` fold). | slice 1 |
-| 3 | `hsv` `hsva` → `hwb()` fold. | slice 1 |
-| 4 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs` fold). | Q3, Q4 |
-| 5 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`. | Q1 |
-| 6 | Sass colour/math rows. | Q5 |
+| 1 | The IR alone: `Call` and `Operation` value kinds, built where evaluation now writes text (`fallbackCall`, `keptMath`), one output emitter. No output change: every authored call and every kept operation prints the same bytes, proven on the full corpus. `perf-architecture-reviewer` on the new kinds. | — |
+| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q2, Q6, Q7, Q8, Q9, Q10, Q12 |
+| 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
+| 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
+| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | Q3, Q4, sugar reading of operators |
+| 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`. | Q11 |
+| 7 | `contrast()` → `contrast-color()`. | Q13 |
+| 8 | Sass colour/math rows. | slices 2–6 |
 
 ## 5. Owner questions (nothing above lands without these)
 
@@ -227,8 +278,17 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   fractional-channel mixes (fixture count to be measured first); (b) keep the
   Less formula when known and print `color-mix()` only when not, so known and
   unknown inputs disagree; (c) print `color-mix()` only for opaque operands,
-  else as written. Recommendation: (a), because it is the requirement read
-  literally and keeps one definition.
+  else as written. **Ruled (a), owner 2026-11-01, with no legacy flag.** Asked
+  which algorithm causes less surprise (each colour counts by weight × opacity,
+  as gradients and transitions blend, css-color-4 §12.3, against a weighting
+  formula with no physical meaning), the owner agreed with (a); asked whether
+  to keep the old weighting behind a flag, the owner agreed to leave it out and
+  made that a rule: *"if the old behavior was confusing and a surprise, it's
+  gone"* (ledger E9). So `mix`, `tint`, `shade`, `average` and Sass `mix` are
+  `color-mix(in srgb, …)`, compile-time results included. In the Less test
+  corpus every `mix`/`tint`/`shade`/`average` call mixes opaque colours or
+  `transparent`, where the two rules agree; slice 5 measures this. Weights
+  outside 0–100% are Q11.
 - **Q2 — a deferred amount.** `darken(@c, var(--a))` needs the amount as a
   percentage (`l - var(--a) / 1%`); `spin(@c, var(--a))` needs a number. Assume
   the documented spelling (percentage for the HSL/alpha amounts, degrees as a
@@ -244,16 +304,18 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   0.01))`, `rem()`)? This changes output that today is valid CSS with the wrong
   meaning. `sign()`/`abs()` are Baseline 2025; `round(x, 0.01)` alone differs
   only on negative exact ties. Recommendation: yes, with `sign()`/`abs()`.
-- **Q5 — `.scss`.** Apply this to `.scss`, or do the `.scss` rulings above
-  (follow Dart Sass, an error) cover these built-ins? Recommendation: they
-  cover it until the owner says otherwise; slice 6 waits.
+- **Q5 — `.scss`. Ruled, owner 2026-11-01: the same as Less.** Asked whether
+  `.scss` built-ins follow Dart Sass (an error) or this mapping, the owner
+  answered *"Sass would be teh same way"*, and gave the reason: *"Because our
+  Sass we call Sass+, not canonical Sass"*. So `.scss` `lighten(var(--x), 10%)`
+  prints the CSS form, as `.less` does.
 - **Q6 — unknown functions as inputs.** Should `darken(foo(1), 10%)` print
   `hsl(from foo(1) …)` (forward-compatible with a future CSS colour function),
   or stay as written? Recommendation: stay as written; only the inputs listed
-  in 3.1.
+  in §3.6.
 - **Q7 — imported built-ins.** `@less.darken(var(--x), 10%)` (and `.jess`
   `$darken`) stops being a compile error and prints the CSS form. Confirm.
-  ("No" breaks the `.less → .jess` round trip for legacy `.less`, §3.2.)
+  ("No" breaks the `.less → .jess` round trip for legacy `.less`, §3.7.)
 - **Q8 — fixtures whose output moves** (all print as-written today):
   - `tests-unit/math-css-vars/math-css-vars.css` `e: percentage(var(--p))` →
     `calc(var(--p) * 100%)` (slice 4);
@@ -266,7 +328,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
     longer an error (slice 1).
 
   Unchanged: `sin(var(--angle))`, `atan2(…)` (already-css),
-  `rgba(var(--color-accent), 0.2)` (3.3).
+  `rgba(var(--color-accent), 0.2)` (§3.8).
 - **Q9 — a grey `hsl()` written with a hue.** Jess keeps the hue of
   `hsl(120, 0%, 50%)`; a browser does not (§2). Should the resolved value
   follow the browser (`saturate`/`spin` of such a colour change output), or
@@ -276,6 +338,52 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   10%))` true (it is a colour the browser computes) or false, as
   `iscolor(var(--x))` is today? Recommendation: true for a deferred built-in
   result, unchanged for a bare `var()`.
+- **Q11 — mix weights outside 0–100%.** `tint(#777777, -13%)` and
+  `shade(#777777, -13%)` compute an extrapolated colour today
+  (`tests-unit/functions/functions.less` `tint-negative`, `shade-negative`);
+  `color-mix()` rejects a negative percentage (css-color-5 §3.2), so there is
+  no CSS form. Recommendation: a failed call (printed as written, an error
+  under `functionMode: 'error'`); those two fixtures move.
+
+- **Q12 — an authored CSS function consumed by a built-in.** With the IR,
+  `darken(color-mix(in srgb, red, blue), 10%)` and `percentage(calc(0.5))` can
+  resolve, because their leaves are known; written on their own they still
+  print as written. Allow it? Recommendation: yes. It is V1 (a value prints as
+  written until an operation consumes it), and it changes output only where a
+  built-in today receives an authored `color-mix()`/relative colour/`calc()`
+  (to be counted in slice 2).
+- **Q13 — `contrast()` (Less only; Sass has none).** `contrast(C)` maps to
+  `contrast-color(C)` (css-color-5 §8; Baseline 2026). Known dark/light
+  colours `D`, `L` are selected without `if()`, by using the black/white
+  result's red channel as a switch:
+  `rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) … / calc(Da + (La - Da) * r / 255))`.
+  CSS `if()` cannot do it: its conditions test style, media and support, not
+  a colour's contrast. The threshold argument has no CSS form, so an unknown
+  `C` with a threshold stays a failed call. Known and unknown inputs disagree:
+  Less picks `L` when `C`'s luma is below 43%, while `contrast-color()` picks
+  whichever of black and white contrasts more, by a UA-defined algorithm
+  (under WCAG 2.1 contrast the switch is near 18% luminance). So
+  `contrast(#999)` is `#ffffff` today, and `contrast-color(#999)` is black
+  (7.4:1 against white's 2.8:1). No compile-time rule can equal a UA-defined
+  one, so the row is `approx` whatever is chosen. Recommendation (E9): a known
+  input picks by the larger WCAG 2.1 contrast ratio, the threshold argument
+  being the only exception; this moves some of the 19 `contrast()` cases in
+  `tests-unit/functions/functions.less` (to be counted).
+
+### The owner's framing (2026-11-01), readings not yet confirmed
+
+The owner, verbatim: *"I think what we would do is actually reframe a lot of
+Jess's functions and expressions as "syntactic sugar" for specific CSS
+functions (and/or calc()), detail how those are mapped, and say that are simply
+pre-calculated when we can. Therefore, no, a var() in many cases would no
+longer error, as the function is just sugar-mapping and calculating-when-available."*
+
+Under that framing the inventory is the mapping table, and the readings below
+were put to the owner. They are not confirmed, and nothing here builds on them:
+Q2, Q3, Q4, Q7, Q8 and Q10 as recommended; Q6 reversed (`darken(foo(1), 10%)`
+maps to `hsl(from foo(1) …)`; only a known wrong type fails); and math
+operators are included (`(var(--a) * 2)`, today the compile error
+`eval/invalid-operand` (V36), becomes `calc(var(--a) * 2)`).
 
 Not verified in this pass: browser support for relative colour syntax and for
 typed arithmetic (`var(--a) / 1%`); the css-color-5 serialization of a relative

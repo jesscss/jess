@@ -74,38 +74,38 @@
     {
       "dialect": "less",
       "name": "mix",
-      "class": "approx",
+      "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3.3, §3.5",
-      "blockedOn": "Q1",
-      "notes": "equal only when both alphas are equal and the operand channels are whole bytes"
+      "blockedOn": "Q11",
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
     },
     {
       "dialect": "less",
       "name": "tint",
-      "class": "approx",
+      "class": "exact",
       "css": "color-mix(in srgb, white W%, C)",
       "spec": "css-color-5 §3",
-      "blockedOn": "Q1",
-      "notes": "equal when C is opaque"
+      "blockedOn": "Q11",
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
     },
     {
       "dialect": "less",
       "name": "shade",
-      "class": "approx",
+      "class": "exact",
       "css": "color-mix(in srgb, black W%, C)",
       "spec": "css-color-5 §3",
-      "blockedOn": "Q1",
-      "notes": "equal when C is opaque"
+      "blockedOn": "Q11",
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
     },
     {
       "dialect": "less",
       "name": "average",
-      "class": "approx",
+      "class": "exact",
       "css": "color-mix(in srgb, C1, C2)",
       "spec": "css-color-5 §3",
-      "blockedOn": "Q1",
-      "notes": "equal when both are opaque"
+      "blockedOn": "Q11",
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
     },
     {
       "dialect": "less",
@@ -193,8 +193,12 @@
     {
       "dialect": "less",
       "name": "contrast",
-      "class": "none",
-      "notes": "css-color-5 §8 contrast-color() takes one colour, returns only white/black, UA-defined algorithm, no threshold"
+      "class": "approx",
+      "css": "contrast-color(C)",
+      "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
+      "spec": "css-color-5 §8",
+      "blockedOn": "Q13",
+      "notes": "contrast-color() returns white or black by a UA-defined algorithm, no threshold; D and L must be known; a threshold argument has no CSS form. Less's 43% luma rule differs (contrast(#999) = white, contrast-color(#999) = black)"
     },
     {
       "dialect": "less",
@@ -418,56 +422,49 @@
       "name": "lighten",
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l + A, 100))",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
       "name": "darken",
       "class": "exact",
       "css": "hsl(from C h s clamp(0, l - A, 100))",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
       "name": "saturate",
       "class": "exact",
       "css": "hsl(from C h clamp(0, s + A, 100) l)",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
       "name": "desaturate",
       "class": "exact",
       "css": "hsl(from C h clamp(0, s - A, 100) l)",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
       "name": "adjust-hue",
       "class": "exact",
       "css": "hsl(from C calc(h + A) s l)",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
       "name": "complement",
       "class": "exact",
       "css": "hsl(from C calc(h + 180) s l)",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
       "name": "grayscale",
       "class": "exact",
       "css": "hsl(from C h 0 l)",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
@@ -476,7 +473,6 @@
       "css": "rgb(from C calc(255 - r) calc(255 - g) calc(255 - b))",
       "weighted": "color-mix(in srgb, rgb(from C calc(255 - r) calc(255 - g) calc(255 - b)) W%, C)",
       "spec": "css-color-5 §3, §4.3",
-      "blockedOn": "Q5",
       "notes": "the inverted colour keeps C's alpha, so the weighted mix is exact"
     },
     {
@@ -484,41 +480,37 @@
       "name": "opacify",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha + A))",
-      "spec": "css-color-5 §4.1",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.1"
     },
     {
       "dialect": "scss",
       "name": "fade-in",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha + A))",
-      "spec": "css-color-5 §4.1",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.1"
     },
     {
       "dialect": "scss",
       "name": "transparentize",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha - A))",
-      "spec": "css-color-5 §4.1",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.1"
     },
     {
       "dialect": "scss",
       "name": "fade-out",
       "class": "exact",
       "css": "rgb(from C r g b / calc(alpha - A))",
-      "spec": "css-color-5 §4.1",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.1"
     },
     {
       "dialect": "scss",
       "name": "mix",
-      "class": "approx",
+      "class": "exact",
       "css": "color-mix(in srgb, C1 W%, C2)",
       "spec": "css-color-5 §3",
-      "blockedOn": "Q1",
-      "notes": "Sass mixes raw channels, so it is exact whenever both alphas are equal"
+      "blockedOn": "Q11",
+      "notes": "ruled 2026-11-01: mix() is color-mix(in srgb), compile-time results included (no legacy weighting); weights outside 0-100% have no CSS form (Q11)"
     },
     {
       "dialect": "scss",
@@ -526,7 +518,6 @@
       "class": "exact",
       "css": "rgb(from C calc(r + R) ...) / hsl(from C ...)",
       "spec": "css-color-5 §4.3, §4.4",
-      "blockedOn": "Q5",
       "notes": "legacy rgb/hsl channels; one relative colour per channel family"
     },
     {
@@ -535,7 +526,6 @@
       "class": "exact-if",
       "css": "hsl(from C h s calc(l + (100 - l) * F))",
       "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5",
       "notes": "F known: its sign picks the formula (positive: calc(l + (100 - l) * F), negative: calc(l + l * F))"
     },
     {
@@ -543,8 +533,7 @@
       "name": "color.change",
       "class": "exact",
       "css": "hsl(from C h s L)",
-      "spec": "css-color-5 §4.4",
-      "blockedOn": "Q5"
+      "spec": "css-color-5 §4.4"
     },
     {
       "dialect": "scss",
