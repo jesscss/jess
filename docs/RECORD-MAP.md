@@ -42,6 +42,7 @@ points you at the source; then you read the source. Treat a subagent's
 - [architecture/SEMANTIC-INVARIANTS.md](architecture/SEMANTIC-INVARIANTS.md): **METHOD OF RECORD** — the invariants + incident catalogue. The `semantics-reviewer` gates on it. "Matches less.js" is never a justification.
 - [architecture/core/DESIGN-DECISIONS.md](architecture/core/DESIGN-DECISIONS.md): the owner **DECISION LEDGER** (P- / X- / E- / O- / V-series; each SETTLED or OPEN). Cite the SETTLED row a change relies on, or add an OPEN row. Only the owner moves a row to SETTLED.
   - Which Jess `$` form (`${…}` interp / `$[…]` lookup / `$(…)` expr) is legal in which position (selectors, property names, at-rule preludes, strings, quoted vs unquoted `url()` bodies, value positions) → **row P13** (SETTLED). `docs/design/SIGIL-DOLLAR-PAREN.md` is an *exploration* doc, not the record.
+- [design/CSS-NATIVE-BUILTINS.md](design/CSS-NATIVE-BUILTINS.md): PROPOSAL (ledger **V38**, OPEN) — built-ins with a CSS counterpart represented as their CSS-native form (relative colour, `color-mix()`, CSS math). Its inventory [design/css-native-builtins.json](design/css-native-builtins.json) classifies every colour/math built-in by whether it prints as CSS or needs JS.
 - [architecture/core/EXTEND-SEMANTICS.md](architecture/core/EXTEND-SEMANTICS.md): extend semantics record (the ledger's X-series rows point here).
 
 ## Browser runtime — `@export` variables, `var()` output, the JS module
