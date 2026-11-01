@@ -235,4 +235,5 @@ function isRecord(value: unknown): value is Record<string, any> {
 const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) =>
   recordPluginModule(new NodeModulesPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
+export { nodeModulesPlugin };
 export default nodeModulesPlugin;
