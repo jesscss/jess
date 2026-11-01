@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { packageInstalled, prewarmWhenInstalled } from '../src/sandbox-route.js';
+import { fromEngine, packageInstalled, prewarmWhenInstalled } from '../src/sandbox-route.js';
 
 /*
  * The engine is started ahead of time only where the script plugin is
@@ -40,5 +40,44 @@ describe('starting the engine ahead of time', () => {
     prewarmWhenInstalled(Promise.resolve(true), start);
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(starts).toBe(1);
+  });
+});
+
+/* Ledger A19: the engine never names a path the host writes. */
+describe('a conversion the engine returns', () => {
+  const result = (files: unknown) => ({ css: null, errors: [], warnings: [], files });
+  const project = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-conversion-route-'));
+    for (const name of ['a.less', 'b.scss', 'c.jess']) {
+      fs.writeFileSync(path.join(root, name), '');
+    }
+    return root;
+  };
+
+  it('derives each `jessPath` from its source and ignores the one the engine sent', () => {
+    const root = project();
+    const { files } = fromEngine.conversion(result([
+      { source: path.join(root, 'a.less'), jessPath: '/etc/cron.d/evil.jess', jess: '.a { w: 1 }' },
+      { source: path.join(root, 'b.scss'), jessPath: '../../outside.jess', gaps: [{ nodeType: 'StyleImport', reason: 'r' }] }
+    ]));
+    expect(files.map(file => file.jessPath)).toEqual([path.join(root, 'a.jess'), path.join(root, 'b.jess')]);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('refuses a source that is not a stylesheet on this host, and a malformed body', () => {
+    const root = project();
+    const at = path.join(root, 'a.less');
+    for (const entry of [
+      { jessPath: at, jess: '' },
+      { source: 'a.less', jess: '' },
+      { source: path.join(root, 'c.jess'), jess: '' },
+      { source: path.join(root, '..', 'elsewhere', 'x.less'), jess: '' },
+      { source: at },
+      { source: at, gaps: [{ nodeType: 1, reason: 'r' }] },
+      null
+    ]) {
+      expect(() => fromEngine.conversion(result([entry]))).toThrow(/compile engine/);
+    }
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });

@@ -180,6 +180,19 @@ const scssCorpus = (pkg: string): Corpus => {
   };
 };
 
+/*
+ * Where a root CSS `@import` lands (ledger N9). The output prelude takes a typed
+ * CSS terminal (`"x.css"`), ahead of a Less import that stays a CSS `@import`
+ * (`url("https://…")`, written where it stands) and ahead of the rules of a Less
+ * import written before it. A `.jess` CSS `@import` is written where it stands.
+ */
+const CSS_IMPORT_PLACEMENT: ReadonlyArray<readonly [file: string, text: string]> = [
+  ['url-then-terminal.less', '@import url("https://fonts.example/css?family=X");\n@import "x.css";\n.a { w: 1; }\n'],
+  ['compile-import-then-terminal.less', '@import "theme.less";\n@import "x.css";\n.a { w: 1; }\n'],
+  ['theme.less', '.t { x: 1; }\n'],
+  ['x.css', '.x { y: 1; }\n']
+];
+
 const CORPORA: Corpus[] = [
   {
     name: 'all-less',
@@ -232,7 +245,22 @@ const CORPORA: Corpus[] = [
     packages: [],
     fixtures: [{ corpus: `gen-workload.${dialect}`, file: `workload.${dialect}`, config: {} }],
     plugins: () => [dialect === 'less' ? lessPlugin() : scssPlugin(), jessPlugin()]
-  }))
+  })),
+  {
+    name: 'css-import-placement',
+    dialect: 'less',
+    source: (copy) => {
+      for (const [file, text] of CSS_IMPORT_PLACEMENT) {
+        fs.writeFileSync(path.join(copy, file), text);
+      }
+    },
+    copy: '',
+    layout: 'css-import-placement',
+    packages: [],
+    fixtures: ['url-then-terminal.less', 'compile-import-then-terminal.less']
+      .map(file => ({ corpus: 'css-import-placement', file, config: {} })),
+    plugins: () => [lessPlugin(), jessPlugin()]
+  }
 ];
 
 /* --------------------------------------------------------------- execution */

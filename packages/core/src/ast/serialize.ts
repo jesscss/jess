@@ -20070,7 +20070,9 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
     return false;
   }
   const slot = slots.shift();
-  if (slot === undefined) {
+
+  /* A conversion's `importTargets` records the placement; it answers whether this one is a dropped duplicate. */
+  if (e.s.context?.importTargets?.hoist(node, slot) ?? slot === undefined) {
     return true;
   }
   const from = e.chunks.length;

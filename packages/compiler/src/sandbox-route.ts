@@ -32,6 +32,9 @@ export type RenderResult = {
   sourceMapURL?: string;
 };
 
+/** The `.jess` file a converted source writes: its sibling, extension replaced. */
+export const jessPathOf = (source: string): string => `${source.slice(0, source.length - path.extname(source).length)}.jess`;
+
 /** One converted document (by its source path): its `.jess` text, or every construct `.jess` cannot spell. */
 export type ConvertedFile = { readonly source: string; readonly jessPath: string } & (
   | { readonly jess: string }
@@ -102,6 +105,9 @@ export const withColors = <T extends { colors?: boolean }>(options: T | undefine
 
 const isDiagnosticList = (value: unknown): boolean => Array.isArray(value);
 
+/** `Array.isArray` without its `any[]` narrowing. */
+const isList = (value: unknown): value is readonly unknown[] => Array.isArray(value);
+
 /** What the engine returns for each method, checked before it is handed back as that method's result. */
 export const fromEngine = {
   render: (value: unknown): string => {
@@ -122,13 +128,48 @@ export const fromEngine = {
     }
     return { ...value, css: value.css };
   },
+
+  /**
+   * Every entry is rebuilt from checked fields: its `source` must be a file on
+   * this host, and its `jessPath` is derived here from that source, so the
+   * engine names no path the host writes (A19).
+   */
   conversion: (value: unknown): JessConversion => {
     const files: unknown = isRenderResultLike(value) ? Reflect.get(value, 'files') : undefined;
-    if (!isRenderResultLike(value) || !Array.isArray(files)) {
+    if (!isRenderResultLike(value) || !isList(files)) {
       throw new Error('The compile engine returned no result for this conversion.');
     }
-    return { files, errors: value.errors, warnings: value.warnings };
+    return { files: files.map(convertedFileFromEngine), errors: value.errors, warnings: value.warnings };
   }
+};
+
+const convertedFileFromEngine = (entry: unknown): ConvertedFile => {
+  const source: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'source') : undefined;
+  const jessPath = typeof source === 'string' ? jessPathOf(source) : '';
+  if (typeof entry !== 'object' || entry === null || typeof source !== 'string'
+    || !path.isAbsolute(source) || jessPath === source || fs.statSync(source, { throwIfNoEntry: false })?.isFile() !== true) {
+    throw new Error('The compile engine returned a converted file with no stylesheet source on this host.');
+  }
+  const jess: unknown = Reflect.get(entry, 'jess');
+  if (typeof jess === 'string') {
+    return { source, jessPath, jess };
+  }
+  const gaps: unknown = Reflect.get(entry, 'gaps');
+  if (!isList(gaps)) {
+    throw new Error(`The compile engine returned neither \`.jess\` text nor gaps for ${source}.`);
+  }
+  return {
+    source,
+    jessPath,
+    gaps: gaps.map((gap): JessSpellingGap => {
+      const nodeType: unknown = typeof gap === 'object' && gap !== null ? Reflect.get(gap, 'nodeType') : undefined;
+      const reason: unknown = typeof gap === 'object' && gap !== null ? Reflect.get(gap, 'reason') : undefined;
+      if (typeof nodeType !== 'string' || typeof reason !== 'string') {
+        throw new Error(`The compile engine returned a malformed gap for ${source}.`);
+      }
+      return { nodeType, reason };
+    })
+  };
 };
 
 const isRenderResultLike = (value: unknown): value is {

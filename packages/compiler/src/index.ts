@@ -1646,9 +1646,25 @@ export class Compiler {
     try {
       const entry = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       await this.renderStylesheet(entry, context, profile, undefined, resolved);
-      return { files: printConversion(context, entry, loads), errors: [...context.errors], warnings: [...context.warnings] };
+      const files = printConversion(context, entry, loads);
+      finalizeRenderProfile(profile, {
+        method: 'convertToJess',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warningCount
+      });
+      return { files, errors: [...context.errors], warnings: [...context.warnings] };
     } catch (err: unknown) {
-      return { files: [], ...thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during conversion.') };
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during conversion.');
+      finalizeRenderProfile(profile, {
+        method: 'convertToJess',
+        filePath,
+        errors: errors.length,
+        warnings: warnings.length,
+        failed: true,
+        errorMessage: thrownMessage(err)
+      });
+      return { files: [], errors, warnings };
     }
   }
 

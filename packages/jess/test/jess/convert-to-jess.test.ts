@@ -106,4 +106,78 @@ describe('Compiler.convertToJess', () => {
       compiler.dispose();
     }
   });
+
+  /* `b.less` and `b.scss` both convert to `b.jess`; `b.jess` holds only one of them, so an import of the other is a gap. */
+  it('reports every import of a file whose `.jess` path another file takes', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'a.less'), '@import "b.less";\n@import "b.scss";\n@import "c";\n');
+    fs.writeFileSync(path.join(dir, 'b.less'), '.b { x: 1; }\n');
+    fs.writeFileSync(path.join(dir, 'b.scss'), '.s { y: 2; }\n');
+    fs.writeFileSync(path.join(dir, 'c.less'), '@import "b.scss";\n');
+
+    const compiler = new Compiler();
+    try {
+      const { files, errors } = await compiler.convertToJess(path.join(dir, 'a.less'));
+      expect(errors).toEqual([]);
+      const printed = files.map(file =>
+        [path.relative(fs.realpathSync(dir), fs.realpathSync(file.source)), 'jess' in file ? file.jess : file.gaps.map(gap => gap.nodeType)]);
+      expect(printed).toEqual([
+        ['a.less', ['StyleImport']],
+        ['b.less', '.b {\n  x: 1;\n}\n'],
+        ['b.scss', ['Stylesheet']],
+        ['c.less', ['StyleImport']]
+      ]);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
+  /*
+   * The output prelude takes the CSS `@import`s of the entry and of every file it
+   * imports (ledger N9); a `.jess` CSS `@import` is written where it stands, so
+   * the entry's are written first, and an imported file's, or a Less import left
+   * a CSS `@import` after a rule, is a gap.
+   */
+  it('writes the entry\'s prelude CSS imports first and reports the ones `.jess` cannot place', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'a.less'), '@import "t.less";\n@import "x.css";\n@import "x.css";\n.a { w: 1; }\n@import url("https://fonts.example/css");\n');
+    fs.writeFileSync(path.join(dir, 't.less'), '@import "y.css";\n.t { x: 1; }\n');
+
+    const compiler = new Compiler();
+    try {
+      const { files, errors } = await compiler.convertToJess(path.join(dir, 'a.less'));
+      expect(errors).toEqual([]);
+      expect(files.map(file => ('jess' in file ? file.jess : file.gaps.map(gap => gap.nodeType)))).toEqual([['StyleImport'], ['AtRuleStatement']]);
+
+      fs.writeFileSync(path.join(dir, 'a.less'), '@import "theme.less";\n@import "x.css";\n@import "x.css";\n.a { w: 1; }\n');
+      fs.writeFileSync(path.join(dir, 'theme.less'), '.t { x: 1; }\n');
+      const converted = await compiler.convertToJess(path.join(dir, 'a.less'));
+      const [entry] = converted.files;
+      expect(entry && 'jess' in entry ? entry.jess : entry).toBe('@import "x.css";\n@-import "./theme.jess";\n.a {\n  w: 1;\n}\n');
+    } finally {
+      compiler.dispose();
+    }
+  });
+
+  /*
+   * Ledger A19: a conversion whose render reaches a stylesheet script runs whole
+   * in the sandbox, as `safeRender` does: the script reports where it ran.
+   */
+  it('converts in the sandbox once the render reaches a script', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'p.js'), `module.exports = { install(less, pm, functions) {
+  functions.add('where', () => { throw new Error('in the engine: ' + String(globalThis[Symbol.for('@jesscss/plugin-js/engine')] === true)); });
+} };\n`);
+    fs.writeFileSync(path.join(dir, 'a.less'), '@plugin "./p.js";\n.a { w: where(); }\n');
+
+    const compiler = new Compiler();
+    try {
+      const { files, errors, warnings } = await compiler.convertToJess(path.join(dir, 'a.less'));
+      expect(errors).toEqual([]);
+      expect(warnings.map(warning => warning.reason).join('\n')).toContain('in the engine: true');
+      expect(files.map(file => file.jessPath)).toEqual([path.join(dir, 'a.jess')]);
+    } finally {
+      compiler.dispose();
+    }
+  }, 60_000);
 });

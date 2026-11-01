@@ -70,14 +70,15 @@ should parse and we know how the nodes serialize"*.
   be a fixed point: its `.jess` tree prints back to text that parses to the same
   tree. The ratchet lists every non-passing fixture with a cause and a reason.
 
-Measured 2026-11-01 (identical in both modes; the local `all-less` checkout has
-two fixtures fewer than the pinned one):
+Measured 2026-11-01 against the less.js `alpha` test data (identical in both
+modes):
 
 | Arm | Corpus | Fixtures | Pass | Bare math | Cannot express | Lost info | Arm A does not render |
 | --- | --- | --: | --: | --: | --: | --: | --: |
-| Less | `all-less` test-data | 138 | 45 | 2 | 77 | 3 | 11 |
+| Less | `all-less` test-data | 140 | 45 | 2 | 79 | 3 | 11 |
 | Less | `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
 | Less | `gen-workload.less` | 1 | 1 | 0 | 0 | 0 | 0 |
+| Less | `css-import-placement` | 2 | 2 | 0 | 0 | 0 | 0 |
 | SCSS | `gen-workload.scss` | 1 | 1 | 0 | 0 | 0 | 0 |
 | SCSS | `bootstrap@5.3.8` `scss/` (every file) | 92 | 11 | 1 | 7 | 0 | 73 |
 | SCSS | `foundation-sites@6.9.0` `scss/` (every file) | 106 | 21 | 2 | 58 | 0 | 25 |
@@ -97,7 +98,10 @@ engine cannot render as `.scss` is the package corpus suite's to ratchet
 (`bootstrap-corpus.test.ts`, `foundation-corpus.test.ts`), so it is counted but
 not listed; once it renders it must convert, or be listed. `gen-workload` is
 the benchmark's matched Less/SCSS feature mix (`benchmark/gen-workload.mjs`) at
-a twentieth of its size.
+a twentieth of its size. `css-import-placement` holds two root CSS `@import`
+orders under the current placement (ledger N9, still open): a typed CSS terminal written after a Less import that
+stays a CSS `@import` (`url("https://…")`), and one written after a Less import
+whose rules it precedes in the output.
 
 ### Where the grammar and the recorded spellings disagree
 
@@ -260,6 +264,7 @@ structure is mishandled.
 | Less | `all-less` test-data | primary — Less compat is a real goal |
 | Less | `bootstrap-less-port@2.5.1` | real-world breadth |
 | Less | `gen-workload.less` | matched pair with the SCSS row |
+| Less | `css-import-placement` | root CSS `@import` order under the current placement (ledger N9, open) |
 | Sass | `packages/jess/benchmark/gen-workload.*` + targeted Sass+ fixtures | **primary** |
 | Sass | `bootstrap@5.3.8`, `foundation-sites@6.9.0` scss | secondary — every file, unrendered files counted, not listed |
 

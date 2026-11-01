@@ -30,13 +30,22 @@ behavior remains an explicit conversion diagnostic/candidate.
   document, or `null` when it stays a CSS `@import` (a `.css` terminal or a
   URL), written back as authored; and which imports a document's
   `processImports: false` policy skipped, which convert as a gap (`.jess` has
-  no such policy). Unset, nothing is recorded and nothing is allocated.
+  no such policy). It also records which root CSS `@import` statements the
+  render wrote into the output prelude (ledger N9), and which it dropped there
+  as duplicates. Unset, nothing is recorded and nothing is allocated.
 - **`Compiler.convertToJess(file)`** renders the file once with that map set,
   then prints every loaded `.less`/`.scss` document with `emitJess`. Each
   import names its recorded target, relative to the converted file (a
   converted target's `.jess` sibling); an import the render never resolved, or
-  resolved to more than one target, is a spelling gap, never a guess. The call
-  runs where the render runs, so a sandboxed compile converts in the sandbox.
+  resolved to more than one target, is a spelling gap, never a guess. A
+  `.jess` CSS `@import` is written where it stands, so the entry's prelude
+  imports lead its `.jess` (a dropped duplicate is not written), and a prelude
+  import from an imported file, or a Less import left a CSS `@import` after a
+  rule, is a gap. When two converted files would write one `.jess` path (`b.less`
+  and `b.scss`), the first writes it, and the other, and every import of it, is a
+  gap. The call runs where the render runs, so a sandboxed compile converts in
+  the sandbox; the host rebuilds each returned entry from checked fields and
+  derives its `.jess` path from its source, a file on the host (ledger A19).
 - **Proof:** the equivalence harness (`JESS-EQUIVALENCE-HARNESS.md`) runs every
   Less and SCSS corpus file through it and compares the two renders.
 

@@ -1,9 +1,7 @@
 import * as path from 'path';
 import { type Context, type ImportTargets, emitJess, NoJessSpelling } from '@jesscss/core';
-import type { StyleImport, Stylesheet } from '@jesscss/core/ast';
-import type { ConvertedFile } from './sandbox-route.js';
-
-const jessPathOf = (source: string): string => `${source.slice(0, source.length - path.extname(source).length)}.jess`;
+import type { AtRuleStatement, StyleImport, Stylesheet } from '@jesscss/core/ast';
+import { type ConvertedFile, jessPathOf } from './sandbox-route.js';
 
 /**
  * Print `entry` and every document its render loaded as `.jess`, after a render
@@ -22,6 +20,50 @@ export function printConversion(
   entry: Stylesheet,
   loads: ImportTargets
 ): ConvertedFile[] {
+  const documents = loadedDocuments(context, entry, loads);
+
+  /* By document, not path: a `(less)` import and a CSS import of one file are two documents. */
+  const converted = new Set<Stylesheet>();
+
+  /* The first converted document to claim a `.jess` path writes it; an import of any other is a gap. */
+  const written = new Set<string>();
+  const collided = new Set<Stylesheet>();
+  for (const [document, source] of documents) {
+    if (path.isAbsolute(source) && context.pluginOf(document)?.jessFunctions !== undefined) {
+      converted.add(document);
+      const jessPath = jessPathOf(source);
+      if (written.has(jessPath)) {
+        collided.add(document);
+      }
+      written.add(jessPath);
+    }
+  }
+  const files: ConvertedFile[] = [];
+  for (const [document, source] of documents) {
+    const functions = converted.has(document) ? context.pluginOf(document)?.jessFunctions?.() : undefined;
+    if (functions === undefined) {
+      continue;
+    }
+    const jessPath = jessPathOf(source);
+    if (collided.has(document)) {
+      files.push({ source, jessPath, gaps: [{ nodeType: 'Stylesheet', reason: 'another converted document of this render writes the same `.jess` file' }] });
+      continue;
+    }
+    try {
+      const importPath = importPathFrom(source, loads, converted, collided);
+      files.push({ source, jessPath, jess: emitJess(document, { functions, importPath, preludeImport: preludeImportOf(loads, document === entry) }) });
+    } catch (error) {
+      if (!(error instanceof NoJessSpelling)) {
+        throw error;
+      }
+      files.push({ source, jessPath, gaps: error.gaps });
+    }
+  }
+  return files;
+}
+
+/** The entry and every document the render loaded, each with its source path, in load order. */
+function loadedDocuments(context: Context, entry: Stylesheet, loads: ImportTargets): Map<Stylesheet, string> {
   const documents = new Map<Stylesheet, string>();
   for (const [source, document] of context.sourceTrees) {
     if (document === entry) {
@@ -35,54 +77,56 @@ export function printConversion(
       }
     }
   }
+  return documents;
+}
 
-  /* By document, not path: a `(less)` import and a CSS import of one file are two documents. */
-  const converted = new Set([...documents].flatMap(([document, source]) =>
-    (path.isAbsolute(source) && context.pluginOf(document)?.jessFunctions !== undefined ? [document] : [])));
-  const files: ConvertedFile[] = [];
-  const written = new Set<string>();
-  for (const [document, source] of documents) {
-    const functions = converted.has(document) ? context.pluginOf(document)?.jessFunctions?.() : undefined;
-    if (functions === undefined) {
-      continue;
+/** Each import of the document at `source`, as the path of what it resolved to (`EmitJessOptions.importPath`). */
+function importPathFrom(
+  source: string,
+  loads: ImportTargets,
+  converted: ReadonlySet<Stylesheet>,
+  collided: ReadonlySet<Stylesheet>
+): (authored: string, node: StyleImport) => string | null {
+  return (_authored, node) => {
+    if (loads.skipped.has(node)) {
+      throw new NoJessSpelling('StyleImport', 'an import its document\'s `processImports: false` policy skipped: a `.jess` import has no such policy');
     }
-    const importPath = (_authored: string, node: StyleImport): string | null => {
-      if (loads.skipped.has(node)) {
-        throw new NoJessSpelling('StyleImport', 'an import its document\'s `processImports: false` policy skipped: a `.jess` import has no such policy');
-      }
-      const loaded = loads.get(node);
-      if (loaded === undefined) {
-        throw new NoJessSpelling('StyleImport', 'an import the render never resolved: a `.jess` import names the file it resolves to');
-      }
-      const [resolved, ...others] = loaded;
-      if (resolved === undefined || others.length > 0) {
-        throw new NoJessSpelling('StyleImport', 'an import that resolved to more than one file: a `.jess` import names one');
-      }
-      const [target, loadedDocument] = resolved;
-      if (loadedDocument === null) {
-        return null;
-      }
-      if (!path.isAbsolute(target)) {
-        return target;
-      }
-      const relative = path.relative(path.dirname(source), converted.has(loadedDocument) ? jessPathOf(target) : target)
-        .split(path.sep).join('/');
-      return relative.startsWith('../') ? relative : `./${relative}`;
-    };
-    const jessPath = jessPathOf(source);
-    if (written.has(jessPath)) {
-      files.push({ source, jessPath, gaps: [{ nodeType: 'Stylesheet', reason: 'another converted document of this render writes the same `.jess` file' }] });
-      continue;
+    const loaded = loads.get(node);
+    if (loaded === undefined) {
+      throw new NoJessSpelling('StyleImport', 'an import the render never resolved: a `.jess` import names the file it resolves to');
     }
-    written.add(jessPath);
-    try {
-      files.push({ source, jessPath, jess: emitJess(document, { functions, importPath }) });
-    } catch (error) {
-      if (!(error instanceof NoJessSpelling)) {
-        throw error;
-      }
-      files.push({ source, jessPath, gaps: error.gaps });
+    const [resolved, ...others] = loaded;
+    if (resolved === undefined || others.length > 0) {
+      throw new NoJessSpelling('StyleImport', 'an import that resolved to more than one file: a `.jess` import names one');
     }
-  }
-  return files;
+    const [target, loadedDocument] = resolved;
+    if (loadedDocument === null) {
+      return null;
+    }
+    if (collided.has(loadedDocument)) {
+      throw new NoJessSpelling('StyleImport', 'an import of a file whose `.jess` path another converted file of this render writes');
+    }
+    if (!path.isAbsolute(target)) {
+      return target;
+    }
+    const relative = path.relative(path.dirname(source), converted.has(loadedDocument) ? jessPathOf(target) : target)
+      .split(path.sep).join('/');
+    return relative.startsWith('../') ? relative : `./${relative}`;
+  };
+}
+
+/**
+ * Where the render wrote each root CSS `@import` (`EmitJessOptions.preludeImport`).
+ * The output prelude takes those of the entry and of every file it imports, in
+ * import order (ledger N9); a `.jess` CSS `@import` is written where it stands,
+ * so the entry's can lead its `.jess`, and an imported file's is a gap.
+ */
+function preludeImportOf(loads: ImportTargets, isEntry: boolean): (node: AtRuleStatement) => 'first' | 'dropped' | null {
+  return (node) => {
+    const written = loads.hoisted.get(node);
+    if (written !== undefined && !isEntry) {
+      throw new NoJessSpelling('AtRuleStatement', 'a CSS `@import` the render moved from an imported file into the output prelude: a `.jess` CSS `@import` is written where its file is imported');
+    }
+    return written === undefined ? null : written ? 'first' : 'dropped';
+  };
 }
