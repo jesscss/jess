@@ -1,7 +1,7 @@
 # Built-ins as their CSS-native form
 
-**Status: PROPOSAL — ledger row V38 (OPEN).** Nothing here is built. Section 5
-lists what the owner must rule before any slice lands. The inventory is
+**Status: DESIGN — ledger row V38 (OPEN; every question in section 5 ruled by
+the owner on 2026-11-01).** Nothing here is built; section 4 is the build order. The inventory is
 [`css-native-builtins.json`](./css-native-builtins.json).
 
 ## The requirement
@@ -201,6 +201,37 @@ Where the browser's definition and Jess's earlier kernel differ, the
 browser's definition wins. Section 2 lists each case; under E9 the confusing
 old behaviour is dropped, not kept behind an option.
 
+### 3.4a Choosing the form: the representation ladder
+
+Owner, 2026-11-01, verbatim: *"if the value is known, or the weight is in a
+range that we CAN represent as a simpler form, do it, and then if it needs a
+longer sugared form, do that. and then beyond that, it becomes it's classic
+representation (compile time plus JS module export)"*.
+
+A built-in call takes the first rung that represents it exactly, given what
+the compile knows:
+
+1. **Every input known** → the resolved value (`tint(#777777, 13%)` →
+   `#898989`).
+2. **The simplest CSS form** that is exact for the known inputs
+   (`tint(var(--c), 13%)` → `color-mix(in srgb, white 13%, var(--c))`).
+3. **A longer CSS form** when the simple one cannot hold a known input
+   (`tint(var(--c), -13%)` → relative `rgb()` with the extrapolation formula
+   and a `clamp()`, because `color-mix()` rejects a negative weight).
+4. **The classic representation**: the value computed at compile time where
+   it can be, plus the JS runtime module export. That is the browser-runtime
+   design's territory, not this one's (it reads the inventory to know which
+   built-ins reach this rung). Until that runtime exists, rung 4 is today's
+   behaviour: the call is printed as written, or an error under
+   `functionMode: 'error'`. This document's reading; not an owner ruling.
+
+An unknown input is taken to lie in the built-in's documented domain, as for
+the amount (Q2) and the number form (Q3). So `tint(var(--c), var(--w))` takes
+rung 2, `color-mix()`, which is valid while `--w` holds 0–100%.
+
+The inventory row gives each rung's form (`css` for rung 2, `extended` for
+rung 3); a row whose class is `none` has only rungs 1 and 4.
+
 ### 3.5 Serializing: once, at output
 
 A `Call` turns into text only where output is written, by one emitter. So it
@@ -266,11 +297,11 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
 | 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | — |
-| 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`. | Q11 |
+| 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`, and the longer relative form for weights `color-mix()` cannot hold (§3.4a). | — |
 | 7 | `contrast()` → `contrast-color()`; known inputs pick by the larger WCAG 2.1 contrast ratio. | — (the `contrast()` fixtures that move are listed for the owner) |
 | 8 | Sass colour/math rows. | slices 2–6 |
 
-## 5. Owner questions (nothing above lands without these)
+## 5. Owner questions and rulings
 
 - **Q1 — `mix()` with translucent colours.** `color-mix()` and Less `mix()`
   disagree when the alphas differ, and Less mixes rounded byte channels. (a)
@@ -342,12 +373,22 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   10%))` true (it is a colour the browser computes) or false, as
   `iscolor(var(--x))` is today? Recommendation: true for a deferred built-in
   result, unchanged for a bare `var()`.
-- **Q11 — mix weights outside 0–100%.** `tint(#777777, -13%)` and
+- **Q11 — mix weights outside 0–100%.** **Ruled, owner 2026-11-01, by the
+  representation ladder (§3.4a).** `tint(#777777, -13%)` and
   `shade(#777777, -13%)` compute an extrapolated colour today
-  (`tests-unit/functions/functions.less` `tint-negative`, `shade-negative`);
-  `color-mix()` rejects a negative percentage (css-color-5 §3.2), so there is
-  no CSS form. Recommendation: a failed call (printed as written, an error
-  under `functionMode: 'error'`); those two fixtures move.
+  (`tests-unit/functions/functions.less` `tint-negative`, `shade-negative`),
+  and `color-mix()` rejects a negative percentage (css-color-5 §3.2). A known
+  input still resolves, so those two fixtures do not move: `tint(#777777,
+  -13%)` stays `#656565`. With an unknown colour, `tint` and `shade` take the
+  longer relative form, which is exact for every weight because the other
+  colour (white, black) is known:
+  `rgb(from C clamp(0, r + W * (255 - r), 255) …)` for `tint`,
+  `rgb(from C clamp(0, r - W * r, 255) …)` for `shade` (with the alpha terms
+  `color-mix()` uses when `C` is translucent). `mix(a, b, W)` with `W`
+  outside 0–100% takes the same form when one colour is known; with both
+  colours unknown no CSS form exists, and the call takes rung 4. A negative
+  `tint` is not the mirror of `shade`: `tint(#777777, -13%)` is `#656565`,
+  `shade(#777777, 13%)` is `#686868`.
 
 - **Q12 — an authored CSS function consumed by a built-in.** **Ruled as recommended, owner 2026-11-01 (*"yes"*).** With the IR,
   `darken(color-mix(in srgb, red, blue), 10%)` and `percentage(calc(0.5))` can
