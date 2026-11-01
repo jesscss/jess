@@ -1,5 +1,5 @@
 {
-  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `css` is the simplest CSS form (ladder rung 2), `extended` the longer one (rung 3); a `none` row reaches rung 4, compile time plus the JS runtime (doc §3.4a).",
+  "$comment": "Inventory for docs/design/CSS-NATIVE-BUILTINS.md. One row per built-in colour/math function. `class` is one of: exact | exact-if | approx | already-css | none (defined in the design doc, section 1). `css` is the CSS-native form over the parameter names; `C`, `C1`, `C2` are colours, `A` an amount on the CSS channel scale, `N`, `B` numbers. `css` is the simplest CSS form (ladder rung 2), `extended` the longer one (rung 3); a `none` row reaches rung 4, compile time plus the JS runtime (doc §3.4a). A row with `aliasOf` is a second name for the row it names, with its classification. Every other registered function is listed in `outOfScope`; `packages/fns/src/__tests__/css-native-builtins.test.ts` checks the three lists cover the registries exactly.",
   "schema": 1,
   "functions": [
     {
@@ -742,6 +742,97 @@
       "dialect": "scss",
       "name": "comparable",
       "class": "none"
+    },
+    {
+      "dialect": "scss",
+      "name": "adjust-color",
+      "aliasOf": "color.adjust"
+    },
+    {
+      "dialect": "scss",
+      "name": "change-color",
+      "aliasOf": "color.change"
+    },
+    {
+      "dialect": "scss",
+      "name": "scale-color",
+      "aliasOf": "color.scale"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.min",
+      "aliasOf": "min",
+      "notes": "the module form raises on a non-number today; the global writes it out"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.max",
+      "aliasOf": "max",
+      "notes": "the module form raises on a non-number today; the global writes it out"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.compatible",
+      "aliasOf": "comparable"
+    },
+    {
+      "dialect": "scss",
+      "name": "math.is-unitless",
+      "aliasOf": "unitless"
     }
-  ]
+  ],
+  "outOfScope": {
+    "less": [
+      "%",
+      "data-uri",
+      "e",
+      "escape",
+      "extract",
+      "image-height",
+      "image-size",
+      "image-width",
+      "iscolor",
+      "isem",
+      "iskeyword",
+      "isnumber",
+      "ispercentage",
+      "ispixel",
+      "isstring",
+      "isunit",
+      "isurl",
+      "length",
+      "range",
+      "replace",
+      "string-format",
+      "svg-gradient"
+    ],
+    "scss": [
+      "append",
+      "index",
+      "is-bracketed",
+      "join",
+      "length",
+      "list-separator",
+      "map-get",
+      "map-has-key",
+      "map-keys",
+      "map-merge",
+      "map-remove",
+      "map-values",
+      "nth",
+      "quote",
+      "selector-parse",
+      "set-nth",
+      "str-index",
+      "str-insert",
+      "str-length",
+      "str-slice",
+      "to-lower-case",
+      "to-upper-case",
+      "type-of",
+      "unique-id",
+      "unquote",
+      "zip"
+    ]
+  }
 }

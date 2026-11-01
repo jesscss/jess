@@ -1,8 +1,8 @@
 # Built-ins as their CSS-native form
 
 **Status: DESIGN — ledger row V38 (OPEN; every question in section 5 ruled by
-the owner on 2026-11-01).** Nothing here is built; section 4 is the build order. The inventory is
-[`css-native-builtins.json`](./css-native-builtins.json).
+the owner on 2026-11-01).** Section 4 is the build order. The inventory is
+[`packages/fns/src/css-native-builtins.json`](../../packages/fns/src/css-native-builtins.json).
 
 ## The requirement
 
@@ -47,9 +47,12 @@ work reads the `class` column of the inventory to decide what ships as JS: a
 
 ## 1. Inventory
 
-Full table: [`css-native-builtins.json`](./css-native-builtins.json) (115 rows:
+Full table: [`css-native-builtins.json`](../../packages/fns/src/css-native-builtins.json) (115 rows:
 every registered Less colour/math built-in, and the Sass global and
-`sass:color`/`sass:math` members). Classes:
+`sass:color`/`sass:math` members; seven more rows name a second spelling of one
+of them, `aliasOf`). Every other registered function is listed as out of scope,
+and `packages/fns/src/__tests__/css-native-builtins.test.ts` fails when a
+registered function is in none of the three. Classes:
 
 - **exact** — the CSS form computes the same value for every input in the
   built-in's domain. 31 rows, including `mix`, `tint`, `shade`, `average` and
