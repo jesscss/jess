@@ -17,17 +17,22 @@
  *              `functions` value; their suites pass; every value a consumer
  *              passes for a dialect is the same one, with the contract's `from`
  *              and its required call → export pairs.
- *   ownership  behavior, then a probe entry is added to the OWNER's rule in
- *              each plugin and the plugins are rebuilt: every consumer's value
- *              must now carry the probe. A local copy (or a copy beside an
- *              unused owner import) keeps its own map and fails.
+ *   ownership  behavior, then the OWNER's rule in each plugin is probed — a
+ *              suffix on its module specifier and an extra name — and the
+ *              plugins are rebuilt: every consumer's value must now carry both.
+ *              A local copy (or a copy beside an unused owner import) keeps its
+ *              own value and fails.
  *   changes    a contract-only change (a required pair the owner does not
  *              produce) and an implementation-only change (the owner drops a
  *              required pair) must each fail behavior.
+ *
+ * The observation reads the BUILT packages, so a source newer than its build is
+ * unresolved (exit 2), not judged. A probe rebuilds the owner packages and then
+ * restores their `lib/` from a snapshot, declarations included.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -42,10 +47,14 @@ const CONSUMERS = {
   'sass-selector-parse': { file: 'packages/jess/test/scss/sass-selector-parse.test.ts', dialect: 'sass' }
 };
 const OWNERS = {
-  less: { pkg: 'packages/syntax/less/jess-plugin-less', file: 'packages/syntax/less/jess-plugin-less/src/jess-functions.ts', rule: 'names: lessExportNames()' },
-  sass: { pkg: 'packages/syntax/scss/jess-plugin-scss', file: 'packages/syntax/scss/jess-plugin-scss/src/jess-functions.ts', rule: 'names: sassExportNames()' }
+  less: { pkg: 'packages/syntax/less/jess-plugin-less', file: 'packages/syntax/less/jess-plugin-less/src/jess-functions.ts', rule: '{ from: LESS_MODULE, names: lessExportNames() }' },
+  sass: { pkg: 'packages/syntax/scss/jess-plugin-scss', file: 'packages/syntax/scss/jess-plugin-scss/src/jess-functions.ts', rule: '{ from: SASS_MODULE, names: sassExportNames() }' }
 };
+
+/** Built packages the observation reads: the owners and the registry they import. */
+const BUILT = ['packages/fns', ...Object.values(OWNERS).map(o => o.pkg)];
 const PROBE = ['cod-probe', 'codProbe'];
+const PROBE_SUFFIX = '?cod-probe';
 
 class Unresolved extends Error {}
 
@@ -55,6 +64,22 @@ function run(command, args, cwd) {
     throw new Unresolved(String(result.error));
   }
   return result;
+}
+
+/** Every package's `lib/index.js` is newer than all of its `src/` files. */
+function assertBuildsFresh() {
+  for (const pkg of BUILT) {
+    const lib = join(root, pkg, 'lib/index.js');
+    if (!existsSync(lib)) {
+      throw new Unresolved(`${pkg} is not built; run the build first`);
+    }
+    const built = statSync(lib).mtimeMs;
+    const stale = readdirSync(join(root, pkg, 'src'), { recursive: true })
+      .find(file => statSync(join(root, pkg, 'src', file)).mtimeMs > built);
+    if (stale !== undefined) {
+      throw new Unresolved(`${pkg}/src/${stale} is newer than its build; rebuild before checking`);
+    }
+  }
 }
 
 /** Rebuild the owner packages' JS (types are not part of the observation). */
@@ -67,15 +92,19 @@ function buildOwners() {
   }
 }
 
-/** Replace the owner rule in every plugin (exactly once each), run `body`, restore. */
+/** Replace the owner rule in every plugin (exactly once each), rebuild, run `body`, restore sources and builds. */
 function withOwnerRule(rewrite, body) {
   const originals = Object.values(OWNERS).map(({ file, rule }) => {
     const source = readFileSync(join(root, file), 'utf8');
     if (source.split(rule).length !== 2) {
       throw new Unresolved(`${file}: owner rule \`${rule}\` not found exactly once; requalify the probe`);
     }
-    return { file, source, rule };
+    return { file, source, rule, stat: statSync(join(root, file)) };
   });
+  const snapshot = mkdtempSync(join(tmpdir(), 'cod-jess-functions-lib-'));
+  for (const { pkg } of Object.values(OWNERS)) {
+    cpSync(join(root, pkg, 'lib'), join(snapshot, pkg), { recursive: true, preserveTimestamps: true });
+  }
   try {
     for (const { file, source, rule } of originals) {
       writeFileSync(join(root, file), source.replace(rule, rewrite(rule)));
@@ -83,17 +112,32 @@ function withOwnerRule(rewrite, body) {
     buildOwners();
     return body();
   } finally {
-    for (const { file, source } of originals) {
+    // The restored source keeps its timestamp, so the restored build stays fresh against it.
+    for (const { file, source, stat } of originals) {
       writeFileSync(join(root, file), source);
+      utimesSync(join(root, file), stat.atime, stat.mtime);
     }
-    buildOwners();
+    for (const { pkg } of Object.values(OWNERS)) {
+      rmSync(join(root, pkg, 'lib'), { recursive: true, force: true });
+      cpSync(join(snapshot, pkg), join(root, pkg, 'lib'), { recursive: true, preserveTimestamps: true });
+    }
+    rmSync(snapshot, { recursive: true, force: true });
   }
 }
 
-/** file (repo-relative) → every non-empty `functions` value its suite passed to `emitJess`. */
-function observe() {
-  const suites = run('git', ['ls-files', 'packages/jess/test'], root).stdout.split('\n')
-    .filter(file => file.endsWith('.test.ts') && readFileSync(join(root, file), 'utf8').includes('emitJess('));
+/**
+ * file (repo-relative) → every non-empty `functions` value its suite passed to
+ * `emitJess`. Under a probe the suites may fail (a probed specifier does not
+ * load); the values they passed are what is judged.
+ */
+function observe({ probed = false } = {}) {
+  const tests = run('git', ['ls-files', '*.test.ts'], root).stdout.split('\n').filter(Boolean)
+    .filter(file => readFileSync(join(root, file), 'utf8').includes('emitJess('));
+  const outside = tests.filter(file => !file.startsWith('packages/jess/test/') && /\bfunctions\b/u.test(readFileSync(join(root, file), 'utf8')));
+  if (outside.length > 0) {
+    throw new Unresolved(`suites outside packages/jess/test may pass \`functions\` to emitJess and are not observed: ${outside.join(', ')}`);
+  }
+  const suites = tests.filter(file => file.startsWith('packages/jess/test/'));
   const dir = mkdtempSync(join(tmpdir(), 'cod-jess-functions-'));
   const out = join(dir, 'observed.jsonl');
   try {
@@ -106,7 +150,9 @@ function observe() {
     if (result.error) {
       throw new Unresolved(String(result.error));
     }
-    assert.equal(result.status, 0, `consumer suites failed:\n${result.stdout.slice(-4000)}${result.stderr.slice(-2000)}`);
+    if (!probed && result.status !== 0) {
+      throw new Unresolved(`consumer suites failed:\n${result.stdout.slice(-4000)}${result.stderr.slice(-2000)}`);
+    }
     if (!existsSync(out)) {
       throw new Unresolved('no emitJess call was observed: the observation hook did not load');
     }
@@ -160,10 +206,17 @@ const readContract = path => JSON.parse(readFileSync(path, 'utf8'));
 
 function ownership(contract) {
   judge(observe(), contract);
-  const probe = rule => rule.replace(/names: (\w+)\(\)/, `names: new Map([...$1(), ${JSON.stringify(PROBE)}])`);
-  const probed = withOwnerRule(probe, observe);
+  const probe = rule => rule
+    .replace(/from: (\w+)/, `from: $1 + ${JSON.stringify(PROBE_SUFFIX)}`)
+    .replace(/names: (\w+)\(\)/, `names: new Map([...$1(), ${JSON.stringify(PROBE)}])`);
+  const probed = withOwnerRule(probe, () => observe({ probed: true }));
+  const followed = (dialect, value) => value.from === contract.requirements[dialect].from + PROBE_SUFFIX
+    && value.names.some(([call, exported]) => call === PROBE[0] && exported === PROBE[1]);
   const stale = Object.entries(CONSUMERS)
-    .filter(([, { file }]) => !(probed.get(file) ?? []).every(value => value.names.some(([call, exported]) => call === PROBE[0] && exported === PROBE[1])))
+    .filter(([, { file, dialect }]) => {
+      const values = probed.get(file) ?? [];
+      return values.length === 0 || !values.every(value => followed(dialect, value));
+    })
     .map(([id]) => id);
   assert.deepEqual(stale, [], 'consumers that did not follow a change to the owner');
 }
@@ -180,7 +233,8 @@ function changes(contractPath) {
   const [dropped] = contract.requirements.less.names[0];
   const drop = rule => rule.replace(/names: (\w+)\(\)/, `names: new Map([...$1()].filter(([call]) => call !== ${JSON.stringify(dropped)}))`);
   withOwnerRule(drop, () => {
-    assert.throws(() => judge(observe(), contract), assert.AssertionError, 'an implementation-only change was accepted');
+    const dropped = observe({ probed: true });
+    assert.throws(() => judge(dropped, contract), assert.AssertionError, 'an implementation-only change was accepted');
   });
 }
 
@@ -190,6 +244,7 @@ try {
   // The delivery path: the verify script exists and CI runs it.
   assert.equal(readContract(join(root, 'package.json')).scripts['verify:capabilities'], 'node scripts/cod.mjs verify-catalog . capabilities --allow-execution');
   assert.match(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'), /^\s+run: pnpm run verify:capabilities$/m, 'CI does not run verify:capabilities');
+  assertBuildsFresh();
   if (mode === 'behavior') {
     judge(observe(), readContract(contractPath));
   } else if (mode === 'ownership') {

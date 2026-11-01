@@ -25,7 +25,9 @@ function step(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit' });
   if (result.status !== 0) {
     rmSync(kit, { recursive: true, force: true });
-    process.exit(result.status ?? 1);
+
+    // The toolkit could not be installed: nothing was checked (COD exit 2, unresolved).
+    process.exit(2);
   }
 }
 

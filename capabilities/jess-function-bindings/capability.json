@@ -33,7 +33,9 @@
       "packages/syntax/scss/jess-plugin-scss/src/jess-functions.ts",
       "packages/fns/src/registry.ts",
       "packages/fns/src/less/registry.ts",
-      "packages/fns/src/sass/registry.ts"
+      "packages/fns/src/sass/registry.ts",
+      "packages/syntax/less/jess-plugin-less/src/index.ts",
+      "packages/syntax/scss/jess-plugin-scss/src/index.ts"
     ]
   },
   "consumers": [
@@ -259,7 +261,9 @@
       "capabilities/jess-function-bindings/observe.setup.ts",
       "capabilities/jess-function-bindings/vitest.config.ts",
       "test/setup.ts",
-      "scripts/cod.mjs"
+      "scripts/cod.mjs",
+      "package.json",
+      ".github/workflows/ci.yml"
     ]
   }
 }
