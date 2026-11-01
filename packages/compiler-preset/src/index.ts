@@ -4,7 +4,7 @@ import {
   type CompilerPluginContext,
   type ConfigOptions
 } from '@jesscss/compiler';
-import { AbstractPlugin, type ISafeParseResult, type PluginInterface } from '@jesscss/core';
+import { AbstractPlugin, type ISafeParseResult, type PluginInterface, type ProvidedModules } from '@jesscss/core';
 import { LessPluginResolver, prepareLessRootSource } from '@jesscss/plugin-less';
 
 /*
@@ -13,6 +13,7 @@ import { LessPluginResolver, prepareLessRootSource } from '@jesscss/plugin-less'
  * hands back the package's whole `exports` object rather than its `default`.
  */
 import { nodeModulesPlugin } from '@jesscss/plugin-node-modules';
+import { providedModules as scssProvidedModules } from '@jesscss/plugin-scss/provided-modules';
 
 export type { ConfigOptions } from '@jesscss/compiler';
 
@@ -34,29 +35,32 @@ const defaultPaths = new DefaultPathPlugin();
  * compile loads no grammar it does not use.
  *
  * Until then it answers as `AbstractPlugin`, as the real plugin does for any
- * path that is not one of its provided modules. A plugin that `providesModules`
- * resolves its `#…` aliases and `@…` package spellings itself, and only a
- * candidate with a `#` or `@` can be one (`ProvidedModules.resolve`), so such a
- * candidate loads the plugin first.
+ * path that is not one of its provided modules. A plugin that provides modules
+ * hands over its table (`provided`), which loads no grammar, so the provided
+ * modules resolve, are claimed and are imported as the real plugin does, before
+ * it loads.
  *
  * Once loaded, every member of the real plugin is copied onto this one, its
  * methods bound to the real plugin, for the rest of the compile that loaded
  * it; the stack hands later compiles the real plugin itself (`plugin`).
- *
- * ponytail: before it loads, it claims no module file (`canImportModule`), so a
- * provided module reached by a path with no `#` or `@` is untrusted until the
- * plugin loads. It fails closed. Tracked in jesscss/jess#518.
  */
 class DeferredDialectPlugin implements PluginInterface {
   plugin: PluginInterface | undefined;
   #loading: Promise<void> | undefined;
+  readonly canImportModule?: (absoluteFilePath: string) => boolean;
+  readonly import?: (absoluteFilePath: string) => Promise<Record<string, unknown>>;
 
   constructor(
     readonly name: string,
     readonly supportedExtensions: string[],
-    private readonly providesModules: boolean,
-    private readonly create: () => Promise<PluginInterface>
-  ) {}
+    private readonly create: () => Promise<PluginInterface>,
+    private readonly provided?: ProvidedModules
+  ) {
+    if (provided) {
+      this.canImportModule = absoluteFilePath => provided.owns(absoluteFilePath);
+      this.import = absoluteFilePath => provided.import(absoluteFilePath);
+    }
+  }
 
   loadParser(): Promise<void> | undefined {
     if (this.plugin) {
@@ -72,14 +76,10 @@ class DeferredDialectPlugin implements PluginInterface {
     throw new Error(`The ${this.name} plugin parses only after Context awaits its loadParser()`);
   }
 
-  resolve(paths: string | string[], currentDir: string, searchPaths: string[]): string[] | Promise<string[] | null> {
-    if (this.providesModules && (typeof paths === 'string' ? [paths] : paths).some(candidate => /[#@]/.test(candidate))) {
-      return Promise.resolve(this.loadParser()).then(() => {
-        const plugin = this.plugin;
-        return plugin?.resolve ? plugin.resolve(paths, currentDir, searchPaths) : defaultPaths.resolve(paths, currentDir, searchPaths);
-      });
-    }
-    return defaultPaths.resolve(paths, currentDir, searchPaths);
+  resolve(paths: string | string[], currentDir: string, searchPaths: string[]): string[] {
+    const provided = this.provided;
+    const candidates = typeof paths === 'string' ? [paths] : paths;
+    return defaultPaths.resolve(provided ? candidates.map(candidate => provided.resolve(candidate) ?? candidate) : candidates, currentDir, searchPaths);
   }
 
   locate(candidates: string[], currentDir: string): string | null {
@@ -131,19 +131,19 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
   }
 
   private getOrCreateJessPlugin(): PluginInterface {
-    const deferred = this.jessPluginInstance ??= new DeferredDialectPlugin('jess', ['.jess'], false,
+    const deferred = this.jessPluginInstance ??= new DeferredDialectPlugin('jess', ['.jess'],
       async () => (await import('@jesscss/plugin-jess')).jessPlugin());
     return deferred.plugin ?? deferred;
   }
 
   private getOrCreateScssPlugin(): PluginInterface {
-    const deferred = this.scssPluginInstance ??= new DeferredDialectPlugin('scss', ['.scss'], true,
-      async () => (await import('@jesscss/plugin-scss')).scssPlugin());
+    const deferred = this.scssPluginInstance ??= new DeferredDialectPlugin('scss', ['.scss'],
+      async () => (await import('@jesscss/plugin-scss')).scssPlugin(), scssProvidedModules);
     return deferred.plugin ?? deferred;
   }
 
   private getOrCreateCssPlugin(): PluginInterface {
-    const deferred = this.cssPluginInstance ??= new DeferredDialectPlugin('css', ['.css'], false,
+    const deferred = this.cssPluginInstance ??= new DeferredDialectPlugin('css', ['.css'],
       async () => new (await import('./css.js')).CssPlugin());
     return deferred.plugin ?? deferred;
   }
