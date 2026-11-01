@@ -3,6 +3,11 @@
 ## Status
 
 - Proposed
+- The permission broker and the per-call worker are replaced by
+  [`design/DENO-SANDBOX-COMPILE.md`](../design/DENO-SANDBOX-COMPILE.md): a compile
+  that runs stylesheet JavaScript runs whole in Deno, under native permission
+  flags. The non-goal below about running the whole compile in Deno no longer
+  holds.
 - Owner: Jess core team
 - Scope: `@jesscss/jess`, `@jesscss/core`, new `@jesscss/plugin-js`
 

@@ -61,6 +61,7 @@ points you at the source; then you read the source. Treat a subagent's
 - [process/releasing-alpha.md](process/releasing-alpha.md): release MECHANICS — branch/version policy, cut the snapshot from `dev`, publish order, one-command flow.
 - [state/less-v5-alpha-readiness.md](state/less-v5-alpha-readiness.md): the current-alpha readiness gate.
 - [design/REMOTE-IMPORTS-NETWORK-POLICY.md](design/REMOTE-IMPORTS-NETWORK-POLICY.md): METHOD OF RECORD for remote (network) `@import` — the opt-in `@jesscss/plugin-remote-import`, its allow-list / https / redirect / private-address / size-and-time policy, the owner rulings it applies, and the Deno `--allow-net` denial proof.
+- [design/DENO-SANDBOX-COMPILE.md](design/DENO-SANDBOX-COMPILE.md): METHOD OF RECORD for where stylesheet JavaScript runs — the routing rule (a compile that reaches a script boundary runs whole in Deno, otherwise in Node), one Deno process and one message per render, how plugins and functions cross (module identity, source), Deno's native permission flags with the measured symlink behaviour, and the open trust decisions (§8). Supersedes the broker parts of `architecture/js-execution-deno-spec.md`.
 
 ## Keeping this map honest
 
