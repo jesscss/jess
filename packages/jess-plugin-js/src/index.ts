@@ -509,7 +509,13 @@ export class JsPlugin extends AbstractPlugin {
       args,
       {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: sanitizeSpawnEnv(process.env)
+
+        /*
+         * Deno keeps the web Cache API (`caches`) on disk by default, keyed by
+         * the main module, which every engine shares: without write permission
+         * a script could store data a later render, of any project, reads back.
+         */
+        env: { ...sanitizeSpawnEnv(process.env), DENO_CACHE_DB_MODE: 'memory' }
       }
     );
     this.worker = child;

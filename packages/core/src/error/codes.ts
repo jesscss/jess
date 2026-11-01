@@ -54,6 +54,8 @@ export type JessErrorCode =
   | 'eval/uncalled-mixin-reference'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
+  | 'eval/export-not-a-value'
+  | 'eval/export-not-top-level'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -367,6 +369,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Type mismatch',
       reason: '${callee} expects ${expected}, got ${got}.',
       fix: 'Pass a ${expected}; convert or choose a compatible value.'
+    }
+  ],
+  [
+    'eval/export-not-a-value',
+    {
+      summary: 'Exported variable read outside a CSS value',
+      reason: '${symbol} is exported, so a CSS value that reads it becomes var(--${name}, …); here it is read ${where}.',
+      fix: 'Read a variable that is not exported here, or stop exporting ${symbol}.'
+    }
+  ],
+  [
+    'eval/export-not-top-level',
+    {
+      summary: '@export is only allowed at the top level of a stylesheet',
+      reason: 'An @export is written inside a ruleset, at-rule, mixin, guard or loop body; it publishes a variable of the stylesheet, at its top level.',
+      fix: 'Move the @export to the top level of the stylesheet.'
     }
   ],
   [
