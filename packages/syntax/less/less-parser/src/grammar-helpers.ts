@@ -2768,17 +2768,6 @@ function isFor(value: unknown): value is For {
     && 'binding' in value;
 }
 
-function requireRulesetBody(children: readonly unknown[]): Statement[] {
-  const statements: Statement[] = [];
-  for (const child of children) {
-    if (!isStatement(child)) {
-      throw new TypeError('Less grammar produced a non-ruleset-body child.');
-    }
-    statements.push(child);
-  }
-  return statements;
-}
-
 /**
  * A `<general-enclosed>` group from its `Enclosed` content: a call when it has a
  * name, else a paren block. It records its source bytes, as the css base's does,
@@ -3191,7 +3180,6 @@ export {
   referenceCallTailFact,
   referenceDotTailFact,
   requireReferenceTailFact,
-  requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   rulesetExtensions,

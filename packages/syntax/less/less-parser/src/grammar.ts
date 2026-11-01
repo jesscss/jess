@@ -131,7 +131,6 @@ import {
   referenceBracketTailFact,
   referenceCallTailFact,
   referenceDotTailFact,
-  requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   rulesetExtensions,
@@ -3827,8 +3826,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )
     ),
     /* The body span, inside the callback's own braces, is where its comments are. */
-    (children, _fields, _span, rawChildren): LessEachCallback => {
-      const bodySpan = bodySpanFromRaw(rawChildren);
+    (children): LessEachCallback => {
+      const bodySpan = bodySpanFromRaw(children);
       const extensions = bodyExtensionsOf(children);
       const statements = (from: number): Statement[] => requireCallbackStatements(
         extensions.length === 0 ? children.slice(from, -1) : children.slice(from, -1).filter(child => !isBodyExtendFact(child))
@@ -4040,7 +4039,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => withSourceSpan(
+    (children, _fields, span) => withSourceSpan(
       withBlockBody(
         atRuleBlock(
           requireToken(children[0]).value,
@@ -4050,7 +4049,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           children.filter(isStatement).filter(statement => statement !== children[1]),
           bodyExtensionsOf(children)
         ),
-        rawChildren
+        children
       ),
       span
     )
@@ -4473,14 +4472,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}')
     ),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span) => {
       const selectors = children.filter(isSimpleSelector)
         .map(selector => selector);
       if (selectors.length === 0) {
         throw new TypeError('Less keyframe block requires a selector.');
       }
       return withSourceSpan(
-        withBlockBody(rule(selist(...selectors), children.filter(isStatement)), rawChildren),
+        withBlockBody(rule(selist(...selectors), children.filter(isStatement)), children),
         span
       );
     }
@@ -4497,7 +4496,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       many(choice(g.ReferenceCall, g.KeyframeBlock)),
       literal('}')
     ),
-    (children, fields, span, rawChildren) => {
+    (children, fields, span) => {
       // The keyframes body may itself contain Reference values. Select header
       // facts only from the grammar region before `{`, rather than filtering
       // every value-shaped child in the whole production.
@@ -4516,7 +4515,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           preludeParts.length === 1 ? preludeParts[0]! : spaced(preludeParts),
           children.filter(isStatement)
         ),
-        rawChildren
+        children
       ), span);
     }
   );
@@ -4744,14 +4743,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         genericAtRuleBlockTail
       )
     ),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span) => {
       const prelude = children.find(isValueNode) ?? null;
       // A FunctionCall is a legal statement *and* a legal generic prelude
       // component. Exclude the exact selected prelude object rather than
       // reclassifying it through text or weakening the statement grammar.
       const body = children.filter(isStatement).filter(statement => statement !== prelude);
       return withSourceSpan(
-        withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), rawChildren),
+        withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), children),
         span
       );
     }
@@ -5757,7 +5756,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const RulesetWithExtends = node(
     'Ruleset',
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
@@ -5765,31 +5764,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
           // the braces. This validates that fact list; it never reparses body text.
-          requireRulesetBody(children.filter(isStatement)),
+          children.filter(isStatement),
           extensions,
           children.find(isMixinGuard)
         ),
-        rawChildren
+        children
       );
-      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
+      return hasRulesetTerminator(children) ? withSourceSpan(node, span) : node;
     }
   );
   const NestedRulesetWithExtends = node(
     'Ruleset',
     sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
       const node = withBlockBody(
         rule(
           selectorFact.selector,
-          requireRulesetBody(children.filter(isStatement)),
+          children.filter(isStatement),
           extensions,
           children.find(isMixinGuard)
         ),
-        rawChildren
+        children
       );
-      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
+      return hasRulesetTerminator(children) ? withSourceSpan(node, span) : node;
     }
   );
   /**
@@ -5811,8 +5810,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     )),
-    (children, _fields, _span, rawChildren) => {
-      const bodySpan = bodySpanFromRaw(rawChildren);
+    (children) => {
+      const bodySpan = bodySpanFromRaw(children);
       return {
         params: [],
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
@@ -5873,7 +5872,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, _span, rawChildren): RulesetTailFact => {
+    (children): RulesetTailFact => {
       /* One pass reads the children; the fact has one shape, its absent parts `undefined`. */
       const firstExtensions: ExtendTargetFact[] = [];
       const branches: SelectorBranchFact[] = [];
@@ -5900,12 +5899,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return {
         firstExtensions,
         branches,
-        selectorEnd: requiredTokenStart(rawChildren, '{'),
+        selectorEnd: requiredTokenStart(children, '{'),
         guard,
         rules,
         extensions: bodyExtensionsOf(children),
-        bodySpan: bodySpanFromRaw(rawChildren),
-        terminated: hasRulesetTerminator(rawChildren)
+        bodySpan: bodySpanFromRaw(children),
+        terminated: hasRulesetTerminator(children)
       };
     }
   );
