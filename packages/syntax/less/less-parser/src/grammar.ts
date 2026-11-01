@@ -5753,9 +5753,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span) => selectorListWithExtendsFrom(children, span)
   );
+  /**
+   * A statement-position rule. It is tried before the declaration (ledger P44),
+   * and a glued `<ident>:` head reads as both up to a point no token decides
+   * (`b:f(@c);` against `b:f(c) {}`). A committed failure in the selector list,
+   * such as a pseudo `dispatch()` arm whose argument is not a pseudo argument
+   * (`darken(@c`, `f()`), would stop the statement choice before the
+   * declaration arm. The selector list's commitment is contained, so it fails
+   * at the statement start and the declaration arm reads `color:darken(@c)`.
+   * This rule contains nothing after its `{`; a nested rule in the body
+   * contains its own selector list the same way.
+   */
   const RulesetWithExtends = node(
     'Ruleset',
-    sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    sequence(
+      attempt(selectorListWithExtends, { contain: true }),
+      optional(g.MixinGuard),
+      literal('{'),
+      blockBody,
+      optional(g.Call),
+      literal('}'),
+      optional(literal(';'))
+    ),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
@@ -5775,7 +5794,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const NestedRulesetWithExtends = node(
     'Ruleset',
-    sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    // The nested twin of `RulesetWithExtends`, its selector list contained the same way.
+    sequence(
+      attempt(relativeSelectorListWithExtends, { contain: true }),
+      optional(g.MixinGuard),
+      literal('{'),
+      blockBody,
+      optional(g.Call),
+      literal('}'),
+      optional(literal(';'))
+    ),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const extensions = rulesetExtensions(selectorFact.extensions, bodyExtensionsOf(children));
