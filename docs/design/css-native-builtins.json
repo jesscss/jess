@@ -279,7 +279,6 @@
       "class": "exact-if",
       "css": "calc(N * 100%)",
       "spec": "css-values-4 §10.9",
-      "blockedOn": "Q3",
       "notes": "N a <number>"
     },
     {
@@ -294,7 +293,6 @@
       "class": "exact-if",
       "css": "round(up, N, 1)",
       "spec": "css-values-4 §10.3",
-      "blockedOn": "Q3",
       "notes": "N a <number>; a dimension needs B in N's unit, unknown for a deferred N"
     },
     {
@@ -302,8 +300,7 @@
       "name": "floor",
       "class": "exact-if",
       "css": "round(down, N, 1)",
-      "spec": "css-values-4 §10.3",
-      "blockedOn": "Q3"
+      "spec": "css-values-4 §10.3"
     },
     {
       "dialect": "less",
@@ -311,7 +308,6 @@
       "class": "exact-if",
       "css": "calc(sign(N) * round(abs(N), 10^-P))",
       "spec": "css-values-4 §10.3, §10.6",
-      "blockedOn": "Q4",
       "notes": "Less P is decimal places, CSS B is a step; CSS nearest breaks ties toward +infinity, Less (V8) away from zero, hence sign/abs. Today round(var(--x), 2) prints a CSS call with the step meaning; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
     },
     {
@@ -320,7 +316,6 @@
       "class": "exact-if",
       "css": "rem(N, B)",
       "spec": "css-values-4 §10.3",
-      "blockedOn": "Q4",
       "notes": "Less mod is JS %, sign of the dividend = CSS rem(); CSS mod() takes the divisor's sign. Both arguments must share a type in CSS"
     },
     {
@@ -401,7 +396,6 @@
       "class": "exact-if",
       "css": "calc(N * 1U)",
       "spec": "css-values-4 §10.9",
-      "blockedOn": "Q3",
       "notes": "N a <number>; replacing or stripping a known unit is calc(N / 1<from> * 1U) by typed arithmetic"
     },
     {
@@ -614,16 +608,14 @@
       "name": "ceil",
       "class": "exact-if",
       "css": "round(up, N, 1)",
-      "spec": "css-values-4 §10.3",
-      "blockedOn": "Q3"
+      "spec": "css-values-4 §10.3"
     },
     {
       "dialect": "scss",
       "name": "floor",
       "class": "exact-if",
       "css": "round(down, N, 1)",
-      "spec": "css-values-4 §10.3",
-      "blockedOn": "Q3"
+      "spec": "css-values-4 §10.3"
     },
     {
       "dialect": "scss",
@@ -631,7 +623,6 @@
       "class": "exact-if",
       "css": "calc(sign(N) * round(abs(N), B))",
       "spec": "css-values-4 §10.3, §10.6",
-      "blockedOn": "Q4",
       "notes": "Sass B is a step, as in CSS; only the tie direction differs; and N is not a decimal tie: the compile rounds round(1.005, 2) in base 10 to 1.01, browser floats give 1 (V8 open sub-question)"
     },
     {
@@ -657,8 +648,7 @@
       "name": "percentage",
       "class": "exact-if",
       "css": "calc(N * 100%)",
-      "spec": "css-values-4 §10.9",
-      "blockedOn": "Q3"
+      "spec": "css-values-4 §10.9"
     },
     {
       "dialect": "scss",

@@ -221,8 +221,8 @@ walk it to find every `var()` a value depends on.
 
 A built-in call fails, as today (`functionMode`, C17), only when an argument's
 type is **known** and wrong (`darken(10px, 10%)`), or when the built-in has no
-CSS form and an input is unknown (`lightness(var(--x))`, `argb()`). Q6 (an
-unknown function such as `foo(1)` as an input) is open.
+CSS form and an input is unknown (`lightness(var(--x))`, `argb()`). An unknown
+function as an input (`darken(foo(1), 10%)`) maps like any other (Q6, ruled).
 
 ### 3.7 Scope by dialect
 
@@ -262,10 +262,10 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | --- | --- | --- |
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
 | 1 | The IR alone: `Call` and `Operation` value kinds, built where evaluation now writes text (`fallbackCall`, `keptMath`), one output emitter. No output change: every authored call and every kept operation prints the same bytes, proven on the full corpus. `perf-architecture-reviewer` on the new kinds. | — |
-| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q2, Q6, Q7, Q8, Q9, Q10, Q12 |
+| 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | Q8, Q9, Q12 |
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
-| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | Q3, Q4, sugar reading of operators |
+| 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | Q8 |
 | 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`. | Q11 |
 | 7 | `contrast()` → `contrast-color()`. | Q13 |
 | 8 | Sass colour/math rows. | slices 2–6 |
@@ -289,18 +289,18 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   corpus every `mix`/`tint`/`shade`/`average` call mixes opaque colours or
   `transparent`, where the two rules agree; slice 5 measures this. Weights
   outside 0–100% are Q11.
-- **Q2 — a deferred amount.** `darken(@c, var(--a))` needs the amount as a
+- **Q2 — a deferred amount.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** `darken(@c, var(--a))` needs the amount as a
   percentage (`l - var(--a) / 1%`); `spin(@c, var(--a))` needs a number. Assume
   the documented spelling (percentage for the HSL/alpha amounts, degrees as a
   number for `spin`)? Recommendation: yes; any other spelling is invalid at
   computed-value time, where today's output is invalid at every input.
-- **Q3 — math on a deferred input of unknown type.** `ceil(var(--x))` →
+- **Q3 — math on a deferred input of unknown type.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** `ceil(var(--x))` →
   `round(up, var(--x), 1)`, valid only when `--x` holds a number (a length
   needs `1px`, and its unit is unknown). Print the number form? Recommendation:
   yes. Any declaration containing `var()` is already invalid only at
   computed-value time, so this is never worse than today.
 - **Q4 — `round()` and `mod()` share a name with CSS functions that mean
-  something else.** Print the Less meaning (`calc(sign(x) * round(abs(x),
+  something else.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** Print the Less meaning (`calc(sign(x) * round(abs(x),
   0.01))`, `rem()`)? This changes output that today is valid CSS with the wrong
   meaning. `sign()`/`abs()` are Baseline 2025; `round(x, 0.01)` alone differs
   only on negative exact ties. Recommendation: yes, with `sign()`/`abs()`.
@@ -309,11 +309,11 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   answered *"Sass would be teh same way"*, and gave the reason: *"Because our
   Sass we call Sass+, not canonical Sass"*. So `.scss` `lighten(var(--x), 10%)`
   prints the CSS form, as `.less` does.
-- **Q6 — unknown functions as inputs.** Should `darken(foo(1), 10%)` print
+- **Q6 — unknown functions as inputs.** **Ruled against the recommendation, owner 2026-11-01 (sugar framing, below): `darken(foo(1), 10%)` prints `hsl(from foo(1) h s clamp(0, l - 10, 100))`.** Should `darken(foo(1), 10%)` print
   `hsl(from foo(1) …)` (forward-compatible with a future CSS colour function),
   or stay as written? Recommendation: stay as written; only the inputs listed
   in §3.6.
-- **Q7 — imported built-ins.** `@less.darken(var(--x), 10%)` (and `.jess`
+- **Q7 — imported built-ins.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** `@less.darken(var(--x), 10%)` (and `.jess`
   `$darken`) stops being a compile error and prints the CSS form. Confirm.
   ("No" breaks the `.less → .jess` round trip for legacy `.less`, §3.7.)
 - **Q8 — fixtures whose output moves** (all print as-written today):
@@ -334,7 +334,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   follow the browser (`saturate`/`spin` of such a colour change output), or
   keep the authored hue and accept that known and deferred inputs differ here?
   Recommendation: follow the browser, after counting the fixtures that move.
-- **Q10 — type tests on a deferred colour.** Is `iscolor(darken(var(--x),
+- **Q10 — type tests on a deferred colour.** **Ruled as recommended, owner 2026-11-01 (sugar framing, below).** Is `iscolor(darken(var(--x),
   10%))` true (it is a colour the browser computes) or false, as
   `iscolor(var(--x))` is today? Recommendation: true for a deferred built-in
   result, unchanged for a bare `var()`.
@@ -370,7 +370,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   being the only exception; this moves some of the 19 `contrast()` cases in
   `tests-unit/functions/functions.less` (to be counted).
 
-### The owner's framing (2026-11-01), readings not yet confirmed
+### The owner's framing (2026-11-01): built-ins are sugar for CSS
 
 The owner, verbatim: *"I think what we would do is actually reframe a lot of
 Jess's functions and expressions as "syntactic sugar" for specific CSS
@@ -378,12 +378,18 @@ functions (and/or calc()), detail how those are mapped, and say that are simply
 pre-calculated when we can. Therefore, no, a var() in many cases would no
 longer error, as the function is just sugar-mapping and calculating-when-available."*
 
-Under that framing the inventory is the mapping table, and the readings below
-were put to the owner. They are not confirmed, and nothing here builds on them:
-Q2, Q3, Q4, Q7, Q8 and Q10 as recommended; Q6 reversed (`darken(foo(1), 10%)`
-maps to `hsl(from foo(1) …)`; only a known wrong type fails); and math
-operators are included (`(var(--a) * 2)`, today the compile error
-`eval/invalid-operand` (V36), becomes `calc(var(--a) * 2)`).
+So each built-in (and each math operator) is a documented mapping to a CSS
+function or `calc()`, precomputed when every input is known; the inventory is
+the mapping table. Its consequences were put to the owner as one list, and the
+owner answered *"yes that's what i meant"*:
+
+- Q2, Q3, Q4, Q7 and Q10 as recommended;
+- Q6 reversed: a built-in maps whatever it is given, so `darken(foo(1), 10%)`
+  prints the CSS form; it fails only for an input whose type is **known** to
+  be wrong (`darken(10px, 10%)`), or for a built-in with no CSS form given an
+  unknown input (`lightness(var(--x))`, `argb()`);
+- math operators are sugar for `calc()`: `(var(--a) * 2)`, today the compile
+  error `eval/invalid-operand` (V36), becomes `calc(var(--a) * 2)`.
 
 Not verified in this pass: browser support for relative colour syntax and for
 typed arithmetic (`var(--a) / 1%`); the css-color-5 serialization of a relative
