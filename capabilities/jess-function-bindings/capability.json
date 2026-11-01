@@ -35,7 +35,8 @@
       "packages/fns/src/less/registry.ts",
       "packages/fns/src/sass/registry.ts",
       "packages/syntax/less/jess-plugin-less/src/index.ts",
-      "packages/syntax/scss/jess-plugin-scss/src/index.ts"
+      "packages/syntax/scss/jess-plugin-scss/src/index.ts",
+      "packages/syntax/scss/jess-plugin-scss/src/provided-modules.ts"
     ]
   },
   "consumers": [

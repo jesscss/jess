@@ -1,8 +1,8 @@
 import type { EmitJessOptions } from '@jesscss/core';
 import { sassExportNames } from '@jesscss/fns/sass/registry';
+import { SASS_MODULE } from './provided-modules.js';
 
-/** The plugin's private specifier for the Sass built-in module `@jesscss/fns/sass`. */
-export const SASS_MODULE = '#sass';
+export { SASS_MODULE };
 
 /**
  * The Sass global built-ins as a converted `.jess` file reaches them
