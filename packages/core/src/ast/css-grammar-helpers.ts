@@ -1644,11 +1644,12 @@ export function isExtendInstruction(value: unknown): value is ExtendInstruction 
     && typeof value.partial === 'boolean';
 }
 
+/** The child as a token. Callers read its `value`, so it is not copied. */
 export function requireToken(value: unknown, dialect: string): Token {
   if (!isToken(value)) {
     throw new TypeError(`${dialect} grammar produced a non-token child.`);
   }
-  return { value: value.value };
+  return value;
 }
 
 export function requireString(value: unknown, dialect: string): string {

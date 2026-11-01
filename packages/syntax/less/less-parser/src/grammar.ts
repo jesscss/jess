@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermFromTokens, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -146,7 +146,6 @@ import {
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
-  lessSelectorTermFromTokens,
   staticNonSelectorPseudoFrom,
   staticSelectorPseudoFrom,
   staticText,
@@ -5070,7 +5069,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, g.PseudoSelector, g.NthPseudoSelector, g.AttributeSelector))
     ),
-    children => lessSelectorTermFromTokens(children.map((child) => {
+    children => selectorTermFromTokens(children.map((child) => {
       return isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5541,7 +5540,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ClassIdCompound = node(
     'CompoundSelector',
     parser({ trivia: compoundSelectorTrivia }, sequence(mixinName, many(compoundSimple))),
-    children => lessSelectorTermFromTokens(children.map((child) => {
+    children => selectorTermFromTokens(children.map((child) => {
       return isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5569,7 +5568,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
       const simples = children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
-      return lessSelectorTermFromTokens(simples);
+      return selectorTermFromTokens(simples);
     }
   );
   const ComplexSelector = node(
@@ -5607,7 +5606,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, pseudo, g.NthPseudoSelector, g.AttributeSelector))
     ),
-    children => lessSelectorTermFromTokens(children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+    children => selectorTermFromTokens(children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const InlineExtendSubjectComplexTail = node(
     'InlineExtendSubjectComplexTail',

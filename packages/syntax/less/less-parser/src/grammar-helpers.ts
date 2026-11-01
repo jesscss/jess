@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { callArgumentSource, expressionWroteParens } from './mixin-reference-source.js';
 import { flattenRuns, groupContent, holdsDelimRun, isComparisonOperator } from './delim-runs.js';
 import { cssConditionRun, cssGroup, cssNegation, cssOperand, withCss } from './css-if-condition.js';
-import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, inParens, isIfTestCall, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selist, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { mixinListProblems, type MixinListItemShape } from './mixin-list.js';
 import { LESS_NODE_TRIVIA_STRIDE, hasTriviaAtInsertIndex, lessTriviaEntryCount, lessTriviaEntryInsertIndex, rawLeafText, separatorRawIndexes, separatorWithSurroundingTrivia, sourceFromState, triviaTextAtInsertIndex } from './trivia-layout.js';
@@ -141,11 +141,12 @@ type VariableNameFact = {
   readonly variableName: string;
   readonly variableNameSource: string;
 };
+/** The child as a token. Callers read its `value`, so it is not copied. */
 function requireToken(value: unknown): Token {
-  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
+  if (!isToken(value)) {
     throw new TypeError('Less grammar produced a non-token child.');
   }
-  return { value: value.value };
+  return value;
 }
 
 function functionNameFromOpener(value: unknown): string {
@@ -1651,9 +1652,6 @@ function isLessSimpleToken(value: unknown): value is SimpleToken {
     && 'type' in value
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
-
-const lessSelectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
-  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function pseudoNameFromHead(head: string): string {
   return head.slice(0, 2) === '::'
@@ -3208,7 +3206,6 @@ export {
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
-  lessSelectorTermFromTokens,
   separatorRawIndexes,
   separatorWithSurroundingTrivia,
   separatorsFromFields,
