@@ -9,7 +9,7 @@
 import type {
   Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, KeywordCall, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
-import { colorRgb, colorSourceRgb, hslToRgb, rgbToHsl, serializeColor } from './color.js';
+import { colorRgb, colorSourceRgb, HSL, hslToRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 
 /** A writable view of a value object, so a constructor can stamp `bytes` in place. */
@@ -125,9 +125,12 @@ export function makeColorHsl(
   alpha: number,
   format: number,
   modernSyntax?: boolean,
-  opts?: { hueUnit?: string; alphaPct?: number }
+  opts?: { hueUnit?: string; alphaPct?: number; src?: string }
 ): Color {
   const c: Mutable<Color> = { type: 'Color', rgb: hslToRgb(hsl[0], hsl[1], hsl[2]), alpha, hsl, format, bytes: '' };
+  if (opts?.src !== undefined) {
+    c.src = opts.src;
+  }
   if (modernSyntax) {
     c.modernSyntax = true;
   }
@@ -139,6 +142,25 @@ export function makeColorHsl(
   }
   c.bytes = serializeColor(c);
   return c;
+}
+
+/**
+ * An `hsl()` colour (h in degrees, s and l on 0–1). A grey, black or white
+ * (`s === 0 || l === 0 || l === 1`) has no hue or saturation to carry, so it is
+ * built from its rgb: its hue reads as 0, as in the browser (css-color-4
+ * §4.4.1), and the authored hue unit goes with it. `src` is the colour's
+ * spelling while no operation has consumed it.
+ */
+export function makeHslColor(
+  hsl: readonly [number, number, number],
+  alpha: number,
+  modernSyntax: boolean,
+  opts?: { hueUnit?: string; alphaPct?: number; src?: string }
+): Color {
+  const [h, s, l] = hsl;
+  return s === 0 || l === 0 || l === 1
+    ? makeColorRgb(hslToRgb(h, s, l), alpha, HSL, { modernSyntax, ...(opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {}), ...(opts?.src !== undefined ? { src: opts.src } : {}) })
+    : makeColorHsl(hsl, alpha, HSL, modernSyntax, opts);
 }
 
 export function makeQuoted(value: string, quote: string, escaped: boolean): Quoted {
