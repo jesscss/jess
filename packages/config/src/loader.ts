@@ -10,7 +10,14 @@ export interface LoadedConfigMeta {
 
   /** What the file at `configFilePath` sets by itself, before the configs above it merge in. */
   ownConfig?: StylesConfig;
+
+  /** Every config file merged, nearest first. */
+  configFilePaths?: string[];
 }
+
+/** Whether `dir` is a package root, where a search stops (it has a `package.json` or `package.yaml`). */
+export const isPackageRoot = (dir: string): boolean =>
+  ['package.json', 'package.yaml'].some(name => fs.existsSync(path.join(dir, name)));
 
 /**
  * A search finds the nearest `styles.config.*`: in the start folder, else the
@@ -51,8 +58,7 @@ const explorerSync = cosmiconfigSync('styles', explorerOptions);
 function searchAbove({ filepath }: { filepath: string }): string | undefined {
   const dir = path.dirname(filepath);
   const parent = path.dirname(dir);
-  const packageRoot = ['package.json', 'package.yaml'].some(name => fs.existsSync(path.join(dir, name)));
-  return parent === dir || packageRoot ? undefined : parent;
+  return parent === dir || isPackageRoot(dir) ? undefined : parent;
 }
 
 /** The configs found, nearest first, merged: the nearest wins setting by setting ({@link mergeConfigs}). */
@@ -61,7 +67,8 @@ function mergeFound(found: ReadonlyArray<{ config: unknown; filepath: string }>)
   return {
     config: configs.reduceRight<StylesConfig>((merged, config) => mergeConfigs(merged, config), {}),
     configFilePath: found[0]?.filepath,
-    ownConfig: configs[0] ?? {}
+    ownConfig: configs[0] ?? {},
+    configFilePaths: found.map(result => result.filepath)
   };
 }
 
