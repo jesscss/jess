@@ -286,6 +286,34 @@ export const encodeEngineValue = (value: unknown, where: string): unknown => {
   throw new EngineOptionError(where, `is an instance of ${name} that does not record the factory that made it. A plugin factory records it with \`recordPluginModule\` from @jesscss/core.`);
 };
 
+/** The `styles.config` settings the host resolved for a render (the compiler's `HostConfigs`). */
+export type HostConfigs = {
+  folders: Record<string, unknown>;
+  searches: Array<{ from: string; to: string; files: string[] }>;
+};
+
+/**
+ * Encodes the host's resolved settings for the engine. A folder whose settings
+ * cannot cross (a plugin that records no factory) is left out: the engine
+ * loads that folder's configs itself, as it does an import's.
+ */
+export const encodeHostConfigs = (configs: HostConfigs | undefined): HostConfigs | undefined => {
+  if (configs === undefined) {
+    return undefined;
+  }
+  const folders: Record<string, unknown> = {};
+  for (const [dir, folder] of Object.entries(configs.folders)) {
+    try {
+      folders[dir] = encodeEngineValue(folder, `the styles.config settings of ${dir}`);
+    } catch (err) {
+      if (!(err instanceof EngineOptionError)) {
+        throw err;
+      }
+    }
+  }
+  return { folders, searches: configs.searches };
+};
+
 /** The environment variables a render reads (`process.env`), sent as data: the sandbox reads no env. */
 const ENGINE_ENV_KEYS = ['JESS_PROFILE', 'JESS_NO_DECLMAP_MEMO', 'NO_COLOR', 'FORCE_COLOR'];
 

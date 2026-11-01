@@ -130,8 +130,19 @@ Nothing crosses as a live object.
   fails with an error that names the variable and the option path, instead of
   resolving it to a global or `undefined`. Functions are rebuilt only inside
   Deno.
-- **Config files** (`styles.config.*`) are loaded by the compile in Deno, as
-  they are found per source file today.
+- **Config settings cross as data.** Owner 2026-11-01: "Host sends config as
+  data". A file's settings are every `styles.config.*` from its folder up to
+  its package root, merged (C19), and the sandbox cannot read a config above
+  its read root. So the host sends the settings it resolved for the entry's
+  folder with the render, and the engine uses them for every file in that
+  folder; it never reads a config file for them.
+- **A config only the engine would need fails loudly.** For a file in another
+  folder (an import only the render finds), the engine loads that folder's
+  configs itself. If that search would leave the read root before its
+  package root, and the host's own searches show a config there, or the host
+  never searched there, the render fails with `config/outside-read-root`,
+  naming the config. It never renders without it. Setting `jsReadRoot` to a
+  folder that contains the config makes it readable.
 
 Each plugin factory records its module identity on the instances it makes
 (§8.4). A plugin instance without one cannot cross, and a sandboxed render that
