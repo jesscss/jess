@@ -17,6 +17,7 @@ export type {
   Color,
   Quoted,
   Keyword,
+  KeywordCall,
   Any,
   UrlValue,
   Bool,

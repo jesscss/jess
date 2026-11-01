@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
 import { parse as parseLess } from '@jesscss/less-parser';
 import { parse as parseScss } from '@jesscss/scss-parser';
+import { jessFunctions } from '@jesscss/plugin-scss';
 import { Compiler } from '../../src/index.js';
 
 /**
@@ -118,7 +119,7 @@ describe('scss: `selector.parse()` reads a selector string', () => {
  */
 describe('scss → jess: `selector.parse()`', () => {
   /* The converter's fact that `selector-parse` is a Sass built-in (`#sass` exports it as `selectorParse`). */
-  const functions = { from: '#sass', names: new Map([['selector-parse', 'selectorParse']]) };
+  const functions = jessFunctions();
 
   it.each(cases)('%s', async (_name, source) => {
     const jess = emitJess(parseScss(source), { functions });
