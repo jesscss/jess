@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { getConfigWithMeta, type ConfigWithMeta } from './config.js';
+import { getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
 import {
   Context,
   type ContextOptions,
@@ -1371,7 +1371,15 @@ export class Compiler {
       prewarm,
       inEngine: () => {
         const [source, request] = this.engineFor(compiler, call);
-        return runInEngine(source, { ...request, method, args: call.engineArgs });
+        const entryDir = call.filePath === undefined ? undefined : path.dirname(path.resolve(call.filePath));
+        return runInEngine(source, {
+          ...request,
+          method,
+          args: call.engineArgs,
+
+          /* The sandbox may not read the configs above its read root; the host sends what it resolved. */
+          configs: hostConfigsFor(entryDir, [entryDir, request.jsReadRoot])
+        });
       }
     });
   }

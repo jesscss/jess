@@ -19,6 +19,8 @@ import {
   engineFailure,
   hostFacts,
   denoRunArgs,
+  encodeHostConfigs,
+  type HostConfigs,
   readSetFor,
   type EngineHostFacts
 } from './engine.js';
@@ -276,6 +278,7 @@ type EngineWireRequest =
     method: EngineRenderRequest['method'];
     args: unknown;
     host: EngineHostFacts;
+    configs: HostConfigs | undefined;
   }
   | {
     type: 'warm';
@@ -903,7 +906,8 @@ export class JsPlugin extends AbstractPlugin {
       compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
       method: request.method,
       args: encodeEngineValue(request.args, 'render arguments'),
-      host: hostFacts(code)
+      host: hostFacts(code),
+      configs: encodeHostConfigs(request.configs)
     });
     if (result.stderr) {
       process.stderr.write(result.stderr);
@@ -992,6 +996,9 @@ type EngineRequestBase = {
 export type EngineRenderRequest = EngineRequestBase & {
   method: 'render' | 'renderToResult' | 'renderString' | 'safeRender';
   args: readonly unknown[];
+
+  /** The `styles.config` settings the host resolved, sent as data. */
+  configs?: HostConfigs;
 };
 
 /**
