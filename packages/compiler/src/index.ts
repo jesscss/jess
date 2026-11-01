@@ -391,22 +391,6 @@ function getSearchPaths(options: Record<string, unknown>): string[] | undefined 
   return undefined;
 }
 
-const createConsumerRequire = (fromDir?: string) => {
-  const baseDir = fromDir ? path.resolve(fromDir) : process.cwd();
-  return createRequire(path.join(baseDir, '__jess_consumer__.js'));
-};
-
-const resolveFromConsumer = (specifier: string, fromDir?: string): string | undefined => {
-  try {
-    return createConsumerRequire(fromDir).resolve(specifier);
-  } catch (err: unknown) {
-    if (err instanceof Error && 'code' in err && err.code === 'MODULE_NOT_FOUND') {
-      return undefined;
-    }
-    throw err;
-  }
-};
-
 const resolveFromModule = (specifier: string, moduleUrl: string | URL = import.meta.url): string | undefined => {
   try {
     return createRequire(moduleUrl).resolve(specifier);
@@ -418,11 +402,7 @@ const resolveFromModule = (specifier: string, moduleUrl: string | URL = import.m
   }
 };
 
-const resolvePackageImportEntry = (
-  specifier: string,
-  fromDir?: string,
-  moduleUrl?: string | URL
-): string | undefined => {
+const resolvePackageImportEntry = (specifier: string, moduleUrl: string | URL): string | undefined => {
   const resolvePackageJson = (requireFrom: NodeRequire) => {
     try {
       return requireFrom.resolve(`${specifier}/package.json`);
@@ -433,9 +413,7 @@ const resolvePackageImportEntry = (
       throw err;
     }
   };
-  const packageJsonPath = resolvePackageJson(createConsumerRequire(fromDir))
-    ?? (moduleUrl === undefined ? undefined : resolvePackageJson(createRequire(moduleUrl)))
-    ?? resolvePackageJson(createRequire(import.meta.url));
+  const packageJsonPath = resolvePackageJson(createRequire(moduleUrl));
   if (!packageJsonPath) {
     return undefined;
   }
@@ -772,16 +750,22 @@ export class Compiler {
   }
 
   private getJsPluginFactory(
-    jsConfig: JsPluginConfig,
-    resolutionBaseDir?: string
+    jsConfig: JsPluginConfig
   ): { key: PluginFactoryCacheKey; factoryPromise: Promise<PluginFactoryRecord>; resolvedSpecifier: string } | undefined {
     const specifier = this.scriptPluginSpecifier;
     if (!specifier) {
       return undefined;
     }
-    const resolvedSpecifier = resolvePackageImportEntry(specifier, resolutionBaseDir, this.hooks.scriptPluginResolveFrom)
-      ?? resolveFromConsumer(specifier, resolutionBaseDir)
-      ?? resolveFromModule(specifier, this.hooks.scriptPluginResolveFrom);
+
+    /*
+     * The script plugin IS the sandbox, so it comes from where the compiler is
+     * installed, never from the stylesheet's folder: a `node_modules` there
+     * belongs to the code being compiled, whose scripts run sandboxed
+     * (ledger A19), and one that shipped its own `@jesscss/plugin-js` would
+     * run in this process.
+     */
+    const from = this.hooks.scriptPluginResolveFrom ?? import.meta.url;
+    const resolvedSpecifier = resolvePackageImportEntry(specifier, from) ?? resolveFromModule(specifier, from);
     if (!resolvedSpecifier) {
       return undefined;
     }
@@ -816,11 +800,8 @@ export class Compiler {
     };
   }
 
-  private createJsPluginProxy(
-    jsConfig: JsPluginConfig,
-    resolutionBaseDir?: string
-  ): LazyPluginInterface | undefined {
-    const factoryRecord = this.getJsPluginFactory(jsConfig, resolutionBaseDir);
+  private createJsPluginProxy(jsConfig: JsPluginConfig): LazyPluginInterface | undefined {
+    const factoryRecord = this.getJsPluginFactory(jsConfig);
     if (!factoryRecord) {
       return undefined;
     }
@@ -899,7 +880,7 @@ export class Compiler {
         if (typeof plugin === 'string') {
           const scriptPluginSpecifier = this.scriptPluginSpecifier;
           if (scriptPluginSpecifier && plugin === scriptPluginSpecifier) {
-            const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig, resolutionBaseDir);
+            const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig);
             if (jsPlugin) {
               pluginMap.set(jsPlugin.name, jsPlugin);
             }
@@ -913,16 +894,6 @@ export class Compiler {
         }
         const normalized = this.hooks.normalizeConfiguredPlugin?.(plugin, pluginContext) ?? plugin;
         pluginMap.set(normalized.name, normalized);
-      }
-    }
-
-    const scriptPluginSpecifier = this.scriptPluginSpecifier;
-    if (scriptPluginSpecifier && pluginMap.has('js')) {
-      try {
-        const consumerRequire = createConsumerRequire(resolutionBaseDir);
-        consumerRequire(scriptPluginSpecifier);
-      } catch {
-        // optional: script plugin may be missing; script imports throw at runtime if used
       }
     }
 
@@ -994,12 +965,11 @@ export class Compiler {
      * `loadPluginForExtension` (if any) still wins.
      */
     const userLoadPluginForExtension = contextOptions.loadPluginForExtension;
-    const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
     const autoWireJsPlugin = (extension: string): PluginInterface | undefined => {
       if (!this.scriptPluginSpecifier) {
         return undefined;
       }
-      const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig, resolutionBaseDir);
+      const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig);
       if (jsPlugin?.supportedExtensions?.includes(extension)) {
         return jsPlugin;
       }
@@ -1387,10 +1357,7 @@ export class Compiler {
       configured: resolved.effectiveConfig.compile?.plugins?.filter(isPluginInterface) ?? [],
       engines: this.engines,
       label: this.scriptPluginSpecifier ?? 'the configured script plugin',
-      factory: () => this.getJsPluginFactory(
-        resolved.jsPluginConfig,
-        getConsumerResolutionBaseDir(call.filePath, resolved.configFilePath)
-      )
+      factory: () => this.getJsPluginFactory(resolved.jsPluginConfig)
     }, { compiler, compilerOptions: this.opts, filePath: call.filePath, jsReadRoot: resolved.jsPluginConfig.jsReadRoot }];
   }
 
