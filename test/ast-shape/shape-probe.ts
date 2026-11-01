@@ -163,8 +163,8 @@ export const SHAPE_DEBT_ALLOWLIST: Readonly<Record<string, readonly string[]>> =
 
   // TODO(shape-debt): Ruleset omits `extendInstructions` unless the rule carries
   // an inline `:extend()` / `&:extend()`. `rule()` in ast/nodes.ts has TWO
-  // independent conditional spreads (`extendInstructions`, `guard`), so it can
-  // author FOUR arms; this corpus realizes two. The other two are unreachable
+  // independent optional fields (`extendInstructions`, `guard`), one literal per
+  // combination, so it authors FOUR arms; this corpus realizes two. The other two are unreachable
   // here only because no source combines a guard with a ruleset.
   Ruleset: [
     'type,selector,rules,_s,_e,_bs,_be',
