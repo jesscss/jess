@@ -41,51 +41,51 @@ afterEach(() => {
 });
 
 describe('the read root of a sandboxed render', () => {
-  it('is the folder holding a plain node_modules', () => {
+  it('is the folder holding a plain node_modules', async () => {
     const project = tmp();
     write(path.join(project, 'node_modules/pkg/package.json'), '{}');
     const styles = path.join(project, 'src/styles');
     fs.mkdirSync(styles, { recursive: true });
-    expect(readRootsOf(styles, styles)).toEqual([project]);
+    expect(await readRootsOf(styles, styles)).toEqual([project]);
   });
 
-  it('follows a pnpm package link to the workspace root its store is in', () => {
+  it('follows a pnpm package link to the workspace root its store is in', async () => {
     const { ws, app } = pnpmWorkspace();
-    expect(governingPackageRoots(app)).toEqual([ws]);
-    expect(readRootsOf(app, app)).toEqual([ws]);
+    expect(await governingPackageRoots(app)).toEqual([ws]);
+    expect(await readRootsOf(app, app)).toEqual([ws]);
   });
 
-  it('is not widened by a stray node_modules above a project that has its own', () => {
+  it('is not widened by a stray node_modules above a project that has its own', async () => {
     const home = tmp();
     write(path.join(home, 'node_modules/stray/package.json'), '{}');
     const project = path.join(home, 'project');
     write(path.join(project, 'node_modules/pkg/package.json'), '{}');
     write(path.join(project, 'main.less'));
-    expect(readRootsOf(project, project)).toEqual([project]);
+    expect(await readRootsOf(project, project)).toEqual([project]);
   });
 
-  it('takes nothing from a linked package whose real path is in no node_modules', () => {
+  it('takes nothing from a linked package whose real path is in no node_modules', async () => {
     const base = tmp();
     const checkout = path.join(base, 'checkout/pkg');
     write(path.join(checkout, 'package.json'), '{}');
     const project = path.join(base, 'project');
     fs.mkdirSync(path.join(project, 'node_modules'), { recursive: true });
     fs.symlinkSync(checkout, path.join(project, 'node_modules/linked'));
-    expect(governingPackageRoots(project)).toEqual([]);
-    expect(readRootsOf(project, project)).toEqual([project]);
+    expect(await governingPackageRoots(project)).toEqual([]);
+    expect(await readRootsOf(project, project)).toEqual([project]);
   });
 
-  it('keeps an entry beside the folder its packages live in as its own root', () => {
+  it('keeps an entry beside the folder its packages live in as its own root', async () => {
     const { ws } = pnpmWorkspace();
     const elsewhere = tmp();
     fs.symlinkSync(path.join(ws, 'packages/app/node_modules'), path.join(elsewhere, 'node_modules'));
-    expect(readRootsOf(elsewhere, elsewhere)).toEqual([elsewhere, ws]);
+    expect(await readRootsOf(elsewhere, elsewhere)).toEqual([elsewhere, ws]);
   });
 
-  it('lists a root in each spelling the render uses for it', () => {
+  it('lists a root in each spelling the render uses for it', async () => {
     const real = tmp();
     const alias = path.join(tmp(), 'alias');
     fs.symlinkSync(real, alias);
-    expect(readSetFor(alias, alias, [])).toEqual([real, alias]);
+    expect(await readSetFor(alias, alias, [])).toEqual([real, alias]);
   });
 });

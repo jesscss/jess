@@ -44,11 +44,16 @@ import {
 import {
   compilerModuleOf,
   fromEngine,
+  packageInstalled,
+  prewarmEngine,
+  prewarmWhenInstalled,
   routeRender,
   runInEngine,
   withColors,
   type CompilerModuleIdentity,
   type EngineCache,
+  type EngineRequest,
+  type EngineSource,
   type EngineMethod,
   type RenderInput,
   type RenderResult,
@@ -1347,32 +1352,45 @@ export class Compiler {
     if (compiler === undefined || this.scriptPluginSpecifier === undefined) {
       return call.here(undefined);
     }
+
+    /*
+     * The first render in this process starts its engine ahead of time, so
+     * Deno starts while the render runs here; if it never reaches a script,
+     * the engine is let go, and no later render starts one ahead of time.
+     * Where the script plugin is not installed, nothing more than an
+     * asynchronous look for it happens.
+     */
+    const specifier = this.scriptPluginSpecifier;
+    const prewarm = () => prewarmWhenInstalled(
+      packageInstalled(specifier, [call.filePath, this.hooks.scriptPluginResolveFrom]),
+      () => prewarmEngine(...this.engineFor(compiler, call))
+    );
     return routeRender({
       ...call,
       entries: this.sandboxedEntries,
-      inEngine: () => this.renderInEngine(compiler, method, call.engineArgs, call.filePath, call.options)
+      prewarm,
+      inEngine: () => {
+        const [source, request] = this.engineFor(compiler, call);
+        return runInEngine(source, { ...request, method, args: call.engineArgs });
+      }
     });
   }
 
-  /** The engine a render runs in: a script plugin configured by instance (with its own options), else one per script-plugin config. */
-  private renderInEngine(
+  /** Where a render's engine comes from, and what decides its read root. */
+  private engineFor(
     compiler: CompilerModuleIdentity,
-    method: EngineMethod,
-    args: readonly unknown[],
-    filePath: string | undefined,
-    options: Partial<ConfigOptions> | undefined
-  ): Promise<unknown> {
-    const resolved = this.resolveEffectiveConfig(filePath, options);
-    return runInEngine({
-      request: { compiler, compilerOptions: this.opts, method, args, filePath, jsReadRoot: resolved.jsPluginConfig.jsReadRoot },
+    call: { filePath: string | undefined; options: Partial<ConfigOptions> | undefined }
+  ): [EngineSource, EngineRequest] {
+    const resolved = this.resolveEffectiveConfig(call.filePath, call.options);
+    return [{
       configured: resolved.effectiveConfig.compile?.plugins?.filter(isPluginInterface) ?? [],
       engines: this.engines,
       label: this.scriptPluginSpecifier ?? 'the configured script plugin',
       factory: () => this.getJsPluginFactory(
         resolved.jsPluginConfig,
-        getConsumerResolutionBaseDir(filePath, resolved.configFilePath)
+        getConsumerResolutionBaseDir(call.filePath, resolved.configFilePath)
       )
-    });
+    }, { compiler, compilerOptions: this.opts, filePath: call.filePath, jsReadRoot: resolved.jsPluginConfig.jsReadRoot }];
   }
 
   async render(filePath: string, options?: Partial<ConfigOptions>): Promise<string> {

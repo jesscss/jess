@@ -288,15 +288,23 @@ function normalizePluginCallArgs(args: readonly unknown[] | unknown): readonly u
   return Array.isArray(args) ? args : [args];
 }
 
-/** One render sent to the compile engine (`engine-runtime.ts`). */
-type EngineWireRequest = {
-  type: 'render';
-  compiler: { module: string; exportName: string };
-  compilerOptions: unknown;
-  method: EngineRenderRequest['method'];
-  args: unknown;
-  host: EngineHostFacts;
-};
+/** One render sent to the compile engine (`engine-runtime.ts`), or the warm-up ahead of one. */
+type EngineWireRequest =
+  | {
+    type: 'render';
+    compiler: { module: string; exportName: string };
+    compilerOptions: unknown;
+    method: EngineRenderRequest['method'];
+    args: unknown;
+    host: EngineHostFacts;
+  }
+  | {
+    type: 'warm';
+    compiler: { module: string; exportName: string };
+    compilerOptions: unknown;
+    extension: string | undefined;
+    host: EngineHostFacts;
+  };
 
 type RpcRequest =
   | ({ id: number } & EngineWireRequest)
@@ -364,6 +372,12 @@ export class JsPlugin extends AbstractPlugin {
 
   /** The `--allow-read` list the next Deno process starts with (set by a render). */
   private nextReadSet: readonly string[] | undefined;
+
+  /** Whether a render ran in this plugin's engine (a prewarmed one that never did is let go). */
+  private engineUsed = false;
+
+  /** Stops the ahead-of-time start still on its way when the engine is let go: no spawn, no more file reads. */
+  private prewarmAbort: AbortController | undefined;
 
   /** Inside the compile engine: the script runtime of this realm. */
   private inProcess: Promise<InProcessRuntime> | undefined;
@@ -468,8 +482,14 @@ export class JsPlugin extends AbstractPlugin {
       }
       return (this.denoCommand = explicit);
     }
+
+    /*
+     * The pinned binary is used without running it first: `deno --version`
+     * blocks this thread for ~40 ms. A binary that cannot run fails the
+     * spawn, which reports the same guidance.
+     */
     const bundled = resolveBundledDenoPath();
-    if (bundled && runs(bundled)) {
+    if (bundled !== undefined) {
       return (this.denoCommand = bundled);
     }
     if (runs('deno')) {
@@ -510,7 +530,7 @@ export class JsPlugin extends AbstractPlugin {
    * The read root a process without a render request runs under: the script
    * root, or the working directory when none is configured.
    */
-  private defaultReadSet(): string[] {
+  private defaultReadSet(): Promise<string[]> {
     const root = this.opts.jsReadRoot ?? process.cwd();
     return readSetFor(root, root, [path.dirname(fileURLToPath(import.meta.url))]);
   }
@@ -588,7 +608,7 @@ export class JsPlugin extends AbstractPlugin {
         clearTimeout(timer);
         child.stdout.off('data', onData);
         child.stderr.off('data', onStderr);
-        reject(err);
+        reject(new Error(`${RUNTIME_MISSING_MESSAGE}\n${err.message}`));
       });
 
       // A worker that dies before it is ready fails startup at once, with its stderr.
@@ -629,7 +649,7 @@ export class JsPlugin extends AbstractPlugin {
 
   private async startRuntime(): Promise<void> {
     this.resolveDenoCommand();
-    const readSet = this.nextReadSet ?? this.defaultReadSet();
+    const readSet = this.nextReadSet ?? await this.defaultReadSet();
     this.workerReadSet = readSet.join('\u0000');
     try {
       await this.startWorker(readSet);
@@ -720,7 +740,7 @@ export class JsPlugin extends AbstractPlugin {
          * running) and let the next call spin up a fresh one.
          */
         this.abortRuntime(new Error('Deno worker killed after a request timed out.'));
-      }, this.opts.requestTimeoutMs ?? (request.type === 'render' ? RENDER_TIMEOUT_MS : REQUEST_TIMEOUT_MS));
+      }, this.opts.requestTimeoutMs ?? (request.type === 'render' || request.type === 'warm' ? RENDER_TIMEOUT_MS : REQUEST_TIMEOUT_MS));
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
@@ -1080,16 +1100,8 @@ export class JsPlugin extends AbstractPlugin {
    * process's stderr; a thrown `JessError` is rethrown as one.
    */
   async renderInEngine(request: EngineRenderRequest): Promise<unknown> {
-    const code = engineCode(request.compiler.module, import.meta.url);
-    const readSet = readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
-    const key = readSet.join('\u0000');
-    if (this.workerReadSet !== key && this.runtimeState.status !== 'idle') {
-      this.shutdown();
-      if (this.runtimeState.status !== 'disposed') {
-        this.runtimeState = { status: 'idle' };
-      }
-    }
-    this.nextReadSet = readSet;
+    this.engineUsed = true;
+    const code = await this.useReadSet(request);
     const result = await this.callWorker({
       type: 'render',
       compiler: request.compiler,
@@ -1106,22 +1118,76 @@ export class JsPlugin extends AbstractPlugin {
     }
     return result.value;
   }
+
+  /** Points the next Deno process at `request`'s read set, ending a running one under another. */
+  private async useReadSet(request: EngineRequestBase, signal?: AbortSignal): Promise<string[]> {
+    const code = await engineCode(request.compiler.module, import.meta.url, signal);
+    const readSet = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
+    if (this.workerReadSet !== readSet.join('\u0000') && this.runtimeState.status !== 'idle') {
+      this.shutdown();
+      if (this.runtimeState.status !== 'disposed') {
+        this.runtimeState = { status: 'idle' };
+      }
+    }
+    this.nextReadSet = readSet;
+    return code;
+  }
+
+  /**
+   * Starts the engine for a render that may reach a script, before it does:
+   * Deno starts, imports the compiler and loads the entry's dialect while the
+   * render runs in Node. Nothing waits on it; a render that never reaches a
+   * script lets it go with {@link releaseEngine}.
+   */
+  prewarmEngine(request: EngineRequestBase & { extension: string | undefined }): void {
+    if (inEngine() || this.runtimeState.status !== 'idle') {
+      return;
+    }
+    const prewarm = new AbortController();
+    this.prewarmAbort = prewarm;
+    const warm = async () => {
+      const code = await this.useReadSet(request, prewarm.signal);
+      if (prewarm.signal.aborted) {
+        return;
+      }
+      await this.callWorker({
+        type: 'warm',
+        compiler: request.compiler,
+        compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
+        extension: request.extension,
+        host: hostFacts(code)
+      });
+    };
+    warm().catch(() => undefined);
+  }
+
+  /** Ends an engine that was started ahead of time and never ran a render. */
+  releaseEngine(): void {
+    if (!this.engineUsed) {
+      this.prewarmAbort?.abort();
+      this.abortRuntime(new Error('The prewarmed Deno engine was not needed.'));
+    }
+  }
 }
 
 /** Set by the compile engine (`engine-runtime.ts`) in the Deno realm it runs in. */
 const inEngine = (): boolean => Reflect.get(globalThis, Symbol.for('@jesscss/plugin-js/engine')) === true;
 
-/** One render the compiler moves into the engine (see `renderInEngine`). */
-export type EngineRenderRequest = {
+/** What every engine request carries: the compiler, and what decides the read root. */
+type EngineRequestBase = {
   /** The compiler class the host runs, made again in the engine by its module and export. */
   compiler: { module: string; exportName: string };
   compilerOptions: unknown;
-  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender';
-  args: readonly unknown[];
 
   /** The entry stylesheet's folder and the script root, which decide the read root. */
   entryDir: string;
   jsReadRoot: string;
+};
+
+/** One render the compiler moves into the engine (see `renderInEngine`). */
+export type EngineRenderRequest = EngineRequestBase & {
+  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender';
+  args: readonly unknown[];
 };
 
 /**
