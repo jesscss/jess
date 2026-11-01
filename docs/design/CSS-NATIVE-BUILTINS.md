@@ -1,8 +1,8 @@
 # Built-ins as their CSS-native form
 
 **Status: DESIGN — ledger row V38 (OPEN; every question in section 5 ruled by
-the owner on 2026-11-01).** Nothing here is built; section 4 is the build order. The inventory is
-[`css-native-builtins.json`](./css-native-builtins.json).
+the owner on 2026-11-01).** Section 4 is the build order. The inventory is
+[`packages/fns/src/css-native-builtins.json`](../../packages/fns/src/css-native-builtins.json).
 
 ## The requirement
 
@@ -47,9 +47,12 @@ work reads the `class` column of the inventory to decide what ships as JS: a
 
 ## 1. Inventory
 
-Full table: [`css-native-builtins.json`](./css-native-builtins.json) (115 rows:
+Full table: [`css-native-builtins.json`](../../packages/fns/src/css-native-builtins.json) (115 rows:
 every registered Less colour/math built-in, and the Sass global and
-`sass:color`/`sass:math` members). Classes:
+`sass:color`/`sass:math` members; seven more rows name a second spelling of one
+of them, `aliasOf`). Every other registered function is listed as out of scope,
+and `packages/fns/src/__tests__/css-native-builtins.test.ts` fails when a
+registered function is in none of the three. Classes:
 
 - **exact** — the CSS form computes the same value for every input in the
   built-in's domain. 31 rows, including `mix`, `tint`, `shade`, `average` and
@@ -131,27 +134,39 @@ List | Block | Bool | Null | Collection`) has nothing that holds a CSS function
 or an uncomputed operation as structure. So another function can only splice
 the bytes, never read them.
 
-### 3.2 The IR: the parse tree's two calculation kinds, as values
+### 3.2 The IR: calls and kept math, as structure on the value
 
-The value domain gains the evaluated twins of the two parse-tree kinds it
-lacks, the way `Color` is the evaluated twin of a colour literal:
+The evaluated value keeps the parse tree's two calculation kinds as
+structure:
 
-- **`Call`**: a CSS function, holding `name`, `args` (a `ValueGroup`, so an
-  argument may itself be a `Call`), `result` (its CSS type: `color` for
-  `hsl()`/`rgb()`/`hwb()`/`color-mix()`/`contrast-color()`/`light-dark()`, and
+- **A call written out as-is** (`fallbackCall`: a CSS or unknown function, a
+  built-in that could not compute) stays the `Keyword` that spells it, and
+  carries `call: { name, args }`: its name and its evaluated arguments as
+  written, a `ValueGroup` whose members may carry a `call` in turn
+  (`value-eval.ts` `KeywordCall`; `null` on every other keyword, so `Keyword`
+  stays one hidden class). It is not a new value kind because every consumer reads
+  this value as a keyword today, and each would change: a parameter typed
+  `Keyword` accepts it, `iskeyword()` is true of it, Sass `type-of()` calls it
+  a string, and an argument error names `Keyword`. The slices that change one
+  of those readings change it on purpose. Its CSS type (`color` for
+  `hsl()`/`rgb()`/`hwb()`/`color-mix()`/`contrast-color()`/`light-dark()`;
   for `calc()`/`clamp()`/`round()`/`rem()`/`abs()`/`sign()` the type
-  css-values-4 §10.9 gives its arguments), and `src` (the authored bytes, or
-  `''` when computed).
-- **`Operation`**: arithmetic inside a math function that has not computed:
-  `op`, `left`, `right`. It replaces `keptMath`'s bytes. Preserved math
-  (`calc(1px + 1em)`, V18) becomes an `Operation` in a `calc` `Call`, the same
-  value an authored `calc(1px + 1em)` evaluates to.
+  css-values-4 §10.9 gives its arguments) follows from the name and is read
+  where slice 2 first needs it. Built in slice 1.
 
-Every field is always present (factory-defaulted), so each kind is one hidden
-class, as `Any` and `Keyword` already are. Neither duplicates an existing value
-kind: `Keyword`/`Any` are text, `UrlValue` is one opaque function.
-`keptAsWritten`'s text stays for calls nothing can compute: an unknown
-function, a failed built-in.
+  Slice 2 replaces it with a value kind of its own, `FunctionCall`: the
+  evaluated twin of the parse tree's `FunctionCall`, as the value `Color`,
+  `Dimension`, `Keyword`, `Quoted` and `List` are of theirs (owner,
+  2026-11-01, asked whether the call is "like a FunctionCall": *"yeah do that
+  i think"*). It holds the name, the evaluated arguments, the CSS type the
+  call produces and its bytes, and `KeywordCall` goes. Slice 2 is where the
+  keyword readings above must change anyway: a deferred colour has to satisfy
+  a colour parameter and `iscolor()`.
+- **Kept math**: arithmetic that has not computed, `op`, `left`, `right`, in
+  place of `keptMath`'s bytes. Preserved math (`calc(1px + 1em)`, V18) becomes
+  that structure in a `calc` call, the same value an authored
+  `calc(1px + 1em)` evaluates to. Built with slice 5, which is the first to
+  read it.
 
 The leaves an IR cannot compute are the values only the browser knows:
 `var()`, `env()`, `attr()`, `currentcolor`, system colours. They are `Call`s
@@ -232,9 +247,11 @@ rung 2, `color-mix()`, which is valid while `--w` holds 0–100%.
 The inventory row gives each rung's form (`css` for rung 2, `extended` for
 rung 3); a row whose class is `none` has only rungs 1 and 4.
 
-### 3.5 Serializing: once, at output
+### 3.5 Serializing: once
 
-A `Call` turns into text only where output is written, by one emitter. So it
+A call's bytes are written once, when the call is made, compressed under
+`compress`: a call written out as-is by `verbatimArgs`, a CSS-shaped colour
+call kept as authored by `preserveCall`, a kept `calc()` by `evalCalc`. So it
 prints the same in a declaration, an interpolation (`evalInterp`), a selector,
 a mixin argument and a guard operand (SEMANTIC-INVARIANTS 2), and compressed
 output spells it with the compressed number and separator rules. Inside a math
@@ -242,7 +259,7 @@ function a `calc` `Call` drops its own wrapper (`calc(calc(x))` is never
 written; V27). A paren group around a `Call` keeps its parens, as around any
 call written out (J16). Structure travels with the value, so the eager
 mixin-argument snapshot (`snapshotValues`, V3) keeps it without a side table.
-The type predicates read `result` (`iscolor()` of a colour `Call`: Q10).
+The type predicates read the call's CSS type (`iscolor()` of a colour call: Q10).
 
 Later work can rewrite the IR before output, for example folding
 `darken(darken(x, 10%), 5%)` into one relative colour. The runtime work can
@@ -292,7 +309,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | # | Slice | Gated on |
 | --- | --- | --- |
 | 0 | Move the inventory into `packages/fns` and add a test that every registered colour/math `Fn` has exactly one row (the runtime work reads it). No output change. | — |
-| 1 | The IR alone: `Call` and `Operation` value kinds, built where evaluation now writes text (`fallbackCall`, `keptMath`), one output emitter. No output change: every authored call and every kept operation prints the same bytes, proven on the full corpus. `perf-architecture-reviewer` on the new kinds. | — |
+| 1 | The IR for calls: a call written out as-is (`fallbackCall`) carries its `call` (§3.2). No output change, proven on the full corpus. Kept math's structure moves to slice 5. Still text, with `call: null`: a CSS-shaped colour call kept as authored (`preserveCall`), a kept `calc()` (`evalCalc`), CSS `if()` (`pickIfValue`), a call inside a `var()` fallback, and a paren group around a call (`(var(--a))`). Slice 2 gives each the structure its built-ins read, with the Q12 cases. | — |
 | 2 | Templates: the `.jess` template build step in `@jesscss/fns`, resolution of relative `hsl()`, the browser conformance test. Less `lighten` `darken` `saturate` `desaturate` `spin` `greyscale`; their kernels deleted. | — |
 | 3 | Alpha family: `fade` `fadein` `fadeout`, two-slot `rgba(C, a)` (relative `rgb()`). | slice 2 |
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
