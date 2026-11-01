@@ -197,8 +197,7 @@
       "css": "contrast-color(C)",
       "withColors": "rgb(from contrast-color(C) calc(Dr + (Lr - Dr) * r / 255) calc(Dg + (Lg - Dg) * r / 255) calc(Db + (Lb - Db) * r / 255) / calc(Da + (La - Da) * r / 255))",
       "spec": "css-color-5 §8",
-      "blockedOn": "Q13",
-      "notes": "contrast-color() returns white or black by a UA-defined algorithm, no threshold; D and L must be known; a threshold argument has no CSS form. Less's 43% luma rule differs (contrast(#999) = white, contrast-color(#999) = black)"
+      "notes": "ruled 2026-11-01: a known input picks dark/light by the larger WCAG 2.1 contrast ratio (not the 43% luma rule), so contrast(#999) = black; an explicit threshold keeps the luma-threshold rule for a known input and has no CSS form for an unknown one. Still approx: contrast-color() uses a UA-defined algorithm. D and L must be known for the withColors form"
     },
     {
       "dialect": "less",

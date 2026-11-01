@@ -267,7 +267,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
 | 4 | `hsv` `hsva` → `hwb()`. | slice 2 |
 | 5 | Math: `percentage` `unit` `convert` `ceil` `floor` `round` `mod` (`calc`/`round`/`rem`/`sign`/`abs`), and math operators on an unknown operand → `calc()`. | Q8 |
 | 6 | `mix` `tint` `shade` `average` → `color-mix(in srgb)`. | Q11 |
-| 7 | `contrast()` → `contrast-color()`. | Q13 |
+| 7 | `contrast()` → `contrast-color()`; known inputs pick by the larger WCAG 2.1 contrast ratio. | Q8 (count the `contrast()` fixtures that move) |
 | 8 | Sass colour/math rows. | slices 2–6 |
 
 ## 5. Owner questions (nothing above lands without these)
@@ -352,7 +352,7 @@ compares `getComputedStyle` with what the compile resolves for the same input.
   written until an operation consumes it), and it changes output only where a
   built-in today receives an authored `color-mix()`/relative colour/`calc()`
   (to be counted in slice 2).
-- **Q13 — `contrast()` (Less only; Sass has none).** `contrast(C)` maps to
+- **Q13 — `contrast()` (Less only; Sass has none).** **Ruled as recommended, owner 2026-11-01: a known input picks by the larger WCAG 2.1 contrast ratio** (asked under the E9 principle; the owner answered *"agreed"*). With an explicit threshold argument a known input keeps the luma-threshold rule, and an unknown input with a threshold is a failed call. `contrast(C)` maps to
   `contrast-color(C)` (css-color-5 §8; Baseline 2026). Known dark/light
   colours `D`, `L` are selected without `if()`, by using the black/white
   result's red channel as a switch:
