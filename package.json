@@ -72,6 +72,8 @@
     "check:guardrails": "node scripts/check-guardrails.mjs",
     "rulings:lock": "node scripts/rulings-lock.mjs",
     "check:record-map": "node scripts/check-record-map.mjs",
+    "cod": "node scripts/cod.mjs",
+    "verify:capabilities": "node scripts/cod.mjs verify-catalog . capabilities --allow-execution",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "test:grammar-variant-graph": "node --test scripts/__tests__/grammar-variant-graph.test.mjs",
     "oracle:prebuild": "pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build",

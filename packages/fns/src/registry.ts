@@ -35,3 +35,18 @@ export function registryOf(dialectIndex: Readonly<Record<string, unknown>>): FnR
   registry.registerAll(fnsOf(dialectIndex));
   return registry;
 }
+
+/**
+ * A dialect index's callables as a `.jess` file imports them: the name the
+ * registry dispatches a call on (`fn.name`, lowercased) → the index export that
+ * `@-from "<module>" import (…)` names. Same derivation as {@link registryOf}.
+ */
+export function exportNamesByCall(dialectIndex: Readonly<Record<string, unknown>>): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const [exported, value] of Object.entries(dialectIndex)) {
+    if (isFn(value)) {
+      names.set(value.name.toLowerCase(), exported);
+    }
+  }
+  return names;
+}

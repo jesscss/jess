@@ -45,6 +45,10 @@ points you at the source; then you read the source. Treat a subagent's
 - [design/CSS-NATIVE-BUILTINS.md](design/CSS-NATIVE-BUILTINS.md): PROPOSAL (ledger **V38**, OPEN) — built-ins with a CSS counterpart represented as their CSS-native form (relative colour, `color-mix()`, CSS math). Its inventory [packages/fns/src/css-native-builtins.json](../packages/fns/src/css-native-builtins.json) classifies every colour/math built-in by whether it prints as CSS or needs JS.
 - [architecture/core/EXTEND-SEMANTICS.md](architecture/core/EXTEND-SEMANTICS.md): extend semantics record (the ledger's X-series rows point here).
 
+## Browser runtime — `@export` variables, `var()` output, the JS module
+
+- [architecture/core/spec/R8-browser-runtime.md](architecture/core/spec/R8-browser-runtime.md): the plan, the slice contracts and the open owner items. The rulings live in ledger row **A4**.
+
 ## Perf — hot path (core eval/render, grammar/parser, extend/selector)
 
 - [perf/BENCHMARKS.md](perf/BENCHMARKS.md): **METHOD OF RECORD** — the command-first index of every canonical harness, the standard fixtures, and the history/baseline files. Never invent or search for a harness; start here.
@@ -63,6 +67,11 @@ points you at the source; then you read the source. Treat a subagent's
 - [state/less-v5-alpha-readiness.md](state/less-v5-alpha-readiness.md): the current-alpha readiness gate.
 - [design/REMOTE-IMPORTS-NETWORK-POLICY.md](design/REMOTE-IMPORTS-NETWORK-POLICY.md): METHOD OF RECORD for remote (network) `@import` — the opt-in `@jesscss/plugin-remote-import`, its allow-list / https / redirect / private-address / size-and-time policy, the owner rulings it applies, and the Deno `--allow-net` denial proof.
 - [design/DENO-SANDBOX-COMPILE.md](design/DENO-SANDBOX-COMPILE.md): METHOD OF RECORD for where stylesheet JavaScript runs — the routing rule (a compile that reaches a script boundary runs whole in Deno, otherwise in Node), one Deno process and one message per render, how plugins and functions cross (module identity, source), Deno's native permission flags with the measured symlink behaviour, and the open trust decisions (§8). Supersedes the broker parts of `architecture/js-execution-deno-spec.md`.
+
+## Shared responsibilities — capability contracts (COD)
+
+- `capabilities/<id>/capability.json`: **METHOD OF RECORD** for who owns a shared rule, its consumers, how it may grow, and the native checker proving consumers follow the owner (`pnpm cod catalog . capabilities`; `pnpm verify:capabilities`). Workflow: AGENTS.md, *Capability Contracts (COD)*.
+  - `jess-function-bindings` — which module and export a converted `.jess` file imports each Less/Sass built-in from (owner: each dialect plugin's `jessFunctions()`).
 
 ## Keeping this map honest
 
