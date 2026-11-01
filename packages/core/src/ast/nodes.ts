@@ -2108,17 +2108,16 @@ export const rule = (
       : selector.type === 'SelectorList'
         ? selector
         : selist(selector);
-  return {
-    type: 'Ruleset',
-    selector: list,
-    rules,
-    ...(extendInstructions !== undefined ? { extendInstructions } : {}),
-    ...(guard !== undefined ? { guard } : {}),
-    _s: NO_SPAN,
-    _e: NO_SPAN,
-    _bs: NO_SPAN,
-    _be: NO_SPAN
-  };
+
+  /* The four field sets as literals: a conditional spread builds and copies a temporary object. */
+  if (extendInstructions === undefined) {
+    return guard === undefined
+      ? { type: 'Ruleset', selector: list, rules, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN }
+      : { type: 'Ruleset', selector: list, rules, guard, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN };
+  }
+  return guard === undefined
+    ? { type: 'Ruleset', selector: list, rules, extendInstructions, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN }
+    : { type: 'Ruleset', selector: list, rules, extendInstructions, guard, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN };
 };
 
 /**
