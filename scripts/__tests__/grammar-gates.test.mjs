@@ -103,21 +103,22 @@ test('an over-budget artifact with no named debt fails as OVER BUDGET', () => {
 });
 
 test('over-budget debt does not carry over to another parseman version: a bump must bring every artifact within 5x', () => {
+  const bumpedParseman = `${artifactBaseline.debtParseman}-next`;
   const over = clone(measured);
   over.css.artifacts[AST_JS].bytes = over.css.sourceBytes * 6;
   const indebted = clone(artifactBaseline);
   Object.assign(indebted.grammars.css.artifacts[AST_JS], { bytes: over.css.artifacts[AST_JS].bytes, ratio: 6, overBudget: 'named debt' });
   assert.deepEqual(compareArtifacts(over, indebted).failures, []);
-  const { failures } = compareArtifacts(over, indebted, '0.58.0');
+  const { failures } = compareArtifacts(over, indebted, bumpedParseman);
   assert.ok(failures.some(f => f.startsWith(`css ${AST_JS}: OVER BUDGET`) && f.includes('does not carry over')), failures.join('\n'));
   const within = clone(measured);
   within.css.artifacts[AST_JS].bytes = within.css.sourceBytes * 5;
-  const bumped = compareArtifacts(within, indebted, '0.58.0');
+  const bumped = compareArtifacts(within, indebted, bumpedParseman);
   assert.deepEqual(bumped.failures, []);
-  const ratcheted = ratchetArtifacts(within, indebted, '0.58.0');
-  assert.equal(ratcheted.debtParseman, '0.58.0');
+  const ratcheted = ratchetArtifacts(within, indebted, bumpedParseman);
+  assert.equal(ratcheted.debtParseman, bumpedParseman);
   assert.equal(ratcheted.grammars.css.artifacts[AST_JS].overBudget, undefined);
-  assert.deepEqual(compareArtifacts(within, ratcheted, '0.58.0'), { failures: [], unbanked: [] });
+  assert.deepEqual(compareArtifacts(within, ratcheted, bumpedParseman), { failures: [], unbanked: [] });
 });
 
 test('a tables-only grammar with no named debt fails as TABLES ONLY', () => {

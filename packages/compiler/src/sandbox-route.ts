@@ -4,7 +4,9 @@
  * `@jesscss/plugin-js` Deno engine.
  */
 import type { ErrorDiagnostic, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { colorsByDefault } from './diagnostics.js';
 import type { ConfigOptions } from './index.js';
 
@@ -270,5 +272,48 @@ export const prewarmEngine = (source: EngineSource, request: EngineRequest): (()
   engine.catch(() => undefined);
   return () => {
     void engine.then(plugin => plugin.releaseEngine?.(), () => undefined);
+  };
+};
+
+/**
+ * Whether a package is installed where a render would resolve it: a
+ * `node_modules/<name>` folder above any of `from` (files or `file:` URLs).
+ * Asynchronous file checks only, so a project without the package pays no
+ * main-thread work to learn so. (`stat`, not `access`: Deno's `access` asks
+ * for the `sys` permission, which the engine does not have.)
+ */
+export const packageInstalled = async (name: string, from: ReadonlyArray<string | URL | undefined>): Promise<boolean> => {
+  const dirs = new Set<string>();
+  for (const origin of from) {
+    if (origin === undefined) {
+      continue;
+    }
+    const file = String(origin).startsWith('file:') ? fileURLToPath(origin) : path.resolve(String(origin));
+    for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
+      dirs.add(path.join(dir, 'node_modules', name, 'package.json'));
+      if (path.dirname(dir) === dir) {
+        break;
+      }
+    }
+  }
+  const found = await Promise.all([...dirs].map(file => fs.promises.stat(file).then(() => true, () => false)));
+  return found.includes(true);
+};
+
+/**
+ * Starts the engine ahead of time once `installed` says the script plugin is
+ * there; the returned release lets it go, or stops a start still on its way.
+ */
+export const prewarmWhenInstalled = (installed: Promise<boolean>, start: () => () => void): () => void => {
+  let released = false;
+  let release: (() => void) | undefined;
+  installed.then((yes) => {
+    if (yes && !released) {
+      release = start();
+    }
+  }, () => undefined);
+  return () => {
+    released = true;
+    release?.();
   };
 };
