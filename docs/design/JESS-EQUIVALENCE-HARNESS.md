@@ -34,7 +34,7 @@ three things at once: the converter emits **valid `.jess` source** rather than
 merely a valid AST; the `.jess` parser can **read back** what the emitter writes;
 and **evaluation** of the re-parsed tree agrees.
 
-## Status (2026-09-23): built — the Less arm
+## Status (2026-11-01): built — both arms
 
 The emitter and the Less harness exist. The owner's position on the emitter,
 verbatim: *"okay but we can infer one... we know what parses in .jess or what
@@ -54,32 +54,50 @@ should parse and we know how the nodes serialize"*.
   for every hand-written `.jess` fixture, `parse(emitJess(parse(src)))` is the
   same tree. 21 of the 22 fixtures round-trip; `packages/jess/benchmark/chunk.jess`
   does not parse at all (a stale port with bare `$a * 5` math) and is named there.
-- **Harness** — `packages/jess/test/jess/less-jess-equivalence.test.ts`, built to
-  the design below: arm A `safeRender(file.less)`, convert (the product parse via
-  `safeCompile`, then `emitJess`, then write `file.jess`), arm B
+- **Converter** — `Compiler.convertToJess(file)` (`packages/compiler`). It
+  renders the file once, recording every import's resolved target
+  (`Context.importTargets`), then prints each loaded `.less`/`.scss` document
+  with `emitJess`. A converted import names the file the render loaded,
+  relative to the converted file; an import the render never resolved is a
+  spelling gap, never a guessed extension. Each document's built-in calls import
+  from its own plugin's module (`jessFunctions()`). The fact model is
+  `DIALECT-TO-JESS-COMPILED-CONVERSION.md`.
+- **Harness** — `packages/jess/test/jess/less-jess-equivalence.test.ts` (the
+  name predates the SCSS arm; ledger rows cite the path). Arm A
+  `safeRender(file.less|.scss)`, convert with `convertToJess`, arm B
   `safeRender(file.jess)`, gate `cssB === cssA`, both arms on one explicit
   configuration, in both `collapseNesting` modes. Every converted file must also
   be a fixed point: its `.jess` tree prints back to text that parses to the same
   tree. The ratchet lists every non-passing fixture with a cause and a reason.
 
-Measured 2026-09-24 (identical in both modes):
+Measured 2026-11-01 (identical in both modes; the local `all-less` checkout has
+two fixtures fewer than the pinned one):
 
-| Corpus | Fixtures | Pass | P35 (bare math) | Cannot express | Lost info | Less arm does not render |
-| --- | --: | --: | --: | --: | --: | --: |
-| `all-less` test-data | 138 | 36 | 14 | 75 | 2 | 11 |
-| `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
+| Arm | Corpus | Fixtures | Pass | Bare math | Cannot express | Lost info | Arm A does not render |
+| --- | --- | --: | --: | --: | --: | --: | --: |
+| Less | `all-less` test-data | 138 | 46 | 2 | 76 | 3 | 11 |
+| Less | `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
+| Less | `gen-workload.less` | 1 | 1 | 0 | 0 | 0 | 0 |
+| SCSS | `gen-workload.scss` | 1 | 1 | 0 | 0 | 0 | 0 |
+| SCSS | `bootstrap@5.3.8` `scss/` (every file) | 92 | 11 | 1 | 7 | 0 | 73 |
+| SCSS | `foundation-sites@6.9.0` `scss/` (every file) | 106 | 21 | 2 | 58 | 0 | 25 |
 
-"Cannot express" is 70 fixtures where the emitter threw `NoJessSpelling` (in the
-file or in a partial it imports) plus 5 that convert and render but differ:
-Less-plugin URL rewriting (4) and a function registered by a Less `plugins` entry
-(1). `.jess` has no ambient function namespace (ledger P17), so the converter
-adds one `@-from "#less" import (…)` per file naming exactly the Less built-ins
-that file calls (`emitJess`'s `functions` option, fed from the Less registry). The two "lost info" fixtures import a
-bare package specifier that the `./` rewrite turns file-relative. The corpus is
-copied with its own `node_modules` holding only the packages it names, so no
-outcome depends on the machine's module layout. Math is its own cause because ledger P35 rules that Less
-math lowers into an `Expression`; those 14 entries flip when it lands. The Sass
-arm is not built.
+"Cannot express" is a `NoJessSpelling` gap (in the file or in a partial it
+imports), or a conversion that renders but differs for a reason `.jess` does not
+model: Less-plugin URL rewriting, or a function registered by a Less `plugins`
+entry. `.jess` has no ambient function namespace (ledger P17), so the converter
+adds one `@-from "#less" import (…)` (or `"#sass"`) per file naming exactly the
+built-ins that file calls. "Lost info" is a conversion that drops what the
+render knew: two are built-in calls the evaluator leaves as CSS
+(`rgba(var(--x), 0.2)`, `sin(var(--a))`), which need the function-call outcome
+facts; one drops a comment inside a function argument. The Less corpora are
+copied with their own `node_modules` holding only the packages they name, so no
+outcome depends on the machine's module layout. On the SCSS arm, a file the
+engine cannot render as `.scss` is the package corpus suite's to ratchet
+(`bootstrap-corpus.test.ts`, `foundation-corpus.test.ts`), so it is counted but
+not listed; once it renders it must convert, or be listed. `gen-workload` is
+the benchmark's matched Less/SCSS feature mix (`benchmark/gen-workload.mjs`) at
+a twentieth of its size.
 
 ### Where the grammar and the recorded spellings disagree
 
@@ -216,7 +234,7 @@ walk's core behaviour is "resolve, then write"; the emitter needs "preserve, the
 write" at every value, mixin, guard and control-flow site. It is a parallel
 emission target over a shared traversal, not a flag on the existing one.
 
-## Harness design (built for the Less arm — see Status)
+## Harness design (built — see Status)
 
 Follow the ratchet convention already established by
 `packages/jess/test/scss/bootstrap-corpus.test.ts`.
@@ -241,11 +259,12 @@ structure is mishandled.
 | --- | --- | --- |
 | Less | `all-less` test-data | primary — Less compat is a real goal |
 | Less | `bootstrap-less-port@2.5.1` | real-world breadth |
+| Less | `gen-workload.less` | matched pair with the SCSS row |
 | Sass | `packages/jess/benchmark/gen-workload.*` + targeted Sass+ fixtures | **primary** |
-| Sass | `bootstrap@5.3.8` scss | secondary, inventory source only |
+| Sass | `bootstrap@5.3.8`, `foundation-sites@6.9.0` scss | secondary — every file, unrendered files counted, not listed |
 
-Bootstrap's SCSS is deliberately demoted on the Sass arm. Only 29/92 of its files
-parse today, and much of the shortfall is Sass surface that Sass+ never intended
+Bootstrap's SCSS is deliberately demoted on the Sass arm. Only 19/92 of its files
+render as `.scss` today (2026-11-01), and much of the shortfall is Sass surface that Sass+ never intended
 to support — running it as the primary fixture would report a wall of failures
 that are deliberate non-support, which is how a diagnostic gets ignored.
 
@@ -328,7 +347,8 @@ Roughly in dependency order:
    This is the large piece, and the fused eval/emit architecture means it is a
    sibling traversal rather than a flag.
 6. ~~**Wire the harness**~~ — done 2026-09-23 for the Less arm
-   (`less-jess-equivalence.test.ts`).
+   (`less-jess-equivalence.test.ts`), 2026-11-01 for the SCSS arm, both through
+   `Compiler.convertToJess`.
 7. **Fix the migration guide** — either implement `jess convert` or stop claiming
    it ships. Worth doing immediately and independently.
 

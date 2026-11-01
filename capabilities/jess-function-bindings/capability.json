@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "id": "jess-function-bindings",
   "profile": "javascript-library",
-  "responsibility": "Name the module and export a converted .jess file imports for each Less or Sass built-in function call, so every .less/.scss → .jess conversion spells built-in calls the same way.",
+  "responsibility": "Name the module and export a converted .jess file imports for each Less or Sass built-in function call, so every .less/.scss \u2192 .jess conversion spells built-in calls the same way.",
   "decision": {
     "action": "extend",
-    "need": ".jess has no ambient function namespace (ledger P17), so converting a .less or .scss file must import each built-in it calls from the dialect's trusted module. Four conversion suites each derived that projection themselves; one Sass copy was a hand-written one-entry subset.",
+    "need": ".jess has no ambient function namespace (ledger P17), so converting a .less or .scss file must import each built-in it calls from the dialect's trusted module. The compiler's converter and four conversion suites need it; the suites each derived that projection themselves; one Sass copy was a hand-written one-entry subset.",
     "considered": [
       {
         "candidate": "packages/core/src/ast/emit-jess.ts",
@@ -13,7 +13,7 @@
       },
       {
         "candidate": "packages/fns/src/less/registry.ts, packages/fns/src/sass/registry.ts",
-        "finding": "They derive each dialect's dispatch table from its index and so own the call name → export pairs, but not the `#less`/`#sass` specifier a .jess file imports from."
+        "finding": "They derive each dialect's dispatch table from its index and so own the call name \u2192 export pairs, but not the `#less`/`#sass` specifier a .jess file imports from."
       },
       {
         "candidate": "packages/syntax/less/jess-plugin-less/src/index.ts, packages/syntax/scss/jess-plugin-scss/src/index.ts",
@@ -40,6 +40,46 @@
     ]
   },
   "consumers": [
+    {
+      "id": "compiler-convert",
+      "entrypoint": "packages/compiler/src/index.ts",
+      "export": "Compiler.convertToJess",
+      "files": [
+        "packages/jess/test/jess/convert-to-jess.test.ts",
+        "packages/compiler/src/config.ts",
+        "packages/compiler/src/diagnostics.ts",
+        "packages/compiler/src/merge-config.ts",
+        "packages/compiler/src/profile.ts",
+        "packages/compiler/src/sandbox-route.ts",
+        "packages/core/src/plugin.ts"
+      ],
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;",
+              "to": "const owned = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;\n        const functions = owned && { ...owned };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;",
+              "to": "const registry = source.endsWith('.scss') ? '../../fns/lib/sass/registry.js' : '../../fns/lib/less/registry.js';\n        const local = await import(String(new URL(registry, import.meta.url)));\n        const functions = converted.has(source) ? (source.endsWith('.scss') ? { from: '#sass', names: local.sassExportNames() } : { from: '#less', names: local.lessExportNames() }) : undefined;"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "const functions = converted.has(source) ? context.pluginOf(document)?.jessFunctions?.() : undefined;",
+              "to": "void context.pluginOf(document)?.jessFunctions?.();\n        const registry = source.endsWith('.scss') ? '../../fns/lib/sass/registry.js' : '../../fns/lib/less/registry.js';\n        const local = await import(String(new URL(registry, import.meta.url)));\n        const functions = converted.has(source) ? (source.endsWith('.scss') ? { from: '#sass', names: local.sassExportNames() } : { from: '#less', names: local.lessExportNames() }) : undefined;"
+            }
+          ]
+        }
+      }
+    },
     {
       "id": "less-equivalence",
       "entrypoint": "packages/jess/test/jess/less-jess-equivalence.test.ts",
@@ -200,15 +240,16 @@
   "rules": {
     "owns": [
       "the module specifier a converted file imports a dialect's built-ins from",
-      "the call name → export name pairs, derived from the dialect index"
+      "the call name \u2192 export name pairs, derived from the dialect index"
     ],
     "consumerOwns": [
       "which source it converts",
-      "the import path rewrite of converted @import targets",
+      "the import path of each converted import, from what the render resolved",
       "its assertions over the converted output"
     ],
     "allowed": [
-      "Pass jessFunctions() (or a value spread from it) as emitJess's `functions` option."
+      "Pass jessFunctions() (or a value spread from it) as emitJess's `functions` option.",
+      "Read a document's projection from its plugin (`context.pluginOf(document)?.jessFunctions?.()`), as Compiler.convertToJess does for every file the render loaded."
     ],
     "extend": "A new dialect's conversion adds a jessFunctions() beside that plugin's ProvidedModules specifier, built with exportNamesByCall over the dialect index, and its consumers join this contract.",
     "forbidden": [

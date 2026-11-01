@@ -22,6 +22,27 @@ the source dialect omits. They do not replace the source canonical AST as the
 conversion input, nor license a source-text guess. Unobserved or conditional
 behavior remains an explicit conversion diagnostic/candidate.
 
+### Built so far
+
+- **Import provenance**, the first fact below. When a caller sets
+  `Context.importTargets`, the serializer's import expansion records, per
+  import node, each target it resolved and what that target became: the loaded
+  document, or `null` when it stays a CSS `@import` (a `.css` terminal, a URL,
+  or a document whose policy is `processImports: false`). Unset, nothing is
+  recorded and nothing is allocated.
+- **`Compiler.convertToJess(file)`** renders the file once with that map set,
+  then prints every loaded `.less`/`.scss` document with `emitJess`. Each
+  import names its recorded target, relative to the converted file (a
+  converted target's `.jess` sibling); an import the render never resolved, or
+  resolved to more than one target, is a spelling gap, never a guess. The call
+  runs where the render runs, so a sandboxed compile converts in the sandbox.
+- **Proof:** the equivalence harness (`JESS-EQUIVALENCE-HARNESS.md`) runs every
+  Less and SCSS corpus file through it and compares the two renders.
+
+Not built: the canonical-tree gate (the harness compares reprints and CSS, not
+canonical trees), the resolver identity and resolution kind on each import
+fact, and the function-call outcome facts below.
+
 ## Core model
 
 Keep two inputs separate:
