@@ -50,8 +50,9 @@ in the same engine as the compile and as each other, so a script reached by
 one render can change what later renders of the same `Compiler` produce.
 Treat everything a `Compiler` compiles as one trust domain. A `jsPlugin()`
 instance you configure is one engine, shared by every `Compiler` it is
-configured on; to keep stylesheets you do not trust apart, give each its own
-`Compiler` and do not share a configured instance between them.
+configured on, and one set in a `styles.config` is loaded once per process,
+so it is shared too. To keep stylesheets you do not trust apart, give each its
+own `Compiler` and configure no `jsPlugin()` instance that two of them share.
 
 Values cross the boundary through a small typed bridge (dimensions, colors,
 quoted strings, lists, detached rules, …).

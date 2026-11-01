@@ -100,9 +100,10 @@ error that says so; there is no per-call path any more.
   prevent someone being surprised that a stylesheet can read / execute JS,
   and make sure that doesnt' mean it's pulling private documents / caches
   from their computer"* and *"it's more like "reasonable isolation" is what
-  we're building, not like CIA-grade sandboxing"*. What the sandbox guards
-  is the machine: the user's files outside the read root, their caches, and
-  the network.
+  we're building, not like CIA-grade sandboxing"*; and the same day the
+  owner chose, verbatim, *"One trust domain per Compiler"*. What the sandbox
+  guards is the machine: the user's files outside the read root, their
+  caches, and the network.
 - **Entry points.** `render`, `renderToResult` and `renderString` route as
   above. `compile` (internal: parse plus static imports) evaluates nothing, so
   it reaches no script boundary and stays in Node.
