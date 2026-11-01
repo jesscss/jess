@@ -465,13 +465,23 @@ export class JsPlugin extends AbstractPlugin {
     if (this.runtimeState.status === 'disposed') {
       return Promise.reject(new Error('Deno worker has been disposed.'));
     }
-    const promise = this.startRuntime().then(
+
+    /*
+     * A start stopped on purpose (`shutdown`) settles after the state was reset,
+     * maybe after the next start began: it must not mark that one ready or failed.
+     */
+    const current = () => this.runtimeState.status === 'initializing' && this.runtimeState.promise === promise;
+    const promise: Promise<void> = this.startRuntime().then(
       () => {
-        this.runtimeState = { status: 'ready' };
-        this.scheduleIdleShutdown();
+        if (current()) {
+          this.runtimeState = { status: 'ready' };
+          this.scheduleIdleShutdown();
+        }
       },
       (err: Error) => {
-        this.runtimeState = { status: 'failed', error: err };
+        if (current()) {
+          this.runtimeState = { status: 'failed', error: err };
+        }
         throw err;
       }
     );
@@ -601,10 +611,16 @@ export class JsPlugin extends AbstractPlugin {
       throw new Error('The Deno engine starts only for a render.');
     }
     this.workerReadSet = readSet.join('\u0000');
+    let child: ChildProcessWithoutNullStreams | undefined;
     try {
-      await this.startWorker(readSet);
+      const started = this.startWorker(readSet);
+      child = this.worker;
+      await started;
     } catch (err: unknown) {
-      this.shutdown();
+      /* A process stopped on purpose is already shut down, and `this.worker` may be the next one. */
+      if (child === undefined || child === this.worker) {
+        this.shutdown();
+      }
       throw err instanceof Error ? err : new Error(String(err));
     }
   }
