@@ -663,6 +663,19 @@ function importsOnce(options: string | null): boolean {
   return options === null || (!importHasOption(options, 'multiple') && !importHasOption(options, 'reference'));
 }
 
+/** What an import resolved to, when a converter asked the Context to record it (`Context.importTargets`). */
+function recordImportTarget(context: Context, node: StyleImport, target: string, document: Stylesheet | null): void {
+  const targets = context.importTargets;
+  if (targets === undefined) {
+    return;
+  }
+  let resolved = targets.get(node);
+  if (resolved === undefined) {
+    targets.set(node, resolved = new Map());
+  }
+  resolved.set(target, document);
+}
+
 /**
  * The public path deliberately calls Context itself: there is no Jess-side
  * resolver callback, secondary cache, or AST import bridge. The optional
@@ -734,20 +747,15 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * terminal, not a failed load, so `(optional)` stays moot on it.
      */
     if (loaded === undefined) {
+      recordImportTarget(context, node, specifier, null);
       return undefined;
     }
     if (loaded.node?.type !== 'Stylesheet') {
+      recordImportTarget(context, node, loaded.resolvedPath, null);
       return undefined;
     }
     const document = loaded.node;
-    const targets = context.importTargets;
-    if (targets !== undefined) {
-      let loadedBy = targets.get(node);
-      if (loadedBy === undefined) {
-        targets.set(node, loadedBy = new Map());
-      }
-      loadedBy.set(loaded.resolvedPath, document);
-    }
+    recordImportTarget(context, node, loaded.resolvedPath, document);
     return {
       document,
       key: loaded.resolvedPath,
@@ -20792,6 +20800,8 @@ function expandStyleImport(
     throw composeNotTopLevel(node, e);
   }
   if (e.s.context?.options.processImports === false) {
+    // Under this document's policy the import stays a CSS `@import` as written; nothing is resolved.
+    recordImportTarget(e.s.context, node, '', null);
     return;
   }
   if (importDocument) {

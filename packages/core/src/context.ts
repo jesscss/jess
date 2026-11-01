@@ -940,11 +940,13 @@ export class Context {
   sourceTrees = new Map<string, ParsedDocument>();
 
   /**
-   * Set before a render to learn what each import it evaluates loaded: import
-   * → resolved path → document. A converter reads it to point a converted
-   * import at the file that was actually loaded. Unset, nothing is recorded.
+   * Set before a render to learn what each import it evaluates resolved to:
+   * import → resolved path → the document it loaded, or `null` when it stays a
+   * CSS `@import` as written. A converter reads it to point a converted import
+   * at what this import resolved to in its own importer's context. Unset,
+   * nothing is recorded.
    */
-  importTargets?: Map<StyleImport, Map<string, Stylesheet>>;
+  importTargets?: Map<StyleImport, Map<string, Stylesheet | null>>;
   private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
 
   /**

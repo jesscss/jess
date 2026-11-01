@@ -1660,8 +1660,9 @@ export class Compiler {
    * plugin's function module, and each import names the file it actually loaded:
    * a package, search-path or extension-inferred import, and an
    * `@compose "foo.less"`, all become the relative path of that file's `.jess`.
-   * An import the render never evaluated keeps its authored path with the
-   * extension rewritten; one that loaded more than one file is a gap. A document
+   * An import that stays a CSS `@import` keeps its authored path. No path is
+   * inferred from the specifier: an import the render never resolved, or one
+   * that resolved to more than one file, is a gap. A document
    * whose plugin has no `jessFunctions` (a `.css` or `.jess` file) is not
    * converted, and an import of it names it as it is.
    *
@@ -1708,7 +1709,9 @@ export class Compiler {
       }
       for (const loaded of loads.values()) {
         for (const [source, document] of loaded) {
-          documents.set(document, source);
+          if (document !== null) {
+            documents.set(document, source);
+          }
         }
       }
       const jessPathOf = (source: string): string => `${source.slice(0, source.length - path.extname(source).length)}.jess`;
@@ -1722,12 +1725,15 @@ export class Compiler {
         const importPath = (authored: string, node: StyleImport): string => {
           const loaded = loads.get(node);
           if (loaded === undefined) {
-            const ext = path.extname(authored);
-            return ext === '' ? `${authored}.jess` : ext === path.extname(source) ? jessPathOf(authored) : authored;
+            throw new NoJessSpelling('StyleImport', 'an import the render never resolved: a `.jess` import names the file it resolves to');
           }
-          const [target, ...others] = loaded.keys();
-          if (target === undefined || others.length > 0) {
-            throw new NoJessSpelling('StyleImport', 'an import that loaded more than one file: a `.jess` import names one');
+          const [resolved, ...others] = loaded;
+          if (resolved === undefined || others.length > 0) {
+            throw new NoJessSpelling('StyleImport', 'an import that resolved to more than one file: a `.jess` import names one');
+          }
+          const [target, document] = resolved;
+          if (document === null) {
+            return authored;
           }
           if (!path.isAbsolute(target)) {
             return target;
