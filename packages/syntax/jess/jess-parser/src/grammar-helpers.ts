@@ -630,16 +630,16 @@ function requireStatements(children: readonly unknown[]): Statement[] {
  * pass over `children[open .. -1)`.
  */
 function collectBlockStatements(children: readonly unknown[], open: number): Statement[] {
-  const statements: unknown[] = [];
-  for (let index = open; index < children.length - 1; index++) {
-    const child = children[index];
+  const out: unknown[] = [];
+  for (let at = open; at < children.length - 1; at++) {
+    const child = children[at];
     if (isMixinCallArray(child)) {
-      statements.push(...child);
+      out.push(...child);
     } else if (!Array.isArray(child) && !isToken(child)) {
-      statements.push(child);
+      out.push(child);
     }
   }
-  return requireStatements(statements);
+  return requireStatements(out);
 }
 
 /*
@@ -647,16 +647,16 @@ function collectBlockStatements(children: readonly unknown[], open: number): Sta
  * token arms other than mixin-call expansion: flatten mixin-call arrays only.
  */
 function collectBodyStatements(children: readonly unknown[], open: number): Statement[] {
-  const statements: unknown[] = [];
-  for (let index = open; index < children.length - 1; index++) {
-    const child = children[index];
+  const out: unknown[] = [];
+  for (let at = open; at < children.length - 1; at++) {
+    const child = children[at];
     if (isMixinCallArray(child)) {
-      statements.push(...child);
+      out.push(...child);
     } else {
-      statements.push(child);
+      out.push(child);
     }
   }
-  return requireStatements(statements);
+  return requireStatements(out);
 }
 
 function requireStatementList(value: unknown): Statement[] {
