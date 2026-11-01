@@ -71,6 +71,14 @@ declares its own `static moduleIdentity` (module and export), as jess's
 or outside a render (`compile`, a direct plugin call), is refused with an
 error that says so; there is no per-call path any more.
 
+**Where the script plugin comes from.** `@jesscss/plugin-js` is the sandbox,
+so the compiler resolves it from where the compiler is installed
+(`scriptPluginResolveFrom`), never from the stylesheet's folder. A
+`node_modules` beside the entry belongs to the code being compiled, whose
+scripts run sandboxed; a `@jesscss/plugin-js` shipped there would otherwise be
+imported into the host process. A global `jess` therefore needs
+`@jesscss/plugin-js` installed beside it, not only in the project.
+
 ## 3. How a compile enters Deno
 
 - **One process per compiler.** A `Compiler` owns one Deno process per read
