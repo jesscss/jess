@@ -17,13 +17,13 @@
       ]
     }
   },
-  "parseman": "0.57.0",
+  "parseman": "0.58.0",
   "tolerancePct": 1.5,
   "toleranceEvidence": "Eight runs on four GitHub-hosted ubuntu-26.04 runners (image 20261025.179.1, valgrind-3.26.0; AMD EPYC 7763, 9V45, 9V74; Intel Xeon 6973P), grammar sources identical to dev at f2119a2d0, parseman 0.55.2. Each run's median sat within 0.54% of the pooled median (worst: CSS -0.54%, .jess +0.54%, Less +0.20%, SCSS -0.10%), and the widest spread between one run's two reps was 0.80% (CSS). 1.5% clears both with margin (2.8x and 1.9x), so the gate is not red on an unchanged checkout. Removing the precompiled assembly from the CSS artifact measured +16%, more than ten times the tolerance.",
   "grammars": {
     "css": { "fixture": "benchmark.css", "instructionsPerParse": 1516849992 },
-    "less": { "fixture": "benchmark.less", "instructionsPerParse": 2332323824 },
-    "scss": { "fixture": "gen-workload", "instructionsPerParse": 10241859852 },
-    "jess": { "fixture": "benchmark.css", "instructionsPerParse": 2465731253 }
+    "less": { "fixture": "benchmark.less", "instructionsPerParse": 2256611476 },
+    "scss": { "fixture": "gen-workload", "instructionsPerParse": 8772126043 },
+    "jess": { "fixture": "benchmark.css", "instructionsPerParse": 2394590685 }
   }
 }

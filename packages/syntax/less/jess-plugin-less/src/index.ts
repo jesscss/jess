@@ -15,7 +15,7 @@ import {
   MODULE_MODES,
   ProvidedModules,
   UNIT_MODES,
-  logger, type PluginHost, type ValueEvaluator } from '@jesscss/core';
+  logger, recordPluginModule, type PluginHost, type ValueEvaluator } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, ModuleMode, UnitMode, LessOptions } from 'styles-config';
@@ -763,8 +763,7 @@ export class LessPlugin extends AbstractPlugin {
 }
 
 export type { LessOptions } from 'styles-config';
-const lessPlugin = ((opts?: LessPluginOptions) => {
-  return new LessPlugin(opts);
-}) satisfies Plugin;
+const lessPlugin = ((opts?: LessPluginOptions) =>
+  recordPluginModule(new LessPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
 export default lessPlugin;

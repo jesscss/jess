@@ -1,4 +1,4 @@
-import type { PluginInterface } from '@jesscss/core';
+import { recordPluginModule, type PluginInterface } from '@jesscss/core';
 import { ERR } from '@jesscss/core/diagnostics';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
@@ -332,6 +332,7 @@ export class RemoteImportPlugin implements PluginInterface {
   }
 }
 
-export const remoteImportPlugin = (opts: RemoteImportPluginOptions): RemoteImportPlugin => new RemoteImportPlugin(opts);
+export const remoteImportPlugin = (opts: RemoteImportPluginOptions): RemoteImportPlugin =>
+  recordPluginModule(new RemoteImportPlugin(opts), import.meta.url, 'remoteImportPlugin', [opts]);
 
 export default remoteImportPlugin;

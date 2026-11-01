@@ -3,71 +3,28 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-import type { PluginInterface } from '@jesscss/core';
-import { remoteImportPlugin } from '@jesscss/plugin-remote-import';
+
 import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config.js';
+import { lessHarnessFunctions } from './harness-plugins.js';
+
+export {
+  corpusReadRoot,
+  lessFixturePackagesPlugin,
+  lessTestDataRemoteImports,
+  readNumericFunctionArg,
+  readStringFunctionArg,
+  resolveLessFixtureDepsRoot,
+  type NumericLike,
+  type StringLike
+} from './harness-plugins.js';
+
+/** The upstream Less harness's function plugin (`add`, `increment`, `_color`). */
+export const lessHarnessFunctionsPlugin = lessHarnessFunctions();
 import type { StylesConfig } from 'styles-config';
 
 export interface TestCase {
   expectedFile: string;
   config: Partial<StylesConfig>;
-}
-
-export type NumericLike = {
-  value?: number | { number?: number } | null;
-  valueOf?: () => unknown;
-};
-
-export type StringLike = {
-  value?: string | { value?: string } | null;
-  valueOf?: () => unknown;
-};
-
-export const lessHarnessFunctionsPlugin = {
-  install(less: {
-    functions: {
-      functionRegistry: {
-        addMultiple(functions: Record<string, (...args: unknown[]) => unknown>): void;
-      };
-    };
-  }) {
-    less.functions.functionRegistry.addMultiple({
-      add(a: NumericLike, b: NumericLike) {
-        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
-      },
-      increment(a: NumericLike) {
-        return readNumericFunctionArg(a) + 1;
-      },
-      _color(str: StringLike) {
-        if (readStringFunctionArg(str) === 'evil red') {
-          return '#660000';
-        }
-        return undefined;
-      }
-    });
-  }
-};
-
-export function readNumericFunctionArg(value: NumericLike): number {
-  if (typeof value?.value === 'number') {
-    return value.value;
-  }
-  if (typeof value?.value === 'object' && typeof value.value?.number === 'number') {
-    return value.value.number;
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return Number(primitive);
-}
-
-export function readStringFunctionArg(value: StringLike): string {
-  if (typeof value?.value === 'string') {
-    return value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  if (typeof value?.value === 'object' && typeof value.value?.value === 'string') {
-    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
 }
 
 /**
@@ -292,91 +249,6 @@ export function resolveLessTestDataRoot(): string {
  * `@import "bootstrap-less-port/less/bootstrap"`). Versions there are pinned to
  * whatever the maintained `.css` golden was generated against.
  */
-export function resolveLessFixtureDepsRoot(): string {
-  const testDir = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(testDir, '../../less-corpus-fixture-deps');
-}
-
-function pinnedFixturePackageDirs(): Map<string, string> {
-  const depsRoot = resolveLessFixtureDepsRoot();
-  const depsRequire = createRequire(path.join(depsRoot, '__jess_fixture_resolve__.js'));
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(depsRoot, 'package.json'), 'utf8')
-  ) as { dependencies?: Record<string, string> };
-  const dirs = new Map<string, string>();
-  for (const name of Object.keys(manifest.dependencies ?? {})) {
-    dirs.set(name, path.dirname(depsRequire.resolve(`${name}/package.json`)));
-  }
-  return dirs;
-}
-
-/**
- * Pins the third-party packages that corpus fixtures import by bare specifier to
- * `packages/less-corpus-fixture-deps`, whatever Node's resolver would otherwise pick.
- *
- * Two things break unpinned resolution, and search paths fix neither:
- *
- * 1. The fixtures live in the read-only Less.js checkout and declare no dependencies,
- *    so Node's upward `node_modules` walk from a fixture reaches nothing installable.
- * 2. `vitest` sets `NODE_PATH` to pnpm's flat virtual store
- *    (`node_modules/.pnpm/node_modules`, which holds one copy of *every* installed
- *    package). Node consults `NODE_PATH` for every bare resolution regardless of the
- *    importing directory, so (1) silently succeeds against whichever copy is hoisted
- *    there — for `bootstrap-less-port` that is jess's own perf-test devDependency
- *    `~2.5.1`, a Bootstrap **5** port, not the `0.3.0` Bootstrap **4** port the
- *    `bootstrap4.css` golden was generated against. Adding a search path cannot win:
- *    `@jesscss/plugin-less` tries the importing directory first, and `NODE_PATH`
- *    makes that attempt succeed.
- *
- * So this resolver runs after plugin-less has expanded the specifier and re-points
- * any candidate that landed in another copy of a pinned package at the pinned one.
- */
-export function lessFixturePackagesPlugin(): PluginInterface {
-  const pinned = pinnedFixturePackageDirs();
-
-  return {
-    name: 'less-corpus-fixture-packages',
-    resolve(filePath: string | string[]) {
-      const candidates = Array.isArray(filePath) ? filePath : [filePath];
-      return candidates.map((candidate) => {
-        for (const [name, dir] of pinned) {
-          const marker = `${path.sep}${name}${path.sep}`;
-          const at = candidate.lastIndexOf(marker);
-          if (at !== -1) {
-            return path.join(dir, candidate.slice(at + marker.length));
-          }
-          if (candidate.startsWith(`${name}/`)) {
-            return path.join(dir, candidate.slice(name.length + 1));
-          }
-        }
-        return candidate;
-      });
-    }
-  };
-}
-
-/**
- * The opt-in remote-import plugin, allowing `cdn.jsdelivr.net`, with its
- * transport routed to the local test-data checkout: a request for
- * `https://cdn.jsdelivr.net/npm/@less/test-data/<file>` is answered with `<file>`
- * under `testDataRoot`, anything else with a 404. Corpus fixtures that import
- * the published test-data over https (`tests-unit/import/import-remote.less`)
- * so run the real claim → locate → fetch → parse path without a network.
- */
-export function lessTestDataRemoteImports(testDataRoot: string): PluginInterface {
-  const published = '/npm/@less/test-data/';
-  return remoteImportPlugin({
-    allow: ['cdn.jsdelivr.net'],
-    fetch: async (url) => {
-      const { pathname } = new URL(url);
-      const file = pathname.startsWith(published) ? path.join(testDataRoot, pathname.slice(published.length)) : undefined;
-      return file !== undefined && fs.existsSync(file)
-        ? new Response(fs.readFileSync(file, 'utf8'))
-        : new Response('not found', { status: 404 });
-    }
-  });
-}
-
 export class FixtureTimeoutError extends Error {
   constructor(file: string, reason: string) {
     super(`${file} timed out before surfacing a diagnostic or render result: ${reason}.`);

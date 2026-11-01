@@ -330,7 +330,7 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
  * (`if(css(1) and (css(2)): c)`), whose parens Dart Sass writes, are the paren
  * group J16 reads.
  */
-export function parenValue(children: readonly unknown[], state: unknown): Block {
+export function parenValue(children: readonly unknown[], keepsParens: boolean): Block {
   const value = requireValueSlot(children.find(isScssValueSlotValue));
   if (children.some(child => isToken(child) && child.value === ',')) {
     const items = !isValueSlotArray(value) && value.type === 'List' && value.sep === ',' ? value : list([value], ',');
@@ -342,11 +342,11 @@ export function parenValue(children: readonly unknown[], state: unknown): Block 
   if (value.type === 'Block' && value.escaped === true) {
     return value;
   }
-  return keepsGroup(state) || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'curly', true);
+  return keepsParens || GROUP_COMPUTES.has(value.type) ? block(value) : block(value, 'curly', true);
 }
 
 /* Where Dart Sass writes a group's parens: a Sass calculation's arguments and a CSS `if()` condition. */
-const keepsGroup = (state: unknown): boolean => isInCalculation(state) || isIfTest(state);
+export const keepsGroup = (state: unknown): boolean => isInCalculation(state) || isIfTest(state);
 
 /**
  * Sass's empty `()`: the empty list, which Dart Sass also accepts wherever a map

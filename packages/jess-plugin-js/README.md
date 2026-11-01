@@ -10,28 +10,31 @@ auto-loaded by `jess`.
 
 ## Sandboxed execution
 
-`plugin-js` does **not** run untrusted module code in your Node process. Before
-executing anything, it checks for a usable **Deno** runtime (`deno --version`)
-and runs the module in a Deno subprocess behind a permission broker.
+`plugin-js` does **not** run untrusted module code in your Node process. A
+render that reaches a stylesheet script runs **whole** in a Deno process: the
+compile itself, and the script as an ordinary in-process call. A render that
+loads no script runs in Node as usual and never starts Deno. Deno enforces the
+sandbox with its own permission flags (`docs/design/DENO-SANDBOX-COMPILE.md` in
+the repository).
 
-**Inside the Deno sandbox a script can:**
+**Inside the Deno sandbox a render can:**
 
-- **read** files, but only inside your optional `jsReadRoot`, a `node_modules`
-  directory on `jsReadRoot`'s own ancestor chain (where your package manager
-  installs dependencies and pnpm keeps its store), or the root of a package your
-  stylesheet names (`@plugin "x"`, or `@use` of a JS module). Such a plugin is
-  found by normal package resolution, which can place it outside those
-  directories; the package it resolved into — the nearest directory with a
-  `package.json` above its realpath, inside a `node_modules` — becomes readable,
-  and only that package: never a sibling package or the rest of that
-  `node_modules`, and never any `node_modules` elsewhere on the machine. Paths
-  are canonicalized (realpath) before the check, so a symlink or `..` cannot
-  reach outside, and with no `jsReadRoot` set every read is denied;
+- **read** files under one read root: whichever is nearest the filesystem root
+  of your `jsReadRoot`, the entry stylesheet's folder, and the folder your
+  packages are installed in (the parent of the `node_modules` your package
+  manager resolves them into; for a pnpm workspace package, the workspace
+  root). Plus the installed compiler's own code. A read anywhere else is
+  answered "not found". Deno checks the path as written, so a symlink inside
+  the read root that points outside it is followed;
 - **net** — nothing, unless you opt in with `allowHttp` (optionally narrowed to
   `allowNetHosts`).
 
-**Inside the sandbox a script cannot:** read or write files outside those read
-roots, write any file, read environment variables (`Deno.env`), open network
+Known limitation: Deno's module loader loads a file under any `node_modules`
+folder through `require()` / `import()` even outside the read root (plain file
+reads there are still refused).
+
+**Inside the sandbox a script cannot:** read files outside the read root, write
+any file, read environment variables (`Deno.env`), open network
 connections unless you opted in, spawn subprocesses (`run`), load native code
 (`ffi`), query the system (`sys`), or reach Node's `process`/`require`. A
 request that runs too long is abandoned and the worker is **killed** (SIGKILL),
@@ -39,9 +42,8 @@ so a script that loops forever or hangs cannot keep burning a CPU in the
 background.
 
 What a sandboxed script still sees: its own source and the values you pass it,
-plus whatever it can read from the allowed read roots (your project tree, its
-installed packages and every package a stylesheet named) — treat those as
-readable by any script you import.
+plus whatever it can read under the read root (your project tree and its
+installed packages) — treat those as readable by any script you import.
 
 Values cross the boundary through a small typed bridge (dimensions, colors,
 quoted strings, lists, detached rules, …).

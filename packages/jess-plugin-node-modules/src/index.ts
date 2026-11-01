@@ -1,6 +1,7 @@
 import {
   type Plugin,
-  AbstractPlugin
+  AbstractPlugin,
+  recordPluginModule
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -231,8 +232,7 @@ function isRecord(value: unknown): value is Record<string, any> {
   return value !== null && typeof value === 'object';
 }
 
-const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) => {
-  return new NodeModulesPlugin(opts);
-}) satisfies Plugin;
+const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) =>
+  recordPluginModule(new NodeModulesPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
 export default nodeModulesPlugin;

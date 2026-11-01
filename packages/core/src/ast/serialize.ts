@@ -24,6 +24,7 @@
  *   - `serialize(root, { trackPositions })` — + node->offset sourcemap map.
  */
 
+import { DECLMAP_MEMO_ENABLED } from '../env-value.js';
 import { renderCombinator } from './node.js';
 import type { Combinator, Node, NodeType } from './node.js';
 import serializerNodes, {
@@ -6905,11 +6906,6 @@ function recordMapPropertyTimeline(statements: readonly Statement[], frame: Fram
 }
 
 /** Resolve a map/namespace accessor's base to a declaration map + its frame. */
-/*
- * [lookup-memo] Negative control: `JESS_NO_DECLMAP_MEMO=1` disables the member-lookup
- * DeclMap memo so a measurement can reproduce the un-memoized rebuild/dispatch counts.
- */
-const DECLMAP_MEMO_ENABLED = typeof process === 'undefined' || process.env?.JESS_NO_DECLMAP_MEMO !== '1';
 
 /**
  * [lookup-memo] Cache a PURE base's DeclMap on the resolving frame, keyed by the base

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sandboxed } from './engine/sandboxed.js';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 const workerPath = fileURLToPath(new URL('../src/runtime-worker.ts', import.meta.url));
@@ -41,7 +42,7 @@ const exited = (child: ChildProcessWithoutNullStreams, ms: number): Promise<bool
 const startWorker = async (modulePath: string) => {
   const child = spawn(
     denoPath,
-    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${workerPath}`, workerPath, '--runtime-api=module'],
+    ['run', '--no-prompt', `--allow-read=${path.dirname(modulePath)},${path.dirname(workerPath)}`, workerPath, '--runtime-api=module'],
     { stdio: ['pipe', 'pipe', 'pipe'] }
   );
   const lines: Array<{ id?: number; type?: string }> = [];
@@ -117,7 +118,7 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const modulePath = writeModule(`export function quit() { ${call}; }`);
     const plugin = jsPlugin({ jsReadRoot: path.dirname(modulePath) }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     const started = Date.now();
     await expect(mod.quit()).rejects.toThrow('Deno worker exited unexpectedly.');
 
@@ -136,12 +137,12 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const modulePath = writeModule('export function ok() { return 1; }\nexport function quit() { Deno.exit(0); }');
     const plugin = jsPlugin({ jsReadRoot: path.dirname(modulePath) }) as JsPlugin;
     plugins.push(plugin);
-    const mod = await plugin.import(modulePath);
+    const mod = await sandboxed(plugin).import(modulePath);
     expect(await mod.ok()).toBe(1);
     expect(brokerSockets()).toBe(before);
 
     await expect(mod.quit()).rejects.toThrow('Deno worker exited unexpectedly.');
-    expect(await (await plugin.import(modulePath)).ok()).toBe(1);
+    expect(await (await sandboxed(plugin).import(modulePath)).ok()).toBe(1);
     expect(brokerSockets()).toBe(before);
 
     plugin.dispose();
@@ -156,7 +157,7 @@ describe('@jesscss/plugin-js worker lifetime', () => {
     const plugin = jsPlugin({ jsReadRoot: root, denoCommand }) as JsPlugin;
     plugins.push(plugin);
     const started = Date.now();
-    await expect(plugin.import(modulePath)).rejects.toThrow(/exited during startup\.\ncannot start/);
+    await expect(sandboxed(plugin).import(modulePath)).rejects.toThrow(/exited during startup\.\ncannot start/);
 
     // Well inside the 8 s startup timeout.
     expect(Date.now() - started).toBeLessThan(3000);
