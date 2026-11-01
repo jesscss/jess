@@ -5896,41 +5896,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children): RulesetTailFact => {
-      /* One pass reads the children; the fact has one shape, its absent parts `undefined`. */
-      const firstExtensions: ExtendTargetFact[] = [];
-      const branches: SelectorBranchFact[] = [];
-      const rules: Statement[] = [];
-      let guard: MixinGuard | undefined;
-      for (const child of children) {
-        if (Array.isArray(child)) {
-          for (const value of child) {
-            if (isExtendTargetFact(value)) {
-              firstExtensions.push(value);
-            }
-          }
-        }
-        if (isSelectorBranchFact(child)) {
-          branches.push(child);
-        }
-        if (guard === undefined && isMixinGuard(child)) {
-          guard = child;
-        }
-        if (isStatement(child)) {
-          rules.push(child);
-        }
-      }
-      return {
-        firstExtensions,
-        branches,
-        selectorEnd: requiredTokenStart(children, '{'),
-        guard,
-        rules,
-        extensions: bodyExtensionsOf(children),
-        bodySpan: bodySpanFromRaw(children),
-        terminated: hasRulesetTerminator(children)
-      };
-    }
+    (children): RulesetTailFact => ({
+      /* One shape: absent parts are `undefined`. */
+      firstExtensions: children
+        .filter(Array.isArray)
+        .flatMap(values => values.filter(isExtendTargetFact)),
+      branches: children.filter(isSelectorBranchFact),
+      selectorEnd: requiredTokenStart(children, '{'),
+      guard: children.find(isMixinGuard),
+      rules: children.filter(isStatement),
+      extensions: bodyExtensionsOf(children),
+      bodySpan: bodySpanFromRaw(children),
+      terminated: hasRulesetTerminator(children)
+    })
   );
   const ClassIdStatement = node(
     'Statement',
@@ -5995,7 +5973,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       extensions.push(...ruleset.extensions);
       const node = rule(
         selector,
-        ruleset.rules,
+        [...ruleset.rules],
         extensions.length === 0 ? undefined : extensions,
         ruleset.guard
       );

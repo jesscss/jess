@@ -67,8 +67,8 @@ six factories in `ast/nodes.ts` author arms the corpus never reaches: `decl`
 (`escaped`) together with `boundaryBlock` (`boundary`) for three `Block` arms,
 `rawInline` (`media`), and `anonymousMixin` (`params`). Each shows as
 monomorphic here purely because no corpus source takes the other branch.
-`rule()` authors FOUR arms, one object literal per combination of its two
-optional fields, and the corpus realizes two. Widening the corpus narrows this gap; a green run is
+`rule()` authors FOUR arms from two independent conditional spreads and the
+corpus realizes two. Widening the corpus narrows this gap; a green run is
 evidence about the corpus, not a proof about the factories.
 
 ## 2. Never re-derive structure or materialize it into bytes early

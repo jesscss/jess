@@ -99,8 +99,7 @@ type RulesetTailFact = {
   readonly branches: readonly SelectorBranchFact[];
   readonly selectorEnd: number;
   readonly guard: MixinGuard | undefined;
-  /** The ruleset's own statements: a fresh array the ruleset node takes over. */
-  readonly rules: Statement[];
+  readonly rules: readonly Statement[];
   readonly extensions: readonly ExtendInstruction[];
   readonly bodySpan: SourceSpan | undefined;
   readonly terminated: boolean;

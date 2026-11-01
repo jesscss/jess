@@ -1861,9 +1861,8 @@ export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleTo
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
 export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
-  const first = value[0];
-  const second = value[1];
-  return second === undefined ? first : compoundSelectorOf([first, second, ...value.slice(2)]);
+  const [first, second, ...rest] = value;
+  return second === undefined ? first : compoundSelectorOf([first, second, ...rest]);
 };
 
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
@@ -1876,11 +1875,11 @@ type SelectorPartInput = { combinator?: Combinator; term: SelectorTerm };
 export const complexSelector = (
   segments: [SelectorPartInput, SelectorPartInput, ...SelectorPartInput[]]
 ): ComplexSelector => {
-  const value: ComplexSelector['value'] = [segments[0].term];
-  for (let index = 1; index < segments.length; index++) {
-    const segment = segments[index]!;
-    value.push(segment.combinator ?? ' ', segment.term);
-  }
+  const [head, ...tail] = segments;
+  const value: ComplexSelector['value'] = [
+    head.term,
+    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
+  ];
   return {
     type: 'ComplexSelector',
     value,
@@ -1892,11 +1891,12 @@ export const relativeSelector = (
   combinator: Combinator,
   segments: [SelectorPartInput, ...SelectorPartInput[]]
 ): RelativeSelector => {
-  const value: RelativeSelector['value'] = [combinator, segments[0].term];
-  for (let index = 1; index < segments.length; index++) {
-    const segment = segments[index]!;
-    value.push(segment.combinator ?? ' ', segment.term);
-  }
+  const [head, ...tail] = segments;
+  const value: RelativeSelector['value'] = [
+    combinator,
+    head.term,
+    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
+  ];
   return {
     type: 'RelativeSelector',
     value,
@@ -1905,9 +1905,8 @@ export const relativeSelector = (
   };
 };
 export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
-  const first = segments[0];
-  const second = segments[1];
-  return second === undefined ? first.term : complexSelector([first, second, ...segments.slice(2)]);
+  const [first, second, ...rest] = segments;
+  return second === undefined ? first.term : complexSelector([first, second, ...rest]);
 };
 export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors, _s: NO_SPAN, _e: NO_SPAN, _level: undefined });
 
@@ -2113,16 +2112,17 @@ export const rule = (
       : selector.type === 'SelectorList'
         ? selector
         : selist(selector);
-
-  /* The four field sets as literals: a conditional spread builds and copies a temporary object. */
-  if (extendInstructions === undefined) {
-    return guard === undefined
-      ? { type: 'Ruleset', selector: list, rules, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN }
-      : { type: 'Ruleset', selector: list, rules, guard, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN };
-  }
-  return guard === undefined
-    ? { type: 'Ruleset', selector: list, rules, extendInstructions, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN }
-    : { type: 'Ruleset', selector: list, rules, extendInstructions, guard, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN };
+  return {
+    type: 'Ruleset',
+    selector: list,
+    rules,
+    ...(extendInstructions !== undefined ? { extendInstructions } : {}),
+    ...(guard !== undefined ? { guard } : {}),
+    _s: NO_SPAN,
+    _e: NO_SPAN,
+    _bs: NO_SPAN,
+    _be: NO_SPAN
+  };
 };
 
 /**
