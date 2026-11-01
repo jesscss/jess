@@ -325,7 +325,6 @@ export class JsPlugin extends AbstractPlugin {
   name = 'js';
   supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
   private runtimeState: RuntimeState = { status: 'idle' };
-  private shuttingDown = false;
   private worker: ChildProcessWithoutNullStreams | undefined;
 
   /** The `--allow-read` list the running Deno process was started with. */
@@ -333,6 +332,9 @@ export class JsPlugin extends AbstractPlugin {
 
   /** The `--allow-read` list the next Deno process starts with (set by a render). */
   private nextReadSet: readonly string[] | undefined;
+
+  /** The read set renders hold the engine under, how many hold it, and how many wait (see `useReadSet`). */
+  private readSetTurn: { key: string; users: number; waiting: number; done: Promise<void>; end: () => void } | undefined;
 
   /** Whether a render ran in this plugin's engine (a prewarmed one that never did is let go). */
   private engineUsed = false;
@@ -466,13 +468,23 @@ export class JsPlugin extends AbstractPlugin {
     if (this.runtimeState.status === 'disposed') {
       return Promise.reject(new Error('Deno worker has been disposed.'));
     }
-    const promise = this.startRuntime().then(
+
+    /*
+     * A start stopped on purpose (`shutdown`) settles after the state was reset,
+     * maybe after the next start began: it must not mark that one ready or failed.
+     */
+    const current = () => this.runtimeState.status === 'initializing' && this.runtimeState.promise === promise;
+    const promise: Promise<void> = this.startRuntime().then(
       () => {
-        this.runtimeState = { status: 'ready' };
-        this.scheduleIdleShutdown();
+        if (current()) {
+          this.runtimeState = { status: 'ready' };
+          this.scheduleIdleShutdown();
+        }
       },
       (err: Error) => {
-        this.runtimeState = { status: 'failed', error: err };
+        if (current()) {
+          this.runtimeState = { status: 'failed', error: err };
+        }
         throw err;
       }
     );
@@ -500,7 +512,13 @@ export class JsPlugin extends AbstractPlugin {
       args,
       {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: sanitizeSpawnEnv(process.env)
+
+        /*
+         * Deno keeps the web Cache API (`caches`) on disk by default, keyed by
+         * the main module, which every engine shares: without write permission
+         * a script could store data a later render, of any project, reads back.
+         */
+        env: { ...sanitizeSpawnEnv(process.env), DENO_CACHE_DB_MODE: 'memory' }
       }
     );
     this.worker = child;
@@ -511,7 +529,7 @@ export class JsPlugin extends AbstractPlugin {
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.onWorkerStdout(chunk));
-    child.on('exit', () => this.onWorkerExit());
+    child.on('exit', () => this.onWorkerExit(child));
     return new Promise<void>((resolve, reject) => {
       let stderrText = '';
       const timer = setTimeout(() => {
@@ -566,12 +584,15 @@ export class JsPlugin extends AbstractPlugin {
     });
   }
 
-  private onWorkerExit() {
-    this.worker = undefined;
-    if (this.shuttingDown) {
-      this.shuttingDown = false;
+  private onWorkerExit(child: ChildProcessWithoutNullStreams) {
+    /*
+     * A process stopped on purpose (`shutdown`) is no longer `this.worker`; its
+     * exit can arrive after the next process started, and must not touch it.
+     */
+    if (child !== this.worker) {
       return;
     }
+    this.worker = undefined;
     const err = new Error('Deno worker exited unexpectedly.');
     this.rejectAllPending(err);
     if (this.runtimeState.status === 'disposed') {
@@ -599,10 +620,16 @@ export class JsPlugin extends AbstractPlugin {
       throw new Error('The Deno engine starts only for a render.');
     }
     this.workerReadSet = readSet.join('\u0000');
+    let child: ChildProcessWithoutNullStreams | undefined;
     try {
-      await this.startWorker(readSet);
+      const started = this.startWorker(readSet);
+      child = this.worker;
+      await started;
     } catch (err: unknown) {
-      this.shutdown();
+      /* A process stopped on purpose is already shut down, and `this.worker` may be the next one. */
+      if (child === undefined || child === this.worker) {
+        this.shutdown();
+      }
       throw err instanceof Error ? err : new Error(String(err));
     }
   }
@@ -689,8 +716,8 @@ export class JsPlugin extends AbstractPlugin {
    * SIGTERM, and a synchronous runaway loop never services a signal handler.
    */
   private abortRuntime(reason: Error) {
-    this.shutdown();
     this.rejectAllPending(reason);
+    this.shutdown();
     if (this.runtimeState.status !== 'disposed') {
       this.runtimeState = { status: 'idle' };
     }
@@ -706,13 +733,15 @@ export class JsPlugin extends AbstractPlugin {
   private shutdown() {
     this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
-      this.shuttingDown = true;
       this.worker.stdin.destroy();
       this.worker.stdout.destroy();
       this.worker.stderr.destroy();
       this.worker.kill('SIGKILL');
     }
     this.worker = undefined;
+
+    /* The exit of a process stopped on purpose rejects nothing, so a request still waiting is answered here. */
+    this.rejectAllPending(new Error('The Deno engine was stopped before it answered.'));
   }
 
   dispose() {
@@ -899,16 +928,21 @@ export class JsPlugin extends AbstractPlugin {
    */
   async renderInEngine(request: EngineRenderRequest): Promise<unknown> {
     this.engineUsed = true;
-    const code = await this.useReadSet(request);
-    const result = await this.callWorker({
-      type: 'render',
-      compiler: request.compiler,
-      compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
-      method: request.method,
-      args: encodeEngineValue(request.args, 'render arguments'),
-      host: hostFacts(code),
-      configs: encodeHostConfigs(request.configs)
-    });
+    const { code, release } = await this.useReadSet(request);
+    let result: RpcResult;
+    try {
+      result = await this.callWorker({
+        type: 'render',
+        compiler: request.compiler,
+        compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
+        method: request.method,
+        args: encodeEngineValue(request.args, 'render arguments'),
+        host: hostFacts(code),
+        configs: encodeHostConfigs(request.configs)
+      });
+    } finally {
+      release();
+    }
     if (result.stderr) {
       process.stderr.write(result.stderr);
     }
@@ -918,18 +952,54 @@ export class JsPlugin extends AbstractPlugin {
     return result.value;
   }
 
-  /** Points the next Deno process at `request`'s read set, ending a running one under another. */
-  private async useReadSet(request: EngineRequestBase, signal?: AbortSignal): Promise<string[]> {
+  /**
+   * Holds the engine under `request`'s read set until `release`. One Deno
+   * process serves one read set, so a render under another read set waits
+   * until every render under the running one has finished, and only then is
+   * the process switched: a render never runs, or is killed, in a process
+   * started for another render's read set. While a render waits, no new render
+   * joins the running set, so neither set starves.
+   */
+  private async useReadSet(request: EngineRequestBase, signal?: AbortSignal): Promise<{ code: string[]; release: () => void }> {
     const code = await engineCode(request.compiler.module, import.meta.url, signal);
     const readSet = await readSetFor(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot, code);
-    if (this.workerReadSet !== readSet.join('\u0000') && this.runtimeState.status !== 'idle') {
-      this.shutdown();
-      if (this.runtimeState.status !== 'disposed') {
-        this.runtimeState = { status: 'idle' };
-      }
+    const key = readSet.join('\u0000');
+    for (let turn = this.readSetTurn; turn !== undefined && (turn.key !== key || turn.waiting > 0); turn = this.readSetTurn) {
+      turn.waiting++;
+      await turn.done;
+      signal?.throwIfAborted();
     }
-    this.nextReadSet = readSet;
-    return code;
+    if (this.readSetTurn === undefined) {
+      let end = (): void => undefined;
+      const done = new Promise<void>((resolve) => {
+        end = resolve;
+      });
+      this.readSetTurn = { key, users: 0, waiting: 0, done, end };
+      if (this.workerReadSet !== key && this.runtimeState.status !== 'idle') {
+        this.shutdown();
+        if (this.runtimeState.status !== 'disposed') {
+          this.runtimeState = { status: 'idle' };
+        }
+      }
+      this.nextReadSet = readSet;
+    }
+    const turn = this.readSetTurn;
+    turn.users++;
+    let released = false;
+    return {
+      code,
+      release: () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        turn.users--;
+        if (turn.users === 0) {
+          this.readSetTurn = undefined;
+          turn.end();
+        }
+      }
+    };
   }
 
   /**
@@ -945,17 +1015,21 @@ export class JsPlugin extends AbstractPlugin {
     const prewarm = new AbortController();
     this.prewarmAbort = prewarm;
     const warm = async () => {
-      const code = await this.useReadSet(request, prewarm.signal);
-      if (prewarm.signal.aborted) {
-        return;
+      const { code, release } = await this.useReadSet(request, prewarm.signal);
+      try {
+        if (prewarm.signal.aborted) {
+          return;
+        }
+        await this.callWorker({
+          type: 'warm',
+          compiler: request.compiler,
+          compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
+          extension: request.extension,
+          host: hostFacts(code)
+        });
+      } finally {
+        release();
       }
-      await this.callWorker({
-        type: 'warm',
-        compiler: request.compiler,
-        compilerOptions: encodeEngineValue(request.compilerOptions, 'options'),
-        extension: request.extension,
-        host: hostFacts(code)
-      });
     };
     warm().catch(() => undefined);
   }
