@@ -371,8 +371,9 @@ export const engineFailure = (result: {
 
 /**
  * The `deno run` arguments of the sandbox (ledger A19): read only `readSet`,
- * every other read answered "not found" (`--ignore-read`), network only with
- * `allowHttp`, and no env, write, run, ffi or sys. Deno enforces them itself.
+ * every other read answered "not found" (`--ignore-read`), network (remote
+ * module imports included) only with `allowHttp`, and no env, write, run, ffi
+ * or sys. Deno enforces them itself.
  */
 export const denoRunArgs = (
   readSet: readonly string[],
@@ -383,12 +384,22 @@ export const denoRunArgs = (
   const list = (items: readonly string[]) => items.map(item => item.replaceAll(',', ',,')).join(',');
   const hosts = opts.allowNetHosts ?? [];
   const net = !opts.allowHttp ? [] : hosts.length === 0 ? ['--allow-net'] : [`--allow-net=${list(hosts)}`];
+
+  /*
+   * A remote module import is network too, and Deno allows one from a default
+   * list of hosts (deno.land, esm.sh, …) without `--allow-net`, so it follows
+   * the net rule, narrowed to `allowNetHosts` as `--allow-net` is.
+   */
+  const imports = !opts.allowHttp
+    ? ['--no-remote']
+    : hosts.length === 0 ? ['--allow-import'] : [`--allow-import=${list(hosts)}`];
   return [
     'run',
     '--no-prompt',
     `--allow-read=${list(readSet)}`,
     '--ignore-read',
     ...net,
+    ...imports,
     '--unstable-bare-node-builtins',
 
     /* A compiler run from its TypeScript sources (a workspace test run) imports `./x.js` for `./x.ts`. */

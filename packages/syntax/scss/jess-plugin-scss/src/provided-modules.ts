@@ -1,6 +1,9 @@
 import { ProvidedModules } from '@jesscss/core';
 import { createRequire } from 'node:module';
 
+/** The plugin's private specifier for the Sass built-in module `@jesscss/fns/sass`. */
+export const SASS_MODULE = '#sass';
+
 /**
  * `#sass` and `#sass/<module>` are this plugin's private paths to the Sass
  * built-in modules in `@jesscss/fns` (the grammar spells `@use "sass:math"` as
@@ -13,6 +16,6 @@ import { createRequire } from 'node:module';
  * plugin.
  */
 export const providedModules = new ProvidedModules([
-  ['#sass', '@jesscss/fns/sass'],
-  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`#sass/${name}`, `@jesscss/fns/sass/${name}`] as const)
+  [SASS_MODULE, '@jesscss/fns/sass'],
+  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`${SASS_MODULE}/${name}`, `@jesscss/fns/sass/${name}`] as const)
 ], createRequire(import.meta.url));
