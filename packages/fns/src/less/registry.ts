@@ -5,7 +5,7 @@
  * Sass index into its bundle just to build the Less dispatch table.
  */
 import type { Fn, FnRegistry } from '@jesscss/core';
-import { fnsOf, registryOf } from '../registry.js';
+import { exportNamesByCall, fnsOf, registryOf } from '../registry.js';
 import * as lessIndex from './index.js';
 
 /** Every Less built-in. Derived from the index — not a maintained list. */
@@ -14,4 +14,9 @@ export const lessFns: readonly Fn[] = fnsOf(lessIndex);
 /** Build the Less built-in dispatch table. */
 export function makeLessRegistry(): FnRegistry {
   return registryOf(lessIndex);
+}
+
+/** Every Less built-in's call name → its export name in this index. */
+export function lessExportNames(): Map<string, string> {
+  return exportNamesByCall(lessIndex);
 }

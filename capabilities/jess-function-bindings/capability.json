@@ -1,0 +1,265 @@
+{
+  "contractVersion": 1,
+  "id": "jess-function-bindings",
+  "profile": "javascript-library",
+  "responsibility": "Name the module and export a converted .jess file imports for each Less or Sass built-in function call, so every .less/.scss → .jess conversion spells built-in calls the same way.",
+  "decision": {
+    "action": "extend",
+    "need": ".jess has no ambient function namespace (ledger P17), so converting a .less or .scss file must import each built-in it calls from the dialect's trusted module. Four conversion suites each derived that projection themselves; one Sass copy was a hand-written one-entry subset.",
+    "considered": [
+      {
+        "candidate": "packages/core/src/ast/emit-jess.ts",
+        "finding": "emitJess takes the projection as its `functions` option on purpose: which module and which names are the converter's facts (the source dialect's registry), not the printer's. Core cannot import @jesscss/fns."
+      },
+      {
+        "candidate": "packages/fns/src/less/registry.ts, packages/fns/src/sass/registry.ts",
+        "finding": "They derive each dialect's dispatch table from its index and so own the call name → export pairs, but not the `#less`/`#sass` specifier a .jess file imports from."
+      },
+      {
+        "candidate": "packages/syntax/less/jess-plugin-less/src/index.ts, packages/syntax/scss/jess-plugin-scss/src/index.ts",
+        "finding": "Each plugin already owns its trusted specifier through ProvidedModules; that is the module a converted file must name."
+      },
+      {
+        "candidate": "the four test-local copies",
+        "finding": "Two Less copies were identical, one Sass copy filtered on `typeof fn === 'function'` instead of the registry predicate, and one Sass copy listed a single function."
+      }
+    ],
+    "rationale": "Extend each dialect plugin with one jessFunctions() beside the specifier it already owns, built from the registry's own derivation (exportNamesByCall), and have every conversion call it. A later change to a dialect's built-ins or its module then reaches every conversion."
+  },
+  "owner": {
+    "entrypoint": "packages/syntax/less/jess-plugin-less/src/jess-functions.ts",
+    "export": "jessFunctions",
+    "files": [
+      "packages/syntax/scss/jess-plugin-scss/src/jess-functions.ts",
+      "packages/fns/src/registry.ts",
+      "packages/fns/src/less/registry.ts",
+      "packages/fns/src/sass/registry.ts"
+    ]
+  },
+  "consumers": [
+    {
+      "id": "less-equivalence",
+      "entrypoint": "packages/jess/test/jess/less-jess-equivalence.test.ts",
+      "export": "LESS_FUNCTIONS",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "const LESS_FUNCTIONS = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';",
+              "to": "import lessPlugin from '@jesscss/plugin-less';\nimport { lessExportNames } from '@jesscss/fns/less/registry';"
+            },
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "const LESS_FUNCTIONS = { from: '#less', names: lessExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';",
+              "to": "import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';\nimport { lessExportNames } from '@jesscss/fns/less/registry';"
+            },
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "void jessFunctions();\nconst LESS_FUNCTIONS = { from: '#less', names: lessExportNames() };"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "less-stored-slash-math",
+      "entrypoint": "packages/jess/test/less/stored-slash-math.test.ts",
+      "export": "LESS_FUNCTIONS",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "const LESS_FUNCTIONS = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-less';",
+              "to": "import { lessExportNames } from '@jesscss/fns/less/registry';"
+            },
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "const LESS_FUNCTIONS = { from: '#less', names: lessExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-less';",
+              "to": "import { jessFunctions } from '@jesscss/plugin-less';\nimport { lessExportNames } from '@jesscss/fns/less/registry';"
+            },
+            {
+              "from": "const LESS_FUNCTIONS = jessFunctions();",
+              "to": "void jessFunctions();\nconst LESS_FUNCTIONS = { from: '#less', names: lessExportNames() };"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sass-list-map-functions",
+      "entrypoint": "packages/jess/test/scss/sass-list-map-functions.test.ts",
+      "export": "SASS_FUNCTIONS",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const SASS_FUNCTIONS = jessFunctions();",
+              "to": "const SASS_FUNCTIONS = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const SASS_FUNCTIONS = jessFunctions();",
+              "to": "const SASS_FUNCTIONS = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { jessFunctions } from '@jesscss/plugin-scss';\nimport { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const SASS_FUNCTIONS = jessFunctions();",
+              "to": "void jessFunctions();\nconst SASS_FUNCTIONS = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sass-selector-parse",
+      "entrypoint": "packages/jess/test/scss/sass-selector-parse.test.ts",
+      "export": "functions",
+      "alternatives": {
+        "wrapper": {
+          "replace": [
+            {
+              "from": "const functions = jessFunctions();",
+              "to": "const functions = { ...jessFunctions() };"
+            }
+          ]
+        },
+        "copy": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const functions = jessFunctions();",
+              "to": "const functions = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        },
+        "unusedImport": {
+          "replace": [
+            {
+              "from": "import { jessFunctions } from '@jesscss/plugin-scss';",
+              "to": "import { jessFunctions } from '@jesscss/plugin-scss';\nimport { sassExportNames } from '@jesscss/fns/sass/registry';"
+            },
+            {
+              "from": "const functions = jessFunctions();",
+              "to": "void jessFunctions();\nconst functions = { from: '#sass', names: sassExportNames() };"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "rules": {
+    "owns": [
+      "the module specifier a converted file imports a dialect's built-ins from",
+      "the call name → export name pairs, derived from the dialect index"
+    ],
+    "consumerOwns": [
+      "which source it converts",
+      "the import path rewrite of converted @import targets",
+      "its assertions over the converted output"
+    ],
+    "allowed": [
+      "Pass jessFunctions() (or a value spread from it) as emitJess's `functions` option."
+    ],
+    "extend": "A new dialect's conversion adds a jessFunctions() beside that plugin's ProvidedModules specifier, built with exportNamesByCall over the dialect index, and its consumers join this contract.",
+    "forbidden": [
+      "Build a `{ from: '#less' | '#sass', names }` projection outside the owner.",
+      "Import the owner while converting with a local map."
+    ]
+  },
+  "requirements": {
+    "less": {
+      "from": "#less",
+      "names": [
+        [
+          "percentage",
+          "percentage"
+        ],
+        [
+          "data-uri",
+          "dataUri"
+        ],
+        [
+          "get-unit",
+          "getUnit"
+        ],
+        [
+          "lighten",
+          "lighten"
+        ]
+      ]
+    },
+    "sass": {
+      "from": "#sass",
+      "names": [
+        [
+          "selector-parse",
+          "selectorParse"
+        ],
+        [
+          "map-get",
+          "mapGet"
+        ],
+        [
+          "nth",
+          "nth"
+        ]
+      ]
+    }
+  },
+  "checks": {
+    "entrypoint": "capabilities/jess-function-bindings/check.mjs",
+    "files": [
+      "capabilities/jess-function-bindings/observe.setup.ts",
+      "capabilities/jess-function-bindings/vitest.config.ts",
+      "test/setup.ts",
+      "scripts/cod.mjs"
+    ]
+  }
+}

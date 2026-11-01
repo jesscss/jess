@@ -298,6 +298,46 @@ jobs:
       - name: Gate — parser runtime boundary
         run: pnpm run verify:parser-runtime-boundary
 
+  # Capability contracts (COD, `capabilities/*/capability.json`): every
+  # contract's review must be current, and its native checker must pass the real
+  # owner and consumers while rejecting each declared copy and unused-owner
+  # decoy (`pnpm verify:capabilities`, the pinned toolkit in scripts/cod.mjs).
+  # Its own job, in parallel with `verify`; the toolkit's engines stop at Node
+  # 24. Add it to branch protection too.
+  capabilities:
+    name: Capability contracts · cod verify
+    runs-on: ubuntu-latest
+    env:
+      LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: alpha
+          path: less-corpus
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r --filter='!jess-docs' --filter='!@jesscss/docs-less' --filter='!@jesscss/docs-content' build
+
+      - name: pnpm verify:capabilities
+        run: pnpm run verify:capabilities
+
   # Per-grammar parse cost: marginal instructions per AST parse, counted by
   # Valgrind (GitHub-hosted runners expose no hardware instruction counter),
   # against scripts/grammar-speed.baseline.json. Its own job, in parallel with

@@ -13,6 +13,7 @@ import {
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
+import { SASS_MODULE } from './jess-functions.js';
 import { parseRecovering, parseSelector } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
@@ -40,8 +41,8 @@ const sassValueEvaluator = buildEvaluator(makeSassRegistry(), { sassCalculations
  * is the same module.
  */
 const providedModules = new ProvidedModules([
-  ['#sass', '@jesscss/fns/sass'],
-  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`#sass/${name}`, `@jesscss/fns/sass/${name}`] as const)
+  [SASS_MODULE, '@jesscss/fns/sass'],
+  ...['color', 'list', 'map', 'math', 'selector', 'string'].map(name => [`${SASS_MODULE}/${name}`, `@jesscss/fns/sass/${name}`] as const)
 ], createRequire(import.meta.url));
 type ScssDialectDefaults = Required<Pick<
   NonNullable<ISafeParseResult['dialectDefaults']>,
@@ -128,4 +129,5 @@ export class ScssPlugin extends AbstractPlugin {
 const scssPlugin = ((opts?: ScssPluginOptions) =>
   recordPluginModule(new ScssPlugin(opts), import.meta.url, 'default', [opts])) satisfies Plugin;
 
+export { jessFunctions } from './jess-functions.js';
 export default scssPlugin;

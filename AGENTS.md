@@ -250,6 +250,43 @@ compatibility adapter, or old node shape must not block replacing it with the
 chosen canonical architecture; delete or intentionally break that internal
 surface in the cutover, then repair only the consumers still in scope.
 
+## Capability Contracts (COD)
+
+A shared rule written out again elsewhere drifts from the first copy, and both
+copies keep passing their tests. Capability-Oriented Development
+([cod-kit](https://github.com/matthew-dean/cod-kit)) makes the owner of such a
+rule explicit and checks that its consumers really follow it.
+
+- **One contract per shared responsibility:** `capabilities/<id>/capability.json`
+  (cod-kit's unified format). It names the responsibility, the reuse decision
+  (need, candidates inspected, rationale), the owner, every consumer, what each
+  side owns, how the owner grows, the normative values, and a native checker.
+  `pnpm cod catalog . capabilities` prints the map.
+- **Before adding or moving a shared rule, read the catalog.** A contract that
+  covers it names the owner and its `rules.extend` path: use or extend that
+  owner. A local copy beside it is the defect the contract exists to catch.
+- **Editing a covered file** (owner, consumer or checker) makes its review stale.
+  Reconcile the requirements, then record the review with a real reason and
+  verify:
+  `pnpm cod review . capabilities/<id>/capability.json --reason "…"` and
+  `pnpm verify:capabilities`. CI runs the same command (job *Capability
+  contracts · cod verify*); the toolkit revision is pinned in `scripts/cod.mjs`.
+- **A checker observes values through the real consumers**, never a pass label
+  or an import: `behavior` checks today's values, `ownership` changes the owner
+  and requires every consumer to follow, `changes` proves a contract-only and
+  an implementation-only disagreement both fail. Every consumer declares a
+  `wrapper` (must pass), a behavior-correct `copy` and an `unusedImport` decoy
+  (must fail ownership); `cod verify` runs them all.
+- **Add a contract** when a rule has more than one real consumer and a copy is a
+  realistic mistake. Workflow: the cod-kit
+  [`cod-workflow` skill](https://github.com/matthew-dean/cod-kit/blob/eacab7d752916bf119be171de8dd4789f1c75c1b/skills/cod-workflow/SKILL.md)
+  at the pinned revision.
+- **Feature intent stays where it lives** (spec-driven): owner requirements,
+  the decision ledger and `docs/design/*-SPEC.md` say what to build; a contract
+  carries the lasting ownership of what was built and links to them. Do not copy
+  a spec into a contract. `check:guardrails` assertion 7 (one owner per
+  predicate) is the same principle as a lexical inventory.
+
 ## Core Naming Boundaries
 
 Name public production operations for the stable concept (`parse`, `build`,
