@@ -859,14 +859,14 @@ export class Compiler {
       import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable script execution features.`);
+          throw new Error(`Feature not supported. Install ${scriptPluginLabel} where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`);
         }
         return plugin.import(absoluteFilePath, route);
       },
       importPlugin: async (absoluteFilePath: string, options?: string | null, route?: ScriptSandboxRoute) => {
         const plugin = await getScriptRuntimePlugin();
         if (!isExecutablePluginInterface(plugin)) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable executable plugin modules.`);
+          throw new Error(`Feature not supported. Install ${scriptPluginLabel} where the compiler is installed (beside @jesscss/jess or less) to enable executable plugin modules.`);
         }
         return plugin.importPlugin(absoluteFilePath, options, route);
       },

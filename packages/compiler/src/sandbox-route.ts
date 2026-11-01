@@ -226,7 +226,7 @@ const engineFor = async (source: EngineSource): Promise<EnginePlugin> => {
   }
   const factory = source.factory();
   if (factory === undefined) {
-    throw new Error(`Feature not supported. Install ${source.label} to enable script execution features.`);
+    throw new Error(`Feature not supported. Install ${source.label} where the compiler is installed (beside @jesscss/jess or less) to enable script execution features.`);
   }
   let engine = source.engines.get(factory.key);
   if (engine === undefined) {
