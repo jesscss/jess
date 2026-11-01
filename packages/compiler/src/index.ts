@@ -1358,11 +1358,12 @@ export class Compiler {
      * Deno starts while the render runs here; if it never reaches a script,
      * the engine is let go, and no later render starts one ahead of time.
      * Where the script plugin is not installed, nothing more than an
-     * asynchronous look for it happens.
+     * asynchronous look for it happens, where the compiler loads it from (its
+     * own install, never the stylesheet's folder).
      */
     const specifier = this.scriptPluginSpecifier;
     const prewarm = () => prewarmWhenInstalled(
-      packageInstalled(specifier, [call.filePath, this.hooks.scriptPluginResolveFrom]),
+      packageInstalled(specifier, [this.hooks.scriptPluginResolveFrom ?? import.meta.url]),
       () => prewarmEngine(...this.engineFor(compiler, call))
     );
     return routeRender({
