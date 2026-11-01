@@ -2,6 +2,7 @@
  * Cross-dialect equivalence harness — `docs/design/JESS-EQUIVALENCE-HARNESS.md`.
  *
  *   .less → .css   ==   .less → .jess → .css
+ *   .scss → .css   ==   .scss → .jess → .css
  *
  * Both arms run on jess's own engine with ONE explicit configuration, so the gate
  * is byte identity:
@@ -9,6 +10,8 @@
  *   arm A    `Compiler.safeRender(file.less)`                         → cssA
  *   convert  `Compiler.convertToJess(file.less)` → write each `.jess` it returns
  *   arm B    `Compiler.safeRender(file.jess)`                         → cssB
+ *
+ * (and the same for a `.scss` file).
  *   gate     cssB === cssA
  *
  * The converter renders the file and prints the PARSED tree of it and of every
@@ -45,6 +48,7 @@ import { parse as parseJess } from '@jesscss/jess-parser';
 import { parse as parseLess } from '@jesscss/less-parser';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';
+import scssPlugin from '@jesscss/plugin-scss';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { Compiler, type ConfigOptions } from '../../src/index.js';
@@ -104,18 +108,16 @@ const TIMEOUT_MS = 30_000;
 interface Fixture {
   readonly corpus: string;
 
-  /** Corpus-relative path of the `.less` entry. */
+  /** Corpus-relative path of the `.less` / `.scss` entry. */
   readonly file: string;
   readonly config: ConfigOptions;
 }
 
 interface Corpus {
   readonly name: string;
+  readonly dialect: 'less' | 'scss';
   readonly source: string;
   copy: string;
-
-  /** Directory (relative to the copy) whose `.less` files are converted. */
-  readonly convertRoot: string;
 
   /**
    * Where the copy sits under the temp root, and the packages a bare import in
@@ -153,12 +155,34 @@ const allLessFixtures = (): Fixture[] => {
   return fixtures;
 };
 
+/**
+ * A Sass package's `scss/` tree: every file is a fixture. A file this engine
+ * cannot render as `.scss` yet is not this harness's to gate — the package's
+ * corpus suite (`test/scss/bootstrap-corpus.test.ts`,
+ * `foundation-corpus.test.ts`) ratchets that — so an unlisted `arm-a-error`
+ * passes the ratchet here; once the file renders it must convert, or be listed.
+ */
+const scssCorpus = (pkg: string): Corpus => {
+  const root = path.dirname(requireFrom.resolve(`${pkg}/package.json`));
+  const name = `${pkg}@${(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string }).version}`;
+  return {
+    name,
+    dialect: 'scss',
+    source: path.join(root, 'scss'),
+    copy: '',
+    layout: 'scss',
+    packages: [],
+    fixtures: glob.sync('**/*.scss', { cwd: path.join(root, 'scss') }).sort().map(file => ({ corpus: name, file, config: {} })),
+    plugins: () => [scssPlugin(), jessPlugin()]
+  };
+};
+
 const CORPORA: Corpus[] = [
   {
     name: 'all-less',
+    dialect: 'less',
     source: testData,
     copy: '',
-    convertRoot: '.',
 
     /*
      * The upstream checkout layout: the Less plugin maps `@less/test-import-module`
@@ -178,9 +202,9 @@ const CORPORA: Corpus[] = [
   },
   {
     name: 'bootstrap-less-port@2.5.1',
+    dialect: 'less',
     source: bootstrapRoot,
     copy: '',
-    convertRoot: 'less',
     layout: 'bootstrap-less-port',
     packages: [],
     fixtures: ['bootstrap.less', 'bootstrap-grid.less', 'bootstrap-reboot.less']
@@ -191,7 +215,9 @@ const CORPORA: Corpus[] = [
       lessCompatPlugin(),
       jessPlugin()
     ]
-  }
+  },
+  scssCorpus('bootstrap'),
+  scssCorpus('foundation-sites')
 ];
 
 /* --------------------------------------------------------------- execution */
@@ -202,6 +228,10 @@ const shape = (tree: object): string =>
 
 /** The one explicit configuration both arms of a fixture render with. */
 function configFor(corpus: Corpus, fixture: Fixture, mode: Mode | null): ConfigOptions {
+  if (corpus.dialect === 'scss') {
+    // `.scss` and `.jess` share their defaults; nothing is pinned.
+    return { compile: { plugins: corpus.plugins(corpus.copy) }, output: mode === null ? {} : { collapseNesting: mode === 'flat' } } as ConfigOptions;
+  }
   const { compile = {}, language = {}, output, ...rest } = fixture.config;
   const { plugins: fixturePlugins = [], ...fixtureCompile } = compile;
 
@@ -252,9 +282,13 @@ type Conversion =
  * span cannot anchor one in the same place.)
  */
 function reprintProblem(jess: string): string | undefined {
+  let tree: ReturnType<typeof parseJess>;
   try {
-    const tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
-
+    tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
+  } catch {
+    return undefined; // A print that does not parse is the fixture's `arm-b-parse`.
+  }
+  try {
     // A `.jess` tree already carries its `@-from` imports; only the Less source needs them added.
     const again = parseJess(emitJess(tree), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
     return shape(again) === shape(tree) ? undefined : 'tree changed';
@@ -847,6 +881,346 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'Plugin: `@-plugin` parses only as an inert at-rule statement; `.jess` script integration is `@-use`/`@-from` [in less/_functions.less] (+104 more)'
+  }],
+  ['bootstrap@5.3.8:_variables-dark.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
+  ['bootstrap@5.3.8:mixins/_border-radius.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_box-shadow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: rest/variadic parameter: `MixinParam` has no `...` form'
+  }],
+  ['bootstrap@5.3.8:mixins/_breakpoints.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+3 more)'
+  }],
+  ['bootstrap@5.3.8:mixins/_caret.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_color-mode.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Lookup: a variable inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}` (+1 more)'
+  }],
+  ['bootstrap@5.3.8:mixins/_deprecate.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['bootstrap@5.3.8:mixins/_transition.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: rest/variadic parameter: `MixinParam` has no `...` form'
+  }],
+  ['foundation-sites@6.9.0:components/_badge.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names'
+  }],
+  ['foundation-sites@6.9.0:components/_breadcrumbs.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_callout.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_close-button.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_drilldown.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:components/_dropdown.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names'
+  }],
+  ['foundation-sites@6.9.0:components/_flex-video.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` [in components/_responsive-embed.scss] (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_flex.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_label.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'For: tuple binding: `ForBinding` spells at most three comma names'
+  }],
+  ['foundation-sites@6.9.0:components/_media-object.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'MixinCall: space-run argument: the `MixinCallArgument` reducer throws on it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:components/_progress-bar.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_responsive-embed.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_slider.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_switch.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_table.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+3 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_tabs.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional'
+  }],
+  ['foundation-sites@6.9.0:components/_tooltip.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
+  ['foundation-sites@6.9.0:components/_top-bar.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:components/_visibility.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+3 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_forms.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups [in forms/_text.scss] (+10 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_input-group.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_label.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:forms/_meter.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:forms/_progress.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_range.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:forms/_select.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:forms/_text.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:grid/_column.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional'
+  }],
+  ['foundation-sites@6.9.0:grid/_flex-grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:grid/_gutter.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:grid/_position.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:grid/_row.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_arrow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout'
+  }],
+  ['foundation-sites@6.9.0:prototype/_border-box.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_border-none.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_bordered.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_display.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_font-styling.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_list-style-type.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_overflow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_position.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_rotate.scss', {
+    cause: 'p35',
+    outcome: 'p35',
+    reason: 'Operation: math outside an `Expression`: `.jess` computes only inside `$( … )` (P35 not landed)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_rounded.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_separator.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_shadow.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_sizing.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+2 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_spacing.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:prototype/_text-decoration.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_text-transformation.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:prototype/_text-utilities.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Comment: a comment between value parts: `ValueSpaceGroup` separators are whitespace only (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:typography/_alignment.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:util/_direction.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:util/_flex.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+1 more)'
+  }],
+  ['foundation-sites@6.9.0:util/_selector.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_cell.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal` (+5 more)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_collapse.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: space-run default: the `MixinParam` reducer keeps only a single node and silently drops it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_frame.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_grid.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'GuardNode: comparison operator `sass-equal`'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_gutters.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Param: space-run default: the `MixinParam` reducer keeps only a single node and silently drops it (parser defect)'
+  }],
+  ['foundation-sites@6.9.0:xy-grid/_position.scss', {
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: keyword or spread argument: `CallArgument` is positional (+1 more)'
   }]
 ]);
 
@@ -1341,9 +1715,10 @@ describe('equivalence ratchet', () => {
     const drift: string[] = [];
     for (const [key, modes] of observed) {
       const known = KNOWN.get(key);
+      const dialect = CORPORA.find(corpus => key.startsWith(`${corpus.name}:`))?.dialect;
       for (const mode of MODES) {
         const seen = modes[mode]?.outcome;
-        if (seen === undefined) {
+        if (seen === undefined || (seen === 'arm-a-error' && known === undefined && dialect === 'scss')) {
           continue;
         }
         const expected = known === undefined

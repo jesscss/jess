@@ -43,4 +43,28 @@ describe('Compiler.convertToJess', () => {
       compiler.dispose();
     }
   });
+
+  /* Sass finds `@use "theme"` as `_theme.scss`; `.jess` names that file. */
+  it('names the partial a Sass `@use` loaded', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'a.scss'), '@use "theme" as *;\n.x { @include scheme(dark) { b: c; } }\n');
+    fs.writeFileSync(path.join(dir, '_theme.scss'), '@mixin scheme($name) {\n  @media (prefers-color-scheme: #{$name}) {\n    @content;\n  }\n}\n');
+
+    const compiler = new Compiler();
+    try {
+      const { files, errors } = await compiler.convertToJess(path.join(dir, 'a.scss'));
+      expect(errors).toEqual([]);
+      const [entry, theme] = files;
+      expect(entry && 'jess' in entry ? entry.jess : entry).toContain('@-compose "./_theme.jess" as *;');
+      expect(theme && 'jess' in theme ? theme.jess : theme).toContain('@media (prefers-color-scheme: ${name}) {');
+      for (const file of files) {
+        fs.writeFileSync(file.jessPath, 'jess' in file ? file.jess : '');
+      }
+      const css = await compiler.render(path.join(dir, 'a.scss'));
+      expect(css).toContain('@media (prefers-color-scheme: dark)');
+      expect(await compiler.render(path.join(dir, 'a.jess'))).toBe(css);
+    } finally {
+      compiler.dispose();
+    }
+  });
 });

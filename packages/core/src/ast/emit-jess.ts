@@ -1060,6 +1060,13 @@ class JessPrinter {
     if (at === At.Prelude && node.parts.every(part => 'lit' in part)) {
       return node.parts.map(part => ('lit' in part ? part.lit : '')).join('');
     }
+
+    /* A prelude takes CSS leaves or a whole `${…}` (ledger P13): `@media (prefers-color-scheme: #{$name})`. */
+    if (at === At.Prelude) {
+      return node.parts.length === 1 && 'ref' in node.parts[0]!
+        ? this.template(node, 'string')
+        : gap('Interpolation', 'a template inside an at-rule prelude: `.jess` preludes take CSS leaves or a whole `${…}`');
+    }
     const first = node.parts[0];
     if (first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
       let out = '';
