@@ -52,6 +52,7 @@ import scssPlugin from '@jesscss/plugin-scss';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { Compiler, type ConfigOptions } from '../../src/index.js';
+import { generate } from '../../benchmark/gen-workload.mjs';
 import type { ConvertedFile } from '@jesscss/compiler';
 import {
   getTestCases,
@@ -116,7 +117,9 @@ interface Fixture {
 interface Corpus {
   readonly name: string;
   readonly dialect: 'less' | 'scss';
-  readonly source: string;
+
+  /** The directory copied to the temp root, or what writes a generated corpus into it. */
+  readonly source: string | ((copy: string) => void);
   copy: string;
 
   /**
@@ -217,7 +220,19 @@ const CORPORA: Corpus[] = [
     ]
   },
   scssCorpus('bootstrap'),
-  scssCorpus('foundation-sites')
+  scssCorpus('foundation-sites'),
+
+  /* One feature mix written as matched Less and SCSS (`benchmark/gen-workload.mjs`), at a twentieth of its benchmark size. */
+  ...(['less', 'scss'] as const).map((dialect): Corpus => ({
+    name: `gen-workload.${dialect}`,
+    dialect,
+    source: copy => fs.writeFileSync(path.join(copy, `workload.${dialect}`), generate(dialect, { components: 11 })),
+    copy: '',
+    layout: 'gen-workload',
+    packages: [],
+    fixtures: [{ corpus: `gen-workload.${dialect}`, file: `workload.${dialect}`, config: {} }],
+    plugins: () => [dialect === 'less' ? lessPlugin() : scssPlugin(), jessPlugin()]
+  }))
 ];
 
 /* --------------------------------------------------------------- execution */
@@ -1237,10 +1252,15 @@ beforeAll(async () => {
       dereference: true,
       filter: source => source !== path.join(from, 'node_modules')
     });
-    copy(corpus.source, corpus.copy);
+    if (typeof corpus.source === 'string') {
+      copy(corpus.source, corpus.copy);
+    } else {
+      fs.mkdirSync(corpus.copy, { recursive: true });
+      corpus.source(corpus.copy);
+    }
     for (const [name, dir] of corpus.packages) {
       const target = path.join(root, dir);
-      const from = path.resolve(corpus.source, path.relative(corpus.layout, dir));
+      const from = path.resolve(typeof corpus.source === 'string' ? corpus.source : corpus.copy, path.relative(corpus.layout, dir));
       if (!fs.existsSync(target) && fs.existsSync(from)) {
         copy(from, target);
       }
