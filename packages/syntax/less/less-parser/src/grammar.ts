@@ -197,6 +197,7 @@ type LessRules = {
   ComposeStatement: Combinator<StyleImport>;
   ComposeStatementNamespace: Combinator<string>;
   ComposeStatementConfig: Combinator<StyleImportConfig>;
+  ExportStatement: Combinator<VariableDeclaration>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -1482,6 +1483,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           typeof child === 'object' && child !== null && !('type' in child) && 'kind' in child && 'bindings' in child
       ) ?? null;
       return withSourceSpan(styleImport(requireToken(children[0]).value, target, { mode: 'compose', namespace, config }), span);
+    }
+  );
+  /**
+   * `@export @brand: red;` publishes a root variable (ledger A4): the declaration
+   * is the ordinary `VarDeclaration`, written with the `export` mode. It parses
+   * in every body, as `@compose` does, and evaluation rejects one below the
+   * stylesheet root. Like `@use` and `@compose` it puts the document in modern
+   * mode (ledger P36).
+   */
+  const ExportStatement = node(
+    'ExportStatement',
+    sequence(keywords(['@-export', '@export'], { caseInsensitive: true, boundary: IDENT_BOUNDARY }), g.VarDeclaration),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const declaration = children.find(
+        (child): child is VariableDeclaration =>
+          typeof child === 'object' && child !== null && 'type' in child && child.type === 'VariableDeclaration'
+      );
+      if (declaration === undefined) {
+        throw new TypeError('Less grammar produced no @export declaration.');
+      }
+      closeAmbientFunctions(state);
+      return withSourceSpan(variableDeclaration(declaration.name, declaration.value, { mode: 'export' }), span);
     }
   );
   /** The two Less spellings share one case-insensitive, identifier-bounded terminal. */
@@ -3594,7 +3617,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // because they legitimately differ (comment-first root ordering; the
   // punctuation-map arm and function/ruleset reordering in body statements).
   /**
-   * `@`-led statement group. Every body context lists these twelve arms in this
+   * `@`-led statement group. Every body context lists these thirteen arms in this
    * exact contiguous order, so grouping them into one nested choice is
    * byte-identical to the flat listing: a bare `choice` passes its winning arm's
    * value through unchanged, and firstMatch order is preserved. Parseman
@@ -3607,6 +3630,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const atStatement = choice(
     g.ImportStatement,
     g.ComposeStatement,
+    g.ExportStatement,
     g.PluginDirective,
     g.ValueBlockDeclaration,
     g.VarDeclaration,
@@ -6001,6 +6025,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ComposeStatement,
     ComposeStatementNamespace,
     ComposeStatementConfig,
+    ExportStatement,
     PluginDirective,
     ValueBlockDeclaration,
     ValueBlock,
