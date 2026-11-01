@@ -1659,8 +1659,11 @@ The required no-backtracking design is:
    pseudo name is ambiguous. That rare path must prove the structural route to
    its `{` before choosing qualified rule; it must never parse a declaration
    value and retry it as a selector. The old Less
-   `rulesetNotDeclaration` regex preflight is debt to delete through this
-   shared CSS-owned shape.
+   `rulesetNotDeclaration` regex preflight is gone: Less reads the head once
+   (`statementHead`), its calls and spaced declaration replay it, and the
+   spaced declaration is gated on the next character; the nested rule and the
+   glued declaration still read the name again. The shared CSS-owned shape is
+   still the target.
 4. `dispatch(...)` is only for a consumed opener whose returned value chooses
    the family. Use `choice(...)` for a later-delimiter decision. `routed()` is
    for a selected branch to replay its already-consumed opener, not a reason to
@@ -1668,9 +1671,8 @@ The required no-backtracking design is:
    stay out of ordinary valid declaration/ruleset/mixin traffic.
 
 Current code evidence: Less still has the older `ClassIdSelectorPrefix` /
-`SelectorBranchFact` / `ClassIdStatement` shape and the broad
-`rulesetNotDeclaration` preflight in
-`packages/syntax/less/less-parser/src/grammar.ts`; both are targets, not models.
+`SelectorBranchFact` / `ClassIdStatement` shape in
+`packages/syntax/less/less-parser/src/grammar.ts`; it is a target, not a model.
 The Less file currently has concurrent uncommitted signature-trivia work. Do
 not amend, reset, or fold a routing change into that worktree state. Use a clean
 worktree from `origin/dev` for the next routing implementation, then integrate

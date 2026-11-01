@@ -29,8 +29,9 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { declarationFromChildren, declarationOfItem } from './declaration-reducers.js';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
@@ -85,13 +86,11 @@ import {
   isQuoted,
   isReference,
   isReferenceTailFact,
-  isRuleset,
   isRulesetTailFact,
   isLessSelectorBranch,
   isSelectorBranchFact,
   isLessSelectorList,
   isSelectorTerm,
-  isSequence,
   isSimpleSelector,
   isLessSimpleToken,
   isStatement,
@@ -2048,8 +2047,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * paren). `url(` and `calc(` are not one: each has its own grammar, so a
    * statement or call never opens on them.
    */
+  const notUrlOrCalcOpen = not(keywords(['url(', 'calc('], { caseInsensitive: true }));
   const genericFunctionOpen = token(noTrivia(sequence(
-    not(keywords(['url(', 'calc('], { caseInsensitive: true })),
+    notUrlOrCalcOpen,
     g.InterpolatedValueStart,
     literal('(')
   )));
@@ -2143,22 +2143,42 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return lowerLogicalCallStatement(call);
     }
   );
+  /* A generic statement call: `foo(…);`, or `foo(…)` against the block's `}`. */
+  const statementCall = choice(GenericFunctionStatement, TerminalGenericFunction);
   /**
-   * A statement-position call (`each(…)`, `if(…)`, `foo(…);`). The dispatch
-   * opens only on a function opener, so a property or a type selector fails it
-   * at the character after its name, before any case is looked up, and
-   * `url(` / `calc(` fail it in the opener and fall through to the other
-   * statements (a committed dispatch failure would not).
+   * A statement-position call (`each(…)`, `if(…)`, `foo(…);`) where nothing but
+   * a call or a declaration can start a statement (a keyframe block). The
+   * dispatch opens only on a function opener, so a property fails it at the
+   * character after its name, and `url(` / `calc(` fail it in the opener and
+   * fall through to the declaration (a committed dispatch failure would not).
    */
   const FunctionStatement = transform(
     dispatch(
       genericFunctionOpen,
       caseOf('each(', g.EachFunctionStatement),
       caseOf('if(', g.IfFunctionStatement),
-      otherwise(choice(GenericFunctionStatement, TerminalGenericFunction))
+      otherwise(statementCall)
     ),
     ([, statement]) => statement
   );
+  /*
+   * A statement's leading identifier, read once for the call, declaration or
+   * nested rule it starts: `name(` with the paren glued is a call's opener, a
+   * bare `name` a property or a type selector. `url(` / `calc(` open no
+   * statement, so they fail here and reach the statement arms after the
+   * dispatch, as they fail `genericFunctionOpen`.
+   */
+  const statementHead = token(noTrivia(sequence(
+    notUrlOrCalcOpen,
+    g.InterpolatedValueStart,
+    optional(literal('('))
+  )));
+  /*
+   * A head that ends in an unescaped `(` opens a call. `a\(` ends in an escaped
+   * paren (css-syntax-3 §4.3.7), which is part of the name, so it is no opener;
+   * `a\\(` is the name `a\\` and its opener.
+   */
+  const statementCallHead = matches(/^(?:[^\\]|\\[\s\S])*\($/);
   /*
    * `calc(` owns its boundary gaps: the math ladder runs under `noTrivia`, so an
    * interior that admits authored padding has to spell it (`calc( 1px + 2px )`,
@@ -3025,48 +3045,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(interpolatedPropertyHead, declarationHeadTail),
     sequence(g.NumericMapKeyToken, declarationHeadTail)
   ));
+  const declarationValue = noTrivia(sequence(
+    field('valueGap', regex(/[ \t\n\r\f]*/)),
+    // Less accepts an explicit empty declaration value (`margin: ;`). Keep
+    // it as a canonical empty opaque value rather than dropping the
+    // declaration or falling back to a second parser.
+    optional(choice(g.ValueListWithPriority, rejectedValueStart))
+  ));
+  /* A colon a gap follows. Its expected entry is the colon's, as `literal(':')` reports it. */
+  const spacedDeclarationColon = label('":"', regex(/:(?=[ \t\n\r\f])/));
   const StandardDeclaration = node(
     'Declaration',
+    noTrivia(sequence(DeclarationHead, declarationValue)),
+    declarationFromChildren
+  );
+  /*
+   * The declaration whose name is a statement's routed identifier, when a gap
+   * follows its colon (`color: red`, `color : red`). A selector pseudo is glued
+   * to its colon, so no nested rule reads this head (ledger P44): the arm goes
+   * ahead of the nested rule, and a glued head (`color:red`, `div:hover`) fails
+   * it at the colon and reaches the rule first.
+   */
+  const SpacedDeclaration = node(
+    'Declaration',
     noTrivia(sequence(
-      DeclarationHead,
-      noTrivia(sequence(
-        field('valueGap', regex(/[ \t\n\r\f]*/)),
-        // Less accepts an explicit empty declaration value (`margin: ;`). Keep
-        // it as a canonical empty opaque value rather than dropping the
-        // declaration or falling back to a second parser.
-        optional(choice(g.ValueListWithPriority, rejectedValueStart))
-      ))
+      parser({ trivia: whitespace }, sequence(routed(), spacedDeclarationColon)),
+      declarationValue
     )),
-    (children, fields, span) => {
-      // Property, delimiter, and value are independently recognized grammar
-      // children; AST construction does not split or reclassify authored text.
-      const rawName = children[0];
-      // Parseman's optional branch is transparent when absent. Find the value
-      // only after the property delimiter, because an interpolated property
-      // name is itself an `Interpolation` value node.
-      const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
-      const colonIndex = children.findIndex(child => isLessTerminalText(child, ':'));
-      if (colonIndex < 0) {
-        throw new TypeError('Less grammar produced no declaration delimiter.');
-      }
-      const valueChild = children.slice(colonIndex + 1).find(isLessValueSlotValue);
-      const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
-      const merge = mergeToken === undefined ? null : requireToken(mergeToken).value === '+_' ? ' ' : ',';
-      const valueGap = fields?.valueGap === undefined ? '' : requireTerminalText(requireField(fields, 'valueGap').value);
-      // A lone line break after `:` is ordinary parser layout and canonicalizes
-      // back to `: value`. Preserve the declaration break only when the value
-      // itself carries multiline separator facts (grid-area style output).
-      const layout = Array.isArray(value) || isSequence(value) ? valueLayoutOf(value) : undefined;
-      const valueOnNewLine = (valueGap.includes('\n') || valueGap.includes('\r'))
-        && layout?.some(separator => separator.includes('\n') || separator.includes('\r')) === true;
-      if (merge !== null && merge !== ',' && merge !== ' ') {
-        throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
-      }
-      const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, lessValueSlot(value.value), merge, true, valueOnNewLine)
-        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : lessValueSlot(value), merge, false, valueOnNewLine);
-      return withSourceSpan(node, span);
-    }
+    declarationFromChildren
   );
   // Ordered before the ordinary value grammar: a `--*` declaration has the
   // custom-property semantics above, while every other property remains on the
@@ -3591,8 +3597,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // precedence identical across all block contexts instead of hand-copying the
   // arms per production. The root document and the detached-ruleset/`each`
   // `BodyStatement` deliberately keep their own ordered arm sets
-  // because they legitimately differ (comment-first root ordering; the
-  // punctuation-map arm and function/ruleset reordering in body statements).
+  // because they legitimately differ (the root's absolute selector and
+  // end-of-input terminator; the punctuation-map arm in body statements).
   /**
    * `@`-led statement group. Every body context lists these twelve arms in this
    * exact contiguous order, so grouping them into one nested choice is
@@ -3643,63 +3649,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
     )
   );
-  // Chevrotain disambiguated a nested rule from a declaration on the colon's
-  // trailing trivia, not a full selector speculation: `foo: bar` (colon then
-  // whitespace) is always a declaration, never a selector, because a selector
-  // pseudo requires its name glued to the colon (`foo:hover`). Ruleset is tried
-  // before Declaration (a bare type-selector nested rule must win over a property
-  // name), so every `foo: value` otherwise parses `foo` as a type-selector
-  // compound and only fails at the missing `{`. This negative lookahead skips the
-  // Ruleset arm for the unambiguous `<ident><ws?>:<ws>` declaration shape, leaving
-  // the rarer `foo:bar` / `@{p}:` / `foo+:` forms on the original
-  // Ruleset-then-Declaration path. No real selector matches `<ident>:<ws>`, so the
-  // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
-  // lookahead marker from splicing into the statement list.
-  const rulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
-  const guardedRuleset = node(
-    'GuardedRuleset',
-    sequence(rulesetNotDeclaration, g.RulesetWithExtends),
-    (children) => {
-      const ruleset = children.find(isRuleset);
-      if (ruleset === undefined) {
-        throw new TypeError('Less declaration-guarded ruleset lost its rule.');
-      }
-      return ruleset;
-    },
-    { collapse: true }
-  );
   const declarationItem = node(
     'DeclarationItem',
     sequence(
       g.Declaration,
       declarationEnd
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less declaration-list item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    declarationOfItem,
     { collapse: true }
   );
   const stylesheetEnd = not(regex(/[\s\S]/));
+  const rootDeclarationEnd = choice(
+    literal(';'),
+    stylesheetEnd
+  );
   const rootDeclarationItem = node(
     'RootDeclarationItem',
     sequence(
       g.Declaration,
-      choice(
-        literal(';'),
-        stylesheetEnd
-      )
+      rootDeclarationEnd
     ),
-    (children) => {
-      const declaration = children.find(isLessDeclaration);
-      if (declaration === undefined) {
-        throw new TypeError('Less root declaration item lost its declaration fact.');
-      }
-      return declaration;
-    },
+    declarationOfItem,
     { collapse: true }
   );
   const punctuationMapDeclarationItem = node(
@@ -3717,19 +3687,65 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     },
     { collapse: true }
   );
-  const nestedGuardedRuleset = node(
-    'GuardedRuleset',
-    sequence(rulesetNotDeclaration, g.NestedRulesetWithExtends),
-    (children) => {
-      const ruleset = children.find(isRuleset);
-      if (ruleset === undefined) {
-        throw new TypeError('Less guarded ruleset lost its ruleset fact.');
-      }
-      return ruleset;
-    },
+  // The P44 spaced head (see `SpacedDeclaration`) as a list item.
+  const spacedDeclarationItem = node(
+    'DeclarationItem',
+    sequence(SpacedDeclaration, declarationEnd),
+    declarationOfItem,
     { collapse: true }
   );
-  const blockItem = choice(atStatement, mixinStatement, g.FunctionStatement, nestedGuardedRuleset, declarationItem, literal(';'));
+  const rootSpacedDeclarationItem = node(
+    'RootDeclarationItem',
+    sequence(SpacedDeclaration, rootDeclarationEnd),
+    declarationOfItem,
+    { collapse: true }
+  );
+  /*
+   * A custom property (`--x: …`) as a list item. `statementHead` does not read
+   * a `--` name, and no selector starts with `--`, so the item goes ahead of the
+   * nested rule after the dispatch instead of paying for a rule attempt.
+   */
+  const customDeclarationItem = node(
+    'DeclarationItem',
+    sequence(g.CustomDeclaration, declarationEnd),
+    declarationOfItem,
+    { collapse: true }
+  );
+  /*
+   * An identifier-led statement, its name read once by `statementHead`. The
+   * head picks a call or `each(` / `if(`; any other head is a declaration or
+   * a nested rule. The calls and the P44 spaced declaration replay the head
+   * (`routed()`); the nested rule and the glued declaration read it again
+   * from the statement start, through their own tokens. Parseman gates the
+   * routed spaced arm on the character after the head, so it is entered only
+   * at a `:` or a gap. A failed call commits; a failed declaration or rule
+   * does not (`commit: false`), so the body ends there as it would without the
+   * dispatch, and the error is the one the enclosing rule reports.
+   */
+  const nestedIdentStatementArms = choice(spacedDeclarationItem, g.NestedRulesetWithExtends, declarationItem);
+  const nestedIdentStatement = transform(
+    dispatch(
+      statementHead,
+      caseOf('each(', g.EachFunctionStatement),
+      caseOf('if(', g.IfFunctionStatement),
+      when(statementCallHead, statementCall),
+      otherwise(nestedIdentStatementArms, { commit: false })
+    ),
+    ([, statement]) => statement
+  );
+  // The root twin of `nestedIdentStatement`: an absolute rule, and a declaration the input's end may close.
+  const rootIdentStatementArms = choice(rootSpacedDeclarationItem, g.RulesetWithExtends, rootDeclarationItem);
+  const rootIdentStatement = transform(
+    dispatch(
+      statementHead,
+      caseOf('each(', g.EachFunctionStatement),
+      caseOf('if(', g.IfFunctionStatement),
+      when(statementCallHead, statementCall),
+      otherwise(rootIdentStatementArms, { commit: false })
+    ),
+    ([, statement]) => statement
+  );
+  const blockItem = choice(atStatement, mixinStatement, nestedIdentStatement, customDeclarationItem, g.NestedRulesetWithExtends, declarationItem, literal(';'));
   // Every braced statement body — a ruleset's, a mixin definition's, an
   // at-rule block's — takes a body-form `&:extend()` after the shared arms
   // (ledgers X16, X19). An extend head never matches `;` or a shared arm, so the
@@ -3750,11 +3766,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
-  // The ruleset arm is `nestedGuardedRuleset`, the same arm `blockItem` uses:
-  // a detached-ruleset body is a nested context, so a child selector may lead
-  // with a combinator (`> td { … }`). Only `Stylesheet` keeps the absolute
-  // `guardedRuleset`, where a leading combinator stays an error.
-  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.FunctionStatement, declarationItem, literal(';'));
+  // The statement and ruleset arms are `nestedIdentStatement` and
+  // `NestedRulesetWithExtends`, the arms `blockItem` uses: a detached-ruleset
+  // body is a nested context, so a child selector may lead with a combinator
+  // (`> td { … }`). Only `Stylesheet` keeps the absolute `RulesetWithExtends`,
+  // where a leading combinator stays an error.
+  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedIdentStatement, customDeclarationItem, g.NestedRulesetWithExtends, declarationItem, literal(';'));
   // A body-form `&:extend()` in either container extends the rule each call or
   // iteration lands in (ledger X19).
   const detachedBody = many(choice(g.BodyStatement, g.ExtendStatement));
@@ -4458,8 +4475,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // percentage selectors as selector facts.
   // Gating note: block entries overlap on ident-led declarations and
   // function-call statements. The shared prefix is the property/call name, but
-  // the deciding delimiter is `:` versus `(` / `;`, so a cosmetic dispatch on
-  // the identifier would commit too early.
+  // the deciding delimiter is `:` versus `(` / `;`. This body keeps the call
+  // opener and the declaration as siblings; `nestedIdentStatement` is the
+  // read-once form for bodies that also hold nested rules.
   const KeyframeBlock = node(
     'KeyframeBlock',
     sequence(
@@ -5959,7 +5977,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Stylesheet = node(
     'Stylesheet',
-    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, rootIdentStatement, g.RulesetWithExtends, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
