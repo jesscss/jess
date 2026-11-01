@@ -166,6 +166,7 @@ import type {
   BodyExtendFact,
   CustomValuePart,
   EnclosedNameFact,
+  ExtendTargetFact,
   ExtendTargetListFact,
   FunctionConditionFact,
   InterpolationAccessorFact,
@@ -178,6 +179,7 @@ import type {
   MixinGuard,
   MixinInteriorFact,
   ReferenceTailFact,
+  RulesetTailFact,
   SelectorBranchFact
 } from './grammar-helpers.js';
 
@@ -5872,19 +5874,39 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, _span, rawChildren) => {
-      const bodySpan = bodySpanFromRaw(rawChildren);
+    (children, _fields, _span, rawChildren): RulesetTailFact => {
+      /* One pass reads the children; the fact has one shape, its absent parts `undefined`. */
+      const firstExtensions: ExtendTargetFact[] = [];
+      const branches: SelectorBranchFact[] = [];
+      const rules: Statement[] = [];
+      let guard: MixinGuard | undefined;
+      for (const child of children) {
+        if (Array.isArray(child)) {
+          for (const value of child) {
+            if (isExtendTargetFact(value)) {
+              firstExtensions.push(value);
+            }
+          }
+        }
+        if (isSelectorBranchFact(child)) {
+          branches.push(child);
+        }
+        if (guard === undefined && isMixinGuard(child)) {
+          guard = child;
+        }
+        if (isStatement(child)) {
+          rules.push(child);
+        }
+      }
       return {
-        firstExtensions: children
-          .filter(Array.isArray)
-          .flatMap(values => values.filter(isExtendTargetFact)),
-        branches: children.filter(isSelectorBranchFact),
+        firstExtensions,
+        branches,
         selectorEnd: requiredTokenStart(rawChildren, '{'),
-        ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
-        rules: children.filter(isStatement),
+        guard,
+        rules,
         extensions: bodyExtensionsOf(children),
-        ...(bodySpan === undefined ? {} : { bodySpan }),
-        ...(hasRulesetTerminator(rawChildren) ? { terminated: true } : {})
+        bodySpan: bodySpanFromRaw(rawChildren),
+        terminated: hasRulesetTerminator(rawChildren)
       };
     }
   );
@@ -5937,23 +5959,26 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
             selist(prefix.selector, ...ruleset.branches.map(branch => branch.selector)),
             { start: prefixSpan.start, end: guardSpan?.start ?? ruleset.selectorEnd }
           );
-      const extensions = [
-        ...ruleset.firstExtensions.map(target => ({
+      const extensions: ExtendInstruction[] = [];
+      for (const target of ruleset.firstExtensions) {
+        extensions.push({
           target: target.target,
           partial: target.partial,
           subject: selist(prefix.selector)
-        })),
-        ...ruleset.branches.flatMap(branch => branch.extensions),
-        ...ruleset.extensions
-      ];
+        });
+      }
+      for (const branch of ruleset.branches) {
+        extensions.push(...branch.extensions);
+      }
+      extensions.push(...ruleset.extensions);
       const node = rule(
         selector,
-        [...ruleset.rules],
+        ruleset.rules,
         extensions.length === 0 ? undefined : extensions,
         ruleset.guard
       );
       const withBody = ruleset.bodySpan === undefined ? node : withBodySpan(node, ruleset.bodySpan);
-      return ruleset.terminated === true ? withSourceSpan(withBody, span) : withBody;
+      return ruleset.terminated ? withSourceSpan(withBody, span) : withBody;
     },
     { collapse: true }
   );

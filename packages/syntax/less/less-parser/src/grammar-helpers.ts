@@ -98,11 +98,12 @@ type RulesetTailFact = {
   readonly firstExtensions: readonly ExtendTargetFact[];
   readonly branches: readonly SelectorBranchFact[];
   readonly selectorEnd: number;
-  readonly guard?: MixinGuard;
-  readonly rules: readonly Statement[];
+  readonly guard: MixinGuard | undefined;
+  /** The ruleset's own statements: a fresh array the ruleset node takes over. */
+  readonly rules: Statement[];
   readonly extensions: readonly ExtendInstruction[];
-  readonly bodySpan?: SourceSpan;
-  readonly terminated?: true;
+  readonly bodySpan: SourceSpan | undefined;
+  readonly terminated: boolean;
 };
 type CustomValuePart = string | InterpolationFact | Lookup | readonly CustomValuePart[];
 type EnclosedNameFact = { readonly name: string };
@@ -1840,12 +1841,13 @@ function isBareMixinCallFact(value: unknown): value is BareMixinCallFact {
     && 'important' in value && typeof value.important === 'boolean';
 }
 
+/**
+ * `RulesetTail`'s fact, by its tag field: that reducer is its one producer and
+ * builds each of its arrays from the guard of what it holds, so they are not
+ * walked again here.
+ */
 function isRulesetTailFact(value: unknown): value is RulesetTailFact {
-  return typeof value === 'object' && value !== null
-    && 'firstExtensions' in value && Array.isArray(value.firstExtensions) && value.firstExtensions.every(isExtendTargetFact)
-    && 'branches' in value && Array.isArray(value.branches) && value.branches.every(isSelectorBranchFact)
-    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement)
-    && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
+  return typeof value === 'object' && value !== null && 'firstExtensions' in value;
 }
 
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
