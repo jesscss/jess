@@ -307,6 +307,7 @@ jobs:
   capabilities:
     name: Capability contracts · cod verify
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
     steps:

@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /*
@@ -68,5 +71,36 @@ describe('the jess compiler', () => {
     expect(loadedBefore).not.toContain('scss');
     expect(loadedBefore).not.toContain('css');
     expect(deferred).toEqual(real);
+  });
+
+  it('loads no other dialect for a Less import of a scoped package', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-lazy-'));
+    try {
+      mkdirSync(join(dir, 'node_modules/@scope/pkg'), { recursive: true });
+      writeFileSync(join(dir, 'package.json'), '{"private":true}\n');
+      writeFileSync(join(dir, 'node_modules/@scope/pkg/package.json'), '{"name":"@scope/pkg","version":"1.0.0"}\n');
+      writeFileSync(join(dir, 'node_modules/@scope/pkg/x.less'), '.x { y: z; }\n');
+      writeFileSync(join(dir, 'main.less'), '@import "@scope/pkg/x.less";\n');
+      const { css, parsers } = inFreshProcess<{ css: string; parsers: string[] }>(`
+        const css = await new Compiler().render(${JSON.stringify(join(dir, 'main.less'))});
+        console.log(JSON.stringify({ css, parsers: [...parsers].sort() }));
+      `);
+      expect(css).toBe('.x {\n  y: z;\n}\n');
+      expect(parsers).toEqual(['less']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves and claims the SCSS plugin\'s provided modules before it loads', () => {
+    const { resolved, claimed, parsersBefore } = inFreshProcess<{ resolved: string[]; claimed: boolean; parsersBefore: string[] }>(`
+      const scss = new Compiler().createContext().plugins.find(plugin => plugin.name === 'scss');
+      const resolved = scss.resolve(['#sass/math'], process.cwd(), []);
+      const claimed = scss.canImportModule(resolved[0]) && typeof (await scss.import(resolved[0])) === 'object';
+      console.log(JSON.stringify({ resolved, claimed, parsersBefore: [...parsers] }));
+    `);
+    expect(resolved).toEqual([expect.stringMatching(/fns[\\/]lib[\\/]sass[\\/]math[\\/]index\.c?js$/)]);
+    expect(claimed).toBe(true);
+    expect(parsersBefore).not.toContain('scss');
   });
 });
