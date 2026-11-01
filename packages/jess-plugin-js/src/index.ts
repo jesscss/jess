@@ -124,7 +124,7 @@ export interface JsPluginOptions extends JavaScriptSandboxConfig {
 
   /**
    * Milliseconds a single worker request may run before it is abandoned and
-   * the worker is killed (see {@link REQUEST_TIMEOUT_MS}). Mainly a test seam
+   * the worker is killed (see {@link RENDER_TIMEOUT_MS}). Mainly a test seam
    * for proving a runaway script is terminated without waiting the full
    * default.
    */
@@ -170,7 +170,6 @@ const resolveBundledDenoPath = (): string | undefined => {
 };
 
 const BOOT_TIMEOUT_MS = 8000;
-const REQUEST_TIMEOUT_MS = 10_000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
 /** A whole render is one request, so it gets a whole render's time. */
@@ -228,27 +227,13 @@ const isJsonValue = (value: unknown) => {
   }
 };
 
-/**
- * One scope/built-in fact resolved on the HOST and handed to the sandbox so a
- * synchronous Less-4 plugin body can read it. See {@link PluginCallCapabilities}.
- */
-export type PluginCallFacts = {
-  vars: Record<string, { value: unknown; important?: boolean } | null>;
-  calls: Record<string, unknown>;
-  fileInfo: { filename: string; entryPath: string } | null;
-};
-
-type PluginFactNeed =
-  | { kind: 'variable'; name: string }
-  | { kind: 'call'; name: string; args: unknown[]; key: string };
-
 export type PluginLogRecord = { level: 'warn' | 'error' | 'info' | 'debug'; message: string };
 
 /**
  * The compiler-side capabilities a legacy `@plugin` function body needs. The
  * dialect adapter supplies these bound to the LIVE evaluation frame of the call
- * site; the sandbox reaches them only through the resolve-and-replay protocol,
- * never as a live object.
+ * site, which the script reaches directly: script and compiler share the
+ * engine's realm.
  */
 export interface PluginCallCapabilities {
   /** Resolve `@name` at the call site. `null` means "no such variable". */
@@ -273,12 +258,6 @@ export type ContextualPluginFunction = (
   capabilities?: PluginCallCapabilities
 ) => unknown | Promise<unknown>;
 
-/**
- * Ceiling on resolve-and-replay rounds for a single call. Each round satisfies
- * exactly one fact, so this also bounds a pathological plugin that asks for an
- * unbounded number of distinct variables.
- */
-const MAX_FACT_ROUNDS = 64;
 const EMPTY_PLUGIN_CALL_CAPABILITIES: PluginCallCapabilities = {};
 
 function normalizePluginCallArgs(args: readonly unknown[] | unknown): readonly unknown[] {
@@ -306,30 +285,13 @@ type EngineWireRequest =
     host: EngineHostFacts;
   };
 
-type RpcRequest =
-  | ({ id: number } & EngineWireRequest)
-  | { id: number; type: 'load'; modulePath: string }
-  | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
-  | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
-  | {
-    id: number;
-    type: 'invokeLessPluginFunction';
-    modulePath: string;
-    options: string | null;
-    functionName: string;
-    args: unknown[];
-    facts: PluginCallFacts;
-  };
+type RpcRequest = { id: number } & EngineWireRequest;
 
 type RpcResult =
   | {
     id: number;
     ok: true;
-    exports?: Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>;
-    functions?: string[];
     value?: unknown;
-    logs?: PluginLogRecord[];
-    important?: boolean;
 
     /** A `render` reply: what the render printed to stderr. */
     stderr?: string;
@@ -342,13 +304,9 @@ type RpcResult =
     stderr?: string;
     jessError?: Record<string, unknown>;
     code?: string;
-
-    /** Present when the sandbox paused for one unresolved scope/built-in fact. */
-    need?: PluginFactNeed;
     error?: string;
     errorName?: string;
     stack?: string;
-    logs?: PluginLogRecord[];
   };
 
 type RuntimeState =
@@ -398,13 +356,6 @@ export class JsPlugin extends AbstractPlugin {
    * dies on every start latches the plugin to `failed` instead of spin-restarting.
    */
   private consecutiveWorkerDeaths = 0;
-
-  /**
-   * Variable names each legacy plugin function has been observed to read,
-   * keyed by module+options+function. Prefetching them turns the steady-state
-   * call into a single round trip instead of one round trip per read.
-   */
-  private readonly factMemo = new Map<string, Set<string>>();
 
   constructor(public opts: JsPluginOptions = {}) {
     super();
@@ -527,15 +478,6 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   /**
-   * The read root a process without a render request runs under: the script
-   * root, or the working directory when none is configured.
-   */
-  private defaultReadSet(): Promise<string[]> {
-    const root = this.opts.jsReadRoot ?? process.cwd();
-    return readSetFor(root, root, [path.dirname(fileURLToPath(import.meta.url))]);
-  }
-
-  /**
    * Starts Deno under native permission flags (ledger A19): read only
    * `readSet`, every other read answered "not found" (`--ignore-read`),
    * network only with `allowHttp`, and no env, write, run, ffi or sys. Deno
@@ -649,7 +591,10 @@ export class JsPlugin extends AbstractPlugin {
 
   private async startRuntime(): Promise<void> {
     this.resolveDenoCommand();
-    const readSet = this.nextReadSet ?? await this.defaultReadSet();
+    const readSet = this.nextReadSet;
+    if (readSet === undefined) {
+      throw new Error('The Deno engine starts only for a render.');
+    }
     this.workerReadSet = readSet.join('\u0000');
     try {
       await this.startWorker(readSet);
@@ -703,19 +648,7 @@ export class JsPlugin extends AbstractPlugin {
     this.pending.clear();
   }
 
-  private async callWorker(request:
-    | EngineWireRequest
-    | { type: 'load'; modulePath: string }
-    | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
-    | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
-    | {
-      type: 'invokeLessPluginFunction';
-      modulePath: string;
-      options: string | null;
-      functionName: string;
-      args: unknown[];
-      facts: PluginCallFacts;
-    }): Promise<RpcResult> {
+  private async callWorker(request: EngineWireRequest): Promise<RpcResult> {
     await this.ensureRuntime();
     this.clearIdleTimer();
     if (!this.worker?.stdin.writable) {
@@ -740,7 +673,7 @@ export class JsPlugin extends AbstractPlugin {
          * running) and let the next call spin up a fresh one.
          */
         this.abortRuntime(new Error('Deno worker killed after a request timed out.'));
-      }, this.opts.requestTimeoutMs ?? (request.type === 'render' || request.type === 'warm' ? RENDER_TIMEOUT_MS : REQUEST_TIMEOUT_MS));
+      }, this.opts.requestTimeoutMs ?? RENDER_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
@@ -795,36 +728,7 @@ export class JsPlugin extends AbstractPlugin {
       if (inEngine()) {
         return this.importInProcess(path.resolve(absoluteFilePath));
       }
-      if (route !== undefined) {
-        return route.reroute();
-      }
-      await this.ensureRuntime();
-      const modulePath = path.resolve(absoluteFilePath);
-      const loadResult = await this.callWorker({ type: 'load', modulePath });
-      if (!loadResult.ok) {
-        throw new Error(loadResult.error);
-      }
-      const moduleObject: Record<string, any> = {};
-      const exported = loadResult.exports ?? [];
-      for (const item of exported) {
-        if (item.kind === 'function') {
-          moduleObject[item.name] = async (...args: unknown[]) => {
-            const invokeResult = await this.callWorker({
-              type: 'invoke',
-              modulePath,
-              exportName: item.name,
-              args: encodeBridgeArgs(args)
-            });
-            if (!invokeResult.ok) {
-              throw lessPluginApiRefusal(path.basename(modulePath), invokeResult) ?? new Error(invokeResult.error);
-            }
-            return decodeBridgeValue(invokeResult.value);
-          };
-        } else {
-          moduleObject[item.name] = item.value;
-        }
-      }
-      return moduleObject;
+      return (route ?? noRoute(absoluteFilePath)).reroute();
     }
 
     /*
@@ -869,116 +773,7 @@ export class JsPlugin extends AbstractPlugin {
     if (inEngine()) {
       return this.importLessPluginInProcess(path.resolve(absoluteFilePath), options);
     }
-    if (route !== undefined) {
-      return route.reroute();
-    }
-    await this.ensureRuntime();
-    const modulePath = path.resolve(absoluteFilePath);
-    const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
-    if (!loadResult.ok) {
-      throw lessPluginApiRefusal(path.basename(modulePath), loadResult)
-        ?? new PluginFunctionError(path.basename(modulePath), loadResult.error ?? 'an unknown sandbox failure', loadResult.stack);
-    }
-    const functions: Record<string, ContextualPluginFunction> = {};
-    for (const functionName of loadResult.functions ?? []) {
-      functions[functionName] = (args, capabilities) =>
-        this.invokePluginFunction(
-          modulePath,
-          options,
-          functionName,
-          normalizePluginCallArgs(args),
-          capabilities ?? EMPTY_PLUGIN_CALL_CAPABILITIES
-        );
-    }
-    return { functions };
-  }
-
-  /**
-   * Runs one legacy `@plugin` function, resolving the scope/built-in facts its
-   * body reads. The sandbox reports one unmet fact at a time; the host answers
-   * it from the LIVE call-site capabilities and replays. The names a function
-   * asked for are remembered per function, so steady-state calls ship the facts
-   * up front and complete in a single round trip.
-   */
-  private invokePluginFunction(
-    modulePath: string,
-    options: string | null,
-    functionName: string,
-    args: readonly unknown[],
-    capabilities: PluginCallCapabilities
-  ): Promise<unknown> {
-    const memoKey = `${modulePath} ${options ?? ''} ${functionName}`;
-    const known = this.factMemo.get(memoKey) ?? new Set<string>();
-    const facts: PluginCallFacts = {
-      vars: {},
-      calls: {},
-      fileInfo: capabilities.currentFileInfo ?? null
-    };
-    for (const name of known) {
-      facts.vars[name] = this.resolveVariableFact(name, capabilities);
-    }
-    const request = {
-      type: 'invokeLessPluginFunction' as const,
-      modulePath,
-      options,
-      functionName,
-      args: encodeBridgeArgs([...args]),
-      facts
-    };
-
-    /**
-     * Folds one reply. Returns the decoded value, or `undefined` to signal that
-     * `facts` has been extended and the call must be replayed.
-     */
-    const settle = (result: RpcResult): { value: unknown } | undefined => {
-      for (const record of result.logs ?? []) {
-        capabilities.log?.(record);
-      }
-      if (result.ok) {
-        if (result.important) {
-          capabilities.markImportant?.();
-        }
-        return { value: decodeBridgeResult(result.value) };
-      }
-      if (!result.need) {
-        throw lessPluginApiRefusal(path.basename(modulePath), result) ?? new PluginFunctionError(
-          functionName,
-          result.error ?? 'an unknown sandbox failure',
-          result.stack,
-          result.errorName
-        );
-      }
-      if (result.need.kind === 'variable') {
-        const name = result.need.name;
-        facts.vars[name] = this.resolveVariableFact(name, capabilities);
-        known.add(name);
-        this.factMemo.set(memoKey, known);
-        return undefined;
-      }
-      facts.calls[result.need.key] = this.resolveCallFact(result.need, capabilities);
-      return undefined;
-    };
-
-    const exhausted = () => new PluginFunctionError(
-      functionName,
-      `resolving its scope reads did not settle after ${MAX_FACT_ROUNDS} rounds.`
-    );
-
-    /*
-     * A `@plugin` result is an ORDINARY awaitable value. It used to travel over a
-     * blocking channel so it never reached the engine as a promise; that channel
-     * is gone, so plugin calls exercise the same lane every other async value does.
-     */
-    const replay = async (): Promise<unknown> => {
-      for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
-        const settled = settle(await this.callWorker(request));
-        if (settled) {
-          return settled.value;
-        }
-      }
-      throw exhausted();
-    };
-    return replay();
+    return (route ?? noRoute(absoluteFilePath)).reroute();
   }
 
   private resolveVariableFact(
@@ -1169,6 +964,15 @@ export class JsPlugin extends AbstractPlugin {
     }
   }
 }
+
+/**
+ * A script reached outside a render the compiler can move into the sandbox:
+ * the compiler class declares no `moduleIdentity` of its own, or the call came
+ * from no render at all (`compile`, a direct plugin call).
+ */
+const noRoute = (absoluteFilePath: string): ScriptSandboxRoute => ({
+  reroute: () => Promise.reject(new Error(`The script "${absoluteFilePath}" runs only inside a render the compiler moves into the @jesscss/plugin-js sandbox. A compiler class does that when it declares its own \`static moduleIdentity = { module: import.meta.url, exportName: '<ClassName>' }\`.`))
+});
 
 /** Set by the compile engine (`engine-runtime.ts`) in the Deno realm it runs in. */
 const inEngine = (): boolean => Reflect.get(globalThis, Symbol.for('@jesscss/plugin-js/engine')) === true;

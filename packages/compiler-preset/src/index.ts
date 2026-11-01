@@ -171,6 +171,9 @@ export function createDefaultCompilerStack(scriptPluginResolveFrom: string): Def
 }
 
 export class DefaultCompiler extends BaseCompiler {
+  /** This class, so a render that runs in the script sandbox runs with the same compiler. */
+  static override readonly moduleIdentity = { module: import.meta.url, exportName: 'DefaultCompiler' };
+
   private readonly defaultStack: DefaultCompilerStack;
 
   constructor(opts: ConfigOptions = { compile: {}, output: {}, language: {} }, scriptPluginResolveFrom = import.meta.url) {

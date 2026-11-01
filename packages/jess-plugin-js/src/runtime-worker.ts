@@ -2,8 +2,8 @@
 /*
  * The Deno process behind `@jesscss/plugin-js`. This module runs twice: as the
  * process's main thread, which only relays (`relay`), and as the worker thread
- * that runs plugin code or whole compiles (`serve`). The work itself lives in
- * `plugin-runtime.ts`, which the Node process can also load in-process.
+ * that runs whole renders (`serve`). The work itself lives in
+ * `plugin-runtime.ts` and `engine-runtime.ts`.
  */
 import { computeResponse, installLessGlobals } from './plugin-runtime.js';
 
