@@ -103,3 +103,6 @@ packages/core/.bmark-ast/
 
 # Machine-local Conductor repository settings
 .conductor/settings.local.toml
+
+# COD toolkit checkout (scripts/cod.mjs)
+.cache/cod-kit/

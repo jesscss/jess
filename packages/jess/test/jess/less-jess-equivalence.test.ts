@@ -43,10 +43,8 @@ import { emitJess, NoJessSpelling } from '@jesscss/core';
 import { importTargetSpelling } from '@jesscss/core/ast';
 import { parse as parseJess } from '@jesscss/jess-parser';
 import { parse as parseLess } from '@jesscss/less-parser';
-import * as lessFunctionModule from '@jesscss/fns/less';
-import { lessFns } from '@jesscss/fns/less/registry';
 import jessPlugin from '@jesscss/plugin-jess';
-import lessPlugin from '@jesscss/plugin-less';
+import lessPlugin, { jessFunctions } from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { getExpectedOutputFiles } from '../../src/config.js';
@@ -244,17 +242,8 @@ const importPath = (spelling: string): string => {
   return ext === '' ? `${spelling}.jess` : ext === '.less' ? `${spelling.slice(0, -5)}.jess` : spelling;
 };
 
-/**
- * The Less built-ins, as `.jess` reaches them: the trusted `#less` module
- * (ledger C13), imported per file with `@-from … import (…)` — the named-binding
- * projection `DIALECT-TO-JESS-COMPILED-CONVERSION.md` records. Derived from the
- * Less registry itself: call name → the module's export name.
- */
-const LESS_FUNCTIONS = {
-  from: '#less',
-  names: new Map(Object.entries(lessFunctionModule).flatMap(([exported, fn]) =>
-    (lessFns as readonly unknown[]).includes(fn) && typeof fn === 'function' ? [[fn.name.toLowerCase(), exported] as const] : []))
-};
+/** The Less built-ins as `.jess` imports them — the Less plugin owns the projection. */
+const LESS_FUNCTIONS = jessFunctions();
 
 /**
  * Per converted file: its `NoJessSpelling` gaps (`null` when it converted) and

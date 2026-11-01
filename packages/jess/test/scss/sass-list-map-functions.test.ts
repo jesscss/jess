@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emitJess } from '@jesscss/core';
-import * as sassFunctions from '@jesscss/fns/sass';
+import { jessFunctions } from '@jesscss/plugin-scss';
 import { parse as parseScss } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 
@@ -158,10 +158,7 @@ describe('scss: Sass list, map and type functions on every list spelling do what
  * `.scss` → CSS writes, with the empty list `{}`, the curly list `{ … }` and
  * the map `#{ … }`.
  */
-const SASS_FUNCTIONS = {
-  from: '#sass',
-  names: new Map(Object.entries(sassFunctions).flatMap(([exported, fn]) => typeof fn === 'function' ? [[fn.name.toLowerCase(), exported] as const] : []))
-};
+const SASS_FUNCTIONS = jessFunctions();
 describe('scss → .jess → css writes what scss → css writes', () => {
   /* A map literal read with `map.get` lowers to an accessor on a literal, which `.jess` roots only at a `$` binding. */
   const converts = (cell: typeof cells[number]): boolean => !NOT_IMPLEMENTED.has(cell.fn) && cell.fn !== 'map.get' && cell.fn !== 'map-get';
