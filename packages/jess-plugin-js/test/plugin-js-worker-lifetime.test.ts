@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sandboxed } from './engine/sandboxed.js';
+import { probe, sandboxed } from './engine/sandboxed.js';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 const workerPath = fileURLToPath(new URL('../src/runtime-worker.ts', import.meta.url));
@@ -161,5 +161,27 @@ describe('@jesscss/plugin-js worker lifetime', () => {
 
     // Well inside the 8 s startup timeout.
     expect(Date.now() - started).toBeLessThan(3000);
+  });
+
+  it('runs a render after an engine started ahead of time is let go while it starts', async () => {
+    const modulePath = writeModule('export const x = 1;');
+    const root = path.dirname(modulePath);
+    const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+    plugins.push(plugin);
+    plugin.prewarmEngine({
+      compiler: probe,
+      compilerOptions: {},
+      entryDir: root,
+      jsReadRoot: root,
+      extension: undefined
+    });
+
+    // Spawned, not yet ready: the stopped start settles only after the render below begins.
+    while (Reflect.get(plugin, 'worker') === undefined) {
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    plugin.releaseEngine();
+    expect((await sandboxed(plugin).import(modulePath)).x).toBe(1);
+    expect((await sandboxed(plugin).import(modulePath)).x).toBe(1);
   });
 });

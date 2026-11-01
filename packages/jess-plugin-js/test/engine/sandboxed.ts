@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs } from '../../src/bridge.js';
 import type { ContextualPluginFunction, JsPlugin } from '../../src/index.js';
 
-const probe = { module: pathToFileURL(path.join(path.dirname(new URL(import.meta.url).pathname), 'probe.ts')).href, exportName: 'Probe' };
+export const probe = { module: pathToFileURL(path.join(path.dirname(new URL(import.meta.url).pathname), 'probe.ts')).href, exportName: 'Probe' };
 
 type Spec = Record<string, unknown> & { kind: string };
 
