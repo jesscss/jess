@@ -86,9 +86,6 @@ or needs JS) to decide what ships in the bundle.
 
 ## Open — needs the owner
 
-- **A1's last sentence** ("Less does not implement `@-export`/`@export`")
-  contradicts R8 and A1 is hash-locked. Amending it needs the owner's approval
-  to regenerate `owner-rulings.lock.json`.
 - **Exports in an imported document.** Slice 1 counts only the rendered
   document's root. An `@export` in a `@compose`d module is a plain declaration;
   one in an `@import`ed document (which folds into a child frame) raises
