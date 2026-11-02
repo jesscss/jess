@@ -151,14 +151,14 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
+  VariableExpose,
   VariableLookup,
   Lookup,
   Url
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
-import { isDiagnosticStatement } from './at-rule.js';
+import { isDiagnosticStatement, type AtRuleBlock, type AtRuleStatement, type UnknownAtRuleBlock, type Plugin } from './at-rule.js';
 
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
@@ -208,7 +208,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } fro
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
 import { channelMath, isModernHsl, rejectChannelMath, resolveHsl, type ColorChannels } from './css-color.js';
-import { exportChecked, exportInput, READS_EXPORT, rejectNestedExport, rootExports, type ExportCalls } from './export-reads.js';
+import { argumentStatementKind, declareExpose, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, exportState, forEachExpose, probedAsValueOf, READS_EXPORT, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -223,7 +223,7 @@ import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileR
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { mathOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
-import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
@@ -252,12 +252,12 @@ import {
   withoutPlaceholders
 } from './extend/dynamic.js';
 import type { BlockExtent, DynamicExtendState, DynExtendSlot, NestedLanding } from './extend/dynamic.js'; // [extend/selector-interp]
-import { branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple, type Branch, type Level } from './extend/ir.js';
+import { type Branch, type Level, branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple } from './extend/ir.js';
 import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules, type ExtendClass } from './extend/document.js';
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
-import type { ModuleConfigRejection } from '../plugin.js';
+import { type ModuleConfigRejection, rerouteForPlacedPlugins } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { writtenListValue, writtenResult } from './empty-list.js';
@@ -732,13 +732,11 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * An unclaimed external specifier (`//host/x.css`, `https:…`) is a CSS
      * terminal, not a failed load, so `(optional)` stays moot on it.
      */
-    if (loaded === undefined) {
+    const document = loaded?.node?.type === 'Stylesheet' ? loaded.node : null;
+    context.importTargets?.record(node, loaded?.resolvedPath ?? specifier, document);
+    if (loaded === undefined || document === null) {
       return undefined;
     }
-    if (loaded.node?.type !== 'Stylesheet') {
-      return undefined;
-    }
-    const document = loaded.node;
     return {
       document,
       key: loaded.resolvedPath,
@@ -752,6 +750,9 @@ export interface SerializeResult {
 
   /** Present only when `trackPositions` is set. */
   positions?: Position[];
+
+  /** [A4] What the browser runtime is generated from; present only when the document exports a variable. */
+  runtime?: ExportRuntimeData;
 }
 
 /**
@@ -1530,9 +1531,10 @@ function bindModuleCallable(
   frame: Frame,
   name: string,
   value: ModuleCallable | Fn,
-  e: Lane
+  e: Lane,
+  origin: FnOrigin
 ): void {
-  const fn = bindModuleFunction(value, name);
+  const fn = bindModuleFunction(value, name, origin);
   addModuleFunction(frame, fn, e);
 
   /*
@@ -1558,7 +1560,7 @@ function bindModuleNamespace(
   const values: Record<string, unknown> = {};
   for (const [name, value] of moduleMembers(module)) {
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`), e);
+      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`, { module: node.path.value, name }), e);
     } else {
       values[name] = value;
     }
@@ -1584,7 +1586,7 @@ function bindModuleImport(
     if (namespace === '*') {
       for (const [name, value] of moduleMembers(module)) {
         if (isModuleCallable(value)) {
-          bindModuleCallable(frame, name, value, e);
+          bindModuleCallable(frame, name, value, e, { module: node.path.value, name });
         } else {
           bindModuleValue(frame, name, value, e);
         }
@@ -1601,7 +1603,7 @@ function bindModuleImport(
   if (node.defaultImport !== null) {
     const value = requireModuleMember(module, 'default');
     if (isModuleCallable(value)) {
-      bindModuleCallable(frame, node.defaultImport, value, e);
+      bindModuleCallable(frame, node.defaultImport, value, e, { module: node.path.value, name: 'default' });
     } else {
       bindModuleValue(frame, node.defaultImport, value, e);
     }
@@ -1610,7 +1612,7 @@ function bindModuleImport(
     const value = requireModuleMember(module, specifier.name);
     const localName = specifier.alias ?? specifier.name;
     if (isModuleCallable(value)) {
-      bindModuleCallable(frame, localName, value, e);
+      bindModuleCallable(frame, localName, value, e, { module: node.path.value, name: specifier.name });
     } else {
       bindModuleValue(frame, localName, value, e);
     }
@@ -1665,10 +1667,7 @@ function activateBodyDependencies(
           return run(index + 1);
         });
       }
-      if (statement.type !== 'Plugin') {
-        continue;
-      }
-      if (!load) {
+      if (statement.type !== 'Plugin' || !load) {
         continue;
       }
       const targetString = statement.target.type === 'Url' ? statement.target.value : statement.target;
@@ -2624,10 +2623,7 @@ function publishImportedDocumentFacts(
       publishImportedVariableDeclaration(frame, child, importedFactRank(site, index));
       continue;
     }
-    if (child.type !== 'Ruleset') {
-      continue;
-    }
-    if (prepublish && !claimPrepublishedImportFact(e, child)) {
+    if (child.type !== 'Ruleset' || (prepublish && !claimPrepublishedImportFact(e, child))) {
       continue;
     }
     const rank = importedFactRank(site, index);
@@ -3699,14 +3695,16 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   return { ...value };
 }
 
-function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: Lane): void {
+function activateVariableDeclaration(node: VariableDeclaration | VariableExpose, frame: Frame, e: Lane): void {
   /*
-   * [A4] A document's top level is a frame with no parent; a ruleset, at-rule,
-   * mixin, detached-ruleset or loop body always has one. ponytail: an
-   * `@import`ed document folds into a child frame, so an `@export` in it raises
-   * too; `@compose` keeps it a module.
+   * [A20] An `@expose` binds each name to what a read beside it resolves to. A
+   * document's top level is a frame with no parent: the rendered root, which a
+   * top-level `@import` splices into, or a `@compose`d module's own. A ruleset,
+   * at-rule, mixin, detached-ruleset or loop body always has one.
    */
-  rejectNestedExport(node, frame.parent !== null, e);
+  if (node.type === 'VariableExpose') {
+    return declareExpose(node, frame.parent !== null, frame, name => resolveVarRef(frame, name, 'scoped', e, READS_EXPORT), e);
+  }
   if (
     !('scope' in node.write)
     && callValueHasLookup(node.value, readsScoped, node.name)
@@ -4466,11 +4464,11 @@ interface EvalSession {
   nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
 
   /**
-   * [A4] The `var()` call each exported root binding reads as in a CSS value
-   * ({@link exportChecked}). Undefined for a document with no export, so a
-   * lookup there pays one undefined check.
+   * [A4] The `var()` call each exported binding reads as in a CSS value
+   * ({@link exportChecked}). Its `runtime` is undefined until an `@expose`
+   * activates, so a lookup in a document with none pays one check.
    */
-  exports: ExportCalls | undefined;
+  exports: ExportState<Frame>;
 }
 
 /**
@@ -5137,13 +5135,13 @@ function evalTyped(
           return force(unresolvedRef(node, nm, e));
         }
         const bound = hit.value;
-        return hit.evaluated !== null
+        return exportInputRead(e, hit, hit.evaluated !== null
           ? reachedEvaluated(e, hit.evaluated)
           : isMixinReference(bound)
             ? readMixinReference(e, node, bound)
             : withExcluded(e, bound, () => isMixinCallValue(bound)
                 ? force(literal(''))
-                : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node);
+                : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -5491,7 +5489,8 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: Lane, referenc
  * What a lookup names — a variable, an `@@name` one included, or a property —
  * by the resolvers its evaluation uses, or `undefined`. A merged property is
  * the bytes of its members, and an `@@name` whose name awaits a plugin is read
- * only when it evaluates.
+ * only when it evaluates. It reads no value, so an export is its binding
+ * ({@link READS_EXPORT}); the evaluation that follows reads it.
  */
 function lookupBinding(node: Lookup, frame: Frame | null, e: Lane): { value: Binding; frame: Frame | null } | undefined {
   if (node.kind === 'var') {
@@ -5500,7 +5499,7 @@ function lookupBinding(node: Lookup, frame: Frame | null, e: Lane): { value: Bin
       observeRejectedThenable(name);
       return undefined;
     }
-    return resolveVarRef(frame, name, node.scope, e, node);
+    return resolveVarRef(frame, name, node.scope, e, READS_EXPORT);
   }
   if (node.kind === 'prop' && typeof node.name === 'string') {
     const hit = resolvePropRef(frame, node.name, e);
@@ -8028,7 +8027,7 @@ function classifyMixinValuePart(source: CallValue, frame: Frame, e: Lane): Mixin
   if (source.kind !== 'var' || typeof source.name !== 'string') {
     return MIXIN_VALUE_CANONICAL;
   }
-  return classifyMixinValueHit(resolveVarRef(frame, source.name, source.scope, e), e);
+  return classifyMixinValueHit(resolveVarRef(frame, source.name, source.scope, e, READS_EXPORT), e);
 }
 
 /** Classify one already-resolved variable root without repeating its scope walk. */
@@ -8298,15 +8297,15 @@ function resolveAuthoredMixinValue(
  * one needs it.
  */
 function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
-  const outerChecks = e.checks;
-  const outerFound = bindingArgument(e, source);
-  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined;
+  const outerChecks = e.checks, outerFound = bindingArgument(e, source), outerRead = exportArgumentStart(e.s.exports);
+  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: ExportArgument | undefined;
   try {
     value = evalTypedSlot(source, frame, e, project, argument);
   } finally {
     found = boundArgument(e, outerChecks, outerFound);
+    read = exportArgumentEnd(e.s.exports, outerRead);
   }
-  return keepArgument(e.s, found, value);
+  return keepArgument(e.s, found, exportArgumentBound(e.s.exports, read, value, source, frame));
 }
 
 /**
@@ -9063,7 +9062,6 @@ function dispatchCall(
   reach: 'ambient' | 'local' | 'imported',
   demanded = false
 ): MaybePromise<EvalValue> {
-  const ambient = reach === 'ambient';
   const modes = reach === 'imported' && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
@@ -9072,7 +9070,7 @@ function dispatchCall(
    * call with no callable is written out as-is, so its arguments are values
    * (ledger F11) rather than inputs.
    */
-  const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
+  const argument = selected === undefined && !(reach === 'ambient' && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
   const alpha = colorAlphaSlash(node);
 
   /*
@@ -9085,18 +9083,9 @@ function dispatchCall(
   const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === be.keepsMath
     ? be
     : deriveLane(be, be.keepsMath ? 'checkMath' : 'keepMath');
-  const typed = alpha === null
-    ? node.args.map(a => evalTypedSlot(a.value, frame, ae, true, argument))
-    : [colorChannels(node.args[0]!.value, alpha, frame, ae, argument)];
-  const call = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
-    let named = false;
-    for (let i = 0; i < node.args.length; i++) {
-      if (node.args[i]!.name !== undefined) {
-        named = true;
-        break;
-      }
-    }
-    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient) : vals;
+  const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
+    const named = node.args.some(isNamedArg);
+    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, reach === 'ambient') : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
     /*
@@ -9111,7 +9100,7 @@ function dispatchCall(
       ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, modes, null, e.s.io, selected, ambient, written, node.args);
+      const result = ev.call(node.name, args, modes, null, e.s.io, selected, reach === 'ambient', written, node.args);
       if (isThenable(result)) {
         return result.then((value) => {
           warnConsumedKept(vals, value, node, e);
@@ -9124,11 +9113,28 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   };
-  return combineAll(typed, vals => demanded && selected === undefined && isModernHsl(node)
-    ? mapMaybe(call(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'Keyword' || out.call === null
+  const call = demanded && selected === undefined && isModernHsl(node)
+    ? (vals: ValueGroup[]): MaybePromise<EvalValue> => mapMaybe(dispatch(vals), out => isLiteral(out) || isValueGroupArray(out) || out.type !== 'Keyword' || out.call === null
         ? out
         : resolveHsl(node, vals[0]!, (slot, channels) => evalTypedSlot(slot, frame, deriveLane(be, 'channels', undefined, undefined, channels), true, ARG_INPUT), out))
-    : call(vals));
+    : dispatch;
+
+  /* [A4] A computed call reading an export is recorded for the runtime. */
+  return e.s.exports.runtime === undefined || argument !== ARG_INPUT
+    ? combineAll(callArguments(node, alpha, frame, ae, argument), call)
+    : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, call));
+}
+
+/** Whether a call argument is written by name (`$lightness: -10%`). */
+const isNamedArg = (arg: CallArg<ValueSlot>): boolean => arg.name !== undefined;
+
+/** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
+function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
+  const args: Array<MaybePromise<ValueGroup>> = alpha === null ? [] : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+  for (let i = 0; alpha === null && i < node.args.length; i++) {
+    args.push(evalTypedSlot(node.args[i]!.value, frame, e, true, argument));
+  }
+  return args;
 }
 
 /**
@@ -9292,7 +9298,7 @@ function writtenBlockBody(
         break;
       }
       default:
-        rejectRulesetArgument(block, `a ${rule.type}`, e);
+        rejectRulesetArgument(block, argumentStatementKind(rule, e), e);
     }
   }
   if (replay !== undefined) {
@@ -12270,13 +12276,9 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
     return;
   }
   const table = commentTableOf(trivia);
-  for (let i = 0; i < table.runs.length; i++) {
-    if (table.runStart[i]! <= start && table.runEnd[i]! >= end
-      && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
+  for (let i = 0; i < table.runs.length && table.runStart[i]! <= start; i++) {
+    if (table.runEnd[i]! >= end && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
       e.emittedBlockTrivia.addIndex(table, i);
-      return;
-    }
-    if (table.runStart[i]! > start) {
       return;
     }
   }
@@ -12729,7 +12731,7 @@ function evaluateLeafStatement(
 
 /** Publish a definition/variable independently of the selected writer. */
 function evaluateSilentStatement(
-  node: MixinDefinition | VariableDeclaration,
+  node: MixinDefinition | VariableDeclaration | VariableExpose,
   frame: Frame,
   e: Emit
 ): void {
@@ -13877,7 +13879,13 @@ function planImportedFacts(
         }
       }
       const collect = async (): Promise<void> => {
-        await visit(
+        /*
+         * A plain import placed on the document's top-level chain (no at-rule,
+         * reference import or module above it) is evaluated for certain, and so
+         * is a `@plugin` at its top level: one the sandbox runs moves the render
+         * there now (rerouteForPlacedPlugins).
+         */
+        await rerouteForPlacedPlugins(e.s.context?.opts.scriptSandbox !== undefined && !isCompose && !reference && !hidden && importScope === '' ? loaded.document!.rules : null, e.s.context).then(() => visit(
           loaded.document!.rules,
           childFrame,
           reference ? null : importCssPlan,
@@ -13895,7 +13903,7 @@ function planImportedFacts(
 
           /* An imported sheet's root is its importer's scope; a composed module is its own. */
           isCompose ? childFrame : importScope
-        );
+        ));
       };
       const key = isCompose || loaded.key === undefined || expanding.has(loaded.key) ? undefined : loaded.key;
       if (key !== undefined) {
@@ -13911,8 +13919,9 @@ function planImportedFacts(
     };
     for (let at = 0; at < statements.length; at++) {
       const st = statements[at]!;
-      if (st.type === 'VariableDeclaration') {
-        activateVariableDeclaration(st, scope, e);
+      if (st.type === 'VariableDeclaration' || (st.type === 'VariableExpose' && atRules.length === 0 && publishFrame !== null && !hidden)) {
+        /* [A20] A top-level sheet's `@expose` binds where its facts publish, before any output reads it; a `(reference)` sheet's does nothing. */
+        activateVariableDeclaration(st, st.type === 'VariableDeclaration' ? scope : publishFrame ?? scope, e);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);
         if (target !== null) {
@@ -14087,7 +14096,7 @@ function createRenderSession(
       argumentSyntax: undefined,
       invalidArguments: new Map(),
       nestedPropertyOwners: undefined,
-      exports: rootExports(root)
+      exports: exportState()
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -14168,9 +14177,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     pendingPlannedModuleImports: undefined,
     preparedImportsOwnedByCaller: false
   });
-  const rootFrame = makeRootFrame(root, rootFns, e);
-  rootFrame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
-  rootFrame.importContext = '';
+  const rootFrame = makeRenderRootFrame(root, rootFns, e);
   const plannerRootFrame = makeRootFrame(root, rootFns, e);
   const prepare = activateBodyDependencies(root.rules, rootFrame, e, false);
   const plan = (): MaybePromise<PreparedImports> => {
@@ -14198,6 +14205,14 @@ function makeRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emi
   return frame;
 }
 
+/** The rendered root frame: {@link makeRootFrame}, owned by the context's current source, in the root import context. */
+function makeRenderRootFrame(root: Stylesheet, rootFns: Map<string, Fn> | null, e: Emit): Frame {
+  const frame = makeRootFrame(root, rootFns, e);
+  frame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
+  frame.importContext = '';
+  return frame;
+}
+
 export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
@@ -14216,9 +14231,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pendingPlannedModuleImports: preparedModulePlan?.size,
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined
   });
-  const rootFrame = makeRootFrame(root, rootFns, e);
-  rootFrame.sourceOwner = e.s.context?.currentSourceOwner?.() ?? null;
-  rootFrame.importContext = '';
+  const rootFrame = makeRenderRootFrame(root, rootFns, e);
+  forEachExpose(root.rules, node => activateVariableDeclaration(node, rootFrame, e)); // [A20] bound before any read, written before or after it
   const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
@@ -14346,9 +14360,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       }
       if (e.positions) {
         resolvePositionOffsets(e.chunks, e.positions);
-        return { css: e.chunks.join(''), positions: e.positions };
+        return { css: e.chunks.join(''), positions: e.positions, ...runtimeData(e.s.exports) };
       }
-      return { css: e.chunks.join('') };
+      return { css: e.chunks.join(''), ...runtimeData(e.s.exports) };
     };
     const finish = (): SerializeReturn => {
       if (e.positions) {
@@ -14538,6 +14552,7 @@ function emitDocumentStatements(
         }
         markSilentStatementBlockCommentTrivia(child, e);
         break;
+      case 'VariableExpose':
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
         markSilentStatementBlockCommentTrivia(child, e);
@@ -17099,6 +17114,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         }
         case 'MixinDefinition':
+        case 'VariableExpose':
         case 'VariableDeclaration':
           evaluateSilentStatement(node, frame, e);
           break;
@@ -17155,6 +17171,7 @@ function walkReferenceAncestorBody(
           markSilentStatementBlockCommentTrivia(node, e);
           emitted = undefined;
           break;
+        case 'VariableExpose':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);
@@ -17830,10 +17847,8 @@ function assertWrittenDeclaration(node: Declaration, frame: Frame, e: Lane): voi
  * data is a real value and SCSS nested-property blocks are flattened
  * elsewhere, so only value-block resolution is rejected here. */
 function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | null, e: Lane): void {
-  if (!isValueSlotArray(node.value) && (node.value.type === 'Collection' || node.value.type === 'NestedPropertyBlock')) {
-    return;
-  }
-  if (!resolveValueBlock(node.value, frame, e)) {
+  if ((!isValueSlotArray(node.value) && (node.value.type === 'Collection' || node.value.type === 'NestedPropertyBlock'))
+    || !probedAsValueOf(node, frame, e, resolveValueBlock)) {
     return;
   }
   throw ERR.rulesetOnProperty({
@@ -18615,7 +18630,7 @@ function dispatch(
     }
     const hit = lookup === undefined
       ? undefined
-      : resolveVarRef(overlay, lookupName!, lookup.scope, e);
+      : resolveVarRef(overlay, lookupName!, lookup.scope, e, READS_EXPORT);
     const hitValue = hit?.value;
     if (hitValue !== undefined && !isValueSlotArray(hitValue)
       && !isMixinCallValue(hitValue) && (isValueBlock(hitValue) || isMixinReference(hitValue))) {
@@ -18984,7 +18999,7 @@ function substituteClosureVarArgs(
       && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
     const directHit = directVariable
       ? trackValue
-        ? resolveVarRef(frame, value.name, value.scope, e)
+        ? resolveVarRef(frame, value.name, value.scope, e, READS_EXPORT)
         : lookupVarIn(frame, value.name)
       : undefined;
     const spreadCarriesValue = spreadValueBindings?.has(value) === true;
@@ -20104,7 +20119,9 @@ function writeHoistedCssImport(node: AtRuleStatement, root: boolean, frame: Fram
     return false;
   }
   const slot = slots.shift();
-  if (slot === undefined) {
+
+  /* A conversion's `importTargets` records the placement; it answers whether this one is a dropped duplicate. */
+  if (e.s.context?.importTargets?.hoist(node, slot) ?? slot === undefined) {
     return true;
   }
   const from = e.chunks.length;
@@ -20840,7 +20857,8 @@ function expandStyleImport(
     throw composeNotTopLevel(node, e);
   }
   if (e.s.context?.options.processImports === false) {
-    return;
+    // Under this document's policy the import contributes nothing; nothing is resolved.
+    return e.s.context.importTargets?.skip(node);
   }
   if (importDocument) {
     const planned = e.plannedImportDocuments;
@@ -22282,6 +22300,7 @@ function emitAtRuleBody(
         publishSelectedMixinDefinition(frame, node);
         markSilentStatementBlockCommentTrivia(node, e);
         return undefined;
+      case 'VariableExpose':
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
         markSilentStatementBlockCommentTrivia(node, e);
@@ -22835,6 +22854,7 @@ function emitBubbleBody(
           publishSelectedMixinDefinition(frame, node);
           markSilentStatementBlockCommentTrivia(node, e);
           break;
+        case 'VariableExpose':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);

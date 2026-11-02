@@ -221,4 +221,13 @@ export type Fn = ((value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>) &
   readonly name: string;
   readonly params: readonly ParamSpec[];
   readonly variadic?: boolean;
+
+  /** The module export a function imported into a stylesheet binds (module-values.ts `bindModuleFunction`). */
+  readonly origin?: FnOrigin;
 };
+
+/** Where an imported function comes from: the module as the stylesheet names it, and the export. */
+export interface FnOrigin {
+  readonly module: string;
+  readonly name: string;
+}

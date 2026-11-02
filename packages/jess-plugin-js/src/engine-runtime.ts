@@ -61,9 +61,9 @@ const rebuildFunction = ({ source, where }) => {
  * function, `__jessPlugin` a plugin made again by the factory that made it on
  * the host (its module, export and arguments), never a live object.
  */
-const decodeEngineValue = async (value) => {
+const decodeEngineValue = async (value, plugins = new Map()) => {
   if (Array.isArray(value)) {
-    return Promise.all(value.map(decodeEngineValue));
+    return Promise.all(value.map(item => decodeEngineValue(item, plugins)));
   }
   if (value === null || typeof value !== 'object') {
     return value;
@@ -72,13 +72,19 @@ const decodeEngineValue = async (value) => {
     return rebuildFunction(value.__jessFn);
   }
   if (value.__jessPlugin) {
-    const { module, exportName, args } = value.__jessPlugin;
-    const factory = (await import(module))[exportName];
-    return await factory(...await decodeEngineValue(args));
+    /* One value naming the same factory and arguments twice (a config's \`config\` and \`ownConfig\`) makes one plugin. */
+    const key = JSON.stringify(value.__jessPlugin);
+    let made = plugins.get(key);
+    if (made === undefined) {
+      const { module, exportName, args } = value.__jessPlugin;
+      made = import(module).then(async mod => mod[exportName](...await decodeEngineValue(args, plugins)));
+      plugins.set(key, made);
+    }
+    return await made;
   }
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    out[key] = await decodeEngineValue(item);
+    out[key] = await decodeEngineValue(item, plugins);
   }
   return out;
 };
@@ -163,20 +169,33 @@ const compilerFor = async (req) => {
   return compiler;
 };
 
-const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender']);
+const RENDER_METHODS = new Set(['render', 'renderToResult', 'renderString', 'safeRender', 'convertToJess']);
 
 /** Where the compiler reads the host's resolved `styles.config` settings during a render (its `HostConfigs`). */
 const HOST_CONFIGS = Symbol.for('@jesscss/compiler/host-configs');
 
+/** The config files a chain merges, else the folder it was searched from: what a chain that cannot load is named by. */
+const configFilesOf = (chain, dir) => (Array.isArray(chain?.configFilePaths) && chain.configFilePaths.length > 0 ? chain.configFilePaths.join(', ') : dir);
+
+/**
+ * The host's settings for a render. The entry folder's are decoded now, since
+ * the render reads them first; one that fails to load is kept as the config it
+ * names, so the compile reports it. A chain above a read root stays encoded
+ * until a file needs it (the compiler's `prepareConfigsFor`): decoding loads
+ * and runs a recorded plugin factory.
+ */
 const decodeHostConfigs = async (configs) => {
   if (!configs) {
     return undefined;
   }
   const folders = {};
   for (const [dir, folder] of Object.entries(configs.folders)) {
-    folders[dir] = await decodeEngineValue(folder);
+    folders[dir] = await decodeEngineValue(folder).catch(err => ({
+      unsendable: configFilesOf(folder, dir),
+      reason: `cannot be loaded in the script sandbox: ${err?.message ?? String(err)}`
+    }));
   }
-  return { folders, searches: configs.searches };
+  return { folders, above: configs.above, decode: decodeEngineValue, decoded: new Map() };
 };
 
 /**

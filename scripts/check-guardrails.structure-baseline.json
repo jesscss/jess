@@ -52,13 +52,10 @@
     "statements": 49
   },
   "packages/core/src/ast/serialize.ts": {
-    "statements": 9241
+    "statements": 9235
   },
   "packages/core/src/ast/serialize.ts#importIsNoOp": {
     "params": 7
-  },
-  "packages/core/src/ast/serialize.ts#activateBodyDependencies": {
-    "statements": 46
   },
   "packages/core/src/ast/serialize.ts#cellsForParams": {
     "params": 7
@@ -157,7 +154,7 @@
     "statements": 86
   },
   "packages/core/src/ast/serialize.ts#serialize": {
-    "statements": 57
+    "statements": 56
   },
   "packages/core/src/ast/serialize.ts#emitDocumentStatements": {
     "statements": 186
@@ -369,7 +366,7 @@
     "statements": 49
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts": {
-    "statements": 1277
+    "statements": 1271
   },
   "packages/syntax/less/less-parser/src/grammar-helpers.ts#callWithLayout": {
     "params": 6

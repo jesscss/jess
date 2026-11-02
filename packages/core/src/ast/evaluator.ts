@@ -79,6 +79,11 @@ function fallbackCall(name: string, args: ValueGroup, modes: EvalModes | undefin
   return keepAsWritten(makeCallKeyword(`${name}(${verbatimArgs(written, modes, call.written?.keywords ?? call.authored, isMathFunctionName(name))})`, { name, args: written }));
 }
 
+/** `name(args)` written out as-is, as a call with no callable is. */
+export function writeCall(name: string, args: ValueGroup, modes: EvalModes): Value {
+  return fallbackCall(name, args, modes, { rejectEmpty: false });
+}
+
 /**
  * A registered callable has already been selected. Its failure is therefore an
  * invocation result, not a name-resolution miss: preserve it only in the

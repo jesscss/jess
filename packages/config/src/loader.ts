@@ -61,14 +61,22 @@ function searchAbove({ filepath }: { filepath: string }): string | undefined {
   return parent === dir || isPackageRoot(dir) ? undefined : parent;
 }
 
-/** The configs found, nearest first, merged: the nearest wins setting by setting ({@link mergeConfigs}). */
-function mergeFound(found: ReadonlyArray<{ config: unknown; filepath: string }>): LoadedConfigMeta {
+/**
+ * The configs found, nearest first, merged: the nearest wins setting by setting
+ * ({@link mergeConfigs}). `below` is what the configs above the last one found
+ * merged to, when that part of the search was run elsewhere: the found configs
+ * merge over it exactly as they would over the configs themselves.
+ */
+function mergeFound(found: ReadonlyArray<{ config: unknown; filepath: string }>, below?: LoadedConfigMeta): LoadedConfigMeta {
   const configs = found.map(result => normalizeConfig(result.config));
+  if (below !== undefined && configs.length === 0) {
+    return below;
+  }
   return {
-    config: configs.reduceRight<StylesConfig>((merged, config) => mergeConfigs(merged, config), {}),
-    configFilePath: found[0]?.filepath,
-    ownConfig: configs[0] ?? {},
-    configFilePaths: found.map(result => result.filepath)
+    config: configs.reduceRight<StylesConfig>((merged, config) => mergeConfigs(merged, config), below?.config ?? {}),
+    configFilePath: found[0]?.filepath ?? below?.configFilePath,
+    ownConfig: configs[0] ?? below?.ownConfig ?? {},
+    configFilePaths: [...found.map(result => result.filepath), ...below?.configFilePaths ?? []]
   };
 }
 
@@ -106,7 +114,7 @@ export function loadConfigSync(searchFrom?: string): StylesConfig {
  * (DESIGN-DECISIONS O19). `configFilePath` is the nearest one, and `ownConfig`
  * what that file sets by itself.
  */
-export function loadConfigSyncWithMeta(searchFrom?: string): LoadedConfigMeta {
+export function loadConfigSyncWithMeta(searchFrom?: string, below?: LoadedConfigMeta): LoadedConfigMeta {
   const found: Array<NonNullable<CosmiconfigResult>> = [];
   let result = explorerSync.search(searchFrom);
   while (result) {
@@ -114,7 +122,7 @@ export function loadConfigSyncWithMeta(searchFrom?: string): LoadedConfigMeta {
     const above = searchAbove(result);
     result = above === undefined ? null : explorerSync.search(above);
   }
-  return mergeFound(found);
+  return mergeFound(found, below);
 }
 
 /**

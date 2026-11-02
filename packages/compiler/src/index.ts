@@ -2,11 +2,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { getConfigWithMeta, hostConfigsFor, type ConfigWithMeta } from './config.js';
+import { configsAboveReadRoot, getConfigWithMeta, hostConfigsFor, prepareConfigsFor, type ConfigWithMeta } from './config.js';
 import {
   Context,
+  ImportTargets,
   type ContextOptions,
   type ErrorDiagnostic,
+  type ExportRuntimeData,
   type WarningDiagnostic,
   JessError,
   toDiagnostic,
@@ -34,6 +36,7 @@ import {
   type OutputOptions
 } from 'styles-config';
 import { outputDiagnostics } from './diagnostics.js';
+import { printConversion } from './convert-to-jess.js';
 import {
   createRenderProfile,
   finalizeRenderProfile,
@@ -43,10 +46,12 @@ import {
 } from './profile.js';
 import {
   compilerModuleOf,
+  engineReadRoots,
   fromEngine,
   packageInstalled,
   prewarmEngine,
   prewarmWhenInstalled,
+  inScriptSandbox,
   routeRender,
   runInEngine,
   withColors,
@@ -59,8 +64,12 @@ import {
   type RenderResult,
   type RenderStringOptions,
   type RoutedCall,
-  type SafeRenderResult
+  type SafeRenderResult,
+  type ConvertOptions,
+  type JessConversion
 } from './sandbox-route.js';
+
+export type { ConvertedFile, ConvertOptions, JessConversion } from './sandbox-route.js';
 
 export type { CompilerModuleIdentity } from './sandbox-route.js';
 import { mergeConfig } from './merge-config.js';
@@ -159,6 +168,9 @@ export interface RenderedStylesheet {
    * `disableSourcemapAnnotation` writes nothing; it is returned either way.
    */
   sourceMapURL?: string;
+
+  /** What the browser runtime module is generated from, when the stylesheet exports a variable (ledger A4). */
+  runtime?: ExportRuntimeData;
 }
 
 /**
@@ -249,6 +261,23 @@ function appendThrownJessDiagnostic(
   if (!target.some(existing => sameDiagnosticSite(existing, diagnostic))) {
     target.push(diagnostic);
   }
+}
+
+/** The session's diagnostics with the one `err` a compile threw added. */
+function thrownDiagnostics(
+  context: Context,
+  err: unknown,
+  filePath: string | undefined,
+  fallbackReason: string
+): { errors: ErrorDiagnostic[]; warnings: WarningDiagnostic[] } {
+  const errors: ErrorDiagnostic[] = [...context.errors];
+  const warnings: WarningDiagnostic[] = [...context.warnings];
+  if (err instanceof JessError) {
+    appendThrownJessDiagnostic(errors, warnings, err);
+  } else {
+    errors.push(internalUnknownDiagnostic(err, thrownMessage(err), filePath, fallbackReason));
+  }
+  return { errors, warnings };
 }
 
 type PluginFactoryCacheKey = string;
@@ -466,6 +495,14 @@ const resolveJsReadRoot = (
   return entryRoot ?? configRoot ?? process.cwd();
 };
 
+/**
+ * Whether a source file's settings load its `styles.config` files. A config is
+ * code, so none is loaded for a file in an installed package: compiling a
+ * project never runs a dependency's config.
+ */
+const loadsConfig = (sourcePath: string): boolean =>
+  path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules');
+
 const getConsumerResolutionBaseDir = (
   filePath: string | undefined,
   configFilePath: string | undefined
@@ -550,7 +587,7 @@ export class Compiler {
        */
       const folder: ConfigWithMeta = sourcePath === filePath
         ? entryFolder
-        : path.isAbsolute(sourcePath) && !sourcePath.split(path.sep).includes('node_modules')
+        : loadsConfig(sourcePath)
           ? getConfigWithMeta(path.dirname(sourcePath))
           : { config: {} };
       const params = { language: sourceLanguage, input: sourcePath };
@@ -837,6 +874,9 @@ export class Compiler {
     const proxy: LazyPluginInterface = {
       name: 'js',
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
+
+      /* It hands every `@plugin` to the script plugin, which runs it in the sandbox. */
+      sandboxesScripts: true,
       import: async (absoluteFilePath, route) => {
         const plugin = await getPlugin();
         if (!plugin.import) {
@@ -998,6 +1038,11 @@ export class Compiler {
     }
     if (route !== undefined) {
       contextOptions.scriptSandbox = route;
+    }
+
+    /* In the sandbox, the config chain a file's settings need is decoded before it is parsed. */
+    if (inScriptSandbox()) {
+      contextOptions.prepareSource = file => (loadsConfig(file) ? prepareConfigsFor(path.dirname(file)) : undefined);
     }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(contextOptions.disableScriptModules
@@ -1236,8 +1281,9 @@ export class Compiler {
         css = plugin.postProcessCss(css, context);
       }
     }
+    const runtime = result.runtime === undefined ? {} : { runtime: result.runtime };
     if (!trackPositions || result.positions === undefined) {
-      return { css };
+      return { css, ...runtime };
     }
 
     /*
@@ -1246,7 +1292,7 @@ export class Compiler {
      * also built pre-postprocess). Regenerate through postprocessors if needed.
      */
     const option: SourceMapConfig = typeof sourceMapOption === 'object' ? sourceMapOption : {};
-    return assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath);
+    return { ...assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath), ...runtime };
   }
 
   /** @internal AST document preparation; no legacy evaluator tree is exposed. */
@@ -1319,7 +1365,7 @@ export class Compiler {
    */
   private routed<T>(method: EngineMethod, call: RoutedCall<T>): Promise<T> {
     const compiler = compilerModuleOf(this);
-    if (compiler === undefined || this.scriptPluginSpecifier === undefined) {
+    if (compiler === undefined || this.scriptPluginSpecifier === undefined || inScriptSandbox()) {
       return call.here(undefined);
     }
 
@@ -1348,11 +1394,24 @@ export class Compiler {
           method,
           args: call.engineArgs,
 
-          /* The sandbox may not read the configs above its read root; the host sends what it resolved. */
-          configs: hostConfigsFor(entryDir, [entryDir, request.jsReadRoot])
+          /*
+           * The sandbox may not read the configs above its read root: the host
+           * sends what it resolved for the entry, and resolves the chain above
+           * each read root when the script plugin knows the roots.
+           */
+          configs: hostConfigsFor(entryDir),
+          configsAbove: configsAboveReadRoot
         });
       }
     });
+  }
+
+  /** The folders a render's engine may read, computed on this host ({@link engineReadRoots}). */
+  private engineReadRoots(call: { filePath: string | undefined; options: Partial<ConfigOptions> | undefined }): Promise<readonly string[]> {
+    const compiler = compilerModuleOf(this);
+    return compiler === undefined
+      ? Promise.reject(new Error('A conversion from the compile engine needs a compiler the engine can rebuild.'))
+      : engineReadRoots(...this.engineFor(compiler, call));
   }
 
   /** Where a render's engine comes from, and what decides its read root. */
@@ -1497,7 +1556,7 @@ export class Compiler {
 
     try {
       const input = { filePath, source, language, extension };
-      const { css, map, sourceMapURL } = await this.renderStylesheet(
+      const { css, map, sourceMapURL, runtime } = await this.renderStylesheet(
         await this.prepareStylesheet(context, resolved, input, profile),
         context,
         profile,
@@ -1519,23 +1578,12 @@ export class Compiler {
         warnings: [...context.warnings],
         loadedUrls: [],
         ...(map === undefined ? {} : { map }),
-        ...(sourceMapURL === undefined ? {} : { sourceMapURL })
+        ...(sourceMapURL === undefined ? {} : { sourceMapURL }),
+        ...(runtime === undefined ? {} : { runtime })
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath ?? undefined, 'An unexpected error occurred during compilation.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath ?? undefined,
-          'An unexpected error occurred during compilation.'
-        ));
-      }
 
       if (renderOptions?.suppressWarnings !== true) {
         outputDiagnostics(errors, warnings, {
@@ -1597,20 +1645,8 @@ export class Compiler {
         warnings: [...context.warnings]
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during compilation.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath,
-          'An unexpected error occurred during compilation.'
-        ));
-      }
 
       finalizeRenderProfile(profile, {
         method: 'safeCompile',
@@ -1621,6 +1657,66 @@ export class Compiler {
         errorMessage: errMsg
       });
       return { document: null, context, errors, warnings };
+    }
+  }
+
+  /**
+   * @internal `.less` / `.scss` → `.jess` from an EVALUATED render: the render
+   * records what each import resolved to, and {@link printConversion} prints the
+   * entry and every document it loaded from those facts.
+   *
+   * Routed like {@link safeRender}: a conversion whose render reaches a
+   * sandboxed script runs whole in the sandbox, and returns plain data.
+   *
+   * A `.jess` path that already exists is a gap unless `conversion.overwrite`
+   * is set; a symlink, or a file the render loaded, never is written.
+   */
+  async convertToJess(filePath: string, options?: Partial<ConfigOptions>, conversion?: ConvertOptions): Promise<JessConversion> {
+    const overwrite = conversion?.overwrite === true;
+    return this.routed('convertToJess', {
+      engineArgs: [filePath, withColors(options), { overwrite }],
+      filePath,
+      memoKey: filePath,
+      options,
+      check: async value => fromEngine.conversion(value, await this.engineReadRoots({ filePath, options }), overwrite),
+      here: route => this.convertToJessHere(route, filePath, options, overwrite)
+    });
+  }
+
+  private async convertToJessHere(
+    route: ScriptSandboxRoute | undefined,
+    filePath: string,
+    options: Partial<ConfigOptions> | undefined,
+    overwrite: boolean
+  ): Promise<JessConversion> {
+    const { resolved, context, profile } = await this.prepareRender(filePath, {
+      ...options,
+      breakOnError: false,
+      suppressWarnings: options?.suppressWarnings ?? false
+    }, undefined, route);
+    const loads = context.importTargets = new ImportTargets();
+    try {
+      const entry = await this.prepareStylesheet(context, resolved, { filePath }, profile);
+      await this.renderStylesheet(entry, context, profile, undefined, resolved);
+      const files = printConversion(context, entry, loads, overwrite);
+      finalizeRenderProfile(profile, {
+        method: 'convertToJess',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warningCount
+      });
+      return { files, errors: [...context.errors], warnings: [...context.warnings] };
+    } catch (err: unknown) {
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during conversion.');
+      finalizeRenderProfile(profile, {
+        method: 'convertToJess',
+        filePath,
+        errors: errors.length,
+        warnings: warnings.length,
+        failed: true,
+        errorMessage: thrownMessage(err)
+      });
+      return { files: [], errors, warnings };
     }
   }
 
@@ -1669,20 +1765,8 @@ export class Compiler {
         warnings: [...context.warnings]
       };
     } catch (err: unknown) {
-      const errors: ErrorDiagnostic[] = [...context.errors];
-      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const { errors, warnings } = thrownDiagnostics(context, err, filePath, 'An unexpected error occurred during rendering.');
       const errMsg = thrownMessage(err);
-
-      if (err instanceof JessError) {
-        appendThrownJessDiagnostic(errors, warnings, err);
-      } else {
-        errors.push(internalUnknownDiagnostic(
-          err,
-          errMsg,
-          filePath,
-          'An unexpected error occurred during rendering.'
-        ));
-      }
 
       finalizeRenderProfile(profile, {
         method: 'safeRender',

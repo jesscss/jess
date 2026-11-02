@@ -33,7 +33,7 @@ import {
   selectorBranchCanonical,
   simpleSelector,
   spaced,
-  selectorTermOf,
+  compoundSelectorOf,
   selist
 } from './nodes.js';
 import { generalEnclosedSourceOf, sourceEndOf, sourceStartOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withGluedKeywordSpan, withValueLayout } from './provenance.js';
@@ -566,10 +566,11 @@ const isBlockCommentAt = (source: string, at: number): boolean =>
  * layout of a list keeps it: each block comment with the whitespace either side of
  * it; with no block comment, the whitespace only where it breaks a line; otherwise
  * nothing. An entry is classified by its own bytes (`/*` opens a block comment), so
- * any dialect's trivia scope reads the same.
+ * any dialect's trivia scope reads the same. A caller reading the log in order
+ * passes `from`, an entry at or before the run, so the read starts there.
  */
-export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number): string {
-  return triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, 0, insertIndex), insertIndex);
+export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number, from = 0): string {
+  return triviaRunText(triviaLog, source, triviaEntryAt(triviaLog, from, insertIndex), insertIndex);
 }
 
 /** The first log entry from `from` whose insert index is at least `insertIndex`: the indices never decrease. */
@@ -852,8 +853,9 @@ export function isSelectorTerm(value: unknown): value is SelectorTerm {
   return isSimpleToken(value) || isCompound(value);
 }
 
+/** The selector term the tokens spell: a lone token stays direct, adjacent tokens form a compound. */
 export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
-  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
+  tokens[1] === undefined ? tokens[0]! : compoundSelectorOf([tokens[0]!, tokens[1], ...tokens.slice(2)]);
 
 export function isComplex(value: unknown): value is Extract<SelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
@@ -1639,11 +1641,12 @@ export function isExtendInstruction(value: unknown): value is ExtendInstruction 
     && typeof value.partial === 'boolean';
 }
 
+/** The child as a token. Callers read its `value`, so it is not copied. */
 export function requireToken(value: unknown, dialect: string): Token {
   if (!isToken(value)) {
     throw new TypeError(`${dialect} grammar produced a non-token child.`);
   }
-  return { value: value.value };
+  return value;
 }
 
 export function requireString(value: unknown, dialect: string): string {

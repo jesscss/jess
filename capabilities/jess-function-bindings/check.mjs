@@ -6,7 +6,8 @@
  * implementation, 2 = the evidence could not be observed.
  *
  * WHAT IT OBSERVES. Every suite under `packages/jess/test` that calls
- * `emitJess` runs under vitest against the BUILT packages, with
+ * `emitJess` or `convertToJess` runs under vitest against the BUILT packages
+ * (the compiler, itself a consumer, from source), with
  * `observe.setup.ts` recording the `functions` value each call receives. That
  * value is what the conversion actually used, so the checks compare values, not
  * a consumer's pass label. The corpus sweep of the equivalence harness
@@ -39,8 +40,13 @@ import { join, relative } from 'node:path';
 const root = process.cwd();
 const here = 'capabilities/jess-function-bindings';
 
-/* Independent of capability.json: deleting a consumer row must not delete its observation. */
+/*
+ * Independent of capability.json: deleting a consumer row must not delete its
+ * observation. `suite` is the test that exercises a non-test consumer; a
+ * consumer without a `dialect` converts both, told apart by each value's `from`.
+ */
 const CONSUMERS = {
+  'compiler-convert': { file: 'packages/compiler/src/convert-to-jess.ts', suite: 'packages/jess/test/jess/convert-to-jess.test.ts' },
   'less-equivalence': { file: 'packages/jess/test/jess/less-jess-equivalence.test.ts', dialect: 'less' },
   'less-stored-slash-math': { file: 'packages/jess/test/less/stored-slash-math.test.ts', dialect: 'less' },
   'sass-list-map-functions': { file: 'packages/jess/test/scss/sass-list-map-functions.test.ts', dialect: 'sass' },
@@ -132,7 +138,7 @@ function withOwnerRule(rewrite, body) {
  */
 function observe({ probed = false } = {}) {
   const tests = run('git', ['ls-files', '*.test.ts'], root).stdout.split('\n').filter(Boolean)
-    .filter(file => readFileSync(join(root, file), 'utf8').includes('emitJess('));
+    .filter(file => /\b(?:emitJess|convertToJess)\(/u.test(readFileSync(join(root, file), 'utf8')));
   const outside = tests.filter(file => !file.startsWith('packages/jess/test/') && /\bfunctions\b/u.test(readFileSync(join(root, file), 'utf8')));
   if (outside.length > 0) {
     throw new Unresolved(`suites outside packages/jess/test may pass \`functions\` to emitJess and are not observed: ${outside.join(', ')}`);
@@ -177,15 +183,17 @@ function judge(observed, contract) {
     Object.fromEntries(Object.entries(CONSUMERS).map(([id, c]) => [id, c.file])),
     'capability.json consumers differ from the checker inventory'
   );
-  const undeclared = [...observed.keys()].filter(file => !Object.values(CONSUMERS).some(c => c.file === file));
+  const suiteOf = consumer => consumer.suite ?? consumer.file;
+  const undeclared = [...observed.keys()].filter(file => !Object.values(CONSUMERS).some(c => suiteOf(c) === file));
   assert.deepEqual(undeclared, [], 'suites pass a `functions` projection without being a declared consumer');
   const byDialect = {};
-  for (const [id, { file, dialect }] of Object.entries(CONSUMERS)) {
-    const values = observed.get(file);
+  for (const [id, consumer] of Object.entries(CONSUMERS)) {
+    const values = observed.get(suiteOf(consumer));
     if (values === undefined) {
-      throw new Unresolved(`${id}: ${file} passed no \`functions\` value to emitJess`);
+      throw new Unresolved(`${id}: ${suiteOf(consumer)} passed no \`functions\` value to emitJess`);
     }
     for (const value of values) {
+      const dialect = consumer.dialect ?? dialectOf(value, contract);
       byDialect[dialect] ??= value;
       assert.deepEqual(value, byDialect[dialect], `${id}: a ${dialect} projection differs from another consumer's`);
     }
@@ -202,6 +210,13 @@ function judge(observed, contract) {
   return byDialect;
 }
 
+/** The dialect whose module `value` imports from (a probed specifier carries a suffix). */
+function dialectOf(value, contract) {
+  const dialect = Object.keys(contract.requirements).find(d => [contract.requirements[d].from, contract.requirements[d].from + PROBE_SUFFIX].includes(value.from));
+  assert.ok(dialect, `\`${value.from}\` is no dialect's module`);
+  return dialect;
+}
+
 const readContract = path => JSON.parse(readFileSync(path, 'utf8'));
 
 function ownership(contract) {
@@ -213,9 +228,9 @@ function ownership(contract) {
   const followed = (dialect, value) => value.from === contract.requirements[dialect].from + PROBE_SUFFIX
     && value.names.some(([call, exported]) => call === PROBE[0] && exported === PROBE[1]);
   const stale = Object.entries(CONSUMERS)
-    .filter(([, { file, dialect }]) => {
-      const values = probed.get(file) ?? [];
-      return values.length === 0 || !values.every(value => followed(dialect, value));
+    .filter(([, consumer]) => {
+      const values = probed.get(consumer.suite ?? consumer.file) ?? [];
+      return values.length === 0 || !values.every(value => followed(consumer.dialect ?? dialectOf(value, contract), value));
     })
     .map(([id]) => id);
   assert.deepEqual(stale, [], 'consumers that did not follow a change to the owner');

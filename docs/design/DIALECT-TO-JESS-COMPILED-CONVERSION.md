@@ -22,6 +22,56 @@ the source dialect omits. They do not replace the source canonical AST as the
 conversion input, nor license a source-text guess. Unobserved or conditional
 behavior remains an explicit conversion diagnostic/candidate.
 
+### Built so far
+
+- **Import provenance**, the first fact below. When a caller sets
+  `Context.importTargets`, the serializer's import expansion records, per
+  import node, each target it resolved and what that target became: the loaded
+  document, or `null` when it stays a CSS `@import` (a `.css` terminal or a
+  URL), written back as authored; and which imports a document's
+  `processImports: false` policy skipped, which convert as a gap (`.jess` has
+  no such policy). It also records which root CSS `@import` statements the
+  render wrote into the output prelude (ledger N9), and which it dropped there
+  as duplicates. Unset, nothing is recorded and nothing is allocated.
+- **`Compiler.convertToJess(file)`** renders the file once with that map set,
+  then prints every loaded `.less`/`.scss` document with `emitJess`. Each
+  import names its recorded target, relative to the converted file (a
+  converted target's `.jess` sibling); an import the render never resolved, or
+  resolved to more than one target, is a spelling gap, never a guess. A
+  `.jess` CSS `@import` is written where it stands, so the entry's prelude
+  imports lead its `.jess` (a dropped duplicate is not written), and a prelude
+  import from an imported file, or a Less import left a CSS `@import` after a
+  rule, is a gap. A converted file's `.jess` path is not written, and the file
+  and every import of it are gaps, when another converted file of the render
+  takes the path first (`b.less` and `b.scss`), when the path is a symlink, or
+  when it exists. An existing file is replaced only when the caller passes
+  `{ overwrite: true }`, and even then never when it is the same file (`dev` and
+  `ino`) as one the render loaded, however the import spelled it (`B.jess`,
+  `alias/b.jess`), and never when it is hard-linked (a link count above 1, as a
+  pnpm `node_modules/.pnpm` file linked into the global store is), since one
+  write would change every link to it. The call runs where the render runs, so a sandboxed compile
+  converts in the sandbox, under the same rules. The host rebuilds each entry
+  the engine returns from checked fields (ledger A19):
+  - the entry's `source` must be a `.less`, `.scss` or `.css` file;
+  - with `..` and symlinks resolved, the file and its folder must lie inside
+    the read roots that the script plugin computes on the host for the render;
+  - its `jessPath` is derived on the host from `source` as the render spelled
+    it, as the in-process route derives it, so a partial reached through a
+    symlink keeps the name its importer uses;
+  - the `jessPath` must not be a symlink, must not exist for `.jess` text
+    without `overwrite`, and must not be hard-linked even with it.
+
+  Anything else is refused. So the engine can make the host write only the
+  `.jess` sibling of a stylesheet the render was allowed to read. Only the
+  engine's own conversion code knows which files its render loaded, so the
+  host does not repeat the loaded-file check for an engine result.
+- **Proof:** the equivalence harness (`JESS-EQUIVALENCE-HARNESS.md`) runs every
+  Less and SCSS corpus file through it and compares the two renders.
+
+Not built: the canonical-tree gate (the harness compares reprints and CSS, not
+canonical trees), the resolver identity and resolution kind on each import
+fact, and the function-call outcome facts below.
+
 ## Core model
 
 Keep two inputs separate:

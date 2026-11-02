@@ -15,6 +15,7 @@ export {
   type SourceOptions,
   type SourceSettings
 } from './context.js';
+export { ImportTargets } from './import-targets.js';
 export { logger, type Logger } from './logger.js';
 export {
   type DiagnosticDisplay,
@@ -39,6 +40,8 @@ export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from '
 /** Canonical AST-v2 stylesheet execution. Parser construction stays under `./ast`. */
 export { prepareStaticImports, serialize } from './ast/serialize.js';
 export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions, Position } from './ast/serialize.js';
+export type { ExportRecipe, ExportRuntimeData } from './ast/export-reads.js';
+export type { FnOrigin } from './ast/module-values.js';
 
 /** Print a parsed stylesheet as `.jess` source (no evaluation). */
 export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
