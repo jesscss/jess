@@ -49,15 +49,16 @@ styles.card;         // '_card_1u2kc_1'
 styles.card__title;  // '_card__title_1u2kc_2'
 ```
 
-## Exported variables
+## Exposed variables
 
-A stylesheet that exports a variable writes each value that reads it as a
+A stylesheet that exposes a variable writes each value that reads it as a
 custom property, and its module exports `vars` and `set`:
 
 ```less
 // theme.less
 @use "#less";
-@export @brand: #c00;
+@expose brand;
+@brand: #c00;
 
 .button { border-color: @less.darken(@brand, 10%); }
 // .button { border-color: var(--brand-darken, #990000); }
@@ -70,6 +71,9 @@ set({ brand: '#08f' });            // on :root
 set({ brand: '#08f' }, element);   // on one element
 vars({ brand: '#08f' });           // { '--brand': '#08f', '--brand-darken': '#006dcc' }, e.g. as a React style
 ```
+
+Each value is keyed by the variable's name with dash-case turned to camelCase:
+`@brand-color` is `brandColor`.
 
 ## Options
 

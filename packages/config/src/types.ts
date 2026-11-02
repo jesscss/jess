@@ -528,8 +528,28 @@ export interface StylesConfig {
   language?: {
     less?: LessOptions;
     scss?: ScssOptions;
-    css?: Record<string, any>;
-    jess?: Record<string, any>;
-    [key: string]: LessOptions | ScssOptions | Record<string, any> | undefined;
+    css?: SourceDialectOptions;
+    jess?: SourceDialectOptions;
+    [key: string]: LessOptions | ScssOptions | SourceDialectOptions | Record<string, unknown> | undefined;
   };
+}
+
+/**
+ * What a `.css` or `.jess` file's compile reads from its `language.<lang>`
+ * block: the per-file modes and selector policies core resolves for every
+ * source (its `SourceOptions`). Neither dialect plugin reads anything else.
+ */
+export interface SourceDialectOptions {
+  mathMode?: MathMode;
+  unitMode?: UnitMode;
+  functionMode?: FunctionMode;
+  allowLeakyScope?: boolean;
+
+  /** @deprecated See {@link LessOptions.leakyScope}. */
+  leakyScope?: boolean;
+  allowCallerScope?: boolean;
+  bubbleRootAtRules?: boolean;
+  processImports?: boolean;
+  allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
 }

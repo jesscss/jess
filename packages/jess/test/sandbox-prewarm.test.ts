@@ -52,4 +52,39 @@ describe('the engine started ahead of a render', () => {
     expect(out.css).toContain('b: ok');
     expect(out.engines).toBe(1);
   }, 70_000);
+
+  /*
+   * The compiler loads the script plugin only from its own install, so the
+   * ahead-of-time start looks there too: a `@jesscss/plugin-js` beside the
+   * stylesheet, but not beside the compiler, is neither loaded nor started.
+   */
+  it.skipIf(!builtLibsPresent || process.platform === 'win32')('is not started from a script plugin beside the stylesheet only', () => {
+    const run = spawnSync(process.execPath, ['--input-type=module', '--eval', [
+      'import fs from "node:fs";',
+      'import os from "node:os";',
+      'import path from "node:path";',
+      'import { pathToFileURL } from "node:url";',
+      'import { DefaultCompiler } from "./packages/compiler-preset/lib/index.js";',
+      'const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "jess-prewarm-beside-")));',
+      'const home = path.join(root, "compiler-home");',
+      'fs.mkdirSync(home);',
+      'const shipped = path.join(root, "project/node_modules/@jesscss/plugin-js");',
+      'fs.mkdirSync(shipped, { recursive: true });',
+      'fs.writeFileSync(path.join(shipped, "package.json"), JSON.stringify({ name: "@jesscss/plugin-js", type: "module", exports: { ".": "./index.js", "./package.json": "./package.json" } }));',
+      'const marker = path.join(root, "loaded.txt");',
+      'fs.writeFileSync(path.join(shipped, "index.js"), `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(marker)}, "loaded"); export default () => ({ name: "js", supportedExtensions: [".js"], renderInEngine() {}, prewarmEngine() { fs.writeFileSync(${JSON.stringify(marker)}, "started"); } });`);',
+      'const entry = path.join(root, "project/main.less");',
+      'fs.writeFileSync(entry, ".a { b: c; }");',
+      'const compiler = new DefaultCompiler(undefined, pathToFileURL(path.join(home, "index.js")).href);',
+      'const css = await compiler.render(entry, { suppressWarnings: true });',
+      'await new Promise(resolve => setTimeout(resolve, 500));',
+      'console.log(JSON.stringify({ css, shipped: fs.existsSync(marker) ? fs.readFileSync(marker, "utf8") : "untouched" }));',
+      'compiler.dispose();',
+      'fs.rmSync(root, { recursive: true, force: true });'
+    ].join('\n')], { cwd: repoRoot, encoding: 'utf8', timeout: 60_000 });
+    expect(run.status, run.stderr).toBe(0);
+    const out = JSON.parse(run.stdout.trim().split('\n').at(-1)!);
+    expect(out.css).toContain('b: c');
+    expect(out.shipped).toBe('untouched');
+  }, 70_000);
 });

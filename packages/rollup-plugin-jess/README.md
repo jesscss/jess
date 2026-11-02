@@ -14,7 +14,7 @@
 ## Status
 
 A rewrite for the current `jess` compiler: it compiles `.jess` and `.less`
-imports, emits their CSS, and gives a stylesheet that exports variables a small
+imports, emits their CSS, and gives a stylesheet that exposes variables a small
 runtime (below). The 1.x runtime-module architecture is gone. For Vite, use
 [`vite-plugin-jess`](../vite-plugin-jess), which is this plugin.
 
@@ -56,15 +56,16 @@ Vite (see `vite-plugin-jess`) the module imports its CSS, so Vite injects it in
 dev and bundles it in a build, and a `.module.*` stylesheet goes through Vite's
 CSS Modules. Rollup has no CSS Modules, so there its CSS is not scoped.
 
-## Exported variables
+## Exposed variables
 
-A stylesheet that exports a variable writes each value that reads it as a
+A stylesheet that exposes a variable writes each value that reads it as a
 custom property, and its module exports `vars` and `set`:
 
 ```less
 // theme.less
 @use "#less";
-@export @brand: #c00;
+@expose brand;
+@brand: #c00;
 
 .button { border-color: @less.darken(@brand, 10%); }
 // .button { border-color: var(--brand-darken, #990000); }
@@ -77,6 +78,9 @@ set({ brand: '#08f' });            // on :root
 set({ brand: '#08f' }, element);   // on one element
 vars({ brand: '#08f' });           // { '--brand': '#08f', '--brand-darken': '#006dcc' }, e.g. as a React style
 ```
+
+Each value is keyed by the variable's name with dash-case turned to camelCase:
+`@brand-color` is `brandColor`.
 
 Values are CSS literals (`#08f`, `8px`, `red`). The runtime recomputes each
 derived value with the same function the compile ran.

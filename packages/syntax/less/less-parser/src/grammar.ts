@@ -29,10 +29,10 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
-import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExpose, exposedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExpose } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessExposeDeclarationError, LessMalformedExposeError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   atRulePreludeFrom,
@@ -98,6 +98,7 @@ import {
   isLessKeyword,
   isLessTerminalText,
   isUrl,
+  isVarDeclaration,
   isValueNode,
   isLessValueSlotValue,
   isVarIndirect,
@@ -178,6 +179,7 @@ import type {
   MixinGuard,
   MixinInteriorFact,
   ReferenceTailFact,
+  RulesetTailFact,
   SelectorBranchFact
 } from './grammar-helpers.js';
 
@@ -197,7 +199,7 @@ type LessRules = {
   ComposeStatement: Combinator<StyleImport>;
   ComposeStatementNamespace: Combinator<string>;
   ComposeStatementConfig: Combinator<StyleImportConfig>;
-  ExportStatement: Combinator<VariableDeclaration>;
+  ExposeStatement: Combinator<VariableExpose | VariableDeclaration>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -1485,26 +1487,54 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(styleImport(requireToken(children[0]).value, target, { mode: 'compose', namespace, config }), span);
     }
   );
+  // `;` separates block-list items, so the final item in a braced body may omit
+  // it — `.a { @o: 3 }` and `.a { o: 3 }` are both Less. The omission is allowed
+  // ONLY against the block's own `}`: `@o: 3` at end-of-stylesheet stays a parse
+  // error (`lessc` 4.8.1: "@o rule is missing block or ending semi-colon"), and
+  // a declaration still may not run into a following declaration or nested rule.
+  const declarationEnd = choice(
+    literal(';'),
+    peek(literal('}'))
+  );
   /**
-   * `@export @brand: red;` publishes a root variable (ledger A4): the declaration
-   * is the ordinary `VarDeclaration`, written with the `export` mode. It parses
-   * in every body, as `@compose` does, and evaluation rejects one below the
-   * stylesheet root. Like `@use` and `@compose` it puts the document in modern
-   * mode (ledger P36).
+   * `@expose brand, gap;` publishes root variables by name (ledger A20): the `@`
+   * starts a read, so the names are bare, read as every variable name is. It
+   * parses in every body, as `@compose` does, and evaluation rejects one below
+   * the stylesheet root. Like `@use` and `@compose` it puts the document in
+   * modern mode (ledger P36). Both spellings read the same: the declaration form
+   * (`@expose @brand: red;`) and any other shape after the keyword parse whole
+   * and are reported, never written as CSS (P45). `@expose: red;` and
+   * `@expose();` stay a variable and its call.
    */
-  const ExportStatement = node(
-    'ExportStatement',
-    sequence(keywords(['@-export', '@export'], { caseInsensitive: true, boundary: IDENT_BOUNDARY }), g.VarDeclaration),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => {
-      const declaration = children.find(
-        (child): child is VariableDeclaration =>
-          typeof child === 'object' && child !== null && 'type' in child && child.type === 'VariableDeclaration'
-      );
-      if (declaration === undefined) {
-        throw new TypeError('Less grammar produced no @export declaration.');
-      }
+  const ExposeStatement = node(
+    'ExposeStatement',
+    sequence(
+      keywords(['@-expose', '@expose'], { caseInsensitive: true, boundary: IDENT_BOUNDARY }),
+      not(choice(literal(':'), literal('('))),
+      choice(
+        field('declaration', g.VarDeclaration),
+        sequence(
+          optional(oneOrMoreSep(field('name', lessVariableName), literal(','))),
+          optional(field('rest', g.UnknownAtPrelude)),
+          choice(field('block', unknownAtRuleBrace), declarationEnd)
+        )
+      )
+    ),
+    (_children, fields, span, _rawChildren, _triviaLog, state) => {
       closeAmbientFunctions(state);
-      return withSourceSpan(variableDeclaration(declaration.name, declaration.value, { mode: 'export' }), span);
+      const declaration = fields?.declaration === undefined ? undefined : requireField(fields, 'declaration').value;
+      if (isVarDeclaration(declaration)) {
+        reportRecovered(new LessExposeDeclarationError(span.start, span.end, declaration.name), state);
+        return declaration;
+      }
+      const names = fields?.name === undefined
+        ? []
+        : requireFields(fields, 'name').map(name => withSourceSpan(exposedName(requireSupportedVariableName(name.value, name.span.start, name.span.end)), name.span));
+      const rest = fields?.rest === undefined ? null : requireField(fields, 'rest').value;
+      if (names.length === 0 || rest !== null || fields?.block !== undefined) {
+        reportRecovered(new LessMalformedExposeError(span.start, span.end), state);
+      }
+      return withSourceSpan(variableExpose(names), span);
     }
   );
   /** The two Less spellings share one case-insensitive, identifier-bounded terminal. */
@@ -1638,15 +1668,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return withSourceSpan(plugin(target, optionValue), span);
     }
-  );
-  // `;` separates block-list items, so the final item in a braced body may omit
-  // it — `.a { @o: 3 }` and `.a { o: 3 }` are both Less. The omission is allowed
-  // ONLY against the block's own `}`: `@o: 3` at end-of-stylesheet stays a parse
-  // error (`lessc` 4.8.1: "@o rule is missing block or ending semi-colon"), and
-  // a declaration still may not run into a following declaration or nested rule.
-  const declarationEnd = choice(
-    literal(';'),
-    peek(literal('}'))
   );
   const variableName = node(
     'VariableName',
@@ -3060,34 +3081,47 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         optional(choice(g.ValueListWithPriority, rejectedValueStart))
       ))
     )),
-    (children, fields, span) => {
+    (children, _fields, span) => {
       // Property, delimiter, and value are independently recognized grammar
       // children; AST construction does not split or reclassify authored text.
+      // The head fixes the positions: the name, an optional `+` / `+_`, `:`, the
+      // `valueGap` leaf, then the optional value (an interpolated property name
+      // is itself an `Interpolation` value node, so the value is only read after
+      // `:`). The merge modifier is the `+` / `+_` before `:`, else a `+` / `+_`
+      // token value, as the first-match search it replaces read it.
       const rawName = children[0];
-      // Parseman's optional branch is transparent when absent. Find the value
-      // only after the property delimiter, because an interpolated property
-      // name is itself an `Interpolation` value node.
-      const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
-      const colonIndex = children.findIndex(child => isLessTerminalText(child, ':'));
+      const colonIndex = isLessTerminalText(children[1], ':') ? 1 : isLessTerminalText(children[2], ':') ? 2 : -1;
+      const last = children[colonIndex + 2];
+      const valueChild = children.length === colonIndex + 3 && isLessValueSlotValue(last) ? last : undefined;
+      const mergeChild = colonIndex === 2 ? children[1] : last;
+      const mergeText = isToken(mergeChild) ? mergeChild.value : '';
       if (colonIndex < 0) {
         throw new TypeError('Less grammar produced no declaration delimiter.');
       }
-      const valueChild = children.slice(colonIndex + 1).find(isLessValueSlotValue);
-      const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
-      const merge = mergeToken === undefined ? null : requireToken(mergeToken).value === '+_' ? ' ' : ',';
-      const valueGap = fields?.valueGap === undefined ? '' : requireTerminalText(requireField(fields, 'valueGap').value);
+      // `isLessValueSlotValue` has checked it, so a non-array value only needs `lessValueSlot`.
+      const value: ValueSlot = valueChild === undefined ? any('') : Array.isArray(valueChild) ? valueChild : lessValueSlot(valueChild);
+      const merge = mergeText === '+_' ? ' ' : mergeText === '+' ? ',' : null;
+      // The `valueGap` field's leaf, read where the grammar puts it: right after `:`.
+      const gap = children[colonIndex + 1];
+      const valueGap = isToken(gap) ? gap.value : '';
       // A lone line break after `:` is ordinary parser layout and canonicalizes
       // back to `: value`. Preserve the declaration break only when the value
-      // itself carries multiline separator facts (grid-area style output).
-      const layout = Array.isArray(value) || isSequence(value) ? valueLayoutOf(value) : undefined;
-      const valueOnNewLine = (valueGap.includes('\n') || valueGap.includes('\r'))
-        && layout?.some(separator => separator.includes('\n') || separator.includes('\r')) === true;
-      if (merge !== null && merge !== ',' && merge !== ' ') {
-        throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
+      // itself carries multiline separator facts (grid-area style output); the
+      // layout is read only after such a break.
+      let valueOnNewLine = false;
+      if ((valueGap.includes('\n') || valueGap.includes('\r')) && (Array.isArray(value) || isSequence(value))) {
+        for (const separator of valueLayoutOf(value) ?? []) {
+          if (separator.includes('\n') || separator.includes('\r')) {
+            valueOnNewLine = true;
+            break;
+          }
+        }
       }
+      const name = isInterp(rawName) ? rawName : isToken(rawName) ? rawName.value : requireToken(rawName).value;
+      // `lessValueSlot` has already been applied to a non-array value.
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, lessValueSlot(value.value), merge, true, valueOnNewLine)
-        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : lessValueSlot(value), merge, false, valueOnNewLine);
+        ? decl(name, lessValueSlot(value.value), merge, true, valueOnNewLine)
+        : decl(name, value, merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
   );
@@ -3630,7 +3664,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const atStatement = choice(
     g.ImportStatement,
     g.ComposeStatement,
-    g.ExportStatement,
+    g.ExposeStatement,
     g.PluginDirective,
     g.ValueBlockDeclaration,
     g.VarDeclaration,
@@ -5924,21 +5958,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, _span, rawChildren) => {
-      const bodySpan = bodySpanFromRaw(rawChildren);
-      return {
-        firstExtensions: children
-          .filter(Array.isArray)
-          .flatMap(values => values.filter(isExtendTargetFact)),
-        branches: children.filter(isSelectorBranchFact),
-        selectorEnd: requiredTokenStart(rawChildren, '{'),
-        ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
-        rules: children.filter(isStatement),
-        extensions: bodyExtensionsOf(children),
-        ...(bodySpan === undefined ? {} : { bodySpan }),
-        ...(hasRulesetTerminator(rawChildren) ? { terminated: true } : {})
-      };
-    }
+    (children, _fields, _span, rawChildren): RulesetTailFact => ({
+      /* One shape: absent parts are `undefined`. */
+      firstExtensions: children
+        .filter(Array.isArray)
+        .flatMap(values => values.filter(isExtendTargetFact)),
+      branches: children.filter(isSelectorBranchFact),
+      selectorEnd: requiredTokenStart(rawChildren, '{'),
+      guard: children.find(isMixinGuard),
+      rules: children.filter(isStatement),
+      extensions: bodyExtensionsOf(children),
+      bodySpan: bodySpanFromRaw(rawChildren),
+      terminated: hasRulesetTerminator(rawChildren)
+    })
   );
   const ClassIdStatement = node(
     'Statement',
@@ -6005,7 +6037,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ruleset.guard
       );
       const withBody = ruleset.bodySpan === undefined ? node : withBodySpan(node, ruleset.bodySpan);
-      return ruleset.terminated === true ? withSourceSpan(withBody, span) : withBody;
+      return ruleset.terminated ? withSourceSpan(withBody, span) : withBody;
     },
     { collapse: true }
   );
@@ -6025,7 +6057,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ComposeStatement,
     ComposeStatementNamespace,
     ComposeStatementConfig,
-    ExportStatement,
+    ExposeStatement,
     PluginDirective,
     ValueBlockDeclaration,
     ValueBlock,

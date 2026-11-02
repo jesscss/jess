@@ -43,8 +43,8 @@ const ANCHOR = fileURLToPath(import.meta.url);
 /**
  * `rollup-plugin-jess`: compiles `.jess` and `.less` imports with the `jess`
  * compiler. The module's default export is the CSS; the CSS is also emitted as
- * an asset (Rollup) or imported (Vite). A stylesheet that exports variables
- * (`@export @brand: #c00;`) also exports `vars(values)` and `set(values,
+ * an asset (Rollup) or imported (Vite). A stylesheet that exposes variables
+ * (`@expose brand;`) also exports `vars(values)` and `set(values,
  * target?)` from `@jesscss/fns/runtime`, which recompute what depends on them
  * (docs/architecture/core/spec/R8-browser-runtime.md).
  */
@@ -119,7 +119,7 @@ function log(diagnostic: Diagnostic, file: string): RollupLog {
   };
 }
 
-/** The stylesheet's JS module: its CSS, and the runtime when it exports variables. */
+/** The stylesheet's JS module: its CSS, and the runtime when it exposes variables. */
 export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, cssImport?: string): string {
   const modules = cssImport?.endsWith('.module.css') === true;
   const lines = cssImport === undefined ? [] : modules ? [`export * from ${JSON.stringify(cssImport)};`, `export { default } from ${JSON.stringify(cssImport)};`] : [`import ${JSON.stringify(cssImport)};`];
@@ -145,7 +145,7 @@ export function moduleCode(css: string, runtime: ExportRuntimeData | undefined, 
     for (const [module, names] of imports) {
       lines.push(`import { ${names.join(', ')} } from ${JSON.stringify(module)};`);
     }
-    lines.push(`export const { vars, set } = createRuntime({ defaults: ${JSON.stringify(runtime.defaults)}, derived: { ${derived.join(', ')} } });`);
+    lines.push(`export const { vars, set } = createRuntime({ keys: ${JSON.stringify(runtime.keys)}, defaults: ${JSON.stringify(runtime.defaults)}, derived: { ${derived.join(', ')} } });`);
   }
   if (!modules) {
     lines.push(`export default ${JSON.stringify(css)};`);

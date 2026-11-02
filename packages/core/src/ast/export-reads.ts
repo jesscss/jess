@@ -5,13 +5,14 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
-import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Stylesheet, type VariableDeclaration } from './nodes.js';
+import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Statement, type VariableExpose } from './nodes.js';
 import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
+import type { ValueCheckLane } from './invalid-value-syntax.js';
 import { makeKeyword, makeList } from './value-factory.js';
 
 /**
- * Ledger A4: a root variable marked `@export` publishes a custom property, so a
+ * Ledger A4: a variable an `@expose` names (A20) publishes a custom property, so a
  * CSS value that reads it IS `var(--name, <its value>)`, and a value a
  * function Jess computes from it is a generated custom property the runtime
  * recomputes (docs/architecture/core/spec/R8-browser-runtime.md).
@@ -25,8 +26,8 @@ export type ExportRecipe = { readonly export: string } | { readonly fn: FnOrigin
 
 /** What the runtime module is generated from ({@link ExportState.runtime}). */
 export interface ExportRuntime {
-  /** Every name the root exports. */
-  readonly exports: ReadonlySet<string>;
+  /** Every name exported. */
+  readonly exports: Set<string>;
 
   /** The compile-time CSS of each export a derived value reads. */
   readonly defaults: Map<string, string>;
@@ -37,20 +38,26 @@ export interface ExportRuntime {
 
 /**
  * What the runtime module is generated from, as data (`SerializeResult.runtime`):
- * every exported name, the compile-time CSS of each one a derived value reads,
- * and each generated custom property with how it is computed.
+ * every exposed name, its JavaScript key, the compile-time CSS of each one a
+ * derived value reads, and each generated custom property with how it is
+ * computed.
  */
 export interface ExportRuntimeData {
   readonly exports: readonly string[];
+
+  /** Each exposed name by its JavaScript key ({@link exportKey}), the one the clash check uses. */
+  readonly keys: Readonly<Record<string, string>>;
   readonly defaults: Readonly<Record<string, string>>;
   readonly derived: Readonly<Record<string, ExportRecipe>>;
 }
 
 /** A render's `runtime` result field: none when nothing is exported. */
-export function runtimeData(x: ExportState<unknown> | undefined): { runtime?: ExportRuntimeData } {
-  return x === undefined
+export function runtimeData(x: ExportState<unknown>): { runtime?: ExportRuntimeData } {
+  settle(x);
+  const runtime = x.runtime;
+  return runtime === undefined
     ? {}
-    : { runtime: { exports: [...x.runtime.exports], defaults: Object.fromEntries(x.runtime.defaults), derived: Object.fromEntries(x.runtime.derived) } };
+    : { runtime: { exports: [...runtime.exports], keys: Object.fromEntries(Array.from(x.keys, ([key, { name }]) => [key, name])), defaults: Object.fromEntries(runtime.defaults), derived: Object.fromEntries(runtime.derived) } };
 }
 
 /** A mixin argument as written, in the caller's frame. */
@@ -67,8 +74,8 @@ interface ExportSource<F> {
  * written (`source`).
  */
 type ExportRef<F> =
-  | { readonly name: string; readonly call: FunctionCall; readonly source?: undefined }
-  | { readonly name?: undefined; readonly call?: undefined; readonly source: ExportSource<F> | undefined };
+  | { readonly name: string; readonly call: FunctionCall; readonly frame: F; readonly source?: undefined }
+  | { readonly name?: undefined; readonly call?: undefined; readonly frame?: undefined; readonly source: ExportSource<F> | undefined };
 
 /** A rest parameter or `@arguments` holding a mixin argument that reads an export among others: a read a `var()` cannot replace. */
 const IN_ARGUMENTS: ExportRef<never> = { name: undefined, call: undefined, source: undefined };
@@ -76,17 +83,28 @@ const IN_ARGUMENTS: ExportRef<never> = { name: undefined, call: undefined, sourc
 /**
  * What a variable read's value resolves to, as an export: its own ref, or for a
  * rest parameter or `@arguments` (a list of bound arguments) the ref of its one
- * argument, or {@link IN_ARGUMENTS} when one of several reads an export.
+ * argument, or {@link IN_ARGUMENTS} when one of several reads an export. A
+ * binding is its value in the frame it was bound in: a mixin's declaration,
+ * bound by another call of the mixin, is another binding.
  */
-function refOf<F>(x: ExportState<F>, value: CallValue): ExportRef<F> | undefined {
+function refOf<F>(x: ExportState<F>, hit: { value: CallValue; frame: F }): ExportRef<F> | undefined {
+  const value = hit.value;
   const ref = x.refs.get(value);
   if (ref !== undefined || !isValueSlotArray(value)) {
-    return ref;
+    return ref?.frame === undefined || ref.frame === hit.frame ? ref : undefined;
   }
   if (value.length === 1) {
     return x.refs.get(value[0]!);
   }
   return value.some(slot => x.refs.has(slot)) ? IN_ARGUMENTS : undefined;
+}
+
+/**
+ * A mixin argument being bound: whether it reads an export. A computed call
+ * still pending when the argument's binding is decided marks it as it settles.
+ */
+export interface ExportArgument {
+  read: boolean;
 }
 
 /** An export a computed call's argument reads, with the value it read. */
@@ -95,7 +113,7 @@ interface ExportInput {
   readonly value: object;
 }
 
-/** One render's exports ({@link rootExports}). */
+/** One render's exports ({@link exportState}). */
 export interface ExportState<F> {
   /** By what a variable read resolves to. */
   readonly refs: Map<object, ExportRef<F>>;
@@ -106,10 +124,47 @@ export interface ExportState<F> {
    */
   inputs: Array<ExportInput> | undefined;
 
-  /** Whether the mixin argument being bound reads an export. */
-  argument: boolean;
+  /** The mixin argument being bound, undefined outside one. */
+  argument: ExportArgument | undefined;
 
-  readonly runtime: ExportRuntime;
+  /** Undefined until a stylesheet exports a name: an export read pays one check. */
+  runtime: ExportRuntime | undefined;
+
+  /** By name, the binding each export resolved to, and where the `@expose` that named it first is. */
+  readonly bound: Map<string, { readonly value: CallValue; readonly frame: F; readonly site: string }>;
+
+  /** By JS key ({@link exportKey}), the name that has it and where it is exported. */
+  readonly keys: Map<string, { readonly name: string; readonly site: string }>;
+
+  /** Each `@expose` activated, in the frame it binds in. */
+  readonly declared: Array<{ readonly node: VariableExpose; readonly frame: F }>;
+
+  /** The `@expose`s not yet resolved ({@link settle}), and the names they list. */
+  pending: Array<PendingExpose<F>>;
+  readonly pendingNames: Set<string>;
+}
+
+/** An `@expose` waiting for its frame to be complete, with how its names resolve there. */
+interface PendingExpose<F> {
+  readonly node: VariableExpose;
+  readonly resolve: (name: string) => { value: CallValue; frame: F } | undefined;
+
+  /** Where each name is, taken while its file is the one evaluated. */
+  readonly at: ReadonlyArray<ReturnType<typeof callSiteLocation>>;
+}
+
+/**
+ * The key an exposed name has in the JS runtime: its dash-case turned to
+ * camelCase, letter case otherwise kept (`brand-color` is `brandColor`,
+ * `Brand-color` is `BrandColor`; a leading or trailing dash is dropped).
+ */
+export function exportKey(name: string): string {
+  return name.replace(/-+(.?)/g, (_dashes, next: string, at: number) => (at === 0 ? next : next.toUpperCase()));
+}
+
+/** `file:line:column` of a location, for a diagnostic naming another site. */
+function siteOf(at: ReturnType<typeof callSiteLocation>): string {
+  return `${at.ctx.file?.name ?? ''}:${at.line ?? 1}:${at.column ?? 1}`;
 }
 
 /** What an export read needs from the evaluator's lane (serialize.ts `Lane`). */
@@ -117,35 +172,126 @@ export interface ExportLane<F> {
   /** The declaration whose value is being written, `'argument'` while a mixin argument is bound, else undefined. */
   readonly checks: Declaration | 'argument' | undefined;
   readonly modes: EvalModes;
-  readonly s: { readonly context: Context | undefined; readonly exports: ExportState<F> | undefined };
+  readonly s: { readonly context: Context | undefined; readonly exports: ExportState<F> };
+
+  /** How many `(reference)` imports the render walk is inside, where the lane walks one. */
+  readonly referenceImportDepth?: number;
 }
 
 /** The `reader` of a variable read that handles an exported binding itself. */
 export const READS_EXPORT = {};
 
+/** A render's export state, holding nothing until an `@expose` activates ({@link declareExpose}). */
+export function exportState<F>(): ExportState<F> {
+  return { refs: new Map(), inputs: undefined, argument: undefined, runtime: undefined, bound: new Map(), keys: new Map(), declared: [], pending: [], pendingNames: new Set() };
+}
+
+/** The state when something is exported, else undefined. */
+function exporting<F>(x: ExportState<F>): (ExportState<F> & { runtime: ExportRuntime }) | undefined {
+  return hasRuntime(x) ? x : undefined;
+}
+
+function hasRuntime<F>(x: ExportState<F>): x is ExportState<F> & { runtime: ExportRuntime } {
+  return x.runtime !== undefined;
+}
+
+/** Each `@expose` among a document's top-level statements. */
+export function forEachExpose(statements: readonly Statement[], declare: (node: VariableExpose) => void): void {
+  for (const statement of statements) {
+    if (statement.type === 'VariableExpose') {
+      declare(statement);
+    }
+  }
+}
+
 /**
- * Every root binding of a name the root exports, each with the call it reads
- * as. A root redeclaration of the name is the export too; a shadow in a nested
- * scope is a different binding and is not. Undefined when nothing is exported.
+ * Ledger A20: an `@expose` at the top level of a stylesheet, whether rendered,
+ * `@import`ed at the top level or `@compose`d, publishes each name it lists as
+ * the binding a read in `frame` resolves to (`resolve`): one declared there, by
+ * an imported file or by a mixin called there. One in a body (`nested`), or in
+ * a file imported into one, is an error; one in a `(reference)` import does
+ * nothing, as that file's rules are not written. The names resolve once the frame is
+ * complete, at the first read of one of them ({@link settle}), so a read
+ * written before the `@expose` is an export read too; the render activates the
+ * root's before it starts, and the import planner a top-level sheet's.
  */
-export function rootExports<F>(root: Stylesheet): ExportState<F> | undefined {
-  let names: Set<string> | undefined;
-  for (const statement of root.rules) {
-    if (statement.type === 'VariableDeclaration' && statement.write.mode === 'export') {
-      (names ??= new Set()).add(statement.name);
-    }
+export function declareExpose<F>(node: VariableExpose, nested: boolean, frame: F, resolve: PendingExpose<F>['resolve'], e: ExportLane<F>): void {
+  rejectNestedExpose(node, nested, e);
+  const x = e.s.exports;
+  if ((e.referenceImportDepth ?? 0) !== 0 || x.declared.some(declared => declared.node === node && declared.frame === frame)) {
+    return;
   }
-  if (names === undefined) {
-    return undefined;
+  x.declared.push({ node, frame });
+  x.pending.push({ node, resolve, at: node.names.map(exported => callSiteLocation(exported, e.s)) });
+  for (const exported of node.names) {
+    x.pendingNames.add(exported.name);
   }
-  const refs = new Map<object, ExportRef<F>>();
-  for (const statement of root.rules) {
-    if (statement.type === 'VariableDeclaration' && names.has(statement.name)
-      && (isValueSlotArray(statement.value) || statement.value.type !== 'MixinCall')) {
-      refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
-    }
+  x.runtime ??= { exports: new Set(), defaults: new Map(), derived: new Map() };
+}
+
+/**
+ * Resolves every pending `@expose`. A name nothing declares is an error,
+ * located at the name, and so are two exports of one name that resolve to
+ * different bindings (an export is one custom property the runtime sets) and
+ * two names with one JS key ({@link exportKey}); those name the other site.
+ */
+function settle<F>(x: ExportState<F>): void {
+  const pending = x.pending;
+  const runtime = x.runtime;
+  if (pending.length === 0 || runtime === undefined) {
+    return;
   }
-  return { refs, inputs: undefined, argument: false, runtime: { exports: names, defaults: new Map(), derived: new Map() } };
+  x.pending = [];
+  x.pendingNames.clear();
+  for (const { node, resolve, at } of pending) {
+    node.names.forEach((exported, i) => {
+      const name = exported.name;
+      const where = at[i]!;
+      const site = siteOf(where);
+      const hit = resolve(name);
+      if (hit === undefined) {
+        throw ERR.exposeNotDeclared({ node: exported, ...where, meta: { name } });
+      }
+      const bound = x.bound.get(name);
+      if (bound !== undefined && (bound.value !== hit.value || bound.frame !== hit.frame)) {
+        throw ERR.exposeConflict({ node: exported, ...where, meta: { name, other: bound.site } });
+      }
+      const key = exportKey(name);
+      const keyed = x.keys.get(key);
+      if (keyed !== undefined && keyed.name !== name) {
+        throw ERR.exposeKeyConflict({ node: exported, ...where, meta: { name, key, other: keyed.name, at: keyed.site } });
+      }
+      x.bound.set(name, bound ?? { value: hit.value, frame: hit.frame, site });
+      x.keys.set(key, keyed ?? { name, site });
+      runtime.exports.add(name);
+      if (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall') {
+        x.refs.set(hit.value, { name, call: funcCall('var', [keyword(`--${name}`), hit.value]), frame: hit.frame, source: undefined });
+      }
+    });
+  }
+}
+
+/**
+ * `probe` of `node`'s value, which looks at what it resolves to and writes
+ * nothing, run as that value's reads: an export it reaches resolves to its
+ * `var()` rather than raising as a read outside a CSS value.
+ */
+export function probedAsValueOf<F, L extends ValueCheckLane & { readonly s: { readonly exports: ExportState<unknown> } }, T>(
+  node: Declaration,
+  frame: F,
+  e: L,
+  probe: (value: Declaration['value'], frame: F, e: L) => T
+): T {
+  if (e.s.exports.runtime === undefined) {
+    return probe(node.value, frame, e);
+  }
+  const outer = e.checks;
+  e.checks = node;
+  try {
+    return probe(node.value, frame, e);
+  } finally {
+    e.checks = outer;
+  }
 }
 
 /**
@@ -163,13 +309,16 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
   e: ExportLane<F>,
   reader: object | undefined
 ): H | { value: FunctionCall; frame: F; evaluated: null } | undefined {
-  const x = e.s.exports;
-  const ref = hit === undefined || reader === READS_EXPORT || x === undefined ? undefined : refOf(x, hit.value);
+  const x = exporting(e.s.exports);
+  if (x?.pendingNames.has(name) === true && reader !== READS_EXPORT) {
+    settle(x);
+  }
+  const ref = hit === undefined || reader === READS_EXPORT || x === undefined ? undefined : refOf(x, hit);
   if (ref === undefined || x === undefined || hit === undefined) {
     return hit;
   }
   if (e.checks === 'argument') {
-    x.argument = true;
+    markArgument(x.argument);
   } else if (typeof e.checks !== 'object') {
     exportNotWritten(reader, lookup === 'live' ? `$${name}` : `@${name}`, name, e,
       'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
@@ -185,9 +334,12 @@ export function exportChecked<F, H extends { value: CallValue; frame: F; evaluat
  * ({@link exportCall}). A function that does not record its inputs, such as a
  * plugin's, cannot be run by the runtime, so an export is an error there.
  */
-export function exportInput<F, H extends { value: CallValue }>(hit: H | undefined, name: string, reader: object, e: ExportLane<F>): H | ExportSource<F> | undefined {
-  const x = e.s.exports;
-  const ref = hit === undefined || x === undefined ? undefined : refOf(x, hit.value);
+export function exportInput<F, H extends { value: CallValue; frame: F }>(hit: H | undefined, name: string, reader: object, e: ExportLane<F>): H | ExportSource<F> | undefined {
+  const x = exporting(e.s.exports);
+  if (x?.pendingNames.has(name) === true) {
+    settle(x);
+  }
+  const ref = hit === undefined || x === undefined ? undefined : refOf(x, hit);
   if (ref === undefined) {
     return hit;
   }
@@ -201,53 +353,70 @@ export function exportInput<F, H extends { value: CallValue }>(hit: H | undefine
 }
 
 /** The value a computed function's input read evaluated to, recorded when the read was an export's root binding ({@link exportInput}). */
-export function exportInputRead<V extends ValueGroup>(e: ExportLane<unknown>, hit: { value: CallValue }, value: MaybePromise<V>): MaybePromise<V> {
-  const x = e.s.exports;
+export function exportInputRead<F, V extends ValueGroup>(e: ExportLane<F>, hit: { value: CallValue; frame: F }, value: MaybePromise<V>): MaybePromise<V> {
+  const x = exporting(e.s.exports);
   const inputs = x?.inputs;
-  const name = inputs === undefined ? undefined : x?.refs.get(hit.value)?.name;
-  return name === undefined || x === undefined || inputs === undefined
+  const name = inputs === undefined || x === undefined ? undefined : refOf(x, hit)?.name;
+  const runtime = x?.runtime;
+  return name === undefined || runtime === undefined || inputs === undefined
     ? value
     : mapMaybe(value, (read) => {
         inputs.push({ recipe: { export: name }, value: read });
-        if (!x.runtime.defaults.has(name)) {
-          x.runtime.defaults.set(name, emitValue(read));
+        if (!runtime.defaults.has(name)) {
+          runtime.defaults.set(name, emitValue(read));
         }
         return read;
       });
 }
 
+/** Note that the mixin argument being bound reads an export. */
+function markArgument(argument: ExportArgument | undefined): void {
+  if (argument !== undefined) {
+    argument.read = true;
+  }
+}
+
 /**
  * A mixin argument being bound notes whether it reads an export: start, which
- * returns whether the argument it is part of already does, then
- * {@link exportArgumentEnd} with that, which returns whether this one does.
+ * returns the argument it is part of, then {@link exportArgumentEnd} with that,
+ * which returns this one for {@link exportArgumentBound}.
  */
-export function exportArgumentStart(x: ExportState<unknown> | undefined): boolean {
-  const outer = x?.argument ?? false;
+export function exportArgumentStart(state: ExportState<unknown>): ExportArgument | undefined {
+  const x = exporting(state);
+  const outer = x?.argument;
   if (x !== undefined) {
-    x.argument = false;
+    x.argument = { read: false };
   }
   return outer;
 }
 
-/** Whether the mixin argument bound since {@link exportArgumentStart} read an export. */
-export function exportArgumentEnd(x: ExportState<unknown> | undefined, outer: boolean): boolean {
-  const read = x?.argument ?? false;
+/** The mixin argument bound since {@link exportArgumentStart}; what it read so far counts for the one it is part of. */
+export function exportArgumentEnd(state: ExportState<unknown>, outer: ExportArgument | undefined): ExportArgument | undefined {
+  const x = exporting(state);
+  const argument = x?.argument;
   if (x !== undefined) {
-    x.argument = outer || read;
+    x.argument = outer;
+    if (argument?.read === true) {
+      markArgument(outer);
+    }
   }
-  return read;
+  return argument;
 }
 
 /**
- * A mixin argument that reads an export, kept for the value it evaluated to as
- * the argument as written (`source`) in the caller's `frame`; the snapshot the
- * parameter binds as takes it over (`invalid-value-syntax.ts` `keepArgumentSyntax`).
+ * A mixin argument, kept for the value it evaluated to as the argument as
+ * written (`source`) in the caller's `frame` when it reads an export; the
+ * snapshot the parameter binds as takes it over (`invalid-value-syntax.ts`
+ * `keepArgumentSyntax`). A pending value is decided once it settles.
  */
-export function exportArgumentBound<F, V extends object>(x: ExportState<F> | undefined, value: MaybePromise<V>, source: CallValue, frame: F | null): MaybePromise<V> {
-  return x === undefined || frame === null
+export function exportArgumentBound<F, V extends object>(state: ExportState<F>, argument: ExportArgument | undefined, value: MaybePromise<V>, source: CallValue, frame: F | null): MaybePromise<V> {
+  const x = exporting(state);
+  return x === undefined || frame === null || argument === undefined || (!argument.read && !isThenable(value))
     ? value
     : mapMaybe(value, (bound) => {
-        x.refs.set(bound, { name: undefined, call: undefined, source: { value: source, frame, evaluated: null } });
+        if (argument.read) {
+          x.refs.set(bound, { name: undefined, call: undefined, source: { value: source, frame, evaluated: null } });
+        }
         return bound;
       });
 }
@@ -270,13 +439,14 @@ export function exportCall<F>(
   args: () => Array<MaybePromise<ValueGroup>>,
   dispatch: (args: Array<MaybePromise<ValueGroup>>) => MaybePromise<EvalValue>
 ): MaybePromise<EvalValue> {
-  const x = e.s.exports;
+  const x = exporting(e.s.exports);
   if (x === undefined) {
     return dispatch(args());
   }
   const outer = x.inputs;
   const inputs: NonNullable<ExportState<F>['inputs']> = [];
   const checks = e.checks;
+  const argument = outer === undefined && checks === 'argument' ? x.argument : undefined;
   let typed: Array<MaybePromise<ValueGroup>>;
   x.inputs = inputs;
   try {
@@ -292,9 +462,7 @@ export function exportCall<F>(
   return combineAll(typed, vals => inputs.length === 0
     ? dispatch(vals)
     : mapMaybe(dispatch(vals), (computed) => {
-        if (outer === undefined && checks === 'argument') {
-          x.argument = true;
-        }
+        markArgument(argument);
         const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
         const recipe = callRecipe(node, fn, vals, inputs, e);
         if (outer !== undefined) {
@@ -305,7 +473,7 @@ export function exportCall<F>(
           exportNotWritten(node, `${node.name}()`, recipeExport(recipe), e,
             'outside a CSS value (a selector, an at-rule prelude, a condition, a string, a url or text spliced around it)');
         }
-        return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe)), result], ','), e.modes);
+        return writeCall('var', makeList([makeKeyword(derivedName(x.runtime, recipe, node.name)), result], ','), e.modes);
       }));
 }
 
@@ -338,10 +506,9 @@ function recipeExport(recipe: ExportRecipe): string {
   return '';
 }
 
-/** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>`, numbered when another recipe or an export has it. */
-function derivedName(runtime: ExportRuntime, recipe: ExportRecipe): string {
-  const fn = 'fn' in recipe ? recipe.fn.name : 'value';
-  const base = `--${recipeExport(recipe)}-${fn}`;
+/** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>` with the function as `called` names it, numbered when another recipe or an export has it. */
+function derivedName(runtime: ExportRuntime, recipe: ExportRecipe, called: string): string {
+  const base = `--${recipeExport(recipe)}-${called.slice(called.lastIndexOf('.') + 1)}`;
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
     const taken = runtime.derived.get(name);
@@ -365,12 +532,23 @@ function sameRecipe(a: ExportRecipe | string, b: ExportRecipe | string): boolean
 /** An exported variable read where a `var()` cannot replace it. */
 function exportNotWritten(reader: object | undefined, symbol: string, name: string, e: ExportLane<unknown>, where: string): never {
   const node = reader ?? {};
-  throw ERR.exportNotAValue({ node, ...callSiteLocation(node, e.s), meta: { symbol, name, where } });
+  throw ERR.exposeNotAValue({ node, ...callSiteLocation(node, e.s), meta: { symbol, name, where } });
 }
 
-/** `@export` publishes a stylesheet's top-level variable; one in a body (`nested`) is an error. */
-export function rejectNestedExport(node: VariableDeclaration, nested: boolean, e: ExportLane<unknown>): void {
-  if (node.write.mode === 'export' && nested) {
-    throw ERR.exportNotTopLevel({ node, ...callSiteLocation(node, e.s) });
+/** `@expose` publishes a stylesheet's top-level variables; one in a body (`nested`) is an error. */
+export function rejectNestedExpose(node: VariableExpose, nested: boolean, e: ExportLane<unknown>): void {
+  if (nested) {
+    throw ERR.exposeNotTopLevel({ node, ...callSiteLocation(node, e.s) });
   }
+}
+
+/**
+ * What a ruleset argument's body holds that it cannot write, for its error. An
+ * `@expose` there (an `each()` body) is one below the top level and raises so.
+ */
+export function argumentStatementKind(rule: Statement, e: ExportLane<unknown>): string {
+  if (rule.type === 'VariableExpose') {
+    rejectNestedExpose(rule, true, e);
+  }
+  return `a ${rule.type}`;
 }

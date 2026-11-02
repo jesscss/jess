@@ -25,7 +25,7 @@ const buildFile = async (filePath: string) => {
 };
 
 describe('rollup-plugin-jess', () => {
-  it('exports the runtime of a stylesheet that exports variables', async () => {
+  it('exports the runtime of a stylesheet that exposes variables', async () => {
     const bundle = await rollup.rollup({ input: path.resolve(__dirname, './runtime.less'), plugins: [nodeResolve(), commonJs(), jess()] });
     const { output } = await bundle.generate({ format: 'es' });
     const css = output.find(item => item.type === 'asset' && item.fileName === 'runtime.css');

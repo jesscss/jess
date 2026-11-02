@@ -19,7 +19,7 @@ function isRuntime(module: unknown): module is Runtime {
 }
 
 describe('vite-plugin-jess', () => {
-  it('bundles the CSS and the runtime of a stylesheet that exports variables', async () => {
+  it('bundles the CSS and the runtime of a stylesheet that exposes variables', async () => {
     const result = await build({
       root: __dirname,
       configFile: false,
