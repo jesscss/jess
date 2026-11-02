@@ -1069,13 +1069,6 @@
     },
     {
       "file": "packages/syntax/less/less-parser/src/grammar-helpers.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "16f637e94df40a5e",
-      "ordinal": 0,
-      "snippet": "children.slice(previousValue + 1, index)"
-    },
-    {
-      "file": "packages/syntax/less/less-parser/src/grammar-helpers.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "5e298b111ee4df7d",
       "ordinal": 0,

@@ -178,6 +178,7 @@ import type {
   MixinGuard,
   MixinInteriorFact,
   ReferenceTailFact,
+  RulesetTailFact,
   SelectorBranchFact
 } from './grammar-helpers.js';
 
@@ -5924,21 +5925,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('}'),
       optional(literal(';'))
     ),
-    (children, _fields, _span, rawChildren) => {
-      const bodySpan = bodySpanFromRaw(rawChildren);
-      return {
-        firstExtensions: children
-          .filter(Array.isArray)
-          .flatMap(values => values.filter(isExtendTargetFact)),
-        branches: children.filter(isSelectorBranchFact),
-        selectorEnd: requiredTokenStart(rawChildren, '{'),
-        ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
-        rules: children.filter(isStatement),
-        extensions: bodyExtensionsOf(children),
-        ...(bodySpan === undefined ? {} : { bodySpan }),
-        ...(hasRulesetTerminator(rawChildren) ? { terminated: true } : {})
-      };
-    }
+    (children, _fields, _span, rawChildren): RulesetTailFact => ({
+      /* One shape: absent parts are `undefined`. */
+      firstExtensions: children
+        .filter(Array.isArray)
+        .flatMap(values => values.filter(isExtendTargetFact)),
+      branches: children.filter(isSelectorBranchFact),
+      selectorEnd: requiredTokenStart(rawChildren, '{'),
+      guard: children.find(isMixinGuard),
+      rules: children.filter(isStatement),
+      extensions: bodyExtensionsOf(children),
+      bodySpan: bodySpanFromRaw(rawChildren),
+      terminated: hasRulesetTerminator(rawChildren)
+    })
   );
   const ClassIdStatement = node(
     'Statement',
@@ -6005,7 +6004,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ruleset.guard
       );
       const withBody = ruleset.bodySpan === undefined ? node : withBodySpan(node, ruleset.bodySpan);
-      return ruleset.terminated === true ? withSourceSpan(withBody, span) : withBody;
+      return ruleset.terminated ? withSourceSpan(withBody, span) : withBody;
     },
     { collapse: true }
   );
