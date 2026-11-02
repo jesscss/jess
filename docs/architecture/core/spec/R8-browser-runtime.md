@@ -128,7 +128,8 @@ or needs JS) to decide what ships in the bundle.
   `derived` (each generated property's recipe). JSON, so it crosses the sandbox
   route.
 - **Cost.** A document with no export pays one `undefined` check per variable
-  read, per computed call and per mixin argument bound.
+  read and per computed call, and two calls per mixin argument bound
+  (`exportArgumentStart` / `exportArgumentEnd`, each an `undefined` check).
 
 ## Slice 3 contract (as built)
 
