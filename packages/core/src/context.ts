@@ -1371,7 +1371,11 @@ export class Context {
     if (loading) {
       await loading;
     }
-    await this.opts.prepareSource?.(resolvedPath);
+
+    /* Only a host that prepares sources waits here: a render outside the sandbox goes straight on. */
+    if (this.opts.prepareSource) {
+      await this.opts.prepareSource(resolvedPath);
+    }
     const { result: parseResult, settings } = this.parseSource(plugin, resolvedPath, source, importOptions);
 
     // Collect normalized errors and warnings from plugin

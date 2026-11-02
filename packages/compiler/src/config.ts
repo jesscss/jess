@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { isPackageRoot, knownSettings, loadConfigSync, loadConfigSyncWithMeta, type StylesConfig } from 'styles-config';
+import { isPackageRoot, knownSettings, loadConfigSync, loadConfigSyncWithMeta, SettingNotPlainDataError, type StylesConfig } from 'styles-config';
 
 /**
  * Get configuration from every styles.config.* file from the given directory up through parent
@@ -69,15 +69,28 @@ export class SandboxConfigError extends Error {
  * Only the settings Jess defines cross into the sandbox (`knownSettings`): a
  * config is code, and anything else it holds is not the stylesheet's to read.
  */
-const knownSettingsOf = (meta: ConfigWithMeta): ConfigWithMeta => ({
-  ...meta,
-  config: knownSettings(meta.config),
-  ...meta.ownConfig && { ownConfig: knownSettings(meta.ownConfig) }
-});
+const knownSettingsOf = (meta: ConfigWithMeta, dir: string): ConfigWithMeta | UnusableConfig => {
+  try {
+    return {
+      ...meta,
+      config: knownSettings(meta.config),
+      ...meta.ownConfig && { ownConfig: knownSettings(meta.ownConfig) }
+    };
+  } catch (err) {
+    if (!(err instanceof SettingNotPlainDataError)) {
+      throw err;
+    }
+    const files = meta.configFilePaths ?? [];
+    return {
+      unsendable: files.length > 0 ? files.join(', ') : dir,
+      reason: `cannot be sent into the script sandbox: ${err.setting} holds a value that is not plain data (strings, numbers, booleans, arrays and plain objects).`
+    };
+  }
+};
 
 /** The settings to send with a sandboxed render for the folder the host resolved (`above` is added beside the read roots). */
 export const hostConfigsFor = (entryDir: string | undefined): HostConfigs => ({
-  folders: entryDir === undefined ? {} : { [path.resolve(entryDir)]: knownSettingsOf(getConfigWithMeta(entryDir)) },
+  folders: entryDir === undefined ? {} : { [path.resolve(entryDir)]: knownSettingsOf(getConfigWithMeta(entryDir), entryDir) },
   above: {}
 });
 
@@ -85,8 +98,8 @@ export const hostConfigsFor = (entryDir: string | undefined): HostConfigs => ({
  * The config search above a read root, for `HostConfigs.above`: none when the
  * root is a package root, where every search from inside it stops.
  */
-export const configsAboveReadRoot = (root: string): ConfigWithMeta | undefined =>
-  isPackageRoot(root) ? undefined : knownSettingsOf(getConfigWithMeta(path.dirname(root)));
+export const configsAboveReadRoot = (root: string): ConfigWithMeta | UnusableConfig | undefined =>
+  isPackageRoot(root) ? undefined : knownSettingsOf(getConfigWithMeta(path.dirname(root)), path.dirname(root));
 
 const isRecord = (value: unknown): value is object => typeof value === 'object' && value !== null;
 
@@ -125,19 +138,36 @@ const leavesReadRootAt = (dir: string): string | undefined => {
 const unusable = (dir: string, config: UnusableConfig): SandboxConfigError =>
   new SandboxConfigError(`The styles.config settings of ${dir} (from ${config.unsendable}) ${config.reason ?? 'cannot be sent into the script sandbox: they hold an object that does not record the factory that made it. A plugin factory records it with `recordPluginModule` from @jesscss/core.'}`);
 
+/** The decode of each chain under way, per render's host settings, so two files that need one chain share it. */
+const decoding = new WeakMap<EngineHostConfigs, Map<string, Promise<void>>>();
+
 /**
  * In the sandbox, decodes the chain above the read root that the settings of
  * `searchFrom` need, once, before a file there is parsed: decoding loads a
  * recorded plugin factory, so it is asynchronous, and a chain no file needs
  * is never decoded. One that fails to decode is kept as the config it names.
  */
-export const prepareConfigsFor = async (searchFrom: string): Promise<void> => {
+export const prepareConfigsFor = (searchFrom: string): Promise<void> | undefined => {
   const host = engineHostConfigs();
   const dir = path.resolve(searchFrom);
   const leaves = host === undefined || Object.hasOwn(host.folders, dir) ? undefined : leavesReadRootAt(dir);
   if (host === undefined || leaves === undefined || host.decoded.has(leaves) || !Object.hasOwn(host.above, leaves)) {
-    return;
+    return undefined;
   }
+  let chains = decoding.get(host);
+  if (chains === undefined) {
+    chains = new Map();
+    decoding.set(host, chains);
+  }
+  let pending = chains.get(leaves);
+  if (pending === undefined) {
+    pending = decodeChain(host, leaves);
+    chains.set(leaves, pending);
+  }
+  return pending;
+};
+
+const decodeChain = async (host: EngineHostConfigs, leaves: string): Promise<void> => {
   const encoded = host.above[leaves];
   const files: unknown = isRecord(encoded) ? Reflect.get(encoded, 'configFilePaths') : undefined;
   const named = Array.isArray(files) && files.length > 0 ? files.join(', ') : leaves;
