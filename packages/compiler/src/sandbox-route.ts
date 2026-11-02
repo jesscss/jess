@@ -3,11 +3,11 @@
  * this process, or, once it reaches a stylesheet script, whole in the
  * `@jesscss/plugin-js` Deno engine.
  */
-import type { ErrorDiagnostic, JessSpellingGap, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
+import type { ErrorDiagnostic, ExportRuntimeData, JessSpellingGap, PluginInterface, ScriptSandboxRoute, WarningDiagnostic } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ConfigWithMeta, HostConfigs } from './config.js';
+import type { ConfigWithMeta, HostConfigs, UnusableConfig } from './config.js';
 import { colorsByDefault } from './diagnostics.js';
 import type { ConfigOptions } from './index.js';
 
@@ -31,6 +31,9 @@ export type RenderResult = {
 
   /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
   sourceMapURL?: string;
+
+  /** What the browser runtime module is generated from, when the stylesheet exports a variable (ledger A4). */
+  runtime?: ExportRuntimeData;
 };
 
 /** The `.jess` file a converted source writes: its sibling, extension replaced. */
@@ -80,7 +83,7 @@ export type EnginePlugin = PluginInterface & {
     configs?: HostConfigs;
 
     /** The host's config search above a read root, for `configs.above` (see `configsAboveReadRoot`). */
-    configsAbove?: (root: string) => ConfigWithMeta | undefined;
+    configsAbove?: (root: string) => ConfigWithMeta | UnusableConfig | undefined;
   }): Promise<unknown>;
 
   /** Starts the engine before a render needs it; `releaseEngine` ends it unused. */
@@ -376,7 +379,7 @@ export const runInEngine = async (
     method: EngineMethod;
     args: readonly unknown[];
     configs?: HostConfigs;
-    configsAbove?: (root: string) => ConfigWithMeta | undefined;
+    configsAbove?: (root: string) => ConfigWithMeta | UnusableConfig | undefined;
   }
 ): Promise<unknown> => (await engineFor(source)).renderInEngine(engineRequest(request));
 

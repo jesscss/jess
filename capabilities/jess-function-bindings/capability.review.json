@@ -5,11 +5,11 @@
   "contractDigest": "01b298fb267f28101a8fb2cae738759bb068c87c0ed78a995426765a1fb38a57",
   "implementations": {
     "owner": "e8fbe3f1a53792442a84382c901e8fdd390b16e6f62f878ce1e64191315dce71",
-    "compiler-convert": "8e0f1369ff4b10a27c5da77a31bc8a5829202c2fb89679818c195fdb5e9c8795",
+    "compiler-convert": "cb419bb681059fee3b2a33074f971ab5fd2b8b9cfbb0b1ccc6aa5ef07a721e0f",
     "less-equivalence": "6c5c019ef98d3fa9ac9d517642978433c59d1d32d19f17473537b47027484689",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Re-reviewed compiler-convert after limiting what crosses into the script sandbox from a styles.config: compiler/src/config.ts (only the settings knownSettings defines are sent; a chain above a read root is decoded only when a file first needs it, through prepareConfigsFor) and compiler/src/index.ts (a loadsConfig helper shared by sourceOptions and the sandbox's prepareSource hook) only resolve config settings for sandboxed renders. convert-to-jess.ts is unchanged: the projection still comes only from context.pluginOf(document)?.jessFunctions?.() and passes unchanged to emitJess, no projection is built in the consumer, the owner is not imported, and the alternatives' anchor lines are unchanged."
+  "rationale": "Re-reviewed compiler-convert across four changes. Export runtime (R8 slice 2): compiler/index.ts and sandbox-route.ts carry the render's runtime data beside the CSS. Hard-link follow-up: claimTargets and the engine-result check refuse a hard-linked .jess path (nlink > 1). Script-sandbox settings: compiler/src/config.ts sends only the settings knownSettings defines, decodes a chain above a read root only when a file first needs it (prepareConfigsFor), keeps only the keys of fixed-shape settings such as sourceMap, requires user-keyed records to hold plain data, and shares one decode of a chain across concurrent files; compiler/src/index.ts shares loadsConfig between sourceOptions and the sandbox's prepareSource hook, and sandbox-route.ts carries its type. convert-to-jess.ts is unchanged: the projection still comes only from context.pluginOf(document)?.jessFunctions?.() and passes unchanged to emitJess, no projection is built in the consumer, the owner is not imported, and the alternatives' anchor lines are unchanged."
 }

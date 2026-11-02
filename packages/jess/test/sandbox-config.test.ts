@@ -125,6 +125,7 @@ describe('styles.config settings in the script sandbox', () => {
       'module.exports = {',
       `  secretToken: 'S3CRET-TOP',`,
       `  compile: { mathMode: 'always', secretToken: 'S3CRET-COMPILE' },`,
+      `  output: { sourceMap: { sourceMapRootpath: 'root/', custom: 'S3CRET-SM' } },`,
       `  language: { jess: { unitMode: 'strict', secretToken: 'S3CRET-JESS' }, less: { strictUnits: true }, other: { secretToken: 'S3CRET-OTHER' } }`,
       '};'
     ].join('\n'));
@@ -142,5 +143,18 @@ describe('styles.config settings in the script sandbox', () => {
     expect(css).toContain(`'mathMode':'always'`);
     expect(css).toContain(`'unitMode':'strict'`);
     expect(css).toContain(`'strictUnits':true`);
+    expect(css).toContain(`'sourceMapRootpath':'root/'`);
+  }, 60_000);
+  it('make each plugin a chain records once', async () => {
+    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jess-sandbox-config-once-')));
+    dirs.push(base);
+    fs.writeFileSync(path.join(base, 'plug.mjs'), `import { recordPluginModule } from ${JSON.stringify(CORE)};
+export default () => { globalThis.__jessPlugMade = (globalThis.__jessPlugMade ?? 0) + 1; return recordPluginModule({ name: 'counted' }, import.meta.url, 'default', []); };`);
+    fs.writeFileSync(path.join(base, 'styles.config.mjs'), `import plug from './plug.mjs';\nexport default { compile: { plugins: [plug()] } };`);
+    fs.writeFileSync(path.join(base, 'count.js'), 'module.exports = { install(less, manager, functions) { functions.add(\'made\', () => new tree.Quoted(\'"\', String(globalThis.__jessPlugMade))); } };');
+    fs.writeFileSync(path.join(base, 'main.less'), '@plugin "./count.js";\n.a { n: made(); }');
+    const compiler = new Compiler();
+    compilers.push(compiler);
+    await expect(compiler.render(path.join(base, 'main.less'), { suppressWarnings: true })).resolves.toContain('n: "1"');
   }, 60_000);
 });

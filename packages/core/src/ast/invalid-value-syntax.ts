@@ -249,6 +249,9 @@ export interface ValueCheckLane {
 
     /** The authored declaration each part of an SCSS nested property came from. */
     readonly nestedPropertyOwners: Map<Declaration, Declaration> | undefined;
+
+    /** [A4] Exported reads, by what a read resolves to (`export-reads.ts`). */
+    readonly exports: { readonly refs: Map<object, unknown> } | undefined;
   };
 }
 
@@ -322,11 +325,19 @@ export function keepArgument<T extends object>(s: ValueCheckLane['s'], found: In
       });
 }
 
-/** What an argument's typed `value` holds is kept for the snapshot it binds as (`bound`). */
+/**
+ * What an argument's typed `value` holds is kept for the snapshot it binds as
+ * (`bound`): its error, and the export it reads (`export-reads.ts`
+ * `exportArgumentBound`).
+ */
 export function keepArgumentSyntax(s: ValueCheckLane['s'], value: object, bound: object): void {
   const found = s.invalidArguments.size === 0 ? undefined : s.invalidArguments.get(value);
   if (found !== undefined) {
     s.invalidArguments.set(bound, found);
+  }
+  const exported = s.exports?.refs.get(value);
+  if (exported !== undefined) {
+    s.exports?.refs.set(bound, exported);
   }
 }
 

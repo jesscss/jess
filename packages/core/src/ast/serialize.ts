@@ -25,8 +25,7 @@
  */
 
 import { DECLMAP_MEMO_ENABLED } from '../env-value.js';
-import { renderCombinator } from './node.js';
-import type { Combinator, Node, NodeType } from './node.js';
+import { renderCombinator, type Combinator, type Node, type NodeType } from './node.js';
 import serializerNodes, {
   any,
   callArg,
@@ -157,8 +156,7 @@ import type {
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
-import { isDiagnosticStatement } from './at-rule.js';
+import { isDiagnosticStatement, type AtRuleBlock, type AtRuleStatement, type UnknownAtRuleBlock, type Plugin } from './at-rule.js';
 
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
@@ -207,7 +205,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { exportChecked, exportInput, READS_EXPORT, rejectNestedExport, rootExports, type ExportCalls } from './export-reads.js';
+import { exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -222,12 +220,12 @@ import { ASKED, asksType, calledAt, isMixinReference, readMixinReference, whileR
 import { carriedMap, snapshotOf } from './snapshot-binding.js';
 import { mathOperand } from './math-operand.js';
 import { groupItems } from './value-list.js';
-import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type ModuleCallable } from './module-values.js';
+import { bindModuleFunction, isModuleCallable, moduleAstValue, moduleMemberName, moduleMembers, requireModuleMember, type FnOrigin, type ModuleCallable } from './module-values.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
-import { atRuleScope, recordAstExtendProfile } from './extend/plan.js';
+import { atRuleScope, recordAstExtendProfile, type AtRuleScopes, type ExtendBoundary, type PlanBubble, type PlanInstruction, type PlanOverlay, type PlanReferenceAtRule, type PlanSubject } from './extend/plan.js';
 import {
   arraysEqualText,
   dynamicPathAt,
@@ -251,11 +249,8 @@ import {
   withoutPlaceholders
 } from './extend/dynamic.js';
 import type { BlockExtent, DynamicExtendState, DynExtendSlot, NestedLanding } from './extend/dynamic.js'; // [extend/selector-interp]
-import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
-import type { Branch, Level } from './extend/ir.js';
-import { branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple } from './extend/ir.js';
-import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules } from './extend/document.js';
-import type { ExtendClass } from './extend/document.js';
+import { type Branch, type Level, branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple } from './extend/ir.js';
+import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules, type ExtendClass } from './extend/document.js';
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
@@ -752,6 +747,9 @@ export interface SerializeResult {
 
   /** Present only when `trackPositions` is set. */
   positions?: Position[];
+
+  /** [A4] What the browser runtime is generated from; present only when the document exports a variable. */
+  runtime?: ExportRuntimeData;
 }
 
 /**
@@ -1530,9 +1528,10 @@ function bindModuleCallable(
   frame: Frame,
   name: string,
   value: ModuleCallable | Fn,
-  e: Lane
+  e: Lane,
+  origin: FnOrigin
 ): void {
-  const fn = bindModuleFunction(value, name);
+  const fn = bindModuleFunction(value, name, origin);
   addModuleFunction(frame, fn, e);
 
   /*
@@ -1558,7 +1557,7 @@ function bindModuleNamespace(
   const values: Record<string, unknown> = {};
   for (const [name, value] of moduleMembers(module)) {
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`), e);
+      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${moduleMemberName(name, value)}`, { module: node.path.value, name }), e);
     } else {
       values[name] = value;
     }
@@ -1584,7 +1583,7 @@ function bindModuleImport(
     if (namespace === '*') {
       for (const [name, value] of moduleMembers(module)) {
         if (isModuleCallable(value)) {
-          bindModuleCallable(frame, name, value, e);
+          bindModuleCallable(frame, name, value, e, { module: node.path.value, name });
         } else {
           bindModuleValue(frame, name, value, e);
         }
@@ -1601,7 +1600,7 @@ function bindModuleImport(
   if (node.defaultImport !== null) {
     const value = requireModuleMember(module, 'default');
     if (isModuleCallable(value)) {
-      bindModuleCallable(frame, node.defaultImport, value, e);
+      bindModuleCallable(frame, node.defaultImport, value, e, { module: node.path.value, name: 'default' });
     } else {
       bindModuleValue(frame, node.defaultImport, value, e);
     }
@@ -1610,7 +1609,7 @@ function bindModuleImport(
     const value = requireModuleMember(module, specifier.name);
     const localName = specifier.alias ?? specifier.name;
     if (isModuleCallable(value)) {
-      bindModuleCallable(frame, localName, value, e);
+      bindModuleCallable(frame, localName, value, e, { module: node.path.value, name: specifier.name });
     } else {
       bindModuleValue(frame, localName, value, e);
     }
@@ -4461,7 +4460,7 @@ interface EvalSession {
    * ({@link exportChecked}). Undefined for a document with no export, so a
    * lookup there pays one undefined check.
    */
-  exports: ExportCalls | undefined;
+  exports: ExportState<Frame> | undefined;
 }
 
 /**
@@ -5124,13 +5123,13 @@ function evalTyped(
           return force(unresolvedRef(node, nm, e));
         }
         const bound = hit.value;
-        return hit.evaluated !== null
+        return exportInputRead(e, hit, hit.evaluated !== null
           ? reachedEvaluated(e, hit.evaluated)
           : isMixinReference(bound)
             ? readMixinReference(e, node, bound)
             : withExcluded(e, bound, () => isMixinCallValue(bound)
                 ? force(literal(''))
-                : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node);
+                : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument), node));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -5478,7 +5477,8 @@ function slotComputation(slot: ValueSlot, frame: Frame | null, e: Lane, referenc
  * What a lookup names — a variable, an `@@name` one included, or a property —
  * by the resolvers its evaluation uses, or `undefined`. A merged property is
  * the bytes of its members, and an `@@name` whose name awaits a plugin is read
- * only when it evaluates.
+ * only when it evaluates. It reads no value, so an export is its binding
+ * ({@link READS_EXPORT}); the evaluation that follows reads it.
  */
 function lookupBinding(node: Lookup, frame: Frame | null, e: Lane): { value: Binding; frame: Frame | null } | undefined {
   if (node.kind === 'var') {
@@ -5487,7 +5487,7 @@ function lookupBinding(node: Lookup, frame: Frame | null, e: Lane): { value: Bin
       observeRejectedThenable(name);
       return undefined;
     }
-    return resolveVarRef(frame, name, node.scope, e, node);
+    return resolveVarRef(frame, name, node.scope, e, READS_EXPORT);
   }
   if (node.kind === 'prop' && typeof node.name === 'string') {
     const hit = resolvePropRef(frame, node.name, e);
@@ -8014,7 +8014,7 @@ function classifyMixinValuePart(source: CallValue, frame: Frame, e: Lane): Mixin
   if (source.kind !== 'var' || typeof source.name !== 'string') {
     return MIXIN_VALUE_CANONICAL;
   }
-  return classifyMixinValueHit(resolveVarRef(frame, source.name, source.scope, e), e);
+  return classifyMixinValueHit(resolveVarRef(frame, source.name, source.scope, e, READS_EXPORT), e);
 }
 
 /** Classify one already-resolved variable root without repeating its scope walk. */
@@ -8284,15 +8284,15 @@ function resolveAuthoredMixinValue(
  * one needs it.
  */
 function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
-  const outerChecks = e.checks;
-  const outerFound = bindingArgument(e, source);
-  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined;
+  const outerChecks = e.checks, outerFound = bindingArgument(e, source), outerRead = exportArgumentStart(e.s.exports);
+  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: ExportArgument | undefined;
   try {
     value = evalTypedSlot(source, frame, e, project, argument);
   } finally {
     found = boundArgument(e, outerChecks, outerFound);
+    read = exportArgumentEnd(e.s.exports, outerRead);
   }
-  return keepArgument(e.s, found, value);
+  return keepArgument(e.s, found, exportArgumentBound(e.s.exports, read, value, source, frame));
 }
 
 /**
@@ -9058,10 +9058,7 @@ function dispatchCall(
   const ae = (argument === ARG_WRITTEN || isMathFunctionName(node.name)) === e.keepsMath
     ? e
     : deriveLane(e, e.keepsMath ? 'checkMath' : 'keepMath');
-  const typed = alpha === null
-    ? node.args.map(a => evalTypedSlot(a.value, frame, ae, true, argument))
-    : [colorChannels(node.args[0]!.value, alpha, frame, ae, argument)];
-  return combineAll(typed, (vals) => {
+  const dispatch = (vals: ValueGroup[]): MaybePromise<EvalValue> => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {
       if (node.args[i]!.name !== undefined) {
@@ -9096,7 +9093,21 @@ function dispatchCall(
     } catch (error) {
       return invalidFunctionCall(node, error, e);
     }
-  });
+  };
+
+  /* [A4] A computed call reading an export is recorded for the runtime. */
+  return e.s.exports === undefined || argument !== ARG_INPUT
+    ? combineAll(callArguments(node, alpha, frame, ae, argument), dispatch)
+    : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, dispatch));
+}
+
+/** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
+function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
+  const args: Array<MaybePromise<ValueGroup>> = alpha === null ? [] : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+  for (let i = 0; alpha === null && i < node.args.length; i++) {
+    args.push(evalTypedSlot(node.args[i]!.value, frame, e, true, argument));
+  }
+  return args;
 }
 
 /**
@@ -14318,9 +14329,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       }
       if (e.positions) {
         resolvePositionOffsets(e.chunks, e.positions);
-        return { css: e.chunks.join(''), positions: e.positions };
+        return { css: e.chunks.join(''), positions: e.positions, ...runtimeData(e.s.exports) };
       }
-      return { css: e.chunks.join('') };
+      return { css: e.chunks.join(''), ...runtimeData(e.s.exports) };
     };
     const finish = (): SerializeReturn => {
       if (e.positions) {
@@ -18587,7 +18598,7 @@ function dispatch(
     }
     const hit = lookup === undefined
       ? undefined
-      : resolveVarRef(overlay, lookupName!, lookup.scope, e);
+      : resolveVarRef(overlay, lookupName!, lookup.scope, e, READS_EXPORT);
     const hitValue = hit?.value;
     if (hitValue !== undefined && !isValueSlotArray(hitValue)
       && !isMixinCallValue(hitValue) && (isValueBlock(hitValue) || isMixinReference(hitValue))) {
@@ -18956,7 +18967,7 @@ function substituteClosureVarArgs(
       && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
     const directHit = directVariable
       ? trackValue
-        ? resolveVarRef(frame, value.name, value.scope, e)
+        ? resolveVarRef(frame, value.name, value.scope, e, READS_EXPORT)
         : lookupVarIn(frame, value.name)
       : undefined;
     const spreadCarriesValue = spreadValueBindings?.has(value) === true;
