@@ -15,6 +15,10 @@ async function render(source: string, compress = false): Promise<string> {
   return String(await compiler.renderString(source, { filePath: 'entry.less', extension: '.less', suppressWarnings: true }));
 }
 
+async function result(source: string) {
+  return new Compiler({}).renderToResult({ filePath: 'entry.less', source, language: 'less' });
+}
+
 async function runtime(source: string): Promise<unknown> {
   return (await new Compiler({}).renderToResult({ filePath: 'entry.less', source, language: 'less' })).runtime;
 }
@@ -187,18 +191,58 @@ describe('Less @export variables (A4)', () => {
       .resolves.toBe('.a {\n  color: var(--brand, #c00);\n  margin: var(--gap, 8px);\n}\n');
   });
 
-  it('rejects an export of a variable the top level does not declare', async () => {
-    await expect(render('@export brand;\n.a { @brand: #c00; color: @brand; }')).rejects.toMatchObject({ code: 'eval/export-not-declared' });
+  it('rejects an export of a variable the top level does not declare, at its name', async () => {
+    await expect(result('@gap: 1px;\n@export gap, brand;\n.a { @brand: #c00; color: @brand; }')).resolves.toMatchObject({
+      css: '',
+      errors: [{ code: 'eval/export-not-declared', message: expect.stringContaining('@brand'), line: 2, column: 14 }]
+    });
   });
 
-  it('writes any other @export as the at-rule it is', async () => {
-    await expect(render('@export { a: b }\n.a { b: c; }')).resolves.toBe('@export {\n  a: b;\n}\n.a {\n  b: c;\n}\n');
+  describe.each(['@export', '@-export'])('%s', (keyword) => {
+    it('reports the declaration form with the name-list spelling', async () => {
+      await expect(result(`${keyword} @brand: red;\n.a { b: c; }`)).resolves.toMatchObject({
+        css: '',
+        errors: [{ code: 'parse/export-declaration', fix: 'Declare the variable, then export it by name: @brand: …; @export brand;' }]
+      });
+    });
+
+    it.each(['brand gap;', 'brand,;', 'brand: red;', 'brand !important;', ';', '{ a: b }'])('reports a malformed list and writes no CSS: %s', async (rest) => {
+      await expect(result(`${keyword} ${rest}`.replace(' ;', ';') + '\n.a { b: c; }')).resolves.toMatchObject({
+        css: '',
+        errors: [{ code: 'parse/malformed-export', line: 1, column: 1 }]
+      });
+    });
+  });
+
+  describe('beside an imported file', () => {
+    /** Compiles `source` beside a `vars.less` holding `vars`. */
+    async function resultBeside(vars: string, source: string) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-export-import-'));
+      fs.writeFileSync(path.join(dir, 'vars.less'), vars);
+      try {
+        return await new Compiler({}).renderToResult({ filePath: path.join(dir, 'entry.less'), source, language: 'less' });
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    it('rejects an @export in the imported file', async () => {
+      await expect(resultBeside('@export brand;\n@brand: #c00;\n', '@import "vars.less";\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/export-not-top-level' }] });
+    });
+
+    /* Whether a root @export may name an imported variable is open (browser-runtime spec). */
+    it('rejects a root export of a variable the imported file declares', async () => {
+      await expect(resultBeside('@brand: #c00;\n', '@import "vars.less";\n@export brand;\n.a { color: @brand; }'))
+        .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/export-not-declared' }] });
+    });
   });
 
   it.each([
     '.a { @export n;\n@n: x; }',
     '@media screen { @export n;\n@n: x; }',
-    '.m() { @export n;\n@n: x; }\n.a { .m(); }'
+    '.m() { @export n;\n@n: x; }\n.a { .m(); }',
+    '@l: a, b;\neach(@l, { @export n; });'
   ])('rejects an @export below the top level: %s', async (source) => {
     await expect(render(source)).rejects.toMatchObject({ code: 'eval/export-not-top-level' });
   });

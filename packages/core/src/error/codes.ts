@@ -29,6 +29,8 @@ export type JessErrorCode =
   | 'parse/source-import-css-syntax'
   | 'parse/invalid-mixin-argument'
   | 'parse/ambiguous-not'
+  | 'parse/export-declaration'
+  | 'parse/malformed-export'
   | 'parse/condition-keyword-case'
   | 'parse/selector-capture-argument'
   | 'parse/arithmetic-outside-expression'
@@ -281,6 +283,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'parse/export-declaration',
+    {
+      summary: '@export names variables; it does not declare one',
+      reason: '@export lists the names of variables declared on their own, without their @.',
+      fix: 'Declare the variable, then export it by name, for example: @brand: red; @export brand;'
+    }
+  ],
+  [
+    'parse/malformed-export',
+    {
+      summary: '@export takes a comma-separated list of variable names',
+      reason: '@export is followed by one or more variable names without their @, separated by commas, and ends at a semicolon.',
+      fix: 'Write the names it exports, for example: @export brand, gap;'
+    }
+  ],
+  [
     'parse/ambiguous-not',
     {
       summary: '`not` before a compared operand',
@@ -391,9 +409,9 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'eval/export-not-declared',
     {
-      summary: '@export names a variable the stylesheet does not declare at its top level',
-      reason: '@export ${name} publishes the top-level variable @${name}, and this stylesheet does not declare one there.',
-      fix: 'Declare @${name} at the top level of this stylesheet, or remove ${name} from the @export.'
+      summary: '@export names @${name}, which is not declared in this file\'s top level',
+      reason: '@export ${name} publishes the variable @${name} declared at the top level of this file. A variable declared only in an imported file, a mixin call or a nested block is not one.',
+      fix: 'Declare @${name} at the top level of this file, or remove ${name} from the @export.'
     }
   ],
   [

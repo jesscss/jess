@@ -206,7 +206,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { argumentStatementKind, exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportArgument, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -3703,8 +3703,9 @@ function activateVariableDeclaration(node: VariableDeclaration | VariableExport,
   /*
    * [A4] `rootExports` binds an `@export`. A document's top level is a frame
    * with no parent; a ruleset, at-rule, mixin, detached-ruleset or loop body
-   * always has one. ponytail: an `@import`ed or `@compose`d document's `@export`
-   * is not the rendered root's and does nothing (R8 spec, open item).
+   * always has one. ponytail: an `@import`ed document folds into a child frame,
+   * so an `@export` in it raises too; `@compose` keeps it a module, where it is
+   * not the rendered root's and does nothing (R8 spec, open items).
    */
   if (node.type === 'VariableExport') {
     return rejectNestedExport(node, frame.parent !== null, e);
@@ -9274,7 +9275,7 @@ function writtenBlockBody(
         break;
       }
       default:
-        rejectRulesetArgument(block, `a ${rule.type}`, e);
+        rejectRulesetArgument(block, argumentStatementKind(rule, e), e);
     }
   }
   if (replay !== undefined) {
@@ -13894,7 +13895,7 @@ function planImportedFacts(
     };
     for (let at = 0; at < statements.length; at++) {
       const st = statements[at]!;
-      if (st.type === 'VariableDeclaration') {
+      if (st.type === 'VariableDeclaration' || st.type === 'VariableExport') {
         activateVariableDeclaration(st, scope, e);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);

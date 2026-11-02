@@ -29,10 +29,10 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExport, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
+import { any, forgivingSelectorRest, scannedLeaf, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, inParens, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableExport, exportedName, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout, queryFeatureNameFrom, queryFeatureNameValue } from '@jesscss/core/ast';
 import type { ForgivingSelectorRest as ForgivingRest, SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, VariableExport } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, reportRecovered, requireLessParseState, selectorCaptureOfState, valueStopOf, type LessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessExportDeclarationError, LessMalformedExportError, LessImportantMixinReferenceError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   atRulePreludeFrom,
@@ -98,6 +98,7 @@ import {
   isLessKeyword,
   isLessTerminalText,
   isUrl,
+  isVarDeclaration,
   isValueNode,
   isLessValueSlotValue,
   isVarIndirect,
@@ -198,7 +199,7 @@ type LessRules = {
   ComposeStatement: Combinator<StyleImport>;
   ComposeStatementNamespace: Combinator<string>;
   ComposeStatementConfig: Combinator<StyleImportConfig>;
-  ExportStatement: Combinator<VariableExport>;
+  ExportStatement: Combinator<VariableExport | VariableDeclaration>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -1496,21 +1497,43 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     peek(literal('}'))
   );
   /**
-   * `@export brand, gap;` publishes root variables by name (ledger A4); the `@`
-   * starts a read, so the names are bare. It parses in every body, as
-   * `@compose` does, and evaluation rejects one below the stylesheet root. Like
-   * `@use` and `@compose` it puts the document in modern mode (ledger P36).
+   * `@export brand, gap;` publishes root variables by name (ledger A20): the `@`
+   * starts a read, so the names are bare, read as every variable name is. It
+   * parses in every body, as `@compose` does, and evaluation rejects one below
+   * the stylesheet root. Like `@use` and `@compose` it puts the document in
+   * modern mode (ledger P36). Both spellings read the same: the declaration form
+   * (`@export @brand: red;`) and any other shape after the keyword parse whole
+   * and are reported, never written as CSS (P45). `@export: red;` and
+   * `@export();` stay a variable and its call.
    */
   const ExportStatement = node(
     'ExportStatement',
     sequence(
       keywords(['@-export', '@export'], { caseInsensitive: true, boundary: IDENT_BOUNDARY }),
-      oneOrMoreSep(field('name', lessSupportedVariableName), literal(',')),
-      declarationEnd
+      not(choice(literal(':'), literal('('))),
+      choice(
+        field('declaration', g.VarDeclaration),
+        sequence(
+          optional(oneOrMoreSep(field('name', lessVariableName), literal(','))),
+          optional(field('rest', g.UnknownAtPrelude)),
+          choice(field('block', unknownAtRuleBrace), declarationEnd)
+        )
+      )
     ),
     (_children, fields, span, _rawChildren, _triviaLog, state) => {
       closeAmbientFunctions(state);
-      const names = requireFields(fields, 'name').map(name => requireSupportedVariableName(name.value, name.span.start, name.span.end));
+      const declaration = fields?.declaration === undefined ? undefined : requireField(fields, 'declaration').value;
+      if (isVarDeclaration(declaration)) {
+        reportRecovered(new LessExportDeclarationError(span.start, span.end, declaration.name), state);
+        return declaration;
+      }
+      const names = fields?.name === undefined
+        ? []
+        : requireFields(fields, 'name').map(name => withSourceSpan(exportedName(requireSupportedVariableName(name.value, name.span.start, name.span.end)), name.span));
+      const rest = fields?.rest === undefined ? null : requireField(fields, 'rest').value;
+      if (names.length === 0 || rest !== null || fields?.block !== undefined) {
+        reportRecovered(new LessMalformedExportError(span.start, span.end), state);
+      }
       return withSourceSpan(variableExport(names), span);
     }
   );

@@ -332,6 +332,47 @@ export class LessAmbiguousNotError extends SyntaxError {
 }
 
 /**
+ * `@export @name: value;`, the form before the owner's 2026-11-02 ruling (ledger
+ * A20): `@export` names variables and does not declare one. The declaration is
+ * kept, so the rest of the document still evaluates (P45).
+ */
+export class LessExportDeclarationError extends SyntaxError {
+  readonly code = 'parse/export-declaration' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = '`@export` lists the names of variables declared on their own, without their `@`.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, name: string) {
+    super('`@export` names variables; it does not declare one.');
+    this.name = 'LessExportDeclarationError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Declare the variable, then export it by name: @${name}: …; @export ${name};`;
+  }
+}
+
+/**
+ * An `@export` that is not a comma-separated list of variable names (ledger
+ * A20), such as `@export brand gap;` or `@export;`: parsed whole, never written
+ * as CSS, and reported (P45).
+ */
+export class LessMalformedExportError extends SyntaxError {
+  readonly code = 'parse/malformed-export' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = '`@export` is followed by one or more variable names without their `@`, separated by commas, and ends at a semicolon.';
+  readonly fix = 'Write the names it exports, for example: @export brand, gap;';
+
+  constructor(offset: number, endOffset: number) {
+    super('`@export` takes a comma-separated list of variable names.');
+    this.name = 'LessMalformedExportError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/**
  * A Less condition keyword in another case than lowercase (`AND`, `Not`): a
  * mixin guard, `if()` and `boolean()` read lowercase `and`, `or` and `not`
  * (owner 2026-10-13: "B: CSS any case, Less lowercase"). Located at the
@@ -384,7 +425,8 @@ export class LessSelectorCaptureArgumentError extends SyntaxError {
  * carries on past (ledger P45).
  */
 export type LessRecoveredError = LessMixinArgumentError | LessAmbiguousNotError | LessConditionKeywordCaseError
-  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError;
+  | LessSelectorCaptureArgumentError | LessLeadingSeparatorValueError | LessImportantMixinReferenceError
+  | LessExportDeclarationError | LessMalformedExportError;
 
 /**
  * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no

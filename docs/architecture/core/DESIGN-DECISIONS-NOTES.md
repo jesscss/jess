@@ -354,5 +354,9 @@ Existing notes inside owner rows have not been moved yet, except the rows the 20
 Built as a `VariableExport` statement holding the names (`nodes.ts`). The
 names use the Less variable-name terminal every read uses, so escapes decode
 and a leading-digit name is rejected as in a declaration; the statement ends
-at `;` or the body's `}`, and any other `@export` shape is a generic at-rule.
-A name the top level does not declare raises `eval/export-not-declared`.
+at `;` or the body's `}`. Both spellings read the same: the old declaration
+form (`@export @brand: red;`) is `parse/export-declaration` with the name-list
+spelling as its fix, and any other shape after the keyword (`@export brand gap;`,
+`@export;`, `@export { … }`) is `parse/malformed-export`; neither writes CSS.
+`@export: red;` stays a variable declaration. A name the top level does not
+declare raises `eval/export-not-declared`, located at the name.

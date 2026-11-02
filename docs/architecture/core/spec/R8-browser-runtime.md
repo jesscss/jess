@@ -157,9 +157,13 @@ or needs JS) to decide what ships in the bundle.
 ## Open — needs the owner
 
 - **Exports in an imported document.** Only the rendered document's root
-  counts. An `@export` in an `@import`ed or `@compose`d document does nothing,
-  and the root cannot export a variable an imported document declares
-  (`eval/export-not-declared`).
+  counts. An `@import`ed document folds into a child scope, so an `@export` in
+  it raises `eval/export-not-top-level`, as a nested one does; in a `@compose`d
+  module it is not the rendered root's and does nothing.
+- **Exporting a variable the root does not declare itself.** A root
+  `@export brand;` where `@brand` comes from an `@import`ed file or a mixin
+  call raises `eval/export-not-declared` ("not declared in this file's top
+  level"). Should an export reach a variable the root only receives?
 - **`.jess` `@-export`.** The `.jess` grammar reads `@-export "path"` as the
   `@forward`-style re-export (A4 keeps the two features distinct), so the
   name-list form needs a dispatch on the token after the keyword. `.less →

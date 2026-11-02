@@ -1361,7 +1361,12 @@ export interface VariableDeclaration extends SpanSlots {
  */
 export interface VariableExport extends SpanSlots {
   readonly type: 'VariableExport';
-  readonly names: readonly string[];
+  readonly names: readonly ExportedName[];
+}
+
+/** One name an `@export` lists, located where it is written. */
+export interface ExportedName extends SpanSlots {
+  readonly name: string;
 }
 
 /** A comment carried structurally in source order (block or line text as-is). */
@@ -2063,8 +2068,10 @@ export const variableDeclaration = (
 ): VariableDeclaration =>
   ({ type: 'VariableDeclaration', name, value, write, _s: NO_SPAN, _e: NO_SPAN });
 
-export const variableExport = (names: readonly string[]): VariableExport =>
+export const variableExport = (names: readonly ExportedName[]): VariableExport =>
   ({ type: 'VariableExport', names, _s: NO_SPAN, _e: NO_SPAN });
+
+export const exportedName = (name: string): ExportedName => ({ name, _s: NO_SPAN, _e: NO_SPAN });
 
 /** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
 const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>

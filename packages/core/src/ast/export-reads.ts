@@ -5,7 +5,7 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
-import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Stylesheet, type VariableExport } from './nodes.js';
+import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type ExportedName, type Statement, type Stylesheet, type VariableExport } from './nodes.js';
 import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { makeKeyword, makeList } from './value-factory.js';
@@ -135,14 +135,16 @@ export const READS_EXPORT = {};
  * Every root binding of a name the root exports, each with the call it reads
  * as. A root redeclaration of the name is the export too; a shadow in a nested
  * scope is a different binding and is not. Undefined when nothing is exported;
- * an exported name with no root binding is an error.
+ * an exported name with no root binding is an error, located at the name. A
+ * variable an imported file or a mixin call declares is not a root binding of
+ * this file (R8 spec, open item).
  */
 export function rootExports<F>(root: Stylesheet, context: Context | undefined): ExportState<F> | undefined {
-  let named: Map<string, VariableExport> | undefined;
+  let named: Map<string, ExportedName> | undefined;
   for (const statement of root.rules) {
     if (statement.type === 'VariableExport') {
-      for (const name of statement.names) {
-        (named ??= new Map()).set(name, statement);
+      for (const exported of statement.names) {
+        (named ??= new Map()).set(exported.name, exported);
       }
     }
   }
@@ -403,4 +405,15 @@ export function rejectNestedExport(node: VariableExport, nested: boolean, e: Exp
   if (nested) {
     throw ERR.exportNotTopLevel({ node, ...callSiteLocation(node, e.s) });
   }
+}
+
+/**
+ * What a ruleset argument's body holds that it cannot write, for its error. An
+ * `@export` there (an `each()` body) is one below the top level and raises so.
+ */
+export function argumentStatementKind(rule: Statement, e: ExportLane<unknown>): string {
+  if (rule.type === 'VariableExport') {
+    rejectNestedExport(rule, true, e);
+  }
+  return `a ${rule.type}`;
 }
