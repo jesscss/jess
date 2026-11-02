@@ -41,21 +41,28 @@ behavior remains an explicit conversion diagnostic/candidate.
   `.jess` CSS `@import` is written where it stands, so the entry's prelude
   imports lead its `.jess` (a dropped duplicate is not written), and a prelude
   import from an imported file, or a Less import left a CSS `@import` after a
-  rule, is a gap. Every file the render loaded claims its own path first, so a
-  converted file never targets one (an authored `b.jess` beside `b.less`). When
-  a converted file's `.jess` path is already claimed, by a loaded file or by
-  another converted file (`b.less` and `b.scss`), that file, and every import of
-  it, is a gap. The call runs where the render runs, so a sandboxed compile
-  converts in the sandbox. The host rebuilds each entry the engine returns
-  from checked fields (ledger A19):
+  rule, is a gap. A converted file's `.jess` path is not written, and the file
+  and every import of it are gaps, when another converted file of the render
+  takes the path first (`b.less` and `b.scss`), when the path is a symlink, or
+  when it exists. An existing file is replaced only when the caller passes
+  `{ overwrite: true }`, and even then never when it is the same file (`dev` and
+  `ino`) as one the render loaded, however the import spelled it (`B.jess`,
+  `alias/b.jess`). The call runs where the render runs, so a sandboxed compile
+  converts in the sandbox, under the same rules. The host rebuilds each entry
+  the engine returns from checked fields (ledger A19):
   - the entry's `source` must be a `.less`, `.scss` or `.css` file;
-  - with `..` and symlinks resolved, it must lie inside the read roots that
-    the script plugin computes on the host for the render;
-  - its `jessPath` is that real file's `.jess` sibling, derived on the host,
-    and must not be a symlink.
+  - with `..` and symlinks resolved, the file and its folder must lie inside
+    the read roots that the script plugin computes on the host for the render;
+  - its `jessPath` is derived on the host from `source` as the render spelled
+    it, as the in-process route derives it, so a partial reached through a
+    symlink keeps the name its importer uses;
+  - the `jessPath` must not be a symlink, and must not exist for `.jess` text
+    without `overwrite`.
 
   Anything else is refused. So the engine can make the host write only the
-  `.jess` sibling of a stylesheet the render was allowed to read.
+  `.jess` sibling of a stylesheet the render was allowed to read. Only the
+  engine's own conversion code knows which files its render loaded, so the
+  host does not repeat the loaded-file check for an engine result.
 - **Proof:** the equivalence harness (`JESS-EQUIVALENCE-HARNESS.md`) runs every
   Less and SCSS corpus file through it and compares the two renders.
 

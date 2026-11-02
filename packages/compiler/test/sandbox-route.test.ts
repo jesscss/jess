@@ -63,6 +63,11 @@ describe('a conversion the engine returns', () => {
     fs.symlinkSync(other, path.join(proj, 'dirlink'), 'dir');
     fs.symlinkSync(path.join(other, 'theme.less'), path.join(proj, 'd.jess'));
     fs.mkdirSync(path.join(proj, 'adir.less'));
+    fs.mkdirSync(path.join(proj, 'real'));
+    fs.writeFileSync(path.join(proj, 'real', 'in.less'), '');
+    fs.symlinkSync(path.join(proj, 'real', 'in.less'), path.join(proj, 'in-link.less'));
+    fs.writeFileSync(path.join(proj, 'e.less'), '');
+    fs.writeFileSync(path.join(proj, 'e.jess'), '');
     return { base, proj, other };
   };
 
@@ -71,9 +76,26 @@ describe('a conversion the engine returns', () => {
     const { files } = fromEngine.conversion(result([
       { source: path.join(proj, 'a.less'), jessPath: '/etc/cron.d/evil.jess', jess: '.a { w: 1 }' },
       { source: path.join(proj, 'b.scss'), jessPath: '../../outside.jess', gaps: [{ nodeType: 'StyleImport', reason: 'r' }] },
-      { source: path.join(proj, 'c.css'), jess: '' }
-    ]), [proj]);
-    expect(files.map(file => file.jessPath)).toEqual([path.join(proj, 'a.jess'), path.join(proj, 'b.jess'), path.join(proj, 'c.jess')]);
+      { source: path.join(proj, 'c.css'), gaps: [] },
+      { source: path.join(proj, 'in-link.less'), jess: '' }
+    ]), [proj], false);
+
+    /* A partial reached through a symlink keeps the path the render spelled, as the in-process route does. */
+    expect(files.map(file => [file.source, file.jessPath])).toEqual([
+      [path.join(proj, 'a.less'), path.join(proj, 'a.jess')],
+      [path.join(proj, 'b.scss'), path.join(proj, 'b.jess')],
+      [path.join(proj, 'c.css'), path.join(proj, 'c.jess')],
+      [path.join(proj, 'in-link.less'), path.join(proj, 'in-link.jess')]
+    ]);
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it('writes over an existing `.jess` file only with `overwrite`', () => {
+    const { base, proj } = project();
+    const existing = result([{ source: path.join(proj, 'e.less'), jess: '' }]);
+    expect(() => fromEngine.conversion(existing, [proj], false)).toThrow(/without `overwrite`/);
+    expect(fromEngine.conversion(existing, [proj], true).files.map(file => file.jessPath)).toEqual([path.join(proj, 'e.jess')]);
+    expect(fromEngine.conversion(result([{ source: path.join(proj, 'e.less'), gaps: [] }]), [proj], false).files).toHaveLength(1);
     fs.rmSync(base, { recursive: true, force: true });
   });
 
@@ -94,10 +116,10 @@ describe('a conversion the engine returns', () => {
       symlinkedJessPath: path.join(proj, 'd.less')
     };
     for (const [name, source] of Object.entries(forged)) {
-      expect(() => fromEngine.conversion(result([{ source, jess: 'EVIL' }]), [proj]), name).toThrow(/compile engine/);
+      expect(() => fromEngine.conversion(result([{ source, jess: 'EVIL' }]), [proj], true), name).toThrow(/compile engine/);
     }
     for (const entry of [{ jess: '' }, { source: path.join(proj, 'a.less') }, { source: path.join(proj, 'a.less'), gaps: [{ nodeType: 1, reason: 'r' }] }, null]) {
-      expect(() => fromEngine.conversion(result([entry]), [proj])).toThrow(/compile engine/);
+      expect(() => fromEngine.conversion(result([entry]), [proj], true)).toThrow(/compile engine/);
     }
     fs.rmSync(base, { recursive: true, force: true });
   });

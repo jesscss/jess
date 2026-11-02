@@ -63,10 +63,11 @@ import {
   type RenderStringOptions,
   type RoutedCall,
   type SafeRenderResult,
+  type ConvertOptions,
   type JessConversion
 } from './sandbox-route.js';
 
-export type { ConvertedFile, JessConversion } from './sandbox-route.js';
+export type { ConvertedFile, ConvertOptions, JessConversion } from './sandbox-route.js';
 
 export type { CompilerModuleIdentity } from './sandbox-route.js';
 import { mergeConfig } from './merge-config.js';
@@ -1638,22 +1639,27 @@ export class Compiler {
    *
    * Routed like {@link safeRender}: a conversion whose render reaches a
    * sandboxed script runs whole in the sandbox, and returns plain data.
+   *
+   * A `.jess` path that already exists is a gap unless `conversion.overwrite`
+   * is set; a symlink, or a file the render loaded, never is written.
    */
-  async convertToJess(filePath: string, options?: Partial<ConfigOptions>): Promise<JessConversion> {
+  async convertToJess(filePath: string, options?: Partial<ConfigOptions>, conversion?: ConvertOptions): Promise<JessConversion> {
+    const overwrite = conversion?.overwrite === true;
     return this.routed('convertToJess', {
-      engineArgs: [filePath, withColors(options)],
+      engineArgs: [filePath, withColors(options), { overwrite }],
       filePath,
       memoKey: filePath,
       options,
-      check: async value => fromEngine.conversion(value, await this.engineReadRoots({ filePath, options })),
-      here: route => this.convertToJessHere(route, filePath, options)
+      check: async value => fromEngine.conversion(value, await this.engineReadRoots({ filePath, options }), overwrite),
+      here: route => this.convertToJessHere(route, filePath, options, overwrite)
     });
   }
 
   private async convertToJessHere(
     route: ScriptSandboxRoute | undefined,
     filePath: string,
-    options?: Partial<ConfigOptions>
+    options: Partial<ConfigOptions> | undefined,
+    overwrite: boolean
   ): Promise<JessConversion> {
     const { resolved, context, profile } = await this.prepareRender(filePath, {
       ...options,
@@ -1664,7 +1670,7 @@ export class Compiler {
     try {
       const entry = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       await this.renderStylesheet(entry, context, profile, undefined, resolved);
-      const files = printConversion(context, entry, loads);
+      const files = printConversion(context, entry, loads, overwrite);
       finalizeRenderProfile(profile, {
         method: 'convertToJess',
         filePath,

@@ -42,6 +42,12 @@ export type ConvertedFile = { readonly source: string; readonly jessPath: string
   | { readonly gaps: readonly JessSpellingGap[] }
 );
 
+/** How `Compiler.convertToJess` treats a `.jess` path that already exists. */
+export type ConvertOptions = {
+  /** Replace an existing `.jess` file; without it, one is a gap. A symlink, or a file the render loaded, is never replaced. */
+  overwrite?: boolean;
+};
+
 /** What `Compiler.convertToJess` produced — plain data, so it crosses from the sandbox — and the render's diagnostics. */
 export type JessConversion = {
   files: readonly ConvertedFile[];
@@ -137,47 +143,55 @@ export const fromEngine = {
   },
 
   /**
-   * Every entry is rebuilt from checked fields. Its `source`, with `..` and
-   * symlinks resolved, must be a `.less`, `.scss` or `.css` file inside
-   * `readRoots`, the folders the host let the engine read; its `jessPath` is
-   * that real file's `.jess` sibling, derived here, and must not be a symlink.
-   * So the engine can only point the host at the `.jess` sibling of a
-   * stylesheet it was allowed to read (ledger A19).
+   * Every entry is rebuilt from checked fields (ledger A19). Its `source` must
+   * be a `.less`, `.scss` or `.css` file that, and whose folder, with `..` and
+   * symlinks resolved, lie inside `readRoots`, the folders the host let the
+   * engine read. Its `jessPath` is derived here from `source` as the render
+   * spelled it, as the in-process route derives it, and must not be a symlink,
+   * nor, for `.jess` text, an existing file unless `overwrite` is set. So the
+   * engine can only point the host at the `.jess` sibling of a stylesheet it
+   * was allowed to read.
    */
-  conversion: (value: unknown, readRoots: readonly string[]): JessConversion => {
+  conversion: (value: unknown, readRoots: readonly string[], overwrite: boolean): JessConversion => {
     const files: unknown = isRenderResultLike(value) ? Reflect.get(value, 'files') : undefined;
     if (!isRenderResultLike(value) || !isList(files)) {
       throw new Error('The compile engine returned no result for this conversion.');
     }
-    return { files: files.map(entry => convertedFileFromEngine(entry, readRoots)), errors: value.errors, warnings: value.warnings };
+    return { files: files.map(entry => convertedFileFromEngine(entry, readRoots, overwrite)), errors: value.errors, warnings: value.warnings };
   }
 };
 
 const CONVERTIBLE = new Set(['.less', '.scss', '.css']);
 
-/** `file`'s real path when it is a stylesheet file inside one of `roots`, else `undefined`. */
-const stylesheetWithin = (file: string, roots: readonly string[]): string | undefined => {
+/** Whether `file`, with `..` and symlinks resolved, lies inside one of `roots`. */
+const within = (file: string, roots: readonly string[]): boolean => {
   let real: string;
   try {
     real = fs.realpathSync(file);
   } catch {
-    return undefined;
+    return false;
   }
-  const inside = roots.some(root => real.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`));
-  return inside && CONVERTIBLE.has(path.extname(file)) && CONVERTIBLE.has(path.extname(real)) && fs.statSync(real).isFile()
-    ? real
-    : undefined;
+  return roots.some(root => real === root || real.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`));
 };
 
-const convertedFileFromEngine = (entry: unknown, roots: readonly string[]): ConvertedFile => {
+/** Whether `file` is a stylesheet file that, and whose folder, lie inside one of `roots`. */
+const stylesheetWithin = (file: string, roots: readonly string[]): boolean =>
+  path.isAbsolute(file) && CONVERTIBLE.has(path.extname(file)) && within(file, roots) && within(path.dirname(file), roots)
+  && CONVERTIBLE.has(path.extname(fs.realpathSync(file))) && fs.statSync(file).isFile();
+
+const convertedFileFromEngine = (entry: unknown, roots: readonly string[], overwrite: boolean): ConvertedFile => {
   const named: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'source') : undefined;
-  const source = typeof named === 'string' && path.isAbsolute(named) ? stylesheetWithin(named, roots) : undefined;
+  const source = typeof named === 'string' && stylesheetWithin(named, roots) ? named : undefined;
   const jessPath = source === undefined ? '' : jessPathOf(source);
-  if (typeof entry !== 'object' || entry === null || source === undefined || fs.lstatSync(jessPath, { throwIfNoEntry: false })?.isSymbolicLink() === true) {
+  const existing = source === undefined ? undefined : fs.lstatSync(jessPath, { throwIfNoEntry: false });
+  if (typeof entry !== 'object' || entry === null || source === undefined || existing?.isSymbolicLink() === true) {
     throw new Error('The compile engine returned a converted file that is not a stylesheet in this render\'s read roots.');
   }
   const jess: unknown = Reflect.get(entry, 'jess');
   if (typeof jess === 'string') {
+    if (existing !== undefined && !overwrite) {
+      throw new Error(`The compile engine returned \`.jess\` text for ${jessPath}, which exists, without \`overwrite\`.`);
+    }
     return { source, jessPath, jess };
   }
   const gaps: unknown = Reflect.get(entry, 'gaps');

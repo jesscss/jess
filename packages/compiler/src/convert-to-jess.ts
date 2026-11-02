@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'path';
 import { type Context, type ImportTargets, emitJess, NoJessSpelling } from '@jesscss/core';
 import type { AtRuleStatement, StyleImport, Stylesheet } from '@jesscss/core/ast';
@@ -18,31 +19,11 @@ import { type ConvertedFile, jessPathOf } from './sandbox-route.js';
 export function printConversion(
   context: Context,
   entry: Stylesheet,
-  loads: ImportTargets
+  loads: ImportTargets,
+  overwrite = false
 ): ConvertedFile[] {
   const documents = loadedDocuments(context, entry, loads);
-
-  /* By document, not path: a `(less)` import and a CSS import of one file are two documents. */
-  const converted = new Set<Stylesheet>();
-
-  /*
-   * Every file the render loaded is claimed first, so a converted file never
-   * overwrites one (an authored `b.jess` beside `b.less`). Then the first
-   * converted document to claim a `.jess` path writes it; a document that loses
-   * its claim, and every import of it, is a gap.
-   */
-  const written = new Set(documents.values());
-  const collided = new Set<Stylesheet>();
-  for (const [document, source] of documents) {
-    if (path.isAbsolute(source) && context.pluginOf(document)?.jessFunctions !== undefined) {
-      converted.add(document);
-      const jessPath = jessPathOf(source);
-      if (written.has(jessPath)) {
-        collided.add(document);
-      }
-      written.add(jessPath);
-    }
-  }
+  const { converted, unwritable } = claimTargets(context, documents, overwrite);
   const files: ConvertedFile[] = [];
   for (const [document, source] of documents) {
     const functions = converted.has(document) ? context.pluginOf(document)?.jessFunctions?.() : undefined;
@@ -50,12 +31,13 @@ export function printConversion(
       continue;
     }
     const jessPath = jessPathOf(source);
-    if (collided.has(document)) {
-      files.push({ source, jessPath, gaps: [{ nodeType: 'Stylesheet', reason: 'its `.jess` path is a file this render loaded, or another converted file writes it' }] });
+    const unwritten = unwritable.get(document);
+    if (unwritten !== undefined) {
+      files.push({ source, jessPath, gaps: [{ nodeType: 'Stylesheet', reason: `its \`.jess\` path cannot be written: ${unwritten}` }] });
       continue;
     }
     try {
-      const importPath = importPathFrom(source, loads, converted, collided);
+      const importPath = importPathFrom(source, loads, converted, unwritable);
       files.push({ source, jessPath, jess: emitJess(document, { functions, importPath, preludeImport: preludeImportOf(loads, document === entry) }) });
     } catch (error) {
       if (!(error instanceof NoJessSpelling)) {
@@ -66,6 +48,54 @@ export function printConversion(
   }
   return files;
 }
+
+/**
+ * Which documents convert, by document, not path (a `(less)` import and a CSS
+ * import of one file are two documents), and why each that cannot have its
+ * `.jess` path written cannot: another converted file of this render takes the
+ * path first; it is a symlink; it exists and `overwrite` is not set; or, with
+ * `overwrite`, it is the same file (`dev` and `ino`) as a document the render
+ * loaded, however its path is spelled. A document that cannot be written, and
+ * every import of it, is a gap.
+ */
+function claimTargets(
+  context: Context,
+  documents: ReadonlyMap<Stylesheet, string>,
+  overwrite: boolean
+): { converted: Set<Stylesheet>; unwritable: Map<Stylesheet, string> } {
+  const converted = new Set<Stylesheet>();
+  const unwritable = new Map<Stylesheet, string>();
+  const claimed = new Set<string>();
+  let loaded: Set<string> | undefined;
+  for (const [document, source] of documents) {
+    if (!path.isAbsolute(source) || context.pluginOf(document)?.jessFunctions === undefined) {
+      continue;
+    }
+    converted.add(document);
+    const jessPath = jessPathOf(source);
+    const existing = fs.lstatSync(jessPath, { throwIfNoEntry: false });
+    const reason = claimed.has(jessPath)
+      ? 'another converted file of this render writes it'
+      : existing?.isSymbolicLink() === true
+        ? 'it is a symlink'
+        : existing !== undefined && !overwrite
+          ? 'it would overwrite an existing file (pass `overwrite: true` to replace it)'
+          : existing !== undefined && (loaded ??= fileIdentities(documents.values())).has(`${existing.dev}:${existing.ino}`)
+            ? 'it is a file this render loaded'
+            : undefined;
+    if (reason !== undefined) {
+      unwritable.set(document, reason);
+    }
+    claimed.add(jessPath);
+  }
+  return { converted, unwritable };
+}
+
+/** Each file's `dev:ino`, so two spellings of one file compare equal. */
+const fileIdentities = (files: Iterable<string>): Set<string> => new Set([...files].flatMap((file) => {
+  const stat = path.isAbsolute(file) ? fs.statSync(file, { throwIfNoEntry: false }) : undefined;
+  return stat === undefined ? [] : [`${stat.dev}:${stat.ino}`];
+}));
 
 /** The entry and every document the render loaded, each with its source path, in load order. */
 function loadedDocuments(context: Context, entry: Stylesheet, loads: ImportTargets): Map<Stylesheet, string> {
@@ -90,7 +120,7 @@ function importPathFrom(
   source: string,
   loads: ImportTargets,
   converted: ReadonlySet<Stylesheet>,
-  collided: ReadonlySet<Stylesheet>
+  unwritable: ReadonlyMap<Stylesheet, string>
 ): (authored: string, node: StyleImport) => string | null {
   return (_authored, node) => {
     if (loads.skipped.has(node)) {
@@ -108,8 +138,9 @@ function importPathFrom(
     if (loadedDocument === null) {
       return null;
     }
-    if (collided.has(loadedDocument)) {
-      throw new NoJessSpelling('StyleImport', 'an import of a file whose `.jess` path is a file this render loaded, or another converted file writes');
+    const unwritten = unwritable.get(loadedDocument);
+    if (unwritten !== undefined) {
+      throw new NoJessSpelling('StyleImport', `an import of a file whose \`.jess\` path cannot be written: ${unwritten}`);
     }
     if (!path.isAbsolute(target)) {
       return target;

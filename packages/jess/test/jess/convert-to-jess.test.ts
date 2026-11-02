@@ -10,6 +10,15 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 
+/* Whether this file system matches names case-insensitively (macOS and Windows by default). */
+const caseInsensitive = (() => {
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-case-'));
+  fs.writeFileSync(path.join(probe, 'a'), '');
+  const insensitive = fs.existsSync(path.join(probe, 'A'));
+  fs.rmSync(probe, { recursive: true, force: true });
+  return insensitive;
+})();
+
 describe('Compiler.convertToJess', () => {
   let dir = '';
   afterEach(() => {
@@ -197,7 +206,103 @@ describe('Compiler.convertToJess', () => {
       const { files, errors, warnings } = await compiler.convertToJess(path.join(dir, 'a.less'));
       expect(errors).toEqual([]);
       expect(warnings.map(warning => warning.reason).join('\n')).toContain('in the engine: true');
-      expect(files.map(file => file.jessPath)).toEqual([path.join(fs.realpathSync(dir), 'a.jess')]);
+      expect(files.map(file => file.jessPath)).toEqual([path.join(dir, 'a.jess')]);
+    } finally {
+      compiler.dispose();
+    }
+  }, 60_000);
+
+  /*
+   * A `.jess` path that already exists is never written without `overwrite`,
+   * and never, even with it, when it is a symlink or a file the render loaded,
+   * however the import spells it. The file that cannot be written, and its
+   * importer, are gaps.
+   */
+  describe('an existing `.jess` path', () => {
+    const convert = async (overwrite: boolean) => {
+      const compiler = new Compiler();
+      try {
+        const { files, errors } = await compiler.convertToJess(path.join(dir, 'a.less'), undefined, { overwrite });
+        expect(errors).toEqual([]);
+        return Object.fromEntries(files.map(file => [path.basename(file.source), 'jess' in file ? 'jess' : file.gaps.map(gap => gap.reason).join(' | ')]));
+      } finally {
+        compiler.dispose();
+      }
+    };
+    const setUp = (entry: string, more: (at: string) => void) => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+      fs.writeFileSync(path.join(dir, 'a.less'), entry);
+      fs.writeFileSync(path.join(dir, 'b.less'), '.b{x:1}\n');
+      more(dir);
+    };
+
+    it.runIf(caseInsensitive)('is a gap when the render loaded it under another case', async () => {
+      setUp('@import "b.less";\n@import "B.jess";\n.a{w:1}\n', at => fs.writeFileSync(path.join(at, 'b.jess'), '.authored-jess{y:2}\n'));
+      expect((await convert(false))['b.less']).toContain('would overwrite an existing file');
+      expect((await convert(true))['b.less']).toContain('is a file this render loaded');
+      expect(fs.readFileSync(path.join(dir, 'b.jess'), 'utf8')).toBe('.authored-jess{y:2}\n');
+    });
+
+    it('is a gap when the render loaded it through a folder alias', async () => {
+      setUp('@import "b.less";\n@import "alias/b.jess";\n.a{w:1}\n', (at) => {
+        fs.writeFileSync(path.join(at, 'b.jess'), '.authored-jess{y:2}\n');
+        fs.symlinkSync('.', path.join(at, 'alias'), 'dir');
+      });
+      expect((await convert(false))['b.less']).toContain('would overwrite an existing file');
+      expect((await convert(true))['b.less']).toContain('is a file this render loaded');
+    });
+
+    it('is a gap when it is a symlink to a file the render loaded', async () => {
+      setUp('@import "b.less";\n@import "real.jess";\n.a{w:1}\n', (at) => {
+        fs.writeFileSync(path.join(at, 'real.jess'), '.authored-jess{y:2}\n');
+        fs.symlinkSync('real.jess', path.join(at, 'b.jess'));
+      });
+      expect((await convert(false))['b.less']).toContain('is a symlink');
+      expect((await convert(true))['b.less']).toContain('is a symlink');
+    });
+
+    it('is a gap unless `overwrite` is set when the render did not load it', async () => {
+      setUp('@import "b.less";\n.a{w:1}\n', at => fs.writeFileSync(path.join(at, 'b.jess'), '.stale{y:2}\n'));
+      const kept = await convert(false);
+      expect(kept['a.less']).toContain('cannot be written');
+      expect(kept['b.less']).toContain('would overwrite an existing file');
+      const replaced = await convert(true);
+      expect([replaced['a.less'], replaced['b.less']]).toEqual(['jess', 'jess']);
+    });
+  });
+
+  /*
+   * A partial reached through a symlink keeps the path the render spelled on
+   * both routes, so the converted importer's `@-import` names the file written.
+   */
+  it('names a symlinked partial the same way in the sandbox as in this process', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.mkdirSync(path.join(dir, 'real'));
+    fs.writeFileSync(path.join(dir, 'real', 'in.less'), '.r { x: 1; }\n');
+    fs.symlinkSync(path.join('real', 'in.less'), path.join(dir, 'in-link.less'));
+    fs.writeFileSync(path.join(dir, 'm.js'), 'export const dbl = (n) => n;\n');
+    fs.writeFileSync(path.join(dir, 'here.less'), '@import "in-link.less";\n.a { w: 1; }\n');
+    fs.writeFileSync(path.join(dir, 's2.less'), '@-use "./m.js";\n@import "in-link.less";\n.a { w: 1; }\n');
+
+    const compiler = new Compiler();
+    try {
+      const partial = async (entry: string) => {
+        const { files, errors } = await compiler.convertToJess(path.join(dir, entry), { suppressWarnings: true });
+        expect(errors).toEqual([]);
+        return files.find(file => path.basename(file.source) === 'in-link.less');
+      };
+      const here = await partial('here.less');
+      const sandboxed = await partial('s2.less');
+      expect(here).toEqual({ source: path.join(dir, 'in-link.less'), jessPath: path.join(dir, 'in-link.jess'), jess: '.r {\n  x: 1;\n}\n' });
+      expect(sandboxed).toEqual(here);
+
+      const { files } = await compiler.convertToJess(path.join(dir, 's2.less'), { suppressWarnings: true });
+      for (const file of files) {
+        fs.writeFileSync(file.jessPath, 'jess' in file ? file.jess : '', { flag: 'wx' });
+      }
+      const css = await compiler.render(path.join(dir, 's2.less'), { suppressWarnings: true });
+      expect(css).toContain('.r {');
+      expect(await compiler.render(path.join(dir, 's2.jess'), { suppressWarnings: true })).toBe(css);
     } finally {
       compiler.dispose();
     }

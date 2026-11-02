@@ -372,6 +372,9 @@ type Diagnostics = Awaited<ReturnType<Compiler['safeRender']>>['errors'];
 const firstError = (errors: Diagnostics): string =>
   errors.length === 0 ? '' : `${errors[0]!.code}: ${String(errors[0]!.message).split('\n')[0]}`;
 
+/* Every `.jess` file this harness wrote into a corpus copy. */
+const harnessWritten = new Set<string>();
+
 async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions: ReadonlyMap<string, Conversion>): Promise<Observation> {
   const conversion = conversions.get(fixture.file);
   const full = path.join(corpus.copy, fixture.file);
@@ -411,7 +414,10 @@ async function observe(corpus: Corpus, fixture: Fixture, mode: Mode, conversions
       if (path.relative(root, at).startsWith('..')) {
         return { outcome: 'arm-b-error', detail: `a loaded file is outside the copy: ${at}` };
       }
-      fs.writeFileSync(at, file.jess);
+
+      // The first write of a path never replaces a file; later ones replace only what this harness wrote.
+      fs.writeFileSync(at, file.jess, { flag: harnessWritten.has(at) ? 'w' : 'wx' });
+      harnessWritten.add(at);
       if (fs.realpathSync(file.source) === entry) {
         entryJess = at;
       }
