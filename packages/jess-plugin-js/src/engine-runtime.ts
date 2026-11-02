@@ -61,9 +61,9 @@ const rebuildFunction = ({ source, where }) => {
  * function, `__jessPlugin` a plugin made again by the factory that made it on
  * the host (its module, export and arguments), never a live object.
  */
-const decodeEngineValue = async (value) => {
+const decodeEngineValue = async (value, plugins = new Map()) => {
   if (Array.isArray(value)) {
-    return Promise.all(value.map(decodeEngineValue));
+    return Promise.all(value.map(item => decodeEngineValue(item, plugins)));
   }
   if (value === null || typeof value !== 'object') {
     return value;
@@ -72,13 +72,19 @@ const decodeEngineValue = async (value) => {
     return rebuildFunction(value.__jessFn);
   }
   if (value.__jessPlugin) {
-    const { module, exportName, args } = value.__jessPlugin;
-    const factory = (await import(module))[exportName];
-    return await factory(...await decodeEngineValue(args));
+    /* One value naming the same factory and arguments twice (a config's \`config\` and \`ownConfig\`) makes one plugin. */
+    const key = JSON.stringify(value.__jessPlugin);
+    let made = plugins.get(key);
+    if (made === undefined) {
+      const { module, exportName, args } = value.__jessPlugin;
+      made = import(module).then(async mod => mod[exportName](...await decodeEngineValue(args, plugins)));
+      plugins.set(key, made);
+    }
+    return await made;
   }
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    out[key] = await decodeEngineValue(item);
+    out[key] = await decodeEngineValue(item, plugins);
   }
   return out;
 };
