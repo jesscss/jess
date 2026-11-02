@@ -328,7 +328,7 @@ export function keepArgument<T extends object>(s: ValueCheckLane['s'], found: In
 /**
  * What an argument's typed `value` holds is kept for the snapshot it binds as
  * (`bound`): its error, and the export it reads (`export-reads.ts`
- * `exportArgument`).
+ * `exportArgumentBound`).
  */
 export function keepArgumentSyntax(s: ValueCheckLane['s'], value: object, bound: object): void {
   const found = s.invalidArguments.size === 0 ? undefined : s.invalidArguments.get(value);

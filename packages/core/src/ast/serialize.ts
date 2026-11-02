@@ -205,7 +205,7 @@ import { type MaybePromise, afterSettled, combineAll, isThenable, mapMaybe, seri
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { isMathFunctionName } from './math-functions.js';
-import { exportArgument, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportRuntimeData, type ExportState } from './export-reads.js';
+import { exportArgumentBound, exportArgumentEnd, exportArgumentStart, exportCall, exportChecked, exportInput, exportInputRead, READS_EXPORT, rejectNestedExport, rootExports, runtimeData, type ExportRuntimeData, type ExportState } from './export-reads.js';
 import { assertValidValueSyntax, checkedSupportsPrelude, checkedImportTarget, bindingArgument, boundArgument, keepArgument, keepArgumentSyntax, reachedEvaluated, reachedValueSyntax, reportReached, type InvalidValueSyntax, type ValueCheckLane } from './invalid-value-syntax.js';
 import { collectNestedProperty, isNestedPropertyValue } from './nested-property.js';
 import { callSiteLocation } from './call-site-location.js';
@@ -225,7 +225,7 @@ import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, se
 import { evalGuard, guardUsesDefault, hasCssTest, isIfTestCall, partialGuard, pickCssIfBranches, writtenBranch, type GuardEvalDeps, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults, type NestedRulePlan } from './extend.js'; // [extend]
-import { atRuleScope, recordAstExtendProfile } from './extend/plan.js';
+import { atRuleScope, recordAstExtendProfile, type AtRuleScopes, type ExtendBoundary, type PlanBubble, type PlanInstruction, type PlanOverlay, type PlanReferenceAtRule, type PlanSubject } from './extend/plan.js';
 import {
   arraysEqualText,
   dynamicPathAt,
@@ -249,11 +249,8 @@ import {
   withoutPlaceholders
 } from './extend/dynamic.js';
 import type { BlockExtent, DynamicExtendState, DynExtendSlot, NestedLanding } from './extend/dynamic.js'; // [extend/selector-interp]
-import type { AtRuleScopes, ExtendBoundary, PlanBubble, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
-import type { Branch, Level } from './extend/ir.js';
-import { branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple } from './extend/ir.js';
-import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules } from './extend/document.js';
-import type { ExtendClass } from './extend/document.js';
+import { type Branch, type Level, branchSharesAtom, collectBranchAtoms, descendantBranch, selectorLevel, textSimple } from './extend/ir.js';
+import { collectInstructionAtoms, documentExtendClass, documentWalkFacts, heldAnonymousMixin, placingBody, walkAppliedExtends, withRules, type ExtendClass } from './extend/document.js';
 import { leadsWithElement } from './extend/conflict.js';
 import { isPseudoElementName, isUserActionToken, keepsPseudoElementLast, nestingGroupKey, partitionGroups, tokenPseudoElement } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type ResolvedOptions, type SourceContext } from '../context.js';
@@ -8289,15 +8286,15 @@ function resolveAuthoredMixinValue(
  * one needs it.
  */
 function evalArgument(source: ValueSlot, frame: Frame | null, e: Lane, argument: ArgumentMode, project = true): MaybePromise<ValueGroup> {
-  const outerChecks = e.checks;
-  const outerFound = bindingArgument(e, source);
-  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined;
+  const outerChecks = e.checks, outerFound = bindingArgument(e, source), outerRead = exportArgumentStart(e.s.exports);
+  let value: MaybePromise<ValueGroup>, found: InvalidValueSyntax | undefined, read: boolean;
   try {
-    value = exportArgument(e.s.exports, source, frame, () => evalTypedSlot(source, frame, e, project, argument));
+    value = evalTypedSlot(source, frame, e, project, argument);
   } finally {
     found = boundArgument(e, outerChecks, outerFound);
+    read = exportArgumentEnd(e.s.exports, outerRead);
   }
-  return keepArgument(e.s, found, value);
+  return keepArgument(e.s, found, read ? exportArgumentBound(e.s.exports, value, source, frame) : value);
 }
 
 /**
@@ -9106,11 +9103,13 @@ function dispatchCall(
     : exportCall(e, node, selected, () => callArguments(node, alpha, frame, ae, argument), args => combineAll(args, dispatch));
 }
 
-/** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}). */
+/** A call's arguments, typed: each slot, or a colour call's channels with its alpha ({@link colorAlphaSlash}); a loop, so no closure per call. */
 function callArguments(node: FunctionCall, alpha: Operation | null, frame: Frame | null, e: Lane, argument: ArgumentMode): Array<MaybePromise<ValueGroup>> {
-  return alpha === null
-    ? node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument))
-    : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+  const args = alpha === null ? new Array<MaybePromise<ValueGroup>>(node.args.length) : [colorChannels(node.args[0]!.value, alpha, frame, e, argument)];
+  for (let i = 0; alpha === null && i < args.length; i++) {
+    args[i] = evalTypedSlot(node.args[i]!.value, frame, e, true, argument);
+  }
+  return args;
 }
 
 /**

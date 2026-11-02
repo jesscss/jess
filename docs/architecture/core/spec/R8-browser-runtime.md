@@ -101,10 +101,14 @@ or needs JS) to decide what ships in the bundle.
   an alias, through a mixin argument, or as a nested computed call) computes on
   the compile-time value and writes `var(--<export>-<function>, <result>)`:
   `var(--brand-lightness, 40%)`. The fallback is the value the call has with no
-  export. The recipe is recorded (`exportCall`): an export, an argument's
+  export. Bound as a mixin argument, the generated value is an export read like
+  a direct one: a guard, selector or string reading the parameter raises, and
+  a computed function reading it recomputes through the argument as written
+  (`.m(@less.darken(@brand, 10%))` then `@less.iscolor(@c)` records both calls). The recipe is recorded (`exportCall`): an export, an argument's
   compile-time CSS, or `{ fn: { module, name }, args }` naming the module the
   stylesheet imports and the export it calls. One name per recipe; a different
-  recipe that would take the name is numbered (`--brand-lightness-2`). The
+  recipe or an export that would take the name is numbered
+  (`--brand-lightness-2`). The
   generated `var()` keeps working in `calc()` and in a call written as-is.
 - **What cannot be followed** raises `eval/export-not-a-value`: an argument
   that holds the export inside a larger value (`@a: @w 2; length(@a)`, or a
@@ -119,8 +123,10 @@ or needs JS) to decide what ships in the bundle.
   until that task writes operators on an unknown operand as `calc()` (its slice 5).
 - **Runtime data.** `SerializeResult.runtime` and `RenderResult.runtime` (absent
   when nothing is exported): `exports` (every exported name), `defaults` (the
-  compile-time CSS of each export a recipe reads) and `derived` (each generated
-  property's recipe). JSON, so it crosses the sandbox route.
+  compile-time value of each export a recipe reads, as the runtime reads it:
+  `emitValue`, not the output modes, so compressed CSS may spell it shorter) and
+  `derived` (each generated property's recipe). JSON, so it crosses the sandbox
+  route.
 - **Cost.** A document with no export pays one `undefined` check per variable
   read, per computed call and per mixin argument bound.
 
@@ -136,6 +142,11 @@ or needs JS) to decide what ships in the bundle.
   functions is 26.5 KB gzip, because `@jesscss/fns` builds each dialect as one
   chunk and `@jesscss/core` has no `sideEffects: false`. Making that tree-shake
   per function is a size task of its own.
+- **Generated names are the export's namespace.** `@export @brand` publishes
+  `--brand` and reserves `--brand-*` for values derived from it; an export and a
+  generated name never share a name (numbered). An authored custom property in
+  that namespace (`--brand-lightness: 1%`) is the author's own write and is not
+  detected, as two authored writes of one custom property are not.
 - **Module shape:** `export const vars`, `export const set`, and a default
   export of the scoped class map once slice 5 exists (R8 API direction below).
 
@@ -149,9 +160,6 @@ or needs JS) to decide what ships in the bundle.
   as the `@forward`-style re-export (A4 keeps the two features distinct), so the
   variable form needs a dispatch on the token after the keyword. `.less → .jess`
   reports a gap for an exported declaration until then.
-- **Generated names.** An export writes `--name` and a derived value
-  `--<export>-<function>`; a collision with an authored custom property of the
-  same name is not detected.
 - **Custom-property values.** `--x: @{brand}` raises: a custom property's
   value is not written as a checked CSS value, though a `var()` is valid there.
   (`--x: @brand` is written verbatim, as today.) Should the lone splice be the

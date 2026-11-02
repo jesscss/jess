@@ -70,13 +70,35 @@ type ExportRef<F> =
   | { readonly name: string; readonly call: FunctionCall; readonly source?: undefined }
   | { readonly name?: undefined; readonly call?: undefined; readonly source: ExportSource<F> };
 
+/** An export a computed call's argument reads, with the value it read. */
+interface ExportInput {
+  readonly recipe: ExportRecipe;
+  readonly value: object;
+}
+
+/** A computed call's {@link ExportState.inputs} before any is read; never pushed to. */
+const NO_INPUTS: ExportInput[] = [];
+
+/** Record `input` for the computed call being evaluated. */
+function collectInput(x: ExportState<unknown>, input: ExportInput): void {
+  if (x.inputs === NO_INPUTS) {
+    x.inputs = [input];
+  } else {
+    x.inputs?.push(input);
+  }
+}
+
 /** One render's exports ({@link rootExports}). */
 export interface ExportState<F> {
   /** By what a variable read resolves to. */
   readonly refs: Map<object, ExportRef<F>>;
 
-  /** The exports read as the arguments of the computed call being evaluated, each with the value it read. */
-  inputs: Array<{ readonly recipe: ExportRecipe; readonly value: object }> | undefined;
+  /**
+   * The exports read as the arguments of the computed call being evaluated,
+   * each with the value it read: {@link NO_INPUTS} until the first, undefined
+   * outside a computed call.
+   */
+  inputs: Array<ExportInput> | undefined;
 
   /** Whether the mixin argument being bound reads an export. */
   argument: boolean;
@@ -114,7 +136,7 @@ export function rootExports<F>(root: Stylesheet): ExportState<F> | undefined {
   for (const statement of root.rules) {
     if (statement.type === 'VariableDeclaration' && names.has(statement.name)
       && (isValueSlotArray(statement.value) || statement.value.type !== 'MixinCall')) {
-      refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]) });
+      refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
     }
   }
   return { refs, inputs: undefined, argument: false, runtime: { exports: [...names], defaults: new Map(), derived: new Map() } };
@@ -175,43 +197,50 @@ export function exportInputRead<V extends ValueGroup>(e: ExportLane<unknown>, hi
   return name === undefined
     ? value
     : mapMaybe(value, (read) => {
-        x?.inputs?.push({ recipe: { export: name }, value: read });
-        x?.runtime.defaults.set(name, emitValue(read));
+        if (x !== undefined) {
+          collectInput(x, { recipe: { export: name }, value: read });
+          if (!x.runtime.defaults.has(name)) {
+            x.runtime.defaults.set(name, emitValue(read));
+          }
+        }
         return read;
       });
 }
 
 /**
- * Bind a mixin argument (`bind`), noting whether it reads an export. One that
- * does is kept for the value it evaluated to, as the argument as written
- * (`source`) in the caller's `frame`; the snapshot the parameter binds as takes
- * it over (`invalid-value-syntax.ts` `keepArgumentSyntax`).
+ * A mixin argument being bound notes whether it reads an export: start, which
+ * returns whether the argument it is part of already does, then
+ * {@link exportArgumentEnd} with that, which returns whether this one does.
  */
-export function exportArgument<F, V extends object>(
-  x: ExportState<F> | undefined,
-  source: CallValue,
-  frame: F | null,
-  bind: () => MaybePromise<V>
-): MaybePromise<V> {
-  if (x === undefined) {
-    return bind();
+export function exportArgumentStart(x: ExportState<unknown> | undefined): boolean {
+  const outer = x?.argument ?? false;
+  if (x !== undefined) {
+    x.argument = false;
   }
-  const outer = x.argument;
-  let read = false;
-  let value: MaybePromise<V>;
-  x.argument = false;
-  try {
-    value = bind();
-  } finally {
-    read = x.argument;
+  return outer;
+}
+
+/** Whether the mixin argument bound since {@link exportArgumentStart} read an export. */
+export function exportArgumentEnd(x: ExportState<unknown> | undefined, outer: boolean): boolean {
+  const read = x?.argument ?? false;
+  if (x !== undefined) {
     x.argument = outer || read;
   }
-  return read && frame !== null
-    ? mapMaybe(value, (bound) => {
-        x.refs.set(bound, { source: { value: source, frame, evaluated: null } });
+  return read;
+}
+
+/**
+ * A mixin argument that reads an export, kept for the value it evaluated to as
+ * the argument as written (`source`) in the caller's `frame`; the snapshot the
+ * parameter binds as takes it over (`invalid-value-syntax.ts` `keepArgumentSyntax`).
+ */
+export function exportArgumentBound<F, V extends object>(x: ExportState<F> | undefined, value: MaybePromise<V>, source: CallValue, frame: F | null): MaybePromise<V> {
+  return x === undefined || frame === null
+    ? value
+    : mapMaybe(value, (bound) => {
+        x.refs.set(bound, { name: undefined, call: undefined, source: { value: source, frame, evaluated: null } });
         return bound;
-      })
-    : value;
+      });
 }
 
 /**
@@ -221,7 +250,8 @@ export function exportArgument<F, V extends object>(
  * computed on their compile-time values and recorded: as an input of the
  * computed call it is an argument of, or else as a generated custom property,
  * `var(--<export>-<fn>, <compile-time result>)`, which the runtime recomputes
- * when an export it reads is set. An argument that holds an export inside a
+ * when an export it reads is set. Bound as a mixin argument, it is an export
+ * read like a direct one ({@link exportArgumentBound}). An argument that holds an export inside a
  * larger value (`@w 2`) cannot be followed, and the call is an error.
  */
 export function exportCall<F>(
@@ -237,22 +267,25 @@ export function exportCall<F>(
   }
   const outer = x.inputs;
   let typed: Array<MaybePromise<ValueGroup>>;
-  let inputs: NonNullable<ExportState<F>['inputs']> = [];
-  x.inputs = inputs;
+  let inputs: NonNullable<ExportState<F>['inputs']>;
+  x.inputs = NO_INPUTS;
   try {
     typed = args();
   } finally {
-    inputs = x.inputs;
+    inputs = x.inputs ?? NO_INPUTS;
     x.inputs = outer;
   }
   if (inputs.length === 0) {
     return dispatch(typed);
   }
+  if (outer === undefined && e.checks === 'argument') {
+    x.argument = true;
+  }
   return combineAll(typed, vals => mapMaybe(dispatch(vals), (computed) => {
     const result: ValueGroup = typeof computed === 'string' ? makeKeyword(computed) : computed;
     const recipe = callRecipe(node, fn, vals, inputs, e);
     if (outer !== undefined) {
-      outer.push({ recipe, value: result });
+      collectInput(x, { recipe, value: result });
       return result;
     }
     if (typeof e.checks !== 'object' && e.checks !== 'argument') {
@@ -290,14 +323,14 @@ function recipeExport(recipe: ExportRecipe): string {
   return '';
 }
 
-/** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>`, numbered when another recipe has it. */
+/** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>`, numbered when another recipe or an export has it. */
 function derivedName(runtime: ExportRuntime, recipe: ExportRecipe): string {
   const fn = 'fn' in recipe ? recipe.fn.name : 'value';
   const base = `--${recipeExport(recipe)}-${fn}`;
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
     const taken = runtime.derived.get(name);
-    if (taken === undefined || sameRecipe(taken, recipe)) {
+    if (!runtime.exports.includes(name.slice(2)) && (taken === undefined || sameRecipe(taken, recipe))) {
       runtime.derived.set(name, recipe);
       return name;
     }
