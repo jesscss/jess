@@ -48,14 +48,17 @@ or needs JS) to decide what ships in the bundle.
 
 ## Slice 1 contract (as built)
 
-- **Syntax.** `.less`: `@export @name: value;` and `@-export @name: value;`
-  (case-insensitive), the ordinary `VarDeclaration` after the keyword. It
-  parses in any body (P45); the AST is a `VariableDeclaration` whose `write` is
-  `{ mode: 'export' }` (`nodes.ts` `VariableWrite`), so the node's shape does
-  not change.
+- **Syntax.** `.less`: `@export brand;` and `@-export brand, gap;`
+  (case-insensitive): bare names, comma-separated, of variables declared as
+  usual (`@brand: #c00;`). The `@` starts a read, so it is not part of the
+  name (owner 2026-11-02: *"the at is less part of the variable and more like
+  an expression start. So I think @export brand or @export brand, gap; is what
+  I would want"*). It parses in any body (P45); the AST is a `VariableExport`
+  statement holding the names (`nodes.ts`).
 - **Top level only.** An `@export` activated in a frame with a parent (a
   ruleset, at-rule, mixin, detached-ruleset or loop body) raises
-  `eval/export-not-top-level`.
+  `eval/export-not-top-level`. A name the document's top level does not
+  declare raises `eval/export-not-declared`.
 - **Which reads are the export.** The rendered document's root `@export`
   names, bound in its root frame (`EvalSession.exports`). A nested shadow of the
   name is not the export.
@@ -143,7 +146,7 @@ or needs JS) to decide what ships in the bundle.
   functions is 26.5 KB gzip, because `@jesscss/fns` builds each dialect as one
   chunk and `@jesscss/core` has no `sideEffects: false`. Making that tree-shake
   per function is a size task of its own.
-- **Generated names are the export's namespace.** `@export @brand` publishes
+- **Generated names are the export's namespace.** `@export brand` publishes
   `--brand` and reserves `--brand-*` for values derived from it; an export and a
   generated name never share a name (numbered). An authored custom property in
   that namespace (`--brand-lightness: 1%`) is the author's own write and is not
@@ -153,14 +156,14 @@ or needs JS) to decide what ships in the bundle.
 
 ## Open — needs the owner
 
-- **Exports in an imported document.** Slice 1 counts only the rendered
-  document's root. An `@export` in a `@compose`d module is a plain declaration;
-  one in an `@import`ed document (which folds into a child frame) raises
-  `eval/export-not-top-level`.
-- **`.jess` `@-export $name:`.** The `.jess` grammar reads `@-export "path"`
-  as the `@forward`-style re-export (A4 keeps the two features distinct), so the
-  variable form needs a dispatch on the token after the keyword. `.less → .jess`
-  reports a gap for an exported declaration until then.
+- **Exports in an imported document.** Only the rendered document's root
+  counts. An `@export` in an `@import`ed or `@compose`d document does nothing,
+  and the root cannot export a variable an imported document declares
+  (`eval/export-not-declared`).
+- **`.jess` `@-export`.** The `.jess` grammar reads `@-export "path"` as the
+  `@forward`-style re-export (A4 keeps the two features distinct), so the
+  name-list form needs a dispatch on the token after the keyword. `.less →
+  .jess` reports a gap for an `@export` until then.
 - **Custom-property values.** `--x: @{brand}` raises: a custom property's
   value is not written as a checked CSS value, though a `var()` is valid there.
   (`--x: @brand` is written verbatim, as today.) Should the lone splice be the

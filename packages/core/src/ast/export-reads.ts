@@ -5,13 +5,13 @@ import { callSiteLocation } from './call-site-location.js';
 import { isValueSlotArray } from './css-grammar-helpers.js';
 import type { Fn } from './functions/types.js';
 import type { FnOrigin } from './module-values.js';
-import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Stylesheet, type VariableDeclaration } from './nodes.js';
+import { funcCall, keyword, type CallValue, type Declaration, type FunctionCall, type Stylesheet, type VariableExport } from './nodes.js';
 import { emitValue, isValueGroupArray, type EvalModes, type EvalValue, type ValueGroup } from './value-eval.js';
 import { writeCall } from './evaluator.js';
 import { makeKeyword, makeList } from './value-factory.js';
 
 /**
- * Ledger A4: a root variable marked `@export` publishes a custom property, so a
+ * Ledger A4: a root variable named by `@export` publishes a custom property, so a
  * CSS value that reads it IS `var(--name, <its value>)`, and a value a
  * function Jess computes from it is a generated custom property the runtime
  * recomputes (docs/architecture/core/spec/R8-browser-runtime.md).
@@ -134,26 +134,37 @@ export const READS_EXPORT = {};
 /**
  * Every root binding of a name the root exports, each with the call it reads
  * as. A root redeclaration of the name is the export too; a shadow in a nested
- * scope is a different binding and is not. Undefined when nothing is exported.
+ * scope is a different binding and is not. Undefined when nothing is exported;
+ * an exported name with no root binding is an error.
  */
-export function rootExports<F>(root: Stylesheet): ExportState<F> | undefined {
-  let names: Set<string> | undefined;
+export function rootExports<F>(root: Stylesheet, context: Context | undefined): ExportState<F> | undefined {
+  let named: Map<string, VariableExport> | undefined;
   for (const statement of root.rules) {
-    if (statement.type === 'VariableDeclaration' && statement.write.mode === 'export') {
-      (names ??= new Set()).add(statement.name);
+    if (statement.type === 'VariableExport') {
+      for (const name of statement.names) {
+        (named ??= new Map()).set(name, statement);
+      }
     }
   }
-  if (names === undefined) {
+  if (named === undefined) {
     return undefined;
   }
   const refs = new Map<object, ExportRef<F>>();
+  const declared = new Set<string>();
   for (const statement of root.rules) {
-    if (statement.type === 'VariableDeclaration' && names.has(statement.name)
-      && (isValueSlotArray(statement.value) || statement.value.type !== 'MixinCall')) {
-      refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
+    if (statement.type === 'VariableDeclaration' && named.has(statement.name)) {
+      declared.add(statement.name);
+      if (isValueSlotArray(statement.value) || statement.value.type !== 'MixinCall') {
+        refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
+      }
     }
   }
-  return { refs, inputs: undefined, argument: undefined, runtime: { exports: names, defaults: new Map(), derived: new Map() } };
+  for (const [name, node] of named) {
+    if (!declared.has(name)) {
+      throw ERR.exportNotDeclared({ node, ...callSiteLocation(node, { context }), meta: { name } });
+    }
+  }
+  return { refs, inputs: undefined, argument: undefined, runtime: { exports: new Set(named.keys()), defaults: new Map(), derived: new Map() } };
 }
 
 /**
@@ -387,9 +398,9 @@ function exportNotWritten(reader: object | undefined, symbol: string, name: stri
   throw ERR.exportNotAValue({ node, ...callSiteLocation(node, e.s), meta: { symbol, name, where } });
 }
 
-/** `@export` publishes a stylesheet's top-level variable; one in a body (`nested`) is an error. */
-export function rejectNestedExport(node: VariableDeclaration, nested: boolean, e: ExportLane<unknown>): void {
-  if (node.write.mode === 'export' && nested) {
+/** `@export` publishes a stylesheet's top-level variables; one in a body (`nested`) is an error. */
+export function rejectNestedExport(node: VariableExport, nested: boolean, e: ExportLane<unknown>): void {
+  if (nested) {
     throw ERR.exportNotTopLevel({ node, ...callSiteLocation(node, e.s) });
   }
 }

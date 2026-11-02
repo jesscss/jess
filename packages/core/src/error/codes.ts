@@ -56,6 +56,7 @@ export type JessErrorCode =
   | 'eval/recursive-reference'
   | 'eval/export-not-a-value'
   | 'eval/export-not-top-level'
+  | 'eval/export-not-declared'
   | 'eval/loop-iteration-limit'
   | 'eval/mixin-recursion-limit'
   | 'eval/scss-debug'
@@ -385,6 +386,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '@export is only allowed at the top level of a stylesheet',
       reason: 'An @export is written inside a ruleset, at-rule, mixin, guard or loop body; it publishes a variable of the stylesheet, at its top level.',
       fix: 'Move the @export to the top level of the stylesheet.'
+    }
+  ],
+  [
+    'eval/export-not-declared',
+    {
+      summary: '@export names a variable the stylesheet does not declare at its top level',
+      reason: '@export ${name} publishes the top-level variable @${name}, and this stylesheet does not declare one there.',
+      fix: 'Declare @${name} at the top level of this stylesheet, or remove ${name} from the @export.'
     }
   ],
   [

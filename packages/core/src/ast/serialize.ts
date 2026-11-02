@@ -150,6 +150,7 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
+  VariableExport,
   VariableLookup,
   Lookup,
   Url
@@ -3698,14 +3699,16 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
   return { ...value };
 }
 
-function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: Lane): void {
+function activateVariableDeclaration(node: VariableDeclaration | VariableExport, frame: Frame, e: Lane): void {
   /*
-   * [A4] A document's top level is a frame with no parent; a ruleset, at-rule,
-   * mixin, detached-ruleset or loop body always has one. ponytail: an
-   * `@import`ed document folds into a child frame, so an `@export` in it raises
-   * too; `@compose` keeps it a module.
+   * [A4] `rootExports` binds an `@export`. A document's top level is a frame
+   * with no parent; a ruleset, at-rule, mixin, detached-ruleset or loop body
+   * always has one. ponytail: an `@import`ed or `@compose`d document's `@export`
+   * is not the rendered root's and does nothing (R8 spec, open item).
    */
-  rejectNestedExport(node, frame.parent !== null, e);
+  if (node.type === 'VariableExport') {
+    return rejectNestedExport(node, frame.parent !== null, e);
+  }
   if (
     !('scope' in node.write)
     && callValueHasLookup(node.value, readsScoped, node.name)
@@ -12248,13 +12251,9 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
     return;
   }
   const table = commentTableOf(trivia);
-  for (let i = 0; i < table.runs.length; i++) {
-    if (table.runStart[i]! <= start && table.runEnd[i]! >= end
-      && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
+  for (let i = 0; i < table.runs.length && table.runStart[i]! <= start; i++) {
+    if (table.runEnd[i]! >= end && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
       e.emittedBlockTrivia.addIndex(table, i);
-      return;
-    }
-    if (table.runStart[i]! > start) {
       return;
     }
   }
@@ -12707,7 +12706,7 @@ function evaluateLeafStatement(
 
 /** Publish a definition/variable independently of the selected writer. */
 function evaluateSilentStatement(
-  node: MixinDefinition | VariableDeclaration,
+  node: MixinDefinition | VariableDeclaration | VariableExport,
   frame: Frame,
   e: Emit
 ): void {
@@ -14071,7 +14070,7 @@ function createRenderSession(
       argumentSyntax: undefined,
       invalidArguments: new Map(),
       nestedPropertyOwners: undefined,
-      exports: rootExports(root)
+      exports: rootExports(root, options?.context)
     },
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: policy === undefined ? { ...(options?.modes ?? DEFAULT_MODES), compress } : modesOf(policy, compress),
@@ -14521,6 +14520,7 @@ function emitDocumentStatements(
         }
         markSilentStatementBlockCommentTrivia(child, e);
         break;
+      case 'VariableExport':
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
         markSilentStatementBlockCommentTrivia(child, e);
@@ -17082,6 +17082,7 @@ function walkBody(statements: Statement[], frame: Frame, at: Placement, e: Emit)
           break;
         }
         case 'MixinDefinition':
+        case 'VariableExport':
         case 'VariableDeclaration':
           evaluateSilentStatement(node, frame, e);
           break;
@@ -17138,6 +17139,7 @@ function walkReferenceAncestorBody(
           markSilentStatementBlockCommentTrivia(node, e);
           emitted = undefined;
           break;
+        case 'VariableExport':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);
@@ -22268,6 +22270,7 @@ function emitAtRuleBody(
         publishSelectedMixinDefinition(frame, node);
         markSilentStatementBlockCommentTrivia(node, e);
         return undefined;
+      case 'VariableExport':
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
         markSilentStatementBlockCommentTrivia(node, e);
@@ -22821,6 +22824,7 @@ function emitBubbleBody(
           publishSelectedMixinDefinition(frame, node);
           markSilentStatementBlockCommentTrivia(node, e);
           break;
+        case 'VariableExport':
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
           markSilentStatementBlockCommentTrivia(node, e);

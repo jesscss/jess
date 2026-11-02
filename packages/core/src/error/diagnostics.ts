@@ -861,6 +861,13 @@ export const ERR = {
       ...args
     });
   },
+  exportNotDeclared(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/export-not-declared',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-function',

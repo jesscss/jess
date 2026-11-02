@@ -66,7 +66,7 @@ import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from '.
 export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Null' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
-  | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
+  | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration' | 'VariableExport'
   | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Branch' | 'Expression' | 'Condition' | 'IfValue'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Plugin' | 'UnknownAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'NestedPropertyBlock' | 'CollectionEntry' | 'CollectionSpread' | 'Reference' | 'Range' | 'For' | 'If' | 'While' | 'StyleImport' | 'ModuleImport';
@@ -112,7 +112,7 @@ export type Node =
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Ruleset', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Null', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
-  'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
+  'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration', 'VariableExport',
   'Important', 'Operation', 'FunctionCall', 'Block', 'Expression', 'Condition', 'IfValue',
   'AtRuleBlock', 'AtRuleStatement', 'Plugin', 'UnknownAtRuleBlock', 'Interpolation',
   'AnonymousMixin', 'Collection', 'NestedPropertyBlock', 'CollectionEntry', 'CollectionSpread', 'Reference', 'Range', 'For', 'If', 'While', 'StyleImport', 'ModuleImport'

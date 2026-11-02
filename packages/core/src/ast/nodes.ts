@@ -1338,13 +1338,9 @@ export interface Declaration extends SpanSlots {
  * NEAREST existing binding in `scope`, or — when none exists anywhere outer —
  * declare a block-local shadow in the current frame. It always writes; only the
  * shadow is conditional. Contrast `reassign`, which ERRORS when nothing exists.
- *
- * `export` is a `declare` the author also published (`@export @brand: red;`,
- * ledger A4): it writes exactly as `declare` does, and a root-level one makes
- * every CSS value that reads the name a `var(--brand, …)`.
  */
 export type VariableWrite =
-  | { readonly mode: 'declare' | 'export' }
+  | { readonly mode: 'declare' }
   | { readonly mode: 'if-absent' | 'reassign' | 'reassign-or-declare'; readonly scope: VariableLookup };
 
 export interface VariableDeclaration extends SpanSlots {
@@ -1357,6 +1353,15 @@ export interface VariableDeclaration extends SpanSlots {
    * selector. Conditional and reassignment forms carry the lookup they use.
    */
   readonly write: VariableWrite;
+}
+
+/**
+ * `@export brand, gap;` publishes top-level variables by name (ledger A4): every
+ * CSS value that reads one becomes a `var(--brand, …)`.
+ */
+export interface VariableExport extends SpanSlots {
+  readonly type: 'VariableExport';
+  readonly names: readonly string[];
 }
 
 /** A comment carried structurally in source order (block or line text as-is). */
@@ -1699,6 +1704,7 @@ export type Statement =
   | MixinCall
   | Apply
   | VariableDeclaration
+  | VariableExport
   | AtRuleBlock
   | AtRuleStatement
   | Plugin
@@ -2056,6 +2062,9 @@ export const variableDeclaration = (
   write: VariableWrite
 ): VariableDeclaration =>
   ({ type: 'VariableDeclaration', name, value, write, _s: NO_SPAN, _e: NO_SPAN });
+
+export const variableExport = (names: readonly string[]): VariableExport =>
+  ({ type: 'VariableExport', names, _s: NO_SPAN, _e: NO_SPAN });
 
 /** The one `MixinDefinition` literal: every field, in one order, so all share one hidden class (V8 invariant 1). */
 const mixinDefinition = (name: string, params: Param[], rules: Statement[], extendInstructions: ExtendInstruction[] | undefined, guard: GuardNode | undefined): MixinDefinition =>
