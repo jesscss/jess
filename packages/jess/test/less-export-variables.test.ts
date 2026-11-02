@@ -158,6 +158,16 @@ describe('Less @export variables (A4)', () => {
     await expect(render('@use "#less";\n@export @w: 8px;\n.a { v: @less.get-unit(@w); }')).resolves.toContain('v: var(--w-get-unit, px);');
   });
 
+  it('names a computation once, however the call is spelled', async () => {
+    const source = '@use "#less";\n@export @brand: #c00;\n.a { v: @less.lightness(@brand); w: @less.LIGHTNESS(@brand); x: @less.Lightness(@brand); }';
+    const css = await render(source);
+    expect(css).toContain('v: var(--brand-lightness, 40%);');
+    expect(css).toContain('w: var(--brand-lightness, 40%);');
+    expect(css).toContain('x: var(--brand-lightness, 40%);');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
+    await expect(runtime(source)).resolves.toMatchObject({ derived: { '--brand-lightness': { fn: { name: 'lightness' } } } });
+  });
+
   it('names a generated property apart from every export', async () => {
     const css = await render('@use "#less";\n@export @brand: #c00;\n@export @brand-lightness: 99%;\n.a { v: @less.lightness(@brand); w: @brand-lightness; }');
     expect(css).toContain('v: var(--brand-lightness-2, 40%);');

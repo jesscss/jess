@@ -33,6 +33,9 @@ export interface ExportRuntime {
 
   /** Each generated custom property, by its name, with how the runtime computes it. */
   readonly derived: Map<string, ExportRecipe>;
+
+  /** Each generated custom property's name, by its recipe as JSON: one name per recipe, however the call is spelled. */
+  readonly named: Map<string, string>;
 }
 
 /**
@@ -153,7 +156,7 @@ export function rootExports<F>(root: Stylesheet): ExportState<F> | undefined {
       refs.set(statement.value, { name: statement.name, call: funcCall('var', [keyword(`--${statement.name}`), statement.value]), source: undefined });
     }
   }
-  return { refs, inputs: undefined, argument: undefined, runtime: { exports: names, defaults: new Map(), derived: new Map() } };
+  return { refs, inputs: undefined, argument: undefined, runtime: { exports: names, defaults: new Map(), derived: new Map(), named: new Map() } };
 }
 
 /**
@@ -360,25 +363,20 @@ function recipeExport(recipe: ExportRecipe): string {
 
 /** The generated custom property a recipe writes: one name per recipe, `--<export>-<fn>` with the function as `called` names it, numbered when another recipe or an export has it. */
 function derivedName(runtime: ExportRuntime, recipe: ExportRecipe, called: string): string {
+  const key = JSON.stringify(recipe);
+  const known = runtime.named.get(key);
+  if (known !== undefined) {
+    return known;
+  }
   const base = `--${recipeExport(recipe)}-${called.slice(called.lastIndexOf('.') + 1)}`;
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
-    const taken = runtime.derived.get(name);
-    if (!runtime.exports.has(name.slice(2)) && (taken === undefined || sameRecipe(taken, recipe))) {
+    if (!runtime.exports.has(name.slice(2)) && !runtime.derived.has(name)) {
       runtime.derived.set(name, recipe);
+      runtime.named.set(key, name);
       return name;
     }
   }
-}
-
-function sameRecipe(a: ExportRecipe | string, b: ExportRecipe | string): boolean {
-  if (typeof a === 'string' || typeof b === 'string') {
-    return a === b;
-  }
-  if ('export' in a || 'export' in b) {
-    return 'export' in a && 'export' in b && a.export === b.export;
-  }
-  return a.fn.module === b.fn.module && a.fn.name === b.fn.name && a.args.length === b.args.length && a.args.every((arg, i) => sameRecipe(arg, b.args[i]!));
 }
 
 /** An exported variable read where a `var()` cannot replace it. */
