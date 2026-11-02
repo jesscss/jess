@@ -1,4 +1,4 @@
-import { mixinCall } from '@jesscss/core/ast';
+import { mixinCall, withMixinPath } from '@jesscss/core/ast';
 import type { MixinCall } from '@jesscss/core/ast';
 import { isLessTerminalText, isMixinPathTail, mixinArgumentsFromChildren, requireToken } from './grammar-helpers.js';
 import type { MixinReferenceBaseFact } from './grammar-helpers.js';
@@ -16,7 +16,7 @@ export function mixinReferenceBaseFrom(children: readonly unknown[]): MixinRefer
   const terminal = tails.at(-1);
   const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
   const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
-  const withPath = tails.length === 0 ? call : { ...call, path };
+  const withPath = tails.length === 0 ? call : withMixinPath(call, path);
   const hasCall = children.some(child => isLessTerminalText(child, '('));
   const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(callArgumentSource).join(', ')})` : ''}`;
   return { call: withPath, raw };

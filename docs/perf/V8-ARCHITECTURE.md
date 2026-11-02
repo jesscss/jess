@@ -300,6 +300,36 @@ work.
 > guardrail that passed** — when a path here stops resolving, fix it in the same
 > change.
 
+## 12. A node a parse keeps is constructor-built, never a literal
+
+**RULE:** every object an AST keeps past the reducer that builds it — a node, a
+call argument, a reference step — is built by its shape's constructor in
+`packages/core/src/ast/node-ctors.js`, through the core factory. Never by an object
+literal, in a factory or a reducer. An array a node keeps is the factory's own copy
+(`[...xs]` or `xs.slice()`), never the caller's array literal. Each shape has ONE
+constructor, and the module is loaded once per process.
+
+*Why:* V8 keeps an allocation site per object or array literal and decides per site
+whether to allocate straight into old space (pretenuring), from where scavenges
+happen to fall during warm-up. Sites in the parse path then flip per process. The
+same `.jess` parse of `benchmark.css` ran 1 mark-compact in one process and 6 in the
+next, and appending dead code to parseman's bundle re-rolled which processes were
+slow. A `new` call has no allocation site. A copy made by spread or `slice()` has
+none either. Each constructor's `prototype` is `Object.prototype`, so nodes stay
+plain objects (DESIGN-DECISIONS C3).
+
+*Why one copy:* each constructor defines its own hidden class. Two copies of one
+constructor give one shape two maps. parseman bundled a copy of its own constructors
+into each entry, and Jess's SCSS parse ran +6.7% on Node 26 from the polymorphic
+reads until the copies were merged (parseman#230).
+
+**INCIDENT:** R10 below.
+
+**DETECTOR:** parseman's `pnpm perf:pretenure` pads parseman's bundle and fails on a
+process that leaves the fast mode. On the Jess side, run the four parsers with dead
+code appended to parseman's `dist/index.js`, one parse workload per process, on Node
+24 and 26. Every process must show the same mark-compact count.
+
 ---
 
 ## Regression-fixture catalogue (reviewer must always catch)
@@ -318,6 +348,7 @@ diff reintroduces each applicable shape.
 | R7 | **repeated source derivation / eager suppressed diagnostics** | 10 | Constructing a warning, locating its source, splitting its code frame, or otherwise rediscovering a source-derived fact after an owner could have carried it. |
 | R8 | **speculative lookahead CST publication** | 5, 11 | A positive parser assertion whose terminals publish captured leaves/spans and then roll them back. Inspect the exact generated AST and CST functions; prefer parent-owned delimiter consumption or a proven capture-free recognizer. |
 | R9 | **lost precompiled assembly** (2026-08-31, [#508](https://github.com/jesscss/jess/issues/508)) | 9 | A grammar change that keeps its artifact a "fully compiled" table but drops the precompiled assembly (`a: [{ factory }]` → `a: []`). In `385c8b300` (Less), `dc96a98a7` (SCSS) and `ba25f5c92` (`.jess`), each grammar's entry moved from `composeLeaf()` to `compose()`, and parseman precompiles only a terminal `composeLeaf()`. Less AST parse of `benchmark.less` went from 16.9 to 27.6 ms, and its `ast.js` went from 1,217 precompiled functions to 0. Every gate missed it. `check:macro` counts only interpreter fallbacks, and a closure-only table is not one. The perf drift gate is disabled and has no baseline. Nothing counted the assembly or gated per-grammar parse cost. The artifacts also got smaller, which reads as a win. Detectors: `check:grammar-artifacts` and `check:grammar-speed`. |
+| R10 | **pretenuring split** (2026-11, parseman#224, parseman#230) | 12 | A node, a kept array or a parseman tree object built by a literal. V8 pretenures literal allocation sites per process, so identical processes split into a fast and a slow parse, and a bundle-layout change re-rolls it. On Node 26 the `.jess` parse of `benchmark.css` ran 7 mark-compacts in every process, against 1 once nodes were constructor-built. Also catch a second copy of a constructor module: one shape under two maps. |
 
 When a new performance regression is fixed, add a row and, where possible, a
 deterministic detector. The catalogue and detector set must remain grounded in
