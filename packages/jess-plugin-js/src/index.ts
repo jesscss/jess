@@ -22,6 +22,7 @@ import {
   denoRunArgs,
   encodeHostConfigs,
   type HostConfigs,
+  readRootsOf,
   readSetFor,
   type EngineHostFacts
 } from './engine.js';
@@ -954,6 +955,15 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   /**
+   * The folders a render's engine may read stylesheets from (ledger A19),
+   * computed on the host from the request, as its `--allow-read` list is. The
+   * compiler accepts a converted file from the engine only inside them.
+   */
+  readRoots(request: EngineRequestBase): Promise<string[]> {
+    return readRootsOf(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot);
+  }
+
+  /**
    * Holds the engine under `request`'s read set until `release`. One Deno
    * process serves one read set, so a render under another read set waits
    * until every render under the running one has finished, and only then is
@@ -1080,7 +1090,7 @@ type EngineRequestBase = {
 
 /** One render the compiler moves into the engine (see `renderInEngine`). */
 export type EngineRenderRequest = EngineRequestBase & {
-  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender';
+  method: 'render' | 'renderToResult' | 'renderString' | 'safeRender' | 'convertToJess';
   args: readonly unknown[];
 
   /** The `styles.config` settings the host resolved, sent as data. */
