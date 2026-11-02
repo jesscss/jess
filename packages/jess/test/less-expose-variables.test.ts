@@ -291,12 +291,15 @@ describe('Less @expose variables (A4)', () => {
         });
     });
 
-    it.each([
-      ['@Brand: #c00;\n@brand: #00f;\n@expose Brand, brand;', 'Brand'],
-      ['@brand-: #c00;\n@brand: #00f;\n@expose brand-, brand;', 'brand-']
-    ])('keys %s in lowerCamelCase, so two names with one key clash', async (source, first) => {
-      await expect(result(source)).resolves.toMatchObject({
-        errors: [{ code: 'eval/expose-key-conflict', message: expect.stringContaining(`@expose ${first} at entry.less:3:9`) }]
+    /* Owner 2026-11-02: only dash-case is converted; letter case is the author's. */
+    it('keeps letter case in the JavaScript key, so Brand and brand are two keys', async () => {
+      await expect(result('@Brand: #c00;\n@brand: #00f;\n@expose Brand, brand;\n.a { color: @Brand; b: @brand; }'))
+        .resolves.toMatchObject({ errors: [], runtime: { exports: ['Brand', 'brand'] } });
+    });
+
+    it('drops a trailing dash from the JavaScript key, so brand- and brand clash', async () => {
+      await expect(result('@brand-: #c00;\n@brand: #00f;\n@expose brand-, brand;')).resolves.toMatchObject({
+        errors: [{ code: 'eval/expose-key-conflict', message: expect.stringContaining('@expose brand- at entry.less:3:9') }]
       });
     });
 
