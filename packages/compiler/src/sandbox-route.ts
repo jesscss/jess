@@ -151,7 +151,8 @@ export const fromEngine = {
    * symlinks resolved, lie inside `readRoots`, the folders the host let the
    * engine read. Its `jessPath` is derived here from `source` as the render
    * spelled it, as the in-process route derives it, and must not be a symlink,
-   * nor, for `.jess` text, an existing file unless `overwrite` is set. So the
+   * nor, for `.jess` text, an existing file unless `overwrite` is set, nor a
+   * hard-linked one even then. So the
    * engine can only point the host at the `.jess` sibling of a stylesheet it
    * was allowed to read.
    */
@@ -192,8 +193,8 @@ const convertedFileFromEngine = (entry: unknown, roots: readonly string[], overw
   }
   const jess: unknown = Reflect.get(entry, 'jess');
   if (typeof jess === 'string') {
-    if (existing !== undefined && !overwrite) {
-      throw new Error(`The compile engine returned \`.jess\` text for ${jessPath}, which exists, without \`overwrite\`.`);
+    if (existing !== undefined && (!overwrite || existing.nlink > 1)) {
+      throw new Error(`The compile engine returned \`.jess\` text for ${jessPath}, which exists${existing.nlink > 1 ? ' and is hard-linked' : ', without `overwrite`'}.`);
     }
     return { source, jessPath, jess };
   }
