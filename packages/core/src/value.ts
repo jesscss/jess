@@ -36,7 +36,7 @@ export type {
   PluginDetachedDeclaration
 } from './ast/value-eval.js';
 
-export { emitValue, isValueGroup, isValueGroupArray } from './ast/value-eval.js';
+export { DEFAULT_MODES, emitValue, isValueGroup, isValueGroupArray } from './ast/value-eval.js';
 
 // --- value constructors + accessors ---
 export {

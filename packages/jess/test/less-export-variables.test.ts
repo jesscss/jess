@@ -110,8 +110,8 @@ describe('Less @export variables (A4)', () => {
       derived: {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- a custom property name
         '--brand-lightness': {
-          fn: { module: '#less', name: 'lightness' },
-          args: [{ fn: { module: '#less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
+          fn: { module: '@jesscss/fns/less', name: 'lightness' },
+          args: [{ fn: { module: '@jesscss/fns/less', name: 'multiply' }, args: [{ export: 'brand' }, '#888'] }]
         }
       }
     });
