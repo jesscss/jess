@@ -13852,7 +13852,7 @@ function planImportedFacts(
          * is a `@plugin` at its top level: one the sandbox runs moves the render
          * there now (rerouteForPlacedPlugins).
          */
-        await rerouteForPlacedPlugins(!isCompose && !reference && !hidden && importScope === '' ? loaded.document!.rules : null, e.s.context).then(() => visit(
+        await rerouteForPlacedPlugins(e.s.context?.opts.scriptSandbox !== undefined && !isCompose && !reference && !hidden && importScope === '' ? loaded.document!.rules : null, e.s.context).then(() => visit(
           loaded.document!.rules,
           childFrame,
           reference ? null : importCssPlan,
