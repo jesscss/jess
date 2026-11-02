@@ -310,18 +310,17 @@ export type HostConfigs = {
   above: Record<string, unknown>;
 };
 
-/** The nearest config file of a resolved chain, or its folder: what a chain that cannot cross is named by. */
-const nearestConfigOf = (chain: unknown, dir: string): string => {
-  const file: unknown = typeof chain === 'object' && chain !== null ? Reflect.get(chain, 'configFilePath') : undefined;
-  return typeof file === 'string' ? file : dir;
+/** The config files a resolved chain merges, or its folder: what a chain that cannot cross is named by. */
+const configFilesOf = (chain: unknown, dir: string): string => {
+  const files: unknown = typeof chain === 'object' && chain !== null ? Reflect.get(chain, 'configFilePaths') : undefined;
+  return Array.isArray(files) && files.length > 0 ? files.join(', ') : dir;
 };
 
 /**
- * Encodes the host's resolved settings for the engine. A folder whose settings
- * cannot cross (a plugin that records no factory) is left out: the engine
- * loads that folder's configs itself, as it does an import's. A chain above a
- * read root that cannot cross is sent as the config it names, so a file that
- * needs it fails, naming it, instead of rendering without it.
+ * Encodes the host's resolved settings for the engine. Settings that cannot
+ * cross (a plugin that records no factory) are sent as the config files they
+ * come from, so a file that needs them fails, naming them, instead of
+ * rendering without them.
  */
 export const encodeHostConfigs = (configs: HostConfigs | undefined): HostConfigs | undefined => {
   if (configs === undefined) {
@@ -335,6 +334,7 @@ export const encodeHostConfigs = (configs: HostConfigs | undefined): HostConfigs
       if (!(err instanceof EngineOptionError)) {
         throw err;
       }
+      folders[dir] = { unsendable: configFilesOf(folder, dir) };
     }
   }
   const above: Record<string, unknown> = {};
@@ -345,7 +345,7 @@ export const encodeHostConfigs = (configs: HostConfigs | undefined): HostConfigs
       if (!(err instanceof EngineOptionError)) {
         throw err;
       }
-      above[dir] = { unsendable: nearestConfigOf(chain, dir) };
+      above[dir] = { unsendable: configFilesOf(chain, dir) };
     }
   }
   return { folders, above };

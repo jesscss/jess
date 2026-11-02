@@ -224,6 +224,13 @@ export interface ContextOptions {
   scriptSandbox?: ScriptSandboxRoute;
 
   /**
+   * Awaited before a source file is parsed, so the settings it is about to read
+   * (`sourceOptions`) can be prepared asynchronously first: the script sandbox
+   * decodes the config chain a file needs only then.
+   */
+  prepareSource?: (filePath: string) => Promise<void> | void;
+
+  /**
    * The settings that cover one source file, computed for its language (its
    * `styles.config` merged under the settings passed in; global settings under
    * its language's) — supplied by the host. Called once when the file is parsed
@@ -1364,6 +1371,7 @@ export class Context {
     if (loading) {
       await loading;
     }
+    await this.opts.prepareSource?.(resolvedPath);
     const { result: parseResult, settings } = this.parseSource(plugin, resolvedPath, source, importOptions);
 
     // Collect normalized errors and warnings from plugin
