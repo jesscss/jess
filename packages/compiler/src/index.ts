@@ -45,6 +45,7 @@ import {
 } from './profile.js';
 import {
   compilerModuleOf,
+  engineReadRoots,
   fromEngine,
   packageInstalled,
   prewarmEngine,
@@ -1368,6 +1369,14 @@ export class Compiler {
     });
   }
 
+  /** The folders a render's engine may read, computed on this host ({@link engineReadRoots}). */
+  private engineReadRoots(call: { filePath: string | undefined; options: Partial<ConfigOptions> | undefined }): Promise<readonly string[]> {
+    const compiler = compilerModuleOf(this);
+    return compiler === undefined
+      ? Promise.reject(new Error('A conversion from the compile engine needs a compiler the engine can rebuild.'))
+      : engineReadRoots(...this.engineFor(compiler, call));
+  }
+
   /** Where a render's engine comes from, and what decides its read root. */
   private engineFor(
     compiler: CompilerModuleIdentity,
@@ -1627,7 +1636,7 @@ export class Compiler {
       filePath,
       memoKey: filePath,
       options,
-      check: fromEngine.conversion,
+      check: async value => fromEngine.conversion(value, await this.engineReadRoots({ filePath, options })),
       here: route => this.convertToJessHere(route, filePath, options)
     });
   }

@@ -25,8 +25,13 @@ export function printConversion(
   /* By document, not path: a `(less)` import and a CSS import of one file are two documents. */
   const converted = new Set<Stylesheet>();
 
-  /* The first converted document to claim a `.jess` path writes it; an import of any other is a gap. */
-  const written = new Set<string>();
+  /*
+   * Every file the render loaded is claimed first, so a converted file never
+   * overwrites one (an authored `b.jess` beside `b.less`). Then the first
+   * converted document to claim a `.jess` path writes it; a document that loses
+   * its claim, and every import of it, is a gap.
+   */
+  const written = new Set(documents.values());
   const collided = new Set<Stylesheet>();
   for (const [document, source] of documents) {
     if (path.isAbsolute(source) && context.pluginOf(document)?.jessFunctions !== undefined) {
@@ -46,7 +51,7 @@ export function printConversion(
     }
     const jessPath = jessPathOf(source);
     if (collided.has(document)) {
-      files.push({ source, jessPath, gaps: [{ nodeType: 'Stylesheet', reason: 'another converted document of this render writes the same `.jess` file' }] });
+      files.push({ source, jessPath, gaps: [{ nodeType: 'Stylesheet', reason: 'its `.jess` path is a file this render loaded, or another converted file writes it' }] });
       continue;
     }
     try {
@@ -104,7 +109,7 @@ function importPathFrom(
       return null;
     }
     if (collided.has(loadedDocument)) {
-      throw new NoJessSpelling('StyleImport', 'an import of a file whose `.jess` path another converted file of this render writes');
+      throw new NoJessSpelling('StyleImport', 'an import of a file whose `.jess` path is a file this render loaded, or another converted file writes');
     }
     if (!path.isAbsolute(target)) {
       return target;

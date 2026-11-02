@@ -19,6 +19,7 @@ import {
   engineFailure,
   hostFacts,
   denoRunArgs,
+  readRootsOf,
   readSetFor,
   type EngineHostFacts
 } from './engine.js';
@@ -912,6 +913,15 @@ export class JsPlugin extends AbstractPlugin {
       throw engineFailure(result);
     }
     return result.value;
+  }
+
+  /**
+   * The folders a render's engine may read stylesheets from (ledger A19),
+   * computed on the host from the request, as its `--allow-read` list is. The
+   * compiler accepts a converted file from the engine only inside them.
+   */
+  readRoots(request: EngineRequestBase): Promise<string[]> {
+    return readRootsOf(request.entryDir, this.opts.jsReadRoot ?? request.jsReadRoot);
   }
 
   /** Points the next Deno process at `request`'s read set, ending a running one under another. */

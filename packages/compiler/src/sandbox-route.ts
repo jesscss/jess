@@ -79,6 +79,9 @@ export type EnginePlugin = PluginInterface & {
     extension: string | undefined;
   }): void;
   releaseEngine?(): void;
+
+  /** The folders a render's engine may read stylesheets from, computed on this host. */
+  readRoots?(request: { entryDir: string; jsReadRoot: string }): Promise<readonly string[]>;
 };
 
 export const isEnginePlugin = (plugin: PluginInterface): plugin is EnginePlugin =>
@@ -130,25 +133,44 @@ export const fromEngine = {
   },
 
   /**
-   * Every entry is rebuilt from checked fields: its `source` must be a file on
-   * this host, and its `jessPath` is derived here from that source, so the
-   * engine names no path the host writes (A19).
+   * Every entry is rebuilt from checked fields. Its `source`, with `..` and
+   * symlinks resolved, must be a `.less`, `.scss` or `.css` file inside
+   * `readRoots`, the folders the host let the engine read; its `jessPath` is
+   * that real file's `.jess` sibling, derived here, and must not be a symlink.
+   * So the engine can only point the host at the `.jess` sibling of a
+   * stylesheet it was allowed to read (ledger A19).
    */
-  conversion: (value: unknown): JessConversion => {
+  conversion: (value: unknown, readRoots: readonly string[]): JessConversion => {
     const files: unknown = isRenderResultLike(value) ? Reflect.get(value, 'files') : undefined;
     if (!isRenderResultLike(value) || !isList(files)) {
       throw new Error('The compile engine returned no result for this conversion.');
     }
-    return { files: files.map(convertedFileFromEngine), errors: value.errors, warnings: value.warnings };
+    return { files: files.map(entry => convertedFileFromEngine(entry, readRoots)), errors: value.errors, warnings: value.warnings };
   }
 };
 
-const convertedFileFromEngine = (entry: unknown): ConvertedFile => {
-  const source: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'source') : undefined;
-  const jessPath = typeof source === 'string' ? jessPathOf(source) : '';
-  if (typeof entry !== 'object' || entry === null || typeof source !== 'string'
-    || !path.isAbsolute(source) || jessPath === source || fs.statSync(source, { throwIfNoEntry: false })?.isFile() !== true) {
-    throw new Error('The compile engine returned a converted file with no stylesheet source on this host.');
+const CONVERTIBLE = new Set(['.less', '.scss', '.css']);
+
+/** `file`'s real path when it is a stylesheet file inside one of `roots`, else `undefined`. */
+const stylesheetWithin = (file: string, roots: readonly string[]): string | undefined => {
+  let real: string;
+  try {
+    real = fs.realpathSync(file);
+  } catch {
+    return undefined;
+  }
+  const inside = roots.some(root => real.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`));
+  return inside && CONVERTIBLE.has(path.extname(file)) && CONVERTIBLE.has(path.extname(real)) && fs.statSync(real).isFile()
+    ? real
+    : undefined;
+};
+
+const convertedFileFromEngine = (entry: unknown, roots: readonly string[]): ConvertedFile => {
+  const named: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'source') : undefined;
+  const source = typeof named === 'string' && path.isAbsolute(named) ? stylesheetWithin(named, roots) : undefined;
+  const jessPath = source === undefined ? '' : jessPathOf(source);
+  if (typeof entry !== 'object' || entry === null || source === undefined || fs.lstatSync(jessPath, { throwIfNoEntry: false })?.isSymbolicLink() === true) {
+    throw new Error('The compile engine returned a converted file that is not a stylesheet in this render\'s read roots.');
   }
   const jess: unknown = Reflect.get(entry, 'jess');
   if (typeof jess === 'string') {
@@ -198,7 +220,7 @@ export type RoutedCall<T> = {
   options: Partial<ConfigOptions> | undefined;
 
   /** Checks what the engine returned as this entry point's result. */
-  check: (value: unknown) => T;
+  check: (value: unknown) => T | Promise<T>;
 
   /** The render in this process; it reaches the script plugin with `route`. */
   here: (route: ScriptSandboxRoute | undefined) => Promise<T>;
@@ -309,6 +331,15 @@ const engineRequest = <R extends EngineRequest>({ filePath, jsReadRoot, ...rest 
   entryDir: filePath === undefined ? process.cwd() : path.dirname(path.resolve(filePath)),
   jsReadRoot: jsReadRoot ?? process.cwd()
 });
+
+/** The folders a render's engine may read, as its script plugin computes them on this host; none it cannot name. */
+export const engineReadRoots = async (source: EngineSource, request: EngineRequest): Promise<readonly string[]> => {
+  const roots = await (await engineFor(source)).readRoots?.(engineRequest(request));
+  if (roots === undefined) {
+    throw new Error(`${source.label} names no read roots, so a conversion from its engine cannot be checked.`);
+  }
+  return roots;
+};
 
 /** Runs one render in the engine. */
 export const runInEngine = async (

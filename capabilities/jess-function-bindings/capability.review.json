@@ -5,11 +5,11 @@
   "contractDigest": "2a8e87e264d088d05e2b455fba2cd9e24063c1b177dfc6e7cfa3472bf4c8e5f4",
   "implementations": {
     "owner": "e8fbe3f1a53792442a84382c901e8fdd390b16e6f62f878ce1e64191315dce71",
-    "compiler-convert": "837c8fa09af5f26f174efb8d38a7a96a0b0d1f0da07852249f788204b0db96f2",
-    "less-equivalence": "cfe8113dc647c78658d2648a81f04c261b6660866401b1a18c73cbd95ac7fbf5",
+    "compiler-convert": "be3a1c1d13c650fe008610d0c1a11822179e44e4d51b26ecbded9eb41b30c5ca",
+    "less-equivalence": "8389af2093c4027255d96a2f01a7a75ce624a9664802c770c018434384266304",
     "less-stored-slash-math": "e532acb8c2c48a9605d716ad0812faf350ae33a6a0f277cbc3cae153ec36da0a",
     "sass-list-map-functions": "b13ee6fc08c4c41f40a5238efab7d99382a84cf72703c17e352a0f91c43b7b3e",
     "sass-selector-parse": "f4b4a548ed5cd259a3e016ec2c708e6acae1fb198c03235f78d274e6c4f45089"
   },
-  "rationale": "Merged dev: compiler/index.ts changed how script plugins load from an install; the converter's projection path (printConversion reading each document's plugin) is unchanged."
+  "rationale": "Re-reviewed compiler-convert after the #544 review fixes (convert-to-jess.ts, sandbox-route.ts, index.ts, convert-to-jess.test.ts). printConversion still takes each converted document's projection only from its own plugin (context.pluginOf(document)?.jessFunctions?.()) and passes it unchanged as emitJess's functions option; no #less/#sass projection or name map is built in the consumer, and the owner is not imported. The changes stay in consumer-owned scope: which sources it converts (loaded files claim their paths first; collisions and every import of a losing file are gaps), import paths (importPathFrom split out), CSS @import prelude placement (preludeImportOf), the render profile, and the engine-result check (sources inside host-computed read roots, host-derived jessPath). The wrapper/copy/unusedImport alternatives' anchor lines are unchanged in the source."
 }

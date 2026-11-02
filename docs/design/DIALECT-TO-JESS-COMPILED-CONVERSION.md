@@ -41,11 +41,21 @@ behavior remains an explicit conversion diagnostic/candidate.
   `.jess` CSS `@import` is written where it stands, so the entry's prelude
   imports lead its `.jess` (a dropped duplicate is not written), and a prelude
   import from an imported file, or a Less import left a CSS `@import` after a
-  rule, is a gap. When two converted files would write one `.jess` path (`b.less`
-  and `b.scss`), the first writes it, and the other, and every import of it, is a
-  gap. The call runs where the render runs, so a sandboxed compile converts in
-  the sandbox; the host rebuilds each returned entry from checked fields and
-  derives its `.jess` path from its source, a file on the host (ledger A19).
+  rule, is a gap. Every file the render loaded claims its own path first, so a
+  converted file never targets one (an authored `b.jess` beside `b.less`). When
+  a converted file's `.jess` path is already claimed, by a loaded file or by
+  another converted file (`b.less` and `b.scss`), that file, and every import of
+  it, is a gap. The call runs where the render runs, so a sandboxed compile
+  converts in the sandbox. The host rebuilds each entry the engine returns
+  from checked fields (ledger A19):
+  - the entry's `source` must be a `.less`, `.scss` or `.css` file;
+  - with `..` and symlinks resolved, it must lie inside the read roots that
+    the script plugin computes on the host for the render;
+  - its `jessPath` is that real file's `.jess` sibling, derived on the host,
+    and must not be a symlink.
+
+  Anything else is refused. So the engine can make the host write only the
+  `.jess` sibling of a stylesheet the render was allowed to read.
 - **Proof:** the equivalence harness (`JESS-EQUIVALENCE-HARNESS.md`) runs every
   Less and SCSS corpus file through it and compares the two renders.
 

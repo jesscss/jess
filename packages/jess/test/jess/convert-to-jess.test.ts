@@ -132,6 +132,28 @@ describe('Compiler.convertToJess', () => {
     }
   });
 
+  /* A `.jess` file the render loaded is never a converted file's target: writing it would destroy what the render read. */
+  it('reports a file whose `.jess` path is a file the render loaded', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-to-jess-'));
+    fs.writeFileSync(path.join(dir, 'a.less'), '@import "b.less";\n@import "b.jess";\n.a{w:1}\n');
+    fs.writeFileSync(path.join(dir, 'b.less'), '.b{x:1}\n');
+    fs.writeFileSync(path.join(dir, 'b.jess'), '.authored-jess{y:2}\n');
+
+    const compiler = new Compiler();
+    try {
+      const { files, errors } = await compiler.convertToJess(path.join(dir, 'a.less'));
+      expect(errors).toEqual([]);
+      const printed = files.map(file =>
+        [path.relative(fs.realpathSync(dir), fs.realpathSync(file.source)), 'jess' in file ? file.jess : file.gaps.map(gap => gap.nodeType)]);
+      expect(printed).toEqual([
+        ['a.less', ['StyleImport']],
+        ['b.less', ['Stylesheet']]
+      ]);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
   /*
    * The output prelude takes the CSS `@import`s of the entry and of every file it
    * imports (ledger N9); a `.jess` CSS `@import` is written where it stands, so
@@ -175,7 +197,7 @@ describe('Compiler.convertToJess', () => {
       const { files, errors, warnings } = await compiler.convertToJess(path.join(dir, 'a.less'));
       expect(errors).toEqual([]);
       expect(warnings.map(warning => warning.reason).join('\n')).toContain('in the engine: true');
-      expect(files.map(file => file.jessPath)).toEqual([path.join(dir, 'a.jess')]);
+      expect(files.map(file => file.jessPath)).toEqual([path.join(fs.realpathSync(dir), 'a.jess')]);
     } finally {
       compiler.dispose();
     }
