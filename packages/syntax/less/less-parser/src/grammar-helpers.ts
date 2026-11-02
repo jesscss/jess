@@ -951,12 +951,12 @@ function valuePieceReducerWithTrivia(
   return withValueLayout(values, valueRunSeparators(children, triviaLog, state, valuePieceKind));
 }
 
-/** What a value run's child is to its layout ({@link ValuePieceKind}). */
+/* What a value run's child is to its layout. */
 function valuePieceKind(child: unknown): ValuePieceKind {
   if (isValuePiece(child)) {
     return isDelimPiece(child) ? 'delim' : 'piece';
   }
-  return isAdjacentComponentBoundary(child) ? 'boundary' : 'other';
+  return isAdjacentComponentBoundary(child) ? 'glue' : 'other';
 }
 
 /** A value piece: a value node, or the bare `-` / `%` a value may hold. */

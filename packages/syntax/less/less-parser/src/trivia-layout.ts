@@ -92,9 +92,9 @@ export function separatorWithSurroundingTrivia(
 }
 
 /** A value run child, as its layout reads it: a delim piece, another piece, the adjacent-component marker, or neither. */
-export type ValuePieceKind = 'delim' | 'piece' | 'boundary' | 'other';
+export type ValuePieceKind = 'delim' | 'piece' | 'glue' | 'other';
 
-/**
+/*
  * The separators between a value run's pieces. A delim is glued to its
  * neighbours unless trivia stands between them, and an adjacent-component
  * marker glues the pieces either side of it (ledger N18). The log's insert
@@ -106,29 +106,29 @@ export function valueRunSeparators(
   state: unknown,
   kindOf: (child: unknown) => ValuePieceKind
 ): string[] {
-  const separators: string[] = [];
+  const out: string[] = [];
   const source = sourceFromState(state);
   let entry = 0;
-  let previous: ValuePieceKind = 'other';
+  let prev: ValuePieceKind = 'other';
   let boundary = false;
-  for (let index = 0; index < children.length; index += 1) {
-    const kind = kindOf(children[index]);
-    if (kind === 'other' || kind === 'boundary') {
-      boundary ||= kind === 'boundary';
+  for (let at = 0; at < children.length; at += 1) {
+    const kind = kindOf(children[at]);
+    if (kind === 'other' || kind === 'glue') {
+      boundary ||= kind === 'glue';
       continue;
     }
-    if (previous !== 'other') {
-      while (entry < triviaLog.length && triviaLog[entry + 2]! < index) {
+    if (prev !== 'other') {
+      while (entry < triviaLog.length && triviaLog[entry + 2]! < at) {
         entry += LESS_NODE_TRIVIA_STRIDE;
       }
-      const hasTrivia = entry < triviaLog.length && triviaLog[entry + 2] === index;
-      const trivia = hasTrivia && source !== undefined ? triviaTextAt(triviaLog, source, index, entry) : '';
-      separators.push(trivia.length > 0
+      const hasTrivia = entry < triviaLog.length && triviaLog[entry + 2] === at;
+      const trivia = hasTrivia && source !== undefined ? triviaTextAt(triviaLog, source, at, entry) : '';
+      out.push(trivia.length > 0
         ? trivia
-        : boundary || ((kind === 'delim' || previous === 'delim') && !hasTrivia) ? '' : ' ');
+        : boundary || ((kind === 'delim' || prev === 'delim') && !hasTrivia) ? '' : ' ');
     }
-    previous = kind;
+    prev = kind;
     boundary = false;
   }
-  return separators;
+  return out;
 }
