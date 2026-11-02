@@ -49,6 +49,12 @@ describe('Less @expose variables (A4)', () => {
     await expect(render('@expose brand;\n@brand: #c00;\n.btn { @brand: blue; color: @brand; }')).resolves.toContain('color: blue;');
   });
 
+  /* jesscss/jess#568: the declaration behind a read's var() is excluded while it evaluates. */
+  it('reads the earlier declaration when an exposed variable is redeclared in terms of itself', async () => {
+    await expect(result('@brand: 1px;\n@expose brand;\n.a { c: @brand; }\n@brand: @brand + 1;'))
+      .resolves.toMatchObject({ css: '.a {\n  c: var(--brand, 2px);\n}\n', errors: [] });
+  });
+
   it('is a no-op when nothing reads the exposed variable', async () => {
     await expect(render('@expose brand;\n@brand: #c00;\n.btn { color: red; }')).resolves.toBe('.btn {\n  color: red;\n}\n');
   });
@@ -221,10 +227,12 @@ describe('Less @expose variables (A4)', () => {
 
   /* Ledger A20 (owner 2026-11-02): an @expose outside a selector or other sub-frame exposes, in an imported or composed file too. */
   describe('across files', () => {
-    /** Compiles `source` beside a `tokens.less` holding `tokens`. */
-    async function resultBeside(tokens: string, source: string) {
+    /** Compiles `source` beside a `tokens.less` holding `tokens`, or beside each `[file, text]` of `tokens`. */
+    async function resultBeside(tokens: string | ReadonlyArray<readonly [string, string]>, source: string) {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-expose-import-'));
-      fs.writeFileSync(path.join(dir, 'tokens.less'), tokens);
+      for (const [file, text] of typeof tokens === 'string' ? [['tokens.less', tokens] as const] : tokens) {
+        fs.writeFileSync(path.join(dir, file), text);
+      }
       try {
         return await new Compiler({}).renderToResult({ filePath: path.join(dir, 'entry.less'), source, language: 'less' });
       } finally {
@@ -298,6 +306,20 @@ describe('Less @expose variables (A4)', () => {
       await expect(result(source)).resolves.toMatchObject({
         errors: [{ code: 'eval/expose-key-conflict', message: expect.stringContaining(`@expose ${first} at entry.less:3:9`) }]
       });
+    });
+
+    /* Owner 2026-11-02: two imported files that each declare and expose a name clash, as two composed ones do. */
+    it('rejects two imported files that each declare and expose one name, naming both', async () => {
+      await expect(resultBeside([['a.less', '@brand: red;\n@expose brand;\n'], ['b.less', '@brand: blue;\n@expose brand;\n']], '@import "a.less";\n@import "b.less";\n.x { color: @brand; }'))
+        .resolves.toMatchObject({
+          css: '',
+          errors: [{ code: 'eval/expose-conflict', message: expect.stringContaining('a.less:2:9'), file: { name: 'b.less' }, line: 2, column: 9 }]
+        });
+    });
+
+    it('rejects an importer that declares and exposes a name an imported file declares and exposes', async () => {
+      await expect(resultBeside(TOKENS, '@import "tokens.less";\n@brand: #00f;\n@expose brand;'))
+        .resolves.toMatchObject({ css: '', errors: [{ code: 'eval/expose-conflict' }] });
     });
 
     it('rejects two exposed names with one JavaScript key, naming both', async () => {
